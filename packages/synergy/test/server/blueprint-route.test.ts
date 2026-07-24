@@ -114,6 +114,8 @@ describe("BlueprintRoute start prompt", () => {
         expect(mail.model).toEqual({ providerID: "openai", modelID: "gpt-test" })
         const text = (mail.parts[0] as MessageV2.TextPart).text
         expect(text).toContain('Execute the coding Blueprint "Prompt split"')
+        expect(text).toContain("After that tool succeeds, execution is closed")
+        expect(text).toContain("end the assistant turn immediately")
       },
     })
   })
@@ -341,6 +343,8 @@ describe("BlueprintRoute start prompt", () => {
         expect(text).toContain('Execute the coding Blueprint "Prompt split"')
         expect(text).toContain("migration or compatibility")
         expect(text).toContain("parallel implementation slices")
+        expect(text).toContain("After that tool succeeds, execution is closed")
+        expect(text).toContain("end the assistant turn immediately")
       },
     })
   })

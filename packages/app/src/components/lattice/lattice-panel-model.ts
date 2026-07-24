@@ -139,6 +139,10 @@ export function pathwayProgress(run: LatticeRunView): {
   }
 }
 
+export function toggleExpandedPathwayStep(current: string | undefined, selected: string): string | undefined {
+  return current === selected ? undefined : selected
+}
+
 export function selectFresherRun(
   current: LatticeRunView | null,
   incoming: LatticeRunView | null,

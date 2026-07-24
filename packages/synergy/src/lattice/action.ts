@@ -47,15 +47,70 @@ export namespace LatticeAction {
     .superRefine((value, context) => {
       const parsed = Input.safeParse(value)
       if (parsed.success) return
-      const issue = parsed.error.issues[0]
+      const contract = ACTION_CONTRACT[value.action]
+      const issues = parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+        .join("; ")
       context.addIssue({
         code: "custom",
-        path: issue?.path ?? ["action"],
-        message: issue?.message ?? `Invalid fields for ${value.action}`,
+        path: ["action"],
+        message: `Action "${value.action}" accepts exactly ${contract.fields.join(", ")}. ${issues}. Example: ${JSON.stringify(contract.example)}`,
       })
     })
 
   export function parseToolInput(input: unknown): Input {
     return Input.parse(ToolInput.parse(input))
+  }
+
+  const ACTION_CONTRACT: Record<
+    Input["action"],
+    {
+      fields: string[]
+      example: Record<string, unknown>
+    }
+  > = {
+    submit_requirements: {
+      fields: ["action", "goal", "successCriteria", "constraints?", "nonGoals?", "assumptions?"],
+      example: {
+        action: "submit_requirements",
+        goal: "Deliver the requested outcome",
+        successCriteria: ["The observable result is verified"],
+      },
+    },
+    submit_pathway: {
+      fields: ["action", "reason"],
+      example: { action: "submit_pathway", reason: "The candidate Pathway covers all aligned requirements." },
+    },
+    submit_pathway_review: {
+      fields: ["action", "reason"],
+      example: {
+        action: "submit_pathway_review",
+        reason: "The pending Pathway is correctly scoped, ordered, and verifiable.",
+      },
+    },
+    submit_blueprint: {
+      fields: ["action", "blueprintID"],
+      example: { action: "submit_blueprint", blueprintID: "note_..." },
+    },
+    submit_blueprint_review: {
+      fields: ["action", "reason"],
+      example: {
+        action: "submit_blueprint_review",
+        reason: "The bound Blueprint is decision-complete and safe to execute.",
+      },
+    },
+    approve_execution: {
+      fields: ["action", "reason"],
+      example: { action: "approve_execution", reason: "The user explicitly approved this reviewed Blueprint." },
+    },
+  }
+
+  export function inputContractSummary(): string {
+    return Object.entries(ACTION_CONTRACT)
+      .map(
+        ([action, contract]) =>
+          `- ${action}: ${contract.fields.join(", ")}; example ${JSON.stringify(contract.example)}`,
+      )
+      .join("\n")
   }
 }

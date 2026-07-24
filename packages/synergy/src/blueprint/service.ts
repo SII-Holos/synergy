@@ -79,23 +79,32 @@ export namespace BlueprintLoopService {
     return trimmed ? trimmed : undefined
   }
 
-  function defaultFirstPrompt(loop: { id: string; title: string; noteID: string }, agentName?: string) {
+  function defaultFirstPrompt(
+    loop: { id: string; title: string; noteID: string; source?: Info["source"] },
+    agentName?: string,
+  ) {
+    const latticeBoundary =
+      loop.source === "lattice"
+        ? "\nThis BlueprintLoop owns exactly one current Lattice Step. Future Pathway Steps are context only, not authorization. Earlier user messages such as “continue” mean continue this Blueprint only. Do not create, submit, or implement any later Step."
+        : ""
     if (isCodingBlueprintAgent(agentName)) {
       return `Execute the coding Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
 First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
 Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, migration or compatibility expectations, cleanup, and verification commands.
+${latticeBoundary}
 Create or update a DAG when the work has multiple phases, dependencies, parallel implementation slices, or review gates. Split independent code work by module or concern and keep each delegated task narrow.
 Continue until every Blueprint requirement is implemented, verified, and integrated. Keep the codebase clean: remove obsolete paths when the Blueprint replaces them, avoid redundant logic, and preserve local conventions.
-When the Blueprint is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review.`
+When the Blueprint is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review. After that tool succeeds, execution is closed: call no more tools, modify nothing else, and end the assistant turn immediately so the reviewer can start.`
     }
 
     return `Execute the Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
 First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
 Treat the Blueprint as the authoritative brief for this run: goal, deliverables, constraints, audience, chosen approach, quality criteria, and acceptance criteria.
+${latticeBoundary}
 Choose the execution shape that fits the Blueprint's domain and complexity. Work directly for small linear tasks; create or update a DAG when there are multiple phases, real dependencies, parallel workstreams, or useful progress checkpoints.
 Use domain-appropriate specialists when they improve the outcome. Do not import software-engineering workflow unless the Blueprint is software work.
 Continue until the requested outcome is complete. For every material requirement, produce or update the requested artifact or result, keep the whole deliverable coherent, and apply quality checks appropriate to the domain.
-When the Blueprint is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review.`
+When the Blueprint is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review. After that tool succeeds, execution is closed: call no more tools, modify nothing else, and end the assistant turn immediately so the reviewer can start.`
   }
 
   export async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "execution" | "audit") {
@@ -126,6 +135,7 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
       firstPrompt?: string
       executionAgent?: string
       model?: { providerID: string; modelID: string }
+      source?: Info["source"]
     },
     userPrompt?: string,
   ) {

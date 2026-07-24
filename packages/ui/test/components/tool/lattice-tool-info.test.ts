@@ -16,6 +16,22 @@ describe("Lattice tool presentation", () => {
     expect(JSON.stringify(info)).not.toContain("runID")
   })
 
+  test("counts only the editable future accepted by pathway_write", () => {
+    const info = getLatticeToolPresentation("pathway_write", {
+      futureSteps: [{ title: "Build" }, { title: "Verify" }],
+    })!
+
+    expect(info.args).toEqual(["2"])
+  })
+
+  test("keeps historical pathway_write cards readable after the parameter rename", () => {
+    const info = getLatticeToolPresentation("pathway_write", {
+      steps: [{ title: "Legacy build" }],
+    })!
+
+    expect(info.args).toEqual(["1"])
+  })
+
   test("uses semantic submit copy and a Blueprint title instead of its ID", () => {
     const info = getLatticeToolPresentation(
       "lattice_submit",

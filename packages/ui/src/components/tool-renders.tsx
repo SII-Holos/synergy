@@ -14,12 +14,20 @@ for (const name of ["pathway_read", "pathway_write", "lattice_submit"] as const)
       if (!info) return null
 
       let tags = info.args?.map((label) => ({ label }))
-      if (name === "pathway_write" && Array.isArray(props.input?.steps)) {
+      const pathwaySteps =
+        name === "pathway_write"
+          ? Array.isArray(props.input?.futureSteps)
+            ? props.input.futureSteps
+            : Array.isArray(props.input?.steps)
+              ? props.input.steps
+              : undefined
+          : undefined
+      if (pathwaySteps) {
         tags = [
           {
             label: _({
               ...PATHWAY_STEPS_DESCRIPTOR,
-              values: { count: props.input.steps.length },
+              values: { count: pathwaySteps.length },
             }),
           },
         ]

@@ -10,7 +10,10 @@ let capturedTrigger: Record<string, unknown> | undefined
 }
 
 mock.module("@lingui/solid", () => ({
-  useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
+  useLingui: () => ({
+    _: (descriptor: { message?: string; id: string; values?: { count?: number } }) =>
+      (descriptor.message ?? descriptor.id).replace("{count}", String(descriptor.values?.count ?? "{count}")),
+  }),
 }))
 mock.module("../../../src/components/basic-tool", () => ({
   BasicTool: (props: { trigger: Record<string, unknown> }) => {
@@ -50,6 +53,21 @@ describe("Lattice tool renderers", () => {
       title: { id: "tool.title.latticeApproveExecution", message: "Approve Blueprint execution" },
       subtitle: "Reviewed",
       tags: [{ label: "Panel" }],
+    })
+  })
+
+  test("summarizes only the future Steps accepted by pathway_write", () => {
+    registrations.get("pathway_write")?.({
+      tool: "pathway_write",
+      input: { futureSteps: [{ title: "Build" }, { title: "Verify" }] },
+      metadata: { preservedStepCount: 3, editableFutureCount: 2 },
+    })
+
+    expect(capturedTrigger).toEqual({
+      icon: "list-checks",
+      title: { id: "tool.title.pathwayWrite", message: "Write Pathway" },
+      subtitle: undefined,
+      tags: [{ label: "2 steps" }],
     })
   })
 })

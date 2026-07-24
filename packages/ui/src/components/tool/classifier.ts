@@ -44,7 +44,12 @@ export function getLatticeToolPresentation(
   }
 
   if (tool === "pathway_write") {
-    const stepCount = Array.isArray(input.steps) ? input.steps.length : undefined
+    const steps = Array.isArray(input.futureSteps)
+      ? input.futureSteps
+      : Array.isArray(input.steps)
+        ? input.steps
+        : undefined
+    const stepCount = steps?.length
     return {
       icon: "list-checks",
       title: LATTICE_TOOL_TITLE_DESCRIPTORS.pathway_write!,

@@ -14,6 +14,11 @@ export namespace LatticeActionService {
     input: LatticeAction.Input
   }
 
+  export type SubmitResult = {
+    run: LatticeTypes.Run
+    disposition: "queued" | "already_queued"
+  }
+
   const EXPECTED_STATE: Record<LatticeAction.Input["action"], LatticeTypes.State> = {
     submit_requirements: "clarifying",
     submit_pathway: "planning",
@@ -23,15 +28,30 @@ export namespace LatticeActionService {
     approve_execution: "awaiting_execution",
   }
 
+  export function expectedState(action: LatticeAction.Input["action"]): LatticeTypes.State {
+    return EXPECTED_STATE[action]
+  }
+
+  export function validAction(state: LatticeTypes.State): LatticeAction.Input["action"] | undefined {
+    return (Object.entries(EXPECTED_STATE) as [LatticeAction.Input["action"], LatticeTypes.State][]).find(
+      ([, expected]) => expected === state,
+    )?.[0]
+  }
+
   /** Persist one semantic intent. State transitions and effects are owned by LatticeController. */
   export async function submit(input: SubmitInput): Promise<LatticeTypes.Run> {
+    return (await submitWithResult(input)).run
+  }
+
+  /** Persist one semantic intent and report whether this call queued it or matched the existing durable intent. */
+  export async function submitWithResult(input: SubmitInput): Promise<SubmitResult> {
     const current = await LatticeStore.getOrUndefined(input.scopeID, input.sessionID)
     if (!current) throw new LatticeError.NotFound({ sessionID: input.sessionID })
     if (current.status !== "active") {
       throw new LatticeError.StateConflict({ state: current.state, reason: `run is ${current.status}` })
     }
 
-    const expected = EXPECTED_STATE[input.input.action]
+    const expected = expectedState(input.input.action)
     if (current.state !== expected) {
       throw new LatticeError.StateConflict({
         state: current.state,
@@ -61,13 +81,13 @@ export namespace LatticeActionService {
       submitted = true
       return LatticeMachine.queueAction(draft, action)
     })
-    if (!submitted) return updated
+    if (!submitted) return { run: updated, disposition: "already_queued" }
     void LatticeStore.appendEvent(input.scopeID, updated, {
       kind: "action_submitted",
       state: updated.state,
       message: `${action.kind} submitted`,
     }).catch(() => undefined)
-    return updated
+    return { run: updated, disposition: "queued" }
   }
 
   async function materialize(

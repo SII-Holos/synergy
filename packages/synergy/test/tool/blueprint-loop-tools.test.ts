@@ -174,6 +174,7 @@ describe("blueprint_loop_stop", () => {
           auditAgent: "security-reviewer",
           userPrompt: "Do not change the public CLI contract.",
           auditTools: { plugin__truthward__context_query: true, plugin__truthward__n03_artifact_get: true },
+          source: "lattice",
         })
         const launches = installReviewerLaunch()
         const tool = await BlueprintLoopStopTool.init()
@@ -189,7 +190,44 @@ describe("blueprint_loop_stop", () => {
 
         const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
         expect(result.metadata.loopStopRequested).toBe(true)
+        expect(result.metadata).toMatchObject({
+          reviewRequested: true,
+          reviewStarted: false,
+          requiredAgentAction: "end_turn",
+        })
+        expect(JSON.parse(result.output)).toMatchObject({
+          ok: true,
+          code: "BLUEPRINT_LOOP_REVIEW_QUEUED",
+          review: {
+            requested: true,
+            started: false,
+            startsAfterAssistantTurn: true,
+          },
+          requiredAgentAction: {
+            kind: "end_turn",
+          },
+        })
+        expect(result.output).toContain("Do not call another tool")
+        expect(result.output).toContain("future Lattice Pathway Step")
         expect(launches).toHaveLength(0)
+
+        const duplicateBeforeReview = await tool.execute(
+          { summary: "Duplicate request before the execution turn ends." },
+          ctx(session.id),
+        )
+        expect(JSON.parse(duplicateBeforeReview.output)).toMatchObject({
+          ok: true,
+          code: "BLUEPRINT_LOOP_REVIEW_ALREADY_QUEUED",
+          duplicate: true,
+          review: {
+            requested: true,
+            started: false,
+            startsAfterAssistantTurn: true,
+          },
+          requiredAgentAction: { kind: "end_turn" },
+        })
+        expect(launches).toHaveLength(0)
+
         expect(updated.status).toBe("running")
         expect(updated.auditSessionID).toBeUndefined()
         expect(updated.auditTaskID).toBeUndefined()
@@ -211,6 +249,9 @@ describe("blueprint_loop_stop", () => {
         expect(launches[0].prompt).toContain("Do not change the public CLI contract.")
         expect(launches[0].prompt).toContain("blueprint_loop_approve")
         expect(launches[0].prompt).toContain("blueprint_loop_reject")
+        expect(launches[0].prompt).toContain("Change Scope, boundaries, and non-goals")
+        expect(launches[0].prompt).toContain("future Lattice Pathway steps")
+        expect(launches[0].prompt).toContain("first successful blueprint_loop_stop")
         // Audit launch receives exactly persisted auditTools, no execution-only submit tool
         expect(launches[0].tools).toEqual({
           plugin__truthward__context_query: true,
@@ -237,7 +278,18 @@ describe("blueprint_loop_stop", () => {
 
         expect(launches).toHaveLength(1)
         expect(result.metadata.reviewSessionID).toBe(reviewSessionID)
-        expect(result.output).toContain("already requested")
+        expect(JSON.parse(result.output)).toMatchObject({
+          ok: true,
+          code: "BLUEPRINT_LOOP_REVIEW_ALREADY_STARTED",
+          review: {
+            requested: true,
+            started: true,
+          },
+          requiredAgentAction: {
+            kind: "end_turn",
+          },
+        })
+        expect(result.output).toContain("Do not call tools to inspect")
       },
     })
   })

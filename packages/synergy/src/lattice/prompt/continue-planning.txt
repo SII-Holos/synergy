@@ -1,1 +1,1 @@
-Complete the remaining Pathway contract with pathway_write, then submit the candidate Pathway.
+Complete the remaining Pathway contract through pathway_write.futureSteps, then submit the candidate Pathway.

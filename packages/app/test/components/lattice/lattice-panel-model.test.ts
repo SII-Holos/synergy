@@ -8,6 +8,7 @@ import {
   isLatticeConflict,
   pathwayProgress,
   selectFresherRun,
+  toggleExpandedPathwayStep,
   workStateDescriptor,
   type LatticeRunView,
 } from "../../../src/components/lattice/lattice-panel-model"
@@ -142,6 +143,12 @@ describe("Lattice panel model", () => {
       pending: 1,
       total: 4,
     })
+  })
+
+  test("keeps at most one Pathway audit summary expanded", () => {
+    expect(toggleExpandedPathwayStep(undefined, "step-1")).toBe("step-1")
+    expect(toggleExpandedPathwayStep("step-1", "step-2")).toBe("step-2")
+    expect(toggleExpandedPathwayStep("step-2", "step-2")).toBeUndefined()
   })
 
   test("presents audit event kinds as product language instead of persisted identifiers", () => {

@@ -77,6 +77,36 @@ describe("LatticeAction public contract", () => {
     })
   })
 
+  test("reports whether a semantic action was newly queued or was already durably queued", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const scopeID = ScopeContext.current.scope.id
+      await LatticeStore.create({ sessionID: session.id, mode: "auto" })
+      const input = LatticeAction.Input.parse({
+        action: "submit_requirements",
+        goal: "Ship safely",
+        successCriteria: ["tests pass"],
+      })
+
+      const first = await LatticeActionService.submitWithResult({
+        scopeID,
+        sessionID: session.id,
+        source: "agent",
+        input,
+      })
+      const duplicate = await LatticeActionService.submitWithResult({
+        scopeID,
+        sessionID: session.id,
+        source: "agent",
+        input,
+      })
+
+      expect(first.disposition).toBe("queued")
+      expect(duplicate.disposition).toBe("already_queued")
+      expect(duplicate.run.pendingAction?.id).toBe(first.run.pendingAction?.id)
+    })
+  })
+
   test("atomically deduplicates concurrent semantic retries without revision or update-event churn", async () => {
     await withScope(async () => {
       const session = await Session.create({})

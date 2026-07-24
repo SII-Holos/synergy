@@ -1,1 +1,1 @@
-Review the candidate remaining Pathway against all requirements and completed-step evidence. Correct it with pathway_write before submitting the review.
+Review pathway_read.pathway.editableFuture against all requirements and completed-step evidence. Correct only that pending suffix through pathway_write.futureSteps when needed, then submit the review.

@@ -64,6 +64,13 @@ describe("Plan Blueprint prompt contract", () => {
     }
   })
 
+  test("keeps Lattice replanning scoped to the editable future", () => {
+    expect(LATTICE_BASE).toContain("pathway.editableFuture")
+    expect(LATTICE_BASE).toContain("pathway_write.futureSteps")
+    expect(LATTICE_REVIEWING_PATHWAY).toContain("Never copy pathway.history or pathway.current")
+    expect(LATTICE_PLANNING).toContain("pathway_write.futureSteps")
+  })
+
   test("ends the turn after a successful Lattice state submission", () => {
     expect(LATTICE_BASE).toContain("final tool call")
     expect(LATTICE_BASE).toContain("still report the current state")

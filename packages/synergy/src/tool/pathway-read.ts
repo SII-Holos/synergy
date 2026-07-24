@@ -18,18 +18,37 @@ export const PathwayReadTool = Tool.define("pathway_read", {
 
     const view = LatticeTypes.toRunView(run)
     const completed = view.pathway.filter((step) => step.status === "completed").length
-    const currentStep = view.pathway.find((step) => step.id === view.currentStepID)
+    const current =
+      view.pathway.find((step) => step.id === view.currentStepID) ??
+      view.pathway.find((step) => step.status === "current" || step.status === "executing") ??
+      null
+    const history = view.pathway.filter((step) => step.status !== "pending" && step.id !== current?.id)
+    const editableFuture = view.pathway.filter((step) => step.status === "pending")
+    const { pathway: _, ...runView } = view
 
     return {
       title: `Lattice ${view.state}`,
-      output: JSON.stringify(view, null, 2),
+      output: JSON.stringify(
+        {
+          ...runView,
+          pathway: {
+            history,
+            current,
+            editableFuture,
+          },
+        },
+        null,
+        2,
+      ),
       metadata: {
         runID: view.id,
         state: view.state,
         status: view.status,
         currentStepID: view.currentStepID,
-        currentStepTitle: currentStep?.title,
+        currentStepTitle: current?.title,
         completed,
+        preservedStepCount: history.length + (current ? 1 : 0),
+        editableFutureCount: editableFuture.length,
         total: view.pathway.length,
       },
     }

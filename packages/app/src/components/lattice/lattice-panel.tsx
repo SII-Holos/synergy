@@ -28,6 +28,7 @@ import {
   RUN_STATUS_DESCRIPTORS,
   selectFresherRun,
   STEP_STATUS_DESCRIPTORS,
+  toggleExpandedPathwayStep,
   workStateLabel,
   type LatticeLoopView,
   type LatticeRunView,
@@ -79,6 +80,7 @@ export function LatticePanel(props: {
   const [loops, setLoops] = createSignal<LatticeLoopView[]>([])
   const [events, setEvents] = createSignal<LatticeEvent[]>([])
   const [expanded, setExpanded] = createSignal<ExpandedDetails>()
+  const [expandedPathwayStepID, setExpandedPathwayStepID] = createSignal<string>()
   const [loading, setLoading] = createSignal(true)
   const [eventsLoading, setEventsLoading] = createSignal(false)
   const [loadError, setLoadError] = createSignal<string>()
@@ -108,6 +110,7 @@ export function LatticePanel(props: {
       resetActionState()
       setEvents([])
       setExpanded(undefined)
+      setExpandedPathwayStepID(undefined)
     }
     setRun(next)
     if (next?.status !== "active" || next.state !== "awaiting_execution") setApprovalQueued(false)
@@ -169,6 +172,7 @@ export function LatticePanel(props: {
     setLoops([])
     setEvents([])
     setExpanded(undefined)
+    setExpandedPathwayStepID(undefined)
     setLoading(true)
     setLoadError(undefined)
     setEventsError(undefined)
@@ -484,59 +488,94 @@ export function LatticePanel(props: {
                         </div>
                         <ol class="flex min-w-0 flex-col">
                           <For each={currentRun().pathway}>
-                            {(step, index) => (
-                              <li
-                                class="relative flex min-w-0 gap-3 border-t border-border-weaker-base py-3 first:border-t-0"
-                                classList={{
-                                  "border-l-2 border-l-border-strong-base bg-surface-inset-base px-3":
-                                    step.id === currentRun().currentStepID,
-                                }}
-                              >
-                                <span class="w-5 shrink-0 pt-0.5 text-11-regular tabular-nums text-text-weaker">
-                                  {fmt.number(index() + 1)}
-                                </span>
-                                <div class="min-w-0 flex-1">
-                                  <div class="flex min-w-0 items-start gap-3">
-                                    <span class="min-w-0 flex-1 text-13-medium leading-5 text-text-strong">
-                                      {step.title}
-                                    </span>
-                                    <span class={`shrink-0 text-11-regular ${stepStatusClass(step.status)}`}>
-                                      {_(STEP_STATUS_DESCRIPTORS[step.status])}
-                                    </span>
+                            {(step, index) => {
+                              const isExpanded = () => expandedPathwayStepID() === step.id
+                              const rowContent = () => (
+                                <>
+                                  <span class="w-5 shrink-0 pt-0.5 text-11-regular tabular-nums text-text-weaker">
+                                    {fmt.number(index() + 1)}
+                                  </span>
+                                  <div class="min-w-0 flex-1">
+                                    <div class="flex min-w-0 items-start gap-3">
+                                      <span class="min-w-0 flex-1 text-13-medium leading-5 text-text-strong">
+                                        {step.title}
+                                      </span>
+                                      <span class={`shrink-0 text-11-regular ${stepStatusClass(step.status)}`}>
+                                        {_(STEP_STATUS_DESCRIPTORS[step.status])}
+                                      </span>
+                                      <Show when={step.resultSummary}>
+                                        <Icon
+                                          name={getSemanticIcon(
+                                            isExpanded() ? "navigation.collapse" : "navigation.expand",
+                                          )}
+                                          size="small"
+                                        />
+                                      </Show>
+                                    </div>
+                                    <Show when={step.failureReason}>
+                                      <p class="mt-1 text-12-regular leading-5 text-text-on-critical-base">
+                                        {step.failureReason}
+                                      </p>
+                                    </Show>
+                                    <Show when={step.blueprint || step.loopHistory.length > 0}>
+                                      <p class="mt-1 text-11-regular text-text-weak">
+                                        <Show when={step.blueprint}>
+                                          {(binding) =>
+                                            _({
+                                              id: "app.lattice.panel.blueprintVersion",
+                                              message: "Blueprint v{version}",
+                                              values: { version: binding().boundVersion },
+                                            })
+                                          }
+                                        </Show>
+                                        <Show when={step.blueprint && step.loopHistory.length > 0}>{" · "}</Show>
+                                        <Show when={step.loopHistory.length > 0}>
+                                          {_({
+                                            id: "app.lattice.panel.loopAttempts",
+                                            message:
+                                              "{count, plural, one {# execution attempt} other {# execution attempts}}",
+                                            values: { count: step.loopHistory.length },
+                                          })}
+                                        </Show>
+                                      </p>
+                                    </Show>
                                   </div>
-                                  <Show when={step.resultSummary}>
-                                    <p class="mt-1 text-12-regular leading-5 text-text-weak">{step.resultSummary}</p>
+                                </>
+                              )
+
+                              return (
+                                <li
+                                  class="relative min-w-0 border-t border-border-weaker-base first:border-t-0"
+                                  classList={{
+                                    "border-l-2 border-l-border-strong-base bg-surface-inset-base px-3":
+                                      step.id === currentRun().currentStepID,
+                                  }}
+                                >
+                                  <Show
+                                    when={step.resultSummary}
+                                    fallback={<div class="flex min-w-0 gap-3 py-3">{rowContent()}</div>}
+                                  >
+                                    <button
+                                      type="button"
+                                      class="flex w-full min-w-0 gap-3 py-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
+                                      aria-expanded={isExpanded()}
+                                      onClick={() =>
+                                        setExpandedPathwayStepID((current) =>
+                                          toggleExpandedPathwayStep(current, step.id),
+                                        )
+                                      }
+                                    >
+                                      {rowContent()}
+                                    </button>
                                   </Show>
-                                  <Show when={step.failureReason}>
-                                    <p class="mt-1 text-12-regular leading-5 text-text-on-critical-base">
-                                      {step.failureReason}
-                                    </p>
+                                  <Show when={isExpanded() ? step.resultSummary : undefined}>
+                                    {(summary) => (
+                                      <p class="pb-3 pl-8 text-12-regular leading-5 text-text-weak">{summary()}</p>
+                                    )}
                                   </Show>
-                                  <Show when={step.blueprint || step.loopHistory.length > 0}>
-                                    <p class="mt-1 text-11-regular text-text-weak">
-                                      <Show when={step.blueprint}>
-                                        {(binding) =>
-                                          _({
-                                            id: "app.lattice.panel.blueprintVersion",
-                                            message: "Blueprint v{version}",
-                                            values: { version: binding().boundVersion },
-                                          })
-                                        }
-                                      </Show>
-                                      <Show when={step.blueprint && step.loopHistory.length > 0}>{" · "}</Show>
-                                      <Show when={step.loopHistory.length > 0}>
-                                        {_({
-                                          id: "app.lattice.panel.loopAttempts",
-                                          message:
-                                            "{count, plural, one {# execution attempt} other {# execution attempts}}",
-                                          values: { count: step.loopHistory.length },
-                                        })}
-                                      </Show>
-                                    </p>
-                                  </Show>
-                                </div>
-                              </li>
-                            )}
+                                </li>
+                              )
+                            }}
                           </For>
                         </ol>
                       </section>

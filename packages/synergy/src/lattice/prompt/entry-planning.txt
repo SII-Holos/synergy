@@ -1,1 +1,1 @@
-The requirements are aligned. Write the complete remaining Pathway with pathway_write, then submit it for self-review.
+The requirements are aligned. Write the complete remaining Pathway through pathway_write.futureSteps, then submit it for self-review.

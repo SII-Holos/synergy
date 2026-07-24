@@ -28,7 +28,7 @@ describe("tool classifier localization", () => {
 
   test("classifies every Lattice tool with an explicit localized title", () => {
     const read = classifyTool("pathway_read")
-    const write = classifyTool("pathway_write", { steps: [{ title: "Build" }] })
+    const write = classifyTool("pathway_write", { futureSteps: [{ title: "Build" }] })
     const submit = classifyTool("lattice_submit", { action: "approve_execution", reason: "Reviewed" })
 
     expect(read.category).toBe("dag")

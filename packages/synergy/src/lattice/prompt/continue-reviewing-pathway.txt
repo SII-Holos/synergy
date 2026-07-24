@@ -1,1 +1,1 @@
-Continue the adversarial Pathway review. Correct all remaining defects, then submit the review.
+Continue the adversarial Pathway review. Correct defects only in pathway_read.pathway.editableFuture, then submit the review.
