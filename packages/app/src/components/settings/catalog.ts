@@ -345,14 +345,18 @@ const BUILTIN_SETTINGS_COPY = {
     label: { id: "settings.catalog.timeouts.label", message: "Agents" },
     description: {
       id: "settings.catalog.timeouts.description",
-      message: "Agent prompt behavior, subagent concurrency, provider timeouts, and tool timeout controls.",
+      message: "Agent worker capacity, subagent concurrency, provider timeouts, and tool timeout controls.",
     },
     searchTerms: {
       id: "settings.catalog.timeouts.searchTerms",
-      message: "agent | subagent | concurrency | timeout | provider | tool | coauthor | commit | git | prompt",
+      message:
+        "agent | worker | pool | parallel | subagent | concurrency | timeout | provider | tool | coauthor | commit | git | prompt",
       comment: SEARCH_TERMS_COMMENT,
     },
-    rowLabels: [{ id: "settings.catalog.timeouts.row.maxConcurrentSubagents", message: "Max Concurrent Subagents" }],
+    rowLabels: [
+      { id: "settings.catalog.timeouts.row.agentWorkerPool", message: "Agent Worker Pool" },
+      { id: "settings.catalog.timeouts.row.maxConcurrentSubagents", message: "Max Concurrent Subagents" },
+    ],
   },
   "code-checks": {
     label: { id: "settings.catalog.codeChecks.label", message: "Code Checks" },
@@ -569,6 +573,7 @@ export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {
   question: "background",
   compaction: "auto",
   cortex: "background",
+  execution: "background",
   timeout: "background",
   experimental: "background",
   watcher: "background",

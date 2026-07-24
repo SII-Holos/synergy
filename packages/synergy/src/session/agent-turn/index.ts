@@ -28,6 +28,14 @@ export namespace AgentTurn {
     }
   }
 
+  export function resize(size = DEFAULT_AGENT_WORKER_POOL_OPTIONS.size): void {
+    if (!Number.isInteger(size) || size <= 0) {
+      throw new Error("Agent worker pool size must be a positive integer")
+    }
+    options = { ...options, size }
+    pool?.resize(size)
+  }
+
   export async function stream(input: Input): Promise<Stream> {
     if (!accepting || stopPromise) throw new Error("Agent worker pool is stopping")
     if (process.env.SYNERGY_TEST_HOME) {

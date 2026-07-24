@@ -81,7 +81,7 @@ const maxImageOpts = [
 const agentsPageTitle = { id: "settings.runtime.agents.page.title", message: "Agents" }
 const agentsPageDesc = {
   id: "settings.runtime.agents.page.desc",
-  message: "Agent prompt behavior, provider timeouts, and tool timeout controls.",
+  message: "Agent capacity, prompt behavior, provider timeouts, and tool timeout controls.",
 }
 const agentSectionTitle = { id: "settings.runtime.agents.agent.title", message: "Agent" }
 const coauthorRowTitle = { id: "settings.runtime.agents.coauthor.title", message: "Co-author Reminder" }
@@ -93,6 +93,20 @@ const defaultAgentRowTitle = { id: "settings.runtime.agents.defaultAgent.title",
 const defaultAgentRowDesc = {
   id: "settings.runtime.agents.defaultAgent.desc",
   message: "Primary agent for new conversations. Hidden and subagent definitions are excluded.",
+}
+const agentWorkersRowTitle = { id: "settings.runtime.agents.agentWorkers.title", message: "Agent Worker Pool" }
+const agentWorkersRowDesc = {
+  id: "settings.runtime.agents.agentWorkers.desc",
+  message:
+    "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire.",
+}
+const agentWorkersAutomatic = {
+  id: "settings.runtime.agents.agentWorkers.automatic",
+  message: "Automatic",
+}
+const agentWorkersPlaceholder = {
+  id: "settings.runtime.agents.agentWorkers.placeholder",
+  message: "Auto",
 }
 const invokeRowTitle = { id: "settings.runtime.agents.invoke.title", message: "Invoke Timeout" }
 const invokeRowDesc = {
@@ -240,6 +254,7 @@ export function TimeoutsPanel(props: {
   defaultAgent: string
   onDefaultAgentChange: (agent: string) => void
   concurrencyStatus?: CortexConcurrencyStatus
+  configuredAgentWorkers?: number
 }) {
   const { _ } = useLingui()
   const environmentConcurrency = () => props.concurrencyStatus?.environment
@@ -274,6 +289,14 @@ export function TimeoutsPanel(props: {
       String(props.concurrencyStatus?.configured ?? props.concurrencyStatus?.effective ?? 8),
     )
   }
+  const resetInvalidAgentWorkers = () => {
+    const parsed = Number(props.runtime.agentWorkers)
+    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 64) return
+    props.onRuntimeChange(
+      "agentWorkers",
+      props.configuredAgentWorkers === undefined ? "" : String(props.configuredAgentWorkers),
+    )
+  }
 
   return (
     <SettingsPage title={_(agentsPageTitle)} description={_(agentsPageDesc)}>
@@ -299,6 +322,24 @@ export function TimeoutsPanel(props: {
             >
               <For each={props.availableAgents}>{(agent) => <option value={agent.name}>{agent.name}</option>}</For>
             </select>
+          }
+        />
+        <SettingRow
+          title={_(agentWorkersRowTitle)}
+          description={_(agentWorkersRowDesc)}
+          stateLabel={props.runtime.agentWorkers ? undefined : _(agentWorkersAutomatic)}
+          trailing={
+            <TextField
+              type="number"
+              min="1"
+              max="64"
+              step="1"
+              value={props.runtime.agentWorkers}
+              placeholder={_(agentWorkersPlaceholder)}
+              class="settings-row-control-text"
+              onBlur={resetInvalidAgentWorkers}
+              onChange={(value) => props.onRuntimeChange("agentWorkers", value)}
+            />
           }
         />
         <SettingRow
