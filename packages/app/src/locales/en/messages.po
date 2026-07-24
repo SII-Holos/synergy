@@ -7448,6 +7448,14 @@ msgid "app.workspace.mobileHeader.close"
 msgstr "Close workspace"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr "Reload app"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
+msgstr "Retry"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
 msgstr "Panel unavailable"
 

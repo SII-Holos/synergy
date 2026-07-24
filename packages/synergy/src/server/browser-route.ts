@@ -465,14 +465,32 @@ export const BrowserRoute = new Hono()
   )
   .get(
     "/:directory/browser/webrtc/connect",
-    upgradeWebSocket((c) => signalingSocket(c, "viewer")),
+    upgradeWebSocket((c) => createBrowserSignalingSocket(c, "viewer")),
   )
   .get(
     "/:directory/browser/webrtc/host",
-    upgradeWebSocket((c) => signalingSocket(c, "host")),
+    upgradeWebSocket((c) => createBrowserSignalingSocket(c, "host")),
   )
 
-function signalingSocket(c: any, role: "viewer" | "host") {
+export function browserSignalingPageAvailable(
+  role: "viewer" | "host",
+  pageId: string,
+  session: { status: BrowserControl.SessionState["status"]; page: { id: string } | null },
+  brokerHasPage: boolean,
+): boolean {
+  if (!brokerHasPage) return false
+  if (role === "host") return true
+  return session.status === "active" && session.page?.id === pageId
+}
+
+export function browserSignalingEventSocket(
+  registered: BrowserWS | undefined,
+  _eventSocket: BrowserWS,
+): BrowserWS | undefined {
+  return registered
+}
+
+export function createBrowserSignalingSocket(c: any, role: "viewer" | "host") {
   let state: RouteState
   try {
     assertWebSocketRequest(c, role)
@@ -490,12 +508,8 @@ function signalingSocket(c: any, role: "viewer" | "host") {
       try {
         const session = await BrowserWorkspace.sessionState(state)
         pageId ||= session.page?.id
-        if (
-          !pageId ||
-          session.status !== "active" ||
-          session.page?.id !== pageId ||
-          !BrowserBroker.hasPage(state.owner, pageId)
-        ) {
+        const brokerHasPage = pageId ? BrowserBroker.hasPage(state.owner, pageId) : false
+        if (!pageId || !browserSignalingPageAvailable(role, pageId, session, brokerHasPage)) {
           throw new BrowserProtocolError({
             code: "browser_webrtc_missing_page",
             message: "No active Browser Host page is available for WebRTC.",
@@ -562,8 +576,11 @@ function signalingSocket(c: any, role: "viewer" | "host") {
         ws.close(1008, "WebRTC signaling role mismatch")
         return
       }
-      if (role === "viewer") BrowserWebRTCSignaling.handleViewerMessage(state.owner, pageId, ws, message)
-      else BrowserWebRTCSignaling.handleHostMessage(state.owner, pageId, message)
+      if (role === "viewer") {
+        const registeredSocket = browserSignalingEventSocket(socket, ws)
+        if (!registeredSocket) return
+        BrowserWebRTCSignaling.handleViewerMessage(state.owner, pageId, registeredSocket, message)
+      } else BrowserWebRTCSignaling.handleHostMessage(state.owner, pageId, message)
     },
     onClose() {
       if (!pageId || !socket) return
@@ -583,7 +600,8 @@ function assertWebSocketRequest(c: any, role: "viewer" | "host"): void {
   }
   const origin = c.req.header("origin")
   if (role === "host") {
-    if (origin) throw new Error("Browser Host connections must not originate from a web page.")
+    if (!browserHostOriginAllowed(origin))
+      throw new Error("Browser Host connections must not originate from a web page.")
     return
   }
   if (!origin) throw new Error("Browser viewer connections require an Origin header.")
@@ -599,6 +617,10 @@ function assertWebSocketRequest(c: any, role: "viewer" | "host"): void {
       .filter(Boolean),
   )
   if (!allowed.has(origin)) throw new Error(`Browser viewer Origin is not allowed: ${origin}`)
+}
+
+export function browserHostOriginAllowed(origin: string | undefined): boolean {
+  return !origin || origin === "file://"
 }
 
 function isLoopback(hostname: string): boolean {

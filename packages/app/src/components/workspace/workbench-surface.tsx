@@ -17,6 +17,7 @@ import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { resolveWorkbenchEscapeAction } from "@/context/workbench/panel-model"
@@ -39,31 +40,25 @@ import {
   type DragEvent,
 } from "@thisbeyond/solid-dnd"
 import { ConstrainDragYAxis } from "@/utils/solid-dnd"
+import { createWorkbenchPanelLoader } from "./workbench-panel-loader"
 
 function WorkbenchPanelContent(props: {
   entry: WorkbenchPanelEntry
   tab: WorkbenchPanelTab
   onRequestClose: () => void
 }) {
-  const [comp, setComp] = createSignal<Component<WorkbenchPanelContentProps> | null>(props.entry.component ?? null)
-  const [loading, setLoading] = createSignal(!props.entry.component && !!props.entry.loader)
+  const panel = createWorkbenchPanelLoader<Component<WorkbenchPanelContentProps>>(
+    props.entry.loader,
+    props.entry.component ?? null,
+  )
 
   onMount(() => {
-    if (!props.entry.loader) return
-    props.entry.loader().then(
-      (mod) => {
-        setComp(() => mod.default)
-        setLoading(false)
-      },
-      () => {
-        setLoading(false)
-      },
-    )
+    void panel.load()
   })
 
   return (
     <Show
-      when={!loading()}
+      when={!panel.loading()}
       fallback={
         <div class="workbench-surface-loading">
           <Spinner class="size-5" />
@@ -71,10 +66,22 @@ function WorkbenchPanelContent(props: {
       }
     >
       <Show
-        when={comp()}
+        when={panel.component()}
         fallback={
-          <div class="workbench-surface-empty">
-            <Trans id={W.panelUnavailable.id} message={W.panelUnavailable.message} />
+          <div class="workbench-surface-empty workbench-surface-load-error">
+            <span>
+              <Trans id={W.panelUnavailable.id} message={W.panelUnavailable.message} />
+            </span>
+            <Show when={panel.error()}>
+              <div class="workbench-surface-load-error-actions">
+                <Button type="button" variant="secondary" size="small" onClick={() => void panel.load()}>
+                  <Trans id={W.panelRetry.id} message={W.panelRetry.message} />
+                </Button>
+                <Button type="button" variant="ghost" size="small" onClick={() => window.location.reload()}>
+                  <Trans id={W.panelReload.id} message={W.panelReload.message} />
+                </Button>
+              </div>
+            </Show>
           </div>
         }
       >
