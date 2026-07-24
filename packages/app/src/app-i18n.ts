@@ -161,6 +161,10 @@ export const AP = {
     id: "app.layout.worktree.moveFailed",
     message: "Move to worktree failed",
   },
+  layoutWorktreeRefreshFailed: {
+    id: "app.layout.worktree.refreshFailed",
+    message: "Workspace status refresh failed",
+  },
 
   // ── pages/session.tsx ───────────────────────────────────────────────
   sessionErrorTitle: { id: "app.session.error.title", message: "Couldn’t load conversation" },

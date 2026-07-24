@@ -6,11 +6,12 @@ Synergy includes a first-class Performance settings panel for local runtime, fro
 
 Open the **Performance** workbench panel from the sidebar to inspect the default recent monitoring window. The panel summarizes:
 
-- health status, health score, and open performance issues;
+- window-bounded health status, health score, exact open issue counts, and up to 20 recent issue details;
 - HTTP request count, error rate, and p50/p95/p99 latency;
 - session turn latency, inflight or stale operations, LLM calls, tool calls, and repeated tool-failure issues, including model calls to unknown tools, invalid tool arguments, tools hidden or blocked by session mode and permission rules, and executor failures;
-- CPU, RSS, JavaScript heap, external memory, ArrayBuffer memory, event-loop lag, and app-owned disk IO;
-- registered tool child process count, RSS total, and top child process memory contributors;
+- CPU, server RSS, JavaScript heap, external memory, ArrayBuffer memory, event-loop lag, and app-owned disk IO;
+- whole-service memory from Linux cgroup v2 when available, otherwise the server plus registered child-process RSS sum with explicit partial coverage;
+- registered tool child process count, measured RSS count, RSS total, and top child process memory contributors;
 - session runtime counts, MessageCache footprint and eviction counters, active LLM turn/stream counts, and retained Cortex task counts, including retained prompt/output/error character totals;
 - frontend session-switch timing, token receive/apply/paint timing, browser Web Vitals, ResourceTiming, UserTiming, long tasks, and long animation frames when the browser supports them;
 - slow routes, sessions, tools, providers, storage operations, child processes, and trace drill-downs.
@@ -21,7 +22,7 @@ Every record is stored with low-cardinality attribution such as source, module, 
 
 Permission evaluation logs contain only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks remain bounded and do not expose command or path contents through observability.
 
-Server resource samples are kept separate from registered tool child process samples. Linux hosts report child RSS from `/proc/<pid>/status`; unsupported hosts still report registered child process counts. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored. Each live process retains at most 200,000 output characters in bounded segments; full output and the 2,000-character tail are materialized only when a consumer reads them.
+Server resource samples are kept separate from registered tool child process samples. A server sample also persists cgroup v2 gauges and lifetime OOM counters when available, plus a service-memory reading whose source and completeness remain explicit. Linux cgroup v2 reports the complete cgroup charge; other hosts fall back to the server RSS plus measurable registered child RSS and report partial coverage. Child aggregates use the single latest snapshot frame rather than the Top-5 display list. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored. Each live process retains at most 200,000 output characters in bounded segments; full output and the 2,000-character tail are materialized only when a consumer reads them.
 
 ## AI analysis
 
@@ -40,6 +41,8 @@ Canonical telemetry is stored locally in SQLite with WAL mode:
 The indexed store contains `obs_*` tables for metrics, spans, events, issues, resource samples, browser batches, and metadata. Runtime queries, diagnostics summaries, and diagnostics packages read this store instead of scanning trace files. Optional JSONL mirror files can be enabled for debugging exports, but they are not the runtime query source.
 
 Startup migrations import the previous indexed performance store when it exists. Legacy schema detection stays inside the observability migration boundary, copied rows are redacted into the canonical `obs_*` tables in bounded batches, and the central migration runner records completion only after the upgrade succeeds. Runtime readers use only the canonical store.
+
+Observability schema v5 adds nullable cgroup and service-memory columns to `obs_resource_samples`. The additive migration `20260722-observability-resource-cgroup-v5` is idempotent; existing rows remain readable with `NULL` for fields that were not sampled.
 
 The configured SQLite limit applies to the combined database, WAL, and shared-memory footprint. Maintenance checkpoints WAL, incrementally reclaims free pages, and removes the globally oldest eligible historical rows in bounded batches. Running spans and open issues are protected from size eviction. If protected state or the minimum schema footprint prevents the configured limit from being reached, diagnostics expose the remaining excess instead of silently deleting live operational state. Full `VACUUM` is reserved for the one-time migration that enables incremental auto-vacuum on an existing database.
 
@@ -73,16 +76,18 @@ Use the generated SDK for non-streaming Performance API calls. The Performance S
 Performance config updates reconfigure resource sampling, retention, capacity maintenance, and WAL checkpoint timers in the running server. Changing `storage.sqliteEnabled` still requires a restart because it changes store ownership and lifecycle. Browser telemetry uses bounded keepalive batches during page unload so the final batch stays within browser transport limits.
 
 Session turns establish the root observability context. LLM and concurrent tool spans inherit that trace and record explicit parent span IDs; tool heartbeat and stalled updates retain the Scope captured when each tool starts rather than reading ambient timer context.
+Running spans left behind by an unclean shutdown are reconciled after the new runtime acquires the server process lock. Reconciliation ends each orphan at its persisted last activity time and marks it `interrupted`; graceful shutdown performs the same transition before resource storage stops. Inflight window filtering uses last activity rather than span start time.
+On Bun, heap-used divided by heap-total is not treated as a pressure ratio because those values do not share a trustworthy accounting invariant. Heap byte gauges remain visible, while ratio-based pressure issues are suppressed and diagnostics report the unavailable ratio reason.
 
 ## Session memory pressure
 
-After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples process memory and may run Bun GC. Normal GC is throttled by `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Soft pressure is tracked separately from critical pressure so the runtime can start converging before critical thresholds:
+After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples process memory and may request Bun GC. Collection is coordinated process-wide: concurrent session requests share one in-flight collection, every pressure level observes `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`), and GC is scheduled asynchronously so a large heap cannot turn a periodic checkpoint into a stop-the-world server stall. Soft pressure is tracked separately from critical pressure so the runtime can start converging before critical thresholds:
 
 - `SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES` (default `1.25 GiB`)
 - `SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES` (default `1 GiB`)
 - `SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES` (default `1 GiB`)
 
-Critical pressure bypasses the GC interval when RSS, JavaScript heap, external allocations, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds:
+Critical pressure is reported when RSS, JavaScript heap, external allocations, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds. It remains subject to the process-wide collection interval:
 
 - `SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES` (default `9.5 GiB`)
 - `SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES` (default `1.75 GiB`)
@@ -92,6 +97,8 @@ Critical pressure bypasses the GC interval when RSS, JavaScript heap, external a
 
 Soft pressure is evidence for GC and turn-size telemetry only. Automatic heap snapshots are not taken on the soft path because snapshot generation itself allocates and can worsen allocation failures. Use ordinary resource samples, MessageCache counters, and LLM turn size metrics for diagnosis.
 
+Cortex also uses the shared soft and critical classifications to constrain new child-task admission to four or two tasks, respectively. Its earlier 1 GiB and 2 GiB ArrayBuffer thresholds remain in place. This admission control leaves running tasks alone and lets queued tasks resume after pressure falls.
+
 When the runtime reports an allocation failure (`Out of memory`, `Array buffer allocation failed`, heap-limit errors, or `ENOMEM`/cannot-allocate variants, including nested causes), the processor emits one deduplicated, bounded incident before persisting the ordinary turn error. Capture stays light: it samples current process memory, recent server resource rows, running spans from the last five minutes, MessageCache counters and entry sizes, and active/recent turn-size summaries without running GC or generating heap snapshots. It caps each collection, omits prompt/tool/response content and runtime identifiers from nested data, and raises `PERF_PROCESS_OUT_OF_MEMORY`.
 
 Experience re-encode jobs use the same critical thresholds to pause new item claims and resume automatically after pressure subsides. `SYNERGY_REENCODE_PRESSURE_POLL_MS` controls the pause polling interval (default `30000`).
@@ -99,6 +106,8 @@ Experience re-encode jobs use the same critical thresholds to pause new item cla
 ## Performance and diagnostics APIs
 
 The server exposes local-first endpoints under `/global/performance`:
+
+The performance summary reports Agent worker and Policy worker pool capacity, readiness, active/queued work, queued bytes, RSS, and heap-used bytes alongside ToolTask scheduler state. Policy timeout, crash, recycle, startup-circuit, queue-wait, and conservative-fallback metrics are written only by the Control Plane; Policy processes do not initialize an observability store.
 
 - `GET /global/performance/summary`
 - `GET /global/performance/inflight`

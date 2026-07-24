@@ -9,6 +9,7 @@ import { SettingRow } from "../components/SettingRow"
 import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsFieldGrid, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
+import { concurrencyPressureState } from "./runtime-concurrency-model"
 
 const managedByEnvLabel = { id: "settings.runtime.managedByEnv", message: "Managed by environment" }
 
@@ -101,8 +102,7 @@ const invokeRowDesc = {
 const concurrencyRowTitle = { id: "settings.runtime.agents.concurrency.title", message: "Max Concurrent Subagents" }
 const concurrencyRowDesc = {
   id: "settings.runtime.agents.concurrency.desc",
-  message:
-    "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure.",
+  message: "Maximum Cortex subagent tasks running at once. Memory pressure can temporarily queue new tasks sooner.",
 }
 const providerSectionTitle = { id: "settings.runtime.agents.provider.title", message: "Provider" }
 const ttfbRowTitle = { id: "settings.runtime.agents.ttfb.title", message: "TTFB Timeout" }
@@ -247,19 +247,19 @@ export function TimeoutsPanel(props: {
   const displayedConcurrency = () =>
     managedByEnvironment() ? String(environmentConcurrency()) : props.runtime.cortexConcurrency
   const concurrencyStateLabel = () => {
-    const memoryPressureLimit = props.concurrencyStatus?.memoryPressureLimit
-    if (memoryPressureLimit !== null && memoryPressureLimit !== undefined) {
-      if (managedByEnvironment()) {
-        return _({
-          id: "settings.runtime.agents.concurrency.memorySafetyManaged",
-          message: "Managed by environment · Memory safety limit: {value}",
-          values: { value: String(memoryPressureLimit) },
-        })
-      }
+    const pressure = concurrencyPressureState(props.concurrencyStatus)
+    if (pressure?.managed) {
       return _({
-        id: "settings.runtime.agents.concurrency.memorySafety",
-        message: "Memory safety limit: {value}",
-        values: { value: String(memoryPressureLimit) },
+        id: "settings.runtime.agents.concurrency.memoryLimitManaged",
+        message: "Managed by environment · Memory safety limit active: {value}",
+        values: { value: pressure.value },
+      })
+    }
+    if (pressure) {
+      return _({
+        id: "settings.runtime.agents.concurrency.memoryLimit",
+        message: "Memory safety limit active: {value}. New tasks will queue until pressure drops.",
+        values: { value: pressure.value },
       })
     }
     if (managedByEnvironment()) return _(managedByEnvLabel)

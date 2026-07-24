@@ -1315,6 +1315,58 @@ describe("EnforcementGate readRoots", () => {
     expect(envelope.decision).toBe("allow")
   })
 
+  test("attach classifies every file_path array entry", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+    })
+    const paths = ["/Users/test/my-project/report.pdf", "/Users/test/my-project/chart.png"]
+
+    const result = gate.classify("attach", { file_path: paths })
+
+    expect(result.capabilities.find((cap: any) => cap.class === "file_read")?.paths).toEqual(paths)
+  })
+
+  test("document tools deny arrays containing a protected path regardless of order", async () => {
+    const safePath = "/Users/test/my-project/report.pdf"
+    const protectedPath = "/Users/test/.ssh/id_rsa"
+
+    for (const toolName of ["attach", "look_at"] as const) {
+      for (const file_path of [
+        [safePath, protectedPath],
+        [protectedPath, safePath],
+      ]) {
+        const gate = await EnforcementGate.create({
+          activeWorkspace: "/Users/test/my-project",
+          workspaceType: "main",
+          profileId: "autonomous",
+        })
+
+        const envelope = gate.evaluate(toolName, { file_path })
+
+        expect(envelope.decision).toBe("deny")
+        expect(envelope.capabilities.some((cap: any) => cap.class === "secrets")).toBe(true)
+      }
+    }
+  })
+
+  test("document tools classify protected paths across conflicting aliases", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("attach", {
+      file_path: ["/Users/test/my-project/report.pdf"],
+      filePath: "/Users/test/.ssh/id_rsa",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "secrets")).toBe(true)
+  })
+
   test("write inside readRoots is still file_external (readRoots does not grant write)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/my-project",
@@ -2912,6 +2964,18 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     expect(envelope.decision).toBe("deny")
     expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(true)
     expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(false)
+  })
+  test("autonomous denies a protected-branch push with stderr piped", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "main",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("bash", { command: "git push origin dev |& cat" })
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(true)
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell")).toBe(false)
   })
 
   test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {

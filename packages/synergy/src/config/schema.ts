@@ -1,6 +1,16 @@
 import { Log } from "../util/log"
 import z from "zod"
 import { DEFAULT_PLUGIN_MARKETPLACE_CONFIG } from "@ericsanchezok/synergy-plugin/market"
+import {
+  McpLifecycleFields,
+  McpLocalServerConfig,
+  McpOAuthConfig,
+  McpRemoteServerConfig,
+  McpRetryConfig,
+  McpToolCacheConfig,
+  McpToolFilterConfig,
+  McpToolsConfig,
+} from "@ericsanchezok/synergy-plugin"
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
@@ -8,122 +18,28 @@ import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
 
-export const McpRetry = z
-  .object({
-    maxAttempts: z.number().int().positive().optional().describe("Maximum connection attempts before giving up"),
-    backoffMs: z.number().int().positive().optional().describe("Initial backoff delay in ms between retries"),
-    backoffMultiplier: z.number().positive().optional().describe("Multiplier applied to backoff on each retry"),
-    cooldownMs: z.number().int().nonnegative().optional().describe("Cooldown period in ms before a retry cycle resets"),
-  })
-  .strict()
-  .meta({ ref: "McpRetryConfig" })
-export type McpRetry = z.infer<typeof McpRetry>
+export const McpRetry = McpRetryConfig
+export type McpRetry = McpRetryConfig
 
-export const McpToolFilter = z
-  .object({
-    include: z.array(z.string()).optional().describe("Tool names to include (allowlist)"),
-    exclude: z.array(z.string()).optional().describe("Tool names to exclude (blocklist)"),
-  })
-  .strict()
-  .meta({ ref: "McpToolFilterConfig" })
-export type McpToolFilter = z.infer<typeof McpToolFilter>
+export const McpToolFilter = McpToolFilterConfig
+export type McpToolFilter = McpToolFilterConfig
 
-export const McpTools = z
-  .object({
-    approval: z.enum(["auto", "always", "per_session"]).optional().describe("Tool approval mode"),
-    maxOutputBytes: z.number().int().positive().optional().describe("Maximum tool output size in bytes"),
-  })
-  .strict()
-  .meta({ ref: "McpToolsConfig" })
-export type McpTools = z.infer<typeof McpTools>
+export const McpTools = McpToolsConfig
+export type McpTools = McpToolsConfig
 
-export const McpToolCache = z
-  .object({
-    mode: z.enum(["disabled", "session", "persistent"]).optional().describe("Tool list caching mode"),
-    ttlMs: z.number().int().positive().optional().describe("Time-to-live for cached tool list in ms"),
-  })
-  .strict()
-  .meta({ ref: "McpToolCacheConfig" })
-export type McpToolCache = z.infer<typeof McpToolCache>
+export const McpToolCache = McpToolCacheConfig
+export type McpToolCache = McpToolCacheConfig
 
-const McpLifecycleFields = {
-  startup: z.enum(["eager", "lazy", "manual"]).optional().describe("MCP startup mode"),
-  required: z.boolean().optional().describe("If true, this MCP server is required for the configured workflow"),
-  connectTimeout: z.number().int().positive().optional().describe("Timeout in ms for initial connection handshake"),
-  listTimeout: z.number().int().positive().optional().describe("Timeout in ms for listing tools"),
-  callTimeout: z.number().int().positive().optional().describe("Timeout in ms for tool call execution"),
-  retry: McpRetry.optional().describe("Retry policy for connecting to this server"),
-  idleShutdownMs: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe("Idle time in ms after which the server is shut down"),
-  toolFilter: McpToolFilter.optional().describe("Filter which tools are exposed from this server"),
-  tools: McpTools.optional().describe("Tool execution behavior config"),
-  toolCache: McpToolCache.optional().describe("Tool list caching behavior"),
-} satisfies z.core.$ZodLooseShape
+const McpEnabled = {
+  enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
+}
 
-export const McpLocal = z
-  .object({
-    type: z.literal("local").describe("Type of MCP server connection"),
-    command: z.string().array().describe("Command and arguments to run the MCP server"),
-    cwd: z.string().optional().describe("Working directory for local MCP servers"),
-    environment: z
-      .record(z.string(), z.string())
-      .optional()
-      .describe("Environment variables to set when running the MCP server"),
-    enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
-    timeout: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe("Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout."),
-    ...McpLifecycleFields,
-  })
-  .strict()
-  .meta({
-    ref: "McpLocalConfig",
-  })
+export const McpLocal = McpLocalServerConfig.extend(McpEnabled).strict().meta({ ref: "McpLocalConfig" })
 
-export const McpOAuth = z
-  .object({
-    clientId: z
-      .string()
-      .optional()
-      .describe("OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted."),
-    clientSecret: z.string().optional().describe("OAuth client secret (if required by the authorization server)"),
-    scope: z.string().optional().describe("OAuth scopes to request during authorization"),
-  })
-  .strict()
-  .meta({
-    ref: "McpOAuthConfig",
-  })
-export type McpOAuth = z.infer<typeof McpOAuth>
+export const McpOAuth = McpOAuthConfig
+export type McpOAuth = McpOAuthConfig
 
-export const McpRemote = z
-  .object({
-    type: z.literal("remote").describe("Type of MCP server connection"),
-    url: z.string().describe("URL of the remote MCP server"),
-    enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
-    headers: z.record(z.string(), z.string()).optional().describe("Headers to send with the request"),
-    oauth: z
-      .union([McpOAuth, z.literal(false)])
-      .optional()
-      .describe("OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection."),
-    timeout: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe("Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout."),
-    ...McpLifecycleFields,
-  })
-  .strict()
-  .meta({
-    ref: "McpRemoteConfig",
-  })
+export const McpRemote = McpRemoteServerConfig.extend(McpEnabled).strict().meta({ ref: "McpRemoteConfig" })
 
 export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
 export type Mcp = z.infer<typeof Mcp>
@@ -170,6 +86,7 @@ export const ChannelFeishuAccount = z
       .string()
       .optional()
       .describe("Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)"),
+    variant: z.string().optional().describe("Model variant to use with this account model (e.g. low, high, max)"),
     resolveSenderNames: z
       .boolean()
       .optional()
@@ -1414,6 +1331,166 @@ export const Info = z
       .strict()
       .optional()
       .describe("Cortex task scheduling configuration"),
+    execution: z
+      .object({
+        agentWorkers: z
+          .number()
+          .int()
+          .positive()
+          .max(64)
+          .optional()
+          .describe("Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)"),
+        agentQueueMax: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(32_768)
+          .optional()
+          .describe("Maximum queued Agent turns waiting for a worker (default: 256)"),
+        agentQueueMaxMb: z
+          .number()
+          .int()
+          .positive()
+          .max(4_096)
+          .optional()
+          .describe("Maximum aggregate queued Agent-turn payload size in MiB (default: 256)"),
+        agentWorkerMaxTurns: z
+          .number()
+          .int()
+          .positive()
+          .max(10_000)
+          .optional()
+          .describe("Turns completed before an Agent worker is recycled (default: 64)"),
+        agentWorkerMaxRssMb: z
+          .number()
+          .int()
+          .positive()
+          .max(131_072)
+          .optional()
+          .describe("RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)"),
+        agentWorkerMaxHeapMb: z
+          .number()
+          .int()
+          .positive()
+          .max(131_072)
+          .optional()
+          .describe("Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)"),
+        agentCancelGraceMs: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(60_000)
+          .optional()
+          .describe("Grace period before terminating an Agent worker that ignores cancellation (default: 5000)"),
+        agentHeartbeatTimeoutMs: z
+          .number()
+          .int()
+          .min(30_000)
+          .max(300_000)
+          .optional()
+          .describe("Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)"),
+        policyWorkers: z
+          .number()
+          .int()
+          .positive()
+          .max(16)
+          .optional()
+          .describe("Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)"),
+        policyQueueMax: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(32_768)
+          .optional()
+          .describe("Maximum queued Policy classifications waiting for a worker (default: 256)"),
+        policyQueueMaxMb: z
+          .number()
+          .int()
+          .positive()
+          .max(1_024)
+          .optional()
+          .describe("Maximum aggregate queued Policy-classification payload size in MiB (default: 64)"),
+        policyTimeoutMs: z
+          .number()
+          .int()
+          .min(50)
+          .max(10_000)
+          .optional()
+          .describe("Maximum total time for a Policy classification before conservative fallback (default: 1000)"),
+        policyWorkerMaxRequests: z
+          .number()
+          .int()
+          .positive()
+          .max(100_000)
+          .optional()
+          .describe("Classifications completed before a Policy worker is recycled (default: 512)"),
+        policyWorkerMaxRssMb: z
+          .number()
+          .int()
+          .positive()
+          .max(16_384)
+          .optional()
+          .describe("RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)"),
+        policyWorkerMaxHeapMb: z
+          .number()
+          .int()
+          .positive()
+          .max(16_384)
+          .optional()
+          .describe("Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)"),
+        policyCancelGraceMs: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(10_000)
+          .optional()
+          .describe("Shutdown grace period before terminating a Policy worker (default: 25)"),
+        policyHeartbeatTimeoutMs: z
+          .number()
+          .int()
+          .min(10_000)
+          .max(120_000)
+          .optional()
+          .describe("Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)"),
+        toolConcurrency: z
+          .number()
+          .int()
+          .positive()
+          .max(512)
+          .optional()
+          .describe("Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)"),
+        toolQueueMax: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(65_536)
+          .optional()
+          .describe("Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)"),
+        toolQueueMaxMb: z
+          .number()
+          .int()
+          .positive()
+          .max(4_096)
+          .optional()
+          .describe("Maximum aggregate queued ToolTask input size in MiB (default: 128)"),
+        toolCancelGraceMs: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(60_000)
+          .optional()
+          .describe("Grace period for active ToolTasks during runtime shutdown (default: 3000)"),
+        toolExecutorConcurrency: z
+          .partialRecord(
+            z.enum(["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]),
+            z.number().int().positive().max(512),
+          )
+          .optional()
+          .describe("Optional concurrency limits for each Tool Executor class"),
+      })
+      .strict()
+      .optional()
+      .describe("Process isolation, worker recycling, and bounded execution scheduling"),
     github: GitHubIntegrationConfig.optional().describe("Outbound GitHub App polling and automation configuration"),
     watcher: z
       .object({

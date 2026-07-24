@@ -35,6 +35,7 @@ data/sessions_page_index/
 data/session_child_index/
 data/session_nav_v2/
 data/sessions/<scope>/<session>/
+data/session_message_order_v1/<scope>/<session>/
 data/endpoint_session/
 data/permissions/
 data/permission-rules.json
@@ -60,9 +61,9 @@ GitHub integration deliveries, CI failure state, runtime anchors, and per-reposi
 
 Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
 
-Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `inbox/`, `messages/`, and `history/` are separate records. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
+Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `lightloop_terminal.json`, `inbox/`, `messages/`, and `history/` are separate records. `lightloop_terminal.json` preserves a plugin-owned Light Loop result and its `lightloop.after` delivery acknowledgement after the interactive workflow is cleared. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 
-The session index, paged-session index, child-session index, and navigation index are derived but operationally important. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
+The session index, paged-session index, child-session index, navigation index, and message-order index are derived but operationally important. `session_message_order_v1` contains sortable per-message markers and a readiness/count record for bounded newest-first reads; missing or interrupted state rebuilds from canonical message info. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
 
 ## Library Database
 
@@ -126,7 +127,7 @@ Structured observability traces live under `state/observability/traces/`. Perfor
 
 Indexed observability telemetry lives in `state/observability/observability.sqlite`. The database uses WAL plus incremental auto-vacuum. Retention and size maintenance evict the globally oldest eligible historical telemetry in bounded batches while preserving running spans and open issues. Existing observability databases and the previous `state/observability/performance/performance.sqlite` store are upgraded through central, transactional observability migrations; runtime request paths do not perform schema upgrades or full-database vacuum operations.
 
-Plugin installation stages artifacts and holds its transaction lock under `state/plugin-install/`. Cached plugin packages, extracted archives, marketplace records, models, provider catalogs, and downloaded runtime dependencies live under `cache/`; they may be recreated and must not be treated as approval or credential records. LSP process bookkeeping is kept in `state/lsp-pids.json`.
+Plugin installation stages artifacts and holds its transaction lock under `state/plugin-install/`. Cached plugin packages, extracted archives, marketplace records, models, provider catalogs, and downloaded runtime dependencies live under `cache/`; they may be recreated and must not be treated as approval or credential records. Live provider model snapshots are versioned, atomically written, and keyed by opaque identity hashes rather than credentials or raw account identifiers. LSP process bookkeeping is kept in `state/lsp-pids.json`.
 
 ## Project-Local `.synergy`
 

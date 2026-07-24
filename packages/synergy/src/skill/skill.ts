@@ -1,610 +1,450 @@
+import fs from "fs/promises"
 import path from "path"
-import os from "os"
-import { existsSync } from "fs"
-import z from "zod"
+import { z } from "zod"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
-import { NamedError } from "@ericsanchezok/synergy-util/error"
-import { ConfigMarkdown } from "../config/markdown"
 import { Log } from "../util/log"
-import { Filesystem } from "@/util/filesystem"
-import { Flag } from "@/flag/flag"
-import { Global } from "@/global"
 import { BUILTIN_SKILLS } from "./builtin"
-import { SkillPaths } from "./paths"
+import { ConfigMarkdown } from "../config/markdown"
 import { Plugin } from "../plugin"
+import { SkillManifest } from "./manifest"
+import { SkillSourceProfile } from "./source-profile"
 
 export namespace Skill {
   const log = Log.create({ service: "skill" })
 
-  export const Source = z.enum(["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"])
+  export const Source = z.enum(["synergy", "agents", "claude", "codex", "openclaw"])
   export type Source = z.infer<typeof Source>
 
-  export const Scope = z.enum(["builtin", "project", "global", "workspace", "external"])
+  export const Scope = z.enum(["project", "workspace", "global"])
   export type Scope = z.infer<typeof Scope>
 
-  export const Compatibility = z.object({
-    level: z.enum(["native", "compatible", "partial"]),
-    warnings: z.array(z.string()).default([]),
-    unsupported: z.array(z.string()).default([]),
-  })
-  export type Compatibility = z.infer<typeof Compatibility>
+  export const Diagnostic = SkillManifest.Diagnostic
+  export type Diagnostic = SkillManifest.Diagnostic
+
+  export const Origin = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("builtin") }),
+    z.object({
+      kind: z.literal("plugin"),
+      pluginID: z.string(),
+      contributionID: z.string(),
+    }),
+    z.object({
+      kind: z.literal("filesystem"),
+      source: Source,
+      scope: Scope,
+    }),
+  ])
+  export type Origin = z.infer<typeof Origin>
+
+  export const Backing = z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("file"),
+      baseDir: z.string(),
+      entryFile: z.string(),
+    }),
+    z.object({
+      kind: z.literal("memory"),
+      content: z.string(),
+      references: z.record(z.string(), z.string()).optional(),
+    }),
+  ])
+  export type Backing = z.infer<typeof Backing>
 
   export const Info = z.object({
     name: z.string(),
     description: z.string(),
-    location: z.string(),
-    builtin: z.boolean().optional(),
-    source: Source.optional(),
-    scope: Scope.optional(),
-    entryFile: z.string().optional(),
-    baseDir: z.string().optional(),
-    pluginId: z.string().optional(),
-    pluginName: z.string().optional(),
-    content: z.string().optional(),
-    references: z.record(z.string(), z.string()).optional(),
-    scripts: z.record(z.string(), z.string()).optional(),
-    rawFrontmatter: z.record(z.string(), z.unknown()).optional(),
-    compatibility: Compatibility.optional(),
+    declaredLicense: z.string().optional(),
+    declaredCompatibility: z.string().optional(),
+    invocation: z.object({ user: z.boolean(), model: z.boolean() }),
+    origin: Origin,
+    backing: Backing,
+    diagnostics: Diagnostic.array(),
   })
   export type Info = z.infer<typeof Info>
 
-  export const Diagnostic = z.object({
-    path: z.string(),
-    name: z.string(),
-    message: z.string(),
-    severity: z.enum(["error", "warning", "info"]).optional(),
-    code: z.string().optional(),
-    source: Source.optional(),
-  })
-  export type Diagnostic = z.infer<typeof Diagnostic>
+  export const Manifest = SkillManifest.Schema
 
   export const State = z.object({
     skills: z.record(z.string(), Info),
-    diagnostics: z.array(Diagnostic),
+    diagnostics: Diagnostic.array(),
   })
   export type State = z.infer<typeof State>
 
-  export const InvalidError = NamedError.create(
-    "SkillInvalidError",
-    z.object({
-      path: z.string(),
-      message: z.string().optional(),
-      issues: z.custom<z.core.$ZodIssue[]>().optional(),
-    }),
-  )
-
-  export const NameMismatchError = NamedError.create(
-    "SkillNameMismatchError",
-    z.object({
-      path: z.string(),
-      expected: z.string(),
-      actual: z.string(),
-    }),
-  )
-
-  const SYNERGY_ENTRY_GLOBS = [new Bun.Glob("{skill,skills}/**/SKILL.md"), new Bun.Glob("{skill,skills}/**/Skill.md")]
-  const CLAUDE_ENTRY_GLOBS = [new Bun.Glob("skills/**/SKILL.md"), new Bun.Glob("skills/**/Skill.md")]
-  const DEEP_ENTRY_GLOBS = [new Bun.Glob("**/SKILL.md"), new Bun.Glob("**/Skill.md")]
-
-  type SkillCandidate = {
+  type FilesystemCandidate = {
+    kind: "filesystem"
+    entryFile: string
+    baseDir: string
     source: Source
-    location: string
     scope: Scope
-    priority: number
+    validation: SkillSourceProfile.ValidationMode
+    normalizationShim?: SkillSourceProfile.NormalizationShim
+    rank: readonly [number, number, number, string]
   }
 
-  function sourcePriority(source: Source) {
-    switch (source) {
-      case "synergy":
-        return 100
-      case "plugin":
-        return 90
-      case "openclaw":
-        return 80
-      case "claude":
-        return 70
-      case "codex":
-        return 60
-      case "generic":
-        return 50
-      case "builtin":
-        return 0
-    }
+  type ProgrammaticCandidate = {
+    kind: "programmatic"
+    info: Info
+    rank: readonly [number, number, number, string]
   }
 
-  function scopePriority(scope: Scope) {
-    switch (scope) {
-      case "project":
-        return 40
-      case "workspace":
-        return 35
-      case "global":
-        return 20
-      case "external":
-        return 10
-      case "builtin":
-        return 0
-    }
+  type Candidate = FilesystemCandidate | ProgrammaticCandidate
+
+  const ENTRY_GLOB = new Bun.Glob("**/{SKILL.md,Skill.md}")
+  const PROGRAMMATIC_SCOPE_RANK = 10
+  const PLUGIN_SOURCE_RANK = 90
+  const BUILTIN_SCOPE_RANK = 0
+  const exportability = new WeakMap<Info, boolean>()
+
+  export function isExportable(skill: Info) {
+    return exportability.get(skill) ?? false
   }
 
-  function computePriority(source: Source, scope: Scope) {
-    return scopePriority(scope) * 100 + sourcePriority(source)
+  function compareRanks(left: Candidate, right: Candidate) {
+    for (let index = 0; index < left.rank.length; index++) {
+      const leftPart = left.rank[index]!
+      const rightPart = right.rank[index]!
+      if (typeof leftPart === "number" && typeof rightPart === "number") {
+        if (leftPart !== rightPart) return rightPart - leftPart
+      } else {
+        const compared = String(leftPart).localeCompare(String(rightPart))
+        if (compared !== 0) return compared
+      }
+    }
+    return 0
   }
 
-  function analyzeCompatibility(source: Source, frontmatter: Record<string, unknown>): Compatibility {
-    if (source === "builtin" || source === "plugin" || source === "synergy") {
-      return {
-        level: "native",
-        warnings: [],
-        unsupported: [],
-      }
+  function candidatePath(candidate: Candidate) {
+    if (candidate.kind === "filesystem") return candidate.entryFile
+    if (candidate.info.origin.kind === "plugin") {
+      return `plugin:${candidate.info.origin.pluginID}:${candidate.info.origin.contributionID}`
     }
+    return `builtin:${candidate.info.name}`
+  }
 
-    const warnings: string[] = []
-    const unsupported: string[] = []
+  function candidateSource(candidate: Candidate): Diagnostic["source"] {
+    if (candidate.kind === "filesystem") return candidate.source
+    if (candidate.info.origin.kind === "plugin") return "plugin"
+    return "builtin"
+  }
 
-    if (source === "claude") {
-      if ("disable-model-invocation" in frontmatter) {
-        warnings.push("Claude field disable-model-invocation is preserved but not enforced by Synergy.")
-      }
-      if ("user-invocable" in frontmatter) {
-        warnings.push("Claude field user-invocable is preserved but not mapped to Synergy visibility yet.")
-      }
-      return {
-        level: warnings.length > 0 ? "partial" : "compatible",
-        warnings,
-        unsupported,
-      }
-    }
-
-    if (source === "openclaw") {
-      const metadata = frontmatter.metadata
-      const openclawMeta =
-        metadata && typeof metadata === "object" && !Array.isArray(metadata) && "openclaw" in metadata
-          ? (metadata as Record<string, unknown>).openclaw
-          : undefined
-
-      if (openclawMeta) {
-        warnings.push("OpenClaw metadata is preserved for future compatibility handling.")
-      }
-      if ("command-dispatch" in frontmatter) {
-        unsupported.push("OpenClaw command-dispatch is not implemented in Synergy.")
-      }
-      if ("command-tool" in frontmatter) {
-        unsupported.push("OpenClaw command-tool is not implemented in Synergy.")
-      }
-      if ("disable-model-invocation" in frontmatter) {
-        warnings.push("OpenClaw disable-model-invocation is preserved but not enforced by Synergy.")
-      }
-      if ("user-invocable" in frontmatter) {
-        warnings.push("OpenClaw user-invocable is preserved but not mapped to Synergy visibility yet.")
-      }
-      return {
-        level: warnings.length > 0 || unsupported.length > 0 ? "partial" : "compatible",
-        warnings,
-        unsupported,
-      }
-    }
-
-    if (source === "codex") {
-      warnings.push(
-        "Codex-local skills are loaded as generic markdown skills; Codex-specific behavior is not interpreted.",
-      )
-      return {
-        level: "partial",
-        warnings,
-        unsupported,
-      }
-    }
-
+  function collisionDiagnostic(input: { winner: Candidate; shadowed: Candidate; name: string }): Diagnostic {
+    const winner = candidatePath(input.winner)
+    const shadowed = candidatePath(input.shadowed)
     return {
-      level: "compatible",
-      warnings,
-      unsupported,
+      code: "skill.candidate_shadowed",
+      severity: "warning",
+      name: input.name,
+      source: candidateSource(input.shadowed),
+      path: shadowed,
+      reason: {
+        kind: "precedence",
+        winner,
+        shadowed,
+        winnerRank: [...input.winner.rank],
+        shadowedRank: [...input.shadowed.rank],
+      },
+      message: `Skill candidate ${shadowed} is shadowed by ${winner}`,
     }
   }
 
-  async function* scanWithGlobs(cwd: string, globs: Bun.Glob[]) {
-    for (const glob of globs) {
-      for await (const match of glob.scan({
-        cwd,
-        absolute: true,
-        onlyFiles: true,
-        followSymlinks: true,
-        dot: true,
-      })) {
-        yield match
-      }
-    }
-  }
+  async function scanFilesystemCandidates() {
+    const candidates = new Map<string, FilesystemCandidate>()
 
-  async function scanRoots(roots: string[], source: Source, scope: Scope, globs: Bun.Glob[]) {
-    const candidates = [] as SkillCandidate[]
-    const seen = new Set<string>()
-
-    for (const root of roots) {
-      if (!existsSync(root)) continue
-
+    for (const root of SkillSourceProfile.existingRoots(ScopeContext.current.directory)) {
       try {
-        for await (const match of scanWithGlobs(root, globs)) {
-          const normalized = path.resolve(match)
-          if (seen.has(normalized)) continue
-          seen.add(normalized)
-          candidates.push({
-            source,
-            location: normalized,
-            scope,
-            priority: computePriority(source, scope),
-          })
+        for await (const match of ENTRY_GLOB.scan({
+          cwd: root.path,
+          absolute: true,
+          onlyFiles: true,
+          followSymlinks: true,
+          dot: true,
+        })) {
+          if (!root.acceptedEntryNames.includes(path.basename(match))) continue
+          const entryFile = await fs.realpath(match)
+          const candidate: FilesystemCandidate = {
+            kind: "filesystem",
+            entryFile,
+            baseDir: path.dirname(entryFile),
+            source: root.source,
+            scope: root.scope,
+            validation: root.validation,
+            normalizationShim: root.normalizationShim,
+            rank: [root.scopeRank, root.sourceRank, root.rootRank, entryFile],
+          }
+          const existing = candidates.get(entryFile)
+          if (!existing || compareRanks(candidate, existing) < 0) candidates.set(entryFile, candidate)
         }
       } catch (error) {
-        log.error("failed skill directory scan", { root, source, error })
+        log.error("failed skill directory scan", { root: root.path, source: root.source, error })
       }
     }
 
-    return candidates
+    return [...candidates.values()]
   }
 
-  // ---------------------------------------------------------------------------
-  // Plugin skill resolution — resolves dir-based skills from the filesystem
-  // ---------------------------------------------------------------------------
-
-  const SKILL_CONTENT_FILES = ["SKILL.md", "Skill.md", "content.txt", "content.md"]
-  const SKILL_REF_GLOB = new Bun.Glob("**/*")
-
-  type ReferenceDiagnostic = { path: string; message: string; code: string }
-
-  async function loadSkillReferences(
-    dir: string,
-    existing?: Record<string, string>,
-    onDiagnostic?: (d: ReferenceDiagnostic) => void,
-  ) {
-    const refDir = path.join(dir, "references")
-    if (!existsSync(refDir)) return existing
-
-    const references = existing ? { ...existing } : {}
-    try {
-      for await (const file of SKILL_REF_GLOB.scan({ cwd: refDir, absolute: false, onlyFiles: true })) {
-        const normalized = file.replace(/\\/g, "/")
-        const key = `references/${normalized}`
-        if (!(key in references)) {
-          try {
-            references[key] = await Bun.file(path.join(refDir, file)).text()
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err)
-            log.warn("failed to read skill reference file", { dir, file, error: message })
-            onDiagnostic?.({
-              path: path.join(refDir, file),
-              message: `Failed to read reference file ${file}: ${message}`,
-              code: "skill.reference_read_failed",
-            })
-          }
-        }
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      log.warn("failed to scan skill references directory", { refDir, error: message })
-      onDiagnostic?.({
-        path: refDir,
-        message: `Failed to scan references directory: ${message}`,
-        code: "skill.reference_scan_failed",
-      })
-    }
-
-    return references
-  }
-
-  type PluginSkillInput = import("@ericsanchezok/synergy-plugin").PluginSkill & {
-    pluginId: string
-    pluginName?: string
-    pluginDir: string
-  }
-
-  async function resolvePluginSkill(skill: PluginSkillInput, pluginDir: string): Promise<Info> {
-    let content = skill.content
-    let references = skill.references ? { ...skill.references } : undefined
-    let scripts: Record<string, string> | undefined
-    let baseDir = "plugin"
-
-    if (skill.dir) {
-      const dir = path.resolve(pluginDir, skill.dir)
-      baseDir = dir
-
-      if (!content) {
-        for (const name of SKILL_CONTENT_FILES) {
-          const file = Bun.file(path.join(dir, name))
-          if (await file.exists()) {
-            const raw = await file.text()
-            if (name.endsWith(".md")) {
-              const parsed = await ConfigMarkdown.parse(path.join(dir, name)).catch(() => null)
-              content = parsed?.content ?? raw
-            } else {
-              content = raw
-            }
-            break
-          }
-        }
-      }
-
-      references = await loadSkillReferences(dir, references)
-
-      const scriptDir = path.join(dir, "scripts")
-      if (existsSync(scriptDir)) {
-        scripts = {}
-        for await (const file of SKILL_REF_GLOB.scan({ cwd: scriptDir, absolute: false, onlyFiles: true })) {
-          const key = file.replace(/\.\w+$/, "")
-          scripts[key] = path.join(scriptDir, file)
-        }
-      }
-    }
-
+  function programmaticInfo(input: {
+    name: string
+    description: string
+    backing: Info["backing"]
+    origin: Info["origin"]
+  }) {
+    const source = input.origin.kind === "builtin" ? "builtin" : "plugin"
+    const normalized = SkillManifest.normalizeProgrammatic({
+      manifest: { name: input.name, description: input.description },
+      source,
+    })
+    if (!normalized.value) return { diagnostics: normalized.diagnostics }
     return {
-      name: skill.name,
-      description: skill.description,
-      location: baseDir,
-      builtin: false,
-      source: "plugin",
-      scope: "external",
-      entryFile: "plugin",
-      baseDir,
-      pluginId: skill.pluginId,
-      pluginName: skill.pluginName,
-      content,
-      references,
-      scripts,
-      rawFrontmatter: {},
-      compatibility: { level: "native", warnings: [], unsupported: [] },
+      info: {
+        ...normalized.value,
+        origin: input.origin,
+        backing: input.backing,
+      } satisfies Info,
+      diagnostics: normalized.diagnostics,
     }
   }
 
-  export const state = ScopedState.create(async () => {
-    const skills: Record<string, Info> = {}
-    const priorities: Record<string, number> = {}
+  async function pluginReferences(input: {
+    directory: string
+    existing?: Record<string, string>
+    name: string
+  }): Promise<{ references?: Record<string, string>; diagnostics: Diagnostic[] }> {
+    const references = { ...input.existing }
+    const diagnostics: Diagnostic[] = []
+    const referenceDir = path.join(input.directory, "references")
+    const realBase = await fs.realpath(input.directory).catch(() => undefined)
+    const realReferenceDir = await fs.realpath(referenceDir).catch(() => undefined)
+    if (!realBase || !realReferenceDir || path.relative(realBase, realReferenceDir).startsWith("..")) {
+      return { references: Object.keys(references).length > 0 ? references : undefined, diagnostics }
+    }
+
+    for await (const relative of new Bun.Glob("**/*").scan({
+      cwd: realReferenceDir,
+      absolute: false,
+      onlyFiles: true,
+      followSymlinks: false,
+    })) {
+      const file = await fs.realpath(path.join(realReferenceDir, relative)).catch(() => undefined)
+      if (!file || path.relative(realBase, file).startsWith("..")) continue
+      const key = `references/${relative.replace(/\\/g, "/")}`
+      if (key in references) continue
+      try {
+        references[key] = await Bun.file(file).text()
+      } catch (error) {
+        diagnostics.push({
+          code: "skill.reference_read_failed",
+          severity: "warning",
+          name: input.name,
+          source: "plugin",
+          path: file,
+          reason: { kind: "read" },
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    return { references: Object.keys(references).length > 0 ? references : undefined, diagnostics }
+  }
+
+  async function programmaticCandidates() {
+    const candidates: ProgrammaticCandidate[] = []
     const diagnostics: Diagnostic[] = []
 
-    const recordDiagnostic = (input: {
-      path: string
-      name?: string
-      message: string
-      severity?: "error" | "warning" | "info"
-      code?: string
-      source?: Source
-    }) => {
-      diagnostics.push({
-        path: input.path,
-        name: input.name ?? path.basename(path.dirname(input.path)),
-        message: input.message,
-        severity: input.severity,
-        code: input.code,
-        source: input.source,
-      })
-    }
-
-    const skillLabel = (skill: Info) => {
-      if (skill.source === "plugin" && skill.pluginId) return `plugin ${skill.pluginId}`
-      if (skill.builtin) return "builtin"
-      return skill.location
-    }
-
-    const registerSkill = (entry: Info, priority: number) => {
-      const existing = skills[entry.name]
-      const existingPriority = priorities[entry.name] ?? -1
-      if (existing && priority < existingPriority) {
-        recordDiagnostic({
-          path: entry.location,
-          name: entry.name,
-          message: `Duplicate skill name ignored due to lower precedence than ${skillLabel(existing)}`,
-          severity: "warning",
-          code: "skill.duplicate_name_ignored",
-        })
-        return
-      }
-
-      if (existing) {
-        log.warn("duplicate skill name", {
-          name: entry.name,
-          existing: existing.location,
-          duplicate: entry.location,
-        })
-        recordDiagnostic({
-          path: entry.location,
-          name: entry.name,
-          message: `Duplicate skill name overrides ${skillLabel(existing)}`,
-          severity: "warning",
-          code: "skill.duplicate_name_override",
-        })
-      }
-
-      skills[entry.name] = entry
-      priorities[entry.name] = priority
-    }
-
     for (const builtin of BUILTIN_SKILLS) {
-      if (builtin.condition) {
-        const ok = await builtin.condition()
-        if (!ok) continue
-      }
-      registerSkill(
-        {
-          name: builtin.name,
-          description: builtin.description,
-          location: "builtin",
-          builtin: true,
-          source: "builtin",
-          scope: "builtin",
-          entryFile: "builtin",
-          baseDir: "builtin",
+      const normalized = programmaticInfo({
+        name: builtin.name,
+        description: builtin.description,
+        backing: {
+          kind: "memory",
           content: builtin.content,
           references: builtin.references,
-          scripts: builtin.scripts,
-          rawFrontmatter: {},
-          compatibility: {
-            level: "native",
-            warnings: [],
-            unsupported: [],
-          },
         },
-        computePriority("builtin", "builtin"),
-      )
+        origin: { kind: "builtin" },
+      })
+      diagnostics.push(...normalized.diagnostics)
+      if (!normalized.info) continue
+      candidates.push({
+        kind: "programmatic",
+        info: normalized.info,
+        rank: [BUILTIN_SCOPE_RANK, 0, 0, `builtin:${builtin.name}`],
+      })
     }
 
     try {
       for (const pluginSkill of await Plugin.skillEntries()) {
-        try {
-          const resolved = await resolvePluginSkill(pluginSkill, pluginSkill.pluginDir)
-          registerSkill(resolved, computePriority("plugin", "external"))
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          log.warn("failed to resolve plugin skill", { pluginId: pluginSkill.pluginId, error: message })
-          recordDiagnostic({
-            path: pluginSkill.pluginDir,
-            name: pluginSkill.name ?? pluginSkill.pluginId,
-            message: `Failed to resolve plugin skill: ${message}`,
-            severity: "error",
-            code: "skill.plugin_skill_resolve_failed",
-          })
+        const contributionID = pluginSkill.contributionId ?? pluginSkill.name
+        const resourceDiagnostics: Diagnostic[] = []
+        let backing: Info["backing"] = {
+          kind: "memory",
+          content: pluginSkill.content ?? "",
+          references: pluginSkill.references,
         }
+        if (pluginSkill.dir) {
+          const resolvedDirectory = path.resolve(pluginSkill.pluginDir, pluginSkill.dir)
+          const directory = await fs.realpath(resolvedDirectory).catch(() => resolvedDirectory)
+          let entryFile: string | undefined
+          for (const entryName of ["SKILL.md", "Skill.md", "content.txt", "content.md"]) {
+            const candidate = path.join(directory, entryName)
+            if (!(await Bun.file(candidate).exists())) continue
+            entryFile = await fs.realpath(candidate).catch(() => candidate)
+            break
+          }
+
+          if (!pluginSkill.content && !pluginSkill.references && entryFile) {
+            backing = { kind: "file", baseDir: directory, entryFile }
+          } else {
+            let content = pluginSkill.content ?? ""
+            if (!pluginSkill.content && entryFile) {
+              const raw = await Bun.file(entryFile).text()
+              content = entryFile.endsWith(".md")
+                ? await ConfigMarkdown.parse(entryFile)
+                    .then((document) => document.content)
+                    .catch(() => raw)
+                : raw
+            }
+            const loaded = await pluginReferences({
+              directory,
+              existing: pluginSkill.references,
+              name: pluginSkill.name,
+            })
+            resourceDiagnostics.push(...loaded.diagnostics)
+            backing = { kind: "memory", content, references: loaded.references }
+          }
+        }
+        const normalized = programmaticInfo({
+          name: pluginSkill.name,
+          description: pluginSkill.description,
+          backing,
+          origin: {
+            kind: "plugin",
+            pluginID: pluginSkill.pluginId,
+            contributionID,
+          },
+        })
+        diagnostics.push(...normalized.diagnostics, ...resourceDiagnostics)
+        if (!normalized.info) continue
+        normalized.info.diagnostics.push(...resourceDiagnostics)
+        candidates.push({
+          kind: "programmatic",
+          info: normalized.info,
+          rank: [PROGRAMMATIC_SCOPE_RANK, PLUGIN_SOURCE_RANK, 0, `${pluginSkill.pluginId}:${contributionID}`],
+        })
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      log.warn("failed to enumerate plugin skills", { error: message })
-      recordDiagnostic({
-        path: "plugin",
-        name: "plugin",
-        message: `Failed to enumerate plugin skills: ${message}`,
-        severity: "error",
+    } catch (error) {
+      diagnostics.push({
         code: "skill.plugin_entries_failed",
+        severity: "error",
+        name: "plugin",
+        source: "plugin",
+        reason: { kind: "enumeration" },
+        message: error instanceof Error ? error.message : String(error),
       })
     }
 
-    const addCandidate = async (candidate: SkillCandidate) => {
-      let md: Awaited<ReturnType<typeof ConfigMarkdown.parse>>
-      try {
-        md = await ConfigMarkdown.parse(candidate.location)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        log.warn("skipping invalid skill frontmatter", { path: candidate.location, error })
-        recordDiagnostic({
-          path: candidate.location,
-          message,
-          severity: "error",
-          code: "skill.frontmatter_parse_failed",
-        })
-        return
-      }
+    return { candidates, diagnostics }
+  }
 
-      if (!md) {
-        return
-      }
-
-      const frontmatter = (md.data ?? {}) as Record<string, unknown>
-      const name = typeof frontmatter.name === "string" ? frontmatter.name : undefined
-      const description = typeof frontmatter.description === "string" ? frontmatter.description : undefined
-
-      if (!name || !description) {
-        const issues = [] as string[]
-        if (!name) issues.push("Missing required skill field: name")
-        if (!description) issues.push("Missing required skill field: description")
-        const message = issues.join("; ") || "Invalid skill frontmatter"
-        log.warn("skipping invalid skill metadata", { path: candidate.location, issues })
-        recordDiagnostic({
-          path: candidate.location,
-          message,
-          severity: "error",
-          code: "skill.metadata_missing_required",
-        })
-        return
-      }
-
-      const { source, scope, priority } = candidate
-      const compatibility = analyzeCompatibility(source, frontmatter)
-      const baseDir = path.dirname(candidate.location)
-      const references = await loadSkillReferences(baseDir, undefined, (diag) =>
-        recordDiagnostic({ ...diag, name, source, severity: "error" }),
-      )
-      const entry = {
-        name,
-        description,
-        location: candidate.location,
-        source,
-        scope,
-        entryFile: candidate.location,
-        baseDir,
-        references,
-        rawFrontmatter: frontmatter,
-        compatibility,
-      } satisfies Info
-
-      registerSkill(entry, priority)
+  async function normalizeFilesystemCandidate(candidate: FilesystemCandidate) {
+    const normalized = await SkillManifest.normalizeFile({
+      entryFile: candidate.entryFile,
+      source: candidate.source,
+      mode: candidate.validation,
+    })
+    if (
+      normalized.value ||
+      !candidate.normalizationShim ||
+      !candidate.normalizationShim.acceptedEntryNames.includes(path.basename(candidate.entryFile))
+    ) {
+      return normalized
     }
 
-    const candidates = [] as SkillCandidate[]
-    const home = Global.Path.home
-    const dir = ScopeContext.current.directory
+    const fallback = await SkillManifest.normalizeFile({
+      entryFile: candidate.entryFile,
+      source: candidate.source,
+      mode: candidate.normalizationShim.validation,
+    })
+    if (!fallback.value) return normalized
 
-    const existing = (dirs: string[]) => dirs.filter((d) => existsSync(d)).map((d) => path.resolve(d))
+    const shimDiagnostic: Diagnostic = {
+      code: "skill.normalization_shim_applied",
+      severity: "warning",
+      name: fallback.value.name,
+      source: candidate.source,
+      path: candidate.entryFile,
+      reason: {
+        kind: "normalization_shim",
+        id: candidate.normalizationShim.id,
+        deleteWhen: candidate.normalizationShim.deleteWhen,
+      },
+      message: `Loaded legacy ${candidate.source} Skill through compatibility shim '${candidate.normalizationShim.id}'`,
+    }
+    const diagnostics = [...fallback.diagnostics, shimDiagnostic]
+    return {
+      value: { ...fallback.value, diagnostics },
+      diagnostics,
+    }
+  }
 
-    // --- Global roots: only paths under ~, labeled "global" ---
+  async function computeExportable(skill: Info) {
+    if (skill.backing.kind !== "file") return false
+    const baseDir = path.resolve(skill.backing.baseDir)
+    const entryFile = path.resolve(skill.backing.entryFile)
+    if (entryFile !== path.join(baseDir, "SKILL.md")) return false
+    if (!(await SkillSourceProfile.containsCanonicalPath(baseDir, ScopeContext.current.directory))) return false
+    const normalized = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    return normalized.value?.name === skill.name && normalized.diagnostics.length === 0
+  }
 
-    if (!Flag.SYNERGY_DISABLE_CLAUDE_CODE_SKILLS) {
-      candidates.push(
-        ...(await scanRoots(existing([path.join(home, ".claude")]), "claude", "global", CLAUDE_ENTRY_GLOBS)),
-      )
+  async function materialize(candidate: Candidate): Promise<{ info?: Info; diagnostics: Diagnostic[] }> {
+    if (candidate.kind === "programmatic") {
+      exportability.set(candidate.info, false)
+      return { info: candidate.info, diagnostics: [] }
+    }
+    const normalized = await normalizeFilesystemCandidate(candidate)
+    if (!normalized.value) return { diagnostics: normalized.diagnostics }
+    const info: Info = {
+      name: normalized.value.name,
+      description: normalized.value.description,
+      declaredLicense: normalized.value.declaredLicense,
+      declaredCompatibility: normalized.value.declaredCompatibility,
+      invocation: normalized.value.invocation,
+      origin: { kind: "filesystem", source: candidate.source, scope: candidate.scope },
+      backing: {
+        kind: "file",
+        baseDir: candidate.baseDir,
+        entryFile: candidate.entryFile,
+      },
+      diagnostics: normalized.value.diagnostics,
+    }
+    exportability.set(info, await computeExportable(info).catch(() => false))
+    return { info, diagnostics: normalized.diagnostics }
+  }
+
+  export const state = ScopedState.create(async () => {
+    const skills: Record<string, Info> = {}
+    const diagnostics: Diagnostic[] = []
+    const grouped = new Map<string, Array<{ candidate: Candidate; info: Info }>>()
+    const [filesystem, programmatic] = await Promise.all([scanFilesystemCandidates(), programmaticCandidates()])
+    diagnostics.push(...programmatic.diagnostics)
+
+    for (const candidate of [...filesystem, ...programmatic.candidates]) {
+      const materialized = await materialize(candidate)
+      diagnostics.push(...materialized.diagnostics)
+      if (!materialized.info) continue
+      const entries = grouped.get(materialized.info.name) ?? []
+      entries.push({ candidate, info: materialized.info })
+      grouped.set(materialized.info.name, entries)
     }
 
-    candidates.push(...(await scanRoots(SkillPaths.synergyGlobalRoots(), "synergy", "global", SYNERGY_ENTRY_GLOBS)))
-    candidates.push(
-      ...(await scanRoots(
-        existing([path.join(home, ".agents", "skills"), path.join(home, ".openclaw", "skills")]),
-        "openclaw",
-        "global",
-        DEEP_ENTRY_GLOBS,
-      )),
-    )
-    candidates.push(
-      ...(await scanRoots(existing([path.join(home, ".codex", "skills")]), "codex", "global", DEEP_ENTRY_GLOBS)),
-    )
-
-    // --- Project roots: walk up from instanceDirectory, labeled with correct scope ---
-
-    const projectRoots = await Array.fromAsync(
-      Filesystem.up({
-        targets: [".synergy", ".claude", ".codex", ".agents", "skills"],
-        start: dir,
-      }),
-    )
-
-    for (const root of projectRoots) {
-      const normalized = path.resolve(root)
-      if (path.dirname(normalized) === path.resolve(os.homedir())) continue
-      if (normalized.endsWith(`${path.sep}.synergy`)) {
-        candidates.push(...(await scanRoots([normalized], "synergy", "project", SYNERGY_ENTRY_GLOBS)))
-      } else if (normalized.endsWith(`${path.sep}.claude`) && !Flag.SYNERGY_DISABLE_CLAUDE_CODE_SKILLS) {
-        candidates.push(...(await scanRoots([normalized], "claude", "project", CLAUDE_ENTRY_GLOBS)))
-      } else if (normalized.endsWith(`${path.sep}.codex`)) {
-        candidates.push(...(await scanRoots([path.join(normalized, "skills")], "codex", "project", DEEP_ENTRY_GLOBS)))
-      } else if (normalized.endsWith(`${path.sep}.agents`)) {
-        candidates.push(
-          ...(await scanRoots([path.join(normalized, "skills")], "openclaw", "project", DEEP_ENTRY_GLOBS)),
-        )
-      } else if (path.basename(normalized) === "skills") {
-        candidates.push(...(await scanRoots([normalized], "openclaw", "workspace", DEEP_ENTRY_GLOBS)))
-      }
-    }
-
-    const seenLocations = new Set<string>()
-    const ordered = candidates
-      .sort((left, right) => right.priority - left.priority || left.location.localeCompare(right.location))
-      .filter((candidate) => {
-        const normalized = path.resolve(candidate.location)
-        if (seenLocations.has(normalized)) return false
-        seenLocations.add(normalized)
-        return true
-      })
-
-    for (const candidate of ordered) {
-      await addCandidate(candidate)
+    for (const [name, entries] of grouped) {
+      entries.sort((left, right) => compareRanks(left.candidate, right.candidate))
+      const winner = entries[0]!
+      const collisionDiagnostics = entries
+        .slice(1)
+        .map((entry) => collisionDiagnostic({ winner: winner.candidate, shadowed: entry.candidate, name }))
+      winner.info.diagnostics.push(...collisionDiagnostics)
+      diagnostics.push(...collisionDiagnostics)
+      skills[name] = winner.info
     }
 
     return { skills, diagnostics }
@@ -617,14 +457,44 @@ export namespace Skill {
   }
 
   export async function diagnostics() {
-    return state().then((x) => x.diagnostics)
+    return state().then((value) => value.diagnostics)
   }
 
   export async function get(name: string) {
-    return state().then((x) => x.skills[name])
+    return state().then((value) => value.skills[name])
   }
 
   export async function all() {
-    return state().then((x) => Object.values(x.skills))
+    return state().then((value) => Object.values(value.skills))
+  }
+
+  export async function content(skill: Info) {
+    if (skill.backing.kind === "memory") return skill.backing.content
+    const backing = skill.backing
+    if (skill.origin.kind === "plugin") {
+      const raw = await Bun.file(backing.entryFile)
+        .text()
+        .catch(() => undefined)
+      if (raw === undefined) return ""
+      if (!backing.entryFile.endsWith(".md")) return raw
+      return ConfigMarkdown.parse(backing.entryFile)
+        .then((document) => document.content)
+        .catch(() => raw)
+    }
+    if (skill.origin.kind !== "filesystem") return ""
+    return ConfigMarkdown.parse(backing.entryFile)
+      .then((document) => document.content)
+      .catch(() => "")
+  }
+
+  export function runtimeCompatibility(skill: Info) {
+    const compatibilityDiagnostics = skill.diagnostics.filter(
+      (diagnostic) => diagnostic.code !== "skill.candidate_shadowed",
+    )
+    if (compatibilityDiagnostics.some((diagnostic) => diagnostic.severity === "error")) return "partial" as const
+    if (compatibilityDiagnostics.some((diagnostic) => diagnostic.severity === "warning")) return "partial" as const
+    return skill.origin.kind === "filesystem" && skill.origin.source !== "synergy" && skill.origin.source !== "agents"
+      ? ("compatible" as const)
+      : ("native" as const)
   }
 }

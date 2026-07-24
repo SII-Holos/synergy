@@ -8,6 +8,8 @@ export interface PluginHookPoint {
   inputSchema: Record<string, unknown>
   outputSchema: Record<string, unknown>
   timeoutMs: number
+  requiredCapability?: string
+  redactErrors?: boolean
 }
 
 const points = new Map<string, PluginHookPoint>()
@@ -21,6 +23,11 @@ function define(name: string, mode: PluginHookMode, failure: PluginHookFailurePo
     outputSchema: {},
     timeoutMs: 120_000,
   })
+}
+
+function defineCapabilityObserver(name: string, requiredCapability: string) {
+  define(name, "observer")
+  points.get(name)!.requiredCapability = requiredCapability
 }
 
 for (const name of [
@@ -37,6 +44,9 @@ for (const name of [
 ]) {
   define(name, "observer")
 }
+
+defineCapabilityObserver("session.user-message.after", "session.read")
+points.get("session.user-message.after")!.redactErrors = true
 
 for (const name of [
   "chat.message",

@@ -49,6 +49,7 @@ export async function run(options: RuntimeOptions) {
   reporter?.migration(migration)
 
   const processLock = await ServerProcessLock.acquire()
+  ObservabilityStore.interruptRunningSpans({ reason: "previous_runtime_ended" })
   await Observability.cleanup().catch(() => {})
   await Observability.emit("server.start", {
     data: {
@@ -429,6 +430,7 @@ function registerShutdown(
       }
     }
 
+    ObservabilityStore.interruptRunningSpans({ reason: "runtime_shutdown" })
     ObservabilityResources.stop()
     await Observability.flush().catch((error) => {
       log.warn("failed to flush observability during shutdown", { error })

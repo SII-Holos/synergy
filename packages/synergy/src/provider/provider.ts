@@ -42,10 +42,12 @@ import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
 import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
+import { registerBuiltinProviderProfiles } from "./builtin"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import { authHook as pluginAuthHook } from "@/plugin/auth-provider"
 import { normalizeImageMediaTypes } from "./image-capability"
 import { ProviderStream } from "./stream"
+import { ProviderModelUnavailableError } from "./model-unavailable-error"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -289,6 +291,7 @@ export namespace Provider {
         output: z.number(),
       }),
       status: z.enum(["alpha", "beta", "deprecated", "active"]),
+      catalogState: z.enum(["active", "retained"]).optional(),
       options: z.record(z.string(), z.any()),
       headers: z.record(z.string(), z.string()),
       release_date: z.string(),
@@ -364,6 +367,41 @@ export namespace Provider {
     })
   export type Info = z.infer<typeof Info>
 
+  export interface WorkerPlan {
+    key?: string
+    options: Record<string, unknown>
+  }
+
+  export function workerPlan(provider: Info | undefined): WorkerPlan {
+    return {
+      key: provider?.key,
+      options: serializableProviderOptions(provider?.options ?? {}),
+    }
+  }
+
+  function serializableProviderOptions(options: Record<string, unknown>): Record<string, unknown> {
+    const seen = new WeakSet<object>()
+    const visit = (value: unknown): unknown => {
+      if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return value
+      }
+      if (typeof value === "bigint") return value.toString()
+      if (typeof value !== "object") return undefined
+      if (seen.has(value)) return undefined
+      seen.add(value)
+      if (Array.isArray(value)) return value.map(visit).filter((item) => item !== undefined)
+      if (value instanceof Uint8Array) return value
+      if (value instanceof Date) return value.toISOString()
+      if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return undefined
+      return Object.fromEntries(
+        Object.entries(value)
+          .map(([key, item]) => [key, visit(item)] as const)
+          .filter((entry): entry is readonly [string, unknown] => entry[1] !== undefined),
+      )
+    }
+    return visit(options) as Record<string, unknown>
+  }
+
   function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model): Model {
     const m: Model = {
       id: model.id,
@@ -376,6 +414,7 @@ export namespace Provider {
         npm: model.provider?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible",
       },
       status: model.status ?? "active",
+      catalogState: model.catalog_state ?? "active",
       headers: model.headers ?? {},
       options: model.options ?? {},
       cost: {
@@ -422,7 +461,59 @@ export namespace Provider {
     }
   }
 
+  const workerState = {
+    models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
+    providers: {} as Record<string, Info>,
+    sdk: new Map<number, { instance: SDK; createdAt: number }>(),
+    modelLoaders: {} as Record<string, CustomModelLoader>,
+  }
+
+  function credentialFingerprint(key: string | undefined): string | undefined {
+    if (key === undefined) return undefined
+    return new Bun.CryptoHasher("sha256").update(key).digest("hex")
+  }
+
+  export async function configureWorkerProvider(model: Model, plan: WorkerPlan): Promise<void> {
+    if (process.env.SYNERGY_AGENT_WORKER !== "1") {
+      throw new Error("Worker provider plans can only be installed inside an Agent worker")
+    }
+    registerBuiltinProviderProfiles()
+    const profile = ProviderProfile.get(model.providerID)
+    const storedAuth = await Auth.get(model.providerID)
+    const profileInput = {
+      providerID: model.providerID,
+      auth: storedAuth,
+      provider: undefined,
+    }
+    const auth = (await profile?.resolveAuth?.(profileInput)) ?? storedAuth
+    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth })) ?? {}
+    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+    const options = mergeDeep(mergeDeep(plan.options, modelOptions), runtimeOptions)
+    workerState.providers[model.providerID] = {
+      id: model.providerID,
+      name: model.providerID,
+      source: plan.key ? "api" : "custom",
+      env: [],
+      key: plan.key,
+      options,
+      models: { [model.id]: model },
+    }
+    if (profile?.getModel || profile?.modelFactory) {
+      workerState.modelLoaders[model.providerID] = async (sdk, modelID, providerOptions) => {
+        if (profile.getModel) return profile.getModel({ sdk, modelID, options: providerOptions })
+        return ProviderProfile.defaultModelFactory(profile.modelFactory, {
+          sdk,
+          modelID,
+          options: providerOptions,
+        })
+      }
+    } else {
+      delete workerState.modelLoaders[model.providerID]
+    }
+  }
+
   const state = ScopedState.create(async () => {
+    if (process.env.SYNERGY_AGENT_WORKER === "1") return workerState
     using _ = log.time("state")
     const config = await Config.current()
     const disabled = new Set(config.disabled_providers ?? [])
@@ -646,7 +737,6 @@ export namespace Provider {
         model.api.id = model.api.id ?? model.id ?? modelID
         if (modelID === "gpt-5-chat-latest" || (providerID === "openrouter" && modelID === "openai/gpt-5-chat"))
           delete provider.models[modelID]
-        if (model.status === "deprecated") delete provider.models[modelID]
         if (
           (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||
           (configProvider?.whitelist && !configProvider.whitelist.includes(modelID))
@@ -682,7 +772,6 @@ export namespace Provider {
 
   export async function reload() {
     log.info("reloading provider state")
-    ProviderCatalog.reset()
     await state.resetAll()
     log.info("provider state reloaded")
   }
@@ -805,7 +894,6 @@ export namespace Provider {
         let ttfbController: AbortController | null = null
         let ttfbTimer: ReturnType<typeof setTimeout> | null = null
         let idleController: AbortController | null = null
-        let idleTimer: ReturnType<typeof setTimeout> | null = null
 
         // TTFB timeout — covers time from fetch start to first byte (accommodates reasoning models)
         if (timeoutCfg.providerTtfbMs > 0) {
@@ -842,7 +930,6 @@ export namespace Provider {
         // Clean up all timers when outer signal aborts (e.g. user cancel)
         const cleanupTimers = () => {
           if (ttfbTimer) clearTimeout(ttfbTimer)
-          if (idleTimer) clearTimeout(idleTimer)
         }
         opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
 
@@ -903,60 +990,10 @@ export namespace Provider {
 
         // For streaming responses, wrap the body to reset idle timer on each chunk
         if (idleController && responseBody) {
-          const originalBody = responseBody
-          const idleSignal = idleController.signal
-          // Aborting the fetch signal does not reliably reject a pending body
-          // read on a half-open connection, so the idle timeout must also win
-          // a race against the read itself.
-          let rejectIdle!: (reason: unknown) => void
-          const idleAborted = new Promise<never>((_, reject) => {
-            rejectIdle = reject
-          })
-          const onIdleAbort = () => rejectIdle(idleSignal.reason)
-          idleSignal.addEventListener("abort", onIdleAbort, { once: true })
-          idleAborted.catch(() => {})
-          const cleanupStream = () => {
-            if (idleTimer) clearTimeout(idleTimer)
-            idleSignal.removeEventListener("abort", onIdleAbort)
-          }
-          const resetIdle = () => {
-            if (idleTimer) clearTimeout(idleTimer)
-            idleTimer = setTimeout(() => {
-              idleController!.abort(
-                new DOMException("Idle timeout: no data received within " + timeoutMs + "ms", "TimeoutError"),
-              )
-            }, timeoutMs as number).unref()
-          }
-
-          let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
-          const wrappedStream = new ReadableStream({
-            // Pull-based so provider bytes stay bounded by downstream demand
-            // (AI SDK / SessionProcessor). The previous eager start() pump could
-            // enqueue far ahead of a slow fanout path and inflate native buffers
-            // (#524 / #498).
-            async pull(controller) {
-              reader ??= originalBody.getReader()
-              try {
-                const { done, value } = await Promise.race([reader.read(), idleAborted])
-                if (done) {
-                  cleanupStream()
-                  controller.close()
-                  return
-                }
-                resetIdle()
-                controller.enqueue(value)
-              } catch (err) {
-                cleanupStream()
-                controller.error(err)
-                try {
-                  await reader.cancel(err)
-                } catch {}
-              }
-            },
-            cancel(reason) {
-              cleanupStream()
-              return reader ? reader.cancel(reason) : originalBody.cancel(reason)
-            },
+          const wrappedStream = ProviderStream.withIdleTimeout(responseBody, {
+            controller: idleController,
+            signal: opts.signal ?? idleController.signal,
+            timeoutMs: timeoutMs as number,
           })
 
           return new Response(wrappedStream, {
@@ -1048,6 +1085,7 @@ export namespace Provider {
           modelID: model.id,
           npm: model.api.npm,
           options,
+          credential: credentialFingerprint(provider.key),
         }),
       )
       .toString()
@@ -1083,6 +1121,10 @@ export namespace Provider {
   }
 
   const priority = ["claude-opus-4-6", "gpt-5", "claude-sonnet-4", "gemini-3-pro"]
+  export function isSelectableModel(model: Pick<Model, "status" | "catalogState">) {
+    return model.status !== "deprecated" && model.catalogState !== "retained"
+  }
+
   export function sort(models: Model[]) {
     return sortBy(
       models,
@@ -1094,13 +1136,16 @@ export namespace Provider {
 
   export async function defaultModel() {
     const cfg = await Config.current()
-    if (cfg.model) return parseModel(cfg.model)
+    if (cfg.model) {
+      const configured = parseModel(cfg.model)
+      if (await isModelAvailable(configured)) return configured
+    }
 
     const provider = await list()
       .then((val) => Object.values(val))
       .then((x) => x.find((p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id)))
     if (!provider) throw new Error("no providers found")
-    const [model] = sort(Object.values(provider.models))
+    const [model] = sort(Object.values(provider.models).filter(isSelectableModel))
     if (!model) throw new Error("no models found")
     return {
       providerID: provider.id,
@@ -1120,7 +1165,8 @@ export namespace Provider {
     const s = await state()
     const provider = s.providers[model.providerID]
     if (!provider) return false
-    return !!provider.models[model.modelID]
+    const candidate = provider.models[model.modelID]
+    return !!candidate && isSelectableModel(candidate)
   }
 
   // ---------------------------------------------------------------------------
@@ -1185,6 +1231,8 @@ export namespace Provider {
       suggestions: z.array(z.string()).optional(),
     }),
   )
+
+  export const ModelUnavailableError = ProviderModelUnavailableError
 
   export const InitError = NamedError.create(
     "ProviderInitError",

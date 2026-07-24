@@ -8,6 +8,9 @@ const latticeSession = {
   workflow: { kind: "lattice" as const, runID: "r1", mode: "auto" as const, firstBlueprintStarted: false },
 }
 const lightloopSession = { workflow: { kind: "lightloop" as const, instructions: "test" } }
+const terminalLightloopSession = {
+  workflow: { kind: "lightloop" as const, instructions: "done", status: "completed" as const },
+}
 const normalSession = {}
 
 function userMessage(id: string, text: string, metadata?: Record<string, any>): MessageV2.WithParts {
@@ -40,6 +43,7 @@ describe("WorkflowUserWrapper metadata", () => {
     expect(WorkflowUserWrapper.activeMode(planSession)).toBe("plan")
     expect(WorkflowUserWrapper.activeMode(latticeSession)).toBe("lattice")
     expect(WorkflowUserWrapper.activeMode(lightloopSession)).toBe("lightloop")
+    expect(WorkflowUserWrapper.activeMode(terminalLightloopSession)).toBeUndefined()
     expect(WorkflowUserWrapper.activeMode(normalSession)).toBeUndefined()
   })
 
@@ -157,6 +161,9 @@ describe("WorkflowUserWrapper projection", () => {
     expect((original.parts[0] as MessageV2.TextPart).text).toBe("build the new importer")
     const text = (projected[0].parts[0] as MessageV2.TextPart).text
     expect(text).toContain("You are synergy in the Plan workflow")
+    expect(text).toContain("converge materially different routes")
+    expect(text).toContain("single clarification checkpoint")
+    expect(text).toContain("one question call")
     expect(text).toContain("User request:\nbuild the new importer")
   })
 
@@ -207,6 +214,10 @@ describe("WorkflowUserWrapper projection", () => {
     const text = (projected[0].parts[0] as MessageV2.TextPart).text
     expect(text).toContain("You are synergy-max in the coding Plan workflow")
     expect(text).toContain("Do not implement code. Do not edit files.")
+    expect(text).toContain("one material engineering route")
+    expect(text).toContain("canonical owner")
+    expect(text).toContain("single clarification checkpoint")
+    expect(text).toContain("one question call")
     expect(text).toContain("User request:\nrefactor the route layer")
   })
 

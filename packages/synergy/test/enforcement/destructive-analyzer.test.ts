@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { analyzeDestructiveCommand, splitCompoundCommands, stripWrappers } from "@/enforcement/gate"
+import { lexCompoundCommands } from "@/enforcement/shell-command"
 
 describe("splitCompoundCommands", () => {
   test("splits on &&", () => {
@@ -29,6 +30,20 @@ describe("splitCompoundCommands", () => {
   test("handles mixed quotes and operators", () => {
     const parts = splitCompoundCommands("echo 'hello' && echo \"world && test\" ; echo done")
     expect(parts).toHaveLength(3)
+  })
+
+  test("uses longest-match rules for every supported compound operator", () => {
+    const lexed = lexCompoundCommands("a && b || c |& d | e ;;& f ;; g ;& h ; i & j")
+
+    expect(lexed.operators).toEqual(["&&", "||", "|&", "|", ";;&", ";;", ";&", ";", "&"])
+    expect(lexed.segments).toEqual(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"])
+  })
+
+  test("does not treat quoted, escaped, or redirect operators as compound operators", () => {
+    const command = String.raw`echo "|&" '\;' \| 2>&1 &>output >| clobbered`
+    const lexed = lexCompoundCommands(command)
+    expect(lexed.operators).toEqual([])
+    expect(lexed.segments).toEqual([command])
   })
 })
 

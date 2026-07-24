@@ -248,7 +248,7 @@ export namespace RuntimeReload {
 
   function mapSkillDiagnostics(
     skillDiagnostics: Array<{
-      path: string
+      path?: string
       name: string
       message: string
       severity?: "error" | "warning" | "info"

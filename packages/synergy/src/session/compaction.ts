@@ -18,6 +18,7 @@ import { Turn } from "./turn"
 import { LoopJob } from "./loop-job"
 import { LLM } from "./llm"
 import type { ModelMessage } from "ai"
+import { SessionHistory } from "./history"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -155,6 +156,7 @@ export namespace SessionCompaction {
       startIndex = i
     }
     startIndex = Math.min(startIndex, Math.max(0, messages.length - 2))
+    while (messages[startIndex]?.role === "tool") startIndex++
     if (startIndex === 0) return messages
     log.info("trimming compaction input", {
       originalMessages: messages.length,
@@ -310,8 +312,15 @@ export namespace SessionCompaction {
     return pruned > PRUNE_MINIMUM ? toPrune : []
   }
 
-  export async function prune(input: { sessionID: string; messages: MessageV2.WithParts[]; modelID?: string }) {
+  export async function prune(input: {
+    sessionID: string
+    messages: MessageV2.WithParts[]
+    modelID?: string
+    abort?: AbortSignal
+  }) {
+    input.abort?.throwIfAborted()
     const config = await Config.current()
+    input.abort?.throwIfAborted()
     if (config.compaction?.prune === false) return
     log.info("pruning")
     const toPrune = selectPartsToPrune(input.messages, input.modelID)
@@ -322,6 +331,7 @@ export namespace SessionCompaction {
           part.state.status === "completed",
       )
       const compacted = Date.now()
+      input.abort?.throwIfAborted()
       await Promise.all(
         completed.map((part) =>
           Session.updatePart({
@@ -478,7 +488,9 @@ export namespace SessionCompaction {
         agent,
         abort: input.abort,
         sessionID: input.sessionID,
-        tools: {},
+        toolDefinitions: [],
+        executionTools: {},
+        executorKinds: {},
         system: [],
         messages: [
           ...safeMessages,
@@ -630,8 +642,16 @@ export namespace SessionCompaction {
       if (ctx.step <= 1) return []
       return [{ type: "prune" }]
     },
-    async execute(ctx) {
-      await prune({ sessionID: ctx.sessionID, messages: ctx.messages, modelID: ctx.modelID })
+    capture(ctx) {
+      return { type: "prune", sessionID: ctx.sessionID, modelID: ctx.modelID }
+    },
+    key(input) {
+      return input.sessionID
+    },
+    timeoutMs: 30_000,
+    async execute(input, signal) {
+      const messages = await SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal })
+      await prune({ sessionID: input.sessionID, messages, modelID: input.modelID, abort: signal })
       return "pass"
     },
   })

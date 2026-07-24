@@ -9,10 +9,12 @@ import { SessionNav, type ScopeNavIndex } from "./nav"
 import type { Info, StatusInfo } from "./types"
 import { SessionProgress } from "./progress"
 import { Session } from "./index"
+import { MessageV2 } from "./message-v2"
 import { BlueprintLoopStore, isActiveLoopStatus } from "../blueprint/loop-store"
 import type { Info as BlueprintLoopInfo } from "../blueprint/types"
 import { NoteStore } from "../note"
 import { ScopeContext } from "../scope/context"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 export namespace SessionRecovery {
   export interface Location {
@@ -65,7 +67,7 @@ export namespace SessionRecovery {
   }
 
   function isWorkflowRecoveryCandidate(session: Info) {
-    return session.workflow?.kind === "lightloop" || session.workflow?.kind === "lattice"
+    return isActiveLightLoopWorkflow(session.workflow) || session.workflow?.kind === "lattice"
   }
 
   function isSessionRecoveryCandidate(session: Info) {
@@ -357,7 +359,7 @@ export namespace SessionRecovery {
       const pending = new Map<string, Info>()
 
       for (const session of sessions) {
-        if (!session.time || session.time.archived || session.workflow?.kind !== "lightloop") continue
+        if (!session.time || session.time.archived || !isActiveLightLoopWorkflow(session.workflow)) continue
         const stopRequest = session.workflow.stopRequest
         if (!stopRequest) continue
         if (stopRequest.reviewSessionID) {
@@ -540,6 +542,11 @@ export namespace SessionRecovery {
   async function removeOne(location: Location, report: DeleteReport) {
     const scope = Identifier.asScopeID(location.scopeID)
     const sid = Identifier.asSessionID(location.sessionID)
+    await removeTarget(
+      `message-order-index:${location.sessionID}`,
+      () => MessageV2.removeOrderIndex(scope, sid),
+      report,
+    )
     await removeTarget(
       `session:${location.sessionID}`,
       () => Storage.removeTree(StoragePath.sessionRoot(scope, sid)),

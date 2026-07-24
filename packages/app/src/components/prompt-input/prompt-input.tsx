@@ -95,7 +95,10 @@ import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
 import { LightLoopSubmitControl } from "./light-loop-submit-control"
+import { isActiveLightLoopWorkflow } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
+import { ComposerDocumentController } from "./composer-document"
+import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -203,18 +206,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   } | null>(null)
   const [pendingLightLoop, setPendingLightLoop] = createSignal(false)
   const storedLightLoop = createMemo(() =>
-    params.id ? activeWorkflow()?.kind === "lightloop" || pendingLightLoop() : pendingLightLoop(),
+    params.id ? isActiveLightLoopWorkflow(activeWorkflow()) || pendingLightLoop() : pendingLightLoop(),
   )
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
   const lightLoopInstructions = createMemo(() => {
     const workflow = activeWorkflow()
-    return params.id && workflow?.kind === "lightloop" ? workflow.instructions : undefined
+    return params.id && isActiveLightLoopWorkflow(workflow) ? workflow.instructions : undefined
   })
-  const persistedLightLoopActive = createMemo(() => activeWorkflow()?.kind === "lightloop")
+  const persistedLightLoopActive = createMemo(() => isActiveLightLoopWorkflow(activeWorkflow()))
   const lightLoopReviewPending = createMemo(() => {
     const workflow = activeWorkflow()
-    return workflow?.kind === "lightloop" && !!workflow.stopRequest
+    return isActiveLightLoopWorkflow(workflow) && !!workflow.stopRequest
   })
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
@@ -710,7 +713,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const setLightLoop = async (active: boolean) => {
-    const activeBackendLightLoop = activeWorkflow()?.kind === "lightloop"
+    const activeBackendLightLoop = isActiveLightLoopWorkflow(activeWorkflow())
     if (!params.id || !activeBackendLightLoop) {
       setPendingLightLoop(active)
       if (active) {
@@ -1287,7 +1290,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
   })
 
-  const { addPart, handleInput } = usePromptEditor({
+  let composerDocument!: ComposerDocumentController
+  const editor = usePromptEditor({
     editor: () => editorRef,
     uploadedAttachments,
     noteAttachments,
@@ -1297,6 +1301,83 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     atOnInput,
     slashOnInput,
     queueScroll,
+    onDocumentChange: () => composerDocument?.changed(),
+  })
+  const { addPart, handleInput } = editor
+  composerDocument = new ComposerDocumentController({
+    read: () => ({
+      text: editor.documentText(),
+      selection: editor.documentSelection(),
+      sessionId: params.id,
+      mode: store.mode,
+    }),
+    applyEdits: editor.applyDocumentEdits,
+    isEditableRange: editor.isEditableRange,
+  })
+  const [composerVersion, setComposerVersion] = createSignal(0)
+  const unsubscribeComposer = composerDocument.subscribe(() => setComposerVersion((value) => value + 1))
+  onCleanup(() => {
+    unsubscribeComposer()
+    composerDocument.dispose()
+  })
+  const activeCompletion = () => {
+    composerVersion()
+    return composerDocument.completion()
+  }
+  const composerSubmitting = () => {
+    composerVersion()
+    return composerDocument.submitting()
+  }
+  const highlightNames = {
+    info: "synergy-composer-info",
+    warning: "synergy-composer-warning",
+    error: "synergy-composer-error",
+  }
+  createEffect(() => {
+    composerVersion()
+    const registry = (CSS as typeof CSS & { highlights?: Map<string, unknown> }).highlights
+    const HighlightConstructor = globalThis.Highlight
+    if (!registry || !HighlightConstructor) return
+    const decorations = composerDocument.decorations()
+    for (const severity of ["info", "warning", "error"] as const) {
+      const ranges = decorations
+        .filter((item) => item.severity === severity)
+        .map((item) => editor.documentRange(item.range))
+        .filter((range): range is Range => !!range)
+      if (ranges.length > 0) registry.set(highlightNames[severity], new HighlightConstructor(...ranges))
+      else registry.delete(highlightNames[severity])
+    }
+    onCleanup(() => {
+      for (const name of Object.values(highlightNames)) registry.delete(name)
+    })
+  })
+
+  createEffect(
+    on(
+      sessionKey,
+      () => {
+        composerDocument.abortSubmit(new DOMException("Composer navigation changed", "AbortError"))
+        composerDocument.changed()
+      },
+      { defer: true },
+    ),
+  )
+  createEffect(
+    on(
+      () => store.mode,
+      () => composerDocument.changed(),
+      { defer: true },
+    ),
+  )
+
+  onMount(() => {
+    const onSelectionChange = () => {
+      const selection = window.getSelection()
+      if (!selection?.anchorNode || !editorRef.contains(selection.anchorNode)) return
+      composerDocument.selectionChanged()
+    }
+    document.addEventListener("selectionchange", onSelectionChange)
+    onCleanup(() => document.removeEventListener("selectionchange", onSelectionChange))
   })
 
   const { addAttachments, removeAttachment, handlePaste, handleDragOver, handleDragLeave, handleDrop } =
@@ -1377,6 +1458,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && composerSubmitting()) {
+      composerDocument.abortSubmit(new DOMException("Composer submit cancelled", "AbortError"))
+      event.preventDefault()
+      return
+    }
+    if (composerSubmitting()) return
+    const completion = activeCompletion()
+    if (event.key === "Tab" && completion && !store.popover) {
+      event.preventDefault()
+      void composerDocument.applyEdits({
+        revision: completion.revision,
+        edits: [{ range: { start: completion.position, end: completion.position }, text: completion.text }],
+      })
+      return
+    }
+    if (event.key === "Escape" && completion) {
+      composerDocument.selectionChanged()
+      event.preventDefault()
+      return
+    }
     if (event.key === "Backspace") {
       const selection = window.getSelection()
       if (selection && selection.isCollapsed) {
@@ -1542,6 +1643,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     editor: () => editorRef,
     queueScroll,
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
+    beforeSubmit: () => composerDocument!.beforeSubmit(),
   })
 
   createEffect(() => {
@@ -1627,11 +1729,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         />
       </Show>
       <ComposerSlotOutlet slot="composer.above" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
+      <ComposerExtensionOutlet controller={composerDocument} sessionId={params.id} />
       <form
         onSubmit={handleSubmit}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        onDrop={(event) => {
+          if (composerSubmitting()) {
+            event.preventDefault()
+            return
+          }
+          void handleDrop(event)
+        }}
         classList={{
           "prompt-input-shell bg-surface-raised-stronger-non-alpha relative": true,
           "prompt-input-shell-dragging": store.dragging,
@@ -1699,10 +1808,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               props.ref?.(el)
             }}
             contenteditable="true"
+            onBeforeInput={(event) => {
+              if (composerSubmitting() && !editor.isApplyingDocumentEdits()) event.preventDefault()
+            }}
             onInput={handleInput}
-            onPaste={handlePaste}
-            onCompositionStart={() => setComposing(true)}
-            onCompositionEnd={() => setComposing(false)}
+            onPaste={(event) => {
+              if (composerSubmitting()) {
+                event.preventDefault()
+                return
+              }
+              void handlePaste(event)
+            }}
+            onCompositionStart={() => {
+              setComposing(true)
+              composerDocument.setComposing(true)
+            }}
+            onCompositionEnd={() => {
+              setComposing(false)
+              composerDocument.setComposing(false)
+            }}
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
@@ -1711,6 +1835,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               "font-mono!": store.mode === "shell",
             }}
           />
+          <Show when={activeCompletion()}>
+            {(completion) => (
+              <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular pointer-events-none whitespace-pre-wrap text-text-subtle">
+                <span class="invisible">{editor.completionPrefix()}</span>
+                <span>{completion().text}</span>
+              </div>
+            )}
+          </Show>
           <Show when={!prompt.dirty()}>
             <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
               {store.mode === "shell"

@@ -22,8 +22,8 @@ import PLAN_SYNERGY_MAX from "./prompt/plan-synergy-max.txt"
 import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import type { Command } from "../command/command"
-import { $ } from "bun"
-import { ConfigMarkdown } from "../config/markdown"
+import { CommandRenderer } from "../command/renderer"
+import { SkillRenderer } from "../skill/renderer"
 import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
@@ -52,6 +52,7 @@ import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
 import * as SessionWorking from "./working"
+import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import {
   buildMemoryContext,
   buildAlwaysOnlyMemoryContext,
@@ -81,7 +82,7 @@ import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
-import { SkillPaths } from "@/skill/paths"
+import { SkillSourceProfile } from "@/skill/source-profile"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -129,6 +130,7 @@ export namespace SessionInvoke {
   type InternalInvokeInput = InvokeInput & {
     ephemeralTools?: ToolResolver.EphemeralTool[]
     maxOutputTokens?: number
+    origin?: MessageV2.OriginUser
   }
 
   async function invokeWithInternalTools(input: InternalInvokeInput) {
@@ -166,7 +168,7 @@ export namespace SessionInvoke {
   export const invoke = fn(InvokeInput, async (input) => invokeWithInternalTools(input))
 
   export async function invokeInternal(input: InternalInvokeInput) {
-    return invokeWithInternalTools(input)
+    return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })
   }
 
   async function recallMemory(
@@ -380,17 +382,15 @@ export namespace SessionInvoke {
 
         const agent = await Agent.get(agentName)
 
-        const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch(async () => {
-          log.warn("model not found, falling back to agent model", {
-            agent: agentName,
-            requested: `${userModel.providerID}/${userModel.modelID}`,
-          })
-          const agentModel = agent?.model
-          if (agentModel) {
-            return Provider.getModel(agentModel.providerID, agentModel.modelID)
-          }
-          throw new Error(
-            `Model ${userModel.providerID}/${userModel.modelID} not found and no agent fallback available`,
+        const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch((error) => {
+          if (!Provider.ModelNotFoundError.isInstance(error)) throw error
+          throw new Provider.ModelUnavailableError(
+            {
+              providerID: userModel.providerID,
+              modelID: userModel.modelID,
+              reason: "not_in_catalog",
+            },
+            { cause: error },
           )
         })
 
@@ -504,6 +504,7 @@ export namespace SessionInvoke {
           sessionID: sessionID,
           model,
           abort,
+          generation: lease.generation,
           toolDisplay: (toolName) => toolDisplayByName.get(toolName),
         })
 
@@ -614,7 +615,7 @@ export namespace SessionInvoke {
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            trustedRoots: SkillPaths.runtimeSkillRootCandidatesSync(workspace),
+            trustedRoots: SkillSourceProfile.allRootPaths(workspace),
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
@@ -739,14 +740,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             )
           }
         }
+        const historyBeforeBytes = LLMTurnMemory.estimateBytes(sessionMessages)
         using memoryTurn = LLMTurnMemory.begin({
           sessionID,
           messageID: processor.message.id,
           providerID: model.providerID,
           modelID: model.id,
-          historyBeforeBytes: LLMTurnMemory.estimateBytes(sessionMessages),
+          historyBeforeBytes,
           baseline: SessionMemoryPressure.currentSnapshot(),
         })
+        memoryTurn.trackOwner("history.session_messages", sessionMessages, historyBeforeBytes)
         await memoryTurn.stabilizeBeforeProjection()
         let modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
@@ -756,7 +759,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
           maxHistoryImages: jobCtx.compactionMaxHistoryImages,
         })
-        memoryTurn.projected({ historyAfterBytes: LLMTurnMemory.estimateBytes(modelProjection.messages) })
+        const projectedHistoryBytes = LLMTurnMemory.estimateBytes(modelProjection.messages)
+        memoryTurn.trackOwner("history.model_projection", modelProjection.messages, projectedHistoryBytes)
+        memoryTurn.projected({ historyAfterBytes: projectedHistoryBytes })
         let preparedMessages = [
           ...modelProjection.messages,
           ...(isLastStep
@@ -861,19 +866,24 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           toolDefinitions: activeToolDefinitions,
         })
         const toolSchemaBytes = LLMTurnMemory.estimateBytes(activeToolDefinitions)
+        const promptMessagesBytes = LLMTurnMemory.estimateBytes(promptPlan.messages)
+        const requestBytes = LLMTurnMemory.estimateBytes({
+          system: promptPlan.system,
+          lateSystem: promptPlan.lateSystem,
+          messages: promptPlan.messages,
+          tools: activeToolDefinitions,
+        })
         memoryTurn.prepared({
           toolSchemaBytes,
-          requestBytes: LLMTurnMemory.estimateBytes({
-            system: promptPlan.system,
-            lateSystem: promptPlan.lateSystem,
-            messages: promptPlan.messages,
-            tools: activeToolDefinitions,
-          }),
+          requestBytes,
         })
+        memoryTurn.trackOwner("prompt.messages", promptPlan.messages, promptMessagesBytes)
+        memoryTurn.trackOwner("prompt.tools", activeToolDefinitions, toolSchemaBytes)
 
-        let streamInput: LLM.StreamInput | undefined
+        let streamInput: SessionProcessor.ProcessInput | undefined
         function releaseTurnReferences(mutateStreamInput: boolean) {
           if (mutateStreamInput) {
+            sessionMessages.length = 0
             toolDefinitions.length = 0
             systemParts.length = 0
             lateSystemParts.length = 0
@@ -889,9 +899,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             promptPlan?.toolDefinitions.splice(0)
             resolvedTools?.activeToolIDs.splice(0)
             if (resolvedTools) {
-              for (const id of Object.keys(resolvedTools.tools)) delete resolvedTools.tools[id]
+              resolvedTools.definitions.splice(0)
+              for (const id of Object.keys(resolvedTools.executionTools)) delete resolvedTools.executionTools[id]
+              for (const id of Object.keys(resolvedTools.executorKinds)) delete resolvedTools.executorKinds[id]
             }
             activeToolIDs.clear()
+            activeToolDefinitions.length = 0
             for (const provenance of [plannedHistoryProvenance, contextUsageProvenance]) {
               for (const contributions of Object.values(provenance.categories)) contributions.length = 0
             }
@@ -899,7 +912,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
               streamInput.system.splice(0)
               streamInput.lateSystem?.splice(0)
               streamInput.messages.splice(0)
-              for (const id of Object.keys(streamInput.tools)) delete streamInput.tools[id]
+              streamInput.toolDefinitions.splice(0)
+              for (const id of Object.keys(streamInput.executionTools)) delete streamInput.executionTools[id]
+              for (const id of Object.keys(streamInput.executorKinds)) delete streamInput.executorKinds[id]
               streamInput.activeToolIDs?.splice(0)
             }
           }
@@ -960,13 +975,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           lateSystem: promptPlan.lateSystem,
           messages: promptPlan.messages,
-          tools: resolvedTools.tools,
+          toolDefinitions: resolvedTools.definitions,
+          executionTools: resolvedTools.executionTools,
+          executorKinds: resolvedTools.executorKinds,
           activeToolIDs: resolvedTools.activeToolIDs,
           model,
           contextUsageProvenance,
           maxOutputTokens: maxOutputTokensByMessage.get(R.id),
           memoryTurn,
         }
+        memoryTurn.trackOwner("stream.input", streamInput, requestBytes)
         try {
           const currentStreamInput = streamInput
           const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
@@ -994,7 +1012,10 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             result = "stop"
           } else {
             log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
-            processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
+            processor.message.error = MessageV2.fromError(deadlineError, {
+              providerID: model.providerID,
+              modelID: model.id,
+            })
             processor.message.finish = "error"
             processor.message.time.completed = Date.now()
             await Session.updateMessage(processor.message)
@@ -1223,7 +1244,10 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       })
     }
 
-    message.error = MessageV2.fromError(input.error, { providerID: input.model.providerID })
+    message.error = MessageV2.fromError(input.error, {
+      providerID: input.model.providerID,
+      modelID: input.model.id,
+    })
     message.finish = "error"
     message.time.completed = Date.now()
     await Session.updateMessage(message)
@@ -1278,7 +1302,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         completed: Date.now(),
       },
       finish: "error",
-      error: MessageV2.fromError(error, { providerID: user.model.providerID }),
+      error: MessageV2.fromError(error, { providerID: user.model.providerID, modelID: user.model.modelID }),
       sessionID,
     })) as MessageV2.Assistant
 
@@ -1667,12 +1691,6 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       .optional(),
   })
   export type CommandInput = z.infer<typeof CommandInput>
-  const bashRegex = /!`([^`]+)`/g
-  // Match [Image N] as single token, quoted strings, or non-space sequences
-  const argsRegex = /(?:\[Image\s+\d+\]|"[^"]*"|'[^']*'|[^\s"']+)/gi
-  const placeholderRegex = /\$(\d+)/g
-  const quoteTrimRegex = /^["']|["']$/g
-
   function commandMetadata(command: Command.Info) {
     return {
       command: {
@@ -1697,7 +1715,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       : ((await lastModel(input.sessionID).catch(() => undefined)) ?? { providerID: "system", modelID: "command" })
     const metadata = commandMetadata(command)
 
-    const user = await Session.updateMessage({
+    const userInfo: MessageV2.User = {
       id: userID,
       role: "user",
       sessionID: input.sessionID,
@@ -1713,15 +1731,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       // only as a frontend hint for action-command rendering.
       includeInContext: command.promptVisible !== false,
       metadata,
-    })
-    await Session.updatePart({
+    }
+    const userPart: MessageV2.TextPart = {
       id: Identifier.ascending("part"),
-      messageID: user.id,
+      messageID: userInfo.id,
       sessionID: input.sessionID,
       type: "text",
       origin: "user",
       text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
-    })
+    }
+    const { info: user } = await SessionUserMessageMaterialization.write({ info: userInfo, parts: [userPart] })
 
     const msg: MessageV2.Assistant = {
       id: Identifier.ascending("message"),
@@ -1776,43 +1795,11 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     if (!command.template) throw new CommandRuntime.NotFoundError({ name: input.command })
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
-    const raw = input.arguments.match(argsRegex) ?? []
-    const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
-
-    const templateCommand = await command.template
-
-    const placeholders = templateCommand.match(placeholderRegex) ?? []
-    let last = 0
-    for (const item of placeholders) {
-      const value = Number(item.slice(1))
-      if (value > last) last = value
-    }
-
-    // Let the final placeholder swallow any extra arguments so prompts read naturally
-    const withArgs = templateCommand.replaceAll(placeholderRegex, (_, index) => {
-      const position = Number(index)
-      const argIndex = position - 1
-      if (argIndex >= args.length) return ""
-      if (position === last) return args.slice(argIndex).join(" ")
-      return args[argIndex]
-    })
-    let template = withArgs.replaceAll("$ARGUMENTS", input.arguments)
-
-    const sh = ConfigMarkdown.shell(template)
-    if (sh.length > 0) {
-      const results = await Promise.all(
-        sh.map(async ([, cmd]) => {
-          try {
-            return await $`${{ raw: cmd }}`.quiet().nothrow().text()
-          } catch (error) {
-            return `Error executing command: ${error instanceof Error ? error.message : String(error)}`
-          }
-        }),
-      )
-      let index = 0
-      template = template.replace(bashRegex, () => results[index++])
-    }
-    template = template.trim()
+    const template = await command.template
+    const renderedTexts =
+      command.source === "skill"
+        ? SkillRenderer.render({ template, arguments: input.arguments })
+        : [await CommandRenderer.render({ template, arguments: input.arguments })]
 
     const model = await (async () => {
       if (command.model) {
@@ -1853,8 +1840,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       throw error
     }
 
-    const templateParts = await resolveInputParts(template)
-    const parts = [...templateParts, ...(input.parts ?? [])]
+    const textParts: InvokeInput["parts"] = []
+    const attachments: InvokeInput["parts"] = []
+    for (const text of renderedTexts) {
+      const renderedParts = await resolveInputParts(text)
+      for (const part of renderedParts) {
+        if (part.type === "text") textParts.push(part)
+        else attachments.push(part)
+      }
+    }
+    const parts = [...textParts, ...attachments, ...(input.parts ?? [])]
 
     const result = (await invoke({
       sessionID: input.sessionID,
@@ -1903,30 +1898,34 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
     const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
     for (const sessionID of sessionIDs) {
-      const session = await SessionManager.getSession(sessionID)
-      if (!session) continue
-      if (session.agenda) continue
+      try {
+        const session = await SessionManager.getSession(sessionID)
+        if (!session) continue
+        if (session.agenda) continue
 
-      const messages = await effectiveCompactedMessages(sessionID)
-      const pendingReply = SessionProgress.pendingReply(messages)
+        const messages = await effectiveCompactedMessages(sessionID)
+        const pendingReply = SessionProgress.pendingReply(messages)
 
-      if (session.pendingReply !== pendingReply) {
-        await Session.update(sessionID, (draft) => {
-          draft.pendingReply = pendingReply || undefined
-        })
-      }
-
-      if (!pendingReply) continue
-
-      if (!SessionManager.isRunning(sessionID)) {
-        const repaired = await repairAfterAbort(sessionID)
-        if (repaired) {
-          log.info("repaired incomplete assistant during startup recovery", { sessionID })
-          continue
+        if (session.pendingReply !== pendingReply) {
+          await Session.update(sessionID, (draft) => {
+            draft.pendingReply = pendingReply || undefined
+          })
         }
-      }
 
-      log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
+        if (!pendingReply) continue
+
+        if (!SessionManager.isRunning(sessionID)) {
+          const repaired = await repairAfterAbort(sessionID)
+          if (repaired) {
+            log.info("repaired incomplete assistant during startup recovery", { sessionID })
+            continue
+          }
+        }
+
+        log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
+      } catch (error) {
+        log.warn("pending session startup recovery failed", { sessionID, error })
+      }
     }
   }
 

@@ -479,6 +479,7 @@ export namespace Cortex {
         sessionID: task.sessionID,
         model: resolvedModel,
         agent: task.agent,
+        origin: { type: "system" },
         parts,
         tools: invokeTools,
         ephemeralTools,
@@ -502,6 +503,7 @@ export namespace Cortex {
             sessionID: task.sessionID,
             model: resolvedModel,
             agent: task.agent,
+            origin: { type: "system" },
             parts: repairParts,
             tools: CortexOutput.repairTools(),
             ephemeralTools,
@@ -927,7 +929,7 @@ export namespace Cortex {
   }
 
   function isTerminal(status: CortexTypes.TaskStatus): boolean {
-    return status === "completed" || status === "error" || status === "cancelled" || status === "interrupted"
+    return CortexTypes.isTerminalStatus(status)
   }
 
   export type TaskHealth = "queued" | "active" | "tool-running" | "stale" | "terminal"

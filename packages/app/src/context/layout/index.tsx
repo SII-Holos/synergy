@@ -10,12 +10,12 @@ import { Scope, Session } from "@ericsanchezok/synergy-sdk"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./scroll"
-import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { computeDefaultWorkspaceWidth } from "./workspace"
 import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import type { WorkbenchSurfaceState } from "../workbench/panel-model"
 import { migrateWorkbenchLayout } from "../workbench/layout-migration"
+import { createInitialLayoutDefaults, shouldRevealInitialSideWorkspace } from "./defaults"
 import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
@@ -28,6 +28,7 @@ import {
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { planMessagePageApply } from "../session-message-page"
+import { findSessionIndex } from "../session-collection"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -125,18 +126,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const [store, setStore, _, ready] = persisted(
       { ...Persist.global("layout", ["layout.v8", "layout.v9"]), migrate: migrateWorkbenchLayout },
       createStore({
-        sidebar: {
-          opened: false,
-          width: 280,
-        },
+        ...createInitialLayoutDefaults(),
         review: {
           diffStyle: "split" as ReviewDiffStyle,
-        },
-        mobileSidebar: {
-          opened: false,
-        },
-        rightSidebar: {
-          opened: false,
         },
         sessionView: {} as Record<string, SessionView>,
         workbenchSurfaces: {} as Record<string, WorkbenchSurfacesLayoutState>,
@@ -1106,8 +1098,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
       setChildStore(
         produce((draft) => {
-          const match = Binary.search(draft.session, session.id, (s) => s.id)
-          if (match.found) draft.session.splice(match.index, 1)
+          const index = findSessionIndex(draft.session, session.id)
+          if (index !== -1) draft.session.splice(index, 1)
         }),
       )
       const existing = navEntries[scopeKey]
@@ -1127,8 +1119,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const value = pinned ? Date.now() : 0
       setChildStore(
         produce((draft) => {
-          const match = Binary.search(draft.session, session.id, (s) => s.id)
-          if (match.found) draft.session[match.index].pinned = value
+          const index = findSessionIndex(draft.session, session.id)
+          if (index !== -1) draft.session[index].pinned = value
         }),
       )
       const existing = navEntries[scopeKey]
@@ -1148,9 +1140,39 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const isDesktop = createMediaQuery("(min-width: 768px)")
 
+    function tryRevealInitialSideWorkspace(sessionKey: string) {
+      if (
+        !shouldRevealInitialSideWorkspace({
+          ready: ready(),
+          desktop: isDesktop(),
+          discovered: store.sideWorkspaceDiscovered,
+        })
+      ) {
+        return false
+      }
+
+      batch(() => {
+        if (!store.workbenchSurfaces[sessionKey]) {
+          setStore("workbenchSurfaces", sessionKey, {})
+        }
+        if (!store.workbenchSurfaces[sessionKey]?.side) {
+          setStore("workbenchSurfaces", sessionKey, "side", {
+            opened: true,
+            tabs: [],
+            active: undefined,
+          })
+        } else {
+          setStore("workbenchSurfaces", sessionKey, "side", "opened", true)
+        }
+        setStore("sideWorkspaceDiscovered", true)
+      })
+      return true
+    }
+
     return {
       ready,
       isDesktop,
+      tryRevealInitialSideWorkspace,
       nav: {
         projectSessions,
         projectNavEntries,

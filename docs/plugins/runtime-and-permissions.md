@@ -24,9 +24,14 @@ interface PluginInvocationContext {
   session?: SessionHostService
   task?: TaskHostService
   workspace?: WorkspaceHostService
+  blueprint?: BlueprintHostService
+  lightloop?: LightLoopHostService
   settings?: PluginSettingsService
   secrets?: PluginSecretsService
   tools?: PluginToolHostService
+  agent?: PluginAgentHostService
+  asset?: AssetHostService
+  shell?: ShellHostService
 }
 ```
 
@@ -38,23 +43,34 @@ External plugins use `process`. Trusted built-ins may use `inProcess`. The proce
 
 Capabilities describe Synergy services the host may inject. A contribution's `requires` must be a subset of the definition's top-level capability list.
 
-| Capability        | Context service or action                                                           |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| `session.read`    | `context.session.get()`                                                             |
-| `session.control` | `context.session.abort()`                                                           |
-| `workspace.read`  | `context.workspace.read()` and `metadata()`                                         |
-| `workspace.write` | `context.workspace.write()`                                                         |
-| `task.delegate`   | `context.task.start()`, `current()`, `get()`, and `cancel()`                        |
-| `settings.read`   | `context.settings.get()`                                                            |
-| `settings.write`  | `context.settings.replace()`                                                        |
-| `secrets`         | plugin-scoped credential get/set/delete                                             |
-| `tool.invoke`     | `context.tools.invoke()`                                                            |
-| `ui.hostActions`  | trusted UI host navigation, panel, resource, notification, and confirmation actions |
+| Capability           | Context service or action                                                           |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| `session.read`       | `context.session.get()`                                                             |
+| `session.control`    | `context.session.abort()`                                                           |
+| `workspace.read`     | `context.workspace.read()` and `metadata()`                                         |
+| `workspace.write`    | `context.workspace.write()`                                                         |
+| `task.delegate`      | `context.task.start()`, `run()`, `current()`, `get()`, and `cancel()`               |
+| `asset.write`        | `context.asset.create()`                                                            |
+| `shell.execute`      | `context.shell.run()` with an argv-only command                                     |
+| `settings.read`      | `context.settings.get()`                                                            |
+| `settings.write`     | `context.settings.replace()`                                                        |
+| `secrets`            | plugin-scoped credential get/set/delete                                             |
+| `tool.invoke`        | `context.tools.invoke()`                                                            |
+| `ui.hostActions`     | trusted UI host navigation, panel, resource, notification, and confirmation actions |
+| `composer.read`      | active Composer snapshots and settled-draft subscription                            |
+| `composer.write`     | Composer completion, decoration, and revision-checked edits                         |
+| `composer.intercept` | serial normal-message preflight hooks                                               |
+| `selection.read`     | settled non-sensitive selected text and text-action input                           |
+| `agent.call`         | bounded Sessionless calls to owned or explicitly allowed Agents                     |
 
-`task.delegate` may include `agents` and `maxRuntimeMs` constraints. `start()` resolves the target from Synergy's native Agent registry and launches it through native Cortex; plugins do not own a parallel Agent or task runtime. A plugin's private `hidden` Agent is callable only by the same plugin ID and active generation. Non-owned targets retain ordinary Agent visibility rules. `start()` returns a handle immediately and persists plugin/generation/Scope/correlation ownership on the Cortex child Session before execution begins. `current()` resolves that durable owner from the invocation's child Session and returns it only to the owning plugin generation and Scope; it returns `undefined` outside an owned plugin task. Plugins use the correlation ID for domain binding instead of depending on a post-launch Session attachment. `get()` and `cancel()` enforce the same ownership. Non-agent invocations must provide an explicit parent Session/message in the current Scope; `tool.invoke` remains agent-only.
+`task.delegate` may include `agents` and `maxRuntimeMs` constraints. `start()` launches native Cortex work and returns its handle immediately; `run()` waits for the same native Task to reach a terminal state and returns its `PluginTaskSnapshot`, including structured output when requested. Both paths resolve the target from Synergy's Agent registry and preserve plugin/generation/Scope ownership. A plugin's private `hidden` Agent is callable only by the same plugin ID and active generation. Non-owned targets retain ordinary Agent visibility rules.
+
+`asset.create()` stores plugin-produced bytes through the host and returns the final host-owned attachment object for a tool result. `shell.run()` accepts only a non-empty argv array, passes through the normal permission and sandbox boundary, honors cancellation and timeout, and returns `stdout`, `stderr`, and `exitCode`.
 
 Host capability approval and runtime permission evaluation are separate gates. For delegated work, the manifest gate is `task.delegate`; the control-profile permission is `task`. Host Service failures preserve a stable optional `code` across process IPC so plugins can make typed recovery decisions.
 `context.session.get()` and `context.session.abort()` are limited to Sessions in the invocation Scope. Cross-Scope targets fail with `PLUGIN_SESSION_SCOPE_MISMATCH`; delegated start parents use the separate `PLUGIN_TASK_PARENT_SCOPE_MISMATCH` code.
+
+`context.agent.call()` is injected only for an executable contribution whose own `requires` includes the approved `agent.call` capability. It resolves the target through Synergy's Agent registry and uses the Agent's native model/model-role configuration. It always runs with no tools, durable Session, Cortex task, or transcript. The host rechecks the invoking contribution, ownership or an `agents` allowlist, and hard runtime/input/output bounds; plugins cannot select an arbitrary provider or model.
 
 Approval is derived from generated capabilities and trusted UI. Changing the manifest or capability hash requires approval again. Approval never expands the source declaration.
 
@@ -101,6 +117,8 @@ Plugins contribute handlers to host-defined hook points. A plugin cannot define 
 - `guard` returns `{ allow, reason?, value? }`.
 
 Ordering is priority, plugin ID, then contribution ID. Each hook point owns input/output schema, timeout, and failure policy. A handler failure degrades that contribution. It propagates only when the point's failure policy requires it; a guard denial always propagates as a denial.
+
+`session.user-message.after` is a continuing observer dispatched asynchronously after an ordinary user message and all of its parts are persisted. Its input contains only `{ message: { id, text, createdAt } }`; Scope and Session identity come from `PluginInvocationContext`. It requires `session.read`, does not run for synthetic/internal messages, and cannot delay or roll back the Session loop.
 
 ## Generation Changes and Lifecycle
 

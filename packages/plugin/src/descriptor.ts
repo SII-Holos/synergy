@@ -88,6 +88,32 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
     }
     const handlerId = contributionHandlerId(contribution)
     if (handlerId) handlerIds.push(handlerId)
+    if (contribution.kind === "hook" && contribution.point === "session.user-message.after") {
+      if (!contribution.requires?.includes("session.read")) {
+        throw new Error(`Hook contribution "${contribution.id}" requires session.read`)
+      }
+    }
+    if (
+      (contribution.kind === "ui.selectionExtension" || contribution.kind === "ui.textAction") &&
+      !contribution.requires?.includes("selection.read")
+    ) {
+      throw new Error(`Contribution "${contribution.id}" requires selection.read`)
+    }
+  }
+
+  for (const contribution of input.contributions) {
+    if (contribution.kind !== "ui.textAction") continue
+    const operation = input.contributions.find(
+      (item) => item.kind === "operation" && item.id === contribution.operation,
+    )
+    if (
+      !operation ||
+      operation.kind !== "operation" ||
+      operation.type !== "command" ||
+      !operation.expose.includes("ui")
+    ) {
+      throw new Error(`Text action "${contribution.id}" must reference a UI-exposed command operation`)
+    }
   }
 
   const settings = input.contributions.find((item) => item.kind === "ui.settings")
@@ -96,9 +122,14 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
       ? (settings.formSchema.properties as Record<string, unknown>)
       : {}
   for (const contribution of input.contributions) {
-    if (contribution.kind === "tool" && contribution.enabledWhen && !(contribution.enabledWhen.setting in properties)) {
+    if (
+      (contribution.kind === "tool" || contribution.kind === "mcp") &&
+      contribution.enabledWhen &&
+      !(contribution.enabledWhen.setting in properties)
+    ) {
+      const label = contribution.kind === "tool" ? "Tool" : "MCP"
       throw new Error(
-        `Tool contribution "${contribution.id}" references undeclared setting "${contribution.enabledWhen.setting}"`,
+        `${label} contribution "${contribution.id}" references undeclared setting "${contribution.enabledWhen.setting}"`,
       )
     }
   }
@@ -151,6 +182,14 @@ function compileContribution(
         ...(contribution.display ? { display: contribution.display as unknown as Record<string, unknown> } : {}),
         ...(contribution.enabledWhen ? { enabledWhen: contribution.enabledWhen } : {}),
       }
+    case "cli.command":
+      return {
+        ...base,
+        kind: "cli.command",
+        description: contribution.description,
+        options: contribution.options,
+        ...(contribution.timeoutMs ? { timeoutMs: contribution.timeoutMs } : {}),
+      }
     case "hook":
       return { ...base, kind: "hook", point: contribution.point, priority: contribution.priority }
     case "agent":
@@ -158,7 +197,12 @@ function compileContribution(
     case "skill":
       return { ...base, kind: "skill", skill: contribution.skill as unknown as Record<string, unknown> }
     case "mcp":
-      return { ...base, kind: "mcp", server: contribution.server }
+      return {
+        ...base,
+        kind: "mcp",
+        server: contribution.server,
+        ...(contribution.enabledWhen ? { enabledWhen: contribution.enabledWhen } : {}),
+      }
     case "authProvider": {
       return {
         ...base,
@@ -208,6 +252,32 @@ function compileContribution(
         order: contribution.order,
         slot: contribution.slot,
         component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
+      }
+    case "ui.composerExtension":
+    case "ui.selectionExtension":
+      return {
+        ...base,
+        kind: contribution.kind,
+        order: contribution.order,
+        component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`)!,
+      }
+    case "ui.textAction":
+      return {
+        ...base,
+        kind: "ui.textAction",
+        label: contribution.label,
+        icon: contribution.icon,
+        order: contribution.order,
+        operation: contribution.operation,
+      }
+    case "ui.messageSlot":
+      return {
+        ...base,
+        kind: "ui.messageSlot",
+        order: contribution.order,
+        slot: contribution.slot,
+        roles: contribution.roles,
+        component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`)!,
       }
     case "ui.settings":
       return {

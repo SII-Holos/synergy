@@ -15,22 +15,31 @@ export namespace CortexConcurrency {
   const CRITICAL_PRESSURE_LIMIT = 2
   const SOFT_ARRAY_BUFFERS_BYTES = 1 * GIB
   const CRITICAL_ARRAY_BUFFERS_BYTES = 2 * GIB
+  const PRESSURE_RECHECK_MS = 1_000
 
   let globalRunning = 0
   let configuredGlobalLimit: number | undefined
   let memoryProbe: (() => SessionMemoryPressure.Snapshot) | undefined
+  let pressureRecheckTimer: ReturnType<typeof setTimeout> | undefined
 
   export const GlobalStatus = z
     .object({
-      configured: z.number().int().positive().nullable(),
-      environment: z.number().int().positive().nullable(),
-      effective: z.number().int().positive(),
-      memoryPressureLimit: z.number().int().positive().nullable(),
-      memoryPressureReason: z.enum(["normal", "memory_pressure", "critical_memory_pressure"]),
-      source: z.enum(["default", "config", "environment"]),
-      perAgentLimit: z.number().int().positive(),
-      running: z.number().int().nonnegative(),
-      queued: z.number().int().nonnegative(),
+      configured: z.number().int().positive().nullable().describe("User-configured global limit, or null when unset"),
+      environment: z.number().int().positive().nullable().describe("Process environment override, or null when unset"),
+      effective: z.number().int().positive().describe("Actual admission limit from environment, config, or default"),
+      memoryPressureLimit: z
+        .number()
+        .int()
+        .positive()
+        .nullable()
+        .describe("Memory-pressure ceiling applied to new task admission"),
+      memoryPressureReason: z
+        .enum(["normal", "memory_pressure", "critical_memory_pressure"])
+        .describe("Reason for the memory-pressure admission ceiling"),
+      source: z.enum(["default", "config", "environment"]).describe("Source of the effective admission limit"),
+      perAgentLimit: z.number().int().positive().describe("Fixed maximum for each individual agent"),
+      running: z.number().int().nonnegative().describe("Currently admitted Cortex tasks"),
+      queued: z.number().int().nonnegative().describe("Cortex tasks waiting for an admission slot"),
     })
     .meta({ ref: "CortexConcurrencyStatus" })
   export type GlobalStatus = z.infer<typeof GlobalStatus>
@@ -45,16 +54,16 @@ export namespace CortexConcurrency {
     if (getGlobalLimit() > previous) wakeAllQueues()
   }
 
-  export function getGlobalLimit(snapshot = currentMemorySnapshot()): number {
-    const desired = desiredGlobalLimit()
-    const memoryPressureLimit = getMemoryPressureLimit(snapshot)
-    return memoryPressureLimit === undefined ? desired : Math.min(desired, memoryPressureLimit)
+  export function getGlobalLimit(): number {
+    return effectiveGlobalLimit(currentMemorySnapshot())
   }
 
   export function getMemoryPressure(snapshot = currentMemorySnapshot()) {
     const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
+    const pressure = SessionMemoryPressure.pressureLevel(snapshot, thresholds)
     const criticalArrayBuffers = Math.min(thresholds.arrayBuffersCriticalBytes, CRITICAL_ARRAY_BUFFERS_BYTES)
     const critical =
+      pressure === "critical" ||
       snapshot.rssBytes >= thresholds.rssCriticalBytes ||
       snapshot.arrayBuffersBytes >= criticalArrayBuffers ||
       (snapshot.cgroupCurrentBytes ?? 0) >= thresholds.cgroupCriticalBytes
@@ -64,7 +73,7 @@ export namespace CortexConcurrency {
 
     const softRss = thresholds.rssCriticalBytes * 0.5
     const softArrayBuffers = Math.min(thresholds.arrayBuffersCriticalBytes * 0.5, SOFT_ARRAY_BUFFERS_BYTES)
-    if (snapshot.rssBytes >= softRss || snapshot.arrayBuffersBytes >= softArrayBuffers) {
+    if (pressure === "soft" || snapshot.rssBytes >= softRss || snapshot.arrayBuffersBytes >= softArrayBuffers) {
       return { limit: SOFT_PRESSURE_LIMIT, reason: "memory_pressure" as const }
     }
     return { limit: null, reason: "normal" as const }
@@ -109,6 +118,7 @@ export namespace CortexConcurrency {
         const queue = queues.get(key) ?? []
         queue.push(resolve)
         queues.set(key, queue)
+        schedulePressureRecheck()
       })
     }
   }
@@ -142,7 +152,7 @@ export namespace CortexConcurrency {
     return {
       configured: configuredGlobalLimit ?? null,
       environment: environment ?? null,
-      effective: getGlobalLimit(snapshot),
+      effective: effectiveGlobalLimit(snapshot),
       memoryPressureLimit: memoryPressure.limit,
       memoryPressureReason: memoryPressure.reason,
       source:
@@ -158,11 +168,13 @@ export namespace CortexConcurrency {
   }
 
   export function reset(): void {
+    if (pressureRecheckTimer) clearTimeout(pressureRecheckTimer)
     counts.clear()
     queues.clear()
     globalRunning = 0
     configuredGlobalLimit = undefined
     memoryProbe = undefined
+    pressureRecheckTimer = undefined
   }
 
   function wakeNextQueue(preferredKey?: string): boolean {
@@ -187,6 +199,15 @@ export namespace CortexConcurrency {
     for (const wake of waiting) wake()
   }
 
+  function schedulePressureRecheck(): void {
+    if (pressureRecheckTimer || getMemoryPressureLimit() === undefined) return
+    pressureRecheckTimer = setTimeout(() => {
+      pressureRecheckTimer = undefined
+      wakeAllQueues()
+    }, PRESSURE_RECHECK_MS)
+    pressureRecheckTimer.unref()
+  }
+
   function normalizeLimit(value: number | undefined): number | undefined {
     if (value === undefined) return undefined
     if (!Number.isInteger(value) || value <= 0) return undefined
@@ -195,6 +216,11 @@ export namespace CortexConcurrency {
 
   function desiredGlobalLimit(): number {
     return envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY) ?? configuredGlobalLimit ?? DEFAULT_GLOBAL_LIMIT
+  }
+
+  function effectiveGlobalLimit(snapshot: SessionMemoryPressure.Snapshot): number {
+    const pressureLimit = getMemoryPressureLimit(snapshot)
+    return pressureLimit === undefined ? desiredGlobalLimit() : Math.min(desiredGlobalLimit(), pressureLimit)
   }
 
   function currentMemorySnapshot(): SessionMemoryPressure.Snapshot {

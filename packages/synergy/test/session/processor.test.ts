@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { APICallError } from "ai"
 import { TimeoutConfig } from "../../src/util/timeout-config"
 import { Config } from "../../src/config/config"
 import { ExperienceEncoder } from "../../src/library/experience-encoder"
@@ -13,6 +14,7 @@ import { SessionBounds } from "../../src/session/bounds"
 import { Bus } from "../../src/bus"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityToolFailures } from "../../src/observability/tool-failures"
+import { ProcessOutput } from "../../src/process/output"
 import { cleanupObservabilityHomes, resetObservabilityHome } from "../observability/fixture"
 
 function toolPart(
@@ -153,6 +155,9 @@ type SettlementScenario = {
   residualStream?: { cancel(reason?: unknown): Promise<void> }
   contextUsageDraft?: ContextUsage.Draft
   updateMessage?: (message: MessageV2.Assistant) => void
+  executionTools?: (processor: SessionProcessor.Info) => Record<string, any>
+  inspectAgentInput?: (input: Record<string, unknown>) => void
+  agentInput?: Record<string, unknown>
 }
 
 async function runSettlementScenario(scenario: SettlementScenario) {
@@ -196,11 +201,14 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(Bus.publish as any) = mock(async () => {})
     ;(Snapshot.track as any) = mock(async () => "snapshot_test")
-    ;(LLM.stream as any) = mock(async () => ({
-      fullStream: scenario.stream(processor),
-      baseStream: scenario.residualStream,
-      contextUsageDraft: scenario.contextUsageDraft,
-    }))
+    ;(LLM.stream as any) = mock(async (input: Record<string, unknown>) => {
+      scenario.inspectAgentInput?.(input)
+      return {
+        fullStream: scenario.stream(processor),
+        baseStream: scenario.residualStream,
+        contextUsageDraft: scenario.contextUsageDraft,
+      }
+    })
 
     processor = SessionProcessor.create({
       assistantMessage: {
@@ -222,7 +230,13 @@ async function runSettlementScenario(scenario: SettlementScenario) {
       abort: scenario.abort ?? new AbortController().signal,
     })
 
-    await processor.process({} as any)
+    await processor.process({
+      toolDefinitions: [],
+      ...scenario.agentInput,
+      ...(scenario.executionTools
+        ? { executionTools: scenario.executionTools(processor), executorKinds: { layered_probe: "control_plane" } }
+        : {}),
+    } as any)
     return [...parts.values()]
   } finally {
     TimeoutConfig.invalidate()
@@ -264,6 +278,169 @@ describe("SessionProcessor stream lifecycle", () => {
       expect(cancelCount).toBe(1)
     })
   }
+})
+
+describe("SessionProcessor execution layering", () => {
+  test("releases the Agent stream before starting a proposed tool", async () => {
+    let streamDisposed = false
+    let executedAfterDispose = false
+    const parts = await runSettlementScenario({
+      messageID: "msg_layered_tool",
+      async *stream() {
+        yield {
+          type: "tool-call",
+          toolCallId: "call_layered",
+          toolName: "layered_probe",
+          input: { value: 1 },
+        }
+      },
+      residualStream: {
+        async cancel() {
+          streamDisposed = true
+        },
+      },
+      executionTools: (processor) => ({
+        layered_probe: {
+          async execute(input: unknown) {
+            executedAfterDispose = streamDisposed
+            processor.beginExecution("call_layered").complete(input, {
+              title: "Layered",
+              output: "done",
+              metadata: {},
+            })
+            return { title: "Layered", output: "done", metadata: {} }
+          },
+        },
+      }),
+    })
+
+    expect(executedAfterDispose).toBe(true)
+    expect(parts.find((part) => part.type === "tool" && part.callID === "call_layered")).toMatchObject({
+      state: { status: "completed", output: "done" },
+    })
+  })
+
+  test("contains process output overflow as one terminal ToolTask failure", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_layered_output_limit",
+      async *stream() {
+        yield {
+          type: "tool-call",
+          toolCallId: "call_output_limit",
+          toolName: "layered_probe",
+          input: { path: "large-tree" },
+        }
+      },
+      executionTools: () => ({
+        layered_probe: {
+          async execute() {
+            throw new ProcessOutput.LimitError("max_output_bytes", 20 * 1024 * 1024)
+          },
+        },
+      }),
+    })
+
+    expect(parts.find((part) => part.type === "tool" && part.callID === "call_output_limit")).toMatchObject({
+      state: {
+        status: "error",
+        error: "Process output exceeded total limit of 20971520 bytes",
+      },
+    })
+  })
+
+  test("does not pass executable tools or Control Plane handles into the Agent layer", async () => {
+    let keys: string[] = []
+    await runSettlementScenario({
+      messageID: "msg_layer_boundary",
+      async *stream() {
+        yield { type: "finish" }
+      },
+      inspectAgentInput(input) {
+        keys = Object.keys(input)
+      },
+      executionTools: () => ({
+        layered_probe: {
+          async execute() {},
+        },
+      }),
+    })
+
+    expect(keys).not.toContain("executionTools")
+    expect(keys).not.toContain("executorKinds")
+    expect(keys).not.toContain("memoryTurn")
+  })
+
+  test("releases model request collections after the Agent turn settles", async () => {
+    let system: unknown[] | undefined
+    let messages: unknown[] | undefined
+    let toolDefinitions: unknown[] | undefined
+    await runSettlementScenario({
+      messageID: "msg_layer_release",
+      async *stream() {
+        yield { type: "finish" }
+      },
+      inspectAgentInput(input) {
+        system = input.system as unknown[]
+        messages = input.messages as unknown[]
+        toolDefinitions = input.toolDefinitions as unknown[]
+      },
+      agentInput: {
+        system: ["system"],
+        messages: [{ role: "user", content: "message" }],
+        toolDefinitions: [{ id: "probe", description: "probe", inputSchema: { type: "object" } }],
+      },
+    })
+
+    expect(system).toEqual([])
+    expect(messages).toEqual([])
+    expect(toolDefinitions).toEqual([])
+  })
+
+  test("preserves model request collections for a retryable Agent failure", async () => {
+    const attempts: Array<{
+      system: unknown[]
+      lateSystem: unknown[]
+      messages: unknown[]
+      toolDefinitions: unknown[]
+      activeToolIDs: unknown[]
+    }> = []
+    const agentInput = {
+      system: ["system"],
+      lateSystem: ["runtime"],
+      messages: [{ role: "user", content: "message" }],
+      toolDefinitions: [{ id: "probe", description: "probe", inputSchema: { type: "object" } }],
+      activeToolIDs: ["probe"],
+    }
+    const expected = structuredClone(agentInput)
+
+    await runSettlementScenario({
+      messageID: "msg_layer_retry",
+      async *stream() {
+        if (attempts.length === 1) {
+          throw new APICallError({
+            message: "The operation timed out.",
+            url: "https://provider.invalid",
+            requestBodyValues: {},
+            isRetryable: true,
+            responseHeaders: { "retry-after-ms": "1" },
+          })
+        }
+        yield { type: "finish" }
+      },
+      inspectAgentInput(input) {
+        attempts.push({
+          system: [...(input.system as unknown[])],
+          lateSystem: [...(input.lateSystem as unknown[])],
+          messages: [...(input.messages as unknown[])],
+          toolDefinitions: [...(input.toolDefinitions as unknown[])],
+          activeToolIDs: [...(input.activeToolIDs as unknown[])],
+        })
+      },
+      agentInput,
+    })
+
+    expect(attempts).toEqual([expected, expected])
+  })
 })
 
 describe("SessionProcessor terminal part checkpoints", () => {
@@ -373,6 +550,68 @@ describe("SessionProcessor context usage persistence", () => {
   })
 })
 describe("SessionProcessor tool input bounds", () => {
+  test("persists the canonical AI SDK input when streamed JSON differs", async () => {
+    let runningInput: Record<string, unknown> | undefined
+    const canonicalInput = {
+      command: "git status",
+      workdir: "/workspace",
+      description: "Inspect repository status",
+    }
+
+    const parts = await runSettlementScenario({
+      messageID: "msg_streamed_tool_input",
+      async updatePart(input) {
+        const part = "part" in input ? input.part : input
+        if (part.type === "tool" && part.state.status === "running") runningInput = part.state.input
+        return part
+      },
+      async *stream() {
+        yield { type: "tool-input-start", id: "call_streamed", toolName: "bash" }
+        yield {
+          type: "tool-input-delta",
+          id: "call_streamed",
+          delta: '{"command":"git status","workdir":"/tmp"}',
+        }
+        yield {
+          type: "tool-call",
+          toolCallId: "call_streamed",
+          toolName: "bash",
+          input: canonicalInput,
+        }
+      },
+    })
+
+    expect(runningInput).toEqual(canonicalInput)
+    const settledPart = firstTool(parts, "call_streamed")
+    expect(settledPart?.state.input).toEqual(canonicalInput)
+  })
+
+  test("bounds the canonical AI SDK input even when streamed JSON is smaller", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_streamed_final_tool_input_limit",
+      async *stream() {
+        yield { type: "tool-input-start", id: "call_streamed_final_large", toolName: "edit" }
+        yield {
+          type: "tool-input-delta",
+          id: "call_streamed_final_large",
+          delta: '{"value":"small"}',
+        }
+        yield {
+          type: "tool-call",
+          toolCallId: "call_streamed_final_large",
+          toolName: "edit",
+          input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
+        }
+      },
+    })
+
+    const part = firstTool(parts, "call_streamed_final_large")
+    expect(part?.state.status).toBe("error")
+    if (part?.state.status === "error") {
+      expect(part.state.error).toContain("exceeded")
+    }
+  })
+
   test("terminates a tool part when streamed input exceeds the byte limit", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_tool_input_limit",

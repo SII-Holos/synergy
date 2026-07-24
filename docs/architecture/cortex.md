@@ -37,7 +37,7 @@ Cortex creates a child session in the parent's `Scope` and workspace, or reuses 
 
 Tasks are admitted through both per-agent and process-global concurrency limits. Each concurrency key allows at most eight running tasks. The global maximum defaults to eight and can be set with the global `cortex.maxConcurrentTasks` configuration or overridden for the process by `SYNERGY_CORTEX_GLOBAL_CONCURRENCY`. Lowering the maximum does not cancel running tasks; it queues new work until capacity is available, while raising it wakes eligible queued work.
 
-Memory pressure applies a process-wide safety maximum of four under elevated pressure or two under critical pressure. ArrayBuffer pressure enters those states at 1 GiB and 2 GiB respectively, before the session GC thresholds at which Bun stream allocations may already fail. The configured, environment-provided, or default value remains the desired maximum; the scheduler uses the lower of that value and the active memory-pressure limit. Lowering the effective limit never cancels running work. The read-only `cortex.concurrency` API reports configured, environment, effective, memory-pressure limit and reason, source, per-agent, running, and queued values.
+Memory pressure lowers new-task admission to four under elevated pressure or two under critical pressure. The scheduler uses the shared session memory classification, plus earlier ArrayBuffer thresholds at 1 GiB and 2 GiB, so it converges before Bun stream allocations fail. The configured, environment-provided, or default value remains the user-selected maximum; the effective admission limit is the lower of that maximum and the current memory-pressure ceiling. Running tasks are not cancelled. Queued tasks are reconsidered when capacity is released and while pressure is active, so they resume after memory recovers. The read-only `cortex.concurrency` API reports configured, environment, effective, memory-pressure limit and reason, source, per-agent, running, and queued values.
 
 An explicit task model wins. Otherwise Cortex resolves the selected agent's available model, with the parent's model available as the normal fallback path. The resolved model is persisted on the child session.
 
@@ -52,6 +52,7 @@ The ordinary role is `delegated_subagent`. It is intentionally narrower than a p
 - DAG mutation tools are removed
 - configured primary-only tools are removed
 - deferred tool discovery and expansion remain available, but they expose only tools already allowed by the selected agent's permission rules
+- native subagents may expand the deferred Browser group on demand; Browser tools remain hidden until expansion and still pass through the normal capability and permission pipeline
 
 This keeps a delegated task bounded and prevents accidental recursive orchestration. Hidden internal reviewers can be given an explicit `delegationGroup` so they can call selected specialists while remaining hidden and unavailable as direct user targets.
 

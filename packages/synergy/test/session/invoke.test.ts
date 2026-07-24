@@ -22,6 +22,7 @@ import { Worktree } from "../../src/project/worktree"
 import { SessionMessageCache } from "../../src/session/message-cache"
 import { Bus } from "../../src/bus"
 import { SessionEvent } from "../../src/session/event"
+import { Command } from "../../src/command/command"
 
 const sessionID = "ses_test"
 
@@ -130,7 +131,9 @@ function installBasicLoopMocks(options?: {
   }))
   ;(ToolResolver.definitions as any) = mock(async () => options?.toolDefinitions ?? [])
   ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
-    tools: {},
+    definitions: [],
+    executionTools: {},
+    executorKinds: {},
     activeToolIDs: options?.activeToolIDs ?? [],
   }))
   ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
@@ -249,6 +252,104 @@ async function removeWorktreeSession(sessionID: string, worktreeID: string | und
   }
   await Session.remove(sessionID).catch(() => undefined)
 }
+
+describe("SessionInvoke internal message origins", () => {
+  test("persists system provenance by default and preserves explicit internal provenance", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        try {
+          const system = await SessionInvoke.invokeInternal({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            noReply: true,
+            parts: [{ type: "text", text: "internal prompt" }],
+          })
+          expect((system.info as MessageV2.User).origin).toEqual({ type: "system" })
+
+          const plugin = await SessionInvoke.invokeInternal({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            noReply: true,
+            origin: { type: "plugin", pluginID: "example" },
+            parts: [{ type: "text", text: "plugin prompt" }],
+          })
+          expect((plugin.info as MessageV2.User).origin).toEqual({ type: "plugin", pluginID: "example" })
+        } finally {
+          await Session.remove(session.id)
+        }
+      },
+    })
+  })
+})
+
+describe("SessionInvoke Skill command rendering", () => {
+  test("keeps fallback request text and attachments in one model-visible root turn", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let modelPayload = ""
+    const restore = installBasicLoopMocks({
+      onProcess: (input) => {
+        modelPayload = JSON.stringify(input.messages)
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await Bun.write(
+            `${tmp.path}/.synergy/skill/integration-skill/SKILL.md`,
+            "---\nname: integration-skill\ndescription: Session integration Skill.\n---\n\nFollow the Skill instructions.\n",
+          )
+          await Command.reload()
+          const command = await Command.require("integration-skill")
+          expect(command.hints).toEqual(["$ARGUMENTS", "$ARGUMENTS[N]", "$N (one-based)"])
+
+          const session = await Session.create({})
+          activeSessionID = session.id
+          await SessionInvoke.command({
+            sessionID: session.id,
+            command: "integration-skill",
+            arguments: "Inspect the attached diagram",
+            model: "test-provider/test-model",
+            parts: [
+              {
+                type: "attachment",
+                url: "https://example.com/diagram.png",
+                filename: "diagram.png",
+                mime: "image/png",
+                model: { mode: "provider-file", summary: "diagram.png (image/png)" },
+              },
+            ],
+          })
+
+          const messages = await Session.messages({ sessionID: session.id })
+          const users = messages.filter(
+            (message): message is MessageV2.WithParts & { info: MessageV2.User } => message.info.role === "user",
+          )
+          expect(users).toHaveLength(1)
+          expect(users[0].info.isRoot).toBe(true)
+          expect(users[0].parts).toMatchObject([
+            { type: "text", text: "Follow the Skill instructions." },
+            { type: "text", text: "Inspect the attached diagram" },
+            { type: "attachment", filename: "diagram.png" },
+          ])
+          expect(modelPayload).toContain("Follow the Skill instructions.")
+          expect(modelPayload).toContain("Inspect the attached diagram")
+          expect(modelPayload).toContain("diagram.png")
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+})
 
 describe("SessionInvoke workspace execution context", () => {
   test("direct loop restores the persisted worktree workspace without ambient scope", async () => {
@@ -568,7 +669,12 @@ describe("SessionInvoke system prompt assembly", () => {
         library: { memory: { enabled: false }, experience: { retrieve: false } },
       }))
       ;(ToolResolver.definitions as any) = mock(async () => [])
-      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+        definitions: [],
+        executionTools: {},
+        executorKinds: {},
+        activeToolIDs: [],
+      }))
       ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
         capturedSystem = [...input.system]
         capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
@@ -1441,7 +1547,7 @@ describe("SessionInvoke turn lifecycle", () => {
         retainedMessages = input.messages
         retainedSystem = input.system
         retainedToolIDs = input.activeToolIDs
-        retainedTools = input.tools
+        retainedTools = input.executionTools
       },
     })
 

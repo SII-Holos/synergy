@@ -56,6 +56,7 @@ export function createPluginInvocationContext(input: {
     task: capabilities.has("task.delegate")
       ? {
           start: (value) => input.invokeHost("task.start", value) as never,
+          run: (value) => input.invokeHost("task.run", value) as never,
           current: () => input.invokeHost("task.current", {}) as never,
           get: (value) => input.invokeHost("task.get", value) as never,
           cancel: (value) => input.invokeHost("task.cancel", value) as Promise<void>,
@@ -96,8 +97,18 @@ export function createPluginInvocationContext(input: {
           delete: (key) => input.invokeHost("secrets.delete", { key }) as Promise<void>,
         }
       : undefined,
+    asset:
+      capabilities.has("asset.write") && input.data.actor.type === "agent" && Boolean(input.data.sessionId)
+        ? { create: (value) => input.invokeHost("asset.create", value) as never }
+        : undefined,
+    shell: capabilities.has("shell.execute")
+      ? { run: (value) => input.invokeHost("shell.run", value) as never }
+      : undefined,
     tools: capabilities.has("tool.invoke")
       ? { invoke: (toolId, value) => input.invokeHost("tool.invoke", { toolId, input: value }) as never }
+      : undefined,
+    agent: capabilities.has("agent.call")
+      ? { call: (value) => input.invokeHost("agent.call", value) as Promise<{ text: string }> }
       : undefined,
   }
 }

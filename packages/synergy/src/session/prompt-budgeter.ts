@@ -72,9 +72,8 @@ export namespace PromptBudgeter {
   }
 
   export async function buildPlan(input: PromptPlanInput): Promise<PromptPlan> {
-    const system = [...input.system]
-    const original = [...system]
-    await Plugin.trigger(
+    const original = [...input.system]
+    const transformed = await Plugin.trigger(
       "experimental.chat.system.transform",
       {
         phase: "budget",
@@ -82,10 +81,11 @@ export namespace PromptBudgeter {
         agent: input.agent,
         model: { providerID: input.model.providerID, modelID: input.model.id },
         messageID: input.messageID,
+        system: original,
       },
-      { system },
+      { system: original },
     )
-    const normalizedSystem = system.length > 0 ? system : original
+    const normalizedSystem = transformed.system.length > 0 ? transformed.system : original
     log.debug("system transform budget result", {
       sessionID: input.sessionID,
       ...(input.messageID ? { messageID: input.messageID } : {}),
@@ -93,7 +93,7 @@ export namespace PromptBudgeter {
       model: { providerID: input.model.providerID, modelID: input.model.id },
       beforeSystemCount: original.length,
       afterSystemCount: normalizedSystem.length,
-      restoredEmptySystem: system.length === 0,
+      restoredEmptySystem: transformed.system.length === 0,
     })
 
     const lateSystem = [...(input.lateSystem ?? [])]

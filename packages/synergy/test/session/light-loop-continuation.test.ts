@@ -56,6 +56,28 @@ describe("LightLoopContinuationPolicy", () => {
     expect(await LightLoopContinuationPolicy.handle(gate({ workflow }))).toBeUndefined()
   })
 
+  test.each(["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"] as const)(
+    "does not propose for a %s Light Loop retained for plugin lifecycle delivery",
+    async (status) => {
+      expect(
+        await LightLoopContinuationPolicy.handle(
+          gate({
+            workflow: {
+              kind: "lightloop",
+              instructions: "Plugin-owned task",
+              status,
+              pluginOwner: {
+                pluginId: "test-plugin",
+                pluginGeneration: "generation-one",
+                scopeId: "scope_test",
+              },
+            },
+          }),
+        ),
+      ).toBeUndefined()
+    },
+  )
+
   test("does not propose while a completion review is pending", async () => {
     const proposal = await LightLoopContinuationPolicy.handle(
       gate({

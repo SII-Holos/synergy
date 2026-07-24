@@ -9,6 +9,9 @@ import { LLMTurnMemory } from "@/session/llm-memory"
 import { parseJson } from "@/util/json-parse"
 import { PerformanceProjection } from "./projection"
 import { PerformanceSchema } from "./schema"
+import { AgentTurn } from "@/session/agent-turn"
+import { ToolScheduler } from "@/session/tool-scheduler"
+import { PolicyWorker } from "@/enforcement/policy-worker"
 
 export namespace PerformanceDashboard {
   type MetricRow = ObservabilityStore.StoredMetric & { labels: Record<string, unknown> }
@@ -27,14 +30,22 @@ export namespace PerformanceDashboard {
     const resourceRows = ObservabilityStore.resourceSince(since, { scopeID: input.scopeID })
     const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
     const resources = serverResourceRows.at(-1)
-    const childProcesses = rankChildProcesses(resourceRows)
+    const currentChildRows = resources
+      ? resourceRows.filter((row) => row.time === resources.time && row.process_role?.startsWith("tool"))
+      : []
+    const childProcesses = rankChildProcesses(currentChildRows)
+    const issueCounts = ObservabilityStore.countIssues({ status: "open", scopeID: input.scopeID, since })
     const issues = ObservabilityIssues.list({
       status: "open",
       scopeID: input.scopeID,
+      since,
       limit: 20,
     }).map(PerformanceProjection.issue)
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
     const runtimeStats = SessionManager.runtimeStats()
+    const agentWorkers = AgentTurn.stats()
+    const policyWorkers = PolicyWorker.stats()
+    const toolTasks = ToolScheduler.stats()
     const messageCacheStats = SessionMessageCache.stats()
     const llmTurnStats = LLMTurnMemory.stats()
     const activeLLMTurns = LLMTurnMemory.activeSnapshot(20)
@@ -76,15 +87,9 @@ export namespace PerformanceDashboard {
     const frontendLongTasks = metrics.filter((row) => row.name === "frontend.long_task.duration")
     const frontendVital = (name: string) =>
       metrics.find((row) => row.name === "frontend.web_vital" && row.labels.name === name)?.value
-    const criticalIssueCount = issues.filter((issue) => issue.severity === "critical").length
-    const score = Math.max(
-      0,
-      100 -
-        criticalIssueCount * 40 -
-        issues.filter((issue) => issue.severity === "error").length * 20 -
-        issues.filter((issue) => issue.severity === "warning").length * 8,
-    )
-    const status = criticalIssueCount > 0 ? "critical" : issues.length > 0 ? "degraded" : "healthy"
+    const criticalIssueCount = issueCounts.critical
+    const score = Math.max(0, 100 - criticalIssueCount * 40 - issueCounts.error * 20 - issueCounts.warning * 8)
+    const status = criticalIssueCount > 0 ? "critical" : issueCounts.total > 0 ? "degraded" : "healthy"
     return PerformanceSchema.DashboardSummary.parse({
       generatedAt: new Date().toISOString(),
       windowMs,
@@ -95,7 +100,7 @@ export namespace PerformanceDashboard {
             unavailableReason: "Dashboard summary reached the protected row cap for this window.",
           }
         : undefined,
-      health: { status, score, openIssueCount: issues.length, criticalIssueCount },
+      health: { status, score, openIssueCount: issueCounts.total, criticalIssueCount },
       backend: {
         requestCount: http.length,
         errorRate: http.length ? httpErrors / http.length : 0,
@@ -120,8 +125,19 @@ export namespace PerformanceDashboard {
         appWrittenBytes: resources?.app_written_bytes ?? undefined,
         appReadOps: resources?.app_read_ops ?? undefined,
         appWriteOps: resources?.app_write_ops ?? undefined,
-        childProcessCount: childProcesses.length,
-        childProcessRssBytes: childProcesses.reduce((sum, item) => sum + item.value, 0),
+        childProcessCount: currentChildRows.length,
+        measuredChildProcessCount: currentChildRows.filter(
+          (row) => row.memory_rss_bytes !== undefined && row.memory_rss_bytes !== null,
+        ).length,
+        serviceMemory:
+          resources?.service_memory_source && resources.service_memory_completeness
+            ? {
+                rssBytes: resources.service_memory_rss_bytes ?? undefined,
+                source: resources.service_memory_source,
+                completeness: resources.service_memory_completeness,
+              }
+            : undefined,
+        childProcessRssBytes: currentChildRows.reduce((sum, row) => sum + (row.memory_rss_bytes ?? 0), 0),
       },
       sessions: {
         turnCount: turns.length,
@@ -166,6 +182,11 @@ export namespace PerformanceDashboard {
         recentErrors: diagnostics?.traces.recentErrors.length ?? 0,
         pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
         sessionRuntimes: runtimeStats,
+        execution: {
+          agentWorkers,
+          policyWorkers,
+          toolTasks,
+        },
         messageCache: {
           totalBytes: messageCacheStats.totalBytes,
           activeCount: messageCacheStats.activeCount,

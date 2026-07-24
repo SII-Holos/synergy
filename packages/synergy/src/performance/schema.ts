@@ -45,7 +45,9 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfMetric" })
   export type Metric = z.infer<typeof Metric>
 
-  export const SpanStatus = z.enum(["running", "ok", "error", "cancelled", "timeout"]).meta({ ref: "PerfSpanStatus" })
+  export const SpanStatus = z
+    .enum(["running", "ok", "error", "cancelled", "timeout", "interrupted"])
+    .meta({ ref: "PerfSpanStatus" })
   export type SpanStatus = z.infer<typeof SpanStatus>
   export const Span = z
     .object({
@@ -102,6 +104,23 @@ export namespace PerformanceSchema {
           arrayBuffersBytes: z.number().optional(),
         })
         .default({}),
+      cgroup: z
+        .object({
+          currentBytes: z.number().optional(),
+          highBytes: z.number().optional(),
+          maxBytes: z.number().optional(),
+          peakBytes: z.number().optional(),
+          oomCount: z.number().optional(),
+          oomKillCount: z.number().optional(),
+        })
+        .optional(),
+      serviceMemory: z
+        .object({
+          rssBytes: z.number().optional(),
+          source: z.enum(["cgroup_v2", "process_api"]),
+          completeness: z.enum(["full", "partial"]),
+        })
+        .optional(),
       eventLoop: z.object({ lagMs: z.number().optional(), sampleWindowMs: z.number() }),
       io: z
         .object({
@@ -235,6 +254,14 @@ export namespace PerformanceSchema {
         appReadOps: z.number().int().optional(),
         appWriteOps: z.number().int().optional(),
         childProcessCount: z.number().int().optional(),
+        measuredChildProcessCount: z.number().int().optional(),
+        serviceMemory: z
+          .object({
+            rssBytes: z.number().optional(),
+            source: z.enum(["cgroup_v2", "process_api"]),
+            completeness: z.enum(["full", "partial"]),
+          })
+          .optional(),
         childProcessRssBytes: z.number().optional(),
       }),
       sessions: z.object({
@@ -268,7 +295,68 @@ export namespace PerformanceSchema {
           childCount: z.number().int(),
           userCount: z.number().int(),
           waiterCount: z.number().int(),
+          executionPhases: z
+            .partialRecord(
+              z.enum([
+                "queued_agent",
+                "running_agent",
+                "authorizing_tools",
+                "queued_tools",
+                "running_tools",
+                "waiting_background",
+                "stopping",
+              ]),
+              z.number().int().nonnegative(),
+            )
+            .optional(),
         }),
+        execution: z
+          .object({
+            agentWorkers: z.object({
+              configured: z.number().int().positive(),
+              maxQueued: z.number().int().nonnegative(),
+              maxQueuedBytes: z.number().int().positive(),
+              workers: z.number().int().nonnegative(),
+              ready: z.number().int().nonnegative(),
+              active: z.number().int().nonnegative(),
+              queued: z.number().int().nonnegative(),
+              queuedBytes: z.number().int().nonnegative(),
+              rssBytes: z.number().int().nonnegative(),
+              heapUsedBytes: z.number().int().nonnegative(),
+            }),
+            policyWorkers: z.object({
+              configured: z.number().int().positive(),
+              maxQueued: z.number().int().nonnegative(),
+              maxQueuedBytes: z.number().int().positive(),
+              workers: z.number().int().nonnegative(),
+              ready: z.number().int().nonnegative(),
+              active: z.number().int().nonnegative(),
+              queued: z.number().int().nonnegative(),
+              queuedBytes: z.number().int().nonnegative(),
+              rssBytes: z.number().int().nonnegative(),
+              heapUsedBytes: z.number().int().nonnegative(),
+            }),
+            toolTasks: z.object({
+              active: z.number().int().nonnegative(),
+              queued: z.number().int().nonnegative(),
+              tracked: z.number().int().nonnegative(),
+              queuedBytes: z.number().int().nonnegative(),
+              maxConcurrent: z.number().int().positive(),
+              maxQueued: z.number().int().nonnegative(),
+              maxQueuedBytes: z.number().int().positive().optional(),
+              byExecutor: z
+                .partialRecord(
+                  z.enum(["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]),
+                  z.object({
+                    active: z.number().int().nonnegative(),
+                    queued: z.number().int().nonnegative(),
+                    limit: z.number().int().positive(),
+                  }),
+                )
+                .optional(),
+            }),
+          })
+          .optional(),
         messageCache: z
           .object({
             totalBytes: z.number().int().nonnegative(),
@@ -432,6 +520,7 @@ export namespace PerformanceSchema {
     ageMs: z.number(),
     idleMs: z.number(),
     stale: z.boolean(),
+    activeSince: z.number().optional(),
   }).meta({ ref: "PerfInflightSpan" })
   export type InflightSpan = z.infer<typeof InflightSpan>
 

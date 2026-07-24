@@ -4,6 +4,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
 import { MessageV2 } from "../../src/session/message-v2"
+import { SessionInbox } from "../../src/session/inbox"
 import { tmpdir } from "../fixture/fixture"
 
 async function writeUser(sessionID: string, text: string): Promise<MessageV2.User> {
@@ -249,6 +250,57 @@ describe("SessionHistory.modelMessages", () => {
 
         const model = await modelMessages({ sessionID: session.id })
         expect(model.map((message) => message.info.id)).toEqual([root.id, summary.id, legacyID])
+      },
+    })
+  })
+  test("keeps a delayed current-format inbox root after a compaction summary", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const delayedRootID = Identifier.ascending("message")
+        const root = await writeUser(session.id, "root")
+        root.isRoot = true
+        root.rootID = root.id
+        root.time.created = 100
+        await Session.updateMessage(root)
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: root.id,
+          sessionID: session.id,
+          type: "compaction",
+          auto: true,
+        })
+
+        const summary = await writeAssistant(session.id, root.id, "summary", { summary: true, rootID: root.id })
+        summary.time = { created: 200, completed: 200 }
+        await Session.updateMessage(summary)
+
+        const delayedRoot = await Session.updateMessage({
+          id: delayedRootID,
+          role: "user",
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          isRoot: true,
+          rootID: delayedRootID,
+          time: { created: 300 },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: delayedRoot.id,
+          sessionID: session.id,
+          type: "text",
+          text: "delayed inbox task",
+        })
+
+        const full = await Session.messages({ sessionID: session.id })
+        const model = await modelMessages({ sessionID: session.id })
+
+        expect(full.map((message) => message.info.id)).toEqual([root.id, summary.id, delayedRootID])
+        expect(model.map((message) => message.info.id)).toEqual([root.id, summary.id, delayedRootID])
+        expect(await SessionInbox.latestRootID(session.id)).toBe(delayedRootID)
       },
     })
   })

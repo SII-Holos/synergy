@@ -101,7 +101,7 @@
     "pkg",
     "HEAD",
   ],
-  "ignoreUnresolved": [".json", ".svg", "\\.po\\?lingui$"],
+  "ignoreUnresolved": [".json", ".svg"],
   "rules": {
     "catalog": "off",
   },
@@ -111,8 +111,8 @@
       "project": ["src/**/*.ts", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
     },
     "packages/app": {
-      "entry": ["lingui.config.ts", "src/**/*.{ts,tsx}", "script/**/*.ts"],
-      "project": ["src/**/*.{ts,tsx}", "script/**/*.ts"],
+      "entry": ["lingui.config.ts", "src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
+      "project": ["src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
     },
     "packages/desktop": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],

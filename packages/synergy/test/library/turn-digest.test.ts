@@ -228,3 +228,25 @@ describe("TurnDigest.summarizeTurn", () => {
     expect(result.user).toContain("Second part")
   })
 })
+
+describe("TurnDigest.userTextFromRendered", () => {
+  test("recovers user input from a canonical rendered digest", () => {
+    const raw = "### User\nRun the focused tests\n\n### Response\nAll focused tests passed.\n\n### Summary\nVerified."
+
+    expect(TurnDigest.userTextFromRendered(raw)).toBe("Run the focused tests")
+  })
+
+  test("rejects a rendered digest when a user request contains a section heading", () => {
+    const raw =
+      "### User\nKeep this literal:\n\n### Response\ninside my request\n\n### Response\nThe request was completed."
+
+    expect(TurnDigest.userTextFromRendered(raw)).toBeUndefined()
+  })
+
+  test("rejects missing or reordered canonical sections", () => {
+    expect(TurnDigest.userTextFromRendered("prefix\n### User\nRequest\n\n### Response\nDone.")).toBeUndefined()
+    expect(
+      TurnDigest.userTextFromRendered("### User\nRequest\n\n### Changes\nNone.\n\n### Response\nDone."),
+    ).toBeUndefined()
+  })
+})

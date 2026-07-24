@@ -1,4 +1,4 @@
-import { skillCreator } from "./skill-creator"
+import { synergySkillCreator } from "./synergy-skill-creator"
 import { synergyConfig } from "./synergy-config"
 
 export interface BuiltinSkill {
@@ -7,8 +7,6 @@ export interface BuiltinSkill {
   content: string
   builtin: true
   references?: Record<string, string>
-  scripts?: Record<string, string>
-  condition?: () => Promise<boolean> | boolean
 }
 
-export const BUILTIN_SKILLS: BuiltinSkill[] = [skillCreator, synergyConfig]
+export const BUILTIN_SKILLS: BuiltinSkill[] = [synergySkillCreator, synergyConfig]

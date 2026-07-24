@@ -546,7 +546,7 @@ export function StatusBar() {
   const session = createMemo(() => {
     const id = params.id
     if (!id) return undefined
-    return sync.data.session.find((item) => item.id === id)
+    return sync.session.get(id)
   })
   const status = createMemo(() => (params.id ? sync.data.session_status[params.id] : undefined))
   const waiting = createMemo(() => {

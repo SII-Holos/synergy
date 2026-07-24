@@ -59,9 +59,10 @@ One model step performs the following work:
 5. Project workflow-wrapped messages without mutating stored user text.
 6. Build and measure the provider prompt.
 7. Trigger compaction instead of calling the model if the prompt crosses the configured soft budget.
-8. Resolve executable tools through the centralized tool boundary.
-9. Stream the model response and tool activity into one assistant message.
-10. Run post-LLM jobs, persist terminal state, and decide whether another model call is needed.
+8. Resolve a serializable model-facing tool catalog separately from Control Plane execution callbacks.
+9. Queue the provider turn on `AgentTurn`, consume its bounded event frames, and persist one assistant message.
+10. Release the Agent worker, dispatch generation-aware ToolTasks, authorize each operation in the Control Plane before physical execution, and settle results.
+11. Run post-LLM jobs, persist terminal state, and decide whether another model call is needed.
 
 The assistant created for the step keeps `parentID = R.id` and `rootID = R.id`, even when the step follows a steer, context injection, tool result, or compaction boundary.
 
@@ -89,20 +90,22 @@ When a third-party transport case returns no automatic variants, a configured `r
 
 Not every model call belongs to a persisted conversation, but every product inference must use a deliberate lifecycle boundary.
 
-| Lifecycle                      | Current boundary                                                                                                                     | Examples and properties                                                                                                                                                                            |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sessionless derived work       | Resolve a hidden internal agent and model, then call `LLM.stream()` without creating a session or persisting an inference transcript | title and turn summaries, Experience encoding, SmartAllow classification, agent generation, and GitHub shadow issue classification; no resumable transcript, Cortex progress, or completion notice |
-| Existing durable work          | `SessionInvoke` and the owning session loop                                                                                          | user/API input, Channel or Agenda execution, workflow continuation, and in-place compaction                                                                                                        |
-| New delegated or reviewed work | `Cortex.launch()`                                                                                                                    | a child session with lineage, visibility, concurrency, progress, cancellation, timeout, cleanup, and a summary/final/structured output contract                                                    |
-| Provider/bootstrap probe       | a narrow direct AI SDK call                                                                                                          | setup capability probing before the normal agent/session runtime is available                                                                                                                      |
+| Lifecycle                      | Current boundary                                                                                                             | Examples and properties                                                                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sessionless derived work       | `AgentCall.text()` or a domain-owned `AgentTurn` call through the external worker pool, without persisting an inference turn | title and turn summaries, SmartAllow, agent generation, GitHub classification, and Experience encoding; no resumable transcript, Cortex progress, or completion notice |
+| Existing durable work          | `SessionInvoke` and the owning session loop, with each provider turn executed by `AgentTurn`                                 | user/API input, Channel or Agenda execution, workflow continuation, and in-place compaction                                                                            |
+| New delegated or reviewed work | `Cortex.launch()`                                                                                                            | a child session with lineage, visibility, concurrency, progress, cancellation, timeout, cleanup, and a summary/final/structured output contract                        |
+| Provider/bootstrap probe       | a narrow direct AI SDK call                                                                                                  | setup capability probing before the normal agent/session runtime is available                                                                                          |
 
-`library/experience-encoder.ts` currently defines a private `callAgent()` helper for its own three encoders. It is not a shared repository API. Other sessionless callers use the same underlying resolution and `LLM.stream()` pattern independently. They may pass an existing or request-scoped session/message identity because the shared API requires context, but they do not create a durable session or store the inference exchange. That shared LLM boundary preserves provider transforms, model variants, prompt-cache policy, plugin chat hooks, telemetry, and reasoning normalization; direct product calls to `generateText()` or `streamText()` would bypass part of that contract.
+`AgentCall.text()` is the Core boundary for text-only Sessionless work. It resolves the Agent and model (with an explicit caller-owned fallback), creates only ephemeral LLM identity when no request identity exists, fixes the model-facing tool catalog to empty, combines caller cancellation, timeout, and output-limit aborts, queues the call through `AgentTurn`, collects an owned text stream within a bound, and disposes it in `finally`. It returns structured missing-agent/model, timeout, cancellation, and input/output-bound errors. It never creates Session history, Cortex work, Experience lineage, or completion notices. The caller continues to own prompts, retry count, fallback policy, parsing, persistence, and domain error mapping.
 
-The GitHub shadow classifier (`classifyGitHubObservation()`) is a sessionless caller in this family: it resolves the hidden `github-shadow-classifier` agent through the nano model role, calls `LLM.stream()` with an ephemeral session/message identity, passes `maxOutputTokens` from its budget config, and discards the exchange. No session or message record persists.
+Title and turn summary generation, SmartAllow, agent generation, GitHub classification, and Experience Encoder all enter the same external Agent worker boundary. Domain-specific callers may use `AgentCall.text()` or `AgentTurn` directly when they require usage accounting or specialized parsing, but production product code does not call `LLM.stream()` outside the Agent worker runner. The setup capability probe remains the narrow bootstrap exception because it runs before normal runtime orchestration is available.
+
+The GitHub shadow classifier (`classifyGitHubObservation()`) is a sessionless caller in this family: it resolves the hidden `github-shadow-classifier` agent through the nano model role, queues an `AgentTurn` with an ephemeral session/message identity, passes `maxOutputTokens` from its budget config, and discards the exchange. No session or message record persists.
 
 Sessionless work is appropriate only when the result is derived data and a durable transcript would be noise. Work that users or parent agents must inspect, resume, cancel, audit, or receive as a task belongs in a session. New ordinary child work uses Cortex rather than manually composing `Session.create()` with `SessionInvoke`; specialized existing flows such as `look_at` and Chronicler are explicit exceptions, not the default delegation contract.
 
-SmartAllow is currently in the sessionless family. As these callers converge, new code should reuse a shared internal-agent-call abstraction rather than add another domain-local wrapper; until that abstraction exists, `LLM.stream()` remains the common runtime boundary.
+SmartAllow remains in the sessionless family. New text-only Sessionless inference uses `AgentCall.text()` rather than adding a domain-local lifecycle wrapper unless the caller needs specialized parsing or usage accounting.
 
 ## Prompt Assembly
 
@@ -142,6 +145,7 @@ Tool definitions are filtered for agent visibility and current workflow before p
 `SessionProcessor` owns streamed tool state:
 
 - tool input can move through generating, pending, and running states;
+- streamed raw argument deltas are transport/progress data used for incremental bounds and diagnostics, while the AI SDK `tool-call.input` is the canonical input for final bounds, persistence, loop guards, permission evaluation, and execution;
 - each provider call ID owns one runtime execution promise, so replayed AI SDK callbacks reuse the original result or error instead of repeating tool side effects;
 - each execution has a settlement slot keyed by provider call ID;
 - completed output, attachments, metadata, timing, and errors are persisted on the original tool part;
@@ -166,7 +170,7 @@ Current loop-level behavior includes:
 - repeated same-class tool-error stopping
 - tool-category failure analysis and escalation
 
-A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs cannot hold the critical execution path.
+A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs capture detached payloads and cannot hold the critical execution path. By default every captured payload runs independently; a job opts into latest-pending coalescing only by defining a stable `key()`. Each background execution receives an abort signal and a finite timeout, so consumers must propagate cancellation through history reads, model calls, child-session work, and other long-running operations.
 
 ### Turn diff settlement
 
@@ -179,7 +183,7 @@ The `summarize` post-step job computes file diffs and derives title/body for eac
 
 Concurrent summarizations for the same session use a FIFO queue keyed by terminal assistant revision, allowing later continuations of one root turn while coalescing duplicate triggers. Cancellation propagates through snapshot and LLM work, and a worker settles before the queue advances so late writes cannot overwrite a newer revision. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary. The frontend renders that server-owned state without comparing `deadlineAt` to its local clock. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
 
-The post-job gives the first worker the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving summaries. Later queued revisions retain only their bounded root-turn snapshot rather than another full working set; session aggregation extends the discardable persisted summary cursor, while direct callers without a snapshot read authoritative durable history. If an existing session aggregation has no cursor, one bounded call rebuilds it from complete history before incremental updates resume.
+The post-job captures only session, root-message, and terminal-revision identifiers, then independently reloads the compaction-aware model working set without retaining or populating the loop-scoped message cache. Once `SessionSummary` accepts a run, later queued revisions retain only their bounded root-turn snapshot rather than another full working set; session aggregation extends the discardable persisted summary cursor, while direct callers without a snapshot use the same detached working-set read. If an existing session aggregation has no cursor, bounded direct callers may read authoritative durable history once to initialize it.
 
 ## Prompt Budget
 
@@ -221,7 +225,7 @@ The compaction job:
 
 1. resolves the dedicated `compaction` agent and its available model, falling back to the root model;
 2. projects the current effective history with no tools;
-3. trims oldest summary input if even the compaction model cannot accept the full history;
+3. trims oldest summary input if even the compaction model cannot accept the full history, advancing the cut past any tool results whose assistant tool calls were omitted;
 4. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
 5. asks only for a structured continuation summary;
 6. records provider or processor failures as `failed` and empty output as `empty`, leaving those terminal attempts hidden and outside model context;
@@ -255,19 +259,27 @@ Separately, asynchronous pruning clears large outputs from older completed tool 
 - accumulated protected and prunable token thresholds are exceeded.
 
 Pruning is configurable and records a compaction timestamp on the tool state.
-It operates on the loop's existing immutable working-set snapshot, and its `Session.updatePart()` writes maintain the loop-scoped cache incrementally. Running a prune job does not invalidate or reread the complete session history.
+Pruning uses an independent compaction-aware working-set read so it cannot retain or populate the active loop's cache. Its `Session.updatePart()` writes still maintain the loop-scoped cache incrementally when that cache exists.
 
 ## Streaming and Persistence
 
 Text, reasoning, and tool parts are persisted throughout the step. Streaming text/reasoning writes are coalesced at a short write-behind interval; terminal and discrete updates flush immediately. Before a turn finalizes, pending writes are flushed so a missing terminal callback cannot silently lose accumulated text.
 
-Every `LLM.stream()` consumer takes one owned full stream, text stream, or text promise through the shared `LLM` ownership helpers. Those helpers immediately cancel the residual branch retained by the AI SDK's internal stream tee and settle that cancellation after the consumed branch finishes. Normal turn completion also removes the session-abort listener and closes the per-turn combined signal; settled streams cannot remain anchored until the whole session exits.
+Inside an Agent worker, the `LLM.stream()` consumer takes one owned full stream through the shared `LLM` ownership helper. The helper immediately cancels the residual branch retained by the AI SDK's internal stream tee and settles that cancellation after the consumed branch finishes. Normal turn completion also removes the session-abort listener and closes the per-turn combined signal; settled streams cannot remain anchored until the whole session exits.
+
+Tool definitions cross the Agent worker boundary as plain JSON Schema data. AI SDK runtime wrappers, including symbol-keyed validator metadata, remain Control Plane-owned and are not included in worker turn snapshots.
+
+The external `AgentTurn` boundary transfers immutable turn snapshots through a versioned, schema-validated protocol. Requests are capped at 64 MiB and paged through acknowledged 1 MiB chunks rather than one unbounded IPC object. Worker event frames are Synergy-owned projections rather than raw AI SDK stream objects: lifecycle events retain only fields consumed by the Control Plane, so provider request bodies, response diagnostics, and warnings do not cross the process boundary. Frames are capped at 2 MiB, text/reasoning deltas coalesce up to 16 ms or 32 KiB, and each frame remains the only buffered frame until the Control Plane consumer acknowledges it. Agent queue counts and aggregate bytes are bounded, and cancellation, heartbeat timeout, crash replacement, RSS/heap/turn-count recycling, and parent-death cleanup affect only the owned turn.
+
+Agent worker provider-model caches include a one-way credential fingerprint, so installing a new per-turn provider plan cannot reuse a model instance created with an older key. A worker that exits before the `ready` handshake is treated as a startup failure: replacement attempts use exponential backoff from 250 ms to 4 seconds, and the sixth consecutive startup failure opens the pool circuit, rejects queued turns, and makes later turns fail immediately. A successful handshake resets the startup-failure sequence; crashes after readiness remain eligible for immediate replacement.
 
 Normal session turns also carry one bounded memory-attribution handle from history projection through stream disposal. It records estimated history bytes before and after projection, the prepared request and tool-schema bytes, streamed output and raw tool-input characters, active turn and stream counts, and process-memory deltas relative to turn start. Memory checkpoints run before and after projection, after stream startup, periodically while a stream remains active, at bounded tool-input intervals, and after stream disposal. Checkpoints publish sizes and deltas only; prompt text, tool input, and response content never enter observability.
 
-After a normally settled model turn, the loop clears large prompt, tool, projection, and provenance containers in place before dropping its local references. In-place clearing is required because the JavaScript runtime may keep values captured across an `await` reachable through the async frame even after local reassignment. A timed-out processor may still be consuming its input, so that abandoned path drops loop references without mutating the shared containers.
+Memory checkpoints share one process-wide collection coordinator. Concurrent turns coalesce behind one in-flight request, all pressure levels observe the same minimum interval, and routine collection is asynchronous so critical pressure cannot make each active turn trigger another synchronous full GC on the server event loop.
 
-Provider SSE input passes through a 16 MiB per-event **SSE event parser bound** before it enters the AI SDK parser. The bound terminates an event whose encoded bytes exceed that threshold, preventing unbounded parser state for one unterminated event; it is not a limit on the total response, transport chunk size, or process memory. Streamed tool-call input is bounded independently at 1 MiB for both incremental deltas and final-only provider calls, and an oversized call is rejected before tool execution with terminal tool and assistant errors.
+After a normally settled model turn, the loop clears large prompt, tool, projection, and provenance containers in place before dropping its local references. The Agent worker releases its provider stream before the Control Plane authorizes or dispatches proposed tools, so permission waits, tool execution, questions, and child sessions never retain an Agent slot. A timed-out processor may still be consuming its input, so that abandoned path drops loop references without mutating the shared containers.
+
+Provider SSE input passes through a 16 MiB per-event **SSE event parser bound** before it enters the AI SDK parser. The bound terminates an event whose encoded bytes exceed that threshold, preventing unbounded parser state for one unterminated event; it is not a limit on the total response, transport chunk size, or process memory. Provider body wrappers read only on downstream demand and release their owned reader after normal completion, upstream failure, timeout, or downstream cancellation. Streamed tool-call input is bounded independently at 1 MiB for both incremental deltas and final-only provider calls, and an oversized call is rejected before tool execution with terminal tool and assistant errors.
 
 Persisted file diffs retain at most 8,000 characters of preview per file and at most 1 MiB of UTF-8 preview bytes across one diff array. Once the aggregate budget is exhausted, later entries keep file, additions, deletions, binary, and byte-size metadata, omit `preview`, and set `truncated = true`. New snapshots, imports, canonical reads, and the session migration apply the same bound.
 
@@ -297,6 +309,9 @@ Abort never publishes idle by itself. The owner remains in `stopping` until its 
 - Stored user text is not rewritten to apply workflow instructions.
 - Prompt assembly keeps stable content before volatile advisory context.
 - Tool visibility and tool execution permission remain separate stages.
+- Model-facing tools are serializable schemas without `execute()` callbacks.
+- Agent workers never write canonical session state or wait for permission/tools after their provider turn ends.
+- ToolTask identity includes session generation, message, call, executor, and attempt; dispatch never automatically replays a possibly side-effecting running call.
 - Sessionless internal inference never implies durable task history or Cortex lifecycle.
 - New inspectable delegated or reviewed work enters the session model through Cortex.
 - Automatic compaction is a resumable context boundary, not history deletion.

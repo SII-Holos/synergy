@@ -15,6 +15,16 @@ afterEach(() => {
   CortexConcurrency.reset()
 })
 
+function memorySnapshot(rssGiB: number, arrayBuffersGiB = 0) {
+  return {
+    rssBytes: rssGiB * 1024 ** 3,
+    heapUsedBytes: 1,
+    heapTotalBytes: 1,
+    externalBytes: 1,
+    arrayBuffersBytes: arrayBuffersGiB * 1024 ** 3,
+  }
+}
+
 describe("Cortex routes", () => {
   test("returns configured, effective, and memory-pressure concurrency status", async () => {
     const response = await Server.App().request("/cortex/tasks/concurrency")
@@ -41,5 +51,21 @@ describe("Cortex routes", () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ configured: 3, effective: 3, source: "config" })
     expect(CortexConcurrency.globalStatus()).toMatchObject({ configured: 3, effective: 3, source: "config" })
+  })
+
+  test("reports memory pressure as the effective admission limit", async () => {
+    CortexConcurrency.configure(3)
+    CortexConcurrency.setMemoryProbeForTest(() => memorySnapshot(10, 9))
+
+    const response = await Server.App().request("/cortex/tasks/concurrency")
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      configured: 3,
+      effective: 2,
+      memoryPressureLimit: 2,
+      memoryPressureReason: "critical_memory_pressure",
+      source: "config",
+    })
   })
 })

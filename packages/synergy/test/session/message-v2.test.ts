@@ -47,6 +47,32 @@ function basePart(messageID: string, id: string) {
   }
 }
 
+describe("session.message-v2.compareStorageOrder", () => {
+  test("orders current-format message IDs by creation time with an ID tie-break", () => {
+    const preallocated = { ...userInfo("msg_000000000001AAAAAAAAAAAAAA"), time: { created: 300 } }
+    const direct = { ...userInfo("msg_000000000002BBBBBBBBBBBBBB"), time: { created: 200 } }
+    const sameTime = { ...userInfo("msg_000000000003CCCCCCCCCCCCCC"), time: { created: 300 } }
+
+    expect([preallocated, sameTime, direct].toSorted(MessageV2.compareStorageOrder).map((info) => info.id)).toEqual([
+      direct.id,
+      preallocated.id,
+      sameTime.id,
+    ])
+  })
+
+  test("orders legacy stable-delivery IDs by the same creation-time invariant", () => {
+    const preallocated = { ...userInfo(`msg_${"a".repeat(26)}`), time: { created: 300 } }
+    const direct = { ...userInfo(`msg_${"f".repeat(26)}`), time: { created: 200 } }
+    const sameTime = { ...userInfo(`msg_${"b".repeat(26)}`), time: { created: 300 } }
+
+    expect([preallocated, sameTime, direct].toSorted(MessageV2.compareStorageOrder).map((info) => info.id)).toEqual([
+      direct.id,
+      preallocated.id,
+      sameTime.id,
+    ])
+  })
+})
+
 describe("session.message-v2.toModelMessage", () => {
   test("filters out messages with no parts", () => {
     const input: MessageV2.WithParts[] = [

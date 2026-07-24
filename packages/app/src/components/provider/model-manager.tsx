@@ -10,7 +10,7 @@ import { useProviders } from "@/hooks/use-providers"
 
 const freeTag = { id: "model.manager.tag.free", message: "Free" }
 const latestTag = { id: "model.manager.tag.latest", message: "Latest" }
-const quickLabel = { id: "model.manager.quick", message: "Quick" }
+const quickLabel = { id: "model.manager.quick", message: "Quick switch" }
 const searchModelsPlaceholder = { id: "model.manager.search.placeholder", message: "Search models" }
 const noQuickSwitchLabel = { id: "model.manager.empty.quickSwitch", message: "No quick-switch models" }
 const noConnectedLabel = { id: "model.manager.empty.connected", message: "No connected model results" }

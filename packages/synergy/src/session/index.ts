@@ -848,6 +848,7 @@ export namespace Session {
       SessionManager.forgetSession(sessionID)
       SessionMessageCache.disable(sessionID)
       await removeEndpointIndex(session)
+      await MessageV2.removeOrderIndex(scopeID, asSessionID(sessionID))
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
       await removePageIndexEntry(scope.id, sessionID)
@@ -891,10 +892,7 @@ export namespace Session {
     const canonical = MessageV2.canonicalMessage(msg)
     const session = await SessionManager.requireSession(msg.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    await Storage.write(
-      StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), asMessageID(canonical.id)),
-      canonical,
-    )
+    await MessageV2.writeInfo({ scopeID, info: canonical })
     SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
@@ -936,7 +934,11 @@ export namespace Session {
     async (input) => {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
-      await Storage.remove(StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)))
+      await MessageV2.removeInfo({
+        scopeID,
+        sessionID: asSessionID(input.sessionID),
+        messageID: asMessageID(input.messageID),
+      })
       // Structural change: drop the cache and let the next read repopulate.
       SessionMessageCache.invalidate(input.sessionID)
       Bus.publish(MessageV2.Event.Removed, {

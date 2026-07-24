@@ -45,6 +45,7 @@ import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { BashVirtualPath } from "@/tool/bash/virtual-path"
+import { PolicyWorker } from "./policy-worker"
 
 export interface Capability {
   class: string
@@ -290,22 +291,20 @@ function pushUniqueCapability(caps: Capability[], cap: Omit<Capability, "approve
   if (caps.some((existing) => existing.class === cap.class)) return
   caps.push({ ...cap })
 }
-function firstPathArg(args: Record<string, any>): string {
-  return (
-    (args.path as string) ??
-    (args.file_path as string) ??
-    (args.filePath as string) ??
-    (args.output_path as string) ??
-    (args.outputPath as string) ??
-    ""
-  )
+function stringPathArgs(value: unknown): string[] {
+  if (typeof value === "string") return value.length > 0 ? [value] : []
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0)
+}
+
+function pathArgs(args: Record<string, any>): string[] {
+  return [args.path, args.file_path, args.filePath, args.output_path, args.outputPath]
+    .flatMap(stringPathArgs)
+    .filter((item, index, paths) => paths.indexOf(item) === index)
 }
 function imagePathArgs(args: Record<string, any>): { read: string[]; write: string[] } {
-  const read = Array.isArray(args.input_paths)
-    ? args.input_paths.filter((item: unknown): item is string => typeof item === "string" && item.length > 0)
-    : []
-  const outputPath = firstPathArg(args)
-  return { read, write: outputPath ? [outputPath] : [] }
+  const write = [...stringPathArgs(args.output_path), ...stringPathArgs(args.outputPath)]
+  return { read: stringPathArgs(args.input_paths), write: [...new Set(write)] }
 }
 
 function isDestructive(command: string): string | null {
@@ -518,12 +517,11 @@ export namespace EnforcementGate {
       // so secret roots/candidates get profile-aware handling instead of a
       // blanket .synergy/.env hard boundary.
       if (toolName !== "openai_image_gen" && toolName !== "openai_image_edit") {
-        const pathArg = firstPathArg(args)
-        if (pathArg) {
-          const mode =
-            toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
-              ? "write"
-              : "read"
+        const mode =
+          toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
+            ? "write"
+            : "read"
+        for (const pathArg of pathArgs(args)) {
           classifyProtectedPathCapability(caps, pathArg, mode, { activeWorkspace, originalCheckout, synergyRoot })
         }
       }
@@ -620,8 +618,7 @@ export namespace EnforcementGate {
             classifyPathCapability(caps, p, { ...pathOptions, write: true })
           }
         } else {
-          const filePath = firstPathArg(args)
-          if (filePath) {
+          for (const filePath of pathArgs(args)) {
             classifyProtectedPathCapability(caps, filePath, "write", { activeWorkspace, originalCheckout, synergyRoot })
             classifyPathCapability(caps, filePath, { ...pathOptions, write: true })
           }
@@ -636,9 +633,7 @@ export namespace EnforcementGate {
         toolName === "view_image" ||
         toolName === "attach"
       ) {
-        const raw = args.filePath ?? args.file_path ?? ""
-        const filePath = Array.isArray(raw) ? (raw[0] ?? "") : raw
-        if (filePath) {
+        for (const filePath of pathArgs(args)) {
           classifyPathCapability(caps, filePath, pathOptions)
         }
         return { capabilities: caps }
@@ -1060,7 +1055,12 @@ export namespace EnforcementGate {
       return classes.join("|") || "file_read"
     }
 
-    function evaluate(toolName: string, args: Record<string, any>): Envelope {
+    function evaluateClassified(
+      toolName: string,
+      args: Record<string, any>,
+      classification: ClassifyResult,
+      policyFailure?: string,
+    ): Envelope {
       const perfStart = performance.now()
       // ── ExecPolicy: bash command routing ──────────────────────────────
       let execPolicyMatch: RuleMatch | undefined
@@ -1117,7 +1117,7 @@ export namespace EnforcementGate {
         amendment = generateAmendment(execPolicyMatch) ?? undefined
       }
 
-      const { capabilities } = classify(toolName, args)
+      const { capabilities } = classification
 
       let decision: "allow" | "ask" | "deny" = "allow"
       const rules = resolved.ruleset
@@ -1160,6 +1160,12 @@ export namespace EnforcementGate {
         deniedCapClass = deniedCapClass ?? capabilities.find((c) => c.class !== "file_read")?.class ?? "tool_request"
       }
 
+      if (policyFailure) {
+        decision = "deny"
+        deniedCapClass = "protected_op"
+        amendment = undefined
+      }
+
       // Approval cache: if the profile says "ask" but the capability was
       // previously approved for this session, skip the prompt.
       if (decision === "ask") {
@@ -1172,7 +1178,14 @@ export namespace EnforcementGate {
 
       // Populate refusal info for deny decisions
       let refusal: Envelope["refusal"]
-      if (decision === "deny") {
+      if (policyFailure) {
+        refusal = {
+          reason: `Policy classification is unavailable (${policyFailure}); the operation was not executed`,
+          permanent: false,
+          matchedPermission: "protected_op",
+          guidance: "Retry after the Policy worker has recovered.",
+        }
+      } else if (decision === "deny") {
         const isAutonomous = profileId === "autonomous"
         const diagnosticReasons = capabilities
           .filter((c) => c.reason)
@@ -1242,9 +1255,53 @@ export namespace EnforcementGate {
       return envelope
     }
 
+    function evaluate(toolName: string, args: Record<string, any>): Envelope {
+      return evaluateClassified(toolName, args, classify(toolName, args))
+    }
+
+    async function evaluateIsolated(
+      toolName: string,
+      args: Record<string, any>,
+      signal?: AbortSignal,
+    ): Promise<Envelope> {
+      let classification: ClassifyResult
+      try {
+        classification = await PolicyWorker.classify({
+          context: PolicyWorker.context(options),
+          toolName,
+          args,
+          signal,
+        })
+      } catch (error) {
+        if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error
+        const name = error instanceof Error && error.name ? error.name : "Error"
+        const classification = {
+          capabilities: [
+            {
+              class: "protected_op",
+              nonBypassable: true,
+              opaque: true,
+              reason: "policy classification unavailable",
+              metadata: { failure: name },
+            },
+          ],
+        }
+        ObservabilityMetrics.record({
+          name: "enforcement.policy.fallback",
+          value: 1,
+          unit: "count",
+          module: "enforcement",
+          labels: { tool: toolName, failure: name },
+        })
+        return evaluateClassified(toolName, args, classification, name)
+      }
+      return evaluateClassified(toolName, args, classification)
+    }
+
     return {
       classify,
       evaluate,
+      evaluateIsolated,
       getSandbox(): ProfileSandbox {
         return resolved.sandbox
       },

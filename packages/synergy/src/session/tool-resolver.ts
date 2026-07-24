@@ -45,10 +45,14 @@ import { ObservabilityToolFailures } from "@/observability/tool-failures"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { ObservabilityRedaction } from "@/observability/redaction"
 import { ObservabilitySpans } from "@/observability/spans"
-import { SkillPaths } from "@/skill/paths"
+import { SkillSourceProfile } from "@/skill/source-profile"
 import { LightLoopReviewAccess } from "./light-loop-review-access"
 import { BlueprintLoopReviewAccess } from "./blueprint-loop-review-access"
 import { BlueprintLoopStore } from "@/blueprint"
+import type { ToolCatalog } from "./tool-catalog"
+import { ToolExecutor } from "./tool-executor"
+import type { ToolExecutorKind } from "./tool-scheduler"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -201,6 +205,7 @@ export namespace ToolResolver {
     display?: ToolDisplay
     source?: Tool.Source
     diagnostic?: ToolDiagnosticInfo
+    executor?: ToolExecutorKind
     description: string
     inputSchema: JSONSchema7
     createRuntimeTool?(input: Input): AITool
@@ -221,7 +226,9 @@ export namespace ToolResolver {
   }
 
   export interface ResolvedTools {
-    tools: Record<string, AITool>
+    definitions: ToolCatalog.Definition[]
+    executionTools: Record<string, AITool>
+    executorKinds: Record<string, ToolExecutorKind>
     activeToolIDs: string[]
   }
 
@@ -1158,7 +1165,7 @@ export namespace ToolResolver {
         }
       }
 
-      if (def.id === "loop_stop" && input.session?.workflow?.kind !== "lightloop") {
+      if (def.id === "loop_stop" && !isActiveLightLoopWorkflow(input.session?.workflow)) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
@@ -1318,6 +1325,7 @@ export namespace ToolResolver {
         display: item.display,
         description: item.description,
         inputSchema: schema,
+        executor: "control_plane",
         createRuntimeTool(runtimeInput) {
           const context = contextFactory(runtimeInput)
           return tool({
@@ -1405,6 +1413,7 @@ export namespace ToolResolver {
         log.warn("tool skipped due to schema failure", {
           tool: item.id,
           source: item.source,
+          executor: ToolExecutor.classify(item.id, item.source),
           sessionID: input.sessionID,
           error: error instanceof Error ? error.message : String(error),
           diagnostic: diagnostic.message,
@@ -1414,6 +1423,7 @@ export namespace ToolResolver {
           exposure: item.exposure,
           display: item.display,
           source: item.source,
+          executor: ToolExecutor.classify(item.id, item.source),
           diagnostic,
           description: diagnostic.message,
           inputSchema: {
@@ -1429,6 +1439,7 @@ export namespace ToolResolver {
         exposure: item.exposure,
         display: item.display,
         source: item.source,
+        executor: ToolExecutor.classify(item.id, item.source),
         description: item.description,
         inputSchema: schema,
         createRuntimeTool(runtimeInput) {
@@ -1469,7 +1480,7 @@ export namespace ToolResolver {
                   agentControlProfile: runtimeInput.agent.controlProfile,
                 })
                 const synergyRoot = Global.Path.root
-                const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
+                const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
                 const pluginToolIds = await currentPluginToolIds()
                 const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
@@ -1490,7 +1501,7 @@ export namespace ToolResolver {
                   workspaceType: workspaceInfo?.type ?? "scope",
                 })
 
-                const envelope = gate.evaluate(item.id, args as Record<string, any>)
+                const envelope = await gate.evaluateIsolated(item.id, args as Record<string, any>, ctx.abort)
                 const modeDiagnostic = SessionModePolicy.evaluateCall({
                   toolName: item.id,
                   args: args as Record<string, any>,
@@ -1677,18 +1688,13 @@ export namespace ToolResolver {
         const key = entry.id
         const item = entry.tool
         const exposure = ToolExposure.mcpExposure(mcpEntries.length, entry.serverName)
-        const schema = {
-          ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
-          type: "object",
-          properties:
-            (((item.inputSchema as JSONSchema7 | undefined)?.properties ?? {}) as JSONSchema7["properties"]) ?? {},
-          additionalProperties: false,
-        } satisfies JSONSchema7
+        const schema = entry.inputSchema
         result.push({
           id: key,
           exposure,
           description: item.description ?? "",
           inputSchema: schema,
+          executor: "mcp",
           createRuntimeTool(runtimeInput) {
             const context = contextFactory(runtimeInput)
             const execute = item.execute
@@ -1726,7 +1732,7 @@ export namespace ToolResolver {
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,
                   })
-                  const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
+                  const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({
@@ -1747,7 +1753,7 @@ export namespace ToolResolver {
                     workspace,
                     workspaceType: workspaceInfo?.type ?? "scope",
                   })
-                  const envelope = gate.evaluate(key, args as Record<string, any>)
+                  const envelope = await gate.evaluateIsolated(key, args as Record<string, any>, ctx.abort)
                   const modeDiagnostic = SessionModePolicy.evaluateCall({
                     toolName: key,
                     args: args as Record<string, any>,
@@ -1951,7 +1957,8 @@ export namespace ToolResolver {
 
   export async function resolveWithAvailability(input: Input): Promise<ResolvedTools> {
     using _ = log.time("resolveWithAvailability")
-    const tools: Record<string, AITool> = {}
+    const executionTools: Record<string, AITool> = {}
+    const executorKinds: Record<string, ToolExecutorKind> = {}
     const availabilityResult = await availability(input)
     const activeToolIDs = availabilityResult.visible.map((item) => item.id)
     const runtimeInput = { ...input, activeToolIDs }
@@ -1959,20 +1966,29 @@ export namespace ToolResolver {
     for (const item of availabilityResult.visible) {
       const runtimeTool = item.createRuntimeTool?.(runtimeInput)
       if (runtimeTool) {
-        tools[item.id] = withExecutionDeduplication(runtimeInput, runtimeTool)
+        executionTools[item.id] = withExecutionDeduplication(runtimeInput, runtimeTool)
+        executorKinds[item.id] = item.executor ?? ToolExecutor.classify(item.id, item.source)
       }
     }
 
     for (const diagnostic of availabilityResult.diagnostics.values()) {
-      if (tools[diagnostic.toolName]) continue
-      tools[diagnostic.toolName] = withExecutionDeduplication(
+      if (executionTools[diagnostic.toolName]) continue
+      executionTools[diagnostic.toolName] = withExecutionDeduplication(
         runtimeInput,
         diagnosticRuntimeTool(runtimeInput, diagnostic),
       )
+      executorKinds[diagnostic.toolName] =
+        availabilityResult.visible.find((item) => item.id === diagnostic.toolName)?.executor ?? "control_plane"
     }
 
     return {
-      tools,
+      definitions: availabilityResult.visible.map(({ id, description, inputSchema }) => ({
+        id,
+        description,
+        inputSchema,
+      })),
+      executionTools,
+      executorKinds,
       activeToolIDs,
     }
   }

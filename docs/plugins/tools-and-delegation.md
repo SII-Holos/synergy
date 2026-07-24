@@ -36,18 +36,19 @@ Tool IDs are plugin-local. Synergy exposes them as namespaced host tools and val
 
 ## Delegated Tasks
 
-`context.task` exists only when `task.delegate` is approved. It exposes four finite Host calls:
+`context.task` exists only when `task.delegate` is approved. It exposes five finite Host calls:
 
 ```ts
 const handle = await context.task.start(input)
+const completed = await context.task.run(input)
 const owner = await context.task.current()
 const snapshot = await context.task.get(handle)
 await context.task.cancel(handle)
 ```
 
-`start()` returns the task and child Session identity immediately. It does not wait for agent completion. The input requires a plugin-owned `correlationId`; Cortex persists it with owner metadata containing plugin ID, generation, and Scope ID.
+`start()` returns the task and child Session identity immediately. `run()` uses the same native Cortex path but waits for terminal completion and returns a durable snapshot; its `correlationId` is optional and defaults to the invocation request ID. Both inputs may request summary, final-response, or structured output. `start()` requires a plugin-owned `correlationId`, which Cortex persists with owner metadata containing plugin ID, generation, and Scope ID.
 
-`current()` resolves the Task that owns the invocation's current child Session. It returns the same durable snapshot only when plugin ID, generation, and Scope all match; outside an owned plugin Task it returns `undefined`. This lets an internal plugin tool bind domain work from the Task's persisted `correlationId` without waiting for a post-launch Session attachment. `get()` reads the live Cortex task when present and otherwise reconstructs the same public snapshot from durable child Session metadata. The snapshot contains owner, agent, resolved model, timestamps, timeout, output configuration, terminal output/error, and token/cache/cost usage when available. `cancel()` is idempotent for queued/running tasks and does nothing for terminal tasks. Plugins may only inspect or cancel tasks owned by the same plugin generation and Scope.
+`current()` resolves the Task that owns the invocation's current child Session. It returns the same durable snapshot only when plugin ID, generation, and Scope all match; outside an owned plugin Task it returns `undefined`. `get()` reads the live Cortex task when present and otherwise reconstructs the same public snapshot from durable child Session metadata. The child Session remains the source of truth for full messages and tool traces.
 
 For durable workflows, contribute an observer to `cortex.task.after`. Its public, strongly typed payload is `{ task: PluginTaskSnapshot }`; persist domain progress using `task.owner.correlationId`, then schedule the next unit of work. For BlueprintLoop completions, use `blueprint.after` with payload `{ loop: BlueprintLoopInfo }`. Synergy invokes each hook only for the plugin that owns the Task or BlueprintLoop. Do not keep a plugin request open for an entire background workflow and do not build an anonymous parallel task channel.
 Synergy also emits generic `plugin.task.started`, `plugin.task.queued`, `plugin.task.running`, and terminal `plugin.task.*` observability records. They use the plugin correlation ID as the trace ID and include generation, Scope, Task, Session, resolved model, and duration. The child Session remains the source of truth for full Agent messages and tool traces; plugins should keep stable Task/Session references instead of copying Session history.
@@ -78,9 +79,15 @@ A handler may return a string or `ToolResult` with title, output, metadata, and 
 
 `context.tools` exists only with `tool.invoke` approval and only in an agent invocation. The target tool must be visible in the active agent/session pipeline, and its ordinary permission boundaries still apply.
 
-## Agents, Skills, and MCP
+## Agents, Skills, MCP, CLI, and Assets
 
 `agent`, `skill`, and `mcp` contributions are declarative. `hidden` controls prompt/native-task exposure, not whether the owning host workflow can invoke the Agent. The `tools` map inside a delegated task is a per-task visibility toggle, not a capability declaration.
+
+An MCP contribution contains one strict local or remote server declaration. Local commands are argv arrays. Remote URLs must be parseable `http` or `https` URLs and may declare OAuth, retry, startup, timeout, filter, cache, and idle-shutdown policy. Plugin server identity is `${pluginId}::${contributionId}`; exact global config names shadow plugin names, while qualified plugin names remain stable. Plugin activation and reload replace the complete server set atomically after every candidate validates.
+
+`cliCommand()` contributes a flat executable command below `synergy <pluginId> <command>`. Its handler receives parsed options and the normal invocation context. Commands that execute processes declare `shell.execute` and call `context.shell.run({ command: [program, ...args] })`; plugins never pass shell source strings.
+
+Tools that produce files declare `asset.write`, call `context.asset.create()`, and return the host-owned attachment directly in `attachments`. This keeps asset URLs, Session/message identity, and presentation metadata under host ownership.
 
 ## BlueprintLoop Delegation
 
@@ -160,7 +167,7 @@ const cancelled = await context.lightloop.cancel(loop.sessionID)
 
 Tool maps are visibility toggles, not capability grants. They do not override agent or Session permissions, and unspecified tools keep their normal visibility unless the caller uses explicit wildcard semantics.
 
-`get()` returns the current snapshot with the dedicated `sessionID`, status, instructions, and any terminal error. `cancel()` terminalizes a non-terminal LightLoop and returns its final snapshot.
+`get()` returns the current snapshot with the dedicated `sessionID`, status, instructions, and any terminal error. Terminal snapshots remain queryable after Synergy clears the interactive workflow. `cancel()` terminalizes a non-terminal LightLoop and is idempotent when the same plugin generation repeats it after terminalization.
 
 ### LightLoop After Hook
 
@@ -188,7 +195,7 @@ export default definePlugin({
 })
 ```
 
-The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin generation that started the LightLoop. Terminal delivery is acknowledged only after at least one matching `lightloop.after` handler completes successfully and no matching handler fails. A generation mismatch, missing handler, or handler failure leaves the terminal delivery pending with a durable error; terminal reconciliation retries it, while an acknowledged delivery is not invoked again. Handlers must therefore be idempotent across retries that follow an interrupted or failed attempt.
+The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin generation that started the LightLoop. Before delivery, Synergy writes a separate terminal record and clears the interactive workflow slot. Terminal delivery is acknowledged only after at least one matching `lightloop.after` handler completes successfully and no matching handler fails. A generation mismatch, missing handler, or handler failure leaves the terminal delivery pending with a durable error; terminal reconciliation retries it, while an acknowledged delivery is not invoked again. Handlers must therefore be idempotent.
 
 ## Session Control
 

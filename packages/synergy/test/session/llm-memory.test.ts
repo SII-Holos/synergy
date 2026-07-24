@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import { LLMTurnMemory } from "../../src/session/llm-memory"
 import { SessionMemoryPressure } from "../../src/session/memory-pressure"
+import { RetentionProbe } from "../../src/session/retention-probe"
 
 describe("LLMTurnMemory", () => {
   beforeEach(() => {
@@ -32,6 +33,9 @@ describe("LLMTurnMemory", () => {
     turn.addOutputChars(25)
     turn.observeToolRawChars("call_1", 80)
     turn.observeToolRawChars("call_2", 20)
+    const streamInput = { messages: [] }
+    turn.trackOwner("stream.input", streamInput, 256)
+    expect(String(RetentionProbe.markerForTest(streamInput))).toContain("stream.input")
 
     expect(LLMTurnMemory.stats()).toMatchObject({ activeTurnCount: 1, activeStreamCount: 1 })
     expect(LLMTurnMemory.activeSnapshot()[0]).toMatchObject({

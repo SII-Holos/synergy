@@ -45,10 +45,12 @@ import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
+import { pluginSettingsResourceKey } from "./plugin-settings-resource"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { rollbackFailedLocalePatch } from "./panels/locale-preference-change"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
+import { isSelectableModel } from "@/components/provider/model-catalog"
 import { AccountPanel } from "./panels/AccountPanel"
 import { PersonalizePanel } from "./panels/PersonalizePanel"
 import { createPersonalizeController } from "./panels/personalize-controller"
@@ -225,10 +227,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     for (const provider of data.all) {
       if (!data.connected.includes(provider.id)) continue
       if (data.runtimeAvailability?.[provider.id]?.available === false) continue
-      for (const [modelId, model] of Object.entries(provider.models) as [
-        string,
-        { name: string; variants?: Record<string, unknown> },
-      ][]) {
+      for (const [modelId, model] of Object.entries(provider.models)) {
+        if (!isSelectableModel(model)) continue
         list.push({
           providerId: provider.id,
           providerName: provider.name,
@@ -270,6 +270,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         modelCount: availability?.modelCount ?? Object.keys(provider.models).length,
         health,
         availability,
+        catalog: data.modelCatalog?.[provider.id],
         profile: data.profiles?.[provider.id],
       }
     })
@@ -543,8 +544,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <ChannelsPanel
         channels={settings.channels}
         providers={providerGroups()}
+        popoverLayer={settingsPopoverLayer()}
         onChannelToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
         onChannelModelChange={(index, model) => setSettings("channels", "feishuAccounts", index, "model", model)}
+        onChannelVariantChange={(index, variant) =>
+          setSettings("channels", "feishuAccounts", index, "variant", variant)
+        }
       />
     ),
     email: () => (
@@ -818,9 +823,9 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
 
   const section = () => props.section
   const [values, { mutate }] = createResource(
-    () => section().pluginId,
-    async (pluginId) => {
-      const result = await globalSDK.client.plugin.getConfig({ pluginId })
+    () => pluginSettingsResourceKey(section()),
+    async ({ pluginId, scopeId }) => {
+      const result = await globalSDK.client.plugin.getConfig({ pluginId, scopeID: scopeId })
       return result.data ?? {}
     },
   )
@@ -828,10 +833,18 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   async function updateValues(next: Record<string, unknown>) {
     const pluginId = section().pluginId
     if (!pluginId) return
-    const result = await globalSDK.client.plugin.updateConfig({ pluginId, pluginConfigUpdate: next })
+    const result = await globalSDK.client.plugin.updateConfig({
+      pluginId,
+      scopeID: section().scopeId,
+      pluginConfigUpdate: next,
+    })
     const saved = result.data ?? next
     mutate(saved)
-    window.dispatchEvent(new CustomEvent("synergy:plugin-config-changed", { detail: { pluginId, values: saved } }))
+    window.dispatchEvent(
+      new CustomEvent("synergy:plugin-config-changed", {
+        detail: { pluginId, scopeId: section().scopeId, values: saved },
+      }),
+    )
   }
 
   onMount(() => {

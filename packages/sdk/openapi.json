@@ -8484,7 +8484,7 @@
           }
         ],
         "summary": "Get Cortex concurrency status",
-        "description": "Get the configured, effective, and memory-pressure Cortex task concurrency limits.",
+        "description": "Get configured Cortex concurrency and the effective memory-pressure admission limit.",
         "responses": {
           "200": {
             "description": "Cortex concurrency status",
@@ -8850,6 +8850,66 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/models/refresh": {
+      "post": {
+        "operationId": "provider.models.refresh",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Refresh provider models",
+        "description": "Refresh the account-visible model catalog for a provider without discarding the last verified list.",
+        "responses": {
+          "200": {
+            "description": "Provider model catalog state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderModelCatalogState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.models.refresh({\n  ...\n})"
           }
         ]
       }
@@ -9355,10 +9415,10 @@
           }
         ],
         "summary": "List skills",
-        "description": "Get a list of all available skills in the Synergy system.",
+        "description": "Get canonical public summaries and diagnostics for all available Skills.",
         "responses": {
           "200": {
-            "description": "List of skills",
+            "description": "List of Skills",
             "content": {
               "application/json": {
                 "schema": {
@@ -9396,7 +9456,7 @@
           }
         ],
         "summary": "Reload skills",
-        "description": "Reload all skills by rescanning skill directories.",
+        "description": "Reload all Skills by rescanning configured Skill directories.",
         "responses": {
           "200": {
             "description": "Skills reloaded successfully",
@@ -9413,6 +9473,87 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.reload({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/skill/{name}/export": {
+      "get": {
+        "operationId": "skill.export",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "default": "zip",
+              "type": "string",
+              "enum": ["zip", "skill"]
+            }
+          }
+        ],
+        "summary": "Export a Skill",
+        "description": "Download a strict-standard, file-backed Skill as a ZIP archive.",
+        "responses": {
+          "200": {
+            "description": "Skill archive",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "contentEncoding": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Skill is not exportable or not strict-standard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SkillExportNotStandardError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SkillExportUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SkillExportNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.export({\n  ...\n})"
           }
         ]
       }
@@ -9444,22 +9585,25 @@
             "required": true
           }
         ],
-        "summary": "Delete a skill",
-        "description": "Delete a non-builtin skill by removing its directory from disk.",
+        "summary": "Delete a Skill",
+        "description": "Delete a non-builtin, non-plugin Skill from disk.",
         "responses": {
           "200": {
             "description": "Skill deleted successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": ["success"]
+                  "$ref": "#/components/schemas/SkillRemoveResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Skill cannot be deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRemoveFailure"
                 }
               }
             }
@@ -9502,39 +9646,45 @@
             }
           }
         ],
-        "summary": "Import a skill",
-        "description": "Import a skill from a .skill or .zip file. Extracts to the project or global skill directory.",
+        "summary": "Import a Skill",
+        "description": "Transactionally import a .zip or .skill ZIP archive into project or global scope.",
         "responses": {
           "200": {
             "description": "Skill imported successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "scope": {
-                      "type": "string",
-                      "enum": ["global", "project"]
-                    }
-                  },
-                  "required": ["success", "name", "scope"]
+                  "$ref": "#/components/schemas/SkillImportResult"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid Skill archive",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "$ref": "#/components/schemas/SkillArchiveInvalidError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A Skill with the same name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillArchiveConflictError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Skill archive exceeds an import limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillArchiveLimitError"
                 }
               }
             }
@@ -9584,39 +9734,45 @@
             }
           }
         ],
-        "summary": "Import a skill from URL",
-        "description": "Download a .zip file from a URL and import it as a skill.",
+        "summary": "Import a Skill from URL",
+        "description": "Download a bounded .zip or .skill archive and pass its bytes to the transactional Skill importer.",
         "responses": {
           "200": {
             "description": "Skill imported successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "scope": {
-                      "type": "string",
-                      "enum": ["global", "project"]
-                    }
-                  },
-                  "required": ["success", "name", "scope"]
+                  "$ref": "#/components/schemas/SkillImportResult"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid URL response or Skill archive",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "$ref": "#/components/schemas/SkillArchiveInvalidError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A Skill with the same name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillArchiveConflictError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Downloaded Skill archive exceeds an import limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillArchiveLimitError"
                 }
               }
             }
@@ -20565,7 +20721,7 @@
       "TelemetrySpanStatus": {
         "default": "running",
         "type": "string",
-        "enum": ["running", "ok", "error", "cancelled", "timeout"]
+        "enum": ["running", "ok", "error", "cancelled", "timeout", "interrupted"]
       },
       "TelemetryInflightSpan": {
         "type": "object",
@@ -20668,6 +20824,9 @@
           },
           "stale": {
             "type": "boolean"
+          },
+          "activeSince": {
+            "type": "number"
           }
         },
         "required": [
@@ -20764,6 +20923,46 @@
                 "type": "number"
               }
             }
+          },
+          "cgroup": {
+            "type": "object",
+            "properties": {
+              "currentBytes": {
+                "type": "number"
+              },
+              "highBytes": {
+                "type": "number"
+              },
+              "maxBytes": {
+                "type": "number"
+              },
+              "peakBytes": {
+                "type": "number"
+              },
+              "oomCount": {
+                "type": "number"
+              },
+              "oomKillCount": {
+                "type": "number"
+              }
+            }
+          },
+          "serviceMemory": {
+            "type": "object",
+            "properties": {
+              "rssBytes": {
+                "type": "number"
+              },
+              "source": {
+                "type": "string",
+                "enum": ["cgroup_v2", "process_api"]
+              },
+              "completeness": {
+                "type": "string",
+                "enum": ["full", "partial"]
+              }
+            },
+            "required": ["source", "completeness"]
           },
           "eventLoop": {
             "type": "object",
@@ -21311,6 +21510,28 @@
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
               },
+              "measuredChildProcessCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "serviceMemory": {
+                "type": "object",
+                "properties": {
+                  "rssBytes": {
+                    "type": "number"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["cgroup_v2", "process_api"]
+                  },
+                  "completeness": {
+                    "type": "string",
+                    "enum": ["full", "partial"]
+                  }
+                },
+                "required": ["source", "completeness"]
+              },
               "childProcessRssBytes": {
                 "type": "number"
               }
@@ -21438,9 +21659,238 @@
                     "type": "integer",
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
+                  },
+                  "executionPhases": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "enum": [
+                        "queued_agent",
+                        "running_agent",
+                        "authorizing_tools",
+                        "queued_tools",
+                        "running_tools",
+                        "waiting_background",
+                        "stopping"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
                   }
                 },
                 "required": ["totalCount", "runningCount", "idleCount", "childCount", "userCount", "waiterCount"]
+              },
+              "execution": {
+                "type": "object",
+                "properties": {
+                  "agentWorkers": {
+                    "type": "object",
+                    "properties": {
+                      "configured": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "ready": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "rssBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "heapUsedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "configured",
+                      "maxQueued",
+                      "maxQueuedBytes",
+                      "workers",
+                      "ready",
+                      "active",
+                      "queued",
+                      "queuedBytes",
+                      "rssBytes",
+                      "heapUsedBytes"
+                    ]
+                  },
+                  "policyWorkers": {
+                    "type": "object",
+                    "properties": {
+                      "configured": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "ready": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "rssBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "heapUsedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "configured",
+                      "maxQueued",
+                      "maxQueuedBytes",
+                      "workers",
+                      "ready",
+                      "active",
+                      "queued",
+                      "queuedBytes",
+                      "rssBytes",
+                      "heapUsedBytes"
+                    ]
+                  },
+                  "toolTasks": {
+                    "type": "object",
+                    "properties": {
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "tracked": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxConcurrent": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "byExecutor": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                        },
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "active": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "queued": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": ["active", "queued", "limit"]
+                        }
+                      }
+                    },
+                    "required": ["active", "queued", "tracked", "queuedBytes", "maxConcurrent", "maxQueued"]
+                  }
+                },
+                "required": ["agentWorkers", "policyWorkers", "toolTasks"]
               },
               "messageCache": {
                 "type": "object",
@@ -21803,7 +22253,7 @@
       "PerfSpanStatus": {
         "default": "ok",
         "type": "string",
-        "enum": ["running", "ok", "error", "cancelled", "timeout"]
+        "enum": ["running", "ok", "error", "cancelled", "timeout", "interrupted"]
       },
       "PerfInflightSpan": {
         "type": "object",
@@ -21901,6 +22351,9 @@
           },
           "stale": {
             "type": "boolean"
+          },
+          "activeSince": {
+            "type": "number"
           }
         },
         "required": ["traceId", "spanId", "name", "module", "source", "startTime", "ageMs", "idleMs", "stale"]
@@ -23893,6 +24346,10 @@
             "type": "string",
             "enum": ["alpha", "beta", "deprecated", "active"]
           },
+          "catalogState": {
+            "type": "string",
+            "enum": ["active", "retained"]
+          },
           "options": {
             "type": "object",
             "propertyNames": {
@@ -24103,15 +24560,7 @@
           },
           "reason": {
             "type": "string",
-            "enum": [
-              "connected",
-              "not_connected",
-              "disabled",
-              "no_models",
-              "authentication_required",
-              "exhausted",
-              "fallback_unverified"
-            ]
+            "enum": ["connected", "not_connected", "disabled", "no_models", "authentication_required", "exhausted"]
           },
           "healthCheck": {
             "type": "string",
@@ -24122,6 +24571,29 @@
           }
         },
         "required": ["providerID", "available", "modelCount"]
+      },
+      "ProviderModelCatalogState": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["live", "cached", "bundled"]
+          },
+          "refreshing": {
+            "type": "boolean"
+          },
+          "modelCount": {
+            "type": "number"
+          },
+          "lastVerifiedAt": {
+            "type": "number"
+          },
+          "failure": {
+            "type": "string",
+            "enum": ["timeout", "network", "rate_limited", "upstream", "invalid_response"]
+          }
+        },
+        "required": ["source", "refreshing", "modelCount"]
       },
       "ProviderListResponse": {
         "type": "object",
@@ -24185,6 +24657,15 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/ProviderRuntimeAvailability"
             }
+          },
+          "modelCatalog": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProviderModelCatalogState"
+            }
           }
         },
         "required": [
@@ -24195,7 +24676,8 @@
           "catalogProviders",
           "profiles",
           "authHealth",
-          "runtimeAvailability"
+          "runtimeAvailability",
+          "modelCatalog"
         ]
       },
       "PermissionAction": {
@@ -25706,6 +26188,10 @@
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
                 },
+                "catalog_state": {
+                  "type": "string",
+                  "enum": ["active", "retained"]
+                },
                 "options": {
                   "type": "object",
                   "propertyNames": {
@@ -26249,9 +26735,11 @@
           },
           "command": {
             "description": "Command and arguments to run the MCP server",
+            "minItems": 1,
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             }
           },
           "cwd": {
@@ -26267,10 +26755,6 @@
             "additionalProperties": {
               "type": "string"
             }
-          },
-          "enabled": {
-            "description": "Enable or disable the MCP server on startup",
-            "type": "boolean"
           },
           "timeout": {
             "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
@@ -26322,6 +26806,10 @@
           },
           "toolCache": {
             "$ref": "#/components/schemas/McpToolCacheConfig"
+          },
+          "enabled": {
+            "description": "Enable or disable the MCP server on startup",
+            "type": "boolean"
           }
         },
         "required": ["type", "command"],
@@ -26355,11 +26843,8 @@
           },
           "url": {
             "description": "URL of the remote MCP server",
-            "type": "string"
-          },
-          "enabled": {
-            "description": "Enable or disable the MCP server on startup",
-            "type": "boolean"
+            "type": "string",
+            "format": "uri"
           },
           "headers": {
             "description": "Headers to send with the request",
@@ -26433,6 +26918,10 @@
           },
           "toolCache": {
             "$ref": "#/components/schemas/McpToolCacheConfig"
+          },
+          "enabled": {
+            "description": "Enable or disable the MCP server on startup",
+            "type": "boolean"
           }
         },
         "required": ["type", "url"],
@@ -26556,6 +27045,10 @@
           },
           "model": {
             "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+            "type": "string"
+          },
+          "variant": {
+            "description": "Model variant to use with this account model (e.g. low, high, max)",
             "type": "string"
           },
           "resolveSenderNames": {
@@ -27142,6 +27635,152 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          },
+          "execution": {
+            "description": "Process isolation, worker recycling, and bounded execution scheduling",
+            "type": "object",
+            "properties": {
+              "agentWorkers": {
+                "description": "Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 64
+              },
+              "agentQueueMax": {
+                "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "agentQueueMaxMb": {
+                "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "agentWorkerMaxTurns": {
+                "description": "Turns completed before an Agent worker is recycled (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
+              "agentWorkerMaxRssMb": {
+                "description": "RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerMaxHeapMb": {
+                "description": "Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentCancelGraceMs": {
+                "description": "Grace period before terminating an Agent worker that ignores cancellation (default: 5000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "agentHeartbeatTimeoutMs": {
+                "description": "Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)",
+                "type": "integer",
+                "minimum": 30000,
+                "maximum": 300000
+              },
+              "policyWorkers": {
+                "description": "Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16
+              },
+              "policyQueueMax": {
+                "description": "Maximum queued Policy classifications waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "policyQueueMaxMb": {
+                "description": "Maximum aggregate queued Policy-classification payload size in MiB (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1024
+              },
+              "policyTimeoutMs": {
+                "description": "Maximum total time for a Policy classification before conservative fallback (default: 1000)",
+                "type": "integer",
+                "minimum": 50,
+                "maximum": 10000
+              },
+              "policyWorkerMaxRequests": {
+                "description": "Classifications completed before a Policy worker is recycled (default: 512)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000
+              },
+              "policyWorkerMaxRssMb": {
+                "description": "RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16384
+              },
+              "policyWorkerMaxHeapMb": {
+                "description": "Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16384
+              },
+              "policyCancelGraceMs": {
+                "description": "Shutdown grace period before terminating a Policy worker (default: 25)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "policyHeartbeatTimeoutMs": {
+                "description": "Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)",
+                "type": "integer",
+                "minimum": 10000,
+                "maximum": 120000
+              },
+              "toolConcurrency": {
+                "description": "Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 512
+              },
+              "toolQueueMax": {
+                "description": "Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65536
+              },
+              "toolQueueMaxMb": {
+                "description": "Maximum aggregate queued ToolTask input size in MiB (default: 128)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "toolCancelGraceMs": {
+                "description": "Grace period for active ToolTasks during runtime shutdown (default: 3000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "toolExecutorConcurrency": {
+                "description": "Optional concurrency limits for each Tool Executor class",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 512
+                }
               }
             },
             "additionalProperties": false
@@ -31521,6 +32160,32 @@
         },
         "required": ["name", "data"]
       },
+      "ProviderModelUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProviderModelUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "enum": ["not_in_catalog", "rejected_by_provider"]
+              }
+            },
+            "required": ["providerID", "modelID", "reason"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "AssistantMessage": {
         "type": "object",
         "properties": {
@@ -31571,6 +32236,9 @@
               },
               {
                 "$ref": "#/components/schemas/APIError"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderModelUnavailableError"
               }
             ]
           },
@@ -33139,6 +33807,7 @@
         "type": "object",
         "properties": {
           "configured": {
+            "description": "User-configured global limit, or null when unset",
             "anyOf": [
               {
                 "type": "integer",
@@ -33151,6 +33820,7 @@
             ]
           },
           "environment": {
+            "description": "Process environment override, or null when unset",
             "anyOf": [
               {
                 "type": "integer",
@@ -33163,11 +33833,13 @@
             ]
           },
           "effective": {
+            "description": "Actual admission limit from environment, config, or default",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "memoryPressureLimit": {
+            "description": "Memory-pressure ceiling applied to new task admission",
             "anyOf": [
               {
                 "type": "integer",
@@ -33180,24 +33852,29 @@
             ]
           },
           "memoryPressureReason": {
+            "description": "Reason for the memory-pressure admission ceiling",
             "type": "string",
             "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
           },
           "source": {
+            "description": "Source of the effective admission limit",
             "type": "string",
             "enum": ["default", "config", "environment"]
           },
           "perAgentLimit": {
+            "description": "Fixed maximum for each individual agent",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "running": {
+            "description": "Currently admitted Cortex tasks",
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
           },
           "queued": {
+            "description": "Cortex tasks waiting for an admission slot",
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
@@ -33394,84 +34071,137 @@
         },
         "required": ["url", "method", "instructions"]
       },
+      "SkillSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "plugin", "synergy", "agents", "claude", "codex", "openclaw"]
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["builtin", "project", "global", "workspace", "external"]
+          },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["native", "compatible", "partial"]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unsupported": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["level", "warnings", "unsupported"]
+          },
+          "declaredCompatibility": {
+            "type": "string"
+          },
+          "invocation": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "boolean"
+              },
+              "model": {
+                "type": "boolean"
+              }
+            },
+            "required": ["user", "model"]
+          },
+          "exportable": {
+            "type": "boolean"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["error", "warning", "info"]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["builtin", "plugin", "synergy", "agents", "claude", "codex", "openclaw"]
+                },
+                "path": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": ["code", "severity", "name", "source", "reason", "message"]
+            }
+          },
+          "entryFile": {
+            "type": "string"
+          },
+          "baseDir": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "location",
+          "source",
+          "scope",
+          "compatibility",
+          "invocation",
+          "exportable",
+          "diagnostics"
+        ]
+      },
       "SkillList": {
         "type": "object",
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                },
-                "location": {
-                  "type": "string"
-                },
-                "builtin": {
-                  "type": "boolean"
-                },
-                "source": {
-                  "type": "string",
-                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
-                },
-                "scope": {
-                  "type": "string",
-                  "enum": ["builtin", "project", "global", "workspace", "external"]
-                },
-                "compatibility": {
-                  "type": "object",
-                  "properties": {
-                    "level": {
-                      "type": "string",
-                      "enum": ["native", "compatible", "partial"]
-                    },
-                    "warnings": {
-                      "default": [],
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "unsupported": {
-                      "default": [],
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "required": ["level"]
-                },
-                "entryFile": {
-                  "type": "string"
-                },
-                "baseDir": {
-                  "type": "string"
-                },
-                "pluginId": {
-                  "type": "string"
-                },
-                "pluginName": {
-                  "type": "string"
-                },
-                "references": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "scripts": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": ["name", "description", "location", "scope"]
+              "$ref": "#/components/schemas/SkillSummary"
             }
           },
           "diagnostics": {
@@ -33479,32 +34209,292 @@
             "items": {
               "type": "object",
               "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "message": {
+                "code": {
                   "type": "string"
                 },
                 "severity": {
                   "type": "string",
                   "enum": ["error", "warning", "info"]
                 },
-                "code": {
+                "name": {
                   "type": "string"
                 },
                 "source": {
                   "type": "string",
-                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
+                  "enum": ["builtin", "plugin", "synergy", "agents", "claude", "codex", "openclaw"]
+                },
+                "path": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "message": {
+                  "type": "string"
                 }
               },
-              "required": ["path", "name", "message"]
+              "required": ["code", "severity", "name", "source", "reason", "message"]
             }
           }
         },
         "required": ["items", "diagnostics"]
+      },
+      "SkillExportNotStandardError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillExportNotStandardError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "skill.export_not_standard"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": ["error", "warning", "info"]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": ["builtin", "plugin", "synergy", "agents", "claude", "codex", "openclaw"]
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "severity", "name", "source", "reason", "message"]
+                }
+              }
+            },
+            "required": ["code", "message", "name", "diagnostics"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillExportUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillExportUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "skill.export_unavailable"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message", "name"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillExportNotFoundError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillExportNotFoundError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "skill.export_not_found"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message", "name"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillRemoveResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["success"]
+      },
+      "SkillRemoveFailure": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          }
+        },
+        "required": ["error", "name"]
+      },
+      "SkillImportResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["project", "global"]
+          }
+        },
+        "required": ["success", "name", "scope"]
+      },
+      "SkillArchiveInvalidError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillArchiveInvalidError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "number"
+              },
+              "actual": {
+                "type": "number"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillArchiveConflictError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillArchiveConflictError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "skill.archive_conflict"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message", "name", "path"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillArchiveLimitError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillArchiveLimitError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "number"
+              },
+              "actual": {
+                "type": "number"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "WorkspaceFileNode": {
         "type": "object",
@@ -39939,6 +40929,64 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.synergy_link.target.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^target_[0-9a-f-]{36}$"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.cortex.task.created": {
         "type": "object",
         "properties": {
@@ -39995,64 +41043,6 @@
               }
             },
             "required": ["tasks"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^target_[0-9a-f-]{36}$"
-              }
-            },
-            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -40702,15 +41692,6 @@
             "$ref": "#/components/schemas/Event.agenda.item.deleted"
           },
           {
-            "$ref": "#/components/schemas/Event.cortex.task.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.cortex.task.completed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.synergy_link.target.created"
           },
           {
@@ -40718,6 +41699,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.synergy_link.target.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
           },
           {
             "$ref": "#/components/schemas/Event.plugin.event"

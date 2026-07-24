@@ -143,6 +143,35 @@ function PermissionList(props: {
   items: readonly ReviewPermissionItem[]
   muted?: boolean
 }) {
+  const { _ } = useLingui()
+  const capabilityCopy = (item: ReviewPermissionItem) => {
+    switch (item.key) {
+      case "composer.read":
+        return {
+          title: _(pluginPermission.composerReadTitle),
+          description: _(pluginPermission.composerReadDescription),
+        }
+      case "composer.write":
+        return {
+          title: _(pluginPermission.composerWriteTitle),
+          description: _(pluginPermission.composerWriteDescription),
+        }
+      case "composer.intercept":
+        return {
+          title: _(pluginPermission.composerInterceptTitle),
+          description: _(pluginPermission.composerInterceptDescription),
+        }
+      case "selection.read":
+        return {
+          title: _(pluginPermission.selectionReadTitle),
+          description: _(pluginPermission.selectionReadDescription),
+        }
+      case "agent.call":
+        return { title: _(pluginPermission.agentCallTitle), description: _(pluginPermission.agentCallDescription) }
+      default:
+        return item
+    }
+  }
   return (
     <section class="consent-section">
       <div class="consent-section-heading">
@@ -157,8 +186,8 @@ function PermissionList(props: {
                 <div class="consent-item-row">
                   <Icon name={getSemanticIcon(iconForItem(item))} size="small" class="consent-item-icon" />
                   <div class="consent-item-body">
-                    <span class="consent-item-title">{item.title}</span>
-                    <span class="consent-item-desc">{item.description}</span>
+                    <span class="consent-item-title">{capabilityCopy(item).title}</span>
+                    <span class="consent-item-desc">{capabilityCopy(item).description}</span>
                   </div>
                   <PermissionRiskBadge risk={item.severity} />
                 </div>
