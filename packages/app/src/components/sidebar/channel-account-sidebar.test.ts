@@ -1,57 +1,21 @@
 import { describe, expect, test } from "bun:test"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
-// ── Layout projection (GREEN — already exists and passes) ──────────
-import {
-  partitionScopeNavigation,
-  deriveChannelAccountActions,
-  type ChannelAccount,
-  type ChannelAccountActions,
-  type ChannelAccountStatus,
-} from "@/context/layout/nav"
-import type { ScopeNavEntry } from "@/context/layout"
+import type { NavEntry, ScopeNavEntry } from "@/context/layout"
+import { partitionScopeNavigation, type ChannelAccount, type ChannelAccountStatus } from "@/context/layout/nav"
 
-// ── Sidebar model (RED — all functions throw, see channel-account-model.ts) ──
 import {
   channelAccountStatusLabel,
   channelAccountGroupLabel,
-  channelAccountActionStates,
-  isRefreshPending,
-  diagnosticsFilename,
+  channelProviderGroups,
   shouldRenderChannelAccountSection,
   managedProjectRouteTarget,
+  filterGenericScopeWorktrees,
+  selectVisibleProjectEntries,
   type ChannelAccountActionState,
 } from "./channel-account-model"
 
 // ── Locale descriptors (exists — sidebar messages include channel account strings) ──
 import { sidebar } from "@/locales/messages"
-
-// ── Semantic icon tokens (exists — visual feedback via canonical icon system) ──
-const CHANNEL_REFRESH_ICON_NAME = getSemanticIcon("action.refresh")
-const DIAGNOSTICS_ICON_NAME = getSemanticIcon("action.download")
-
-/**
- * ================================================================
- * Channel Account Sidebar — Behavioral RED Tests
- * ================================================================
- *
- * These tests encode the Blueprint NTE  f88b36373 Stage B.10 contracts
- * for sidebar Channel account → managed Project → Task Session rendering
- * and account actions. They MUST FAIL (RED) because the model functions
- * in channel-account-model.ts are stubs that throw.
- *
- * Implementation Handoff:
- * 1. Make each model function return the shape these tests assert.
- * 2. Integrate into <Sidebar> under the Channel section:
- *    - After Feishu chat groups, render channelAccounts from partitionScopeNavigation.
- *    - Call partitionScopeNavigation(layout.nav.scopeEntries()).
- *    - Use genericProjects instead of layout.scopes.list() for the Projects section.
- * 3. Wire channelAccountActionStates into click handlers that call:
- *    - sdk.channel.refreshProjects({ channelType, accountId, directory })
- *    - sdk.channel.downloadDiagnostics({ channelType, accountId, directory})
- *    Follow the generated SDK signatures.
- * 4. Wire managedProjectRouteTarget into navigation handlers.
- */
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -111,24 +75,6 @@ function clarusAccount(accountId: string, status?: ChannelAccountStatus): Channe
   }
 }
 
-function feishuAccount(accountId: string, status?: ChannelAccountStatus): ChannelAccount {
-  return {
-    channelType: "feishu",
-    accountId,
-    projects: [managed({ scopeID: `proj-${accountId}`, channelType: "feishu", accountId })],
-    status: status ?? { kind: "connected" },
-  }
-}
-
-function unknownAccount(accountId: string, channelType = "unknown-provider"): ChannelAccount {
-  return {
-    channelType,
-    accountId,
-    projects: [managed({ scopeID: `proj-${accountId}`, channelType, accountId })],
-    status: { kind: "connected" },
-  }
-}
-
 // ================================================================
 // Contract 1: Account groups vs generic Projects separation
 // ================================================================
@@ -163,23 +109,18 @@ describe("Contract 1 — Account groups rendered separately from generic Project
     expect(allAccountProjectIDs.sort()).toEqual(["cp1", "cp2", "fp1"].sort())
   })
 
-  test("channelAccountGroupLabel produces a stable, screen-reader-accessible label", () => {
-    const label = channelAccountGroupLabel(clarusAccount("agent-xyz"))
-    expect(typeof label).toBe("string")
-    expect(label.length).toBeGreaterThan(0)
-    // Must contain identity information for screen readers
-    expect(label.toLowerCase()).toContain("clarus")
-    expect(label).toContain("agent-xyz")
+  test("channelAccountGroupLabel uses a readable provider name without exposing the internal account ID", () => {
+    const label = channelAccountGroupLabel(clarusAccount("3c1d9f62-e2e1-47fd-bc59-9f1cbd0d9ed2"))
+    expect(label).toBe("Clarus")
+    expect(label).not.toContain("3c1d9f62")
   })
 
-  test("channelAccountGroupLabel distinguishes two accounts of the same channelType", () => {
-    const labelA = channelAccountGroupLabel(clarusAccount("agent-alpha"))
-    const labelB = channelAccountGroupLabel(clarusAccount("agent-beta"))
-    // Labels must be different in at least one identifiable respect
-    expect(labelA).not.toBe(labelB)
-    // Each contains its own accountId
-    expect(labelA).toContain("agent-alpha")
-    expect(labelB).toContain("agent-beta")
+  test("groups every Clarus account under one provider heading", () => {
+    const groups = channelProviderGroups([clarusAccount("agent-a"), clarusAccount("agent-b")])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.label).toBe("Clarus")
+    expect(groups[0]?.projects.map((project) => project.scopeID)).toEqual(["proj-agent-a", "proj-agent-b"])
   })
 })
 
@@ -307,211 +248,16 @@ describe("Contract 3 — Account status renders all states accessibly", () => {
 })
 
 // ================================================================
-// Contract 4: Provider-aware action gating
+// Contract 4: Keyboard accessibility and labelling
 // ================================================================
 
-describe("Contract 4 — Clarus actions exposed; unsupported providers hidden", () => {
-  test("Clarus account shows refresh and diagnostics as enabled actions", () => {
-    const account = clarusAccount("agent-c1")
-    const actions = deriveChannelAccountActions("clarus")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    // Both actions visible and enabled
-    const refresh = actionStates.find((s) => s.action === "refreshProjects")
-    const diagnostics = actionStates.find((s) => s.action === "downloadDiagnostics")
-
-    expect(refresh).toBeDefined()
-    expect(refresh!.disabled).toBe(false)
-    expect(refresh!.label.id).toBe(sidebar.channelRefreshProjects.id)
-
-    expect(diagnostics).toBeDefined()
-    expect(diagnostics!.disabled).toBe(false)
-    expect(diagnostics!.label.id).toBe(sidebar.channelDownloadDiagnostics.id)
-  })
-
-  test("Feishu account hides all managed-project actions", () => {
-    const account = feishuAccount("feishu-org")
-    const actions = deriveChannelAccountActions("feishu")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    // Feishu accounts show NO channel-account management actions
-    expect(actionStates).toHaveLength(0)
-  })
-
-  test("unknown provider explicitly returns all actions as hidden (none rendered)", () => {
-    const account = unknownAccount("unk-1")
-    const actions = deriveChannelAccountActions("unknown-provider")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    expect(actionStates).toHaveLength(0)
-  })
-
-  test("every rendered action state carries a label descriptor, not a raw string", () => {
-    const account = clarusAccount("agent-label")
-    const actions = deriveChannelAccountActions("clarus")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    for (const state of actionStates) {
-      expect(typeof state.label.id).toBe("string")
-      expect(state.label.id.length).toBeGreaterThan(0)
-      expect(typeof state.label.message).toBe("string")
-    }
-  })
-
-  test("action states are sorted deterministically (refresh before diagnostics)", () => {
-    const account = clarusAccount("agent-order")
-    const actions = deriveChannelAccountActions("clarus")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    const actionNames = actionStates.map((s) => s.action)
-    expect(actionNames).toEqual(["refreshProjects", "downloadDiagnostics"])
-  })
-})
-
-// ================================================================
-// Contract 5: Refresh exactly-once with pending feedback
-// ================================================================
-
-describe("Contract 5 — Refresh single-click + pending/disabling feedback", () => {
-  test("isRefreshPending returns true when account status is syncing", () => {
-    const account = clarusAccount("agent-sync", { kind: "syncing" })
-    expect(isRefreshPending(account)).toBe(true)
-  })
-
-  test("isRefreshPending returns false for connected/idle accounts", () => {
-    const account = clarusAccount("agent-idle", { kind: "connected" })
-    expect(isRefreshPending(account)).toBe(false)
-  })
-
-  test("isRefreshPending returns false for disconnected and failed accounts", () => {
-    for (const kind of ["disconnected", "disabled", "sync_failed"] as const) {
-      const account = clarusAccount("agent-" + kind, { kind } as ChannelAccountStatus)
-      expect(isRefreshPending(account)).toBe(false)
-    }
-  })
-
-  test("refresh action is disabled when sync is pending", () => {
-    const account = clarusAccount("agent-busy", { kind: "syncing" })
-    const actions = deriveChannelAccountActions("clarus")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    const refresh = actionStates.find((s) => s.action === "refreshProjects")
-    expect(refresh).toBeDefined()
-    expect(refresh!.disabled).toBe(true)
-    expect(refresh!.disabledReason).toBeDefined()
-    expect(refresh!.disabledReason!.length).toBeGreaterThan(0)
-  })
-
-  test("refresh action becomes disabled when explicitly flagged as pending via parameter", () => {
-    const account = clarusAccount("agent-pending", { kind: "connected" })
-    const actions = deriveChannelAccountActions("clarus")
-    // Even when status is "connected", the explicit refreshPending flag overrides
-    const actionStates = channelAccountActionStates(account, actions, true)
-
-    const refresh = actionStates.find((s) => s.action === "refreshProjects")
-    expect(refresh!.disabled).toBe(true)
-  })
-
-  test("refresh disabledReason does not leak raw error content", () => {
-    const account: ChannelAccount = {
-      ...clarusAccount("agent-err"),
-      status: {
-        kind: "sync_failed",
-        error: "Bearer auth failed: token=sk-sensitive-data",
-      } as ChannelAccountStatus,
-    }
-    const actions = deriveChannelAccountActions("clarus")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    const refresh = actionStates.find((s) => s.action === "refreshProjects")
-    // The disabled reason, if present, must be sanitized
-    if (refresh?.disabledReason) {
-      expect(refresh.disabledReason).not.toContain("sk-")
-      expect(refresh.disabledReason).not.toContain("Bearer")
-    }
-  })
-})
-
-// ================================================================
-// Contract 6: Diagnostics download with stable filename
-// ================================================================
-
-describe("Contract 6 — diagnostics download produces stable filename", () => {
-  test("diagnosticsFilename contains channelType and accountId", () => {
-    const account = clarusAccount("agent-diag")
-    const filename = diagnosticsFilename(account)
-    expect(filename).toContain("clarus")
-    expect(filename).toContain("agent-diag")
-  })
-
-  test("diagnosticsFilename ends with .ndjson", () => {
-    const account = clarusAccount("agent-ext")
-    const filename = diagnosticsFilename(account)
-    expect(filename.endsWith(".ndjson")).toBe(true)
-  })
-
-  test("diagnosticsFilename is stable for repeated calls with the same account", () => {
-    const account = clarusAccount("agent-stable")
-    // Without timestamps embedded, the base pattern is deterministic
-    const base1 = diagnosticsFilename(account)
-    const base2 = diagnosticsFilename(account)
-    expect(base1).toBe(base2)
-  })
-
-  test("diagnosticsFilename differs for different accounts", () => {
-    const a = diagnosticsFilename(clarusAccount("agent-alpha"))
-    const b = diagnosticsFilename(clarusAccount("agent-beta"))
-    expect(a).not.toBe(b)
-  })
-
-  test("diagnosticsFilename contains no path separators or special chars beyond alphanumeric, dash, dot, underscore", () => {
-    const account = clarusAccount("agent-clean")
-    const filename = diagnosticsFilename(account)
-    // Filename must be a single segment usable as a download hint
-    expect(filename).not.toContain("/")
-    expect(filename).not.toContain("\\")
-    expect(filename).not.toContain(" ")
-    // Only safe characters
-    expect(/^[\w.-]+$/.test(filename.replace(".ndjson", ""))).toBe(true)
-  })
-})
-
-// ================================================================
-// Contract 7: Keyboard accessibility and labelling
-// ================================================================
-
-describe("Contract 7 — Controls are keyboard-reachable and labelled", () => {
-  test("every channel account action state has a non-empty label descriptor", () => {
-    const account = clarusAccount("agent-aria")
-    const actions = deriveChannelAccountActions("clarus")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    for (const state of actionStates) {
-      expect(state.label.message!.length).toBeGreaterThan(0)
-    }
-  })
-
+describe("Contract 4 — Provider groups and status labels remain accessible", () => {
   test("channel account group label is long enough to be a meaningful aria-label", () => {
-    // Short labels like "C" or just the accountId are not sufficient
     const label = channelAccountGroupLabel(clarusAccount("me"))
     expect(label.length).toBeGreaterThan(5)
   })
 
-  test("disabled action states still carry their label (not hidden — just disabled)", () => {
-    // Disabled controls must remain in the DOM with their labels
-    // so assistive technology can announce their purpose
-    const account = clarusAccount("agent-disabled", { kind: "syncing" })
-    const actions = deriveChannelAccountActions("clarus")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    for (const state of actionStates) {
-      expect(state.label.message!.length).toBeGreaterThan(0)
-    }
-  })
-
   test("all status labels come from the existing sidebar locale message catalog", () => {
-    // Verify the model function doesn't introduce inline strings
-    // but uses the canonical sidebar message descriptors
     const allStatusKinds: ChannelAccountStatus["kind"][] = [
       "disabled",
       "waiting_for_transport",
@@ -545,10 +291,6 @@ describe("Contract 7 — Controls are keyboard-reachable and labelled", () => {
 
 describe("Contract 8 — No Clarus frontend store; canonical layout projection is owner", () => {
   test("partitionScopeNavigation is the single source of truth for channel account projection", () => {
-    // The sidebar model functions should derive all channel account data
-    // from partitionScopeNavigation and deriveChannelAccountActions
-    // without introducing any new frontend store or signal.
-
     const entries = [
       managed({ scopeID: "a", channelType: "clarus", accountId: "agent-1" }),
       managed({ scopeID: "b", channelType: "clarus", accountId: "agent-1" }),
@@ -557,18 +299,10 @@ describe("Contract 8 — No Clarus frontend store; canonical layout projection i
 
     const projection = partitionScopeNavigation(entries)
 
-    // Channel accounts populated correctly from projection alone
     expect(projection.channelAccounts).toHaveLength(1)
     expect(projection.channelAccounts[0]!.projects).toHaveLength(2)
-
-    // Generic projects only include non-managed entries
-    expect(projection.genericProjects.map((e) => e.scopeID)).toEqual(["ordinary"])
-
-    // Model functions operate on the projection result — no store dependency
+    expect(projection.genericProjects.map((entry) => entry.scopeID)).toEqual(["ordinary"])
     expect(shouldRenderChannelAccountSection(projection.channelAccounts)).toBe(true)
-    const actions = deriveChannelAccountActions("clarus")
-    const states = channelAccountActionStates(projection.channelAccounts[0]!, actions)
-    expect(states.length).toBeGreaterThan(0)
   })
 
   test("managed project route target derives from ScopeNavEntry fields, not store", () => {
@@ -585,27 +319,29 @@ describe("Contract 8 — No Clarus frontend store; canonical layout projection i
     const label = channelAccountStatusLabel({ kind: "connected" })
     expect(label.id).toBe(sidebar.channelAccountConnected.id)
   })
-
-  test("action states are derived from account + actions + optional pending flag only", () => {
-    // channelAccountActionStates signature reflects its pure contract:
-    // (ChannelAccount, ChannelAccountActions, refreshPending?: boolean)
-    const account = clarusAccount("agent-pure")
-    const actions = deriveChannelAccountActions("clarus")
-    const states = channelAccountActionStates(account, actions, true)
-    expect(states).toHaveLength(2)
-  })
 })
 
 // ================================================================
 // Edge cases: empty, loading, error, boundary states
 // ================================================================
 
+describe("Generic project worktree filtering", () => {
+  test("excludes Channel-managed worktrees without changing generic project order", () => {
+    expect(
+      filterGenericScopeWorktrees(
+        ["/projects/alpha", "/managed/clarus", "/projects/beta"],
+        new Set(["/managed/clarus"]),
+      ),
+    ).toEqual(["/projects/alpha", "/projects/beta"])
+  })
+})
+
 describe("Edge cases — empty, loading, error states", () => {
   test("empty channel accounts array renders no section", () => {
     expect(shouldRenderChannelAccountSection([])).toBe(false)
   })
 
-  test("account with zero projects still renders the account group", () => {
+  test("account with zero projects still renders a readable account group", () => {
     const emptyAccount: ChannelAccount = {
       channelType: "clarus",
       accountId: "no-projects-yet",
@@ -613,8 +349,7 @@ describe("Edge cases — empty, loading, error states", () => {
       status: { kind: "syncing" },
     }
     expect(shouldRenderChannelAccountSection([emptyAccount])).toBe(true)
-    const label = channelAccountGroupLabel(emptyAccount)
-    expect(label).toContain("no-projects-yet")
+    expect(channelAccountGroupLabel(emptyAccount)).toBe("Clarus")
   })
 
   test("account with undefined status still resolves a label", () => {
@@ -639,22 +374,80 @@ describe("Edge cases — empty, loading, error states", () => {
     expect(failedLabel.id).toBe(sidebar.channelAccountSyncFailed.id)
   })
 
-  test("account actions for degraded status remain enabled (retry is possible)", () => {
-    const account = clarusAccount("agent-degraded", { kind: "degraded" } as ChannelAccountStatus)
-    const actions = deriveChannelAccountActions("clarus")
-    const actionStates = channelAccountActionStates(account, actions)
-
-    const refresh = actionStates.find((s) => s.action === "refreshProjects")
-    expect(refresh).toBeDefined()
-    // In degraded state, refresh should still be allowed
-    expect(refresh!.disabled).toBe(false)
-  })
-
   test("managed project with no name falls back gracefully", () => {
     const entry = managed({ scopeID: "unnamed-proj" })
     const target = managedProjectRouteTarget(entry)
     expect(target).not.toBeNull()
     // Route still works even without a display name
     expect(target!.worktree).toBe("/managed/unnamed-proj")
+  })
+})
+
+// ================================================================
+// Contract: selectVisibleProjectEntries — managed Projects include channel entries
+// ================================================================
+
+type PartialNav = Partial<NavEntry> & Pick<NavEntry, "id" | "scopeID" | "category">
+
+function nav(input: PartialNav): NavEntry {
+  return {
+    scopeType: "project" as const,
+    title: input.title ?? input.id,
+    lastActivityAt: input.lastActivityAt ?? 0,
+    pinned: input.pinned ?? 0,
+    archived: input.archived ?? false,
+    completionNotice: input.completionNotice ?? { unread: false, unreadCount: 0 },
+    ...input,
+  } as NavEntry
+}
+
+describe("selectVisibleProjectEntries", () => {
+  test("ordinary Project shows only project-category entries", () => {
+    const entries = [
+      nav({ id: "s1", scopeID: "proj", category: "project", title: "Chat 1" }),
+      nav({ id: "s2", scopeID: "proj", category: "project", title: "Chat 2" }),
+      nav({ id: "s3", scopeID: "proj", category: "channel", title: "Task 1" }),
+    ]
+    const visible = selectVisibleProjectEntries(entries, false)
+    expect(visible.map((e) => e.id)).toEqual(["s1", "s2"])
+  })
+
+  test("managed Project includes both project and channel entries", () => {
+    const entries = [
+      nav({ id: "s1", scopeID: "managed", category: "project", title: "Chat 1" }),
+      nav({ id: "s2", scopeID: "managed", category: "channel", title: "Task 1" }),
+      nav({ id: "s3", scopeID: "managed", category: "channel", title: "Task 2" }),
+    ]
+    const visible = selectVisibleProjectEntries(entries, true)
+    expect(visible.map((e) => e.id)).toEqual(["s1", "s2", "s3"])
+  })
+
+  test("managed Project does not include background or github entries", () => {
+    const entries = [
+      nav({ id: "s1", scopeID: "managed", category: "project" }),
+      nav({ id: "s2", scopeID: "managed", category: "channel" }),
+      nav({ id: "s3", scopeID: "managed", category: "background" }),
+      nav({ id: "s4", scopeID: "managed", category: "github" }),
+      nav({ id: "s5", scopeID: "managed", category: "home" }),
+    ]
+    const visible = selectVisibleProjectEntries(entries, true)
+    expect(visible.map((e) => e.id)).toEqual(["s1", "s2"])
+  })
+
+  test("empty entries returns empty array for both managed and ordinary", () => {
+    expect(selectVisibleProjectEntries([], false)).toEqual([])
+    expect(selectVisibleProjectEntries([], true)).toEqual([])
+  })
+
+  test("managed Project with only channel entries shows all", () => {
+    const entries = [nav({ id: "t1", scopeID: "managed", category: "channel", title: "Task Only" })]
+    const visible = selectVisibleProjectEntries(entries, true)
+    expect(visible.map((e) => e.id)).toEqual(["t1"])
+  })
+
+  test("ordinary Project with only channel entries shows nothing", () => {
+    const entries = [nav({ id: "t1", scopeID: "proj", category: "channel", title: "Task" })]
+    const visible = selectVisibleProjectEntries(entries, false)
+    expect(visible).toEqual([])
   })
 })

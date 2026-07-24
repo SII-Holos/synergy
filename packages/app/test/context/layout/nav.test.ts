@@ -3,6 +3,9 @@ import type { NavEntry, NavListState, ScopeNavEntry } from "../../../src/context
 import {
   applySessionToNavList,
   githubNavQuery,
+  managedProjectLocalScope,
+  managedProjectScopesByWorktree,
+  partitionScopeNavigation,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
@@ -38,6 +41,64 @@ function scopeEntry(input: Partial<ScopeNavEntry> & Pick<ScopeNavEntry, "scopeID
     icon: input.icon,
   }
 }
+
+describe("managedProjectLocalScope", () => {
+  test("projects a managed navigation entry into the standard Sidebar Project scope shape", () => {
+    const managed = scopeEntry({
+      scopeID: "managed-scope",
+      directory: "/managed/project",
+      name: "Managed Project",
+      icon: { color: "purple" },
+    })
+
+    expect(managedProjectLocalScope(managed, { time: { created: 10, updated: 20 } }, true)).toEqual({
+      id: "managed-scope",
+      worktree: "/managed/project",
+      name: "Managed Project",
+      icon: { color: "purple" },
+      time: { created: 10, updated: 20 },
+      expanded: true,
+    })
+  })
+})
+
+describe("managed Project scope projection", () => {
+  test("builds the standard Sidebar Project scope map from Channel navigation", () => {
+    const managed: ScopeNavEntry = {
+      ...scopeEntry({
+        scopeID: "managed-scope",
+        directory: "/managed/project",
+        name: "Managed Project",
+        icon: { color: "purple" },
+      }),
+      managedProject: {
+        channelType: "clarus",
+        accountId: "agent-1",
+        externalProjectId: "project-1",
+        remoteState: "active",
+      },
+    }
+    const generic = scopeEntry({ scopeID: "generic-scope", directory: "/generic/project" })
+    const projection = partitionScopeNavigation([managed, generic])
+
+    const scopes = managedProjectScopesByWorktree(
+      projection.channelAccounts,
+      new Map([["managed-scope", { time: { created: 10, updated: 20 } }]]),
+      new Set(["/managed/project"]),
+    )
+
+    expect(projection.genericProjects.map((entry) => entry.scopeID)).toEqual(["generic-scope"])
+    expect([...scopes.keys()]).toEqual(["/managed/project"])
+    expect(scopes.get("/managed/project")).toEqual({
+      id: "managed-scope",
+      worktree: "/managed/project",
+      name: "Managed Project",
+      icon: { color: "purple" },
+      time: { created: 10, updated: 20 },
+      expanded: true,
+    })
+  })
+})
 
 describe("githubNavQuery", () => {
   test("requests GitHub sessions across parent and child scopes with cursor pagination", () => {

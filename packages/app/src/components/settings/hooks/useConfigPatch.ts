@@ -366,6 +366,14 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
       account.variant = entry.model ? entry.variant || undefined : undefined
     }
   }
+  const clarus = "clarus" in newChannel && newChannel.clarus?.type === "clarus" ? newChannel.clarus : undefined
+  if (clarus) {
+    for (const entry of state.channels.clarusAccounts) {
+      const account = clarus.accounts[entry.key]
+      if (!account) continue
+      account.enabled = entry.enabled
+    }
+  }
   if (JSON.stringify(newChannel) !== JSON.stringify(currentChannel)) patch.channel = newChannel
 }
 

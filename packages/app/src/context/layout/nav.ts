@@ -1,4 +1,4 @@
-import type { NavEntry, NavListState, ScopeNavEntry } from "./index"
+import type { LocalScope, NavEntry, NavListState, ScopeNavEntry } from "./index"
 
 // Instant in-place projection of a session.updated event onto a nav list
 // (frontend sync redesign, P3). Applying the event directly gives the sidebar
@@ -106,6 +106,21 @@ export function mergeNavListByID(previous: NavListState | undefined, next: NavLi
   }
 }
 
+export function managedProjectLocalScope(
+  entry: ScopeNavEntry,
+  metadata: Partial<LocalScope> | undefined,
+  expanded: boolean,
+): LocalScope {
+  return {
+    ...metadata,
+    id: entry.scopeID,
+    worktree: entry.directory,
+    name: entry.name ?? metadata?.name,
+    icon: { url: entry.icon?.url ?? metadata?.icon?.url, color: entry.icon?.color ?? metadata?.icon?.color },
+    expanded,
+  }
+}
+
 export function removeScopeFromIndex(
   entries: readonly ScopeNavEntry[],
   scopeID: string,
@@ -140,6 +155,20 @@ export interface ChannelAccount {
   accountId: string
   projects: ScopeNavEntry[]
   status?: ChannelAccountStatus
+}
+export function managedProjectScopesByWorktree(
+  accounts: readonly ChannelAccount[],
+  metadataByID: ReadonlyMap<string, Partial<LocalScope>>,
+  expandedWorktrees: ReadonlySet<string>,
+): Map<string, LocalScope> {
+  return new Map(
+    accounts.flatMap((account) =>
+      account.projects.map((entry) => [
+        entry.directory,
+        managedProjectLocalScope(entry, metadataByID.get(entry.scopeID), expandedWorktrees.has(entry.directory)),
+      ]),
+    ),
+  )
 }
 
 export function partitionScopeNavigation(entries: readonly ScopeNavEntry[]): {

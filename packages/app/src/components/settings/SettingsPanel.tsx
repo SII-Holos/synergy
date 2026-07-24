@@ -21,6 +21,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type {
+  ChannelStatus,
   ConfigDomainSummary,
   ControlProfileSummary,
   CortexConcurrencyStatus,
@@ -32,6 +33,7 @@ import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { useLocale } from "@/context/locale"
+import { useHolos } from "@/context/holos"
 import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
@@ -73,6 +75,7 @@ import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./s
 import { SaveIndicator } from "./components/SaveIndicator"
 import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
 import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
+import { channelRuntimeStatusLabel, clarusAccountDisplayName, clarusDiagnosticsFilename } from "./channel-account-model"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -141,6 +144,11 @@ const copy = {
     id: "settings.panel.section.unavailable",
     message: "{label} is not available",
   },
+  clarusRefreshFailed: { id: "settings.channels.clarus.refreshFailed", message: "Failed to refresh Clarus projects" },
+  clarusDiagnosticsFailed: {
+    id: "settings.channels.clarus.diagnosticsFailed",
+    message: "Failed to download Clarus diagnostics",
+  },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -166,6 +174,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const input = useInput()
   const platform = usePlatform()
   const locale = useLocale()
+  const holos = useHolos()
   const personalizeController = createPersonalizeController({
     get: async () => (await globalSDK.client.config.instructions.get()).data!,
     update: async (content) =>
@@ -192,6 +201,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [config, { refetch: refetchConfig }] = createResource(async () => {
     const res = await globalSDK.client.config.global()
     return res.data!
+  })
+
+  const [channelStatuses, { refetch: refetchChannelStatuses }] = createResource(async () => {
+    const res = await globalSDK.client.channel.status()
+    return (res.data ?? {}) as Record<string, ChannelStatus>
   })
 
   const [cortexConcurrencyStatus, { refetch: refetchCortexConcurrencyStatus }] = createResource(async () => {
@@ -467,6 +481,50 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (save.explicitDirty() || personalizeController.dirty()) return "dirty"
     return "idle"
   })
+  const refreshClarusProjects = async (accountID: string) => {
+    try {
+      await globalSDK.client.channel.refreshProjects({ channelType: "clarus", accountId: accountID })
+      await refetchChannelStatuses()
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: _(copy.clarusRefreshFailed),
+        description: error instanceof Error ? error.message : _(copy.clarusRefreshFailed),
+      })
+    }
+  }
+
+  const downloadClarusDiagnostics = async (accountID: string) => {
+    try {
+      const response = await globalSDK.client.channel.downloadDiagnostics({
+        channelType: "clarus",
+        accountId: accountID,
+      })
+      const data = response.data
+      if (!data) return
+      const blob =
+        data instanceof Blob
+          ? data
+          : new Blob([typeof data === "string" ? data : JSON.stringify(data, null, 2)], {
+              type: "application/x-ndjson",
+            })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = clarusDiagnosticsFilename()
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: _(copy.clarusDiagnosticsFailed),
+        description: error instanceof Error ? error.message : _(copy.clarusDiagnosticsFailed),
+      })
+    }
+  }
+
   const builtinSettingsComponents = (): Partial<Record<string, Component>> => ({
     account: AccountPanel,
     personalize: () => <PersonalizePanel controller={personalizeController} />,
@@ -540,16 +598,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
         }
       />
     ),
+
     channels: () => (
       <ChannelsPanel
         channels={settings.channels}
         providers={providerGroups()}
         popoverLayer={settingsPopoverLayer()}
-        onChannelToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
-        onChannelModelChange={(index, model) => setSettings("channels", "feishuAccounts", index, "model", model)}
-        onChannelVariantChange={(index, variant) =>
-          setSettings("channels", "feishuAccounts", index, "variant", variant)
+        clarusAccountName={(accountID) => clarusAccountDisplayName(accountID, holos.state.identity.accounts)}
+        clarusAccountDescription={(accountID) =>
+          translateDescriptor(channelRuntimeStatusLabel(channelStatuses()?.[`clarus:${accountID}`]), i18n())
         }
+        onFeishuToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
+        onFeishuModelChange={(index, model) => setSettings("channels", "feishuAccounts", index, "model", model)}
+        onFeishuVariantChange={(index, variant) => setSettings("channels", "feishuAccounts", index, "variant", variant)}
+        onClarusToggle={(index, value) => setSettings("channels", "clarusAccounts", index, "enabled", value)}
+        onClarusRefresh={refreshClarusProjects}
+        onClarusDiagnostics={downloadClarusDiagnostics}
       />
     ),
     email: () => (
