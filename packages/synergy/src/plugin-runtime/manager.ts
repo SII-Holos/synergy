@@ -8,6 +8,7 @@ import { PluginLogBuffer } from "./logs.js"
 import { createPluginInvocationContext } from "./context-factory.js"
 import { pathToFileURL } from "node:url"
 import { Installation } from "../global/installation.js"
+import { startMemoryMonitor, type MemoryMonitorInput, type MemoryMonitor } from "./resource-limits.js"
 
 export type PluginRuntimeErrorCode =
   | "PLUGIN_UNAVAILABLE"
@@ -49,6 +50,9 @@ export interface PluginHostServiceInvocationInput {
 }
 
 export type PluginHostServiceDispatcher = (input: PluginHostServiceInvocationInput) => Promise<unknown>
+export interface PluginRuntimeManagerDependencies {
+  startMemoryMonitor(input: MemoryMonitorInput): MemoryMonitor
+}
 
 interface RuntimeInvocationRecord {
   context: RuntimeInvocationContextData
@@ -63,8 +67,50 @@ export class PluginRuntimeManager {
   readonly registry = new PluginRuntimeRegistry()
   readonly logs = new PluginLogBuffer()
   #invocations = new Map<string, RuntimeInvocationRecord>()
+  #startInputs = new Map<string, StartPluginRuntimeInput>()
+  #lastRecovery:
+    | {
+        action: "recycle"
+        reason: "memory_limit"
+        at: number
+        beforeBytes: number
+        afterBytes: number
+        reclaimedBytes: number
+      }
+    | undefined
 
-  constructor(private readonly hostServices: PluginHostServiceDispatcher = async () => undefined) {}
+  constructor(
+    private readonly hostServices: PluginHostServiceDispatcher = async () => undefined,
+    private readonly dependencies: PluginRuntimeManagerDependencies = { startMemoryMonitor },
+  ) {}
+
+  resourceStats() {
+    const entries = this.registry
+      .list()
+      .filter((entry) => entry.mode === "process" && entry.process?.process.exitCode === null)
+    const measured = entries.filter((entry) => entry.memory?.currentRssBytes !== undefined)
+    return {
+      processCount: entries.length,
+      measuredProcessCount: measured.length,
+      currentBytes: measured.reduce((sum, entry) => sum + (entry.memory?.currentRssBytes ?? 0), 0),
+      baselineBytes: measured.reduce((sum, entry) => sum + (entry.memory?.baselineRssBytes ?? 0), 0),
+      peakBytes: measured.reduce((sum, entry) => sum + (entry.memory?.peakRssBytes ?? 0), 0),
+      retainedBytes: measured.reduce(
+        (sum, entry) =>
+          sum +
+          Math.max(
+            0,
+            (entry.memory?.currentRssBytes ?? 0) -
+              (entry.memory?.baselineRssBytes ?? entry.memory?.currentRssBytes ?? 0),
+          ),
+        0,
+      ),
+      heapUsedBytes: measured.reduce((sum, entry) => sum + (entry.memory?.heapUsedBytes ?? 0), 0),
+      externalBytes: measured.reduce((sum, entry) => sum + (entry.memory?.externalBytes ?? 0), 0),
+      arrayBuffersBytes: measured.reduce((sum, entry) => sum + (entry.memory?.arrayBuffersBytes ?? 0), 0),
+      lastRecovery: this.#lastRecovery,
+    }
+  }
 
   async start(input: StartPluginRuntimeInput): Promise<PluginRuntimeEntry> {
     const manifest = input.manifest
@@ -103,6 +149,7 @@ export class PluginRuntimeManager {
       startedAt: Date.now(),
     }
     this.registry.set(entry)
+    this.#startInputs.set(key, { ...input, limits })
 
     if (mode === "inProcess") {
       try {
@@ -143,6 +190,7 @@ export class PluginRuntimeManager {
         entry.state = "crashed"
         entry.lastError = error instanceof Error ? error.message : String(error)
         this.registry.delete(key)
+        this.#startInputs.delete(key)
         throw error
       }
     }
@@ -202,15 +250,57 @@ export class PluginRuntimeManager {
           signal: invocation.controller.signal,
         })
       },
-      onHeartbeat() {
+      onHeartbeat(message) {
         entry.lastHeartbeatAt = Date.now()
+        entry.memory = {
+          ...entry.memory,
+          heapUsedBytes: message.memory.heapUsedBytes,
+          heapTotalBytes: message.memory.heapTotalBytes,
+          externalBytes: message.memory.externalBytes,
+          arrayBuffersBytes: message.memory.arrayBuffersBytes,
+        }
       },
       onLog: (log) => this.logs.append(entry.pluginId, log),
       onExit: (exitCode, signal) => {
+        entry.memoryMonitor?.stop()
+        entry.memoryMonitor = undefined
         if (entry.state === "stopped") return
         entry.state = "crashed"
         entry.lastError = `Plugin runtime exited (${exitCode ?? signal ?? "unknown"})`
         readyReject?.(new Error(entry.lastError))
+      },
+    })
+    const pid = entry.process.process.pid
+    entry.memoryMonitor = this.dependencies.startMemoryMonitor({
+      pluginId: entry.pluginId,
+      pid,
+      maxMb: limits.maxMemoryMb,
+      intervalMs: limits.memorySampleIntervalMs,
+      onSample: (currentMb) => {
+        if (this.registry.get(entry.key) !== entry || entry.process?.process.pid !== pid) return
+        const currentRssBytes = currentMb * 1024 * 1024
+        entry.memory = {
+          ...entry.memory,
+          currentRssBytes,
+          baselineRssBytes:
+            entry.memory?.baselineRssBytes === undefined
+              ? currentRssBytes
+              : Math.min(entry.memory.baselineRssBytes, currentRssBytes),
+          peakRssBytes: Math.max(entry.memory?.peakRssBytes ?? 0, currentRssBytes),
+          sampledAt: Date.now(),
+        }
+      },
+      onExceed: (currentMb) => {
+        if (
+          this.registry.get(entry.key) !== entry ||
+          this.registry.active(entry.pluginId) !== entry ||
+          entry.process?.process.pid !== pid ||
+          entry.state !== "ready" ||
+          entry.memoryRecyclePending
+        )
+          return
+        entry.memoryRecyclePending = true
+        void this.#recycleForMemory(entry, currentMb * 1024 * 1024, limits.shutdownGraceMs)
       },
     })
 
@@ -228,6 +318,7 @@ export class PluginRuntimeManager {
       entry.state = "crashed"
       entry.lastError = error instanceof Error ? error.message : String(error)
       await entry.process.stop(limits.shutdownGraceMs).catch(() => undefined)
+      entry.memoryMonitor?.stop()
       throw error
     }
 
@@ -382,9 +473,34 @@ export class PluginRuntimeManager {
   async #stopEntry(entry: PluginRuntimeEntry, graceMs: number) {
     if (entry.state === "stopped") return
     entry.state = "stopped"
+    entry.memoryMonitor?.stop()
+    entry.memoryMonitor = undefined
     await entry.process?.stop(graceMs)
     await entry.definition?.deactivate?.()
     this.registry.delete(entry.key)
+    this.#startInputs.delete(entry.key)
+  }
+
+  async #recycleForMemory(entry: PluginRuntimeEntry, beforeBytes: number, graceMs: number) {
+    if (this.registry.get(entry.key) !== entry || this.registry.active(entry.pluginId) !== entry) return
+    const restartInput = this.#startInputs.get(entry.key)
+    await this.#stopEntry(entry, graceMs)
+    this.#lastRecovery = {
+      action: "recycle",
+      reason: "memory_limit",
+      at: Date.now(),
+      beforeBytes,
+      afterBytes: 0,
+      reclaimedBytes: beforeBytes,
+    }
+    if (!restartInput || this.registry.list().some((candidate) => candidate.pluginId === entry.pluginId)) return
+    await this.start(restartInput).catch((error) => {
+      this.logs.append(entry.pluginId, {
+        timestamp: Date.now(),
+        level: "error",
+        message: `Plugin runtime memory recycle failed: ${error instanceof Error ? error.message : String(error)}`,
+      })
+    })
   }
 
   #logger(pluginId: string) {

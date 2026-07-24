@@ -258,6 +258,163 @@ export namespace PerformanceCatalog {
     }),
     metric("process.memory.external", "External memory", "bytes", "gauge", "latest", "process", "process", []),
     metric("process.memory.array_buffers", "ArrayBuffer memory", "bytes", "gauge", "latest", "process", "process", []),
+    metric("service.memory.current", "Service cgroup memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric("service.memory.peak", "Service peak memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric("service.memory.high", "Service memory high threshold", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric("service.memory.max", "Service memory maximum", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric("service.memory.swap", "Service swap memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric("service.memory.anon", "Service anonymous memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric("service.memory.file", "Service file memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric("service.memory.kernel", "Service kernel memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric("service.memory.slab", "Service slab memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    metric(
+      "service.memory.file.active",
+      "Service active file memory",
+      "bytes",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["source", "platform"],
+    ),
+    metric(
+      "service.memory.file.inactive",
+      "Service inactive file memory",
+      "bytes",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["source", "platform"],
+    ),
+    metric(
+      "service.memory.slab.reclaimable",
+      "Service reclaimable slab",
+      "bytes",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["source", "platform"],
+    ),
+    metric(
+      "service.memory.slab.unreclaimable",
+      "Service unreclaimable slab",
+      "bytes",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["source", "platform"],
+    ),
+    metric(
+      "service.memory.reclaimable",
+      "Service reclaimable memory",
+      "bytes",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["source", "platform"],
+    ),
+    metric("service.memory.working_set", "Service working set", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+      "platform",
+    ]),
+    ...memoryCounterMetrics(),
+    ...memoryPressureMetrics(),
+    metric("runtime.jsc.heap_size", "JSC heap size", "bytes", "gauge", "latest", "process", "process", ["platform"]),
+    metric("runtime.jsc.heap_capacity", "JSC heap capacity", "bytes", "gauge", "latest", "process", "process", [
+      "platform",
+    ]),
+    metric("runtime.jsc.extra_memory", "JSC extra memory", "bytes", "gauge", "latest", "process", "process", [
+      "platform",
+    ]),
+    metric("runtime.jsc.object_count", "JSC object count", "count", "gauge", "latest", "process", "process", [
+      "platform",
+    ]),
+    metric(
+      "runtime.jsc.protected_object_count",
+      "JSC protected object count",
+      "count",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["platform"],
+    ),
+    metric("runtime.jsc.object_type.count", "JSC object type count", "count", "gauge", "latest", "process", "process", [
+      "platform",
+      "objectType",
+    ]),
+    metric(
+      "runtime.jsc.object_type.growth",
+      "JSC object type growth",
+      "count",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["platform", "objectType"],
+    ),
+    metric("runtime.allocator.rss", "Allocator RSS", "bytes", "gauge", "latest", "process", "process", ["platform"]),
+    metric(
+      "runtime.allocator.committed",
+      "Allocator committed memory",
+      "bytes",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["platform"],
+    ),
+    metric(
+      "runtime.allocator.reserved",
+      "Allocator reserved memory",
+      "bytes",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["platform"],
+    ),
+    metric(
+      "runtime.allocator.abandoned_pages",
+      "Allocator abandoned pages",
+      "count",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["platform"],
+    ),
     metric("process.cpu.utilization", "CPU utilization", "ratio", "ratio", "avg", "process", "process", []),
     metric("process.event_loop.lag", "Event-loop lag", "ms", "duration", "p95", "process", "process", []),
     metric("process.active.count", "Active processes", "count", "gauge", "latest", "process", "process", [], {
@@ -468,11 +625,22 @@ export namespace PerformanceCatalog {
   export const chartMetricNames = [
     "process.cpu.utilization",
     "process.event_loop.lag",
+    "service.memory.current",
+    "service.memory.working_set",
+    "service.memory.reclaimable",
+    "service.memory.anon",
+    "service.memory.file",
+    "service.memory.pressure.some.avg10",
+    "service.memory.pressure.full.avg10",
     "process.memory.rss",
     "process.memory.heap_used",
     "process.memory.heap_total",
     "process.memory.external",
     "process.memory.array_buffers",
+    "runtime.jsc.heap_size",
+    "runtime.jsc.extra_memory",
+    "runtime.allocator.rss",
+    "runtime.allocator.committed",
     "http.request.duration",
     "session.turn.duration",
     "session.turn.active",
@@ -483,6 +651,8 @@ export namespace PerformanceCatalog {
   ]
   export const defaultMetricNames = [
     "http.request.duration",
+    "service.memory.current",
+    "service.memory.working_set",
     "process.memory.rss",
     "process.memory.heap_used",
     "process.cpu.utilization",
@@ -531,5 +701,65 @@ export namespace PerformanceCatalog {
       status: opts.status ?? "emitted",
       aliases: opts.aliases,
     }
+  }
+
+  function memoryCounterMetrics() {
+    const names = ["low", "high", "max", "oom", "oom_kill", "oom_group_kill"]
+    return names.flatMap((event) => [
+      metric(
+        `service.memory.events.${event}`,
+        `Service memory ${event} events`,
+        "count",
+        "gauge",
+        "latest",
+        "process",
+        "process",
+        ["source", "platform"],
+      ),
+      metric(
+        `service.memory.events.${event}.delta`,
+        `Service memory ${event} event delta`,
+        "count",
+        "counter",
+        "sum",
+        "process",
+        "process",
+        ["source", "platform"],
+      ),
+    ])
+  }
+
+  function memoryPressureMetrics() {
+    const averages = ["avg10", "avg60", "avg300"]
+    const result: MetricInfo[] = []
+    for (const kind of ["some", "full"]) {
+      for (const average of averages) {
+        result.push(
+          metric(
+            `service.memory.pressure.${kind}.${average}`,
+            `Service memory PSI ${kind} ${average}`,
+            "percent",
+            "gauge",
+            "latest",
+            "process",
+            "process",
+            ["source", "platform"],
+          ),
+        )
+      }
+      result.push(
+        metric(
+          `service.memory.pressure.${kind}.stall_delta`,
+          `Service memory PSI ${kind} stall delta`,
+          "microseconds",
+          "counter",
+          "sum",
+          "process",
+          "process",
+          ["source", "platform"],
+        ),
+      )
+    }
+    return result
   }
 }

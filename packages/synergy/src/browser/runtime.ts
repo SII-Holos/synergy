@@ -167,6 +167,25 @@ export namespace BrowserRuntime {
     return create
   }
 
+  export function resourceStats() {
+    const values = [...sessions.values()]
+    const activePages = values.filter((session) => session.page?.isAlive())
+    const hostPages = activePages.filter((session) => session.page?.backend === "host")
+    const headlessPages = activePages.filter((session) => session.page?.backend === "headless")
+    const host = BrowserHostBrokerProcess.resourceStats()
+    return {
+      ...host,
+      processCount: host.processCount + (headlessPages.length > 0 ? 1 : 0),
+      ownerCount: values.length,
+      sessionOwnerCount: values.filter((session) => session.owner.mode === "session").length,
+      scopeOwnerCount: values.filter((session) => session.owner.mode === "scope").length,
+      activePageCount: activePages.length,
+      hostPageCount: hostPages.length,
+      headlessPageCount: headlessPages.length,
+      suspendedPageCount: values.filter((session) => session.status === "suspended").length,
+    }
+  }
+
   async function driverForSession(): Promise<BrowserDriver.Driver> {
     await ensure()
     if (!driver) throw new Error("Browser driver not running")

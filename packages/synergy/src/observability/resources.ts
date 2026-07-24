@@ -9,6 +9,8 @@ import { ObservabilityRedaction } from "./redaction"
 import { ProcessRegistry } from "@/process/registry"
 import { ProcessMemory } from "@/process/memory-usage"
 import { ServiceMemory } from "@/process/service-memory"
+import { LinuxRuntimeMemory } from "./linux-runtime-memory"
+import { ServiceMemoryMetrics } from "./service-memory-metrics"
 
 type PublicServiceMemory = NonNullable<ObservabilitySchema.ResourceSample["serviceMemory"]>
 
@@ -29,6 +31,7 @@ export namespace ObservabilityResources {
   let sampleIntervalMs: number | undefined
   const io = { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 }
   const rssWindow: Array<{ time: number; rss: number }> = []
+  let lastRuntimeMetricSampleAt = 0
 
   export function addRead(bytes: number) {
     io.appReadBytes += Math.max(0, bytes)
@@ -108,6 +111,8 @@ export namespace ObservabilityResources {
     ObservabilityStore.insertResource(sample)
     recordChildProcesses(now, config.resourceSampleIntervalMs, childProcesses)
     recordResourceMetrics(memory, utilizationRatio, lagMs)
+    recordServiceMemoryMetrics(cgroup, now)
+    recordLinuxRuntimeMetrics()
     detectPressure(sample, config)
   }
 
@@ -125,6 +130,7 @@ export namespace ObservabilityResources {
     if (timer) clearInterval(timer)
     timer = undefined
     sampleIntervalMs = undefined
+    ServiceMemoryMetrics.reset()
   }
 
   export function reconfigure() {
@@ -231,6 +237,85 @@ export namespace ObservabilityResources {
       module: "process",
       source: "process",
     })
+  }
+
+  function recordServiceMemoryMetrics(cgroup: ServiceMemory.CgroupV2 | undefined, now: number) {
+    if (!cgroup) return
+    const labels = { source: "cgroup_v2", platform: "linux" }
+    for (const metric of ServiceMemoryMetrics.plan({ now, cgroup, env: process.env })) {
+      ObservabilityMetrics.record({
+        ...metric,
+        module: "process",
+        source: "process",
+        labels,
+      })
+    }
+  }
+
+  function recordLinuxRuntimeMetrics() {
+    const runtime = LinuxRuntimeMemory.sample()
+    if (!runtime || runtime.sampledAt === lastRuntimeMetricSampleAt) return
+    lastRuntimeMetricSampleAt = runtime.sampledAt
+    const labels = { platform: "linux" }
+    recordOptionalMetrics(
+      {
+        "runtime.jsc.heap_size": runtime.jscHeapSizeBytes,
+        "runtime.jsc.heap_capacity": runtime.jscHeapCapacityBytes,
+        "runtime.jsc.extra_memory": runtime.jscExtraMemoryBytes,
+        "runtime.allocator.rss": runtime.allocatorRssBytes,
+        "runtime.allocator.committed": runtime.allocatorCommittedBytes,
+        "runtime.allocator.reserved": runtime.allocatorReservedBytes,
+      },
+      "bytes",
+      labels,
+    )
+    recordOptionalMetrics(
+      {
+        "runtime.jsc.object_count": runtime.objectCount,
+        "runtime.jsc.protected_object_count": runtime.protectedObjectCount,
+        "runtime.allocator.abandoned_pages": runtime.allocatorAbandonedPages,
+      },
+      "count",
+      labels,
+    )
+    for (const item of runtime.topObjectTypes) {
+      ObservabilityMetrics.record({
+        name: "runtime.jsc.object_type.count",
+        value: item.count,
+        unit: "count",
+        module: "process",
+        source: "process",
+        labels: { ...labels, objectType: item.type },
+      })
+    }
+    for (const item of runtime.growingObjectTypes) {
+      ObservabilityMetrics.record({
+        name: "runtime.jsc.object_type.growth",
+        value: item.delta,
+        unit: "count",
+        module: "process",
+        source: "process",
+        labels: { ...labels, objectType: item.type },
+      })
+    }
+  }
+
+  function recordOptionalMetrics(
+    values: Record<string, number | undefined>,
+    unit: ObservabilitySchema.Unit,
+    labels: Record<string, string>,
+  ) {
+    for (const [name, value] of Object.entries(values)) {
+      if (value === undefined || !Number.isFinite(value)) continue
+      ObservabilityMetrics.record({
+        name,
+        value,
+        unit,
+        module: "process",
+        source: "process",
+        labels,
+      })
+    }
   }
 
   function detectPressure(

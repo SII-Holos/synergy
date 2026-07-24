@@ -12,6 +12,11 @@ import { PerformanceSchema } from "./schema"
 import { AgentTurn } from "@/session/agent-turn"
 import { ToolScheduler } from "@/session/tool-scheduler"
 import { PolicyWorker } from "@/enforcement/policy-worker"
+import { pluginRuntimeManager } from "@/plugin/runtime"
+import { BrowserRuntime } from "@/browser/runtime"
+import { McpSupervisor } from "@/mcp/supervisor"
+import { ProcessRegistry } from "@/process/registry"
+import { SessionMemoryPressure } from "@/session/memory-pressure"
 
 export namespace PerformanceDashboard {
   type MetricRow = ObservabilityStore.StoredMetric & { labels: Record<string, unknown> }
@@ -46,6 +51,11 @@ export namespace PerformanceDashboard {
     const agentWorkers = AgentTurn.stats()
     const policyWorkers = PolicyWorker.stats()
     const toolTasks = ToolScheduler.stats()
+    const pluginRuntimes = pluginRuntimeManager.resourceStats()
+    const browser = BrowserRuntime.resourceStats()
+    const mcp = McpSupervisor.resourceStats()
+    const localProcesses = ProcessRegistry.resourceStats()
+    const controlPlane = SessionMemoryPressure.stats()
     const messageCacheStats = SessionMessageCache.stats()
     const llmTurnStats = LLMTurnMemory.stats()
     const activeLLMTurns = LLMTurnMemory.activeSnapshot(20)
@@ -90,6 +100,126 @@ export namespace PerformanceDashboard {
     const criticalIssueCount = issueCounts.critical
     const score = Math.max(0, 100 - criticalIssueCount * 40 - issueCounts.error * 20 - issueCounts.warning * 8)
     const status = criticalIssueCount > 0 ? "critical" : issueCounts.total > 0 ? "degraded" : "healthy"
+    const serverBaseline = serverResourceRows.at(0)
+    const serverPeakBytes = Math.max(0, ...serverResourceRows.map((row) => row.memory_rss_bytes ?? 0))
+    const currentServerBytes = resources?.memory_rss_bytes ?? undefined
+    const serverBaselineBytes = serverBaseline?.memory_rss_bytes ?? undefined
+    const latestMetric = (name: string) => metrics.find((row) => row.name === name)?.value
+    const owners: PerformanceSchema.DashboardSummary["resources"]["owners"] = [
+      {
+        owner: "control_plane",
+        processCount: 1,
+        measuredProcessCount: currentServerBytes === undefined ? 0 : 1,
+        currentBytes: currentServerBytes,
+        peakBytes: serverPeakBytes || currentServerBytes,
+        baselineBytes: serverBaselineBytes,
+        retainedBytes:
+          currentServerBytes === undefined || serverBaselineBytes === undefined
+            ? undefined
+            : Math.max(0, currentServerBytes - serverBaselineBytes),
+        heapUsedBytes: resources?.memory_heap_used_bytes ?? undefined,
+        externalBytes: resources?.memory_external_bytes ?? undefined,
+        arrayBuffersBytes: resources?.memory_array_buffers_bytes ?? undefined,
+        source: "process_api",
+        completeness: currentServerBytes === undefined ? "unavailable" : "full",
+        attributes: {
+          pressure: controlPlane.lastAssessment?.pressure ?? "unknown",
+          processPressure: controlPlane.lastAssessment?.processPressure ?? "unknown",
+          servicePressure: controlPlane.lastAssessment?.servicePressure ?? "unknown",
+        },
+        lastRecovery: controlPlane.lastRecovery,
+      },
+      {
+        owner: "agent",
+        processCount: agentWorkers.workers,
+        measuredProcessCount: agentWorkers.measuredWorkers,
+        currentBytes: agentWorkers.rssBytes,
+        peakBytes: agentWorkers.peakBytes,
+        baselineBytes: agentWorkers.baselineBytes,
+        retainedBytes: agentWorkers.retainedBytes,
+        heapUsedBytes: agentWorkers.heapUsedBytes,
+        externalBytes: agentWorkers.externalBytes,
+        arrayBuffersBytes: agentWorkers.arrayBuffersBytes,
+        source: "worker_ipc",
+        completeness:
+          agentWorkers.workers === 0 || agentWorkers.measuredWorkers === agentWorkers.workers ? "full" : "partial",
+        attributes: { active: agentWorkers.active, queued: agentWorkers.queued },
+        lastRecovery: agentWorkers.lastRecovery,
+      },
+      {
+        owner: "policy",
+        processCount: policyWorkers.workers,
+        measuredProcessCount: policyWorkers.measuredWorkers,
+        currentBytes: policyWorkers.rssBytes,
+        peakBytes: policyWorkers.peakBytes,
+        baselineBytes: policyWorkers.baselineBytes,
+        retainedBytes: policyWorkers.retainedBytes,
+        heapUsedBytes: policyWorkers.heapUsedBytes,
+        externalBytes: policyWorkers.externalBytes,
+        arrayBuffersBytes: policyWorkers.arrayBuffersBytes,
+        source: "worker_ipc",
+        completeness:
+          policyWorkers.workers === 0 || policyWorkers.measuredWorkers === policyWorkers.workers ? "full" : "partial",
+        attributes: { active: policyWorkers.active, queued: policyWorkers.queued },
+        lastRecovery: policyWorkers.lastRecovery,
+      },
+      {
+        owner: "plugin",
+        ...pluginRuntimes,
+        source: "plugin_monitor",
+        completeness:
+          pluginRuntimes.processCount === 0 || pluginRuntimes.measuredProcessCount === pluginRuntimes.processCount
+            ? "full"
+            : "partial",
+        attributes: {},
+      },
+      {
+        owner: "browser",
+        ...browser,
+        source: "browser_runtime",
+        completeness:
+          browser.processCount === 0 || browser.measuredProcessCount === browser.processCount ? "full" : "partial",
+        attributes: {
+          owners: browser.ownerCount,
+          sessionOwners: browser.sessionOwnerCount,
+          scopeOwners: browser.scopeOwnerCount,
+          activePages: browser.activePageCount,
+          hostPages: browser.hostPageCount,
+          headlessPages: browser.headlessPageCount,
+          suspendedPages: browser.suspendedPageCount,
+        },
+      },
+      {
+        owner: "mcp",
+        ...mcp,
+        source: "mcp_stdio",
+        completeness: mcp.processCount === 0 || mcp.measuredProcessCount === mcp.processCount ? "full" : "partial",
+        attributes: {
+          stdioOpen: mcp.stdio.open,
+          stdioClosing: mcp.stdio.closing,
+          stdioClosed: mcp.stdio.closed,
+          closeTimedOut: mcp.stdio.timedOut,
+          descendantPipeGraceMs: 2_000,
+        },
+      },
+      {
+        owner: "local_process",
+        ...localProcesses,
+        source: "process_registry",
+        completeness:
+          localProcesses.processCount === 0 || localProcesses.measuredProcessCount === localProcesses.processCount
+            ? "full"
+            : "partial",
+        attributes: {
+          stdioOpen: localProcesses.stdio.open,
+          stdioDraining: localProcesses.stdio.draining,
+          stdioClosed: localProcesses.stdio.closed,
+          timedOut: localProcesses.stdio.timedOut,
+          drainTimedOut: localProcesses.stdio.drainTimedOut,
+          descendantPipeGraceMs: localProcesses.stdio.descendantPipeGraceMs,
+        },
+      },
+    ]
     return PerformanceSchema.DashboardSummary.parse({
       generatedAt: new Date().toISOString(),
       windowMs,
@@ -133,11 +263,16 @@ export namespace PerformanceDashboard {
           resources?.service_memory_source && resources.service_memory_completeness
             ? {
                 rssBytes: resources.service_memory_rss_bytes ?? undefined,
+                currentBytes: latestMetric("service.memory.current") ?? resources.service_memory_rss_bytes ?? undefined,
+                workingSetBytes: latestMetric("service.memory.working_set"),
+                reclaimableBytes: latestMetric("service.memory.reclaimable"),
+                peakBytes: latestMetric("service.memory.peak"),
                 source: resources.service_memory_source,
                 completeness: resources.service_memory_completeness,
               }
             : undefined,
         childProcessRssBytes: currentChildRows.reduce((sum, row) => sum + (row.memory_rss_bytes ?? 0), 0),
+        owners,
       },
       sessions: {
         turnCount: turns.length,

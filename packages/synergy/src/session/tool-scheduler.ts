@@ -2,6 +2,7 @@ import type { ModelMessage, Tool as AITool, ToolCallOptions } from "ai"
 import { availableParallelism } from "os"
 import { Log } from "@/util/log"
 import { ObservabilityMetrics } from "@/observability/metrics"
+import { SessionMemoryPressure } from "./memory-pressure"
 import type { SessionProcessor } from "./processor"
 
 export type ToolTaskState = "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
@@ -317,6 +318,16 @@ export class ToolTaskScheduler {
       })
       task.input.signal.removeEventListener("abort", onAbort)
       this.activeTasks.delete(task.key)
+      const memory = SessionMemoryPressure.currentSnapshot()
+      const thresholds = SessionMemoryPressure.resolveThresholds(process.env, memory)
+      if (SessionMemoryPressure.processPressureLevel(memory, thresholds) !== "normal") {
+        SessionMemoryPressure.signalRelease({
+          phase: "tool.execution.complete",
+          sessionID: task.input.sessionID,
+          messageID: task.input.messageID,
+          linuxOnly: true,
+        })
+      }
     }
   }
 

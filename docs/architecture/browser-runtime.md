@@ -29,6 +29,8 @@ Browser state persists under the Synergy data directory by Scope and owner. It i
 
 When a session is archived or deleted, or a Cortex child session reaches a terminal task status, the Browser runtime reaper disposes its live session. Disposal closes the live page and owner context while preserving suspended Browser state for later restoration. Runtime shutdown disposes every Browser session and stops the driver.
 
+Browser resource attribution counts owners and pages by backend without exposing owner identifiers. The remote Browser Host is eligible for idle retirement only after the broker reports that no canonical page is active for any owner; an active page cancels the retirement timer. Performance may report Host RSS and the idle-retirement effect, but it cannot close Browser pages or stop the Host directly. Headless Chromium remains explicitly partial when its process RSS is not available through the driver contract.
+
 ## Canonical Control Model
 
 `BrowserControl` defines one normalized command/result protocol for navigation, history, viewport, pointer and keyboard input, text insertion, evaluation, CDP operations, downloads, annotations, and related controls.

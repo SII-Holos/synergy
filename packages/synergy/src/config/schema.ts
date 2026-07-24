@@ -1156,6 +1156,13 @@ export const PluginRuntimeLimits = z
       .describe("Default maximum milliseconds for plugin delegated task runs"),
     shutdownGraceMs: z.number().int().positive().optional().describe("Graceful shutdown window before force kill"),
     heartbeatIntervalMs: z.number().int().positive().optional().describe("Heartbeat interval in milliseconds"),
+    maxMemoryMb: z.number().int().positive().optional().describe("External plugin runtime RSS limit in megabytes"),
+    memorySampleIntervalMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("External plugin runtime RSS sampling interval in milliseconds"),
   })
   .strict()
   .meta({ ref: "PluginRuntimeLimitsConfig" })

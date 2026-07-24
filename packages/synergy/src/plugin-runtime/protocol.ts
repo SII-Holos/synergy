@@ -80,7 +80,16 @@ export type PluginToHost =
       params: unknown
     }
   | { type: "log"; level: "debug" | "info" | "warn" | "error"; message: string; details?: Record<string, unknown> }
-  | { type: "heartbeat" }
+  | {
+      type: "heartbeat"
+      memory: {
+        rssBytes: number
+        heapUsedBytes: number
+        heapTotalBytes: number
+        externalBytes: number
+        arrayBuffersBytes: number
+      }
+    }
 
 export interface SerializedPluginRuntimeError {
   name: string
@@ -107,5 +116,5 @@ export function deserializePluginRuntimeError(error: SerializedPluginRuntimeErro
   })
 }
 
-export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 6
+export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 7
 export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

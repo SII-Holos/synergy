@@ -1069,11 +1069,20 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             postRequestedStop = postResult === "stop"
           }
         }
-        await SessionMemoryPressure.maybeCollect({
-          sessionID,
-          messageID: processor.message.id,
-          phase: "session.turn.after_post_jobs",
-        })
+        if (process.platform === "linux") {
+          SessionMemoryPressure.signalRelease({
+            sessionID,
+            messageID: processor.message.id,
+            phase: "session.turn.after_post_jobs",
+            linuxOnly: true,
+          })
+        } else {
+          await SessionMemoryPressure.maybeCollect({
+            sessionID,
+            messageID: processor.message.id,
+            phase: "session.turn.after_post_jobs",
+          })
+        }
         if (postRequestedStop) break
 
         if (result === "stop") {

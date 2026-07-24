@@ -35,13 +35,15 @@ description: Add, modify, or review Synergy Plugin API 3 definitions, generated 
 19. Composer, selection, text-action, and message-slot contributions adapt the App's native controllers and registries. Capability-gate each specialized surface context, remount it by Scope/Session/generation ownership, and keep plugin business panels and result protocols outside Core.
 20. Sessionless plugin inference uses the existing Host Service RPC and Core `AgentCall`; require owned hidden Agents or an explicit allowlist and enforce hard runtime/input/output ceilings. Never expose provider/model selection, tools, raw LLM streams, or a private plugin inference runtime.
 21. Keep compiler dependencies reachable from the packaged Synergy CLI statically analyzable so Bun includes them in standalone executables. A package dependency in `node_modules` is not sufficient for runtime `require()` from `/$bunfs`.
+22. Give every external generation one owned memory monitor and stop it on every lifecycle exit. A memory-limit callback may restart only its exact active registry generation with the same manifest and limits; never let a stale callback stop or replace a newer generation. Attribute trusted `inProcess` allocations to the Control Plane rather than double-counting plugin RSS.
 
 ## Verify
 
 1. Add or update behavior tests at the owning boundary: descriptor/schema, plugin-kit build/validate/pack/sign, metadata-only discovery, approval, transaction rollback, runtime generation, operation/event/hook contract, server route, or Web registration lifecycle.
 2. Cover duplicate IDs, undeclared capabilities, handler mismatch, invalid schemas/hashes, disabled Scope, timeout/cancel/crash, stale generation, trusted UI export/runtime mismatch, upgrade failure, and force uninstall when relevant.
-3. Run public package typecheck/build, inspect a packed artifact, and verify a compiled standalone executable can invoke compiler-backed commands. Run focused host/Web tests, regenerate OpenAPI/SDK or config schema when their sources change, and finish with `bun run quality:quick`.
-4. Update the canonical plugin docs and this Skill in the same change. Delete obsolete guidance instead of appending migration caveats to current-state docs.
+3. For runtime memory changes, cover startup/stop ownership, the measured recycle effect, and a stale generation firing after an atomic replacement.
+4. Run public package typecheck/build, inspect a packed artifact, and verify a compiled standalone executable can invoke compiler-backed commands. Run focused host/Web tests, regenerate OpenAPI/SDK or config schema when their sources change, and finish with `bun run quality:quick`.
+5. Update the canonical plugin docs and this Skill in the same change. Delete obsolete guidance instead of appending migration caveats to current-state docs.
 
 ## Handoff
 

@@ -159,6 +159,7 @@ export function PerformanceDashboard() {
         onCancel={() => void perf.cancelAnalysis()}
       />
       <SummaryCards _={_} summary={summary()} />
+      <ResourceOwnership _={_} summary={summary()} />
       <RuntimeSupport _={_} summary={summary()} />
 
       <div class="performance-chart-grid">
@@ -590,6 +591,108 @@ function SummaryCards(props: { _: ReturnType<typeof useLingui>["_"]; summary: Pe
         icon="performance.frontend"
       />
     </div>
+  )
+}
+
+type ResourceOwner = PerformanceSummary["resources"]["owners"][number]
+
+function ResourceOwnership(props: {
+  _: ReturnType<typeof useLingui>["_"]
+  summary: PerformanceSummary | null | undefined
+}) {
+  const { _ } = props
+  const { fmt } = useLocale()
+  const owners = () => props.summary?.resources.owners ?? []
+  const service = () => props.summary?.resources.serviceMemory
+  const ownerLabel = (owner: ResourceOwner["owner"]) => {
+    if (owner === "control_plane") return _(P.resourceOwnerControlPlane)
+    if (owner === "agent") return _(P.resourceOwnerAgent)
+    if (owner === "policy") return _(P.resourceOwnerPolicy)
+    if (owner === "plugin") return _(P.resourceOwnerPlugin)
+    if (owner === "browser") return _(P.resourceOwnerBrowser)
+    if (owner === "mcp") return _(P.resourceOwnerMcp)
+    return _(P.resourceOwnerLocalProcess)
+  }
+  const coverage = (owner: ResourceOwner) =>
+    owner.completeness === "unavailable"
+      ? _(P.resourceCoverageUnavailable)
+      : _(P.resourceCoverageValue.id, {
+          measured: String(owner.measuredProcessCount),
+          count: String(owner.processCount),
+          completeness: owner.completeness === "full" ? _(P.resourceCoverageFull) : _(P.resourceCoveragePartial),
+        })
+  const recovery = (owner: ResourceOwner) => {
+    if (!owner.lastRecovery) return _(P.resourceRecoveryNone)
+    return _(P.resourceRecoveryValue.id, {
+      action: owner.lastRecovery.action,
+      reason: owner.lastRecovery.reason,
+      effect:
+        owner.lastRecovery.reclaimedBytes === undefined
+          ? _(P.resourceRecoveryUnmeasured)
+          : _(P.resourceRecoveryReclaimed.id, {
+              bytes: formatChartBytes(owner.lastRecovery.reclaimedBytes),
+            }),
+      time: formatTime(owner.lastRecovery.at, fmt),
+    })
+  }
+  return (
+    <section class="performance-card rounded-xl px-4 py-4">
+      <div class="mb-3">
+        <div class="text-14-medium text-text-strong">{_(P.resourceOwnershipTitle)}</div>
+        <div class="mt-1 text-12-regular text-text-weak">{_(P.resourceOwnershipDesc)}</div>
+      </div>
+      <Show when={service()?.source === "cgroup_v2" ? service() : undefined}>
+        {(memory) => (
+          <div class="performance-service-memory mb-4 grid gap-2 rounded-lg p-3 text-12-regular">
+            <div>
+              <span class="text-text-weak">{_(P.resourceCgroupCurrent)}</span>
+              <span class="ml-2 text-text-strong">{formatChartBytes(memory().currentBytes)}</span>
+            </div>
+            <div>
+              <span class="text-text-weak">{_(P.resourceWorkingSet)}</span>
+              <span class="ml-2 text-text-strong">{formatChartBytes(memory().workingSetBytes)}</span>
+            </div>
+            <div>
+              <span class="text-text-weak">{_(P.resourceReclaimable)}</span>
+              <span class="ml-2 text-text-strong">{formatChartBytes(memory().reclaimableBytes)}</span>
+            </div>
+          </div>
+        )}
+      </Show>
+      <div class="performance-owner-table-wrap">
+        <table class="performance-owner-table w-full text-left text-12-regular">
+          <thead class="text-text-weak">
+            <tr>
+              <th>{_(P.resourceOwner)}</th>
+              <th>{_(P.resourceCurrent)}</th>
+              <th>{_(P.resourcePeak)}</th>
+              <th>{_(P.resourceBaseline)}</th>
+              <th>{_(P.resourceRetained)}</th>
+              <th>{_(P.resourceCoverage)}</th>
+              <th>{_(P.resourceLastRecovery)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={owners()}>
+              {(owner) => (
+                <tr>
+                  <td>
+                    <div class="text-12-medium text-text-strong">{ownerLabel(owner.owner)}</div>
+                    <div class="mt-0.5 text-11-regular text-text-weak">{owner.source}</div>
+                  </td>
+                  <td>{formatChartBytes(owner.currentBytes)}</td>
+                  <td>{formatChartBytes(owner.peakBytes)}</td>
+                  <td>{formatChartBytes(owner.baselineBytes)}</td>
+                  <td>{formatChartBytes(owner.retainedBytes)}</td>
+                  <td>{coverage(owner)}</td>
+                  <td class="performance-owner-recovery">{recovery(owner)}</td>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 

@@ -583,7 +583,7 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("recycles only after post-GC idle memory grows beyond its warm baseline", async () => {
+  test("recycles only after a delayed idle sample grows beyond its warm baseline", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool(
       {
@@ -607,6 +607,12 @@ describe("AgentWorkerPool", () => {
       memory: workerMemory(100, 100),
     })
     releaseTurn(fake.workers[0], firstRun.requestId, 1, workerMemory(100, 100))
+    fake.workers[0].receive({
+      type: "heartbeat",
+      turns: 1,
+      collection: "none",
+      memory: workerMemory(100, 100),
+    })
     const first = await firstPromise
     expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
     expect(fake.workers).toHaveLength(1)
@@ -625,6 +631,15 @@ describe("AgentWorkerPool", () => {
     const second = await secondPromise
     expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
     expect(fake.workers).toHaveLength(1)
+    expect(pool.stats().workers).toBe(1)
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      turns: 2,
+      collection: "none",
+      memory: workerMemory(357, 100),
+    })
+
     expect(pool.stats().workers).toBe(0)
     await pool.stop()
   })

@@ -30,6 +30,17 @@ function post(message: PluginToHost) {
   process.send?.(message)
 }
 
+function memory() {
+  const usage = process.memoryUsage()
+  return {
+    rssBytes: usage.rss,
+    heapUsedBytes: usage.heapUsed,
+    heapTotalBytes: usage.heapTotal,
+    externalBytes: usage.external,
+    arrayBuffersBytes: usage.arrayBuffers,
+  }
+}
+
 function findDefinition(module: Record<string, unknown>, pluginId: string): PluginDefinition {
   const candidate = [module.default, ...Object.values(module)].find((value): value is PluginDefinition => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false
@@ -55,7 +66,7 @@ async function activate(input: RuntimeActivationData) {
     generation: input.generation,
     log: logger(),
   })
-  heartbeat = setInterval(() => post({ type: "heartbeat" }), input.runtimeLimits.heartbeatIntervalMs)
+  heartbeat = setInterval(() => post({ type: "heartbeat", memory: memory() }), input.runtimeLimits.heartbeatIntervalMs)
   heartbeat.unref?.()
   post({
     type: "ready",
@@ -192,7 +203,7 @@ function handle(message: HostToPlugin) {
     void shutdown()
     return
   }
-  if (message.type === "ping") post({ type: "heartbeat" })
+  if (message.type === "ping") post({ type: "heartbeat", memory: memory() })
 }
 
 process.on("message", (message) => {

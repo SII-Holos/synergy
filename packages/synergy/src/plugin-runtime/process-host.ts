@@ -26,7 +26,7 @@ export interface SpawnPluginProcessOptions {
   activation: RuntimeActivationData
   onReady(message: Extract<PluginToHost, { type: "ready" }>): void
   onHostRequest(message: Extract<PluginToHost, { type: "hostRequest" }>): Promise<unknown>
-  onHeartbeat(): void
+  onHeartbeat(message: Extract<PluginToHost, { type: "heartbeat" }>): void
   onLog(entry: PluginLogEntry): void
   onExit(exitCode: number | null, signal: string | null): void
 }
@@ -93,7 +93,7 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
     ipc(message) {
       const parsed = (typeof message === "string" ? JSON.parse(message) : message) as PluginToHost
       if (parsed.type === "ready") options.onReady(parsed)
-      else if (parsed.type === "heartbeat") options.onHeartbeat()
+      else if (parsed.type === "heartbeat") options.onHeartbeat(parsed)
       else if (parsed.type === "log") {
         options.onLog({ timestamp: Date.now(), level: parsed.level, message: parsed.message })
       } else if (parsed.type === "response") {
