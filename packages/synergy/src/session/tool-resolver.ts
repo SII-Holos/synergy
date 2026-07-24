@@ -1,5 +1,6 @@
 import { Global } from "@/global"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import z from "zod"
 import { Agent } from "@/agent/agent"
 import { Identifier } from "@/id/id"
@@ -611,14 +612,15 @@ export namespace ToolResolver {
 
   function startToolTimeout(ctx: Tool.Context, timeoutMs: number) {
     const timing = toolTiming(ctx)
-    const timeout = new AbortController()
-    const timer = setTimeout(() => timeout.abort(), timeoutMs)
-    if (typeof timer === "object" && "unref" in timer) timer.unref()
+    const deadline = ToolTimeout.executionDeadline({
+      signal: timing.sessionAbort,
+      timeoutMs,
+    })
     timing.toolTimeoutCleanup = () => {
-      clearTimeout(timer)
+      deadline.dispose()
       timing.toolTimeoutCleanup = undefined
     }
-    return AbortSignal.any([timing.sessionAbort, timeout.signal])
+    return deadline
   }
 
   function disposeToolTimeout(ctx: Tool.Context) {
@@ -1522,7 +1524,8 @@ export namespace ToolResolver {
                   args: args as Record<string, any>,
                   toolTimeoutMs,
                 })
-                const combinedAbort = startToolTimeout(ctx, toolTimeoutMs)
+                const deadline = startToolTimeout(ctx, toolTimeoutMs)
+                const combinedAbort = deadline.signal
                 ctx.abort = combinedAbort
                 await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                 await toolTrace.phase("tool.execution.started", "execution started", {
@@ -1589,7 +1592,7 @@ export namespace ToolResolver {
                 )
                 await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
                 await toolTrace.phase("tool.execute.start", "tool execute start")
-                const result = await item.execute(args, toolCtx)
+                const result = await deadline.run(item.execute(args, toolCtx))
                 Tool.validateAttachmentResult(item.id, result)
                 await toolTrace.phase("tool.execute.end", "tool execute end", {
                   outputChars: result.output.length,
@@ -1775,7 +1778,8 @@ export namespace ToolResolver {
                     toolTimeoutMs,
                     mcpCallTimeoutMs: MCP.toolCallTimeout(key),
                   })
-                  const combinedAbort = startToolTimeout(ctx, toolTimeoutMs)
+                  const deadline = startToolTimeout(ctx, toolTimeoutMs)
+                  const combinedAbort = deadline.signal
                   ctx.abort = combinedAbort
                   await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
                   await toolTrace.phase("tool.execution.started", "execution started", {
@@ -1798,7 +1802,9 @@ export namespace ToolResolver {
                   await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
 
                   await toolTrace.phase("tool.execute.start", "tool execute start")
-                  const result = await execute(args, { ...opts, abortSignal: combinedAbort })
+                  const result = (await deadline.run(
+                    execute(args, { ...opts, abortSignal: combinedAbort }),
+                  )) as CallToolResult
                   await toolTrace.phase("tool.execute.end", "tool execute end", {
                     contentCount: result.content.length,
                   })

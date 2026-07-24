@@ -13,6 +13,26 @@ function metadata(tool: string, args: Record<string, any> = {}, mcpCallTimeoutMs
 }
 
 describe("ToolTimeout", () => {
+  test("enforces a hard deadline when execution ignores abort", async () => {
+    const parent = new AbortController()
+    const deadline = ToolTimeout.executionDeadline({
+      signal: parent.signal,
+      timeoutMs: 10,
+      label: "Test tool",
+    })
+
+    try {
+      const operation = new Promise<never>(() => {})
+      await expect(deadline.run(operation)).rejects.toMatchObject({
+        name: "TimeoutError",
+        message: "Test tool timed out after 10ms.",
+      })
+      expect(deadline.signal.aborted).toBe(true)
+    } finally {
+      deadline.dispose()
+    }
+  })
+
   test("uses operation timeout for search tools", () => {
     expect(metadata("glob")).toMatchObject({
       toolTimeoutMs,
