@@ -2469,6 +2469,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Managed project archive conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedProjectArchiveError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -2564,6 +2574,16 @@
                     }
                   },
                   "required": ["ok"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Managed project archive conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedProjectArchiveError"
                 }
               }
             }
@@ -19594,6 +19614,159 @@
         ]
       }
     },
+    "/channel/{channelType}/{accountId}/projects/refresh": {
+      "post": {
+        "operationId": "channel.refreshProjects",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channelType",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Refresh channel account projects",
+        "description": "Discover and reconcile projects for one channel account, then return when this refresh completes.",
+        "responses": {
+          "200": {
+            "description": "Refresh completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "completed": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": ["completed"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Refresh failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelRefreshError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.refreshProjects({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/channel/{channelType}/{accountId}/diagnostics.ndjson": {
+      "get": {
+        "operationId": "channel.downloadDiagnostics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channelType",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Download channel account diagnostics",
+        "description": "Stream the retained diagnostics window as bounded NDJSON. Each line is a valid JSON record.",
+        "responses": {
+          "200": {
+            "description": "NDJSON diagnostic stream",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "level": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "data": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "required": ["timestamp", "level", "message"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.downloadDiagnostics({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/experimental/resource": {
       "get": {
         "operationId": "experimental.resource.list",
@@ -23957,6 +24130,52 @@
           "chatId": {
             "type": "string"
           },
+          "target": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "chat"
+                  },
+                  "chatId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "chatId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "project"
+                  },
+                  "externalProjectId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "externalProjectId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "task"
+                  },
+                  "externalProjectId": {
+                    "type": "string"
+                  },
+                  "externalTaskId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "externalProjectId", "externalTaskId"]
+              }
+            ]
+          },
           "chatType": {
             "type": "string",
             "enum": ["dm", "group"]
@@ -23977,7 +24196,7 @@
             "type": "number"
           }
         },
-        "required": ["type", "chatId"]
+        "required": ["type"]
       },
       "SessionEndpoint": {
         "description": "Endpoint context if created from a session endpoint",
@@ -24095,6 +24314,11 @@
           "prompt": {
             "description": "Instruction for the agent when triggered",
             "type": "string"
+          },
+          "deliveryMode": {
+            "description": "Internal delivery mode that injects hidden system guidance into the origin Session",
+            "type": "string",
+            "const": "session_guidance"
           },
           "agent": {
             "description": "Agent to use, defaults to configured default",
@@ -24217,6 +24441,58 @@
           "chatType": {
             "type": "string",
             "enum": ["dm", "group"]
+          },
+          "channelType": {
+            "type": "string"
+          },
+          "channelAccountId": {
+            "type": "string"
+          },
+          "channelTarget": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "chat"
+                  },
+                  "chatId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "chatId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "project"
+                  },
+                  "externalProjectId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "externalProjectId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "task"
+                  },
+                  "externalProjectId": {
+                    "type": "string"
+                  },
+                  "externalTaskId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "externalProjectId", "externalTaskId"]
+              }
+            ]
           },
           "completionNotice": {
             "type": "object",
@@ -24416,9 +24692,51 @@
                 "type": "string"
               }
             }
+          },
+          "managedProject": {
+            "type": "object",
+            "properties": {
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "externalProjectId": {
+                "type": "string"
+              },
+              "remoteState": {
+                "type": "string",
+                "enum": ["active", "paused", "stale", "archived"]
+              }
+            },
+            "required": ["channelType", "accountId", "externalProjectId", "remoteState"]
           }
         },
         "required": ["scopeID", "scopeType", "directory", "latestActivityAt", "sessionCount"]
+      },
+      "ManagedProjectArchiveError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ManagedProjectArchiveError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "remoteState": {
+                "type": "string",
+                "enum": ["active", "paused"]
+              }
+            },
+            "required": ["scopeID", "remoteState"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "Model": {
         "type": "object",
@@ -27369,6 +27687,44 @@
         "required": ["type", "accounts"],
         "additionalProperties": false
       },
+      "ChannelClarusAccountConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "apiUrl": {
+            "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
+            "type": "string"
+          },
+          "agent": {
+            "description": "Primary Synergy agent for project and assignment Sessions",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ChannelClarusConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "clarus"
+          },
+          "accounts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ChannelClarusAccountConfig"
+            }
+          }
+        },
+        "required": ["type", "accounts"],
+        "additionalProperties": false
+      },
       "SandboxConfig": {
         "description": "Sandbox configuration for workspace boundary enforcement",
         "type": "object",
@@ -28295,6 +28651,9 @@
               "anyOf": [
                 {
                   "$ref": "#/components/schemas/ChannelFeishuConfig"
+                },
+                {
+                  "$ref": "#/components/schemas/ChannelClarusConfig"
                 }
               ]
             }
@@ -39908,6 +40267,16 @@
             "properties": {
               "status": {
                 "type": "string",
+                "const": "syncing"
+              }
+            },
+            "required": ["status"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
                 "const": "failed"
               },
               "error": {
@@ -39917,6 +40286,31 @@
             "required": ["status", "error"]
           }
         ]
+      },
+      "ChannelRefreshError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ChannelRefreshError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              }
+            },
+            "required": ["message", "channelType", "accountId"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "McpResource": {
         "type": "object",
@@ -41308,126 +41702,12 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.cortex.task.created": {
+      "Event.channel.command.executed": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "cortex.task.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "task": {
-                "$ref": "#/components/schemas/CortexTask"
-              }
-            },
-            "required": ["task"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.cortex.task.completed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "cortex.task.completed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "task": {
-                "$ref": "#/components/schemas/CortexTask"
-              }
-            },
-            "required": ["task"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.cortex.tasks.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "cortex.tasks.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "tasks": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CortexTask"
-                }
-              }
-            },
-            "required": ["tasks"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.plugin.event": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "plugin.event"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "pluginVersion": {
-                "type": "string"
-              },
-              "generation": {
-                "type": "string"
-              },
-              "eventId": {
-                "type": "string"
-              },
-              "scopeId": {
-                "type": "string"
-              },
-              "sessionId": {
-                "type": "string"
-              },
-              "sequence": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "timestamp": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "payload": {}
-            },
-            "required": [
-              "pluginId",
-              "pluginVersion",
-              "generation",
-              "eventId",
-              "scopeId",
-              "sequence",
-              "timestamp",
-              "payload"
-            ]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.command.executed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "command.executed"
+            "const": "channel.command.executed"
           },
           "properties": {
             "type": "object",
@@ -41435,19 +41715,20 @@
               "name": {
                 "type": "string"
               },
-              "sessionID": {
-                "type": "string",
-                "pattern": "^ses.*"
-              },
-              "arguments": {
+              "channelType": {
                 "type": "string"
               },
-              "messageID": {
-                "type": "string",
-                "pattern": "^msg.*"
+              "accountId": {
+                "type": "string"
+              },
+              "chatId": {
+                "type": "string"
+              },
+              "userId": {
+                "type": "string"
               }
             },
-            "required": ["name", "sessionID", "arguments", "messageID"]
+            "required": ["name", "channelType", "accountId", "chatId"]
           }
         },
         "required": ["type", "properties"]
@@ -41505,118 +41786,6 @@
                 "type": "string"
               }
             }
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.pty.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "pty.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "info": {
-                "$ref": "#/components/schemas/Pty"
-              }
-            },
-            "required": ["info"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.pty.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "pty.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "info": {
-                "$ref": "#/components/schemas/Pty"
-              }
-            },
-            "required": ["info"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.pty.exited": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "pty.exited"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^pty.*"
-              },
-              "exitCode": {
-                "type": "number"
-              }
-            },
-            "required": ["id", "exitCode"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.pty.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "pty.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^pty.*"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.channel.command.executed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "channel.command.executed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "channelType": {
-                "type": "string"
-              },
-              "accountId": {
-                "type": "string"
-              },
-              "chatId": {
-                "type": "string"
-              },
-              "userId": {
-                "type": "string"
-              }
-            },
-            "required": ["name", "channelType", "accountId", "chatId"]
           }
         },
         "required": ["type", "properties"]
@@ -41813,6 +41982,231 @@
               }
             },
             "required": ["peerId", "status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.task.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.task.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/CortexTask"
+              }
+            },
+            "required": ["task"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.task.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.task.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/CortexTask"
+              }
+            },
+            "required": ["task"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.tasks.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.tasks.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CortexTask"
+                }
+              }
+            },
+            "required": ["tasks"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.plugin.event": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plugin.event"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginVersion": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "timestamp": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "payload": {}
+            },
+            "required": [
+              "pluginId",
+              "pluginVersion",
+              "generation",
+              "eventId",
+              "scopeId",
+              "sequence",
+              "timestamp",
+              "payload"
+            ]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.command.executed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "command.executed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "arguments": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["name", "sessionID", "arguments", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Pty"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Pty"
+              }
+            },
+            "required": ["info"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.exited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.exited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^pty.*"
+              },
+              "exitCode": {
+                "type": "number"
+              }
+            },
+            "required": ["id", "exitCode"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.pty.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pty.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^pty.*"
+              }
+            },
+            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -42022,40 +42416,13 @@
             "$ref": "#/components/schemas/Event.synergy_link.target.removed"
           },
           {
-            "$ref": "#/components/schemas/Event.cortex.task.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.cortex.task.completed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.plugin.event"
-          },
-          {
-            "$ref": "#/components/schemas/Event.command.executed"
+            "$ref": "#/components/schemas/Event.channel.command.executed"
           },
           {
             "$ref": "#/components/schemas/Event.file.watcher.updated"
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.pty.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.pty.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.pty.exited"
-          },
-          {
-            "$ref": "#/components/schemas/Event.pty.deleted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.channel.command.executed"
           },
           {
             "$ref": "#/components/schemas/Event.channel.connected"
@@ -42083,6 +42450,33 @@
           },
           {
             "$ref": "#/components/schemas/Event.holos.presence"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.plugin.event"
+          },
+          {
+            "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.exited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.pty.deleted"
           },
           {
             "$ref": "#/components/schemas/Event.server.connected"

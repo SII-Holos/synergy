@@ -225,11 +225,6 @@ export namespace StoragePath {
     "assignment_session_index",
     sessionID,
   ]
-  export const clarusProviderDedup = (accountHash: string, messageHash: string) => [
-    ...clarusProviderAccountRoot(accountHash),
-    "dedup",
-    messageHash,
-  ]
   export const clarusProviderResultOutboxRoot = (accountHash: string) => [
     ...clarusProviderAccountRoot(accountHash),
     "outbox",

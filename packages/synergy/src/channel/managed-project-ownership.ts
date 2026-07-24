@@ -128,7 +128,7 @@ async function writeReverse(scopeID: string, identity: OwnershipIdentity): Promi
   await Storage.write(StoragePath.channelManagedOwnershipReverse(scopeID), identity)
 }
 
-function validateAndRepairReverse(hash: string, record: OwnershipRecord): void {
+function validateReverseIndex(hash: string, record: OwnershipRecord): void {
   const expectedIdentity: OwnershipIdentity = {
     channelType: record.channelType,
     accountId: record.accountId,
@@ -179,7 +179,7 @@ export namespace ManagedProjectOwnership {
     const existing = await readForward(hash)
 
     if (existing) {
-      validateAndRepairReverse(hash, existing)
+      validateReverseIndex(hash, existing)
 
       if (existing.scopeID !== scope.id) {
         throw new OwnershipMismatchError({
@@ -260,7 +260,7 @@ export namespace ManagedProjectOwnership {
       })
     }
 
-    validateAndRepairReverse(hash, record)
+    validateReverseIndex(hash, record)
     return { ...record }
   }
 
@@ -284,7 +284,7 @@ export namespace ManagedProjectOwnership {
       })
     }
 
-    validateAndRepairReverse(hash, record)
+    validateReverseIndex(hash, record)
     return { ...record }
   }
 
@@ -297,7 +297,7 @@ export namespace ManagedProjectOwnership {
       throw new Error("No managed project ownership to archive")
     }
 
-    validateAndRepairReverse(hash, existing)
+    validateReverseIndex(hash, existing)
 
     const updated: OwnershipRecord = {
       ...existing,
@@ -318,7 +318,7 @@ export namespace ManagedProjectOwnership {
       throw new Error("No managed project ownership to mark stale")
     }
 
-    validateAndRepairReverse(hash, existing)
+    validateReverseIndex(hash, existing)
 
     const updated: OwnershipRecord = {
       ...existing,

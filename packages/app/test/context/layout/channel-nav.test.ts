@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import type { ScopeNavEntry } from "./index"
-import { partitionScopeNavigation } from "./nav"
+import type { ScopeNavEntry } from "@/context/layout"
+import { partitionScopeNavigation } from "@/context/layout/nav"
 
 type ManagedProject = NonNullable<ScopeNavEntry["managedProject"]>
 
