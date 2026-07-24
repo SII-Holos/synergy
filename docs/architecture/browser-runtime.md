@@ -50,6 +50,8 @@ The native view reports navigation, loading, page state, dialogs, downloads, and
 
 Native pages start with a real 1280×720 CSS viewport before attachment so navigation checkpoints and tool commands never observe a zero-sized document. When a Host page is created or a headless page migrates to Host, the server publishes page-scoped readiness after the canonical page event. An already-open workspace can then attach the live `WebContentsView` immediately; attachment and resize ignore zero-sized layout frames and surface IPC failures as structured Browser errors.
 
+Desktop-native presentation becomes temporarily invisible while a blocking DOM dialog, file chooser, or page dialog is open. The `WebContentsView` remains attached and its page, bounds, event subscriptions, and tool activity stay live; presentation is restored when the final blocker closes.
+
 ## WebRTC Presentation
 
 Remote presentation uses a Browser host process and two signaling roles:
