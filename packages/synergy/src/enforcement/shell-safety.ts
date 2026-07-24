@@ -800,10 +800,12 @@ export namespace ShellSafety {
     return RISK_ORDER[a] >= RISK_ORDER[b] ? a : b
   }
 
-  const COMPOUND_SPLIT_RE = /\s*(?:&&|\|\||;(?!;)|(?<![>&])\|(?!&))\s*/
+  const COMPOUND_OPERATOR_SOURCE = String.raw`&&|\|\||\|&|;(?!;)|(?<![>&])\|(?![&|])`
+  const COMPOUND_OPERATOR_RE = new RegExp(COMPOUND_OPERATOR_SOURCE)
+  const COMPOUND_SPLIT_RE = new RegExp(`\\s*(?:${COMPOUND_OPERATOR_SOURCE})\\s*`)
 
   function hasCompoundOperators(command: string): boolean {
-    return /&&|\|\||;|\|/.test(command)
+    return COMPOUND_OPERATOR_RE.test(command)
   }
 
   function splitCompound(command: string): string[] {

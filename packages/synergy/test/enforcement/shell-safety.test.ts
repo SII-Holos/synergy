@@ -1126,6 +1126,16 @@ describe("ShellSafety compound command recursion", () => {
     expect(ShellSafety.classifyBashRisk(`printf '%s\\n' "$line";`)).toBe("shell")
     expect(ShellSafety.classifyBashRisk(";")).toBe("shell")
   })
+  test("pipe stderr preserves the highest command risk", () => {
+    expect(ShellSafety.classifyBashRisk("git push origin main |& cat")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh pr edit 123 --title updated |& cat")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh pr merge 123 --squash |& cat")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git switch dev |& cat")).toBe("shell_branch_mutation")
+  })
+  test("pipe-shaped redirections do not lower command risk", () => {
+    expect(ShellSafety.classifyBashRisk("git push origin main >| output.log")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh pr edit 123 --title updated >| output.log")).toBe("shell_remote_write")
+  })
 
   test("classifies a while/case command with a trailing case separator", () => {
     const command = `pid=$(lsof -t -iTCP:18081 -sTCP:LISTEN) && lsof -nP -a -p "$pid" -iTCP | while read -r line; do case "$line" in *"api.holosai.io"*|*"clarus.holosai.io"*) printf '%s\\n' "$line";; esac; done`
