@@ -37,6 +37,7 @@ export const panels = {
   notes: { id: "app.panel.notes", message: "Notes" },
   context: { id: "app.panel.context", message: "Context" },
   review: { id: "app.panel.review", message: "Review" },
+  attachment: { id: "app.panel.attachment", message: "Attachment" },
   files: { id: "app.panel.files", message: "Files" },
   openFile: { id: "app.panel.files.openFile", message: "Open file" },
   browser: { id: "app.panel.browser", message: "Browser" },
@@ -347,6 +348,34 @@ export const fileWorkbench = {
   zoomIn: { id: "app.file.image.zoomIn", message: "Zoom in" },
   fit: { id: "app.file.image.fit", message: "Fit" },
   loadingSourceViewer: { id: "app.file.loading.sourceViewer", message: "Loading source viewer…" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+export const attachmentWorkbench = {
+  loading: { id: "app.attachment.loading", message: "Loading attachment…" },
+  unavailable: {
+    id: "app.attachment.unavailable",
+    message: "This attachment is no longer available in the conversation.",
+  },
+  unableToPreview: { id: "app.attachment.preview.error", message: "Unable to preview this attachment." },
+  tooLarge: {
+    id: "app.attachment.preview.tooLarge",
+    message: "This attachment is too large to preview. Download it to view the full file.",
+  },
+  source: { id: "app.attachment.mode.source", message: "Source" },
+  preview: { id: "app.attachment.mode.preview", message: "Preview" },
+  viewMode: { id: "app.attachment.mode.label", message: "Attachment view mode" },
+  viewSourceFile: { id: "app.attachment.action.viewSourceFile", message: "View source in Files" },
+  download: { id: "app.attachment.action.download", message: "Download" },
+  unsupported: {
+    id: "app.attachment.unsupported",
+    message: "Preview is not available for this file type.",
+  },
+  previousPage: { id: "app.attachment.pdf.previousPage", message: "Previous page" },
+  nextPage: { id: "app.attachment.pdf.nextPage", message: "Next page" },
+  pagePosition: { id: "app.attachment.pdf.pagePosition", message: "{page} / {count}" },
+  zoomOut: { id: "app.attachment.pdf.zoomOut", message: "Zoom out" },
+  zoomIn: { id: "app.attachment.pdf.zoomIn", message: "Zoom in" },
+  fitWidth: { id: "app.attachment.pdf.fitWidth", message: "Fit width" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── File explorer ────────────────────────────────────────────────────────────
@@ -1351,6 +1380,7 @@ export const messages = {
   downloadsPanel,
   assetsPanel,
   fileWorkbench,
+  attachmentWorkbench,
   fileExplorer,
   terminal,
   sessionReview,

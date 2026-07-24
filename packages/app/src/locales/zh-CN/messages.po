@@ -738,6 +738,70 @@ msgstr "外部"
 msgid "app.agentVisual.external"
 msgstr "外部"
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr "下载"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr "在“文件”中查看源文件"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr "正在加载附件…"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr "附件查看模式"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr "预览"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr "源文件"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr "适应宽度"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr "下一页"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr "{page} / {count}"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr "上一页"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr "放大"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr "缩小"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr "无法预览此附件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr "此附件过大，无法预览。请下载后查看完整文件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr "此附件已无法从当前会话中获取。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr "此文件类型暂不支持预览。"
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr "取消"
@@ -4139,6 +4203,10 @@ msgstr "回复已生成"
 #. ── Notifications ────────────────────────────────────────────────────────────
 msgid "app.notification.session.error"
 msgstr "会话错误"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr "附件"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
@@ -17374,6 +17442,10 @@ msgstr "未选择图片"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
 msgstr "在新窗口打开图片"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
+msgstr "在“文件”中查看源文件"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.previous"

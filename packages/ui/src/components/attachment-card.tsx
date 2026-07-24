@@ -5,12 +5,14 @@ import { useResourceOpen } from "../context/resource-open"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { ImagePreview } from "./image-preview"
+import { getSemanticIcon } from "./semantic-icon"
 import {
   attachmentColumns,
   attachmentMeta,
   isHtmlAttachment,
   isPdfAttachment,
   resolveAttachmentPresentation,
+  resolveAttachmentOpenTarget,
   resolveAttachmentThumbnailUrl,
   resolveAttachmentUrl,
   resolveImagePreviewImage,
@@ -22,10 +24,12 @@ export {
   attachmentColumnCount,
   attachmentColumns,
   attachmentKind,
+  attachmentSourcePath,
   formatAttachmentSize,
   isImageAttachment,
   joinServerUrl,
   resolveAttachmentPresentation,
+  resolveAttachmentOpenTarget,
   resolveAttachmentUrl,
   resolveImagePreviewImage,
 } from "./attachment-card-utils"
@@ -50,7 +54,11 @@ export function AttachmentCard(props: {
   const openAttachment = () => {
     const preview = props.imagePreview
     if (preview) {
-      dialog.show(() => <ImagePreview images={preview.images} initialIndex={preview.index} />)
+      const images = preview.images.map((image) => ({
+        ...image,
+        sourcePath: resourceOpen?.resolveWorkspacePath?.(image.sourcePath),
+      }))
+      dialog.show(() => <ImagePreview images={images} initialIndex={preview.index} />)
       return
     }
     if (resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl })) return
@@ -92,6 +100,15 @@ export function AttachmentCard(props: {
       <Match when={presentation().renderer === "video" && url()}>
         <div data-component="attachment-card" data-type="video" data-size={size()} data-crop={crop()}>
           <video src={url()} controls preload="metadata" title={filename()} />
+          <button
+            type="button"
+            data-slot="attachment-card-open"
+            aria-label={_({ ...openAttachmentDescriptor, values: { filename: filename() } })}
+            title={_({ ...openAttachmentDescriptor, values: { filename: filename() } })}
+            onClick={openAttachment}
+          >
+            <Icon name={getSemanticIcon("action.view")} size="small" />
+          </button>
         </div>
       </Match>
       <Match when={presentation().renderer === "audio" && url()}>
@@ -104,6 +121,15 @@ export function AttachmentCard(props: {
             <span data-slot="attachment-card-meta">{meta()}</span>
             <audio src={url()} controls preload="metadata" />
           </span>
+          <button
+            type="button"
+            data-slot="attachment-card-open"
+            aria-label={_({ ...openAttachmentDescriptor, values: { filename: filename() } })}
+            title={_({ ...openAttachmentDescriptor, values: { filename: filename() } })}
+            onClick={openAttachment}
+          >
+            <Icon name={getSemanticIcon("action.view")} size="small" />
+          </button>
         </div>
       </Match>
       <Match when={presentation().renderer === "thumbnail" && thumbnailUrl() && !imageFailed()}>
@@ -153,10 +179,7 @@ function FileAttachmentCard(props: {
         <span data-slot="attachment-card-meta">{props.meta}</span>
       </span>
       <Show when={props.url}>
-        <Icon
-          name={isPdfAttachment(props.file) || isHtmlAttachment(props.file) ? "scan-eye" : "download"}
-          size="small"
-        />
+        <Icon name={props.onOpen ? getSemanticIcon("action.view") : getSemanticIcon("action.download")} size="small" />
       </Show>
     </DynamicAttachmentLink>
   )

@@ -21,6 +21,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { resolveWorkbenchEscapeAction } from "@/context/workbench/panel-model"
+import { isWorkbenchPanelLaunchable } from "@/context/workbench/panel-model"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import type {
   WorkbenchPanelContentProps,
@@ -233,7 +234,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   const dialog = useDialog()
   const workbench = useWorkbenchPanels()
   const state = createMemo(() => workbench.surface(props.surface))
-  const panels = createMemo(() => workbench.panels(props.surface))
+  const panels = createMemo(() => workbench.panels(props.surface).filter(isWorkbenchPanelLaunchable))
   const activeTab = createMemo(() => state().activeTab())
   const activeEntry = createMemo(() => workbench.panelForTab(activeTab()))
   const activePanel = createMemo(() => {
