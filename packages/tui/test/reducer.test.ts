@@ -246,4 +246,26 @@ describe("TUI state reducer", () => {
     expect(state.activeSessionID).toBe("s2")
     expect(state.conversations.s1).toBeUndefined()
   })
+
+  test("chooses a stable fallback when the active session is archived remotely", () => {
+    let state = reduceTuiState(createTuiState(), {
+      type: "bootstrap",
+      payload: {
+        scopeID: "scope-1",
+        sessions: [session("s2", 2), session("s1", 1)],
+        command: [],
+        agent: [],
+        cortex: [],
+      },
+    })
+    state = reduceTuiState(state, { type: "select-session", sessionID: "s1" })
+    state = reduceTuiState(state, {
+      type: "event",
+      event: event("session.updated", {
+        info: { ...session("s1", 3), time: { ...session("s1", 3).time, archived: 3 } },
+      }),
+    })
+    expect(state.sessions.map((item) => item.id)).toEqual(["s2"])
+    expect(state.activeSessionID).toBe("s2")
+  })
 })

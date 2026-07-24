@@ -95,6 +95,7 @@ class FakeAdapter implements RuntimeAdapter {
   replayFailures = 0
   interactions = { permissions: [] as PermissionRequest[], questions: [] as QuestionRequest[] }
   pages = [page()]
+  listedSessions = [session("s1", 1)]
   async health() {
     this.calls.push("health")
     return { healthy: true as const, version: "1", modelReady: true }
@@ -106,6 +107,10 @@ class FakeAdapter implements RuntimeAdapter {
   async listInteractions() {
     this.calls.push("interactions")
     return this.interactions
+  }
+  async listSessions() {
+    this.calls.push("sessions")
+    return this.listedSessions
   }
   async subscribe(_signal: AbortSignal) {
     this.calls.push("subscribe")
@@ -232,6 +237,26 @@ describe("TUI controller", () => {
     controller.stop()
   })
 
+  test("applies the initial session only once across recovery bootstraps", async () => {
+    const adapter = new FakeAdapter()
+    const sessions = [session("s2", 2), session("s1", 1)]
+    adapter.bootstrapSnapshots = [
+      { data: bootstrap(sessions), epoch: "e1", seq: 1 },
+      { data: bootstrap(sessions), epoch: "e2", seq: 1 },
+    ]
+    adapter.replayResult = { status: "reset", epoch: "e2", seq: 1 }
+    const controller = createTuiController(adapter, { sessionID: "s1" })
+    await controller.start()
+    await controller.selectSession("s2")
+
+    adapter.events.push(event("session.updated", { info: session("s2", 3) }, 3))
+    await settle()
+
+    expect(adapter.calls.filter((call) => call === "bootstrap")).toHaveLength(2)
+    expect(controller.getState().activeSessionID).toBe("s2")
+    controller.stop()
+  })
+
   test("retries a failed recovery after the event stream disconnects", async () => {
     const adapter = new FakeAdapter()
     adapter.eventStreams.push(new EventQueue(), new EventQueue())
@@ -253,6 +278,42 @@ describe("TUI controller", () => {
     expect(adapter.calls.filter((call) => call === "replay:1:e1")).toHaveLength(2)
     expect(delays).toEqual([10, 20])
     expect(controller.getState().connection).toBe("live")
+    controller.stop()
+  })
+
+  test("loads the fallback conversation when the active session is deleted remotely", async () => {
+    const adapter = new FakeAdapter()
+    adapter.bootstrapSnapshots = [{ data: bootstrap([session("s2", 2), session("s1", 1)]), epoch: "e1", seq: 1 }]
+    const controller = createTuiController(adapter, { sessionID: "s1" })
+    await controller.start()
+
+    adapter.events.push(event("session.deleted", { info: session("s1", 1) }, 2))
+    await settle()
+
+    expect(controller.getState().activeSessionID).toBe("s2")
+    expect(adapter.calls.filter((call) => call === "messages:s2:")).toHaveLength(1)
+    expect(adapter.calls.filter((call) => call === "resources:s2")).toHaveLength(1)
+    controller.stop()
+  })
+
+  test("replaces a partial bootstrap session page with the complete session list", async () => {
+    const adapter = new FakeAdapter()
+    const first = session("s1", 1)
+    const second = session("s2", 2)
+    adapter.bootstrapSnapshots = [
+      {
+        data: { ...bootstrap([first]), sessions: { data: [first], total: 2, offset: 0, limit: 1 } },
+        epoch: "e1",
+        seq: 1,
+      },
+    ]
+    adapter.listedSessions = [second, first]
+    const controller = createTuiController(adapter)
+
+    await controller.start()
+
+    expect(adapter.calls).toContain("sessions")
+    expect(controller.getState().sessions.map((item) => item.id)).toEqual(["s2", "s1"])
     controller.stop()
   })
 

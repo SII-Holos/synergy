@@ -116,6 +116,25 @@ describe("SDK runtime adapter", () => {
     expect(requests.every((request) => request.headers.get("x-synergy-scope-id") === "scope-1")).toBe(true)
   })
 
+  test("paginates the complete session list for the sessions picker", async () => {
+    const offsets: number[] = []
+    const sessions = [session("s1"), session("s2"), session("s3")]
+    const client = createSynergyClient({
+      baseUrl: "http://runtime.test",
+      fetch: memoryFetch(async (request) => {
+        const url = new URL(request.url)
+        const offset = Number(url.searchParams.get("offset") ?? 0)
+        const limit = Number(url.searchParams.get("limit") ?? 0)
+        offsets.push(offset)
+        return json({ data: sessions.slice(offset, offset + limit), total: sessions.length, offset, limit })
+      }),
+    })
+    const adapter = createSdkRuntimeAdapter(client, { sessionListPageSize: 2 })
+
+    expect((await adapter.listSessions()).map((item) => item.id)).toEqual(["s1", "s2", "s3"])
+    expect(offsets).toEqual([0, 2])
+  })
+
   test("aborts non-streaming requests when the request deadline expires", async () => {
     let requestSignal: AbortSignal | undefined
     const client = createSynergyClient({

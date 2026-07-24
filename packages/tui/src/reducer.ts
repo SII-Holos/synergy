@@ -248,7 +248,10 @@ function applyDomainEvent(state: TuiState, event: Event): TuiState {
   switch (event.type) {
     case "session.updated": {
       const sessions = upsertSession(state.sessions, event.properties.info)
-      const activeSessionID = state.activeSessionID ?? sessions[0]?.id
+      const activeSessionID =
+        state.activeSessionID && sessions.some((session) => session.id === state.activeSessionID)
+          ? state.activeSessionID
+          : sessions[0]?.id
       return { ...state, sessions, activeSessionID }
     }
     case "session.deleted": {

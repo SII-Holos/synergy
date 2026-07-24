@@ -106,6 +106,9 @@ class UiAdapter implements RuntimeAdapter {
   async bootstrap() {
     return { data: this.snapshot, epoch: "epoch-tui", seq: 7 }
   }
+  async listSessions() {
+    return this.snapshot.sessions?.data ?? []
+  }
   async listInteractions() {
     return this.interactions
   }

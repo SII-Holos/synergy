@@ -34,6 +34,7 @@ export type MessagePageResult = SessionMessagePage & {
 export interface RuntimeAdapter {
   health(): Promise<GlobalHealthResponse>
   bootstrap(): Promise<BootstrapSnapshot>
+  listSessions(): Promise<Session[]>
   listInteractions(): Promise<{ permissions: PermissionRequest[]; questions: QuestionRequest[] }>
   subscribe(signal: AbortSignal, lifecycle?: { onDisconnect(): void }): Promise<AsyncIterable<EventStreamPayload>>
   replay(since: number, epoch?: string): Promise<EventReplayResult>
@@ -103,6 +104,7 @@ function sleepWithSignal(delay: number, signal: AbortSignal) {
 
 export function createTuiController(adapter: RuntimeAdapter, options: TuiControllerOptions = {}): TuiController {
   let state = createTuiState()
+  let initialSessionID = options.sessionID
   const listeners = new Set<(state: TuiState) => void>()
   let abortController: AbortController | undefined
   let streamAbortController: AbortController | undefined
@@ -146,11 +148,14 @@ export function createTuiController(adapter: RuntimeAdapter, options: TuiControl
 
   const applyBootstrap = async (snapshot: BootstrapSnapshot) => {
     const data = snapshot.data
+    const bootstrapSessions = data.sessions?.data ?? []
+    const sessions =
+      data.sessions && data.sessions.total > bootstrapSessions.length ? await adapter.listSessions() : bootstrapSessions
     dispatch({
       type: "bootstrap",
       payload: {
         scopeID: data.scopeID,
-        sessions: data.sessions?.data ?? [],
+        sessions,
         sessionStatus: data.sessionStatus,
         command: data.command ?? [],
         agent: data.agent,
@@ -159,14 +164,15 @@ export function createTuiController(adapter: RuntimeAdapter, options: TuiControl
         seq: snapshot.seq,
       },
     })
-    if (options.sessionID) {
-      const selected = state.sessions.find((session) => session.id === options.sessionID)
+    if (initialSessionID) {
+      const selected = state.sessions.find((session) => session.id === initialSessionID)
       if (selected) dispatch({ type: "select-session", sessionID: selected.id })
       else {
-        const session = await adapter.getSession(options.sessionID)
+        const session = await adapter.getSession(initialSessionID)
         dispatch({ type: "session-snapshot", session })
         dispatch({ type: "select-session", sessionID: session.id })
       }
+      initialSessionID = undefined
     }
     const interactions = await adapter.listInteractions()
     dispatch({ type: "interaction-snapshot", ...interactions })
@@ -181,16 +187,23 @@ export function createTuiController(adapter: RuntimeAdapter, options: TuiControl
   const recover = async () => {
     if (recoveryTask) return recoveryTask
     recoveryTask = (async () => {
+      const previousActiveSessionID = state.activeSessionID
+      let rebootstrapped = false
       dispatch({ type: "connection", status: "recovering" })
       try {
         const { seq, epoch, needsBootstrap } = state.sync
         if (needsBootstrap || seq === undefined) {
           await rebootstrap()
+          rebootstrapped = true
         } else {
           const result = await adapter.replay(state.sync.replayFrom ?? seq, epoch)
           dispatch({ type: "replay", result })
-          if (state.sync.needsBootstrap) await rebootstrap()
+          if (state.sync.needsBootstrap) {
+            await rebootstrap()
+            rebootstrapped = true
+          }
         }
+        if (!rebootstrapped && state.activeSessionID !== previousActiveSessionID) await loadActiveSession()
         dispatch({ type: "connection", status: "live" })
       } catch (error) {
         dispatch({ type: "connection", status: "offline", error: errorMessage(error) })
@@ -203,8 +216,13 @@ export function createTuiController(adapter: RuntimeAdapter, options: TuiControl
   }
 
   const handleEvent = async (event: EventStreamPayload) => {
+    const previousActiveSessionID = state.activeSessionID
     dispatch({ type: "event", event })
-    if (state.sync.needsBootstrap || state.sync.needsReplay) await recover()
+    if (state.sync.needsBootstrap || state.sync.needsReplay) {
+      await recover()
+      return
+    }
+    if (state.activeSessionID !== previousActiveSessionID) await loadActiveSession()
   }
 
   const streamLifecycle = {
@@ -346,14 +364,22 @@ export function createTuiController(adapter: RuntimeAdapter, options: TuiControl
     })
   }
 
+  const loadFallbackAfterRemoval = async (previousActiveSessionID: string | undefined) => {
+    if (state.activeSessionID !== previousActiveSessionID) await loadActiveSession()
+  }
+
   const archiveSession = async (sessionID: string) => {
     await adapter.updateSession(sessionID, { archived: Date.now() })
+    const previousActiveSessionID = state.activeSessionID
     dispatch({ type: "session-removed", sessionID })
+    await loadFallbackAfterRemoval(previousActiveSessionID)
   }
 
   const deleteSession = async (sessionID: string) => {
     await adapter.deleteSession(sessionID)
+    const previousActiveSessionID = state.activeSessionID
     dispatch({ type: "session-removed", sessionID })
+    await loadFallbackAfterRemoval(previousActiveSessionID)
   }
 
   const sendInput = async (text: string) => {

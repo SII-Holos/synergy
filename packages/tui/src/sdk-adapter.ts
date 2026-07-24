@@ -1,6 +1,7 @@
 import type {
   EventReplayResult,
   QuestionAnswer,
+  Session,
   SessionInputResult,
   SessionMessagePage,
   SynergyClientInstance,
@@ -9,10 +10,12 @@ import type { MessagePageResult, RuntimeAdapter, SessionUpdate } from "./control
 
 export type SdkRuntimeAdapterOptions = {
   messagePageSize?: number
+  sessionListPageSize?: number
   requestTimeoutMs?: number
 }
 
 const DEFAULT_MESSAGE_PAGE_SIZE = 50
+const DEFAULT_SESSION_LIST_PAGE_SIZE = 50
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 
 function watermark(headers: Headers) {
@@ -34,6 +37,7 @@ export function createSdkRuntimeAdapter(
   options: SdkRuntimeAdapterOptions = {},
 ): RuntimeAdapter {
   const messagePageSize = options.messagePageSize ?? DEFAULT_MESSAGE_PAGE_SIZE
+  const sessionListPageSize = options.sessionListPageSize ?? DEFAULT_SESSION_LIST_PAGE_SIZE
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   const requestOptions = () => ({
     throwOnError: true as const,
@@ -53,6 +57,19 @@ export function createSdkRuntimeAdapter(
     async bootstrap() {
       const result = await client.scope.bootstrap({}, requestOptions())
       return { data: result.data, ...watermark(result.response.headers) }
+    },
+    async listSessions(): Promise<Session[]> {
+      const sessions: Session[] = []
+      let offset = 0
+      while (true) {
+        const result = await client.session.list(
+          { offset, limit: sessionListPageSize, parentOnly: false },
+          requestOptions(),
+        )
+        sessions.push(...result.data.data)
+        offset += result.data.data.length
+        if (offset >= result.data.total || result.data.data.length === 0) return sessions
+      }
     },
     async listInteractions() {
       const [permissions, questions] = await Promise.all([
