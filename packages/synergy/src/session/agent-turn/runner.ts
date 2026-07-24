@@ -1,7 +1,5 @@
 import type { ModelMessage, Tool as AITool } from "ai"
-import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
-import { Workspace } from "../types"
 import { LLM } from "../llm"
 import { ToolCatalog } from "../tool-catalog"
 import { watchManagedParent } from "@/server/managed-parent"
@@ -135,8 +133,8 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope):
 
   try {
     await ScopeContext.provide({
-      scope: Scope.Info.parse(envelope.scope) as Scope,
-      workspace: envelope.workspace === undefined ? undefined : Workspace.parse(envelope.workspace),
+      scope: envelope.scope,
+      workspace: envelope.workspace,
       fn: async () => {
         const tools = ToolCatalog.modelTools(input.toolDefinitions) as Record<string, AITool>
         const stream = await LLM.stream({

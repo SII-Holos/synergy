@@ -1,6 +1,8 @@
 import z from "zod"
 import { deserialize, serialize } from "v8"
 import { APICallError } from "ai"
+import { Runtime as ScopeRuntime } from "@/scope/types"
+import { Workspace } from "../types"
 
 export namespace AgentTurnProtocol {
   export const VERSION = 1
@@ -95,8 +97,8 @@ export namespace AgentTurnProtocol {
 
   export const TurnEnvelopeSchema = z
     .object({
-      scope: z.unknown(),
-      workspace: z.unknown().optional(),
+      scope: ScopeRuntime,
+      workspace: Workspace.optional(),
       input: TurnInputSchema,
     })
     .strict()

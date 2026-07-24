@@ -55,8 +55,8 @@ describe("AgentTurnProtocol", () => {
   test("serializes turn snapshots and bounds every transfer chunk", () => {
     const envelope = {
       scope: {
-        type: "home",
-        id: "home",
+        type: "home" as const,
+        id: "home" as const,
         directory: "/tmp/home",
         worktree: "/tmp/home",
       },
@@ -98,6 +98,50 @@ describe("AgentTurnProtocol", () => {
         data: new Uint8Array(AgentTurnProtocol.REQUEST_CHUNK_BYTES + 1),
       }),
     ).toThrow()
+  })
+
+  test("validates home and project runtime Scope snapshots", () => {
+    const input = {
+      user: { id: "msg_user" },
+      sessionID: "ses_test",
+      model: { id: "model", providerID: "provider" },
+      agent: { name: "synergy" },
+      system: [],
+      messages: [],
+      toolDefinitions: [],
+      prepared: {
+        system: [],
+        baseSystemLength: 0,
+        provider: { options: {} },
+        params: { options: {} },
+      },
+    }
+
+    expect(
+      AgentTurnProtocol.TurnEnvelopeSchema.safeParse({
+        scope: { type: "home", id: "home", directory: "/tmp/home", worktree: "/tmp/home" },
+        input,
+      }).success,
+    ).toBe(true)
+    expect(
+      AgentTurnProtocol.TurnEnvelopeSchema.safeParse({
+        scope: {
+          type: "project",
+          id: "scope_test",
+          directory: "/tmp/project",
+          worktree: "/tmp/project",
+          sandboxes: [],
+          time: { created: 1, updated: 2 },
+        },
+        input,
+      }).success,
+    ).toBe(true)
+    expect(
+      AgentTurnProtocol.TurnEnvelopeSchema.safeParse({
+        scope: { type: "project", id: "scope_test", directory: "/tmp/project", worktree: "/tmp/project" },
+        input,
+      }).success,
+    ).toBe(false)
   })
 
   test("serializes errors without losing their stable identity", () => {
