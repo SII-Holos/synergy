@@ -2066,6 +2066,62 @@ msgstr "Unknown error"
 msgid "app.error.versionLabel"
 msgstr "Version: {version}"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr "Change server"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr "Reload interface"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr "Try again"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr "The Synergy server is not responding right now. The state of running tasks is unknown."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr "Could not reach the server"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr "A configuration, provider, or setup error prevented Synergy from starting."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr "Synergy could not finish starting"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr "Reloading this page will not stop any tasks already running on the server."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr "The interface encountered a problem"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr "The workspace could not be loaded. This may be temporary or due to a configuration issue."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr "Could not load this project"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr "Summary"
+
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
 msgstr "Close"

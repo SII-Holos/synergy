@@ -2066,6 +2066,62 @@ msgstr ""
 msgid "app.error.versionLabel"
 msgstr ""
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr ""
+
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
 msgstr ""
