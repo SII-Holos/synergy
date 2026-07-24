@@ -3,6 +3,34 @@ import { APICallError } from "ai"
 import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
 
 describe("AgentTurnProtocol", () => {
+  test("requires complete worker memory snapshots at lifecycle boundaries", () => {
+    const memory: AgentTurnProtocol.WorkerMemory = {
+      rssBytes: 100,
+      heapUsedBytes: 80,
+      heapTotalBytes: 90,
+      externalBytes: 20,
+      arrayBuffersBytes: 10,
+    }
+
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "complete",
+        requestId: "turn",
+        turns: 1,
+        memoryBeforeDispose: { ...memory, externalBytes: 40 },
+        memory,
+      }),
+    ).toMatchObject({ type: "complete", memory: { arrayBuffersBytes: 10 } })
+    expect(() =>
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "complete",
+        requestId: "turn",
+        turns: 1,
+        memory: { rssBytes: 100, heapUsedBytes: 80 },
+      }),
+    ).toThrow()
+  })
+
   test("accepts a request at the configured byte boundary and rejects a larger request", () => {
     const base = {
       type: "run" as const,

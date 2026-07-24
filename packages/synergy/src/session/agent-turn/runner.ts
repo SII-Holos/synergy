@@ -38,6 +38,9 @@ function memory() {
   return {
     rssBytes: usage.rss,
     heapUsedBytes: usage.heapUsed,
+    heapTotalBytes: usage.heapTotal,
+    externalBytes: usage.external,
+    arrayBuffersBytes: usage.arrayBuffers,
   }
 }
 
@@ -131,7 +134,9 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope):
   const input = envelope.input as unknown as AgentTurnWorkerInput
   let ownedStream: ReturnType<typeof LLM.takeFullStream> | undefined
   let usage: Awaited<LLM.StreamOutput["usage"]> | undefined
-  let terminal: AgentTurnProtocol.WorkerToHost
+  let terminal:
+    | { type: "complete"; requestId: string; turns: number; usage?: unknown }
+    | { type: "error"; requestId: string; error: AgentTurnProtocol.SerializedError }
 
   try {
     await ScopeContext.provide({
@@ -160,7 +165,6 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope):
       type: "complete",
       requestId: turn.requestId,
       turns,
-      memory: memory(),
       usage,
     }
   } catch (error) {
@@ -170,10 +174,15 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope):
       error: AgentTurnProtocol.serializeError(error),
     }
   } finally {
+    const memoryBeforeDispose = memory()
     await ownedStream?.dispose().catch(() => {})
     for (const acknowledge of turn.acknowledgements.values()) acknowledge()
     active = undefined
-    send(terminal!)
+    send({
+      ...terminal!,
+      memoryBeforeDispose,
+      memory: memory(),
+    })
     if (shuttingDown) process.exit(0)
   }
 }
@@ -313,4 +322,4 @@ watchManagedParent({
   onParentExit: () => process.exit(0),
 })
 
-send({ type: "ready", protocolVersion: AgentTurnProtocol.VERSION, pid: process.pid })
+send({ type: "ready", protocolVersion: AgentTurnProtocol.VERSION, pid: process.pid, memory: memory() })
