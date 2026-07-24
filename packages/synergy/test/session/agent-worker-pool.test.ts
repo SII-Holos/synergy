@@ -990,6 +990,46 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
+  test("keeps a worker when released heap recovers below soft after active-turn pressure", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 128 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "none",
+      memory: workerMemory(32, 65),
+    })
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "full",
+      memory: workerMemory(32, 65),
+    })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(32, 65),
+      memory: workerMemory(32, 65),
+    })
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers[0].stops).toBe(0)
+
+    releaseTurn(fake.workers[0], run.requestId, 1, workerMemory(32, 32))
+
+    expect(fake.workers[0].stops).toBe(0)
+    expect(pool.stats()).toMatchObject({ workers: 1, active: 0 })
+    await pool.stop()
+  })
+
   test("recycles after release when post-GC RSS remains above soft but below hard", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, maxRssBytes: 128, maxHeapBytes: 1_000 }, fake.spawn)

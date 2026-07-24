@@ -12,12 +12,14 @@ describe("session memory runtime settings", () => {
       fullTrajectory: true,
     })
 
-    expect(SESSION_MEMORY_WORKLOAD_CONTRACT_VERSION).toBeGreaterThan(1)
+    expect(SESSION_MEMORY_WORKLOAD_CONTRACT_VERSION).toBe(3)
     expect(settings).toEqual({
       agentWorkers: 5,
       agentWorkerMinIdle: 0,
       agentWorkerIdleTimeoutMs: 60_000,
       agentWorkerMaxTurns: 64,
+      agentWorkerMaxRssMb: 3_072,
+      agentWorkerMaxHeapMb: 2_048,
       agentWorkerIdleBaselineRecycle: true,
       agentWorkerIdleBaselineRssGrowthMb: 256,
       agentWorkerIdleBaselineExternalGrowthMb: 128,

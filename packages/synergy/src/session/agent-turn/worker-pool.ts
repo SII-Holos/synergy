@@ -104,7 +104,6 @@ interface PoolWorker {
   idleBaselineExternalBytes?: number
   idleSince?: number
   activeMemoryPressureRequestId?: string
-  memoryRetireReason?: MemoryRecycleReason
   lastEventSequence: number
   lastHeartbeatAt: number
 }
@@ -511,14 +510,10 @@ export class AgentWorkerPool {
       }
       if (!softReason) {
         worker.activeMemoryPressureRequestId = undefined
-        worker.memoryRetireReason = undefined
         return
       }
       const task = worker.task
-      if (message.collection === "full") {
-        worker.memoryRetireReason = softReason
-        return
-      }
+      if (message.collection === "full") return
       if (worker.activeMemoryPressureRequestId !== task.requestId) {
         worker.activeMemoryPressureRequestId = task.requestId
         this.send(worker, { type: "collect-memory", requestId: task.requestId })
@@ -645,7 +640,7 @@ export class AgentWorkerPool {
       }
       worker.turns = message.turns
       this.recordWorkerMemory(worker, message.memory, "turn.released", task)
-      const memoryReason = worker.memoryRetireReason ?? this.softMemoryReason(message.memory)
+      const memoryReason = this.softMemoryReason(message.memory)
       const reason: RecycleReason | undefined =
         message.turns >= this.options.maxTurns
           ? "max_turns"
@@ -752,7 +747,6 @@ export class AgentWorkerPool {
       worker.task = undefined
       worker.idleSince = Date.now()
       worker.activeMemoryPressureRequestId = undefined
-      worker.memoryRetireReason = undefined
     }
     if (task.startedAt !== undefined) {
       ObservabilityMetrics.record({
@@ -893,7 +887,6 @@ export class AgentWorkerPool {
       worker.task = task
       worker.idleSince = undefined
       worker.activeMemoryPressureRequestId = undefined
-      worker.memoryRetireReason = undefined
       task.worker = worker
       this.send(worker, {
         type: "run-start",
