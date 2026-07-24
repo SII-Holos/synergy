@@ -16,12 +16,8 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { ProviderTransform } from "@/provider/transform"
 import { PromptCachePolicy } from "@/provider/prompt-cache-policy"
-import { Config } from "@/config/config"
 import type { Agent } from "@/agent/agent"
-import { withPreambleSection } from "@/agent/prompt/preamble"
 import type { MessageV2 } from "./message-v2"
-import { Plugin } from "@/plugin"
-import { SystemPrompt } from "./system"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ContextUsage } from "./context-usage"
 import type { LLMTurnMemory } from "./llm-memory"
@@ -273,6 +269,13 @@ export namespace LLM {
   }
 
   export async function prepare(input: StreamInput): Promise<PreparedTurn> {
+    const [{ Config }, { withPreambleSection }, { SystemPrompt }, { trigger }, { TimeoutConfig }] = await Promise.all([
+      import("@/config/config"),
+      import("@/agent/prompt/preamble"),
+      import("./system"),
+      import("@/plugin/lifecycle"),
+      import("@/util/timeout-config"),
+    ])
     const l = log
       .clone()
       .tag("providerID", input.model.providerID)
@@ -299,7 +302,7 @@ export namespace LLM {
     if (input.user.system) system.push(input.user.system)
 
     const original = clone(system)
-    const transformed = await Plugin.trigger(
+    const transformed = await trigger(
       "experimental.chat.system.transform",
       {
         phase: "final",
@@ -337,7 +340,11 @@ export namespace LLM {
     systemTimer.stop()
 
     const optionsTimer = l.time("options.assembly")
-    const [provider, cfg] = await Promise.all([Provider.getProvider(input.model.providerID), Config.current()])
+    const [provider, cfg, timeout] = await Promise.all([
+      Provider.getProvider(input.model.providerID),
+      Config.current(),
+      TimeoutConfig.resolve(),
+    ])
     const effectiveVariant =
       input.user.variant ?? input.agent.defaultVariant ?? cfg.role_variant?.[input.agent.modelRole || "default"]
     let variant: Record<string, any> = {}
@@ -361,7 +368,7 @@ export namespace LLM {
     const isAnthropicThinking =
       input.model.api.npm === "@ai-sdk/anthropic" && options["thinking"]?.["type"] === "enabled"
 
-    const params = await Plugin.trigger(
+    const params = await trigger(
       "chat.params",
       {
         sessionID: input.sessionID,
@@ -387,7 +394,11 @@ export namespace LLM {
     return {
       system,
       baseSystemLength,
-      provider: Provider.workerPlan(provider),
+      provider: Provider.workerPlan(provider, {
+        ttfbMs: timeout.providerTtfbMs,
+        idleMs: timeout.providerIdleMs,
+        wallMs: timeout.providerWallMs,
+      }),
       params,
       telemetryEnabled: cfg.experimental?.openTelemetry,
     }

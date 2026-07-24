@@ -182,6 +182,7 @@ import type {
   HolosAgentProfileInput,
   HolosAgentsGetErrors,
   HolosAgentsGetResponses,
+  HolosAgentsListErrors,
   HolosAgentsListResponses,
   HolosCallbackResponses,
   HolosContactAddErrors,
@@ -206,6 +207,7 @@ import type {
   HolosProfileUpdateResponses,
   HolosReconnectErrors,
   HolosReconnectResponses,
+  HolosSendErrors,
   HolosSendResponses,
   HolosSendRetryErrors,
   HolosSendRetryResponses,
@@ -213,16 +215,20 @@ import type {
   HolosStatusResponses,
   HolosThreadGetResponses,
   HolosVerifyResponses,
+  LatticeRunApproveErrors,
+  LatticeRunApproveResponses,
   LatticeRunCancelErrors,
   LatticeRunCancelResponses,
-  LatticeRunContinueErrors,
-  LatticeRunContinueResponses,
   LatticeRunEventsErrors,
   LatticeRunEventsResponses,
   LatticeRunGetErrors,
   LatticeRunGetResponses,
   LatticeRunListErrors,
   LatticeRunListResponses,
+  LatticeRunPauseErrors,
+  LatticeRunPauseResponses,
+  LatticeRunResumeErrors,
+  LatticeRunResumeResponses,
   LatticeSessionGetRunErrors,
   LatticeSessionGetRunResponses,
   LibraryEmbeddingDownloadErrors,
@@ -2843,9 +2849,9 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Get session Lattice run
+   * Get the current Lattice Run for a Session
    *
-   * Read the session's single Lattice run (or null).
+   * Returns the current Run pointer projection, or null when the Session has no Lattice history.
    */
   public getRun<ThrowOnError extends boolean = false>(
     parameters: {
@@ -4009,7 +4015,7 @@ export class Agents extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosAgentsListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosAgentsListResponses, HolosAgentsListErrors, ThrowOnError>({
       url: "/holos/agents",
       ...options,
       ...params,
@@ -4439,7 +4445,7 @@ export class Holos extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<HolosSendResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<HolosSendResponses, HolosSendErrors, ThrowOnError>({
       url: "/holos/send",
       ...options,
       ...params,
@@ -8740,9 +8746,9 @@ export class Blueprint extends HeyApiClient {
 
 export class Run extends HeyApiClient {
   /**
-   * List Lattice runs
+   * List Lattice Runs
    *
-   * List all Lattice runs for the current scope (at most one per session).
+   * Lists current and terminal Run history for the current Scope.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -8770,7 +8776,7 @@ export class Run extends HeyApiClient {
   }
 
   /**
-   * Get Lattice run
+   * Get a Lattice Run
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
@@ -8800,7 +8806,9 @@ export class Run extends HeyApiClient {
   }
 
   /**
-   * List Lattice run events
+   * List Lattice Run events
+   *
+   * Returns best-effort audit events for one Run in the current Scope.
    */
   public events<ThrowOnError extends boolean = false>(
     parameters: {
@@ -8830,16 +8838,16 @@ export class Run extends HeyApiClient {
   }
 
   /**
-   * Continue a collaborative Blueprint review
-   *
-   * Start the current step's BlueprintLoop (collaborative blueprint_review only).
+   * Pause a Lattice Run
    */
-  public continue<ThrowOnError extends boolean = false>(
+  public pause<ThrowOnError extends boolean = false>(
     parameters: {
       id: string
       directory?: string
       scopeID?: string
-      userPrompt?: string
+      body?: {
+        [key: string]: never
+      }
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8851,13 +8859,13 @@ export class Run extends HeyApiClient {
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
-            { in: "body", key: "userPrompt" },
+            { in: "body" },
           ],
         },
       ],
     )
-    return (options?.client ?? this.client).post<LatticeRunContinueResponses, LatticeRunContinueErrors, ThrowOnError>({
-      url: "/lattice/run/{id}/continue",
+    return (options?.client ?? this.client).post<LatticeRunPauseResponses, LatticeRunPauseErrors, ThrowOnError>({
+      url: "/lattice/run/{id}/pause",
       ...options,
       ...params,
       headers: {
@@ -8869,13 +8877,16 @@ export class Run extends HeyApiClient {
   }
 
   /**
-   * Cancel a Lattice run
+   * Resume a paused Lattice Run
    */
-  public cancel<ThrowOnError extends boolean = false>(
+  public resume<ThrowOnError extends boolean = false>(
     parameters: {
       id: string
       directory?: string
       scopeID?: string
+      body?: {
+        [key: string]: never
+      }
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8887,6 +8898,48 @@ export class Run extends HeyApiClient {
             { in: "path", key: "id" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<LatticeRunResumeResponses, LatticeRunResumeErrors, ThrowOnError>({
+      url: "/lattice/run/{id}/resume",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Cancel a Lattice Run
+   *
+   * Irreversibly cancels the Run while retaining its durable history.
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      body?: {
+        [key: string]: never
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body" },
           ],
         },
       ],
@@ -8895,6 +8948,52 @@ export class Run extends HeyApiClient {
       url: "/lattice/run/{id}/cancel",
       ...options,
       ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Approve collaborative Blueprint execution
+   *
+   * The Panel approval is the complete user intent; attached execution instructions are rejected.
+   */
+  public approve<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      body?: {
+        [key: string]: never
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<LatticeRunApproveResponses, LatticeRunApproveErrors, ThrowOnError>({
+      url: "/lattice/run/{id}/approve",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }

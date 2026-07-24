@@ -738,6 +738,70 @@ msgstr "External"
 msgid "app.agentVisual.external"
 msgstr "External"
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr "Download"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr "View source in Files"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr "Loading attachment…"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr "Attachment view mode"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr "Preview"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr "Source"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr "Fit width"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr "Next page"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr "{page} / {count}"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr "Previous page"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr "Zoom in"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr "Zoom out"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr "Unable to preview this attachment."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr "This attachment is too large to preview. Download it to view the full file."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr "This attachment is no longer available in the conversation."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr "Preview is not available for this file type."
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr "Cancel"
@@ -2066,6 +2130,62 @@ msgstr "Unknown error"
 msgid "app.error.versionLabel"
 msgstr "Version: {version}"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr "Change server"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr "Reload interface"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr "Try again"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr "The Synergy server is not responding right now. The state of running tasks is unknown."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr "Could not reach the server"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr "A configuration, provider, or setup error prevented Synergy from starting."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr "Synergy could not finish starting"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr "Reloading this page will not stop any tasks already running on the server."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr "The interface encountered a problem"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr "The workspace could not be loaded. This may be temporary or due to a configuration issue."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr "Could not load this project"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr "Summary"
+
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
 msgstr "Close"
@@ -2408,16 +2528,12 @@ msgid "app.lattice.config.budgetDescription"
 msgstr "The budget is checked before Lattice continues; it counts model calls in this Lattice session, not Pathway steps. Enter 0 for no budget."
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.continueExisting"
-msgstr "Continue existing"
-
-#. js-lingui-explicit-id
 msgid "app.lattice.config.current"
-msgstr "current"
+msgstr "Current"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.description"
-msgstr "Lattice turns your goal into an ordered Pathway and executes each step through a BlueprintLoop. Advance autonomously keeps planning and executing without waiting for review. Work with you pauses before each Blueprint executes so you can review it or add instructions."
+msgstr "Lattice aligns requirements, plans a Pathway, reviews each Blueprint, and delegates execution to BlueprintLoop. Work with you waits for explicit approval before execution."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.enable"
@@ -2425,7 +2541,7 @@ msgstr "Enable Lattice"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.failed"
-msgstr "Failed to enable Lattice"
+msgstr "Failed to configure Lattice"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.goalOptional"
@@ -2434,6 +2550,14 @@ msgstr "Goal (optional)"
 #. js-lingui-explicit-id
 msgid "app.lattice.config.goalPlaceholder"
 msgstr "What should this Lattice run accomplish?"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.loadFailed"
+msgstr "Could not load the previous Lattice run."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.loading"
+msgstr "Loading previous Lattice run…"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.mode"
@@ -2453,15 +2577,27 @@ msgstr "Model calls"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.nextMessageGoal"
-msgstr "Your next message will be used as the goal for this run."
+msgstr "Your next message will start requirement alignment for this run."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.notStarted"
+msgstr "Not started"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.pausedHint"
+msgstr "Resume or cancel this run from the Lattice panel before changing its settings."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.previousRun"
 msgstr "Previous run"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.restart"
-msgstr "Restart"
+msgid "app.lattice.config.save"
+msgstr "Save settings"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.startNew"
+msgstr "Start new run"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.stepsCompleted"
@@ -2480,60 +2616,436 @@ msgid "app.lattice.config.unlimited"
 msgstr "Unlimited"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReview"
+msgid "app.lattice.event.actionConsumed"
+msgstr "Work accepted"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.actionSubmitted"
+msgstr "Work submitted"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.blueprintBound"
+msgstr "Blueprint prepared"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.budgetExhausted"
+msgstr "Model-call budget reached"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.loopCancelled"
+msgstr "BlueprintLoop cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.pathwayReplaced"
+msgstr "Pathway updated"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.recoveryReconciled"
+msgstr "Recovery step reconciled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCancelled"
+msgstr "Run cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCompleted"
+msgstr "Run completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCreated"
+msgstr "Run started"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runFailed"
+msgstr "Run failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runPaused"
+msgstr "Run paused"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runResumed"
+msgstr "Run resumed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runUpdated"
+msgstr "Run updated"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stateChanged"
+msgstr "Work state changed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCancelled"
+msgstr "Step cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCompleted"
+msgstr "Step completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepFailed"
+msgstr "Step failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepStarted"
+msgstr "Step started"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.armed"
+msgstr "Ready"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.auditing"
+msgstr "Reviewing"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.waiting"
+msgstr "Waiting"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.acceptanceCriteria"
+msgstr "Acceptance criteria"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailed"
+msgstr "The Lattice action failed."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailedTitle"
+msgstr "Lattice action failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalConflict"
+msgstr "The Blueprint changed. Review the latest version before continuing."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalHint"
+msgstr "Review the bound Blueprint above. Continue when this exact version is ready to execute."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalTitle"
 msgstr "Blueprint ready for review"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReviewHint"
-msgstr "Discuss or edit the Blueprint in chat. Messages are treated as discussion — click Continue to execute."
+msgid "app.lattice.panel.assumptions"
+msgstr "Assumptions"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintDetails"
+msgstr "Blueprint details"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintDetailsHint"
+msgstr "Objectives, acceptance criteria, assumptions, and execution attempts"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintVersion"
+msgstr "Blueprint v{version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.boundVersion"
+msgstr "Bound version {version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.budgetGuidance"
+msgstr "This paused run cannot change its budget. Cancel it to start a new run with a larger limit."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.calls"
 msgstr "Model calls"
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.cancel"
+msgstr "Cancel run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.cancelConfirm"
+msgstr "The run will be marked cancelled and its active BlueprintLoop will stop. It cannot be resumed, but its Pathway and history will remain available."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.cancelConfirmTitle"
+msgstr "Cancel this Lattice run?"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.configure"
+msgstr "Configure Lattice"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.confirmCancel"
+msgstr "Cancel run"
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.continue"
 msgstr "Continue"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.continueFailed"
-msgstr "Continue failed"
+msgid "app.lattice.panel.continuing"
+msgstr "Continuing…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.current"
-msgstr "Current"
+msgid "app.lattice.panel.emptyDescription"
+msgstr "Configure a run to align requirements, plan a Pathway, and execute reviewed Blueprints."
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.mode"
-msgstr "Lattice · {mode}"
+msgid "app.lattice.panel.emptyTitle"
+msgstr "No Lattice run yet"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstruction"
-msgstr "Optional instruction for execution"
+msgid "app.lattice.panel.executionHistory"
+msgstr "Execution attempts"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstructionPlaceholder"
-msgstr "Optional instruction merged into execution…"
+msgid "app.lattice.panel.historyLoadFailed"
+msgstr "Could not load the run history."
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.paused"
-msgstr "paused"
+msgid "app.lattice.panel.historyLoading"
+msgstr "Loading run history…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.recovery"
-msgstr "recovery"
+msgid "app.lattice.panel.keepRun"
+msgstr "Keep run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loadFailed"
+msgstr "Could not load this Lattice run."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loading"
+msgstr "Loading Lattice…"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loopAttempts"
+msgstr "{count, plural, one {# execution attempt} other {# execution attempts}}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noBlueprints"
+msgstr "No Blueprint has been prepared yet."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noHistory"
+msgstr "No audit events are available."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.notStarted"
+msgstr "The Pathway has not started yet."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.now"
+msgstr "Now"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pathway"
+msgstr "Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pause"
+msgstr "Pause"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pausing"
+msgstr "Pausing…"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.previousStep"
+msgstr "previous step"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.progressLabel"
+msgstr "Pathway progress"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.recoveryFor"
+msgstr "Recovery for {steps}"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.resume"
-msgstr "Resume Lattice"
+msgstr "Resume"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.resumeFailed"
-msgstr "Resume failed"
+msgid "app.lattice.panel.resuming"
+msgstr "Resuming…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.unknown"
-msgstr "Unknown"
+msgid "app.lattice.panel.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.reviewedVersion"
+msgstr "Reviewed version {version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistory"
+msgstr "Run history"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistoryHint"
+msgstr "Durable lifecycle and Pathway events"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.settings"
+msgstr "Settings"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.startNew"
+msgstr "Start new run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.steps"
+msgstr "Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.stepsCompleted"
+msgstr "{completed} of {total} completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unavailableTitle"
+msgstr "Lattice is unavailable"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unlimited"
+msgstr "Unlimited"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.attention"
+msgstr "Paused and ready to resume"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.budget"
+msgstr "Model-call budget reached"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopCancelled"
+msgstr "BlueprintLoop was cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopFailed"
+msgstr "BlueprintLoop failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.modelError"
+msgstr "Model turn failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.turnInterrupted"
+msgstr "Model turn interrupted"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userExit"
+msgstr "Exited by you"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userPause"
+msgstr "Paused by you"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.cancel"
+msgstr "Keep current run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.confirm"
+msgstr "Start new run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.description"
+msgstr "A new run will replace the current Session pointer with a fresh Pathway and model-call count. The previous run and its history will remain available."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.title"
+msgstr "Start a new Lattice run?"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.awaitingExecution"
+msgstr "Waiting for You"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.blueprinting"
+msgstr "Designing Blueprint"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.clarifying"
+msgstr "Understanding"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.executing"
+msgstr "Executing"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.planning"
+msgstr "Planning"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingBlueprint"
+msgstr "Reviewing Blueprint"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingPathway"
+msgstr "Reviewing Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.active"
+msgstr "Active"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.completed"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.current"
+msgstr "Current"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.executing"
+msgstr "Executing"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.pending"
+msgstr "Pending"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.workspace.sessionRequired"
+msgstr "Open a Session to use Lattice."
 
 #. ── pages/layout.tsx ────────────────────────────────────────────────
 msgid "app.layout.colorScheme"
@@ -4085,6 +4597,10 @@ msgid "app.notification.session.error"
 msgstr "Session error"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr "Attachment"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "Browser"
 
@@ -4099,6 +4615,10 @@ msgstr "Files"
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files.openFile"
 msgstr "Open file"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.lattice"
+msgstr "Lattice"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.notes"
@@ -4433,6 +4953,140 @@ msgstr "Slow storage"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.ranking.slowTools"
 msgstr "Slow tools"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.baseline"
+msgstr "Baseline"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.cgroupCurrent"
+msgstr "cgroup current"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverage"
+msgstr "Source / coverage"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageFull"
+msgstr "full"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coveragePartial"
+msgstr "partial"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageUnavailable"
+msgstr "unavailable"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageValue"
+msgstr "{measured}/{count} · {completeness}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.current"
+msgstr "Current"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.description"
+msgstr "Owner-attributed memory and owner-executed recovery; this view never recycles another domain."
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.lastRecovery"
+msgstr "Last owner recovery"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner"
+msgstr "Owner"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.agent"
+msgstr "Agent Workers"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.browser"
+msgstr "Browser"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.controlPlane"
+msgstr "Control Plane"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.localProcess"
+msgstr "Local processes"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.mcp"
+msgstr "MCP"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.plugin"
+msgstr "Plugin Runtimes"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.policy"
+msgstr "Policy Workers"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.peak"
+msgstr "Peak"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.reclaimable"
+msgstr "Reclaimable cache"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryNone"
+msgstr "No recovery recorded"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryReclaimed"
+msgstr "{bytes} reclaimed"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryUnmeasured"
+msgstr "effect unavailable"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryValue"
+msgstr "{action} · {reason} · {effect} · {time}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.retained"
+msgstr "Retained Δ"
+
+#. resource ownership
+msgid "app.performance.resources.title"
+msgstr "Resource ownership"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.workingSet"
+msgstr "Working set"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5241,6 +5895,18 @@ msgstr "plugin"
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.description"
+msgstr "Synergy couldn't reach this plugin registry. Check your connection and try again."
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.retry"
+msgstr "Retry"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.title"
+msgstr "Plugin registry unavailable"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.installed"
@@ -7390,6 +8056,14 @@ msgstr "Workspace"
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.mobileHeader.close"
 msgstr "Close workspace"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr "Reload app"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
+msgstr "Retry"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
@@ -11462,7 +12136,7 @@ msgstr "Also restore file changes"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.alsoRestore.hint"
-msgstr "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the banner."
+msgstr "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the rollback dialog."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11532,7 +12206,7 @@ msgstr "Rewind to this point"
 msgid "session.rollback.bannerText"
 msgstr "Rewound {messages, plural, one {# message} other {# messages}} ({turns, plural, one {# turn} other {# turns}})"
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr "Cannot redo"
 
@@ -11550,6 +12224,11 @@ msgstr "New messages have been added. This rollback can no longer be redone."
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
 msgstr "New messages have been added; cannot redo this rollback"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "Rewind complete"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11586,7 +12265,8 @@ msgstr "Redo failed"
 msgid "session.rollback.redoSuccessDesc"
 msgstr "Restored {count, plural, one {# message} other {# messages}}"
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr "Request failed"
 
@@ -12899,11 +13579,15 @@ msgstr "synergy link | remote host | target | agent | link id | key"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
-msgstr "Agent prompt behavior, subagent concurrency, provider timeouts, and tool timeout controls."
+msgstr "Agent worker capacity, subagent concurrency, provider timeouts, and tool timeout controls."
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
 msgstr "Agents"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
+msgstr "Agent Worker Pool"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
@@ -12911,7 +13595,7 @@ msgstr "Max Concurrent Subagents"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
-msgstr "agent | subagent | concurrency | timeout | provider | tool | coauthor | commit | git | prompt"
+msgstr "agent | worker | pool | parallel | subagent | concurrency | timeout | provider | tool | coauthor | commit | git | prompt"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.description"
@@ -15426,6 +16110,22 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "Agent"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr "Automatic"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr "Auto"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
+msgstr "Agent Worker Pool"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
 msgstr "Remind agents to include the Synergy co-author footer when creating git commits."
 
@@ -15483,7 +16183,7 @@ msgstr "Tool Overrides"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.page.desc"
-msgstr "Agent prompt behavior, provider timeouts, and tool timeout controls."
+msgstr "Agent capacity, prompt behavior, provider timeouts, and tool timeout controls."
 
 #. Agents
 msgid "settings.runtime.agents.page.title"
@@ -16269,6 +16969,14 @@ msgstr "{count} found"
 msgid "tool.label.items"
 msgstr "{count, plural, one {# item} other {# items}}"
 
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourceChat"
+msgstr "Chat"
+
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourcePanel"
+msgstr "Panel"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.matches"
 msgstr "{count, plural, one {# match} other {# matches}}"
@@ -16288,6 +16996,10 @@ msgstr "{count, plural, one {# memory} other {# memories}}"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.notes"
 msgstr "{count, plural, one {# note} other {# notes}}"
+
+#. js-lingui-explicit-id
+msgid "tool.label.pathwaySteps"
+msgstr "{count} steps"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.posts"
@@ -16625,6 +17337,34 @@ msgstr "View job metrics"
 msgid "tool.title.jobs"
 msgstr "View jobs"
 
+#. js-lingui-explicit-id
+msgid "tool.title.latticeApproveExecution"
+msgstr "Approve Blueprint execution"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmit"
+msgstr "Submit Lattice action"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprint"
+msgstr "Select Blueprint"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprintReview"
+msgstr "Complete Blueprint review"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathway"
+msgstr "Submit Pathway"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathwayReview"
+msgstr "Complete Pathway review"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitRequirements"
+msgstr "Align requirements"
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.leave-worktree"
 msgstr "Leave isolated workspace"
@@ -16728,6 +17468,14 @@ msgstr "Applied"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch-generating"
 msgstr "Generating patch…"
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayRead"
+msgstr "Read Pathway"
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayWrite"
+msgstr "Write Pathway"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"
@@ -17284,6 +18032,10 @@ msgstr "No image selected"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
 msgstr "Open image in new window"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
+msgstr "View source in Files"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.previous"

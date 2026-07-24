@@ -15,4 +15,19 @@ describe("tool taxonomy", () => {
     expect(entry.kind).toBe("communication.visual")
     expect(entry.domain).toBe("communication")
   })
+
+  test("classifies Lattice reads and writes by their durable behavior", () => {
+    expect(ToolTaxonomy.classify("pathway_read")).toMatchObject({
+      kind: "orchestration.dag",
+      traits: { auxiliary: true },
+    })
+    expect(ToolTaxonomy.classify("pathway_write")).toMatchObject({
+      kind: "orchestration.dag",
+      traits: { auxiliary: true, stateful: true },
+    })
+    expect(ToolTaxonomy.classify("lattice_submit")).toMatchObject({
+      kind: "orchestration.task",
+      traits: { auxiliary: true, stateful: true },
+    })
+  })
 })

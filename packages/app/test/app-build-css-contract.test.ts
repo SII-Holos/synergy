@@ -558,6 +558,65 @@ async function expectFileWorkbenchExplorerResizeMatchesMode(css: string) {
   }
 }
 
+async function expectAttachmentToolbarFitsNarrowPanel(css: string) {
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 600 } })
+    await page.setContent(`
+      <style>
+        *, ::before, ::after { box-sizing: border-box; }
+        ${css}
+        .fixture-icon { display: block; width: 16px; height: 16px; flex: none; }
+      </style>
+      <div class="attachment-workbench" style="width: 300px; height: 480px;">
+        <div class="attachment-workbench-toolbar">
+          <div class="attachment-workbench-heading">
+            <span class="fixture-icon"></span>
+            <div>
+              <strong>report.md</strong>
+              <span>text/markdown · 2 KB</span>
+            </div>
+          </div>
+          <div class="attachment-workbench-actions">
+            <div class="attachment-workbench-mode">
+              <button type="button">Source</button>
+              <button type="button">Preview</button>
+            </div>
+            <button type="button" class="attachment-workbench-action">
+              <span class="fixture-icon"></span>
+              <span>View source file</span>
+            </button>
+            <a class="attachment-workbench-action">
+              <span class="fixture-icon"></span>
+              <span>Download</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    `)
+
+    const layout = await page.evaluate(() => {
+      const toolbar = document.querySelector<HTMLElement>(".attachment-workbench-toolbar")
+      const actions = document.querySelector<HTMLElement>(".attachment-workbench-actions")
+      if (!toolbar || !actions) throw new Error("Missing attachment toolbar fixture")
+      const toolbarRect = toolbar.getBoundingClientRect()
+      const actionsRect = actions.getBoundingClientRect()
+      return {
+        clientWidth: toolbar.clientWidth,
+        scrollWidth: toolbar.scrollWidth,
+        toolbarRight: toolbarRect.right,
+        actionsRight: actionsRect.right,
+      }
+    })
+
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
+    expect(layout.actionsRight).toBeLessThanOrEqual(layout.toolbarRight)
+  } finally {
+    await browser.close()
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir", "--manifest"],
@@ -599,14 +658,26 @@ describe("app production build contract", () => {
       const fileWorkbenchManifestEntry = Object.entries(manifest).find(
         ([, chunk]) => chunk.src === "src/components/file-workbench/content.tsx",
       )
+      const attachmentWorkbenchManifestEntry = Object.entries(manifest).find(
+        ([, chunk]) => chunk.src === "src/components/attachment-workbench/content.tsx",
+      )
       expect(initialManifestEntries.length, "Production manifest must include an initial entry").toBeGreaterThan(0)
       expect(fileWorkbenchManifestEntry, "Production manifest must include the lazy File workbench entry").toBeDefined()
       expect(fileWorkbenchManifestEntry![1].isDynamicEntry).toBe(true)
+      expect(
+        attachmentWorkbenchManifestEntry,
+        "Production manifest must include the lazy Attachment workbench entry",
+      ).toBeDefined()
+      expect(attachmentWorkbenchManifestEntry![1].isDynamicEntry).toBe(true)
 
       const initialCss = await readCssAssets(outDir, collectManifestCss(manifest, initialManifestEntries))
       const fileWorkbenchCss = await readCssAssets(
         outDir,
         collectManifestCss(manifest, [fileWorkbenchManifestEntry![0]]),
+      )
+      const attachmentWorkbenchCss = await readCssAssets(
+        outDir,
+        collectManifestCss(manifest, [attachmentWorkbenchManifestEntry![0]]),
       )
       for (const contract of fileWorkbenchRuleContracts) {
         expect(collectRootRuleBodies(initialCss, contract.selector)).toHaveLength(0)
@@ -667,11 +738,13 @@ describe("app production build contract", () => {
       ])
       const markdownChunk = assets.find((asset) => asset.startsWith("vendor-markdown-") && asset.endsWith(".js"))
       expect(markdownChunk).toBeDefined()
+      expect(assets.some((asset) => asset.startsWith("pdf.worker.min-") && asset.endsWith(".mjs"))).toBe(true)
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
       await expectSessionInboxBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)
       await expectStatusbarSubsessionContentFillsBody(css)
       await expectFileWorkbenchExplorerResizeMatchesMode(css)
+      await expectAttachmentToolbarFitsNarrowPanel(attachmentWorkbenchCss)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })

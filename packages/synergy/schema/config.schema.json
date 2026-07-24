@@ -169,10 +169,22 @@
       "type": "object",
       "properties": {
         "agentWorkers": {
-          "description": "Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+          "description": "Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 64
+        },
+        "agentWorkerMinIdle": {
+          "description": "Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "agentWorkerIdleTimeoutMs": {
+          "description": "Time an excess idle Agent worker remains warm before retirement (default: 60000)",
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000
         },
         "agentQueueMax": {
           "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
@@ -193,13 +205,29 @@
           "maximum": 10000
         },
         "agentWorkerMaxRssMb": {
-          "description": "RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)",
+          "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 131072
         },
         "agentWorkerMaxHeapMb": {
-          "description": "Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)",
+          "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 131072
+        },
+        "agentWorkerIdleBaselineRecycle": {
+          "description": "Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)",
+          "type": "boolean"
+        },
+        "agentWorkerIdleBaselineRssGrowthMb": {
+          "description": "Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 131072
+        },
+        "agentWorkerIdleBaselineExternalGrowthMb": {
+          "description": "Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 131072

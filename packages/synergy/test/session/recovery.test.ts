@@ -201,7 +201,6 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
             kind: "lattice",
             runID: run.id,
             mode: run.mode,
-            firstBlueprintStarted: run.firstBlueprintStarted,
           }
         })
 

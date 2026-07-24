@@ -7,7 +7,12 @@ import { tmpdir } from "../fixture/fixture"
 import type { PermissionNext } from "../../src/permission/next"
 import { Truncate } from "../../src/tool/truncation"
 import { ProcessRegistry } from "../../src/process/registry"
-import { detectDetachedDaemonRisk, LocalBashBackend, withLinuxChildOomPreference } from "../../src/tool/bash/local"
+import {
+  assertDetachedDaemonContainment,
+  detectDetachedDaemonRisk,
+  LocalBashBackend,
+  withLinuxChildOomPreference,
+} from "../../src/tool/bash/local"
 import { Shell } from "../../src/util/shell"
 
 const ctx = {
@@ -176,6 +181,52 @@ describe("tool.bash", () => {
     })
   })
 
+  test("keeps reading inherited stdout until the process pipes close", async () => {
+    await withProjectScope(async () => {
+      const allowedCtx = {
+        ...ctx,
+        extra: { ...ctx.extra, shellAllowDetachedDaemons: true },
+      }
+      const result = await LocalBashBackend.execute(
+        {
+          command: "(sleep 0.05; printf late-tail) &",
+          description: "Emit output after the parent exits",
+          backgroundAfterSeconds: 0,
+        },
+        allowedCtx,
+      )
+
+      expect(result.metadata.exit).toBe(0)
+      expect(result.output).toContain("late-tail")
+    })
+  })
+
+  test("clears child handles after an auto-backgrounded process closes", async () => {
+    ProcessRegistry.reset()
+    await withProjectScope(async () => {
+      const result = await LocalBashBackend.execute(
+        {
+          command: sleepCommand(100),
+          description: "Close tracked process",
+          backgroundAfterSeconds: 0.01,
+        },
+        ctx,
+      )
+      const processId = result.metadata.processId!
+      const tracked = ProcessRegistry.get(processId)!
+      expect(tracked.child).toBeDefined()
+
+      for (let attempt = 0; attempt < 50 && !ProcessRegistry.getFinished(processId); attempt++) {
+        await Bun.sleep(10)
+      }
+
+      expect(ProcessRegistry.getFinished(processId)?.status).toBe("completed")
+      expect(tracked.child).toBeUndefined()
+      expect(tracked.stdin).toBeUndefined()
+      ProcessRegistry.remove(processId)
+    })
+  })
+
   test("parallel bash calls return independent inline outputs", async () => {
     await withProjectScope(async () => {
       const bash = await BashTool.init()
@@ -250,6 +301,16 @@ describe("tool.bash", () => {
       )
       expect(result.metadata.exit).toBe(0)
     })
+  })
+
+  test("rejects authorized detached daemons inside the Windows sandbox Job", () => {
+    expect(() =>
+      assertDetachedDaemonContainment({
+        platform: "win32",
+        detachedDaemonAllowed: true,
+        sandboxed: true,
+      }),
+    ).toThrow("Detached daemons are unavailable inside the Windows sandbox")
   })
 
   test("promotes printed local artifacts as attachments", async () => {

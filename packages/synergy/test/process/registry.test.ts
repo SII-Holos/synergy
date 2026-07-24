@@ -137,6 +137,30 @@ describe("ProcessRegistry lifecycle", () => {
     const finished = ProcessRegistry.getFinished(proc.id)
     expect(finished!.status).toBe("killed")
   })
+  test("uses an owned process-tree terminator before the child fallback", async () => {
+    const proc = ProcessRegistry.create({ command: "owned child" })
+    let terminated = 0
+    ProcessRegistry.setTerminator(proc, () => {
+      terminated++
+    })
+
+    await ProcessRegistry.terminate(proc)
+
+    expect(terminated).toBe(1)
+  })
+
+  test("forwards drain-timeout cleanup after the direct parent exits", async () => {
+    const proc = ProcessRegistry.create({ command: "exited parent" })
+    proc.exited = true
+    let terminated = 0
+    ProcessRegistry.setTerminator(proc, () => {
+      terminated++
+    })
+
+    await ProcessRegistry.terminate(proc, { allowExitedParent: true })
+
+    expect(terminated).toBe(1)
+  })
 
   test("resource snapshot reports inspected child process RSS", () => {
     const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 4096 }))
@@ -156,7 +180,25 @@ describe("ProcessRegistry lifecycle", () => {
       ageMs: 1000,
       alive: true,
       rssBytes: 4096,
+      stdioState: "open",
     })
+  })
+
+  test("reports exit observation, stdio drain grace, and timeout state", () => {
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 4096 }))
+    const proc = ProcessRegistry.create({ command: "sleep 10" })
+    proc.pid = 1234
+
+    ProcessRegistry.markExitObserved(proc, { drainGraceMs: 1_000, timedOut: true })
+    const snapshot = ProcessRegistry.resourceSnapshot()
+
+    restore()
+    expect(snapshot[0]).toMatchObject({
+      stdioState: "draining",
+      drainGraceMs: 1_000,
+      timedOut: true,
+    })
+    expect(snapshot[0].exitObservedAt).toBeNumber()
   })
 
   test("settleStaleProcesses moves missing child processes to finished", () => {

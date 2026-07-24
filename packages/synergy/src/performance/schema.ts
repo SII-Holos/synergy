@@ -221,6 +221,46 @@ export namespace PerformanceSchema {
     })
     .meta({ ref: "PerfTimelineQuality" })
 
+  export const ResourceOwnerKind = z
+    .enum(["control_plane", "agent", "policy", "plugin", "browser", "mcp", "local_process"])
+    .meta({ ref: "PerfResourceOwnerKind" })
+  export const ResourceRecovery = z
+    .object({
+      action: z.enum(["gc", "recycle", "idle_retire", "close"]),
+      reason: z.string(),
+      at: z.number(),
+      beforeBytes: z.number().nonnegative().optional(),
+      afterBytes: z.number().nonnegative().optional(),
+      reclaimedBytes: z.number().nonnegative().optional(),
+      timedOut: z.boolean().optional(),
+    })
+    .meta({ ref: "PerfResourceRecovery" })
+  export const ResourceOwner = z
+    .object({
+      owner: ResourceOwnerKind,
+      processCount: z.number().int().nonnegative(),
+      measuredProcessCount: z.number().int().nonnegative(),
+      currentBytes: z.number().nonnegative().optional(),
+      peakBytes: z.number().nonnegative().optional(),
+      baselineBytes: z.number().nonnegative().optional(),
+      retainedBytes: z.number().nonnegative().optional(),
+      heapUsedBytes: z.number().nonnegative().optional(),
+      externalBytes: z.number().nonnegative().optional(),
+      arrayBuffersBytes: z.number().nonnegative().optional(),
+      source: z.enum([
+        "process_api",
+        "worker_ipc",
+        "plugin_monitor",
+        "browser_runtime",
+        "mcp_stdio",
+        "process_registry",
+      ]),
+      completeness: z.enum(["full", "partial", "unavailable"]),
+      attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
+      lastRecovery: ResourceRecovery.optional(),
+    })
+    .meta({ ref: "PerfResourceOwner" })
+
   export const DashboardSummary = z
     .object({
       generatedAt: z.string(),
@@ -258,11 +298,16 @@ export namespace PerformanceSchema {
         serviceMemory: z
           .object({
             rssBytes: z.number().optional(),
+            currentBytes: z.number().optional(),
+            workingSetBytes: z.number().optional(),
+            reclaimableBytes: z.number().optional(),
+            peakBytes: z.number().optional(),
             source: z.enum(["cgroup_v2", "process_api"]),
             completeness: z.enum(["full", "partial"]),
           })
           .optional(),
         childProcessRssBytes: z.number().optional(),
+        owners: z.array(ResourceOwner),
       }),
       sessions: z.object({
         turnCount: z.number().int(),
@@ -314,6 +359,8 @@ export namespace PerformanceSchema {
           .object({
             agentWorkers: z.object({
               configured: z.number().int().positive(),
+              minIdle: z.number().int().nonnegative(),
+              idleTimeoutMs: z.number().int().positive(),
               maxQueued: z.number().int().nonnegative(),
               maxQueuedBytes: z.number().int().positive(),
               workers: z.number().int().nonnegative(),
@@ -323,6 +370,9 @@ export namespace PerformanceSchema {
               queuedBytes: z.number().int().nonnegative(),
               rssBytes: z.number().int().nonnegative(),
               heapUsedBytes: z.number().int().nonnegative(),
+              heapTotalBytes: z.number().int().nonnegative(),
+              externalBytes: z.number().int().nonnegative(),
+              arrayBuffersBytes: z.number().int().nonnegative(),
             }),
             policyWorkers: z.object({
               configured: z.number().int().positive(),
@@ -335,6 +385,9 @@ export namespace PerformanceSchema {
               queuedBytes: z.number().int().nonnegative(),
               rssBytes: z.number().int().nonnegative(),
               heapUsedBytes: z.number().int().nonnegative(),
+              heapTotalBytes: z.number().int().nonnegative(),
+              externalBytes: z.number().int().nonnegative(),
+              arrayBuffersBytes: z.number().int().nonnegative(),
             }),
             toolTasks: z.object({
               active: z.number().int().nonnegative(),

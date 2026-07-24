@@ -62,7 +62,8 @@ import {
   type SessionTransitionActions,
   type SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
-import { RollbackBanner } from "@/components/session/rollback-banner"
+import { RollbackDialog } from "@/components/session/rollback-dialog"
+import { rollbackDialogAction } from "@/components/session/rollback-dialog-model"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
 import { TerminalProvider } from "@/context/terminal"
@@ -125,10 +126,6 @@ function SessionPageContent() {
   const sideOpen = createMemo(() => sideSurface().opened())
   const view = createMemo(() => layout.view(sessionKey()))
 
-  createEffect(() => {
-    layout.tryRevealInitialSideWorkspace(sessionKey())
-  })
-
   createEffect(
     on(
       () => [params.dir, params.id, sync.data.scopeID] as const,
@@ -183,7 +180,8 @@ function SessionPageContent() {
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
-  const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
+  let activeRollbackKey: string | undefined
+  let rollbackDialogID: string | undefined
   const visibleSessionTransitionEntry = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return undefined
@@ -309,16 +307,47 @@ function SessionPageContent() {
     }
     setSessionTransition(input.sessionID, input.progress, input.actions)
   }
-  // A fresh rewind (new rollback event id) always shows its banner, even if a
-  // previous banner was dismissed.
-  createEffect(
-    on(
-      () => rollback()?.id,
-      () => setRollbackDismissed(false),
-      { defer: true },
-    ),
-  )
-  const showRollbackBanner = createMemo(() => rollback() !== undefined && !rollbackDismissed())
+  createEffect(() => {
+    const summary = rollback()
+    const sessionID = params.id
+    const rollbackKey = summary && sessionID ? `${sessionID}:${summary.id}` : undefined
+    const seenKey = sessionID ? sync.data.rollbackDialogPresentation[sessionID]?.seenKey : undefined
+    const action = rollbackDialogAction({
+      rollbackKey,
+      activeDialogID: dialog.active?.id,
+      rollbackDialogID,
+      activeRollbackKey,
+      seenKey,
+    })
+
+    if (action === "close") {
+      dialog.close()
+      return
+    }
+    if (!rollbackKey) {
+      activeRollbackKey = undefined
+      rollbackDialogID = undefined
+      return
+    }
+    if (action !== "show" || !summary || !sessionID) return
+
+    activeRollbackKey = rollbackKey
+    let mountedDialogID: string | undefined
+    dialog.show(
+      () => <RollbackDialog sessionID={sessionID} rollback={() => rollback() ?? summary} sdk={sdk} />,
+      () => {
+        if (rollbackDialogID !== mountedDialogID) return
+        activeRollbackKey = undefined
+        rollbackDialogID = undefined
+      },
+    )
+    mountedDialogID = dialog.active?.id
+    rollbackDialogID = mountedDialogID
+    sync.rollbackDialog.markPresented(sessionID, rollbackKey)
+  })
+  onCleanup(() => {
+    if (rollbackDialogID && dialog.active?.id === rollbackDialogID) dialog.close()
+  })
   const hiddenMessageIDs = createMemo(() => {
     const rb = rollback()
     if (!rb) return null as { cutMessageID: string } | null | Set<string>
@@ -1096,14 +1125,6 @@ function SessionPageContent() {
                 onWorkspaceTransition={startWorkspaceTransition}
                 sessionTransitionPending={sessionTransitionPending}
               />
-              <Show when={showRollbackBanner()}>
-                <RollbackBanner
-                  sessionID={params.id!}
-                  rollback={rollback()!}
-                  sdk={sdk}
-                  onDismiss={() => setRollbackDismissed(true)}
-                />
-              </Show>
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
                   <Match when={!isNewSession()}>

@@ -1,5 +1,0 @@
-<lattice-phase>
-Current phase: blueprint_execution.
-The current step is being executed by its BlueprintLoop. Follow the BlueprintLoop instructions in the blueprint-loop-context; Lattice only records the outer state here. Do not restructure the Pathway or modify the running step during execution.
-Next: when the BlueprintLoop completes, fails, or is cancelled, the backend moves you to result_analysis.
-</lattice-phase>

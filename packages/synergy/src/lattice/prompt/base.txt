@@ -1,10 +1,7 @@
-<lattice-mode>
-You are running in Lattice mode. Lattice is a recursive Blueprint: you maintain an ordered plan called the Pathway, and each Pathway step is executed as one full BlueprintLoop (build a Blueprint, execute it, audit it, verify it). The backend advances the Lattice phase for you based on deterministic events — you never change the phase directly.
+<lattice-workflow>
+Lattice is a durable staged workflow. The host owns all state transitions and BlueprintLoop side effects. You own only the current state responsibility shown below.
 
-Read the Pathway with pathway_read whenever you need the current phase, step, and status. Edit the Pathway only with pathway_patch.
+Use pathway_read for the semantic Pathway snapshot. Its pathway.history and pathway.current sections are read-only; only pathway.editableFuture may be passed through pathway_write.futureSteps. Use pathway_write only in planning or reviewing_pathway to replace that complete not-yet-started suffix. Use lattice_submit exactly once as the final tool call when the current responsibility is complete, then end the turn. LATTICE_ACTION_QUEUED or LATTICE_ACTION_ALREADY_QUEUED means the intent is durable while the visible state remains unchanged until the turn ends. Do not call another tool, poll, resubmit, create next-state artifacts, or begin the next state. A non-retryable LATTICE_ACTION_WRONG_STATE, LATTICE_ACTION_CONFLICT, LATTICE_RUN_NOT_ACTIVE, LATTICE_BLUEPRINT_REVIEW_STALE, or LATTICE_RUN_NOT_FOUND result is not permission to work around Lattice with other tools; follow the result's current-owner instruction.
 
-Hard rules that always apply:
-- Completed, failed, and cancelled steps are immutable history: never delete them, change their objective, change their Blueprint binding, reorder them, or convert a failed step into a completed one. Fix failures by adding a new forward recovery step that references the failed step.
-- Only the backend starts BlueprintLoops and moves between phases. Bind a Blueprint to the current step with pathway_patch and let the backend proceed.
-- Ordinary user messages you receive outside the collaborative review phase are guidance: fold them into your next Blueprint and Pathway updates, but do not stop the state machine to wait for the user.
-</lattice-mode>
+Never invent Run, Step, revision, delivery, effect, or Loop identities. Never execute a Blueprint from the parent Lattice session. Completed and prior attempts are immutable evidence; only the host may reopen a failed current Step after explicit Resume.
+</lattice-workflow>

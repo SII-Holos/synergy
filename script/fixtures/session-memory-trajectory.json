@@ -1,0 +1,4449 @@
+{
+  "schemaVersion": 1,
+  "name": "completed-parallel-repository-analysis",
+  "provenance": {
+    "kind": "anonymized-completed-synergy-trajectory",
+    "semanticContent": "deterministic-byte-preserving-replacement",
+    "identifiers": "deterministic-local-aliases",
+    "capturedFields": [
+      "session-parentage",
+      "message-role-and-order",
+      "relative-timing",
+      "part-type-and-byte-size",
+      "tool-type-status-and-payload-size",
+      "terminal-status"
+    ],
+    "excludedFields": ["content", "paths", "session-ids", "message-ids", "call-ids", "provider", "model"]
+  },
+  "aggregate": {
+    "sessions": 5,
+    "childSessions": 4,
+    "messages": 97,
+    "parts": 576,
+    "totalStoredBytes": 2614729,
+    "roles": {
+      "assistant": 87,
+      "user": 10
+    },
+    "partTypes": {
+      "reasoning": 96,
+      "step-finish": 87,
+      "step-start": 87,
+      "text": 86,
+      "tool": 220
+    },
+    "tools": {
+      "bash": 50,
+      "dagpatch": 3,
+      "dagwrite": 1,
+      "glob": 8,
+      "grep": 62,
+      "process": 2,
+      "read": 84,
+      "scan_files": 2,
+      "task": 4,
+      "task_output": 4
+    },
+    "toolStatuses": {
+      "completed": 219,
+      "error": 1
+    },
+    "textPayloadBytes": 224524,
+    "toolInputBytes": 55681,
+    "toolOutputBytes": 1297818
+  },
+  "sessions": [
+    {
+      "session": "s1",
+      "relation": "root",
+      "parent": null,
+      "parentMessage": null,
+      "terminalStatus": "completed-root",
+      "durationMs": null,
+      "messages": [
+        {
+          "message": "s1-m1",
+          "role": "user",
+          "startOffsetMs": 0,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 14862,
+          "tokenCounts": null,
+          "originType": "user",
+          "originKeys": ["type"],
+          "partTypeCounts": {
+            "text": 2
+          },
+          "partStoredBytes": 16552,
+          "textPayloadBytes": 14326,
+          "tools": []
+        },
+        {
+          "message": "s1-m2",
+          "role": "assistant",
+          "startOffsetMs": 16,
+          "durationMs": 45420,
+          "finish": "stop",
+          "infoBytes": 1615,
+          "tokenCounts": {
+            "input": 9396,
+            "output": 2629,
+            "reasoning": 897,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 9815,
+          "textPayloadBytes": 8884,
+          "tools": []
+        },
+        {
+          "message": "s1-m3",
+          "role": "user",
+          "startOffsetMs": 62827,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 15056,
+          "tokenCounts": null,
+          "originType": "user",
+          "originKeys": ["type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 199,
+          "textPayloadBytes": 30,
+          "tools": []
+        },
+        {
+          "message": "s1-m4",
+          "role": "assistant",
+          "startOffsetMs": 62846,
+          "durationMs": 13385,
+          "finish": "tool-calls",
+          "infoBytes": 1631,
+          "tokenCounts": {
+            "input": 51047,
+            "output": 510,
+            "reasoning": 108,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "tool": 1,
+            "step-finish": 1,
+            "text": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 6723,
+          "textPayloadBytes": 251,
+          "tools": [
+            {
+              "tool": "dagwrite",
+              "status": "completed",
+              "storedBytes": 3740,
+              "inputBytes": 1376,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m5",
+          "role": "assistant",
+          "startOffsetMs": 76247,
+          "durationMs": 15320,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 10523,
+            "output": 411,
+            "reasoning": 81,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "tool": 5,
+            "step-finish": 1,
+            "step-start": 1,
+            "text": 1
+          },
+          "partStoredBytes": 40131,
+          "textPayloadBytes": 247,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 31610,
+              "inputBytes": 178,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 1317,
+              "inputBytes": 148,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "glob",
+              "status": "completed",
+              "storedBytes": 1059,
+              "inputBytes": 59,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "glob",
+              "status": "completed",
+              "storedBytes": 1059,
+              "inputBytes": 59,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2296,
+              "inputBytes": 301,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m6",
+          "role": "assistant",
+          "startOffsetMs": 91582,
+          "durationMs": 16432,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 25573,
+            "output": 593,
+            "reasoning": 339,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 2,
+            "step-finish": 1,
+            "text": 1,
+            "tool": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 8159,
+          "textPayloadBytes": 441,
+          "tools": [
+            {
+              "tool": "dagpatch",
+              "status": "completed",
+              "storedBytes": 3186,
+              "inputBytes": 448,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m7",
+          "role": "assistant",
+          "startOffsetMs": 108029,
+          "durationMs": 34571,
+          "finish": "tool-calls",
+          "infoBytes": 1637,
+          "tokenCounts": {
+            "input": 26568,
+            "output": 1664,
+            "reasoning": 28,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 7,
+            "text": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 47520,
+          "textPayloadBytes": 294,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 1483,
+              "inputBytes": 288,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "task",
+              "status": "completed",
+              "storedBytes": 2363,
+              "inputBytes": 1233,
+              "outputBytes": 2,
+              "metadataBytes": 83,
+              "child": "s2"
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 1480,
+              "inputBytes": 300,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "task",
+              "status": "completed",
+              "storedBytes": 2451,
+              "inputBytes": 1321,
+              "outputBytes": 2,
+              "metadataBytes": 83,
+              "child": "s3"
+            },
+            {
+              "tool": "task",
+              "status": "completed",
+              "storedBytes": 2566,
+              "inputBytes": 1439,
+              "outputBytes": 2,
+              "metadataBytes": 83,
+              "child": "s4"
+            },
+            {
+              "tool": "task",
+              "status": "completed",
+              "storedBytes": 2418,
+              "inputBytes": 1291,
+              "outputBytes": 2,
+              "metadataBytes": 83,
+              "child": "s5"
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 32285,
+              "inputBytes": 342,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m8",
+          "role": "assistant",
+          "startOffsetMs": 142615,
+          "durationMs": 17887,
+          "finish": "tool-calls",
+          "infoBytes": 1637,
+          "tokenCounts": {
+            "input": 38317,
+            "output": 783,
+            "reasoning": 113,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "reasoning": 1,
+            "text": 1,
+            "tool": 5,
+            "step-finish": 1
+          },
+          "partStoredBytes": 20278,
+          "textPayloadBytes": 245,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 3872,
+              "inputBytes": 284,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2023,
+              "inputBytes": 420,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 6697,
+              "inputBytes": 452,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 1842,
+              "inputBytes": 461,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2819,
+              "inputBytes": 317,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m9",
+          "role": "assistant",
+          "startOffsetMs": 160516,
+          "durationMs": 27298,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 41687,
+            "output": 1179,
+            "reasoning": 116,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 5,
+            "step-finish": 1,
+            "text": 1,
+            "reasoning": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 48128,
+          "textPayloadBytes": 383,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 4302,
+              "inputBytes": 894,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 3320,
+              "inputBytes": 1018,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 31872,
+              "inputBytes": 118,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2893,
+              "inputBytes": 402,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2621,
+              "inputBytes": 885,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m10",
+          "role": "assistant",
+          "startOffsetMs": 187830,
+          "durationMs": 34180,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 57490,
+            "output": 1535,
+            "reasoning": 385,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 2,
+            "tool": 5,
+            "text": 1,
+            "step-start": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 47820,
+          "textPayloadBytes": 323,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 3615,
+              "inputBytes": 1112,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 32625,
+              "inputBytes": 582,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2461,
+              "inputBytes": 543,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2145,
+              "inputBytes": 769,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 1946,
+              "inputBytes": 619,
+              "outputBytes": 2,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m11",
+          "role": "assistant",
+          "startOffsetMs": 222135,
+          "durationMs": 25096,
+          "finish": "tool-calls",
+          "infoBytes": 1639,
+          "tokenCounts": {
+            "input": 67611,
+            "output": 1098,
+            "reasoning": 146,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 5,
+            "step-finish": 1,
+            "text": 1,
+            "step-start": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 52439,
+          "textPayloadBytes": 395,
+          "tools": [
+            {
+              "tool": "scan_files",
+              "status": "completed",
+              "storedBytes": 3158,
+              "inputBytes": 242,
+              "outputBytes": 1054,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 10657,
+              "inputBytes": 675,
+              "outputBytes": 4415,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2703,
+              "inputBytes": 796,
+              "outputBytes": 384,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 23494,
+              "inputBytes": 303,
+              "outputBytes": 11034,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 9059,
+              "inputBytes": 647,
+              "outputBytes": 3639,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m12",
+          "role": "assistant",
+          "startOffsetMs": 247241,
+          "durationMs": 37105,
+          "finish": "tool-calls",
+          "infoBytes": 1640,
+          "tokenCounts": {
+            "input": 75660,
+            "output": 1642,
+            "reasoning": 173,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "tool": 6,
+            "reasoning": 2,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 44038,
+          "textPayloadBytes": 455,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 5480,
+              "inputBytes": 330,
+              "outputBytes": 2017,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 7253,
+              "inputBytes": 1023,
+              "outputBytes": 2550,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 14203,
+              "inputBytes": 699,
+              "outputBytes": 6192,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 3080,
+              "inputBytes": 863,
+              "outputBytes": 541,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 5194,
+              "inputBytes": 592,
+              "outputBytes": 1737,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 5012,
+              "inputBytes": 914,
+              "outputBytes": 1484,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m13",
+          "role": "assistant",
+          "startOffsetMs": 284358,
+          "durationMs": 50074,
+          "finish": "tool-calls",
+          "infoBytes": 1642,
+          "tokenCounts": {
+            "input": 82869,
+            "output": 1380,
+            "reasoning": 301,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "tool": 5,
+            "reasoning": 2,
+            "text": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 168061,
+          "textPayloadBytes": 344,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 11804,
+              "inputBytes": 836,
+              "outputBytes": 4923,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 5416,
+              "inputBytes": 612,
+              "outputBytes": 1827,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 72383,
+              "inputBytes": 711,
+              "outputBytes": 36332,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 71411,
+              "inputBytes": 923,
+              "outputBytes": 35715,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "scan_files",
+              "status": "completed",
+              "storedBytes": 2298,
+              "inputBytes": 264,
+              "outputBytes": 468,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m14",
+          "role": "user",
+          "startOffsetMs": 334467,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 620,
+          "tokenCounts": null,
+          "originType": "cortex",
+          "originKeys": ["sessionID", "type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 388,
+          "textPayloadBytes": 211,
+          "tools": []
+        },
+        {
+          "message": "s1-m15",
+          "role": "assistant",
+          "startOffsetMs": 334477,
+          "durationMs": 8578,
+          "finish": "tool-calls",
+          "infoBytes": 1641,
+          "tokenCounts": {
+            "input": 105574,
+            "output": 120,
+            "reasoning": 29,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "step-start": 1,
+            "tool": 1,
+            "text": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 35567,
+          "textPayloadBytes": 202,
+          "tools": [
+            {
+              "tool": "task_output",
+              "status": "completed",
+              "storedBytes": 33161,
+              "inputBytes": 48,
+              "outputBytes": 16628,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m16",
+          "role": "assistant",
+          "startOffsetMs": 343077,
+          "durationMs": 13287,
+          "finish": "tool-calls",
+          "infoBytes": 1641,
+          "tokenCounts": {
+            "input": 109823,
+            "output": 440,
+            "reasoning": 33,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "tool": 1,
+            "text": 1,
+            "reasoning": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 28194,
+          "textPayloadBytes": 287,
+          "tools": [
+            {
+              "tool": "dagpatch",
+              "status": "completed",
+              "storedBytes": 25683,
+              "inputBytes": 960,
+              "outputBytes": 12567,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m17",
+          "role": "assistant",
+          "startOffsetMs": 356383,
+          "durationMs": 7062,
+          "finish": "stop",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 113675,
+            "output": 107,
+            "reasoning": 31,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 2478,
+          "textPayloadBytes": 278,
+          "tools": []
+        },
+        {
+          "message": "s1-m18",
+          "role": "user",
+          "startOffsetMs": 363493,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 620,
+          "tokenCounts": null,
+          "originType": "cortex",
+          "originKeys": ["sessionID", "type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 391,
+          "textPayloadBytes": 214,
+          "tools": []
+        },
+        {
+          "message": "s1-m19",
+          "role": "assistant",
+          "startOffsetMs": 363573,
+          "durationMs": 8829,
+          "finish": "tool-calls",
+          "infoBytes": 1639,
+          "tokenCounts": {
+            "input": 113787,
+            "output": 79,
+            "reasoning": 0,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 31747,
+          "textPayloadBytes": 152,
+          "tools": [
+            {
+              "tool": "task_output",
+              "status": "completed",
+              "storedBytes": 30852,
+              "inputBytes": 48,
+              "outputBytes": 15490,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m20",
+          "role": "user",
+          "startOffsetMs": 372418,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 620,
+          "tokenCounts": null,
+          "originType": "cortex",
+          "originKeys": ["sessionID", "type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 391,
+          "textPayloadBytes": 214,
+          "tools": []
+        },
+        {
+          "message": "s1-m21",
+          "role": "assistant",
+          "startOffsetMs": 372463,
+          "durationMs": 6769,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 66218,
+            "output": 84,
+            "reasoning": 0,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "tool": 1,
+            "step-start": 1,
+            "text": 1
+          },
+          "partStoredBytes": 36178,
+          "textPayloadBytes": 185,
+          "tools": [
+            {
+              "tool": "task_output",
+              "status": "completed",
+              "storedBytes": 35251,
+              "inputBytes": 48,
+              "outputBytes": 17707,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m22",
+          "role": "assistant",
+          "startOffsetMs": 379306,
+          "durationMs": 29930,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 70740,
+            "output": 828,
+            "reasoning": 69,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "tool": 3,
+            "reasoning": 1,
+            "step-start": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 27556,
+          "textPayloadBytes": 281,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2898,
+              "inputBytes": 563,
+              "outputBytes": 606,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 18998,
+              "inputBytes": 1006,
+              "outputBytes": 8432,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2880,
+              "inputBytes": 691,
+              "outputBytes": 999,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m23",
+          "role": "assistant",
+          "startOffsetMs": 409295,
+          "durationMs": 6748,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 75326,
+            "output": 142,
+            "reasoning": 27,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "tool": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 6263,
+          "textPayloadBytes": 307,
+          "tools": [
+            {
+              "tool": "process",
+              "status": "completed",
+              "storedBytes": 3777,
+              "inputBytes": 67,
+              "outputBytes": 2088,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m24",
+          "role": "user",
+          "startOffsetMs": 416063,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 620,
+          "tokenCounts": null,
+          "originType": "cortex",
+          "originKeys": ["sessionID", "type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 388,
+          "textPayloadBytes": 211,
+          "tools": []
+        },
+        {
+          "message": "s1-m25",
+          "role": "assistant",
+          "startOffsetMs": 416108,
+          "durationMs": 9908,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 76029,
+            "output": 184,
+            "reasoning": 52,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 2,
+            "step-finish": 1,
+            "reasoning": 1,
+            "step-start": 1,
+            "text": 1
+          },
+          "partStoredBytes": 45189,
+          "textPayloadBytes": 203,
+          "tools": [
+            {
+              "tool": "task_output",
+              "status": "completed",
+              "storedBytes": 39909,
+              "inputBytes": 48,
+              "outputBytes": 20057,
+              "metadataBytes": 83
+            },
+            {
+              "tool": "process",
+              "status": "completed",
+              "storedBytes": 2770,
+              "inputBytes": 73,
+              "outputBytes": 993,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m26",
+          "role": "assistant",
+          "startOffsetMs": 426070,
+          "durationMs": 19226,
+          "finish": "tool-calls",
+          "infoBytes": 1641,
+          "tokenCounts": {
+            "input": 81432,
+            "output": 674,
+            "reasoning": 427,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 3,
+            "step-finish": 1,
+            "tool": 1,
+            "text": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 79473,
+          "textPayloadBytes": 338,
+          "tools": [
+            {
+              "tool": "dagpatch",
+              "status": "completed",
+              "storedBytes": 73743,
+              "inputBytes": 676,
+              "outputBytes": 34373,
+              "metadataBytes": 83
+            }
+          ]
+        },
+        {
+          "message": "s1-m27",
+          "role": "assistant",
+          "startOffsetMs": 445350,
+          "durationMs": 101584,
+          "finish": "stop",
+          "infoBytes": 1637,
+          "tokenCounts": {
+            "input": 90884,
+            "output": 5381,
+            "reasoning": 1034,
+            "cacheRead": 41472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "reasoning": 6,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 27884,
+          "textPayloadBytes": 16358,
+          "tools": []
+        }
+      ]
+    },
+    {
+      "session": "s2",
+      "relation": "child",
+      "parent": "s1",
+      "parentMessage": "s1-m7",
+      "terminalStatus": "completed",
+      "durationMs": 172138,
+      "messages": [
+        {
+          "message": "s2-m1",
+          "role": "user",
+          "startOffsetMs": 142032,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 573,
+          "tokenCounts": null,
+          "originType": "user",
+          "originKeys": ["type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 1854,
+          "textPayloadBytes": 1656,
+          "tools": []
+        },
+        {
+          "message": "s2-m2",
+          "role": "assistant",
+          "startOffsetMs": 142071,
+          "durationMs": 7651,
+          "finish": "tool-calls",
+          "infoBytes": 1632,
+          "tokenCounts": {
+            "input": 20287,
+            "output": 465,
+            "reasoning": 125,
+            "cacheRead": 2560,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "tool": 3,
+            "text": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 27491,
+          "textPayloadBytes": 769,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 10109,
+              "inputBytes": 155,
+              "outputBytes": 9113,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 8055,
+              "inputBytes": 225,
+              "outputBytes": 3435,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 7719,
+              "inputBytes": 176,
+              "outputBytes": 6681,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m3",
+          "role": "assistant",
+          "startOffsetMs": 149743,
+          "durationMs": 7713,
+          "finish": "tool-calls",
+          "infoBytes": 1632,
+          "tokenCounts": {
+            "input": 22953,
+            "output": 433,
+            "reasoning": 113,
+            "cacheRead": 2560,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 4,
+            "text": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 113431,
+          "textPayloadBytes": 617,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 34804,
+              "inputBytes": 108,
+              "outputBytes": 32889,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 10669,
+              "inputBytes": 112,
+              "outputBytes": 9149,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 4053,
+              "inputBytes": 109,
+              "outputBytes": 2228,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 62449,
+              "inputBytes": 202,
+              "outputBytes": 30657,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m4",
+          "role": "assistant",
+          "startOffsetMs": 157466,
+          "durationMs": 7264,
+          "finish": "tool-calls",
+          "infoBytes": 1634,
+          "tokenCounts": {
+            "input": 20676,
+            "output": 410,
+            "reasoning": 148,
+            "cacheRead": 25856,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 4,
+            "step-finish": 1,
+            "reasoning": 1,
+            "step-start": 1,
+            "text": 1
+          },
+          "partStoredBytes": 61165,
+          "textPayloadBytes": 791,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 18595,
+              "inputBytes": 109,
+              "outputBytes": 16689,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 9946,
+              "inputBytes": 107,
+              "outputBytes": 8283,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 15337,
+              "inputBytes": 109,
+              "outputBytes": 13824,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 15653,
+              "inputBytes": 112,
+              "outputBytes": 13756,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m5",
+          "role": "assistant",
+          "startOffsetMs": 164739,
+          "durationMs": 5765,
+          "finish": "tool-calls",
+          "infoBytes": 1634,
+          "tokenCounts": {
+            "input": 14305,
+            "output": 401,
+            "reasoning": 103,
+            "cacheRead": 46848,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "step-finish": 1,
+            "tool": 3,
+            "step-start": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 16714,
+          "textPayloadBytes": 530,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1304,
+              "inputBytes": 246,
+              "outputBytes": 163,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 9014,
+              "inputBytes": 109,
+              "outputBytes": 7531,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 5029,
+              "inputBytes": 188,
+              "outputBytes": 4002,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m6",
+          "role": "assistant",
+          "startOffsetMs": 170513,
+          "durationMs": 3222,
+          "finish": "tool-calls",
+          "infoBytes": 1632,
+          "tokenCounts": {
+            "input": 3525,
+            "output": 224,
+            "reasoning": 21,
+            "cacheRead": 61440,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "reasoning": 1,
+            "step-finish": 1,
+            "text": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 49530,
+          "textPayloadBytes": 200,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 14948,
+              "inputBytes": 108,
+              "outputBytes": 13171,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8381,
+              "inputBytes": 109,
+              "outputBytes": 6634,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 25173,
+              "inputBytes": 116,
+              "outputBytes": 23373,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m7",
+          "role": "assistant",
+          "startOffsetMs": 173746,
+          "durationMs": 8934,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 11743,
+            "output": 394,
+            "reasoning": 143,
+            "cacheRead": 65152,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-start": 1,
+            "text": 1,
+            "reasoning": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 41165,
+          "textPayloadBytes": 762,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 23601,
+              "inputBytes": 114,
+              "outputBytes": 21788,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7980,
+              "inputBytes": 121,
+              "outputBytes": 6195,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7985,
+              "inputBytes": 133,
+              "outputBytes": 6368,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m8",
+          "role": "assistant",
+          "startOffsetMs": 182692,
+          "durationMs": 5493,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 9714,
+            "output": 378,
+            "reasoning": 150,
+            "cacheRead": 77184,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "step-finish": 1,
+            "tool": 2,
+            "reasoning": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 13446,
+          "textPayloadBytes": 811,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2797,
+              "inputBytes": 200,
+              "outputBytes": 1732,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 9001,
+              "inputBytes": 133,
+              "outputBytes": 7332,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m9",
+          "role": "assistant",
+          "startOffsetMs": 188206,
+          "durationMs": 8964,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 2757,
+            "output": 404,
+            "reasoning": 58,
+            "cacheRead": 87168,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "tool": 3,
+            "step-start": 1,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 18542,
+          "textPayloadBytes": 434,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8121,
+              "inputBytes": 128,
+              "outputBytes": 6180,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7818,
+              "inputBytes": 135,
+              "outputBytes": 6111,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 1341,
+              "inputBytes": 349,
+              "outputBytes": 2,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m10",
+          "role": "assistant",
+          "startOffsetMs": 197184,
+          "durationMs": 6579,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 3221,
+            "output": 405,
+            "reasoning": 175,
+            "cacheRead": 90240,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "reasoning": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "tool": 2
+          },
+          "partStoredBytes": 5533,
+          "textPayloadBytes": 899,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1574,
+              "inputBytes": 162,
+              "outputBytes": 601,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2224,
+              "inputBytes": 172,
+              "outputBytes": 1223,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m11",
+          "role": "assistant",
+          "startOffsetMs": 203772,
+          "durationMs": 4313,
+          "finish": "tool-calls",
+          "infoBytes": 1634,
+          "tokenCounts": {
+            "input": 597,
+            "output": 311,
+            "reasoning": 18,
+            "cacheRead": 93824,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "tool": 3,
+            "step-start": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 9371,
+          "textPayloadBytes": 170,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "error",
+              "storedBytes": 933,
+              "inputBytes": 112,
+              "outputBytes": 0,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6393,
+              "inputBytes": 134,
+              "outputBytes": 4845,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1048,
+              "inputBytes": 185,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m12",
+          "role": "assistant",
+          "startOffsetMs": 208094,
+          "durationMs": 4973,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 1425,
+            "output": 253,
+            "reasoning": 48,
+            "cacheRead": 94720,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "tool": 2,
+            "text": 1,
+            "step-start": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 3616,
+          "textPayloadBytes": 374,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 991,
+              "inputBytes": 159,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "glob",
+              "status": "completed",
+              "storedBytes": 1423,
+              "inputBytes": 109,
+              "outputBytes": 463,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m13",
+          "role": "assistant",
+          "startOffsetMs": 213084,
+          "durationMs": 17097,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 181,
+            "output": 911,
+            "reasoning": 706,
+            "cacheRead": 96384,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "text": 1,
+            "tool": 2,
+            "step-finish": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 17577,
+          "textPayloadBytes": 3123,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 5780,
+              "inputBytes": 132,
+              "outputBytes": 4219,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7814,
+              "inputBytes": 118,
+              "outputBytes": 5877,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s2-m14",
+          "role": "assistant",
+          "startOffsetMs": 230193,
+          "durationMs": 83840,
+          "finish": "stop",
+          "infoBytes": 1633,
+          "tokenCounts": {
+            "input": 2745,
+            "output": 5252,
+            "reasoning": 1589,
+            "cacheRead": 97408,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 21580,
+          "textPayloadBytes": 20439,
+          "tools": []
+        }
+      ]
+    },
+    {
+      "session": "s3",
+      "relation": "child",
+      "parent": "s1",
+      "parentMessage": "s1-m7",
+      "terminalStatus": "completed",
+      "durationMs": 214973,
+      "messages": [
+        {
+          "message": "s3-m1",
+          "role": "user",
+          "startOffsetMs": 142297,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 563,
+          "tokenCounts": null,
+          "originType": "user",
+          "originKeys": ["type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 1737,
+          "textPayloadBytes": 1539,
+          "tools": []
+        },
+        {
+          "message": "s3-m2",
+          "role": "assistant",
+          "startOffsetMs": 142329,
+          "durationMs": 7271,
+          "finish": "tool-calls",
+          "infoBytes": 1632,
+          "tokenCounts": {
+            "input": 20268,
+            "output": 434,
+            "reasoning": 150,
+            "cacheRead": 2560,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "reasoning": 1,
+            "tool": 3,
+            "step-start": 1
+          },
+          "partStoredBytes": 45775,
+          "textPayloadBytes": 752,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 35877,
+              "inputBytes": 157,
+              "outputBytes": 17392,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 3526,
+              "inputBytes": 151,
+              "outputBytes": 1221,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 4985,
+              "inputBytes": 166,
+              "outputBytes": 1939,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m3",
+          "role": "assistant",
+          "startOffsetMs": 149610,
+          "durationMs": 6249,
+          "finish": "tool-calls",
+          "infoBytes": 1631,
+          "tokenCounts": {
+            "input": 23061,
+            "output": 488,
+            "reasoning": 79,
+            "cacheRead": 2560,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "reasoning": 1,
+            "tool": 4,
+            "text": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 26718,
+          "textPayloadBytes": 501,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 3990,
+              "inputBytes": 128,
+              "outputBytes": 3057,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 13162,
+              "inputBytes": 146,
+              "outputBytes": 12192,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 4250,
+              "inputBytes": 127,
+              "outputBytes": 3319,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 3979,
+              "inputBytes": 142,
+              "outputBytes": 3030,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m4",
+          "role": "assistant",
+          "startOffsetMs": 155872,
+          "durationMs": 4902,
+          "finish": "tool-calls",
+          "infoBytes": 1633,
+          "tokenCounts": {
+            "input": 6079,
+            "output": 319,
+            "reasoning": 111,
+            "cacheRead": 25984,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "step-finish": 1,
+            "tool": 3,
+            "step-start": 1,
+            "text": 1
+          },
+          "partStoredBytes": 67927,
+          "textPayloadBytes": 583,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 23601,
+              "inputBytes": 114,
+              "outputBytes": 21788,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 24874,
+              "inputBytes": 107,
+              "outputBytes": 23006,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 18033,
+              "inputBytes": 110,
+              "outputBytes": 15974,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m5",
+          "role": "assistant",
+          "startOffsetMs": 160787,
+          "durationMs": 6700,
+          "finish": "tool-calls",
+          "infoBytes": 1634,
+          "tokenCounts": {
+            "input": 16434,
+            "output": 389,
+            "reasoning": 187,
+            "cacheRead": 32256,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "tool": 3,
+            "text": 1,
+            "reasoning": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 46680,
+          "textPayloadBytes": 866,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 32768,
+              "inputBytes": 104,
+              "outputBytes": 31005,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6335,
+              "inputBytes": 104,
+              "outputBytes": 4331,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 5873,
+              "inputBytes": 105,
+              "outputBytes": 4004,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m6",
+          "role": "assistant",
+          "startOffsetMs": 167499,
+          "durationMs": 5625,
+          "finish": "tool-calls",
+          "infoBytes": 1633,
+          "tokenCounts": {
+            "input": 10759,
+            "output": 374,
+            "reasoning": 94,
+            "cacheRead": 49024,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-finish": 1,
+            "reasoning": 1,
+            "step-start": 1,
+            "text": 1
+          },
+          "partStoredBytes": 14997,
+          "textPayloadBytes": 531,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 9946,
+              "inputBytes": 107,
+              "outputBytes": 8283,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1576,
+              "inputBytes": 136,
+              "outputBytes": 641,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2108,
+              "inputBytes": 155,
+              "outputBytes": 1134,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m7",
+          "role": "assistant",
+          "startOffsetMs": 173134,
+          "durationMs": 4713,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 2920,
+            "output": 350,
+            "reasoning": 50,
+            "cacheRead": 60032,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "tool": 3,
+            "text": 1,
+            "step-start": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 17830,
+          "textPayloadBytes": 324,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 3841,
+              "inputBytes": 161,
+              "outputBytes": 2854,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 940,
+              "inputBytes": 135,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 11897,
+              "inputBytes": 115,
+              "outputBytes": 9999,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m8",
+          "role": "assistant",
+          "startOffsetMs": 177862,
+          "durationMs": 6413,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 3502,
+            "output": 347,
+            "reasoning": 46,
+            "cacheRead": 63232,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 33016,
+          "textPayloadBytes": 319,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 11576,
+              "inputBytes": 132,
+              "outputBytes": 9700,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7920,
+              "inputBytes": 131,
+              "outputBytes": 6224,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 12373,
+              "inputBytes": 128,
+              "outputBytes": 10354,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m9",
+          "role": "assistant",
+          "startOffsetMs": 184292,
+          "durationMs": 5937,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 6125,
+            "output": 370,
+            "reasoning": 125,
+            "cacheRead": 67072,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "text": 1,
+            "tool": 2,
+            "reasoning": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 3505,
+          "textPayloadBytes": 648,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1004,
+              "inputBytes": 170,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1018,
+              "inputBytes": 177,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m10",
+          "role": "assistant",
+          "startOffsetMs": 190250,
+          "durationMs": 4369,
+          "finish": "tool-calls",
+          "infoBytes": 1634,
+          "tokenCounts": {
+            "input": 121,
+            "output": 333,
+            "reasoning": 40,
+            "cacheRead": 73472,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-finish": 1,
+            "step-start": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 4767,
+          "textPayloadBytes": 185,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 954,
+              "inputBytes": 145,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2005,
+              "inputBytes": 135,
+              "outputBytes": 1084,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1000,
+              "inputBytes": 168,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m11",
+          "role": "assistant",
+          "startOffsetMs": 194631,
+          "durationMs": 2215,
+          "finish": "tool-calls",
+          "infoBytes": 1634,
+          "tokenCounts": {
+            "input": 409,
+            "output": 106,
+            "reasoning": 34,
+            "cacheRead": 73856,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "step-start": 1,
+            "tool": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 15700,
+          "textPayloadBytes": 129,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 14948,
+              "inputBytes": 108,
+              "outputBytes": 13171,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m12",
+          "role": "assistant",
+          "startOffsetMs": 196866,
+          "durationMs": 7281,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 3634,
+            "output": 539,
+            "reasoning": 250,
+            "cacheRead": 74368,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "text": 1,
+            "tool": 3,
+            "step-finish": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 24247,
+          "textPayloadBytes": 1028,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7686,
+              "inputBytes": 114,
+              "outputBytes": 5863,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7549,
+              "inputBytes": 128,
+              "outputBytes": 5584,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7130,
+              "inputBytes": 128,
+              "outputBytes": 5347,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m13",
+          "role": "assistant",
+          "startOffsetMs": 204168,
+          "durationMs": 4100,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 4635,
+            "output": 234,
+            "reasoning": 32,
+            "cacheRead": 78464,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 2,
+            "step-finish": 1,
+            "text": 1,
+            "reasoning": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 22363,
+          "textPayloadBytes": 207,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 10856,
+              "inputBytes": 128,
+              "outputBytes": 8698,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 10472,
+              "inputBytes": 128,
+              "outputBytes": 8710,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m14",
+          "role": "assistant",
+          "startOffsetMs": 208280,
+          "durationMs": 6357,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 4371,
+            "output": 430,
+            "reasoning": 29,
+            "cacheRead": 83328,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-finish": 1,
+            "reasoning": 1,
+            "step-start": 1,
+            "text": 1
+          },
+          "partStoredBytes": 42628,
+          "textPayloadBytes": 274,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1907,
+              "inputBytes": 180,
+              "outputBytes": 891,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8077,
+              "inputBytes": 127,
+              "outputBytes": 5922,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 31542,
+              "inputBytes": 528,
+              "outputBytes": 15031,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m15",
+          "role": "assistant",
+          "startOffsetMs": 214648,
+          "durationMs": 6604,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 5471,
+            "output": 427,
+            "reasoning": 180,
+            "cacheRead": 88064,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 2,
+            "step-finish": 1,
+            "step-start": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 15790,
+          "textPayloadBytes": 764,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 6855,
+              "inputBytes": 436,
+              "outputBytes": 2739,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7536,
+              "inputBytes": 121,
+              "outputBytes": 5621,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m16",
+          "role": "assistant",
+          "startOffsetMs": 221269,
+          "durationMs": 5613,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 2281,
+            "output": 266,
+            "reasoning": 35,
+            "cacheRead": 93952,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "reasoning": 1,
+            "step-finish": 1,
+            "tool": 2,
+            "step-start": 1
+          },
+          "partStoredBytes": 9212,
+          "textPayloadBytes": 307,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1184,
+              "inputBytes": 156,
+              "outputBytes": 230,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6893,
+              "inputBytes": 128,
+              "outputBytes": 5183,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m17",
+          "role": "assistant",
+          "startOffsetMs": 226911,
+          "durationMs": 4234,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 1584,
+            "output": 252,
+            "reasoning": 43,
+            "cacheRead": 96384,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "tool": 2,
+            "step-finish": 1,
+            "step-start": 1,
+            "text": 1
+          },
+          "partStoredBytes": 9500,
+          "textPayloadBytes": 270,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1175,
+              "inputBytes": 181,
+              "outputBytes": 165,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7225,
+              "inputBytes": 112,
+              "outputBytes": 5488,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m18",
+          "role": "assistant",
+          "startOffsetMs": 231158,
+          "durationMs": 2812,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 1597,
+            "output": 120,
+            "reasoning": 16,
+            "cacheRead": 98176,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "tool": 1,
+            "step-finish": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 7834,
+          "textPayloadBytes": 66,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7144,
+              "inputBytes": 125,
+              "outputBytes": 5418,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m19",
+          "role": "assistant",
+          "startOffsetMs": 233980,
+          "durationMs": 7789,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 1358,
+            "output": 501,
+            "reasoning": 308,
+            "cacheRead": 99840,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "step-start": 1,
+            "tool": 2,
+            "reasoning": 1
+          },
+          "partStoredBytes": 18606,
+          "textPayloadBytes": 1248,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7857,
+              "inputBytes": 131,
+              "outputBytes": 6106,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8858,
+              "inputBytes": 130,
+              "outputBytes": 7000,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m20",
+          "role": "assistant",
+          "startOffsetMs": 241782,
+          "durationMs": 38897,
+          "finish": "tool-calls",
+          "infoBytes": 1641,
+          "tokenCounts": {
+            "input": 2776,
+            "output": 2581,
+            "reasoning": 2369,
+            "cacheRead": 101632,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 2,
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 25286,
+          "textPayloadBytes": 10007,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7386,
+              "inputBytes": 132,
+              "outputBytes": 5453,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6897,
+              "inputBytes": 129,
+              "outputBytes": 5037,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m21",
+          "role": "assistant",
+          "startOffsetMs": 280690,
+          "durationMs": 4372,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 3117,
+            "output": 261,
+            "reasoning": 27,
+            "cacheRead": 106880,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "step-start": 1,
+            "tool": 2,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 3705,
+          "textPayloadBytes": 231,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1457,
+              "inputBytes": 182,
+              "outputBytes": 451,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1188,
+              "inputBytes": 152,
+              "outputBytes": 241,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m22",
+          "role": "assistant",
+          "startOffsetMs": 285074,
+          "durationMs": 3403,
+          "finish": "tool-calls",
+          "infoBytes": 1637,
+          "tokenCounts": {
+            "input": 253,
+            "output": 194,
+            "reasoning": 18,
+            "cacheRead": 110208,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "tool": 2,
+            "reasoning": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 15371,
+          "textPayloadBytes": 100,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6940,
+              "inputBytes": 119,
+              "outputBytes": 5232,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7707,
+              "inputBytes": 130,
+              "outputBytes": 5904,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m23",
+          "role": "assistant",
+          "startOffsetMs": 288496,
+          "durationMs": 3484,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 3089,
+            "output": 220,
+            "reasoning": 20,
+            "cacheRead": 110592,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "text": 1,
+            "step-finish": 1,
+            "step-start": 1,
+            "tool": 2
+          },
+          "partStoredBytes": 9752,
+          "textPayloadBytes": 160,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7223,
+              "inputBytes": 129,
+              "outputBytes": 5514,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1540,
+              "inputBytes": 132,
+              "outputBytes": 613,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s3-m24",
+          "role": "assistant",
+          "startOffsetMs": 291994,
+          "durationMs": 64913,
+          "finish": "stop",
+          "infoBytes": 1637,
+          "tokenCounts": {
+            "input": 1813,
+            "output": 4357,
+            "reasoning": 1012,
+            "cacheRead": 113792,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "reasoning": 1,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 18044,
+          "textPayloadBytes": 16892,
+          "tools": []
+        }
+      ]
+    },
+    {
+      "session": "s4",
+      "relation": "child",
+      "parent": "s1",
+      "parentMessage": "s1-m7",
+      "terminalStatus": "completed",
+      "durationMs": 227661,
+      "messages": [
+        {
+          "message": "s4-m1",
+          "role": "user",
+          "startOffsetMs": 142330,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 560,
+          "tokenCounts": null,
+          "originType": "user",
+          "originKeys": ["type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 1652,
+          "textPayloadBytes": 1454,
+          "tools": []
+        },
+        {
+          "message": "s4-m2",
+          "role": "assistant",
+          "startOffsetMs": 142633,
+          "durationMs": 8508,
+          "finish": "tool-calls",
+          "infoBytes": 1632,
+          "tokenCounts": {
+            "input": 16939,
+            "output": 629,
+            "reasoning": 157,
+            "cacheRead": 5888,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 5,
+            "text": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 23011,
+          "textPayloadBytes": 871,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 11797,
+              "inputBytes": 109,
+              "outputBytes": 10901,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 3355,
+              "inputBytes": 118,
+              "outputBytes": 2442,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1589,
+              "inputBytes": 92,
+              "outputBytes": 704,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2143,
+              "inputBytes": 139,
+              "outputBytes": 1189,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2410,
+              "inputBytes": 130,
+              "outputBytes": 1474,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m3",
+          "role": "assistant",
+          "startOffsetMs": 151152,
+          "durationMs": 5672,
+          "finish": "tool-calls",
+          "infoBytes": 1633,
+          "tokenCounts": {
+            "input": 22156,
+            "output": 351,
+            "reasoning": 145,
+            "cacheRead": 2688,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-finish": 1,
+            "reasoning": 1,
+            "text": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 54055,
+          "textPayloadBytes": 698,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 13056,
+              "inputBytes": 118,
+              "outputBytes": 11460,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 21431,
+              "inputBytes": 123,
+              "outputBytes": 19843,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 18033,
+              "inputBytes": 110,
+              "outputBytes": 15974,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m4",
+          "role": "assistant",
+          "startOffsetMs": 156833,
+          "durationMs": 22342,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 13158,
+            "output": 1364,
+            "reasoning": 1027,
+            "cacheRead": 25088,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-finish": 1,
+            "step-start": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 17956,
+          "textPayloadBytes": 4191,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1127,
+              "inputBytes": 155,
+              "outputBytes": 188,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 8563,
+              "inputBytes": 166,
+              "outputBytes": 7589,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 3162,
+              "inputBytes": 137,
+              "outputBytes": 2228,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m5",
+          "role": "assistant",
+          "startOffsetMs": 179188,
+          "durationMs": 3086,
+          "finish": "tool-calls",
+          "infoBytes": 1634,
+          "tokenCounts": {
+            "input": 2664,
+            "output": 186,
+            "reasoning": 36,
+            "cacheRead": 39552,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "reasoning": 1,
+            "tool": 2,
+            "text": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 24337,
+          "textPayloadBytes": 257,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 14747,
+              "inputBytes": 112,
+              "outputBytes": 12946,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8505,
+              "inputBytes": 110,
+              "outputBytes": 6698,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m6",
+          "role": "assistant",
+          "startOffsetMs": 182284,
+          "durationMs": 7946,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 5742,
+            "output": 553,
+            "reasoning": 132,
+            "cacheRead": 42368,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 4,
+            "step-finish": 1,
+            "step-start": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 16389,
+          "textPayloadBytes": 749,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1955,
+              "inputBytes": 159,
+              "outputBytes": 970,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2060,
+              "inputBytes": 166,
+              "outputBytes": 1068,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 9860,
+              "inputBytes": 175,
+              "outputBytes": 8850,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "glob",
+              "status": "completed",
+              "storedBytes": 930,
+              "inputBytes": 85,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m7",
+          "role": "assistant",
+          "startOffsetMs": 190250,
+          "durationMs": 7142,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 3012,
+            "output": 465,
+            "reasoning": 136,
+            "cacheRead": 48640,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-start": 1,
+            "text": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 16120,
+          "textPayloadBytes": 708,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 3048,
+              "inputBytes": 164,
+              "outputBytes": 2052,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 10217,
+              "inputBytes": 125,
+              "outputBytes": 8430,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1314,
+              "inputBytes": 174,
+              "outputBytes": 308,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m8",
+          "role": "assistant",
+          "startOffsetMs": 197404,
+          "durationMs": 10516,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 2998,
+            "output": 755,
+            "reasoning": 480,
+            "cacheRead": 52096,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 3,
+            "step-finish": 1,
+            "step-start": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 17755,
+          "textPayloadBytes": 1970,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 6608,
+              "inputBytes": 141,
+              "outputBytes": 5678,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7136,
+              "inputBytes": 120,
+              "outputBytes": 5235,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "glob",
+              "status": "completed",
+              "storedBytes": 1169,
+              "inputBytes": 114,
+              "outputBytes": 196,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m9",
+          "role": "assistant",
+          "startOffsetMs": 207933,
+          "durationMs": 5741,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 3062,
+            "output": 411,
+            "reasoning": 98,
+            "cacheRead": 55808,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "tool": 3,
+            "step-finish": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 19076,
+          "textPayloadBytes": 589,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8234,
+              "inputBytes": 143,
+              "outputBytes": 6331,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1333,
+              "inputBytes": 155,
+              "outputBytes": 392,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8090,
+              "inputBytes": 143,
+              "outputBytes": 6130,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m10",
+          "role": "assistant",
+          "startOffsetMs": 213685,
+          "durationMs": 20628,
+          "finish": "tool-calls",
+          "infoBytes": 1637,
+          "tokenCounts": {
+            "input": 3517,
+            "output": 1417,
+            "reasoning": 997,
+            "cacheRead": 59264,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "tool": 4,
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 22810,
+          "textPayloadBytes": 4037,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1167,
+              "inputBytes": 156,
+              "outputBytes": 224,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1184,
+              "inputBytes": 163,
+              "outputBytes": 223,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 9082,
+              "inputBytes": 153,
+              "outputBytes": 7093,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 6435,
+              "inputBytes": 132,
+              "outputBytes": 5517,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m11",
+          "role": "assistant",
+          "startOffsetMs": 234323,
+          "durationMs": 9935,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 3531,
+            "output": 655,
+            "reasoning": 305,
+            "cacheRead": 64128,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "step-start": 1,
+            "text": 1,
+            "tool": 3,
+            "step-finish": 1
+          },
+          "partStoredBytes": 22412,
+          "textPayloadBytes": 1429,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 7324,
+              "inputBytes": 184,
+              "outputBytes": 6288,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1031,
+              "inputBytes": 185,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 11781,
+              "inputBytes": 164,
+              "outputBytes": 10804,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m12",
+          "role": "assistant",
+          "startOffsetMs": 244267,
+          "durationMs": 18028,
+          "finish": "tool-calls",
+          "infoBytes": 1637,
+          "tokenCounts": {
+            "input": 4685,
+            "output": 1198,
+            "reasoning": 997,
+            "cacheRead": 68224,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "tool": 2,
+            "reasoning": 1
+          },
+          "partStoredBytes": 19639,
+          "textPayloadBytes": 4026,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 4512,
+              "inputBytes": 125,
+              "outputBytes": 2759,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 10184,
+              "inputBytes": 124,
+              "outputBytes": 8129,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m13",
+          "role": "assistant",
+          "startOffsetMs": 262306,
+          "durationMs": 3974,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 2992,
+            "output": 273,
+            "reasoning": 49,
+            "cacheRead": 73984,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "text": 1,
+            "tool": 2,
+            "step-start": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 8420,
+          "textPayloadBytes": 345,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 5975,
+              "inputBytes": 133,
+              "outputBytes": 4409,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1272,
+              "inputBytes": 155,
+              "outputBytes": 331,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m14",
+          "role": "assistant",
+          "startOffsetMs": 266294,
+          "durationMs": 3448,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 1482,
+            "output": 232,
+            "reasoning": 31,
+            "cacheRead": 77184,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "reasoning": 1,
+            "tool": 2,
+            "step-finish": 1
+          },
+          "partStoredBytes": 10157,
+          "textPayloadBytes": 132,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8197,
+              "inputBytes": 132,
+              "outputBytes": 6443,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1204,
+              "inputBytes": 155,
+              "outputBytes": 263,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m15",
+          "role": "assistant",
+          "startOffsetMs": 269756,
+          "durationMs": 2857,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 2124,
+            "output": 208,
+            "reasoning": 14,
+            "cacheRead": 78848,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "tool": 2,
+            "step-start": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 7818,
+          "textPayloadBytes": 64,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6023,
+              "inputBytes": 132,
+              "outputBytes": 4452,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 1107,
+              "inputBytes": 152,
+              "outputBytes": 54,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m16",
+          "role": "assistant",
+          "startOffsetMs": 272627,
+          "durationMs": 28494,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 1341,
+            "output": 1855,
+            "reasoning": 1614,
+            "cacheRead": 81152,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "tool": 2,
+            "reasoning": 1,
+            "text": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 16223,
+          "textPayloadBytes": 6487,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6387,
+              "inputBytes": 150,
+              "outputBytes": 4689,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2417,
+              "inputBytes": 172,
+              "outputBytes": 1436,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s4-m17",
+          "role": "assistant",
+          "startOffsetMs": 301136,
+          "durationMs": 68732,
+          "finish": "stop",
+          "infoBytes": 1632,
+          "tokenCounts": {
+            "input": 1913,
+            "output": 4487,
+            "reasoning": 497,
+            "cacheRead": 84224,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "reasoning": 1,
+            "text": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 18060,
+          "textPayloadBytes": 16932,
+          "tools": []
+        }
+      ]
+    },
+    {
+      "session": "s5",
+      "relation": "child",
+      "parent": "s1",
+      "parentMessage": "s1-m7",
+      "terminalStatus": "completed",
+      "durationMs": 271950,
+      "messages": [
+        {
+          "message": "s5-m1",
+          "role": "user",
+          "startOffsetMs": 142303,
+          "durationMs": null,
+          "finish": null,
+          "infoBytes": 556,
+          "tokenCounts": null,
+          "originType": "user",
+          "originKeys": ["type"],
+          "partTypeCounts": {
+            "text": 1
+          },
+          "partStoredBytes": 1708,
+          "textPayloadBytes": 1510,
+          "tools": []
+        },
+        {
+          "message": "s5-m2",
+          "role": "assistant",
+          "startOffsetMs": 142335,
+          "durationMs": 7837,
+          "finish": "tool-calls",
+          "infoBytes": 1632,
+          "tokenCounts": {
+            "input": 20263,
+            "output": 483,
+            "reasoning": 221,
+            "cacheRead": 2560,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "tool": 3,
+            "step-finish": 1,
+            "reasoning": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 7300,
+          "textPayloadBytes": 1067,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 3511,
+              "inputBytes": 146,
+              "outputBytes": 1221,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "glob",
+              "status": "completed",
+              "storedBytes": 938,
+              "inputBytes": 93,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "glob",
+              "status": "completed",
+              "storedBytes": 938,
+              "inputBytes": 93,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m3",
+          "role": "assistant",
+          "startOffsetMs": 150181,
+          "durationMs": 5039,
+          "finish": "tool-calls",
+          "infoBytes": 1631,
+          "tokenCounts": {
+            "input": 17812,
+            "output": 338,
+            "reasoning": 36,
+            "cacheRead": 2688,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 4,
+            "reasoning": 1,
+            "text": 1,
+            "step-start": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 11146,
+          "textPayloadBytes": 288,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 5885,
+              "inputBytes": 84,
+              "outputBytes": 5014,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1217,
+              "inputBytes": 90,
+              "outputBytes": 336,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1426,
+              "inputBytes": 91,
+              "outputBytes": 543,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1502,
+              "inputBytes": 99,
+              "outputBytes": 603,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m4",
+          "role": "assistant",
+          "startOffsetMs": 155235,
+          "durationMs": 5757,
+          "finish": "tool-calls",
+          "infoBytes": 1633,
+          "tokenCounts": {
+            "input": 2045,
+            "output": 553,
+            "reasoning": 175,
+            "cacheRead": 20736,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 6,
+            "step-start": 1,
+            "text": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 117866,
+          "textPayloadBytes": 683,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 18595,
+              "inputBytes": 109,
+              "outputBytes": 16689,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 35156,
+              "inputBytes": 110,
+              "outputBytes": 33091,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 14948,
+              "inputBytes": 108,
+              "outputBytes": 13171,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 4739,
+              "inputBytes": 116,
+              "outputBytes": 3182,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 24874,
+              "inputBytes": 107,
+              "outputBytes": 23006,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 18033,
+              "inputBytes": 110,
+              "outputBytes": 15974,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m5",
+          "role": "assistant",
+          "startOffsetMs": 161001,
+          "durationMs": 6358,
+          "finish": "tool-calls",
+          "infoBytes": 1633,
+          "tokenCounts": {
+            "input": 28025,
+            "output": 213,
+            "reasoning": 87,
+            "cacheRead": 23296,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-finish": 1,
+            "step-start": 1,
+            "text": 1,
+            "reasoning": 1,
+            "tool": 1
+          },
+          "partStoredBytes": 4299,
+          "textPayloadBytes": 619,
+          "tools": [
+            {
+              "tool": "glob",
+              "status": "completed",
+              "storedBytes": 2851,
+              "inputBytes": 115,
+              "outputBytes": 1869,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m6",
+          "role": "assistant",
+          "startOffsetMs": 167373,
+          "durationMs": 3592,
+          "finish": "tool-calls",
+          "infoBytes": 1631,
+          "tokenCounts": {
+            "input": 646,
+            "output": 263,
+            "reasoning": 43,
+            "cacheRead": 51456,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "tool": 3,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 67549,
+          "textPayloadBytes": 180,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8381,
+              "inputBytes": 109,
+              "outputBytes": 6634,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 23561,
+              "inputBytes": 136,
+              "outputBytes": 21985,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 34804,
+              "inputBytes": 108,
+              "outputBytes": 32889,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m7",
+          "role": "assistant",
+          "startOffsetMs": 170978,
+          "durationMs": 25868,
+          "finish": "tool-calls",
+          "infoBytes": 1637,
+          "tokenCounts": {
+            "input": 15816,
+            "output": 1776,
+            "reasoning": 1402,
+            "cacheRead": 52352,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "tool": 4,
+            "step-finish": 1,
+            "step-start": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 13422,
+          "textPayloadBytes": 5615,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 2305,
+              "inputBytes": 113,
+              "outputBytes": 1397,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 921,
+              "inputBytes": 113,
+              "outputBytes": 16,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1617,
+              "inputBytes": 106,
+              "outputBytes": 725,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 2046,
+              "inputBytes": 312,
+              "outputBytes": 387,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m8",
+          "role": "assistant",
+          "startOffsetMs": 196883,
+          "durationMs": 4997,
+          "finish": "tool-calls",
+          "infoBytes": 1634,
+          "tokenCounts": {
+            "input": 773,
+            "output": 369,
+            "reasoning": 25,
+            "cacheRead": 69888,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "tool": 3,
+            "step-finish": 1,
+            "reasoning": 1,
+            "text": 1
+          },
+          "partStoredBytes": 42534,
+          "textPayloadBytes": 207,
+          "tools": [
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 28449,
+              "inputBytes": 383,
+              "outputBytes": 13557,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 11886,
+              "inputBytes": 116,
+              "outputBytes": 10085,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "bash",
+              "status": "completed",
+              "storedBytes": 1165,
+              "inputBytes": 217,
+              "outputBytes": 2,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m9",
+          "role": "assistant",
+          "startOffsetMs": 201893,
+          "durationMs": 24986,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 6250,
+            "output": 1750,
+            "reasoning": 1539,
+            "cacheRead": 70912,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "text": 1,
+            "reasoning": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "tool": 2
+          },
+          "partStoredBytes": 21152,
+          "textPayloadBytes": 6119,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1237,
+              "inputBytes": 129,
+              "outputBytes": 324,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 12838,
+              "inputBytes": 136,
+              "outputBytes": 10856,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m10",
+          "role": "assistant",
+          "startOffsetMs": 226910,
+          "durationMs": 3950,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 2559,
+            "output": 206,
+            "reasoning": 22,
+            "cacheRead": 78848,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "step-start": 1,
+            "tool": 2,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 11089,
+          "textPayloadBytes": 244,
+          "tools": [
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1512,
+              "inputBytes": 141,
+              "outputBytes": 550,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 8505,
+              "inputBytes": 110,
+              "outputBytes": 6698,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m11",
+          "role": "assistant",
+          "startOffsetMs": 230869,
+          "durationMs": 3273,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 2100,
+            "output": 208,
+            "reasoning": 19,
+            "cacheRead": 81536,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 2,
+            "reasoning": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "text": 1
+          },
+          "partStoredBytes": 18318,
+          "textPayloadBytes": 235,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 9641,
+              "inputBytes": 131,
+              "outputBytes": 7333,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 7614,
+              "inputBytes": 111,
+              "outputBytes": 5808,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m12",
+          "role": "assistant",
+          "startOffsetMs": 234160,
+          "durationMs": 27083,
+          "finish": "tool-calls",
+          "infoBytes": 1638,
+          "tokenCounts": {
+            "input": 2960,
+            "output": 1849,
+            "reasoning": 1643,
+            "cacheRead": 83840,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "tool": 2,
+            "text": 1,
+            "reasoning": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 15648,
+          "textPayloadBytes": 6664,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6571,
+              "inputBytes": 132,
+              "outputBytes": 4697,
+              "metadataBytes": 0
+            },
+            {
+              "tool": "grep",
+              "status": "completed",
+              "storedBytes": 1444,
+              "inputBytes": 125,
+              "outputBytes": 531,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m13",
+          "role": "assistant",
+          "startOffsetMs": 261257,
+          "durationMs": 3400,
+          "finish": "tool-calls",
+          "infoBytes": 1635,
+          "tokenCounts": {
+            "input": 1505,
+            "output": 145,
+            "reasoning": 40,
+            "cacheRead": 88576,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "tool": 1,
+            "step-start": 1,
+            "step-finish": 1,
+            "reasoning": 1
+          },
+          "partStoredBytes": 7057,
+          "textPayloadBytes": 203,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6230,
+              "inputBytes": 135,
+              "outputBytes": 4557,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m14",
+          "role": "assistant",
+          "startOffsetMs": 264670,
+          "durationMs": 5687,
+          "finish": "tool-calls",
+          "infoBytes": 1636,
+          "tokenCounts": {
+            "input": 1365,
+            "output": 389,
+            "reasoning": 284,
+            "cacheRead": 90112,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "reasoning": 1,
+            "step-finish": 1,
+            "tool": 1,
+            "step-start": 1
+          },
+          "partStoredBytes": 7838,
+          "textPayloadBytes": 1015,
+          "tools": [
+            {
+              "tool": "read",
+              "status": "completed",
+              "storedBytes": 6169,
+              "inputBytes": 134,
+              "outputBytes": 4555,
+              "metadataBytes": 0
+            }
+          ]
+        },
+        {
+          "message": "s5-m15",
+          "role": "assistant",
+          "startOffsetMs": 270371,
+          "durationMs": 143583,
+          "finish": "stop",
+          "infoBytes": 1633,
+          "tokenCounts": {
+            "input": 1335,
+            "output": 10090,
+            "reasoning": 5576,
+            "cacheRead": 91776,
+            "cacheWrite": 0
+          },
+          "originType": null,
+          "originKeys": [],
+          "partTypeCounts": {
+            "step-start": 1,
+            "text": 1,
+            "reasoning": 1,
+            "step-finish": 1
+          },
+          "partStoredBytes": 41037,
+          "textPayloadBytes": 39371,
+          "tools": []
+        }
+      ]
+    }
+  ]
+}

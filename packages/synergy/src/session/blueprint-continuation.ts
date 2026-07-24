@@ -71,9 +71,14 @@ function reviewPrompt(loop: BlueprintLoopInfo): string {
     "",
     "## Instructions",
     "1. Inspect the Blueprint, start user instruction, execution trajectory, delivered artifacts, workspace changes, and domain-appropriate verification evidence.",
-    "2. Map every requirement to concrete evidence and classify any gap as blocking or non-blocking.",
-    "3. If all required outcomes are complete and verified, call blueprint_loop_approve with the execution session ID and a verdict summary.",
-    "4. If anything required is missing, incorrect, or unverified, call blueprint_loop_reject with concrete remaining work and instructions.",
+    "2. Treat Change Scope, boundaries, and non-goals as review requirements, not optional advice. Unauthorized adjacent work is a scope defect, not an acceptable superset.",
+    loop.source === "lattice"
+      ? "3. This loop owns exactly one current Lattice Step. Implementation of future Lattice Pathway steps is unauthorized even when it appears useful or already passes tests."
+      : "3. Verify that delivered work stays within the Blueprint and start-instruction scope.",
+    "4. Inspect the trajectory after the first successful blueprint_loop_stop. If the execution session called more tools, modified artifacts, assisted review, or began adjacent work after that stop request, reject with a concrete scope and lifecycle violation.",
+    "5. Map every requirement to concrete evidence and classify any gap as blocking or non-blocking.",
+    "6. If all required outcomes are complete, verified, in scope, and lifecycle-correct, call blueprint_loop_approve with the execution session ID and a verdict summary.",
+    "7. If anything required is missing, incorrect, unverified, out of scope, or performed after the stop boundary, call blueprint_loop_reject with concrete remaining work and instructions.",
   ]
     .filter((line): line is string => line !== undefined && line !== "")
     .join("\n")
@@ -109,11 +114,15 @@ function continuationText(loop: BlueprintLoopInfo): string {
     `BlueprintLoop ${loop.id} status is \`running\`.`,
     "",
     `A normal final response does not finish this loop. Inspect the Blueprint note (${loop.noteID}), any start user instruction, the current delivered state, and any domain-appropriate quality evidence before deciding what to do next.`,
+    loop.source === "lattice"
+      ? "This BlueprintLoop owns exactly one current Lattice Step. Future Pathway Steps are context only, not authorization. Earlier user language such as “continue” means continue this current Blueprint, never advance into a later Step."
+      : "",
     loop.userPrompt ? `Start user instruction: ${loop.userPrompt}` : "",
     loop.userPrompt ? `This start user instruction is run-specific contract for execution and audit.` : "",
     "",
     `If the Blueprint outcome is not complete, continue the remaining execution work now.`,
     `If the Blueprint outcome is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review.`,
+    "After blueprint_loop_stop succeeds, execution work is closed: do not call another tool or modify anything, and end the assistant turn immediately so the reviewer can start.",
   ]
     .filter(Boolean)
     .join("\n")

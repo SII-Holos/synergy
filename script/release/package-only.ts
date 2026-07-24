@@ -3,7 +3,13 @@
 import { $ } from "bun"
 import { snapshotFiles, restoreFiles } from "./shared/files"
 import { VERSION_MANAGED_PACKAGE_PATHS, NPM_REGISTRY } from "./shared/packages"
-import { configureNpmAuth, npmTagMatches, npmVersionExists } from "./shared/runtime"
+import {
+  bumpHighestStableVersion,
+  configureNpmAuth,
+  npmPackageVersions,
+  npmTagMatches,
+  npmVersionExists,
+} from "./shared/runtime"
 import type { DependencyVersionMap } from "./shared/package-manifest"
 import { bunInstall } from "./nodes/bun-install"
 import { generateSdk } from "./nodes/generate-sdk"
@@ -78,19 +84,11 @@ async function latestVersion(packageName: string): Promise<string | null> {
   return data.version ?? null
 }
 
-function bumpVersion(version: string, bump: string): string {
-  const [major = 0, minor = 0, patch = 0] = version.split(".").map((item) => Number(item) || 0)
-  if (bump === "major") return `${major + 1}.0.0`
-  if (bump === "minor") return `${major}.${minor + 1}.0`
-  return `${major}.${minor}.${patch + 1}`
-}
-
 async function computeTargetVersion(packageName: string, bump: string): Promise<string> {
-  const latest = await latestVersion(packageName)
-  if (latest) return bumpVersion(latest, bump)
-
-  const synergyLatest = await latestVersion("@ericsanchezok/synergy")
-  if (synergyLatest) return bumpVersion(synergyLatest, bump)
+  const publishedVersions = await npmPackageVersions(packageName)
+  if (publishedVersions.length > 0) return bumpHighestStableVersion(publishedVersions, bump)
+  const synergyVersions = await npmPackageVersions("@ericsanchezok/synergy")
+  if (synergyVersions.length > 0) return bumpHighestStableVersion(synergyVersions, bump)
   return "0.1.0"
 }
 

@@ -62,19 +62,21 @@ When Light Loop is armed, the composer shows its workflow chip. After the first 
 
 Lattice coordinates a larger goal as an ordered Pathway. Every step has an objective, acceptance criteria, assumptions, status, and an associated Blueprint. Each Blueprint is executed and independently audited through BlueprintLoop before the Pathway advances.
 
-A Lattice run moves through five phases:
+A Lattice run moves through seven work states:
 
-1. `initial_planning` — investigate the goal and create the ordered Pathway
-2. `step_blueprinting` — author and bind a Blueprint for the current step
-3. `blueprint_review` — in collaborative mode, wait for the user to review or refine that Blueprint
-4. `blueprint_execution` — run the step's BlueprintLoop
-5. `result_analysis` — record the result and decide how the remaining Pathway should change
+1. `clarifying` - align the goal, success criteria, constraints, non-goals, and assumptions
+2. `planning` - author the ordered Pathway
+3. `reviewing_pathway` - check the proposed route and choose the next step
+4. `blueprinting` - author and bind the current step's Blueprint
+5. `reviewing_blueprint` - verify that Blueprint before execution
+6. `awaiting_execution` - wait for explicit approval in collaborative mode
+7. `executing` - give the step to its independently reviewed BlueprintLoop
 
-In `auto` mode, Synergy starts the bound Blueprint when the session next becomes idle. In `collaborative` mode, it pauses at Blueprint review until the user continues, optionally with a run-specific instruction.
+In `auto` mode, Synergy starts a reviewed Blueprint without asking for another approval. In `collaborative` mode, the run stops at `awaiting_execution`; approving the panel action starts exactly the reviewed Blueprint and does not attach an extra execution instruction.
 
-The Pathway is adaptive. Non-terminal future steps can be reordered, refined, added, or removed as results emerge. Completed, failed, and cancelled steps remain immutable history, and a running step cannot be silently removed or redefined.
+The Pathway remains adaptive. After every successful step, a run with future work returns to `reviewing_pathway`, where unstarted steps can be reordered, refined, added, or removed. Completed history and prior BlueprintLoop attempts are retained. A failed or cancelled attempt pauses the run on the same step; explicit resume reopens that step for Blueprint work without erasing the failure evidence.
 
-An optional model-call budget pauses the run when exhausted. Runs can also be paused, resumed, restarted, or cancelled explicitly. Pausing makes the current run inert; resuming wakes the shared continuation mechanism again.
+Run status is separate from work state. An active run can be paused, a paused run can be resumed, and cancellation is irreversible. An optional model-call budget also pauses the run when exhausted; explicitly resuming that pause grants exactly one additional model call. Starting a later run for the same session does not overwrite completed, failed, or cancelled Lattice history.
 
 ## Shared Continuation
 
@@ -91,6 +93,6 @@ Only wake-capable Agenda items with `autoDone === true` hold that final wait. Or
 
 While a one-shot Agenda watch owns the next wake, stop tools (`loop_stop`, `blueprint_loop_stop`) refuse to run and show the cancellation commands needed to clear it. The wait ignores `nextRunAt`, so an overdue or just-fired watch continues to hold until it is cancelled, paused, removed, made silent or non-waking, or automatically completed. After automatic completion, the Agenda result is persisted before ordinary continuation resumes.
 
-If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Light Loop. Workflow continuations use stable Inbox delivery identities, so concurrent wake requests and restart recovery do not create duplicate continuation messages.
+If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Light Loop. Workflow continuations use stable Inbox delivery identities, so concurrent wake requests and restart recovery do not create duplicate continuation messages. Explicit Lattice resume and startup repair also enter through durable Inbox work before the shared drive; they do not bypass Inbox ordering or invoke the model directly.
 
 This ordering gives the innermost execution loop control while a Lattice step is running, then returns control to the Pathway after the BlueprintLoop reaches a reviewed terminal state.

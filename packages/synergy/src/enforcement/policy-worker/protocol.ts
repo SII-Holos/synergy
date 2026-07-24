@@ -22,11 +22,21 @@ export interface PolicyClassificationInput {
 }
 
 export namespace PolicyWorkerProtocol {
-  export const VERSION = 1
+  export const VERSION = 2
   export const REQUEST_MAX_BYTES = 16 * 1024 * 1024
   export const REQUEST_CHUNK_BYTES = 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
   export const ERROR_MESSAGE_MAX_CHARS = 8 * 1024
+  export const WorkerMemory = z
+    .object({
+      rssBytes: z.number().nonnegative(),
+      heapUsedBytes: z.number().nonnegative(),
+      heapTotalBytes: z.number().nonnegative(),
+      externalBytes: z.number().nonnegative(),
+      arrayBuffersBytes: z.number().nonnegative(),
+    })
+    .strict()
+  export type WorkerMemory = z.infer<typeof WorkerMemory>
 
   const PluginToolCapabilitySchema = z
     .object({
@@ -94,7 +104,7 @@ export namespace PolicyWorkerProtocol {
     | { type: "ping" }
 
   export type WorkerToHost =
-    | { type: "ready"; protocolVersion: number; pid: number }
+    | { type: "ready"; protocolVersion: number; pid: number; memory: WorkerMemory }
     | { type: "run-ready"; requestId: string }
     | { type: "chunk-ack"; requestId: string; index: number }
     | {
@@ -102,14 +112,16 @@ export namespace PolicyWorkerProtocol {
         requestId: string
         result: ClassifyResult
         requests: number
-        memory: { rssBytes: number; heapUsedBytes: number }
+        memoryBeforeRelease: WorkerMemory
+        memoryAfterRelease: WorkerMemory
       }
+    | { type: "released"; requestId: string; requests: number; memory: WorkerMemory }
     | { type: "error"; requestId: string; error: { name: string; message: string } }
     | {
         type: "heartbeat"
         requestId?: string
         requests: number
-        memory: { rssBytes: number; heapUsedBytes: number }
+        memory: WorkerMemory
       }
     | { type: "pong" }
 
@@ -149,6 +161,7 @@ export namespace PolicyWorkerProtocol {
         type: z.literal("ready"),
         protocolVersion: z.number().int().positive(),
         pid: z.number().int().positive(),
+        memory: WorkerMemory,
       })
       .strict(),
     z.object({ type: z.literal("run-ready"), requestId: z.string() }).strict(),
@@ -159,7 +172,16 @@ export namespace PolicyWorkerProtocol {
         requestId: z.string(),
         result: ClassifyResultSchema,
         requests: z.number().int().nonnegative(),
-        memory: z.object({ rssBytes: z.number().nonnegative(), heapUsedBytes: z.number().nonnegative() }).strict(),
+        memoryBeforeRelease: WorkerMemory,
+        memoryAfterRelease: WorkerMemory,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("released"),
+        requestId: z.string(),
+        requests: z.number().int().nonnegative(),
+        memory: WorkerMemory,
       })
       .strict(),
     z
@@ -174,7 +196,7 @@ export namespace PolicyWorkerProtocol {
         type: z.literal("heartbeat"),
         requestId: z.string().optional(),
         requests: z.number().int().nonnegative(),
-        memory: z.object({ rssBytes: z.number().nonnegative(), heapUsedBytes: z.number().nonnegative() }).strict(),
+        memory: WorkerMemory,
       })
       .strict(),
     z.object({ type: z.literal("pong") }).strict(),

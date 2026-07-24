@@ -41,7 +41,7 @@ function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSu
     windowMs: 900_000,
     health: { status: "healthy", score: 100, openIssueCount: 0, criticalIssueCount: 0 },
     backend: { requestCount: 0, errorRate: 0, activeSessions: 0, pendingSessions: 0 },
-    resources: {},
+    resources: { owners: [] },
     sessions: { turnCount: 0, llmCallCount: 0, toolCallCount: 0 },
     frontend: { longTaskCount: 0 },
     runtime: {
@@ -307,6 +307,7 @@ describe("performance summary cards", () => {
       measuredChildProcessCount: 5,
       childProcessRssBytes: 50,
       serviceMemory: { rssBytes: 150, source: "process_api", completeness: "partial" },
+      owners: [],
     }
 
     expect(performanceSummaryCardModel(value)).toEqual({

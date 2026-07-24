@@ -79,6 +79,7 @@ describe("i18n message descriptors", () => {
     expect(i18n._(workspace.noSidePanels.id)).toBe("No side panels available")
     expect(i18n._(workspace.noBottomPanels.id)).toBe("No bottom panels available")
     expect(i18n._(panels.notes.id)).toBe("Notes")
+    expect(i18n._(panels.lattice.id)).toBe("Lattice")
     expect(i18n._(panels.files.id)).toBe("Files")
     expect(i18n._(panels.browser.id)).toBe("Browser")
     expect(i18n._(panels.terminal.id)).toBe("Terminal")

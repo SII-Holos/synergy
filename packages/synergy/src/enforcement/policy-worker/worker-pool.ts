@@ -45,6 +45,7 @@ interface PoolTask {
   payload: Uint8Array
   nextChunk: number
   transferCommitted: boolean
+  resultReceived: boolean
   completed: boolean
   signal?: AbortSignal
   timer: ReturnType<typeof setTimeout>
@@ -65,6 +66,11 @@ interface PoolWorker {
   pid?: number
   rssBytes?: number
   heapUsedBytes?: number
+  heapTotalBytes?: number
+  externalBytes?: number
+  arrayBuffersBytes?: number
+  baselineRssBytes?: number
+  peakRssBytes?: number
   lastHeartbeatAt: number
 }
 
@@ -99,6 +105,16 @@ export class PolicyWorkerPool {
   private startupRetryGeneration = 0
   private startupCircuitError: Error | undefined
   private startupRetryPending = false
+  private lastRecovery:
+    | {
+        action: "recycle"
+        reason: string
+        at: number
+        beforeBytes?: number
+        afterBytes?: number
+        reclaimedBytes?: number
+      }
+    | undefined
   private readonly readyWaiters = new Set<PoolReadyWaiter>()
 
   constructor(
@@ -205,6 +221,7 @@ export class PolicyWorkerPool {
         payload,
         nextChunk: 0,
         transferCommitted: false,
+        resultReceived: false,
         completed: false,
         signal,
         timer: setTimeout(() => this.timeout(requestId), this.options.timeoutMs),
@@ -243,6 +260,17 @@ export class PolicyWorkerPool {
       queuedBytes: this.queuedBytes,
       rssBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.rssBytes ?? 0), 0),
       heapUsedBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.heapUsedBytes ?? 0), 0),
+      heapTotalBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.heapTotalBytes ?? 0), 0),
+      externalBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.externalBytes ?? 0), 0),
+      arrayBuffersBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.arrayBuffersBytes ?? 0), 0),
+      baselineBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.baselineRssBytes ?? 0), 0),
+      peakBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.peakRssBytes ?? 0), 0),
+      retainedBytes: [...this.workers.values()].reduce(
+        (sum, worker) => sum + Math.max(0, (worker.rssBytes ?? 0) - (worker.baselineRssBytes ?? worker.rssBytes ?? 0)),
+        0,
+      ),
+      measuredWorkers: [...this.workers.values()].filter((worker) => worker.rssBytes !== undefined).length,
+      lastRecovery: this.lastRecovery,
     }
   }
 
@@ -308,6 +336,7 @@ export class PolicyWorkerPool {
       worker.startupFailureEligible = false
       worker.pid = message.pid
       worker.lastHeartbeatAt = Date.now()
+      this.recordWorkerMemory(worker, message.memory, "ready")
       this.consecutiveStartupFailures = 0
       this.startupCircuitError = undefined
       this.resolveReadyWaiters()
@@ -322,8 +351,7 @@ export class PolicyWorkerPool {
         return
       }
       worker.requests = message.requests
-      worker.rssBytes = message.memory.rssBytes
-      worker.heapUsedBytes = message.memory.heapUsedBytes
+      this.recordWorkerMemory(worker, message.memory, "heartbeat")
       worker.lastHeartbeatAt = Date.now()
       if (
         message.memory.rssBytes >= this.options.maxRssBytes ||
@@ -367,17 +395,40 @@ export class PolicyWorkerPool {
       return
     }
 
+    if (message.type === "result") {
+      if (task.resultReceived) {
+        this.terminateWorker(worker, new Error("Policy worker sent more than one result for a request"))
+        return
+      }
+      task.resultReceived = true
+      worker.requests = message.requests
+      this.recordWorkerMemory(worker, message.memoryBeforeRelease, "request.before_release", task)
+      this.recordWorkerMemory(worker, message.memoryAfterRelease, "request.after_release", task)
+      task.resolve(message.result)
+      return
+    }
+
+    if (!task.resultReceived) {
+      this.terminateWorker(worker, new Error("Policy worker released a request before returning its result"))
+      return
+    }
     worker.requests = message.requests
-    worker.rssBytes = message.memory.rssBytes
-    worker.heapUsedBytes = message.memory.heapUsedBytes
-    task.resolve(message.result)
-    this.completeTask(task)
+    this.recordWorkerMemory(worker, message.memory, "request.released", task)
     const recycle =
       message.requests >= this.options.maxRequests ||
       message.memory.rssBytes >= this.options.maxRssBytes ||
       message.memory.heapUsedBytes >= this.options.maxHeapBytes
+    this.completeTask(task)
     this.releaseWorker(worker, task, !recycle)
-    if (recycle) this.recycleWorker(worker)
+    if (recycle) {
+      const reason =
+        message.requests >= this.options.maxRequests
+          ? "max_requests"
+          : message.memory.rssBytes >= this.options.maxRssBytes
+            ? "rss"
+            : "heap"
+      this.recycleWorker(worker, reason)
+    }
   }
 
   private onExit(worker: PoolWorker, exitCode: number | null, signal: string | null): void {
@@ -615,11 +666,51 @@ export class PolicyWorkerPool {
     }
   }
 
-  private recycleWorker(worker: PoolWorker): void {
+  private recordWorkerMemory(
+    worker: PoolWorker,
+    memory: PolicyWorkerProtocol.WorkerMemory,
+    phase: "ready" | "heartbeat" | "request.before_release" | "request.after_release" | "request.released",
+    task?: PoolTask,
+  ): void {
+    worker.rssBytes = memory.rssBytes
+    worker.heapUsedBytes = memory.heapUsedBytes
+    worker.heapTotalBytes = memory.heapTotalBytes
+    worker.externalBytes = memory.externalBytes
+    worker.arrayBuffersBytes = memory.arrayBuffersBytes
+    worker.baselineRssBytes =
+      worker.baselineRssBytes === undefined ? memory.rssBytes : Math.min(worker.baselineRssBytes, memory.rssBytes)
+    worker.peakRssBytes = Math.max(worker.peakRssBytes ?? 0, memory.rssBytes)
+    for (const [name, value] of Object.entries({
+      "policy.worker.rss": memory.rssBytes,
+      "policy.worker.heap_used": memory.heapUsedBytes,
+      "policy.worker.heap_total": memory.heapTotalBytes,
+      "policy.worker.external": memory.externalBytes,
+      "policy.worker.array_buffers": memory.arrayBuffersBytes,
+    })) {
+      ObservabilityMetrics.record({
+        name,
+        value,
+        unit: "bytes",
+        module: "enforcement",
+        processId: worker.id,
+        pid: worker.pid,
+        labels: { phase, requestId: task?.requestId },
+      })
+    }
+  }
+
+  private recycleWorker(worker: PoolWorker, reason = "watermark"): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
     worker.ready = false
     this.workers.delete(worker.id)
+    const recovery: NonNullable<PolicyWorkerPool["lastRecovery"]> = {
+      action: "recycle" as const,
+      reason,
+      at: Date.now(),
+      beforeBytes: worker.rssBytes,
+    }
+    this.lastRecovery = recovery
     ObservabilityMetrics.record({
       name: "policy.worker.recycle",
       value: 1,
@@ -633,7 +724,13 @@ export class PolicyWorkerPool {
         heapUsedBytes: worker.heapUsedBytes,
       },
     })
-    void worker.host.stop(this.options.cancelGraceMs)
+    void worker.host.stop(this.options.cancelGraceMs).then(
+      () => {
+        recovery.afterBytes = 0
+        recovery.reclaimedBytes = recovery.beforeBytes
+      },
+      () => undefined,
+    )
     this.ensureWorkers()
   }
 

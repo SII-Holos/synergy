@@ -7,6 +7,88 @@ import { PluginRuntimeError, PluginRuntimeManager } from "../../src/plugin-runti
 import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health"
 
 describe("PluginRuntimeManager", () => {
+  test("memory recycling is generation-safe and reports the reclaimed runtime", async () => {
+    const monitors: Array<{
+      pid: number
+      onSample(currentMb: number): void
+      onExceed(currentMb: number, maxMb: number): void
+      stopped: boolean
+    }> = []
+    const manager = new PluginRuntimeManager(undefined, {
+      startMemoryMonitor(input) {
+        const monitor = {
+          pid: input.pid,
+          onSample: input.onSample,
+          onExceed: input.onExceed,
+          stopped: false,
+        }
+        monitors.push(monitor)
+        return {
+          stop() {
+            monitor.stopped = true
+          },
+        }
+      },
+    })
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const firstManifest = compilePluginManifest(definition, {
+      generation: "memory-one",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    const secondManifest = compilePluginManifest(definition, {
+      generation: "memory-two",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+
+    await manager.start({
+      manifest: firstManifest,
+      pluginDir: path.dirname(entryPath),
+      entryPath,
+      limits: { ...DEFAULT_LIMITS, maxMemoryMb: 64, memorySampleIntervalMs: 10 },
+    })
+    monitors[0].onSample(40)
+    await manager.start({
+      manifest: secondManifest,
+      pluginDir: path.dirname(entryPath),
+      entryPath,
+      limits: { ...DEFAULT_LIMITS, maxMemoryMb: 64, memorySampleIntervalMs: 10 },
+    })
+    monitors[1].onSample(48)
+    monitors[0].onExceed(80, 64)
+    for (let i = 0; i < 20 && manager.registry.list().length > 1; i++) await Bun.sleep(1)
+
+    expect(manager.registry.active(definition.id)?.generation).toBe("memory-two")
+    expect(manager.resourceStats()).toMatchObject({
+      processCount: 1,
+      measuredProcessCount: 1,
+      lastRecovery: undefined,
+    })
+
+    const previousPid = monitors[1].pid
+    monitors[1].onExceed(80, 64)
+    for (
+      let i = 0;
+      i < 100 && (monitors.length < 3 || manager.registry.active(definition.id)?.generation !== "memory-two");
+      i++
+    ) {
+      await Bun.sleep(1)
+    }
+
+    expect(monitors[1].stopped).toBe(true)
+    expect(monitors[2]?.pid).not.toBe(previousPid)
+    expect(manager.registry.active(definition.id)?.generation).toBe("memory-two")
+    expect(manager.resourceStats()).toMatchObject({
+      processCount: 1,
+      lastRecovery: {
+        action: "recycle",
+        reason: "memory_limit",
+        beforeBytes: 80 * 1024 * 1024,
+        afterBytes: 0,
+      },
+    })
+    await manager.stop(definition.id)
+  }, 15_000)
+
   test("activates once and injects scope for every invocation", async () => {
     const manager = new PluginRuntimeManager()
     const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
@@ -43,7 +125,7 @@ describe("PluginRuntimeManager", () => {
         runtime: {
           pluginVersion: "1.0.0",
           pluginGeneration: "manager-test",
-          protocolVersion: 6,
+          protocolVersion: 7,
         },
       })
       expect(second).toMatchObject({ scopeId: "scope-two", activations: 1 })
@@ -82,7 +164,7 @@ describe("PluginRuntimeManager", () => {
         runtime: {
           pluginVersion: "1.0.0",
           pluginGeneration: "in-process-test",
-          protocolVersion: 6,
+          protocolVersion: 7,
         },
       })
       expect(manager.registry.active(manifest.id)?.mode).toBe("inProcess")

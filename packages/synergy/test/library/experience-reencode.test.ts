@@ -355,6 +355,7 @@ describe.serial("ExperienceReencode repair integration", () => {
           }
         })
         let pressureSnapshots = 0
+        let pressureCleared = false
         ;(SessionMemoryPressure.currentSnapshotWithCgroup as any) = mock(async () => {
           pressureSnapshots++
           return {
@@ -363,7 +364,7 @@ describe.serial("ExperienceReencode repair integration", () => {
             heapTotalBytes: 80,
             externalBytes: 20,
             arrayBuffersBytes: 10,
-            cgroupCurrentBytes: pressureSnapshots === 1 ? 2_000 : 100,
+            cgroupCurrentBytes: pressureCleared ? 100 : 2_000,
             cgroupHighBytes: 1_000,
             cgroupMaxBytes: 4_000,
           }
@@ -378,6 +379,14 @@ describe.serial("ExperienceReencode repair integration", () => {
         const started = ExperienceReencode.start({ type: "intent", reason: "encoding_failed" })
         expect(started).toMatchObject({ status: "running", totalCount: 1 })
 
+        const pressureDeadline = Date.now() + 1_000
+        while (pressureSnapshots === 0 && Date.now() < pressureDeadline) await Bun.sleep(1)
+        await Bun.sleep(5)
+        expect(pressureSnapshots).toBeGreaterThan(0)
+        expect(sessionMessageReads).toBe(0)
+        expect(embeddingAttempts).toBe(0)
+
+        pressureCleared = true
         const finished = await waitForTerminalJob(started.id)
         expect(finished).toMatchObject({
           status: "completed",

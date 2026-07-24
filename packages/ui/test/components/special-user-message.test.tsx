@@ -101,15 +101,16 @@ describe("special user messages", () => {
   test("projects workflow continuation controls into concise user bubbles", () => {
     const cases = [
       ["light_loop_continuation", "special-user.label.lightloop-continue", "keep going"],
-      ["lattice_continuation", "special-user.label.lattice-continue", "Current phase: result_analysis"],
-      ["lattice_planning_kick", "special-user.label.lattice", "Start planning: Ship the project"],
+      ["lattice_continuation", "special-user.label.lattice-continue", "Current state: reviewing_pathway"],
+      ["lattice_state_entry", "special-user.label.lattice-continue", "Current state: blueprinting"],
+      ["lattice_resume", "special-user.label.lattice-continue", "Resume the current Lattice work"],
+      ["lattice_repair", "special-user.label.lattice-continue", "Repair the current Lattice transition"],
     ] as const
 
     for (const [source, label, expected] of cases) {
       const message = userMessage({
         source,
-        phase: "result_analysis",
-        goal: "Ship the project",
+        state: source === "lattice_continuation" ? "reviewing_pathway" : "blueprinting",
       })
       const view = getSpecialUserMessageBubbleView(message, [textPart("Raw workflow control prompt")])
 

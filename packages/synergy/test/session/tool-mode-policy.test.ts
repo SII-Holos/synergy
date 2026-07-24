@@ -46,3 +46,31 @@ describe("SessionModePolicy Plan bash calls", () => {
     }
   })
 })
+
+describe("SessionModePolicy Lattice execution visibility", () => {
+  test("explains that parent Lattice tools cannot be bypassed during the owned BlueprintLoop step", () => {
+    const diagnostic = SessionModePolicy.visibility({
+      toolName: "lattice_submit",
+      session: {
+        workflow: { kind: "lattice", runID: "ltr_test", mode: "auto" },
+        blueprint: { loopID: "bpl_test", loopRole: "execution" },
+      } as any,
+    })
+
+    expect(diagnostic).toMatchObject({
+      code: "tool_unavailable",
+      toolName: "lattice_submit",
+      metadata: {
+        submitted: false,
+        owner: "blueprint_loop",
+        loopID: "bpl_test",
+        retryable: false,
+      },
+    })
+    expect(diagnostic?.message).toContain("No Lattice action was submitted")
+    expect(diagnostic?.message).toContain("Do not work around this boundary")
+    expect(diagnostic?.message).toContain("future Pathway Step")
+    expect(diagnostic?.message).toContain("blueprint_loop_stop")
+    expect(diagnostic?.message).toContain("end this assistant turn immediately")
+  })
+})

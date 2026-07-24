@@ -17,6 +17,8 @@ The server derives the canonical owner key and includes it in every session-stat
 
 Chromium and Playwright start lazily when Browser is first used. The process-wide runtime holds one `BrowserSession` per owner. Each Browser session holds zero or one page plus annotations and observers.
 
+Browser execution belongs to the Control Plane/tool-runtime layer, not the Agent worker. The model receives only the serializable Browser tool definitions. Browser callbacks, canonical sessions, Playwright, Chromium discovery, host signaling, native views, and WebRTC state must not enter the Agent worker runner's static dependency graph. A proposed Browser call is authorized and scheduled only after the provider turn has released its Agent worker.
+
 Desktop-native and downloaded remote Browser Hosts run on Electron's packaged Chromium. Direct headless Browser tools in the standalone runtime discover Chrome or Chromium from `CHROMIUM_PATH`, Synergy and Playwright caches, or standard system installation paths. They return an installation hint instead of silently downloading an unverified browser when no executable is available.
 
 Creating or retrieving a Browser session does not create its page. `navigate` is the only ordinary control command that resolves or creates a missing page; commands such as click, read, resize, history, or evaluation require the page to exist.
@@ -26,6 +28,8 @@ An active tool-created headless page migrates to the selected Host presentation 
 Browser state persists under the Synergy data directory by Scope and owner. It includes page identity and metadata, annotations, storage-state path, and profile directory. A restored saved page keeps its prior page ID and navigates through the user-navigation safety path.
 
 When a session is archived or deleted, or a Cortex child session reaches a terminal task status, the Browser runtime reaper disposes its live session. Disposal closes the live page and owner context while preserving suspended Browser state for later restoration. Runtime shutdown disposes every Browser session and stops the driver.
+
+Browser resource attribution counts owners and pages by backend without exposing owner identifiers. The remote Browser Host is eligible for idle retirement only after the broker reports that no canonical page is active for any owner; an active page cancels the retirement timer. Performance may report Host RSS and the idle-retirement effect, but it cannot close Browser pages or stop the Host directly. Headless Chromium remains explicitly partial when its process RSS is not available through the driver contract.
 
 ## Canonical Control Model
 
@@ -48,6 +52,8 @@ The native view reports navigation, loading, page state, dialogs, downloads, and
 
 Native pages start with a real 1280×720 CSS viewport before attachment so navigation checkpoints and tool commands never observe a zero-sized document. When a Host page is created or a headless page migrates to Host, the server publishes page-scoped readiness after the canonical page event. An already-open workspace can then attach the live `WebContentsView` immediately; attachment and resize ignore zero-sized layout frames and surface IPC failures as structured Browser errors.
 
+Desktop-native presentation becomes temporarily invisible while a blocking DOM dialog, file chooser, or page dialog is open. The `WebContentsView` remains attached and its page, bounds, event subscriptions, and tool activity stay live; presentation is restored when the final blocker closes.
+
 ## WebRTC Presentation
 
 Remote presentation uses a Browser host process and two signaling roles:
@@ -56,6 +62,14 @@ Remote presentation uses a Browser host process and two signaling roles:
 - the host socket belongs to the process rendering the page
 
 Signaling only pairs those peers. Media carries the live page and the WebRTC data channel carries normalized pointer, keyboard, text, paste/IME, and CSS viewport input.
+
+During page creation, the broker reservation and its one-shot Host ticket form a creation lease. The Host signaling socket may attach under that lease before the new page is committed as canonical session state. Viewer signaling still requires the committed active page, so pending Host construction cannot expose an uncommitted page to a Web client.
+
+The Electron Host controller runs from a generated local file, so its WebSocket handshake may carry the exact `file://` Origin. Host signaling permits that local-file Origin or no Origin, rejects HTTP(S) page Origins, and always requires the one-shot owner/page/role-bound ticket.
+
+The registered socket from signaling `onOpen` remains the peer identity for later message and close events; transport adapters may expose a different wrapper object to each callback. Relaying against a callback-local wrapper would incorrectly discard valid viewer offers as stale.
+
+The trusted Electron main process starts the controller's display capture with a simulated user gesture before page creation reports ready. Only the controller may receive Electron's `media` or `display-capture` permission. Capture startup is bounded; failure to acquire the canonical page frame fails page creation instead of leaving the viewer indefinitely negotiating without a Host answer.
 
 Opening signaling without a page returns readiness with no page ID. After the first navigation creates a page, the viewer ensures its Browser host process and waits for host attachment. Host status can be pending, ready, detached, restarting, or failed. Commands that require a ready remote host return a retryable pending response; the latest pending viewport command is coalesced and applied when the host becomes ready.
 
@@ -96,3 +110,4 @@ Tool actions keep failures atomic and results directly useful to the agent. Sele
 - The network gateway authenticates and forwards; Chromium owns webpage network policy.
 - Workspace resize semantics are CSS width and height across presentations.
 - Session archive or deletion, and terminal Cortex child status, release live Browser resources while preserving restorable state.
+- Browser implementations and runtime state never load through the Agent worker runner dependency graph.

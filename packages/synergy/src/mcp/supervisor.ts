@@ -25,6 +25,7 @@ import { McpOAuthProvider } from "./oauth-provider"
 import { PluginId } from "../plugin/ids.js"
 import { PendingOAuth } from "./pending-oauth"
 import { McpAuth } from "./auth"
+import { ProcessInspection } from "../process/inspection"
 
 // ---------------------------------------------------------------------------
 // Bus events — defined here, re-exported by index.ts for back-compat
@@ -292,6 +293,18 @@ export interface McpHandle {
   generation: number
   lastError?: string
   startPromise?: Promise<void>
+  localProcess?: {
+    pid: number
+    startedAt: number
+    currentRssBytes?: number
+    baselineRssBytes?: number
+    peakRssBytes?: number
+    sampledAt?: number
+    stdioState: "open" | "closing" | "closed"
+    closeTimedOut: boolean
+    closeTimeoutMs: number
+    descendantPipeGraceMs: number
+  }
 }
 
 function newHandle(
@@ -358,6 +371,17 @@ export function mapStatus(handle: McpHandle): Status {
 
 class McpSupervisorImpl {
   private handles = new Map<string, McpHandle>()
+  private lastRecovery:
+    | {
+        action: "close"
+        reason: string
+        at: number
+        beforeBytes?: number
+        afterBytes?: number
+        reclaimedBytes?: number
+        timedOut: boolean
+      }
+    | undefined
   private pendingStarts: McpHandle[] = []
   private activeStarts = 0
   private _started = false
@@ -480,15 +504,7 @@ class McpSupervisorImpl {
     this.initPromise = undefined
     await PendingOAuth.disposeAll("supervisor reset")
 
-    await Promise.all(
-      handles.map((h) => {
-        if (h.client) {
-          return h.client.close().catch((error) => {
-            log.error("failed to close MCP client during reset", { name: h.name, error })
-          })
-        }
-      }),
-    )
+    await Promise.all(handles.map((handle) => this.disposeHandle(handle, "supervisor reset")))
 
     log.info("MCP supervisor reset complete")
   }
@@ -563,6 +579,43 @@ class McpSupervisorImpl {
       toolNames: handle.toolDefs.map((t) => t.name),
       resourceNames: Object.values(handle.resources).map((r) => r.name),
       promptNames: Object.values(handle.prompts).map((p) => p.name),
+    }
+  }
+
+  resourceStats() {
+    const processes = [...this.handles.values()]
+      .map((handle) => handle.localProcess)
+      .filter((entry): entry is NonNullable<McpHandle["localProcess"]> => Boolean(entry))
+    for (const entry of processes) {
+      if (entry.stdioState === "closed" || !ProcessInspection.alive(entry.pid)) continue
+      const rssBytes = ProcessInspection.rssBytes(entry.pid)
+      if (rssBytes === undefined) continue
+      entry.currentRssBytes = rssBytes
+      entry.baselineRssBytes =
+        entry.baselineRssBytes === undefined ? rssBytes : Math.min(entry.baselineRssBytes, rssBytes)
+      entry.peakRssBytes = Math.max(entry.peakRssBytes ?? 0, rssBytes)
+      entry.sampledAt = Date.now()
+    }
+    const active = processes.filter((entry) => entry.stdioState !== "closed")
+    const measured = active.filter((entry) => entry.currentRssBytes !== undefined)
+    return {
+      processCount: active.length,
+      measuredProcessCount: measured.length,
+      currentBytes: measured.reduce((sum, entry) => sum + (entry.currentRssBytes ?? 0), 0),
+      baselineBytes: measured.reduce((sum, entry) => sum + (entry.baselineRssBytes ?? 0), 0),
+      peakBytes: measured.reduce((sum, entry) => sum + (entry.peakRssBytes ?? 0), 0),
+      retainedBytes: measured.reduce(
+        (sum, entry) =>
+          sum + Math.max(0, (entry.currentRssBytes ?? 0) - (entry.baselineRssBytes ?? entry.currentRssBytes ?? 0)),
+        0,
+      ),
+      stdio: {
+        open: processes.filter((entry) => entry.stdioState === "open").length,
+        closing: processes.filter((entry) => entry.stdioState === "closing").length,
+        closed: processes.filter((entry) => entry.stdioState === "closed").length,
+        timedOut: processes.filter((entry) => entry.closeTimedOut).length,
+      },
+      lastRecovery: this.lastRecovery,
     }
   }
 
@@ -679,7 +732,29 @@ class McpSupervisorImpl {
     handle.resources = {}
     await PendingOAuth.disposeIfIdentity(handle.name, handle.identity, reason)
     if (client) {
-      await client.close().catch((error) => log.error("failed to close MCP client", { name: handle.name, error }))
+      const owned = handle.localProcess
+      if (owned) owned.stdioState = "closing"
+      const beforeBytes = owned?.currentRssBytes
+      let timedOut = false
+      await withTimeout(client.close(), owned?.closeTimeoutMs ?? 5_000, {
+        message: `MCP stdio close timed out: ${handle.name}`,
+      }).catch((error) => {
+        timedOut = error instanceof Error && error.message.includes("timed out")
+        log.error("failed to close MCP client", { name: handle.name, error })
+      })
+      if (owned) {
+        owned.stdioState = "closed"
+        owned.closeTimedOut = timedOut
+        this.lastRecovery = {
+          action: "close",
+          reason,
+          at: Date.now(),
+          beforeBytes,
+          afterBytes: timedOut ? undefined : 0,
+          reclaimedBytes: timedOut ? undefined : beforeBytes,
+          timedOut,
+        }
+      }
     }
   }
 
@@ -889,6 +964,17 @@ class McpSupervisorImpl {
         }
         registerNotificationHandlers(handle, candidateClient, (generation) => this.isCurrent(handle, generation))
         client = candidateClient
+        const pid = transport.pid
+        if (pid !== null) {
+          handle.localProcess = {
+            pid,
+            startedAt: Date.now(),
+            stdioState: "open",
+            closeTimedOut: false,
+            closeTimeoutMs: 5_000,
+            descendantPipeGraceMs: 2_000,
+          }
+        }
       } catch (error) {
         if (!this.isCurrent(handle, gen)) return
         log.error("local mcp startup failed", {

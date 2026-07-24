@@ -3,8 +3,6 @@ import { BlueprintLoopStore, LoopError } from "../blueprint"
 import { LoopEvent } from "../blueprint/event"
 import { Bus } from "../bus"
 import { Identifier } from "../id/id"
-import { LatticeStore } from "../lattice/store"
-import type { LatticeTypes } from "../lattice/types"
 import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
 import { BlueprintLoopReviewAccess } from "../session/blueprint-loop-review-access"
@@ -27,31 +25,6 @@ function completionNotificationText(input: { loopID: string; summary: string; us
   ]
     .filter(Boolean)
     .join("\n")
-}
-
-function latticeCompletionText(input: { loopID: string; runID: string; summary: string; userPrompt?: string }) {
-  return [
-    `BlueprintLoop ${input.loopID} passed review and is now complete.`,
-    `Audit summary: ${input.summary}`,
-    input.userPrompt ? `Start user instruction: ${input.userPrompt}` : "",
-    "",
-    `This Blueprint is a step of Lattice run ${input.runID}. You are now in the result_analysis phase.`,
-    "Call pathway_read to confirm the current phase and step, then record this step's result on the Pathway with pathway_patch (result summary, and any forward recovery step if follow-up work emerged).",
-    "Do not stop to write a user-facing wrap-up; continue advancing the Lattice Pathway. No further BlueprintLoop review action is available for this completed loop.",
-  ]
-    .filter(Boolean)
-    .join("\n")
-}
-
-async function latticeRunForLoop(scopeID: string, loop: { id: string; sessionID: string }): Promise<LatticeTypes.Run> {
-  const run = await LatticeStore.getOrUndefined(scopeID, loop.sessionID)
-  if (!run) {
-    throw new Error(`Lattice-owned BlueprintLoop ${loop.id} has no current Lattice run for session ${loop.sessionID}.`)
-  }
-  if (!run.pathway.some((step) => step.blueprintLoopID === loop.id)) {
-    throw new Error(`Lattice-owned BlueprintLoop ${loop.id} is not referenced by current Lattice run ${run.id}.`)
-  }
-  return run
 }
 
 export const BlueprintLoopApproveTool = Tool.define("blueprint_loop_approve", {
@@ -82,43 +55,41 @@ export const BlueprintLoopApproveTool = Tool.define("blueprint_loop_approve", {
       action: "approve",
     })
 
-    const latticeRun = loop.source === "lattice" ? await latticeRunForLoop(scopeID, loop) : undefined
-    const completionText = latticeRun
-      ? latticeCompletionText({ loopID: loop.id, runID: latticeRun.id, summary, userPrompt: loop.userPrompt })
-      : completionNotificationText({ loopID: loop.id, summary, userPrompt: loop.userPrompt })
+    const completionText = completionNotificationText({ loopID: loop.id, summary, userPrompt: loop.userPrompt })
 
-    await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "completed" })
+    await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "completed", summary })
     await Bus.publish(LoopEvent.Completed, { loopID: loop.id })
-    await SessionManager.deliver({
-      target: loop.sessionID,
-      waitForProcessing: false,
-      mail: {
-        type: "user",
-        ...(loop.executionAgent ? { agent: loop.executionAgent } : {}),
-        summary: { title: "Blueprint review approved" },
-        parts: [
-          {
-            id: Identifier.ascending("part"),
-            sessionID: loop.sessionID,
-            messageID: "",
-            type: "text",
-            text: completionText,
-            origin: "system",
+    if (loop.source !== "lattice") {
+      await SessionManager.deliver({
+        target: loop.sessionID,
+        waitForProcessing: false,
+        mail: {
+          type: "user",
+          ...(loop.executionAgent ? { agent: loop.executionAgent } : {}),
+          summary: { title: "Blueprint review approved" },
+          parts: [
+            {
+              id: Identifier.ascending("part"),
+              sessionID: loop.sessionID,
+              messageID: "",
+              type: "text",
+              text: completionText,
+              origin: "system",
+            },
+          ],
+          metadata: {
+            source: "blueprint_loop_completed",
+            sourceSessionID: ctx.sessionID,
+            loopID: loop.id,
+            noteID: loop.noteID,
+            title: loop.title,
+            status: "completed",
+            summary,
+            ...(loop.userPrompt ? { userPrompt: loop.userPrompt } : {}),
           },
-        ],
-        metadata: {
-          source: "blueprint_loop_completed",
-          sourceSessionID: ctx.sessionID,
-          loopID: loop.id,
-          noteID: loop.noteID,
-          title: loop.title,
-          status: "completed",
-          summary,
-          ...(latticeRun ? { latticeRunID: latticeRun.id } : {}),
-          ...(loop.userPrompt ? { userPrompt: loop.userPrompt } : {}),
         },
-      },
-    })
+      })
+    }
 
     return {
       title: "BlueprintLoop approved",

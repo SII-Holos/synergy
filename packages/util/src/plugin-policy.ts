@@ -10,6 +10,8 @@ export interface RuntimeLimits {
   taskRunTimeoutMs: number
   shutdownGraceMs: number
   heartbeatIntervalMs: number
+  maxMemoryMb: number
+  memorySampleIntervalMs: number
 }
 
 export type RuntimeLimitOverrides = Partial<RuntimeLimits>
@@ -23,6 +25,8 @@ export const DEFAULT_PLUGIN_RUNTIME_LIMITS: RuntimeLimits = {
   taskRunTimeoutMs: 120_000,
   shutdownGraceMs: 1_500,
   heartbeatIntervalMs: 5_000,
+  maxMemoryMb: 512,
+  memorySampleIntervalMs: 5_000,
 }
 
 export interface PluginTrustDecision {

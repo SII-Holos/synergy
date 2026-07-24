@@ -738,6 +738,70 @@ msgstr ""
 msgid "app.agentVisual.external"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr ""
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr ""
@@ -2066,6 +2130,62 @@ msgstr ""
 msgid "app.error.versionLabel"
 msgstr ""
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr ""
+
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
 msgstr ""
@@ -2408,10 +2528,6 @@ msgid "app.lattice.config.budgetDescription"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.continueExisting"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.lattice.config.current"
 msgstr ""
 
@@ -2436,6 +2552,14 @@ msgid "app.lattice.config.goalPlaceholder"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.config.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.config.mode"
 msgstr ""
 
@@ -2456,11 +2580,23 @@ msgid "app.lattice.config.nextMessageGoal"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.config.notStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.pausedHint"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.config.previousRun"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.restart"
+msgid "app.lattice.config.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.startNew"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2480,11 +2616,155 @@ msgid "app.lattice.config.unlimited"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReview"
+msgid "app.lattice.event.actionConsumed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReviewHint"
+msgid "app.lattice.event.actionSubmitted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.blueprintBound"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.budgetExhausted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.loopCancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.pathwayReplaced"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.recoveryReconciled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCompleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCreated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runPaused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runResumed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runUpdated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stateChanged"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCompleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.armed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.auditing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.waiting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.acceptanceCriteria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailedTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalConflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.assumptions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintDetails"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintDetailsHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.boundVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.budgetGuidance"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2492,35 +2772,107 @@ msgid "app.lattice.panel.calls"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.cancelConfirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.cancelConfirmTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.configure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.confirmCancel"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.continue"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.continueFailed"
+msgid "app.lattice.panel.continuing"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.current"
+msgid "app.lattice.panel.emptyDescription"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.mode"
+msgid "app.lattice.panel.emptyTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstruction"
+msgid "app.lattice.panel.executionHistory"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstructionPlaceholder"
+msgid "app.lattice.panel.historyLoadFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.paused"
+msgid "app.lattice.panel.historyLoading"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.recovery"
+msgid "app.lattice.panel.keepRun"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loopAttempts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noBlueprints"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noHistory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.notStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.now"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pathway"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pausing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.previousStep"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.progressLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.recoveryFor"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2528,11 +2880,171 @@ msgid "app.lattice.panel.resume"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.resumeFailed"
+msgid "app.lattice.panel.resuming"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.unknown"
+msgid "app.lattice.panel.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.reviewedVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistoryHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.settings"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.startNew"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.steps"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.stepsCompleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unavailableTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unlimited"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.attention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.budget"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopCancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.modelError"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.turnInterrupted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userExit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userPause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.awaitingExecution"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.blueprinting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.clarifying"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.executing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.planning"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingBlueprint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingPathway"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.active"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.current"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.executing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.workspace.sessionRequired"
 msgstr ""
 
 #. ── pages/layout.tsx ────────────────────────────────────────────────
@@ -4085,6 +4597,10 @@ msgid "app.notification.session.error"
 msgstr ""
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr ""
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr ""
 
@@ -4098,6 +4614,10 @@ msgstr ""
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files.openFile"
+msgstr ""
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.lattice"
 msgstr ""
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
@@ -4432,6 +4952,140 @@ msgstr ""
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.ranking.slowTools"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.baseline"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.cgroupCurrent"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverage"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageFull"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coveragePartial"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageUnavailable"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageValue"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.current"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.description"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.lastRecovery"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.agent"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.browser"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.controlPlane"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.localProcess"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.mcp"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.plugin"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.policy"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.peak"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.reclaimable"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryNone"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryReclaimed"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryUnmeasured"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryValue"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.retained"
+msgstr ""
+
+#. resource ownership
+msgid "app.performance.resources.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.workingSet"
 msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
@@ -5240,6 +5894,18 @@ msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.pluginApi.label"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.description"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.retry"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -7389,6 +8055,14 @@ msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.mobileHeader.close"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
 msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
@@ -11532,7 +12206,7 @@ msgstr ""
 msgid "session.rollback.bannerText"
 msgstr ""
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr ""
 
@@ -11549,6 +12223,11 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -11586,7 +12265,8 @@ msgstr ""
 msgid "session.rollback.redoSuccessDesc"
 msgstr ""
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr ""
 
@@ -12903,6 +13583,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15426,6 +16110,22 @@ msgid "settings.runtime.agents.agent.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
 msgstr ""
 
@@ -16269,6 +16969,14 @@ msgstr ""
 msgid "tool.label.items"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourceChat"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourcePanel"
+msgstr ""
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.matches"
 msgstr ""
@@ -16287,6 +16995,10 @@ msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.notes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.label.pathwaySteps"
 msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
@@ -16625,6 +17337,34 @@ msgstr ""
 msgid "tool.title.jobs"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "tool.title.latticeApproveExecution"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprintReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathway"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathwayReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitRequirements"
+msgstr ""
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.leave-worktree"
 msgstr ""
@@ -16727,6 +17467,14 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch-generating"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayWrite"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -17283,6 +18031,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
 msgstr ""
 
 #. js-lingui-explicit-id

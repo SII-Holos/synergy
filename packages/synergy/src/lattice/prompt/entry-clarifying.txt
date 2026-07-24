@@ -1,0 +1,1 @@
+Begin requirements alignment from the user's request and recoverable workspace evidence. Identify the next unresolved user-owned blocker, if any.

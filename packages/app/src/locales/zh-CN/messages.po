@@ -738,6 +738,70 @@ msgstr "外部"
 msgid "app.agentVisual.external"
 msgstr "外部"
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr "下载"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr "在“文件”中查看源文件"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr "正在加载附件…"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr "附件查看模式"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr "预览"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr "源文件"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr "适应宽度"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr "下一页"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr "{page} / {count}"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr "上一页"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr "放大"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr "缩小"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr "无法预览此附件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr "此附件过大，无法预览。请下载后查看完整文件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr "此附件已无法从当前会话中获取。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr "此文件类型暂不支持预览。"
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr "取消"
@@ -2066,6 +2130,62 @@ msgstr "未知错误"
 msgid "app.error.versionLabel"
 msgstr "版本：{version}"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr "更换服务器"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr "重新加载界面"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr "重试"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr "Synergy 服务器当前无响应，无法确认正在运行的任务状态。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr "无法连接到服务器"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr "配置、Provider 或设置错误导致 Synergy 无法完成启动。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr "Synergy 启动失败"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr "重新加载此页面不会停止服务器上已在运行的任务。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr "界面遇到了问题"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr "工作区无法加载，可能是临时故障或配置问题。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr "无法加载此项目"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr "摘要"
+
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
 msgstr "关闭"
@@ -2408,16 +2528,12 @@ msgid "app.lattice.config.budgetDescription"
 msgstr "Lattice 在继续推进前检查预算；计入当前 Lattice 会话的模型调用，而不是 Pathway 步骤。0 表示不设置预算。"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.continueExisting"
-msgstr "继续上次运行"
-
-#. js-lingui-explicit-id
 msgid "app.lattice.config.current"
 msgstr "当前"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.description"
-msgstr "Lattice 会先把目标规划成一条有序的 Pathway，再通过 BlueprintLoop 逐步执行。选择“自主推进”后，它会连续规划和执行，无需逐步确认；选择“与你协作”后，每个 Blueprint 都会在执行前暂停，等你审阅或补充指示。"
+msgstr "Lattice 会对齐需求、规划 Pathway、审查每个 Blueprint，再交给 BlueprintLoop 执行。“与你协作”模式会在执行前等待你的明确批准。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.enable"
@@ -2425,7 +2541,7 @@ msgstr "启用 Lattice"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.failed"
-msgstr "启用 Lattice 失败"
+msgstr "配置 Lattice 失败"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.goalOptional"
@@ -2434,6 +2550,14 @@ msgstr "目标（可选）"
 #. js-lingui-explicit-id
 msgid "app.lattice.config.goalPlaceholder"
 msgstr "这次 Lattice 运行要完成什么？"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.loadFailed"
+msgstr "无法加载上一次 Lattice 运行。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.loading"
+msgstr "正在加载上一次 Lattice 运行…"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.mode"
@@ -2453,15 +2577,27 @@ msgstr "模型调用次数"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.nextMessageGoal"
-msgstr "你的下一条消息将用作本次运行的目标。"
+msgstr "你的下一条消息将开始本次运行的需求对齐。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.notStarted"
+msgstr "尚未开始"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.pausedHint"
+msgstr "请先在 Lattice 面板中恢复或取消此运行，再更改其设置。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.previousRun"
 msgstr "上次运行"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.restart"
-msgstr "重新运行"
+msgid "app.lattice.config.save"
+msgstr "保存设置"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.startNew"
+msgstr "开始新运行"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.stepsCompleted"
@@ -2480,60 +2616,436 @@ msgid "app.lattice.config.unlimited"
 msgstr "不限"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReview"
-msgstr "Blueprint 等待你审阅"
+msgid "app.lattice.event.actionConsumed"
+msgstr "工作已接收"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReviewHint"
-msgstr "你可以在对话中讨论或修改 Blueprint；这些消息只用于讨论。确认无误后，点击“继续”开始执行。"
+msgid "app.lattice.event.actionSubmitted"
+msgstr "工作已提交"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.blueprintBound"
+msgstr "Blueprint 已准备"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.budgetExhausted"
+msgstr "已达到模型调用预算"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.loopCancelled"
+msgstr "BlueprintLoop 已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.pathwayReplaced"
+msgstr "Pathway 已更新"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.recoveryReconciled"
+msgstr "恢复步骤已协调"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCancelled"
+msgstr "运行已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCompleted"
+msgstr "运行已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCreated"
+msgstr "运行已开始"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runFailed"
+msgstr "运行失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runPaused"
+msgstr "运行已暂停"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runResumed"
+msgstr "运行已恢复"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runUpdated"
+msgstr "运行已更新"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stateChanged"
+msgstr "工作状态已变化"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCancelled"
+msgstr "步骤已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCompleted"
+msgstr "步骤已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepFailed"
+msgstr "步骤失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepStarted"
+msgstr "步骤已开始"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.armed"
+msgstr "已就绪"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.auditing"
+msgstr "正在审查"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.waiting"
+msgstr "等待中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.acceptanceCriteria"
+msgstr "验收标准"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailed"
+msgstr "Lattice 操作失败。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailedTitle"
+msgstr "Lattice 操作失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalConflict"
+msgstr "Blueprint 已更改。继续前请审查最新版本。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalHint"
+msgstr "请审查上方绑定的 Blueprint。确认此版本可以执行后再继续。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalTitle"
+msgstr "Blueprint 已准备好，可以审查"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.assumptions"
+msgstr "假设"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintDetails"
+msgstr "Blueprint 详情"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintDetailsHint"
+msgstr "目标、验收标准、假设与执行尝试"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintVersion"
+msgstr "Blueprint v{version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.boundVersion"
+msgstr "绑定版本 {version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.budgetGuidance"
+msgstr "此暂停运行无法更改预算。请先取消，再以更高限制开始新的运行。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.calls"
 msgstr "模型调用"
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.cancel"
+msgstr "取消运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.cancelConfirm"
+msgstr "此运行会标记为已取消，活动的 BlueprintLoop 也会停止。运行无法恢复，但 Pathway 和历史记录仍会保留。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.cancelConfirmTitle"
+msgstr "要取消此 Lattice 运行吗？"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.configure"
+msgstr "配置 Lattice"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.confirmCancel"
+msgstr "取消运行"
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.continue"
 msgstr "继续"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.continueFailed"
-msgstr "继续失败"
+msgid "app.lattice.panel.continuing"
+msgstr "正在继续…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.current"
-msgstr "当前步骤"
+msgid "app.lattice.panel.emptyDescription"
+msgstr "配置一个运行，用于对齐需求、规划 Pathway，并执行经过审查的 Blueprint。"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.mode"
-msgstr "Lattice · {mode}"
+msgid "app.lattice.panel.emptyTitle"
+msgstr "还没有 Lattice 运行"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstruction"
-msgstr "补充执行指示（可选）"
+msgid "app.lattice.panel.executionHistory"
+msgstr "执行尝试"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstructionPlaceholder"
-msgstr "添加给当前步骤的执行指示…"
+msgid "app.lattice.panel.historyLoadFailed"
+msgstr "无法加载运行历史。"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.paused"
-msgstr "已暂停"
+msgid "app.lattice.panel.historyLoading"
+msgstr "正在加载运行历史…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.recovery"
-msgstr "恢复步骤"
+msgid "app.lattice.panel.keepRun"
+msgstr "保留运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loadFailed"
+msgstr "无法加载此 Lattice 运行。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loading"
+msgstr "正在加载 Lattice…"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loopAttempts"
+msgstr "{count, plural, one {# 次执行尝试} other {# 次执行尝试}}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noBlueprints"
+msgstr "尚未准备任何 Blueprint。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noHistory"
+msgstr "没有可用的审计事件。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.notStarted"
+msgstr "Pathway 尚未开始。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.now"
+msgstr "当前"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pathway"
+msgstr "Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pause"
+msgstr "暂停"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pausing"
+msgstr "正在暂停…"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.previousStep"
+msgstr "之前的步骤"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.progressLabel"
+msgstr "Pathway 进度"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.recoveryFor"
+msgstr "用于恢复：{steps}"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.resume"
-msgstr "继续 Lattice"
+msgstr "恢复"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.resumeFailed"
-msgstr "恢复失败"
+msgid "app.lattice.panel.resuming"
+msgstr "正在恢复…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.unknown"
-msgstr "未知"
+msgid "app.lattice.panel.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.reviewedVersion"
+msgstr "已审查版本 {version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistory"
+msgstr "运行历史"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistoryHint"
+msgstr "持久化的生命周期与 Pathway 事件"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.settings"
+msgstr "设置"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.startNew"
+msgstr "开始新的运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.steps"
+msgstr "Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.stepsCompleted"
+msgstr "已完成 {completed}/{total}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unavailableTitle"
+msgstr "Lattice 暂不可用"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unlimited"
+msgstr "不限"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.attention"
+msgstr "已暂停，可以恢复"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.budget"
+msgstr "已达到模型调用预算"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopCancelled"
+msgstr "BlueprintLoop 已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopFailed"
+msgstr "BlueprintLoop 失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.modelError"
+msgstr "模型回合失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.turnInterrupted"
+msgstr "模型回合已中断"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userExit"
+msgstr "已由你退出"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userPause"
+msgstr "已由你暂停"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.cancel"
+msgstr "保留当前运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.confirm"
+msgstr "开始新的运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.description"
+msgstr "新运行会用全新的 Pathway 和模型调用计数替换当前 Session 指针。之前的运行及其历史仍会保留。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.title"
+msgstr "要开始新的 Lattice 运行吗？"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.awaitingExecution"
+msgstr "等待你确认"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.blueprinting"
+msgstr "设计 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.clarifying"
+msgstr "理解需求"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.executing"
+msgstr "执行中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.planning"
+msgstr "规划 Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingBlueprint"
+msgstr "审查 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingPathway"
+msgstr "审查 Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.active"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.current"
+msgstr "当前"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.executing"
+msgstr "执行中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.pending"
+msgstr "待处理"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.workspace.sessionRequired"
+msgstr "打开一个 Session 后即可使用 Lattice。"
 
 #. ── pages/layout.tsx ────────────────────────────────────────────────
 msgid "app.layout.colorScheme"
@@ -4085,6 +4597,10 @@ msgid "app.notification.session.error"
 msgstr "会话错误"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr "附件"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "浏览器"
 
@@ -4099,6 +4615,10 @@ msgstr "文件"
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files.openFile"
 msgstr "打开文件"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.lattice"
+msgstr "Lattice"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.notes"
@@ -4433,6 +4953,140 @@ msgstr "慢速存储"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.ranking.slowTools"
 msgstr "慢速工具"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.baseline"
+msgstr "基线"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.cgroupCurrent"
+msgstr "cgroup 当前值"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverage"
+msgstr "来源 / 完整性"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageFull"
+msgstr "完整"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coveragePartial"
+msgstr "部分"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageUnavailable"
+msgstr "不可用"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageValue"
+msgstr "{measured}/{count} · {completeness}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.current"
+msgstr "当前"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.description"
+msgstr "按所有者归因内存并由所有者执行回收；此视图不会回收其他进程域。"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.lastRecovery"
+msgstr "最近一次所有者回收"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner"
+msgstr "所有者"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.agent"
+msgstr "Agent Worker"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.browser"
+msgstr "浏览器"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.controlPlane"
+msgstr "Control Plane"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.localProcess"
+msgstr "本地进程"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.mcp"
+msgstr "MCP"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.plugin"
+msgstr "插件 Runtime"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.policy"
+msgstr "Policy Worker"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.peak"
+msgstr "峰值"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.reclaimable"
+msgstr "可回收缓存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryNone"
+msgstr "尚无回收记录"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryReclaimed"
+msgstr "已回收 {bytes}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryUnmeasured"
+msgstr "效果不可测"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryValue"
+msgstr "{action} · {reason} · {effect} · {time}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.retained"
+msgstr "保留增量"
+
+#. resource ownership
+msgid "app.performance.resources.title"
+msgstr "资源所有权"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.workingSet"
+msgstr "工作集"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5241,6 +5895,18 @@ msgstr "插件"
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.description"
+msgstr "Synergy 无法连接到此插件注册表。请检查网络连接后重试。"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.retry"
+msgstr "重试"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.title"
+msgstr "插件注册表不可用"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.installed"
@@ -7390,6 +8056,14 @@ msgstr "工作区"
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.mobileHeader.close"
 msgstr "关闭工作区"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr "重新加载应用"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
+msgstr "重试"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
@@ -11462,7 +12136,7 @@ msgstr "同时恢复文件更改"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.alsoRestore.hint"
-msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从横幅恢复文件。"
+msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从回退对话框恢复文件。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11532,7 +12206,7 @@ msgstr "回退到此处"
 msgid "session.rollback.bannerText"
 msgstr "已回退 {messages, plural, one {# 条消息} other {# 条消息}}（{turns, plural, one {# 个回合} other {# 个回合}}）"
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr "无法重做"
 
@@ -11550,6 +12224,11 @@ msgstr "已添加新消息。此回滚无法再重做。"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
 msgstr "已添加新消息；无法重做此回滚"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "回退完成"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11586,7 +12265,8 @@ msgstr "重做失败"
 msgid "session.rollback.redoSuccessDesc"
 msgstr "已恢复 {count, plural, one {# 条消息} other {# 条消息}}"
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr "请求失败"
 
@@ -12899,11 +13579,15 @@ msgstr "synergy link | 远程主机 | 目标 | agent | link id | 密钥"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
-msgstr "设置智能体响应、子智能体并发和各类操作超时。"
+msgstr "设置智能体 Worker 容量、子智能体并发和各类操作超时。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
 msgstr "智能体"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
+msgstr "智能体 Worker 池"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
@@ -12911,7 +13595,7 @@ msgstr "最大并发子智能体数"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
-msgstr "智能体 | 子智能体 | 并发 | 超时 | 提供商 | 工具 | 共同作者 | 提交 | git | 提示"
+msgstr "智能体 | worker | 池 | 并行 | 子智能体 | 并发 | 超时 | 提供商 | 工具 | 共同作者 | 提交 | git | 提示"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.description"
@@ -15426,6 +16110,22 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "智能体"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr "可并行运行的模型 Turn 上限。调小后，活跃 Turn 会先正常结束，多余的 Worker 随后退出。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
+msgstr "智能体 Worker 池"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
 msgstr "提醒智能体创建 Git 提交时包含 Synergy 协作者署名。"
 
@@ -15483,7 +16183,7 @@ msgstr "工具覆盖"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.page.desc"
-msgstr "设置智能体指令、提供商超时和工具执行超时。"
+msgstr "设置智能体容量、指令、提供商超时和工具执行超时。"
 
 #. Agents
 msgid "settings.runtime.agents.page.title"
@@ -16269,6 +16969,14 @@ msgstr "找到 {count} 项"
 msgid "tool.label.items"
 msgstr "{count} 项"
 
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourceChat"
+msgstr "对话"
+
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourcePanel"
+msgstr "面板"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.matches"
 msgstr "{count} 个匹配项"
@@ -16288,6 +16996,10 @@ msgstr "{count} 条记忆"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.notes"
 msgstr "{count} 个笔记"
+
+#. js-lingui-explicit-id
+msgid "tool.label.pathwaySteps"
+msgstr "{count} 个步骤"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.posts"
@@ -16625,6 +17337,34 @@ msgstr "查看作业指标"
 msgid "tool.title.jobs"
 msgstr "查看作业"
 
+#. js-lingui-explicit-id
+msgid "tool.title.latticeApproveExecution"
+msgstr "批准执行 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmit"
+msgstr "提交 Lattice 操作"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprint"
+msgstr "选择 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprintReview"
+msgstr "完成 Blueprint 审查"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathway"
+msgstr "提交 Pathway"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathwayReview"
+msgstr "完成 Pathway 审查"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitRequirements"
+msgstr "对齐需求"
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.leave-worktree"
 msgstr "退出隔离工作区"
@@ -16728,6 +17468,14 @@ msgstr "已应用"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch-generating"
 msgstr "正在生成补丁…"
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayRead"
+msgstr "读取 Pathway"
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayWrite"
+msgstr "写入 Pathway"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"
@@ -17284,6 +18032,10 @@ msgstr "未选择图片"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
 msgstr "在新窗口打开图片"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
+msgstr "在“文件”中查看源文件"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.previous"

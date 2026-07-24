@@ -16,6 +16,7 @@ import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
+import { LatticeRuntime } from "@/lattice/runtime"
 import { Embedding } from "@/vector/embedding"
 import { AgentTurn } from "@/session/agent-turn"
 import { ToolScheduler } from "@/session/tool-scheduler"
@@ -36,6 +37,8 @@ export namespace GlobalRuntime {
           CortexConcurrency.configure(config.cortex?.maxConcurrentTasks)
           AgentTurn.configure({
             size: config.execution?.agentWorkers,
+            minIdle: config.execution?.agentWorkerMinIdle,
+            idleTimeoutMs: config.execution?.agentWorkerIdleTimeoutMs,
             maxQueued: config.execution?.agentQueueMax,
             maxQueuedBytes:
               config.execution?.agentQueueMaxMb === undefined
@@ -50,6 +53,15 @@ export namespace GlobalRuntime {
               config.execution?.agentWorkerMaxHeapMb === undefined
                 ? undefined
                 : config.execution.agentWorkerMaxHeapMb * 1024 * 1024,
+            idleBaselineRecycle: config.execution?.agentWorkerIdleBaselineRecycle,
+            idleBaselineRssGrowthBytes:
+              config.execution?.agentWorkerIdleBaselineRssGrowthMb === undefined
+                ? undefined
+                : config.execution.agentWorkerIdleBaselineRssGrowthMb * 1024 * 1024,
+            idleBaselineExternalGrowthBytes:
+              config.execution?.agentWorkerIdleBaselineExternalGrowthMb === undefined
+                ? undefined
+                : config.execution.agentWorkerIdleBaselineExternalGrowthMb * 1024 * 1024,
             cancelGraceMs: config.execution?.agentCancelGraceMs,
             heartbeatTimeoutMs: config.execution?.agentHeartbeatTimeoutMs,
           })
@@ -89,12 +101,13 @@ export namespace GlobalRuntime {
           await SessionRecovery.reconcileRuntimeState({ scopeID: Scope.home().id, apply: true }).catch((error) => {
             log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
           })
+          await LatticeRuntime.init()
+          await SessionInvoke.resumePending({ scopeID: Scope.home().id })
           await startChannels(config)
           await HolosRuntime.init()
           FileWatcher.init()
           MCP.ensureStarted()
           PluginMarketplaceRegistry.prefetchRegistry()
-          await SessionInvoke.resumePending()
           await Agenda.start()
           await AgendaBootstrap.seed()
           await GitHubRuntime.start(config.github)

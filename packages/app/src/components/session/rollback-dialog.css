@@ -1,0 +1,9 @@
+[data-slot="dialog-content"].rollback-dialog [data-slot="dialog-description"] {
+  padding-bottom: 20px;
+}
+
+.rollback-dialog-actions {
+  flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid var(--dialog-border-weak);
+}

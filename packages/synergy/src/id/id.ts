@@ -37,6 +37,8 @@ export namespace Identifier {
     lattice_run: "ltr",
     lattice_step: "lts",
     lattice_event: "lte",
+    lattice_action: "lta",
+    lattice_effect: "lfe",
     history: "hst",
   } as const
 

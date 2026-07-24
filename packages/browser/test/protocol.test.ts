@@ -278,8 +278,17 @@ describe("browser protocol v2", () => {
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         bounds: { x: 0, y: 0, width: 800, height: 600 },
+        visible: false,
       }).success,
     ).toBe(true)
+    expect(
+      BrowserNativeAttachRequestSchema.safeParse({
+        protocolVersion: 2,
+        ownerKey: "scope:scope:session:session",
+        pageId: "page-1",
+        visible: "hidden",
+      }).success,
+    ).toBe(false)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
         protocolVersion: 2,

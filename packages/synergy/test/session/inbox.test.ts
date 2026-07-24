@@ -288,6 +288,54 @@ describe("SessionInbox", () => {
     })
   })
 
+  test("deduplicates legacy mail delivery without changing mail presentation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const deliveryKey = "mail:durable-completion"
+        const mail: SessionManager.SessionMail.User = {
+          type: "user",
+          summary: { title: "Durable completion" },
+          metadata: { source: "lattice_completed" },
+          parts: [
+            {
+              id: "prt_durable_mail",
+              sessionID: session.id,
+              messageID: "msg_durable_mail",
+              type: "text",
+              text: "completed",
+              origin: "system",
+            },
+          ],
+        }
+
+        const [first, duplicate] = await Promise.all([
+          SessionInbox.enqueueMailUnique({ sessionID: session.id, deliveryKey, mail }),
+          SessionInbox.enqueueMailUnique({ sessionID: session.id, deliveryKey, mail }),
+        ])
+
+        expect([first.created, duplicate.created].sort()).toEqual([false, true])
+        expect(first.itemID).toBe(duplicate.itemID)
+        expect(first.messageID).toBe(duplicate.messageID)
+        expect(await SessionInbox.list(session.id)).toMatchObject([
+          {
+            deliveryKey,
+            mode: "task",
+            source: { type: "lattice_completed", label: "lattice_completed" },
+            message: {
+              summary: { title: "Durable completion" },
+              parts: [{ type: "text", text: "completed", origin: "system" }],
+            },
+          },
+        ])
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
   test("deliver can wake an idle session without waiting for processing to finish", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

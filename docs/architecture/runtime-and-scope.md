@@ -57,6 +57,8 @@ flowchart LR
 
 Every product LLM turn, including sessionless title, summary, classification, and agent-generation calls, enters `AgentTurn`. Production uses a bounded pool of recyclable Bun child processes; only tests use the in-process adapter. The Control Plane resolves final prompt and parameter plugin hooks plus a serializable provider runtime plan before admission. The worker reconstructs built-in provider runtime functions from that plan without provider-plugin discovery, so it cannot initialize plugin runtimes or call Host Services. A worker owns one provider turn at a time and is released before permission or tool waiting begins. Workers cannot receive executable tool callbacks and do not write canonical Session, Message, event, or observability state.
 
+The Agent worker pool has a live target capacity. Increasing the target starts workers immediately. Decreasing it removes excess idle workers first and marks only the remaining excess active workers to retire after their owned turns reach a terminal boundary. Resizing alone never aborts an active turn; subsequent target changes recompute the retirement set.
+
 The Agent protocol is versioned and schema-validated. A turn snapshot is limited to 64 MiB, transferred in at most 1 MiB chunks, and advanced by per-chunk acknowledgements. Stream events are limited to 2 MiB frames; text and reasoning deltas are coalesced, and the next frame is acknowledged only after the Control Plane consumer has drained the current frame. Queue item counts and aggregate queued bytes are bounded independently. Cancellation has a grace deadline, heartbeats detect stuck workers, and workers terminate or recycle after a configured turn count, RSS threshold, or heap-used threshold.
 
 Capability classification runs in a separate prewarmed Policy worker pool. Global-runtime startup begins prewarming without making HTTP/WebSocket availability depend on a child-process handshake. A classification that reaches a cold pool waits at most ten seconds for the first ready worker, so startup is bounded but not charged to the shorter request deadline. The Control Plane sends only a schema-validated, byte-bounded snapshot of the tool name, arguments, and classification context; the worker returns a capability envelope and never owns profile decisions, permission state, canonical writes, or tool execution. Once the pool is ready, each request has one total queue/transfer/classification deadline. A startup timeout, request timeout, process crash, invalid protocol message, or memory/heartbeat violation produces a finite opaque `protected_op` result and an immediate transient denial without entering approval, including under `guarded` and `full_access`. Workers recycle after bounded request counts or memory watermarks. Pre-ready failures use bounded exponential backoff and a startup circuit so a broken worker executable cannot create a Control Plane respawn storm.
@@ -84,6 +86,7 @@ The Control Plane is the only canonical observability writer. Agent and Policy w
 - A Git-backed Scope uses a stable repository identity when available and tracks additional worktree/sandbox paths under the same project record.
 - A non-Git directory uses a stable hash of its resolved path.
 - A missing directory resolves to home and causes a matching stale project record to be archived.
+- Discovery-only Scope resolution may use a transient Scope without registering the directory, writing Git identity cache files, archiving stale records, or emitting Scope events.
 
 The user therefore chooses the project boundary. Code must not reintroduce implicit upward repository discovery.
 
@@ -183,6 +186,7 @@ The exact domain files and precedence are defined in the [configuration referenc
 - Global services enter a Scope before accessing scoped state.
 - The Control Plane is the single writer for Session, Message, event ordering, permission state, and performance storage.
 - Production provider streams run only in Agent worker processes; workers never receive executable tools or retain capacity while tools wait.
+- Agent worker pool shrink never aborts an active turn; excess active workers retire only after their owned turns terminate.
 - Production capability classification runs only in Policy worker processes; timeout, crash, and malformed-output paths return a finite conservative classification.
 - Every Agent or Policy IPC frame and Agent/Policy/Tool queue has an explicit byte and item bound.
 - Project runtimes start lazily, once per Scope ID, and are disposable.
