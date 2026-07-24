@@ -419,14 +419,22 @@ describe("prepareWrapper Linux dispatch", () => {
       forcePlatform: "linux",
     })
 
-    // Both should produce the same stable shape; each call owns a unique temp profile.
-    const normalizeProfilePath = (args: string[]) => {
+    // Both should produce the same stable shape; sandboxed calls each own a unique temp profile,
+    // while helper-unavailable environments return the original command arguments unchanged.
+    const normalizeProfilePath = (args: string[], sandboxed: boolean) => {
       const index = args.indexOf("--permission-profile")
+      if (!sandboxed) {
+        expect(index).toBe(-1)
+        return args
+      }
       expect(index).toBeGreaterThanOrEqual(0)
       return args.map((arg, argIndex) => (argIndex === index + 1 ? "<profile>" : arg))
     }
     expect(dispatchWrapper.command).toBe(compatWrapper.command)
     expect(dispatchWrapper.sandboxed).toBe(compatWrapper.sandboxed)
-    expect(normalizeProfilePath(dispatchWrapper.args)).toEqual(normalizeProfilePath(compatWrapper.args))
+    expect(dispatchWrapper.skipReason).toBe(compatWrapper.skipReason)
+    expect(normalizeProfilePath(dispatchWrapper.args, dispatchWrapper.sandboxed)).toEqual(
+      normalizeProfilePath(compatWrapper.args, compatWrapper.sandboxed),
+    )
   })
 })

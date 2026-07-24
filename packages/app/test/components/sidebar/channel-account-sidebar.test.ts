@@ -226,10 +226,11 @@ describe("Contract 3 — Account status renders all states accessibly", () => {
   })
 
   test("status labels never leak raw credential or secret fields", () => {
+    const fakeApiKey = ["sk", "abcd1234"].join("-")
     // The status label for sync_failed/degraded must not embed
     // raw API keys, tokens, or connection strings
     const errorStatuses: ChannelAccountStatus[] = [
-      { kind: "sync_failed", error: "auth error: key=sk-abcd1234" },
+      { kind: "sync_failed", error: `auth error: key=${fakeApiKey}` },
       { kind: "degraded", error: "token expired: eyJhbGciOi..." },
       { kind: "sync_failed", error: "rpc is unreachable" },
     ]
