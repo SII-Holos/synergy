@@ -131,7 +131,7 @@ export const S = {
   rewindStartingHere: { id: "session.rewind.startingHere", message: "starting here." },
   rewindAssociatedWork: { id: "session.rewind.associatedWork", message: "associated with the hidden work." },
 
-  // rollback-banner.tsx
+  // rollback-dialog.tsx
   rollbackCannotRedo: { id: "session.rollback.cannotRedo", message: "Cannot redo" },
   rollbackCannotRedoDesc: {
     id: "session.rollback.cannotRedo.desc",
@@ -150,7 +150,6 @@ export const S = {
   rollbackDismiss: { id: "session.rollback.dismiss", message: "Dismiss" },
   rollbackRestoreTooltip: { id: "session.rollback.restoreTooltip", message: "Restore the rewound messages" },
 
-  // rollback-banner.tsx — remaining hardcoded
   rollbackRequestFailed: { id: "session.rollback.requestFailed", message: "Request failed" },
   rollbackRedoSuccessDesc: {
     id: "session.rollback.redoSuccessDesc",
@@ -164,7 +163,7 @@ export const S = {
     id: "session.rollback.cannotRedoTooltip",
     message: "New messages have been added; cannot redo this rollback",
   },
-  rollbackBannerText: {
+  rollbackSummary: {
     id: "session.rollback.bannerText",
     message:
       "Rewound {messages, plural, one {# message} other {# messages}} ({turns, plural, one {# turn} other {# turns}})",
@@ -191,7 +190,7 @@ export const S = {
   rewindAlsoRestoreHint: {
     id: "session.rewind.alsoRestore.hint",
     message:
-      "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the banner.",
+      "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the rollback dialog.",
   },
   rewindRequestFailed: { id: "session.rewind.requestFailed", message: "Request failed" },
 
