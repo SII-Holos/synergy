@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import type { ReencodeJobState } from "@ericsanchezok/synergy-sdk/client"
 import {
+  currentReencodeJob,
   isReencodeJobNotFound,
   pollReencodeJob,
   reencodeConflictJob,
   reencodeJobSummary,
+  startedReencodeJob,
 } from "../../../../src/components/settings/panels/library-reencode-model"
 
 function job(status: ReencodeJobState["status"], completedCount = 0): ReencodeJobState {
@@ -84,5 +86,25 @@ describe("library reencode model", () => {
     expect(reencodeJobSummary(job("completed", 2))).toBe("Complete: 2 updated, 0 skipped, 0 failed")
     expect(reencodeJobSummary(job("cancelled", 1))).toBe("Cancelled after 1 of 2: 1 updated, 0 skipped, 0 failed")
     expect(reencodeJobSummary(job("failed", 1))).toBe("Failed after 1 of 2: provider unavailable")
+  })
+
+  test("treats a thrown missing-job response as empty history", async () => {
+    const missing = { code: "REENCODE_JOB_NOT_FOUND", message: "No reencode job exists" }
+
+    expect(
+      await currentReencodeJob(async () => {
+        throw missing
+      }),
+    ).toBeUndefined()
+  })
+
+  test("recovers the running job from a thrown start conflict", async () => {
+    const running = job("running")
+
+    expect(
+      await startedReencodeJob(async () => {
+        throw { code: "REENCODE_JOB_ALREADY_RUNNING", job: running }
+      }),
+    ).toEqual(running)
   })
 })

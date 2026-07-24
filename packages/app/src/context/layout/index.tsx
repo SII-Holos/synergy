@@ -15,6 +15,7 @@ import { computeDefaultWorkspaceWidth } from "./workspace"
 import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import type { WorkbenchSurfaceState } from "../workbench/panel-model"
 import { migrateWorkbenchLayout } from "../workbench/layout-migration"
+import { createInitialLayoutDefaults } from "./defaults"
 import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
@@ -125,18 +126,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const [store, setStore, _, ready] = persisted(
       { ...Persist.global("layout", ["layout.v8", "layout.v9"]), migrate: migrateWorkbenchLayout },
       createStore({
-        sidebar: {
-          opened: false,
-          width: 280,
-        },
+        ...createInitialLayoutDefaults(),
         review: {
           diffStyle: "split" as ReviewDiffStyle,
-        },
-        mobileSidebar: {
-          opened: false,
-        },
-        rightSidebar: {
-          opened: false,
         },
         sessionView: {} as Record<string, SessionView>,
         workbenchSurfaces: {} as Record<string, WorkbenchSurfacesLayoutState>,

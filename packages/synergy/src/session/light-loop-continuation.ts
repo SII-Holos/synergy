@@ -1,13 +1,14 @@
 import { Cortex } from "../cortex"
 import { Session } from "./index"
 import { ContinuationKernel } from "./continuation-kernel"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 export const LightLoopContinuationPolicy: ContinuationKernel.Policy = {
   id: "light_loop",
   priority: 25,
   async handle(gate) {
     const workflow = gate.session.workflow
-    if (workflow?.kind !== "lightloop") return undefined
+    if (!isActiveLightLoopWorkflow(workflow)) return undefined
     const stopRequest = workflow.stopRequest
     if (!stopRequest) return continuationProposal(workflow.instructions)
     if (stopRequest.reviewSessionID) return undefined

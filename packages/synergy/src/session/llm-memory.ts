@@ -1,6 +1,7 @@
 import { ObservabilityEvents } from "@/observability/events"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { SessionMemoryPressure } from "./memory-pressure"
+import { RetentionProbe } from "./retention-probe"
 
 export namespace LLMTurnMemory {
   const CHECKPOINT_INTERVAL_MS = 5_000
@@ -37,6 +38,7 @@ export namespace LLMTurnMemory {
     lastToolCheckpointAt: number
     streamActive: boolean
     pressurePending: boolean
+    retention: RetentionProbe.Handle
     timer?: Timer
   }
 
@@ -47,6 +49,7 @@ export namespace LLMTurnMemory {
     streamStarted(): void
     addOutputChars(chars: number): void
     observeToolRawChars(callID: string, chars: number): void
+    trackOwner(owner: string, value: unknown, estimatedBytes?: number): void
     streamDisposed(): void
     release(): void
   }
@@ -83,6 +86,7 @@ export namespace LLMTurnMemory {
       lastToolCheckpointAt: 0,
       streamActive: false,
       pressurePending: false,
+      retention: RetentionProbe.begin({ sessionID: input.sessionID, messageID: input.messageID }),
     }
     active.set(id, entry)
     checkpoint(entry, "history.before_projection", baseline)
@@ -132,6 +136,10 @@ export namespace LLMTurnMemory {
           checkpoint(entry, "tool.input")
         }
       },
+      trackOwner(owner, value, estimatedBytes) {
+        if (released) return
+        entry.retention.track(owner, value, estimatedBytes)
+      },
       streamDisposed() {
         if (released || !entry.streamActive) return
         entry.streamActive = false
@@ -146,6 +154,7 @@ export namespace LLMTurnMemory {
         entry.timer = undefined
         entry.streamActive = false
         checkpoint(entry, "turn.released")
+        entry.retention.release()
         recent.unshift(snapshotEntry(entry))
         recent.length = Math.min(recent.length, 20)
         active.delete(id)
@@ -241,6 +250,7 @@ export namespace LLMTurnMemory {
     active.clear()
     recent.length = 0
     snapshotForTest = undefined
+    RetentionProbe.resetForTest()
   }
 
   function checkpoint(entry: Entry, phase: Phase, observed = currentSnapshot()) {

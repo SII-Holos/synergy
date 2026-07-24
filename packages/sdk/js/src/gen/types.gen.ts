@@ -582,6 +582,56 @@ export type PerfDashboardSummary = {
       childCount: number
       userCount: number
       waiterCount: number
+      executionPhases?: {
+        [key: string]: number
+      }
+    }
+    execution?: {
+      agentWorkers: {
+        configured: number
+        minIdle: number
+        idleTimeoutMs: number
+        maxQueued: number
+        maxQueuedBytes: number
+        workers: number
+        ready: number
+        active: number
+        queued: number
+        queuedBytes: number
+        rssBytes: number
+        heapUsedBytes: number
+        heapTotalBytes: number
+        externalBytes: number
+        arrayBuffersBytes: number
+      }
+      policyWorkers: {
+        configured: number
+        maxQueued: number
+        maxQueuedBytes: number
+        workers: number
+        ready: number
+        active: number
+        queued: number
+        queuedBytes: number
+        rssBytes: number
+        heapUsedBytes: number
+      }
+      toolTasks: {
+        active: number
+        queued: number
+        tracked: number
+        queuedBytes: number
+        maxConcurrent: number
+        maxQueued: number
+        maxQueuedBytes?: number
+        byExecutor?: {
+          [key: string]: {
+            active: number
+            queued: number
+            limit: number
+          }
+        }
+      }
     }
     messageCache?: {
       totalBytes: number
@@ -3319,6 +3369,121 @@ export type Config = {
      * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
      */
     maxConcurrentTasks?: number
+  }
+  /**
+   * Process isolation, worker recycling, and bounded execution scheduling
+   */
+  execution?: {
+    /**
+     * Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     */
+    agentWorkers?: number
+    /**
+     * Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)
+     */
+    agentWorkerMinIdle?: number
+    /**
+     * Time an excess idle Agent worker remains warm before retirement (default: 60000)
+     */
+    agentWorkerIdleTimeoutMs?: number
+    /**
+     * Maximum queued Agent turns waiting for a worker (default: 256)
+     */
+    agentQueueMax?: number
+    /**
+     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     */
+    agentQueueMaxMb?: number
+    /**
+     * Turns completed before an Agent worker is recycled (default: 64)
+     */
+    agentWorkerMaxTurns?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)
+     */
+    agentWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)
+     */
+    agentWorkerMaxHeapMb?: number
+    /**
+     * Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)
+     */
+    agentWorkerIdleBaselineRecycle?: boolean
+    /**
+     * Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)
+     */
+    agentWorkerIdleBaselineRssGrowthMb?: number
+    /**
+     * Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)
+     */
+    agentWorkerIdleBaselineExternalGrowthMb?: number
+    /**
+     * Grace period before terminating an Agent worker that ignores cancellation (default: 5000)
+     */
+    agentCancelGraceMs?: number
+    /**
+     * Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)
+     */
+    agentHeartbeatTimeoutMs?: number
+    /**
+     * Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)
+     */
+    policyWorkers?: number
+    /**
+     * Maximum queued Policy classifications waiting for a worker (default: 256)
+     */
+    policyQueueMax?: number
+    /**
+     * Maximum aggregate queued Policy-classification payload size in MiB (default: 64)
+     */
+    policyQueueMaxMb?: number
+    /**
+     * Maximum total time for a Policy classification before conservative fallback (default: 1000)
+     */
+    policyTimeoutMs?: number
+    /**
+     * Classifications completed before a Policy worker is recycled (default: 512)
+     */
+    policyWorkerMaxRequests?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)
+     */
+    policyWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)
+     */
+    policyWorkerMaxHeapMb?: number
+    /**
+     * Shutdown grace period before terminating a Policy worker (default: 25)
+     */
+    policyCancelGraceMs?: number
+    /**
+     * Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)
+     */
+    policyHeartbeatTimeoutMs?: number
+    /**
+     * Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)
+     */
+    toolConcurrency?: number
+    /**
+     * Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)
+     */
+    toolQueueMax?: number
+    /**
+     * Maximum aggregate queued ToolTask input size in MiB (default: 128)
+     */
+    toolQueueMaxMb?: number
+    /**
+     * Grace period for active ToolTasks during runtime shutdown (default: 3000)
+     */
+    toolCancelGraceMs?: number
+    /**
+     * Optional concurrency limits for each Tool Executor class
+     */
+    toolExecutorConcurrency?: {
+      [key: string]: number
+    }
   }
   github?: GitHubIntegrationConfig
   watcher?: {
@@ -7639,18 +7804,6 @@ export type EventSessionIdle = {
   streaming?: boolean
 }
 
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-  seq?: number
-  epoch?: string
-  streaming?: boolean
-}
-
 export type EventSessionInboxUpdated = {
   type: "session.inbox.updated"
   properties: {
@@ -7880,6 +8033,18 @@ export type EventFileEdited = {
   type: "file.edited"
   properties: {
     file: string
+  }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
   seq?: number
   epoch?: string
@@ -8278,7 +8443,6 @@ export type Event =
   | EventSessionStatus
   | EventSessionCompletion
   | EventSessionIdle
-  | EventRuntimeReloaded
   | EventSessionInboxUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
@@ -8301,6 +8465,7 @@ export type Event =
   | EventQuestionTimedOut
   | EventSessionCompacted
   | EventFileEdited
+  | EventRuntimeReloaded
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventDagUpdated

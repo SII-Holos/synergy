@@ -472,6 +472,7 @@ export async function mergeLibraryDB(
     id: string
     session_id: string
     scope_id: string
+    user_input?: string | null
     script: string | null
     raw: string | null
     metadata: string
@@ -545,10 +546,20 @@ export async function mergeLibraryDB(
   // Merge experience_content
   const contents = source.prepare("SELECT * FROM experience_content").all() as ContentRow[]
   const insertContent = target.prepare(
-    "INSERT OR IGNORE INTO experience_content (id, session_id, scope_id, script, raw, metadata, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+    "INSERT OR IGNORE INTO experience_content (id, session_id, scope_id, user_input, script, raw, metadata, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
   )
   for (const c of contents) {
-    insertContent.run(c.id, c.session_id, c.scope_id, c.script, c.raw, c.metadata, c.created_at, c.updated_at)
+    insertContent.run(
+      c.id,
+      c.session_id,
+      c.scope_id,
+      c.user_input ?? null,
+      c.script,
+      c.raw,
+      c.metadata,
+      c.created_at,
+      c.updated_at,
+    )
   }
 
   // Handle vector tables based on strategy

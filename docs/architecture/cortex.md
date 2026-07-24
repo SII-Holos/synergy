@@ -13,12 +13,12 @@ A Cortex task records:
 - a description and full prompt
 - the selected agent, execution role, category, and optional DAG node
 - status and live progress
-- visibility, durable parent-notification intent, and optional delivery timestamp
+- visibility, durable parent-notification intent, and optional parent-handoff timestamp
 - output mode and resolved output
 
 Task status moves through `queued`, `running`, and one terminal state: `completed`, `error`, `cancelled`, or `interrupted`. A Task is created only when it has entered the Cortex queue, so there is no separate `pending` lifecycle state. `interrupted` means durable metadata says work was active, but no live runtime survived restart; it is distinct from an execution error.
 
-The child session is the durable record. The in-memory task entry coordinates live execution and is eventually evicted; the child session retains its Cortex metadata, messages, model, terminal status, output, `notifyParentOnComplete` decision, and optional `deliveryNotifiedAt` timestamp.
+The child session is the durable record. The in-memory task entry coordinates live execution and is eventually evicted; the child session retains its Cortex metadata, messages, model, terminal status, output, `notifyParentOnComplete` decision, and optional `deliveryNotifiedAt` parent-handoff timestamp.
 
 Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. These fields let a plugin resume its own domain workflow without treating the in-memory Cortex map as durable state.
 
@@ -117,7 +117,9 @@ Parent delivery and child persistence are separate:
 
 A running parent is not interrupted with another model call in the middle of its turn. Its completion notice may already be durable in the Inbox; releasing the active session lease asks the shared drive to process that item before any workflow continuation proposal. Callers that need a direct result should await the task, while orchestration features can bind the task to a DAG node.
 
-At Synergy startup, durable child sessions left in `queued` or `running` state are changed to `interrupted` and emit the same observer so plugin control planes can make an explicit recovery decision. Cortex then reconciles eligible terminal notifications from child-session state: a missing delivery is restored with the stable key, while an already persisted but unprocessed Inbox item only re-requests the parent drive. Hidden tasks and old or explicitly suppressed records whose notification intent is not `true` are not recovered.
+At Synergy startup, durable child sessions left in `queued` or `running` state are changed to `interrupted` and emit the same observer so plugin control planes can make an explicit recovery decision. Cortex then reconciles eligible terminal notifications from child-session state: a missing delivery is restored with the stable key, while an already persisted but unprocessed Inbox item only re-requests the parent drive. Hidden tasks and old or explicitly suppressed records whose notification intent is not `true` do not create or recover parent notifications; workflow-owned silent handoffs follow the separate recovery path below.
+
+Silent Cortex completions do not create parent notifications, but workflow parents still require a durable handoff after the last blocking child becomes terminal. Cortex records a successful parent drive in the child's `deliveryNotifiedAt` field. Startup reconciliation retries unmarked silent handoffs only for the parent's current terminal assistant message and only while BlueprintLoop, Light Loop, or Lattice continuation remains active. The shared continuation gate and Inbox deduplication make this recovery idempotent while preventing old child tasks from waking a later workflow round.
 
 Plugin Host delegation is always handle-based: `start()` returns immediately, while `get()` and the `cortex.task.after` observer expose completion.
 
@@ -138,4 +140,4 @@ Visible terminal tasks keep their live task record long enough for clients to ob
 - Backgrounding changes who waits; it does not change the task's execution or persistence.
 - Output mode is an explicit contract, not a best-effort prompt convention.
 - Cancellation covers descendant tasks and runtime resources without deleting durable history.
-- Parent completion notification is durable and idempotent; acknowledgement and delivery are mutually exclusive per task.
+- Parent completion notification and silent workflow handoff are durable and idempotent; notification acknowledgement and delivery are mutually exclusive per task.

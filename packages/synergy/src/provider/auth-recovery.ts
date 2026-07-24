@@ -1,4 +1,3 @@
-import { RuntimeReload } from "@/runtime/reload"
 import { ScopeContext } from "@/scope/context"
 import { ProviderAuthRecoveryError } from "./auth-recovery-error"
 import { Auth } from "./api-key"
@@ -116,6 +115,7 @@ export namespace ProviderAuthRecovery {
 
   async function reloadProvider(reason: string, enabled: boolean) {
     if (!enabled || !ScopeContext.tryScope()) return
+    const { RuntimeReload } = await import("@/runtime/reload")
     await RuntimeReload.reload({ targets: ["provider"], reason })
   }
 

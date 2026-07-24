@@ -738,6 +738,70 @@ msgstr "外部"
 msgid "app.agentVisual.external"
 msgstr "外部"
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr "下载"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr "在“文件”中查看源文件"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr "正在加载附件…"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr "附件查看模式"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr "预览"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr "源文件"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr "适应宽度"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr "下一页"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr "{page} / {count}"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr "上一页"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr "放大"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr "缩小"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr "无法预览此附件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr "此附件过大，无法预览。请下载后查看完整文件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr "此附件已无法从当前会话中获取。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr "此文件类型暂不支持预览。"
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr "取消"
@@ -2065,6 +2129,62 @@ msgstr "未知错误"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.versionLabel"
 msgstr "版本：{version}"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr "更换服务器"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr "重新加载界面"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr "重试"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr "Synergy 服务器当前无响应，无法确认正在运行的任务状态。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr "无法连接到服务器"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr "配置、Provider 或设置错误导致 Synergy 无法完成启动。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr "Synergy 启动失败"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr "重新加载此页面不会停止服务器上已在运行的任务。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr "界面遇到了问题"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr "工作区无法加载，可能是临时故障或配置问题。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr "无法加载此项目"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr "摘要"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
@@ -4083,6 +4203,10 @@ msgstr "回复已生成"
 #. ── Notifications ────────────────────────────────────────────────────────────
 msgid "app.notification.session.error"
 msgstr "会话错误"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr "附件"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
@@ -7390,6 +7514,14 @@ msgstr "工作区"
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.mobileHeader.close"
 msgstr "关闭工作区"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr "重新加载应用"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
+msgstr "重试"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
@@ -11462,7 +11594,7 @@ msgstr "同时恢复文件更改"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.alsoRestore.hint"
-msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从横幅恢复文件。"
+msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从回退对话框恢复文件。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11532,7 +11664,7 @@ msgstr "回退到此处"
 msgid "session.rollback.bannerText"
 msgstr "已回退 {messages, plural, one {# 条消息} other {# 条消息}}（{turns, plural, one {# 个回合} other {# 个回合}}）"
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr "无法重做"
 
@@ -11550,6 +11682,11 @@ msgstr "已添加新消息。此回滚无法再重做。"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
 msgstr "已添加新消息；无法重做此回滚"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "回退完成"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11586,7 +11723,8 @@ msgstr "重做失败"
 msgid "session.rollback.redoSuccessDesc"
 msgstr "已恢复 {count, plural, one {# 条消息} other {# 条消息}}"
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr "请求失败"
 
@@ -12899,11 +13037,15 @@ msgstr "synergy link | 远程主机 | 目标 | agent | link id | 密钥"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
-msgstr "设置智能体响应、子智能体并发和各类操作超时。"
+msgstr "设置智能体 Worker 容量、子智能体并发和各类操作超时。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
 msgstr "智能体"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
+msgstr "智能体 Worker 池"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
@@ -12911,7 +13053,7 @@ msgstr "最大并发子智能体数"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
-msgstr "智能体 | 子智能体 | 并发 | 超时 | 提供商 | 工具 | 共同作者 | 提交 | git | 提示"
+msgstr "智能体 | worker | 池 | 并行 | 子智能体 | 并发 | 超时 | 提供商 | 工具 | 共同作者 | 提交 | git | 提示"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.description"
@@ -15426,6 +15568,22 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "智能体"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr "可并行运行的模型 Turn 上限。调小后，活跃 Turn 会先正常结束，多余的 Worker 随后退出。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
+msgstr "智能体 Worker 池"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
 msgstr "提醒智能体创建 Git 提交时包含 Synergy 协作者署名。"
 
@@ -15483,7 +15641,7 @@ msgstr "工具覆盖"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.page.desc"
-msgstr "设置智能体指令、提供商超时和工具执行超时。"
+msgstr "设置智能体容量、指令、提供商超时和工具执行超时。"
 
 #. Agents
 msgid "settings.runtime.agents.page.title"
@@ -17284,6 +17442,10 @@ msgstr "未选择图片"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
 msgstr "在新窗口打开图片"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
+msgstr "在“文件”中查看源文件"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.previous"

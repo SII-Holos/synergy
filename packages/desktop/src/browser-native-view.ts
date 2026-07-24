@@ -5,7 +5,7 @@ import {
   type BrowserNativeBounds,
   type BrowserNativeViewEvent,
 } from "@ericsanchezok/synergy-browser"
-import { BrowserNativePagePool } from "./browser-native-page-pool.js"
+import type { BrowserNativePagePool } from "./browser-native-page-pool.js"
 
 export class BrowserNativeViewManager {
   private ownerKey: string | null = null
@@ -29,6 +29,7 @@ export class BrowserNativeViewManager {
       this.pageId = input.pageId
       this.eventCleanup = this.bindEvents(input.pageId, this.view)
     }
+    this.view.setVisible(input.visible ?? true)
     if (input.bounds) this.resize(input.ownerKey, input.pageId, input.bounds)
   }
 

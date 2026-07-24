@@ -134,6 +134,31 @@ describe("migrateWorkbenchLayout", () => {
     expect(migrated.workbenchSurfaces["home/session-1"].side.active).toBe("notes")
   })
 
+  test("drops obsolete workspace discovery state without closing populated surfaces", () => {
+    const migrated = migrateWorkbenchLayout({
+      sidebar: { opened: false, width: 280 },
+      sideWorkspaceDiscovered: false,
+      workbenchSurfaces: {
+        "home/session-1": {
+          side: { opened: true, active: "notes", tabs: [{ id: "notes", panelId: "notes" }] },
+        },
+      },
+    }) as Record<string, unknown>
+
+    expect(migrated.sideWorkspaceDiscovered).toBeUndefined()
+    expect(migrated.workbenchSurfaces).toEqual({
+      "home/session-1": {
+        side: { opened: true, active: "notes", tabs: [{ id: "notes", panelId: "notes" }] },
+      },
+    })
+  })
+
+  test("keeps the historical collapsed navigation default for legacy layouts without sidebar state", () => {
+    const migrated = migrateWorkbenchLayout({ review: { diffStyle: "split" } }) as Record<string, unknown>
+
+    expect(migrated.sidebar).toEqual({ opened: false })
+  })
+
   test("drops unsupported persisted layout fields", () => {
     const migrated = migrateWorkbenchLayout({
       sidebar: { opened: true, width: 320 },

@@ -310,8 +310,18 @@ LoopJob.register({
     )
     return ranBash ? [{ type: "git_health_cache_invalidator" }] : []
   },
-  async execute() {
-    GitHealth.invalidate(ScopeContext.current.directory)
+  capture(ctx) {
+    return {
+      type: "git_health_cache_invalidator",
+      sessionID: ctx.sessionID,
+      directory: ScopeContext.current.directory,
+    }
+  },
+  key(input) {
+    return input.directory
+  },
+  async execute(input, _signal) {
+    GitHealth.invalidate(input.directory)
     return "pass"
   },
 })

@@ -222,6 +222,8 @@ const builtinIconNames = [
   "wrench",
   "x",
   "zap",
+  "zoom-in",
+  "zoom-out",
 ]
 
 for (const name of builtinIconNames) {

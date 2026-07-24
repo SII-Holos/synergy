@@ -20,7 +20,7 @@ The Web panel loads a snapshot when it opens or when the selected time range cha
 
 Every record is stored with low-cardinality attribution such as source, module, Scope/session/request/tool/provider/process IDs, correlation IDs, trace IDs, span IDs, and safe labels. Sensitive prompt, response, header, credential, environment, raw body, and file-content data is redacted or omitted before it reaches public read models or diagnostics packages.
 
-Permission evaluation logs contain only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks remain bounded and do not expose command or path contents through observability.
+Permission evaluation emits no per-check log record at INFO or higher. DEBUG keeps a bounded diagnostic record containing only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks do not expose command or path contents through observability.
 
 Server resource samples are kept separate from registered tool child process samples. A server sample also persists cgroup v2 gauges and lifetime OOM counters when available, plus a service-memory reading whose source and completeness remain explicit. Linux cgroup v2 reports the complete cgroup charge; other hosts fall back to the server RSS plus measurable registered child RSS and report partial coverage. Child aggregates use the single latest snapshot frame rather than the Top-5 display list. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored. Each live process retains at most 200,000 output characters in bounded segments; full output and the 2,000-character tail are materialized only when a consumer reads them.
 
@@ -106,6 +106,8 @@ Experience re-encode jobs use the same critical thresholds to pause new item cla
 ## Performance and diagnostics APIs
 
 The server exposes local-first endpoints under `/global/performance`:
+
+The performance summary reports Agent worker and Policy worker pool capacity, readiness, active/queued work, queued bytes, RSS, and heap-used bytes alongside ToolTask scheduler state. Policy timeout, crash, recycle, startup-circuit, queue-wait, and conservative-fallback metrics are written only by the Control Plane; Policy processes do not initialize an observability store.
 
 - `GET /global/performance/summary`
 - `GET /global/performance/inflight`

@@ -1,4 +1,5 @@
 import { Log } from "@/util/log"
+import { RetentionProbe } from "./retention-probe"
 
 export namespace SessionMemoryPressure {
   const log = Log.create({ service: "session.memory-pressure" })
@@ -179,6 +180,7 @@ export namespace SessionMemoryPressure {
     await collect(false)
     lastGCAt = now
     const after = input.snapshot ? await input.snapshot() : currentSnapshot()
+    RetentionProbe.checkReleased({ phase: input.phase, afterGC: true })
     log.info("gc completed", {
       sessionID: input.sessionID,
       messageID: input.messageID,

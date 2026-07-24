@@ -4,7 +4,6 @@ import { AnthropicOAuthProvider } from "./anthropic-oauth"
 import { CopilotProvider } from "./copilot"
 import { MiniMaxProvider } from "./minimax"
 import { AccountUsage } from "./usage"
-import { Config } from "@/config/config"
 import { Auth } from "./api-key"
 import { Env } from "@/util/env"
 import { BunProc } from "@/util/bun"
@@ -278,6 +277,7 @@ export function registerBuiltinProviderProfiles() {
     modelFactory: "languageModel",
     modelsDevProviderID: "amazon-bedrock",
     autoload: async () => {
+      const { Config } = await import("@/config/config")
       const config = await Config.current()
       const providerConfig = config.provider?.["amazon-bedrock"]
       const profile = providerConfig?.options?.profile ?? Env.get("AWS_PROFILE")
@@ -287,6 +287,7 @@ export function registerBuiltinProviderProfiles() {
       return Boolean(profile || awsAccessKeyId || awsBearerToken)
     },
     runtimeOptions: async () => {
+      const { Config } = await import("@/config/config")
       const config = await Config.current()
       const providerConfig = config.provider?.["amazon-bedrock"]
       const auth = await Auth.get("amazon-bedrock")

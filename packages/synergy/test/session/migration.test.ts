@@ -1005,6 +1005,89 @@ describe("session migrations", () => {
       },
     })
   })
+  test("moves terminal plugin Light Loops out of the interactive workflow slot", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const completed = await Session.create({ title: "Completed ordinary Light Loop" })
+        const exhausted = await Session.create({ title: "Exhausted ordinary Light Loop" })
+        const active = await Session.create({ title: "Active ordinary Light Loop" })
+        const plugin = await Session.create({ title: "Completed plugin Light Loop" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const completedKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(completed.id))
+        const exhaustedKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(exhausted.id))
+        const activeKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(active.id))
+        const pluginKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(plugin.id))
+        const terminalKey = StoragePath.sessionLightLoopTerminal(scope, Identifier.asSessionID(plugin.id))
+
+        await Storage.write(completedKey, {
+          ...completed,
+          workflow: { kind: "lightloop", instructions: "Done", status: "completed" },
+        })
+        await Storage.write(exhaustedKey, {
+          ...exhausted,
+          workflow: { kind: "lightloop", instructions: "Stopped", status: "iteration_exhausted" },
+        })
+        await Storage.write(activeKey, {
+          ...active,
+          workflow: { kind: "lightloop", instructions: "Keep going", status: "running" },
+        })
+        await Storage.write(pluginKey, {
+          ...plugin,
+          workflow: {
+            kind: "lightloop",
+            instructions: "Notify the plugin",
+            status: "completed",
+            pluginOwner: {
+              pluginId: "test-plugin",
+              pluginGeneration: "generation-one",
+              scopeId: tmpScope.id,
+              correlationId: "correlation-one",
+            },
+            terminalHookError: "handler unavailable",
+          },
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260723-migrate-terminal-lightloops")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        expect((await Storage.read<any>(completedKey)).workflow).toBeUndefined()
+        expect((await Storage.read<any>(exhaustedKey)).workflow).toBeUndefined()
+        expect((await Storage.read<any>(activeKey)).workflow).toEqual({
+          kind: "lightloop",
+          instructions: "Keep going",
+          status: "running",
+        })
+        expect((await Storage.read<any>(pluginKey)).workflow).toBeUndefined()
+        expect(await Storage.read<any>(terminalKey)).toEqual({
+          sessionID: plugin.id,
+          status: "completed",
+          instructions: "Notify the plugin",
+          pluginOwner: {
+            pluginId: "test-plugin",
+            pluginGeneration: "generation-one",
+            scopeId: tmpScope.id,
+            correlationId: "correlation-one",
+          },
+          hookError: "handler unavailable",
+          createdAt: plugin.time.updated,
+        })
+
+        const first = await Promise.all(
+          [completedKey, exhaustedKey, activeKey, pluginKey, terminalKey].map((key) => Storage.read<any>(key)),
+        )
+        await migration!.up(() => {})
+        const second = await Promise.all(
+          [completedKey, exhaustedKey, activeKey, pluginKey, terminalKey].map((key) => Storage.read<any>(key)),
+        )
+        expect(second).toEqual(first)
+      },
+    })
+  })
   test("migrates retired intent-analyst DAG assignments to self", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()
