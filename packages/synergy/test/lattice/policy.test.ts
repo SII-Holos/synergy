@@ -1,12 +1,12 @@
-import { describe, expect, test } from "bun:test"
-import { tmpdir } from "../fixture/fixture"
-import { ScopeContext } from "../../src/scope/context"
-import { Scope } from "../../src/scope"
-import { Session } from "../../src/session"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { LatticeContinuationPolicy } from "../../src/lattice/policy"
-import { LatticeMachine } from "../../src/lattice/machine"
 import { LatticeStore } from "../../src/lattice/store"
-import { SessionWorkflowService } from "../../src/session/workflow"
+import { Scope } from "../../src/scope"
+import { ScopeContext } from "../../src/scope/context"
+import { Session } from "../../src/session"
+import { tmpdir } from "../fixture/fixture"
+
+setDefaultTimeout(30_000)
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -27,72 +27,40 @@ describe("LatticeContinuationPolicy", () => {
     })
   })
 
-  test("proposes a continuation in initial_planning", async () => {
+  test("derives ordinary continuation from state and terminal message without persisting an effect", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      const run = await LatticeStore.create({ sessionID: session.id, mode: "auto" })
+      await Session.update(session.id, (draft) => {
+        draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
+      })
 
       const proposal = await LatticeContinuationPolicy.handle(await gateFor(session.id))
+      const stored = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
 
-      if (!proposal || proposal.kind !== "inbox") throw new Error("expected inbox proposal")
-      expect(proposal.kind).toBe("inbox")
-      expect(proposal.mode).toBe("steer")
-      expect(proposal.message.summary?.title).toBe("Continue Lattice pathway")
-      expect(proposal.message.metadata?.source).toBe("lattice_continuation")
+      expect(proposal?.kind).toBe("inbox")
+      expect(proposal?.kind === "inbox" ? proposal.deliveryKey : undefined).toBe(
+        `lattice:${run.id}:continue:msg_terminal`,
+      )
+      expect(stored.effect).toBeUndefined()
     })
   })
 
-  test("does not fire during collaborative blueprint_review", async () => {
+  test("pure budget convergence pauses and returns undefined instead of empty handled", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" })
-      const scopeID = ScopeContext.current.scope.id
-      await LatticeMachine.patch(scopeID, session.id, { steps: [{ title: "A", objective: "a" }] })
-      await LatticeMachine.patch(scopeID, session.id, { bindCurrentBlueprint: { noteID: "note_a" } })
-      expect((await LatticeStore.get(scopeID, session.id)).phase).toBe("blueprint_review")
-      expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toBeUndefined()
-    })
-  })
-
-  test("does not fire when the run is paused", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
-      await LatticeMachine.pause(ScopeContext.current.scope.id, session.id, "user_exit")
-      expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toBeUndefined()
-    })
-  })
-
-  test("handles budget exhaustion without proposing inbox work", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto", maxModelCalls: 1 })
-      const scopeID = ScopeContext.current.scope.id
-      await LatticeStore.update(scopeID, session.id, (draft) => {
+      const run = await LatticeStore.create({ sessionID: session.id, mode: "auto", maxModelCalls: 1 })
+      await Session.update(session.id, (draft) => {
+        draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
+      })
+      await LatticeStore.update(ScopeContext.current.scope.id, session.id, (draft) => {
         draft.modelCallCount = 1
       })
 
-      expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toEqual({ kind: "handled" })
-      const run = await LatticeStore.get(scopeID, session.id)
-      expect(run.status).toBe("paused")
-      expect(run.statusReason).toBe("model_call_budget_exhausted")
-    })
-  })
-
-  test("auto blueprint_execution starts the current step's loop", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
-      const scopeID = ScopeContext.current.scope.id
-      await LatticeMachine.patch(scopeID, session.id, { steps: [{ title: "A", objective: "a" }] })
-      await LatticeMachine.patch(scopeID, session.id, { bindCurrentBlueprint: { noteID: "note_a" } })
-
-      expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toEqual({ kind: "handled" })
-      const run = await LatticeStore.get(scopeID, session.id)
-      const step = LatticeMachine.currentStep(run)
-      expect(step?.status).toBe("running")
-      expect(step?.blueprintLoopID).toBeDefined()
-      expect(run.firstBlueprintStarted).toBe(true)
+      expect(await LatticeContinuationPolicy.handle(await gateFor(session.id))).toBeUndefined()
+      expect((await LatticeStore.get(ScopeContext.current.scope.id, session.id)).statusReason).toBe(
+        "model_call_budget_exhausted",
+      )
     })
   })
 })

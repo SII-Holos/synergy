@@ -1,0 +1,1 @@
+Continue the current Step's Blueprint work. Submit the Blueprint note ID when it is decision-complete.

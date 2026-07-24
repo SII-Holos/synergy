@@ -19,7 +19,6 @@ const parameters = z.object({
     .optional()
     .describe("Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop."),
   description: z.string().optional().describe("Short blueprint description. Only used when kind is 'blueprint'."),
-  defaultAgent: z.string().optional().describe("Default agent for this blueprint. Only used when kind is 'blueprint'."),
   auditAgent: z.string().optional().describe("Audit agent for this blueprint. Only used when kind is 'blueprint'."),
   scope: z
     .enum(["current", "home"])
@@ -63,7 +62,6 @@ async function updateExisting(input: {
   tags?: string[]
   kind?: "note" | "blueprint"
   description?: string
-  defaultAgent?: string
   auditAgent?: string
   content(existing: Awaited<ReturnType<typeof NoteStore.getAny>>): unknown
   ctx: Tool.Context
@@ -74,7 +72,6 @@ async function updateExisting(input: {
   const nextKind = NoteBlueprintPolicy.requestedKind({
     kind: input.kind,
     description: input.description,
-    defaultAgent: input.defaultAgent,
     auditAgent: input.auditAgent,
   })
   const session = await Session.get(input.ctx.sessionID)
@@ -105,7 +102,6 @@ async function updateExisting(input: {
     patch.blueprint = {
       ...(existing.blueprint ?? {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.defaultAgent !== undefined ? { defaultAgent: input.defaultAgent } : {}),
       ...(input.auditAgent !== undefined ? { auditAgent: input.auditAgent } : {}),
       runCount: numberValue(blueprint.runCount) ?? 0,
     }
@@ -167,7 +163,6 @@ export const NoteWriteTool = Tool.define("note_write", {
       const kind = NoteBlueprintPolicy.requestedKind({
         kind: params.kind,
         description: params.description,
-        defaultAgent: params.defaultAgent,
         auditAgent: params.auditAgent,
         fallback: "note",
       })
@@ -190,7 +185,6 @@ export const NoteWriteTool = Tool.define("note_write", {
             kind === "blueprint"
               ? {
                   description: params.description,
-                  defaultAgent: params.defaultAgent,
                   auditAgent: params.auditAgent,
                 }
               : undefined,
@@ -237,7 +231,6 @@ export const NoteWriteTool = Tool.define("note_write", {
         tags: params.tags,
         kind: params.kind,
         description: params.description,
-        defaultAgent: params.defaultAgent,
         auditAgent: params.auditAgent,
         content: (existing) => ({
           type: "doc" as const,
@@ -255,7 +248,6 @@ export const NoteWriteTool = Tool.define("note_write", {
         tags: params.tags,
         kind: params.kind,
         description: params.description,
-        defaultAgent: params.defaultAgent,
         auditAgent: params.auditAgent,
         content: () => tiptapContent,
         ctx,

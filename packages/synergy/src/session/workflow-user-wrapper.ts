@@ -210,7 +210,8 @@ export namespace WorkflowUserWrapper {
     return [
       "<lattice-user-request>",
       "You are in the Lattice workflow.",
-      "Analyze the goal, plan an ordered Pathway, submit it with pathway_patch, and progress through each step.",
+      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
+      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
       "",
       "User request:",
       query,
@@ -222,7 +223,8 @@ export namespace WorkflowUserWrapper {
     return [
       "<lattice-user-request>",
       "You are synergy in the Lattice workflow.",
-      "Analyze the user's goal, plan an ordered Pathway, submit it with pathway_patch, and progress through each step using the pathway tools.",
+      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
+      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
       "",
       "User request:",
       query,
@@ -234,7 +236,8 @@ export namespace WorkflowUserWrapper {
     return [
       "<lattice-user-request>",
       "You are synergy-max in the Lattice workflow.",
-      "Analyze the user's goal, plan an ordered Pathway, submit it with pathway_patch, and progress through each step using the pathway tools.",
+      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
+      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
       "",
       "User request:",
       query,

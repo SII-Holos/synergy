@@ -40,3 +40,5 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     }
   },
 })
+
+export type SDKContext = ReturnType<typeof useSDK>

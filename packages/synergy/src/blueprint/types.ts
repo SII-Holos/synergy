@@ -32,6 +32,7 @@ export const Info = z
     parentSessionID: z.string().optional(),
     firstPrompt: z.string().optional(),
     userPrompt: z.string().optional(),
+    summary: z.string().optional(),
     error: z.string().optional(),
     loopIndex: z.number().optional(),
     source: z

@@ -15,6 +15,6 @@ Blueprint creation and editing is only available in Plan or Lattice. Outside Pla
 
 Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer.
 
-In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description`, `defaultAgent`, and `auditAgent` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself.
+In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description` and `auditAgent` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself. Execution-agent selection is not available through this tool.
 
 When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.

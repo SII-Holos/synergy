@@ -39,6 +39,7 @@ async function setupLoop(status: "running" | "auditing" | "completed" = "running
     noteID: "note_blueprint",
     title: "Test Blueprint",
     sessionID: session.id,
+    source: "lattice",
   })
   await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
   if (status !== "running") {
@@ -155,6 +156,9 @@ describe("BlueprintContinuation", () => {
           expect(input.visibility).toBe("visible")
           expect(input.notifyParentOnComplete).toBe(false)
           expect(input.prompt).toContain("Focused tests pass")
+          expect(input.prompt).toContain("Change Scope, boundaries, and non-goals")
+          expect(input.prompt).toContain("future Lattice Pathway steps")
+          expect(input.prompt).toContain("first successful blueprint_loop_stop")
           const reviewSession = await Session.create({ parentID: session.id })
           reviewSessionID = reviewSession.id
           return { id: "ctx_audit", sessionID: reviewSession.id, status: "queued" }
