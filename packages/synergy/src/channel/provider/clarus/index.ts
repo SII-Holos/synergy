@@ -12,6 +12,7 @@ import { ClarusProjectClient } from "./project-client"
 import { ClarusResultOutbox, type ClarusResultPayload, type ClarusResultSend } from "./result-outbox"
 import { ClarusExtensionOutbox, type ClarusExtendPayload, type ClarusExtensionSend } from "./extension-outbox"
 import { createClarusAgentTunnelAdapter } from "./tunnel-adapter"
+import { createClarusCliRunner } from "./cli-runner"
 
 type ClarusHolosDependencies = {
   auth: Pick<typeof HolosAuth, "getCredentialOrThrow" | "getStoredCredential">
@@ -436,11 +437,20 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
   }
 
   private async handleAssignment(connection: AccountConnection, event: RuntimeTaskAssignedEvent): Promise<void> {
+    const credential = await this.holos.auth.getStoredCredential()
+    if (!credential || credential.agentId !== connection.accountId) {
+      throw new Error("The Clarus channel account is not the active Holos account")
+    }
+    const apiUrl =
+      connection.config.apiUrl ??
+      (await import("@/config/config").then(({ Config }) => Config.current())).holos?.apiUrl ??
+      "https://api.holosai.io"
     await ClarusAssignmentRuntime.dispatch({
       host: connection.host,
       accountId: connection.accountId,
       event,
       agentOverride: connection.config.agent || undefined,
+      cliRunner: createClarusCliRunner({ apiUrl, credential }),
     })
   }
 }

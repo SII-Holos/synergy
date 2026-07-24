@@ -3,6 +3,8 @@ import type { RuntimeTaskAssignedEvent } from "./agent-tunnel-port"
 import { ClarusAssignmentPrompt } from "./assignment-prompt"
 import { ClarusAssignmentStore, type ClarusAssignment } from "./assignment-store"
 import { ClarusDeadlineAgenda } from "./deadline-agenda"
+import { preflightClarusAssignment } from "./assignment-preflight"
+import type { ClarusCliRunner } from "./cli-runner"
 
 function hash(...parts: string[]): string {
   const hasher = new Bun.CryptoHasher("sha256")
@@ -19,20 +21,26 @@ export namespace ClarusAssignmentRuntime {
     accountId: string
     event: RuntimeTaskAssignedEvent
     agentOverride?: string
+    cliRunner?: ClarusCliRunner
   }): Promise<{ assignment: ClarusAssignment; created: boolean }> {
     const title = ClarusAssignmentPrompt.title(input.event)
+    const basePrompt = ClarusAssignmentPrompt.userPrompt(input.accountId, input.event)
     let assignment: ClarusAssignment | undefined
     const result = await input.host.tasks.dispatch({
       externalProjectId: input.event.projectID,
       externalTaskId: input.event.taskID,
       deliveryKey: `clarus-assignment:${hash(input.accountId, input.event.projectID, input.event.taskID, input.event.runID)}`,
       title,
-      text: ClarusAssignmentPrompt.userPrompt(input.accountId, input.event),
+      text: basePrompt,
       agent: input.agentOverride,
       retryOfTaskID: input.event.retryOfTaskID,
       systemGuidance: {
         deliveryKey: `clarus-participation:${hash(input.accountId, input.event.projectID, input.event.taskID, input.event.runID)}`,
         text: ClarusAssignmentPrompt.participationGuidance(input.event),
+      },
+      prepare: async ({ scope }) => {
+        const preflight = await preflightClarusAssignment({ event: input.event, scope, runner: input.cliRunner })
+        return { text: preflight.promptSection ? `${basePrompt}\n\n${preflight.promptSection}` : basePrompt }
       },
       beforeWake: async ({ sessionID }) => {
         assignment = (
