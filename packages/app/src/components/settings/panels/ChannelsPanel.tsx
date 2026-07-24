@@ -19,8 +19,10 @@ const emptyFeishuLabel = { id: "settings.channels.feishu.empty", message: "No Fe
 export function ChannelsPanel(props: {
   channels: ChannelSettings
   providers: ProviderGroup[]
+  popoverLayer?: HTMLElement
   onChannelToggle: (index: number, value: boolean) => void
   onChannelModelChange: (index: number, model: string) => void
+  onChannelVariantChange: (index: number, variant: string) => void
 }) {
   const { _ } = useLingui()
   return (
@@ -32,8 +34,10 @@ export function ChannelsPanel(props: {
           accounts={props.channels.feishuAccounts}
           emptyLabel={_(emptyFeishuLabel)}
           providers={props.providers}
+          popoverLayer={props.popoverLayer}
           onToggle={props.onChannelToggle}
           onModelChange={props.onChannelModelChange}
+          onVariantChange={props.onChannelVariantChange}
         />
       </SettingsSection>
     </SettingsPage>

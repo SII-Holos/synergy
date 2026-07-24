@@ -373,6 +373,68 @@ describe("SessionProcessor context usage persistence", () => {
   })
 })
 describe("SessionProcessor tool input bounds", () => {
+  test("persists the canonical AI SDK input when streamed JSON differs", async () => {
+    let runningInput: Record<string, unknown> | undefined
+    const canonicalInput = {
+      command: "git status",
+      workdir: "/workspace",
+      description: "Inspect repository status",
+    }
+
+    const parts = await runSettlementScenario({
+      messageID: "msg_streamed_tool_input",
+      async updatePart(input) {
+        const part = "part" in input ? input.part : input
+        if (part.type === "tool" && part.state.status === "running") runningInput = part.state.input
+        return part
+      },
+      async *stream() {
+        yield { type: "tool-input-start", id: "call_streamed", toolName: "bash" }
+        yield {
+          type: "tool-input-delta",
+          id: "call_streamed",
+          delta: '{"command":"git status","workdir":"/tmp"}',
+        }
+        yield {
+          type: "tool-call",
+          toolCallId: "call_streamed",
+          toolName: "bash",
+          input: canonicalInput,
+        }
+      },
+    })
+
+    expect(runningInput).toEqual(canonicalInput)
+    const settledPart = firstTool(parts, "call_streamed")
+    expect(settledPart?.state.input).toEqual(canonicalInput)
+  })
+
+  test("bounds the canonical AI SDK input even when streamed JSON is smaller", async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_streamed_final_tool_input_limit",
+      async *stream() {
+        yield { type: "tool-input-start", id: "call_streamed_final_large", toolName: "edit" }
+        yield {
+          type: "tool-input-delta",
+          id: "call_streamed_final_large",
+          delta: '{"value":"small"}',
+        }
+        yield {
+          type: "tool-call",
+          toolCallId: "call_streamed_final_large",
+          toolName: "edit",
+          input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
+        }
+      },
+    })
+
+    const part = firstTool(parts, "call_streamed_final_large")
+    expect(part?.state.status).toBe("error")
+    if (part?.state.status === "error") {
+      expect(part.state.error).toContain("exceeded")
+    }
+  })
+
   test("terminates a tool part when streamed input exceeds the byte limit", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_tool_input_limit",

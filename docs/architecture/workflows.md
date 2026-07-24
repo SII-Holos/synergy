@@ -20,7 +20,7 @@ System control messages, non-root messages, and messages from continuation sourc
 
 ## Plan Enforcement
 
-Plan prompts instruct the agent to research and author a decision-complete Blueprint instead of executing the result. Tool exposure and execution policy enforce the read-only project boundary in addition to the prompt.
+Plan prompts instruct the agent to research and author a decision-complete Blueprint instead of executing the result. A finalized Blueprint uses eight shared semantic sections and selects one material implementation route: materially different owners, architectures, data flows, compatibility strategies, domain methods, artifact shapes, and user-visible behaviors must be resolved from evidence, established conventions, or a blocking user decision. Incidental execution mechanics remain delegated to the executor. Tool exposure and execution policy enforce the read-only project boundary in addition to the prompt.
 
 The Note Blueprint policy allows Blueprint creation and modification only in Plan or Lattice. It infers Blueprint intent from `kind` or Blueprint-specific fields and blocks edits to an existing Blueprint outside those workflows. Reading and searching remain available.
 

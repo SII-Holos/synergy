@@ -148,6 +148,8 @@ Automatic reasoning variants are derived from model identity (`model.id`, API mo
 
 `role_variant` selects a variant name for a model role only when the resolved model exposes that same variant. If a provider-managed reasoning model exposes no automatic variants, `role_variant: { "thinking": "max" }` does not synthesize provider options; the request uses the provider's default reasoning behavior. Explicit model `variants` configured under a provider model are merged after automatic defaults, so they can add or override named variants for that model.
 
+Feishu/Lark account configuration may pair an explicit `model` with `variant`. The Settings Channel model selector lists the same model variants used by model roles, and the selected variant is sent only while that account model is effective. A conversation-level `/model` override takes precedence and does not reuse the account model's variant.
+
 ## Control Profiles and Sandbox
 
 `controlProfile` selects `guarded`, `autonomous`, or `full_access`. Session and agent settings can override the global value through the resolution order documented in [Execution Boundaries](../architecture/execution-boundaries.md).
@@ -246,7 +248,7 @@ The global Runtime domain controls the process-wide Cortex subagent maximum:
 
 `cortex.maxConcurrentTasks` must be a positive integer and defaults to `8`. Changes made through global Settings or the global configuration API apply without restarting the runtime. Lowering the value leaves running tasks untouched and queues new work until capacity is available; raising it releases eligible queued work. Project configuration does not control this process-global scheduler.
 
-The configured value is the effective scheduler maximum. Memory pressure produces an advisory recommendation of four tasks, or two under critical pressure, without changing task admission. ArrayBuffer pressure enters those advisory states at 1 GiB and 2 GiB respectively. Settings and the Cortex concurrency status API report the recommendation separately so the user can decide whether to lower the configured value. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed value instead of editing it.
+The configured value is the scheduler maximum. Memory pressure temporarily lowers new-task admission to four tasks, or two under critical pressure; running tasks are not cancelled. The scheduler uses the shared session memory classification, with earlier ArrayBuffer pressure thresholds at 1 GiB and 2 GiB. Settings and the Cortex concurrency status API report both the configured maximum and the effective pressure-capped limit. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed maximum instead of editing it.
 
 ## GitHub Integration
 

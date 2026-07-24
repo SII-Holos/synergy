@@ -8,10 +8,8 @@ import { createMemo, createSignal, For, Show } from "solid-js"
 import { Portal } from "solid-js/web"
 import type { ModelKey, ModelsStore, ProviderGroup } from "../types"
 import { createProviderModelIndex, fieldLabel, modelRoleCopy, resolveModelRoleDraftDisplay } from "../model-role-draft"
+import { ModelVariantPicker } from "./ModelVariantPicker"
 
-const variantDefault = { id: "settings.modelRole.variant.default", message: "Default" }
-const variantDesc = { id: "settings.modelRole.variant.desc", message: "Use the role default" }
-const variantRoleDesc = { id: "settings.modelRole.variant.role", message: "Role variant" }
 const noAgentsUse = { id: "settings.modelRole.noAgentsUse", message: "No agents directly use this role." }
 const usedByLabel = { id: "settings.modelRole.usedBy", message: "Used by" }
 const fallbackChainLabel = { id: "settings.modelRole.fallbackChain", message: "Fallback" }
@@ -22,7 +20,6 @@ const searchModelsPlaceholder = {
   message: "Search models",
 }
 const noModelResultsLabel = { id: "settings.modelRole.noModelResults", message: "No model results" }
-const selectVariantLabel = { id: "settings.modelRole.selectVariant", message: "Select model variant" }
 const detailsAriaLabel = { id: "settings.modelRole.details.ariaLabel", message: "{label} details" }
 const systemAgentLabel = { id: "settings.modelRole.system", message: "system" }
 const overrideAgentLabel = { id: "settings.modelRole.override", message: "override" }
@@ -51,13 +48,6 @@ type ModelPickerOption =
       ref: ModelRef
     }
 
-type ModelVariantOption = {
-  key: string
-  label: string
-  description: string
-  value: string
-}
-
 export function ModelRoleRow(props: {
   summary: ModelRoleSummary
   value: string
@@ -72,7 +62,6 @@ export function ModelRoleRow(props: {
 }) {
   const { _ } = useLingui()
   const [pickerOpen, setPickerOpen] = createSignal(false)
-  const [variantPickerOpen, setVariantPickerOpen] = createSignal(false)
   const [detailsOpen, setDetailsOpen] = createSignal(false)
 
   const providerIndex = createMemo(() => createProviderModelIndex(props.providers))
@@ -117,26 +106,6 @@ export function ModelRoleRow(props: {
     if (!props.value) return options()[0]
     return options().find((option) => option.value === props.value)
   })
-
-  const variantOptions = createMemo<ModelVariantOption[]>(() => [
-    { key: "default", label: _(variantDefault), description: _(variantDesc), value: "" },
-    ...props.availableVariants.map((variant) => ({
-      key: variant,
-      label: variant,
-      description: _(variantRoleDesc),
-      value: variant,
-    })),
-  ])
-
-  const currentVariantOption = createMemo(() =>
-    variantOptions().find((option) => option.value === (props.roleVariant ?? "")),
-  )
-
-  function selectModelVariantOption(option: ModelVariantOption | undefined) {
-    if (!option) return
-    props.onVariantChange?.(option.value)
-    setVariantPickerOpen(false)
-  }
 
   function selectModelRoleOption(option: ModelPickerOption | undefined) {
     if (!option) return
@@ -256,42 +225,15 @@ export function ModelRoleRow(props: {
             )}
           </Show>
         </KobaltePopover>
-        <Show when={props.availableVariants.length > 0 && props.onVariantChange}>
-          <KobaltePopover
-            open={variantPickerOpen()}
-            onOpenChange={setVariantPickerOpen}
-            placement="bottom-end"
-            gutter={8}
-          >
-            <KobaltePopover.Trigger type="button" class="settings-model-variant" aria-label={_(selectVariantLabel)}>
-              <span class="settings-model-variant-label">{currentVariantOption()?.label ?? _(variantDefault)}</span>
-              <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
-            </KobaltePopover.Trigger>
-            <Show when={props.popoverLayer}>
-              {(layer) => (
-                <Portal mount={layer()}>
-                  <KobaltePopover.Content class="settings-model-variant-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                    <KobaltePopover.Title class="sr-only">{_(selectVariantLabel)}</KobaltePopover.Title>
-                    <List<ModelVariantOption>
-                      class="settings-model-picker-list"
-                      key={(option) => option.key}
-                      items={variantOptions}
-                      current={currentVariantOption()}
-                      filterKeys={["label", "description", "value"]}
-                      onSelect={selectModelVariantOption}
-                    >
-                      {(option) => (
-                        <div class="settings-model-option">
-                          <span class="settings-model-option-title">{option.label}</span>
-                          <span class="settings-model-option-detail">{option.description}</span>
-                        </div>
-                      )}
-                    </List>
-                  </KobaltePopover.Content>
-                </Portal>
-              )}
-            </Show>
-          </KobaltePopover>
+        <Show when={props.onVariantChange}>
+          {(onVariantChange) => (
+            <ModelVariantPicker
+              value={props.roleVariant}
+              availableVariants={props.availableVariants}
+              popoverLayer={props.popoverLayer}
+              onChange={onVariantChange()}
+            />
+          )}
         </Show>
       </div>
     </div>

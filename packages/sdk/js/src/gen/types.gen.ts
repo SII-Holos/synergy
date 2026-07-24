@@ -2907,6 +2907,10 @@ export type ChannelFeishuAccountConfig = {
    */
   model?: string
   /**
+   * Model variant to use with this account model (e.g. low, high, max)
+   */
+  variant?: string
+  /**
    * Resolve sender display names via Feishu contact API
    */
   resolveSenderNames?: boolean
@@ -5487,11 +5491,11 @@ export type CortexConcurrencyStatus = {
    */
   effective: number
   /**
-   * Advisory limit suggested by current memory pressure; never used for task admission
+   * Memory-pressure ceiling applied to new task admission
    */
   memoryPressureLimit: number | null
   /**
-   * Reason for the advisory memory-pressure limit
+   * Reason for the memory-pressure admission ceiling
    */
   memoryPressureReason: "normal" | "memory_pressure" | "critical_memory_pressure"
   /**
