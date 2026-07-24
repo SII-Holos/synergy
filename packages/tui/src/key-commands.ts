@@ -15,11 +15,8 @@ export type KeyContext = {
 
 export type KeyCommand =
   | "abort-session"
-  | "blur-composer"
   | "create-session"
   | "dismiss-modal"
-  | "focus-next"
-  | "focus-previous"
   | "history-next"
   | "history-previous"
   | "insert-newline"
@@ -34,9 +31,7 @@ function exactModifier(key: KeyInput, modifier: "ctrl" | "shift") {
 
 export function resolveKeyCommand(key: KeyInput, context: KeyContext): KeyCommand | undefined {
   if (key.name === "escape" && !key.ctrl && !key.alt && !key.meta) {
-    if (context.modalOpen) return "dismiss-modal"
-    if (context.composerFocused) return "blur-composer"
-    return undefined
+    return context.modalOpen ? "dismiss-modal" : undefined
   }
 
   if (key.name === "c" && exactModifier(key, "ctrl")) {
@@ -46,10 +41,6 @@ export function resolveKeyCommand(key: KeyInput, context: KeyContext): KeyComman
   if (key.name === "n" && exactModifier(key, "ctrl")) return "create-session"
   if (key.name === "p" && exactModifier(key, "ctrl") && context.sessionActive) return "toggle-pin"
   if (key.name === "k" && exactModifier(key, "ctrl")) return "open-command-palette"
-
-  if (key.name === "tab" && !key.ctrl && !key.alt && !key.meta) {
-    return key.shift ? "focus-previous" : "focus-next"
-  }
 
   if (!context.composerFocused || key.ctrl || key.alt || key.meta) return undefined
   if (key.name === "return") return key.shift ? "insert-newline" : "send-input"

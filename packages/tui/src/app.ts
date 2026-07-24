@@ -242,40 +242,6 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     minHeight: 0,
     flexDirection: "row",
   })
-  const sidebar = new BoxRenderable(renderer, {
-    id: "tui-sidebar",
-    width: 30,
-    minWidth: 24,
-    maxWidth: 38,
-    flexShrink: 0,
-    border: ["right"],
-    borderColor: COLOR.borderHairline,
-    backgroundColor: COLOR.surfaceInset,
-    flexDirection: "column",
-    padding: 1,
-  })
-  const sessionTitle = new TextRenderable(renderer, {
-    content: "SESSIONS",
-    fg: COLOR.textWeaker,
-    attributes: 1,
-  })
-  const sessionSelect = new SelectRenderable(renderer, {
-    id: "tui-sessions",
-    flexGrow: 1,
-    minHeight: 2,
-    options: [],
-    showDescription: true,
-    showScrollIndicator: true,
-    wrapSelection: true,
-    textColor: COLOR.text,
-    descriptionColor: COLOR.textWeaker,
-    selectedBackgroundColor: COLOR.selected,
-    selectedTextColor: COLOR.selectedText,
-    focusedBackgroundColor: COLOR.surface,
-    focusedTextColor: COLOR.textStrong,
-  })
-  sidebar.add(sessionTitle)
-  sidebar.add(sessionSelect)
 
   const main = new BoxRenderable(renderer, {
     id: "tui-main",
@@ -333,12 +299,11 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     focusedBackgroundColor: COLOR.surfaceRaised,
     cursorColor: COLOR.interactive,
   })
-  composer.traits = { capture: ["escape", "submit", "tab"] }
+  composer.traits = { capture: ["escape", "submit"] }
   composerBox.add(composer)
   main.add(timeline)
   main.add(resources)
   main.add(composerBox)
-  body.add(sidebar)
   body.add(main)
 
   const footer = new BoxRenderable(renderer, {
@@ -351,7 +316,7 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
   })
   const statusText = new TextRenderable(renderer, { content: "offline", fg: COLOR.textWeaker })
   const helpText = new TextRenderable(renderer, {
-    content: "Ctrl+N new · Ctrl+P pin · Ctrl+C abort/quit · Tab focus",
+    content: "Ctrl+N new · Ctrl+P pin · Ctrl+K commands · /sessions switch",
     fg: COLOR.textSubtle,
   })
   footer.add(statusText)
@@ -447,20 +412,6 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     }
     const question = activeQuestions()[0]
     modal = question ? { kind: "question", request: question, index: 0, answers: [] } : undefined
-  }
-
-  const renderSessions = () => {
-    const optionsList: SelectOption[] = state.sessions.map((session) => ({
-      name: `${statusSymbol(state, session.id)} ${sanitizeTerminalLabel(session.title, "Untitled session")}`,
-      description: sessionDescription(session),
-      value: session.id,
-    }))
-    sessionSelect.options = optionsList
-    const selectedIndex = Math.max(
-      0,
-      state.sessions.findIndex((session) => session.id === state.activeSessionID),
-    )
-    if (optionsList.length) sessionSelect.setSelectedIndex(selectedIndex)
   }
 
   const resetMessages = () => {
@@ -594,6 +545,7 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
   const renderModal = () => {
     overlay.visible = modal !== undefined
     if (!modal) return
+    let selectedIndex = 0
     overlay.borderColor = COLOR.borderStrong
     modalTitle.fg = COLOR.textStrong
     if (modal.kind === "sessions") {
@@ -604,6 +556,10 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
         description: sessionDescription(session),
         value: session.id,
       }))
+      selectedIndex = Math.max(
+        0,
+        state.sessions.findIndex((session) => session.id === state.activeSessionID),
+      )
     } else if (modal.kind === "commands") {
       modalTitle.content = "COMMAND PALETTE"
       modalBody.content = "Choose a command. It will be inserted into the composer for review."
@@ -652,7 +608,7 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
       }
       modalSelect.options = questionOptions
     }
-    modalSelect.setSelectedIndex(0)
+    modalSelect.setSelectedIndex(selectedIndex)
     modalSelect.focus()
   }
 
@@ -663,7 +619,6 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     const compact = renderer.width < compactBreakpoint
     const compactChanged = compact !== compactLayout
     compactLayout = compact
-    sidebar.visible = !compact
     scopeText.content = compact
       ? `${state.sessions.length} sessions`
       : `${state.scopeID ? sanitizeTerminalLabel(state.scopeID.slice(0, 12), "unknown scope") : "no scope"} · ${state.sessions.length} sessions`
@@ -684,12 +639,11 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
       ? "↑↓ navigate · Enter choose · Esc close"
       : compact
         ? busy
-          ? "Ctrl+C abort · Ctrl+K commands · Tab sessions"
-          : "Ctrl+K commands · Tab sessions · Ctrl+C quit"
+          ? "Ctrl+C abort · /sessions switch"
+          : "Ctrl+K commands · /sessions switch · Ctrl+C quit"
         : busy
-          ? "Ctrl+C abort · Ctrl+K commands · Tab focus"
-          : "Ctrl+N new · Ctrl+P pin · Ctrl+K commands · Tab focus"
-    renderSessions()
+          ? "Ctrl+C abort · Ctrl+K commands · /sessions switch"
+          : "Ctrl+N new · Ctrl+P pin · Ctrl+K commands · /sessions switch"
     refreshMessages(compactChanged)
     renderResources()
     renderModal()
@@ -782,45 +736,23 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     renderModal()
   })
 
-  sessionSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_index: number, option: SelectOption) => {
-    const sessionID = String(option.value)
-    if (sessionID === state.activeSessionID) {
-      composer.focus()
-      return
-    }
-    run(() => controller.selectSession(sessionID))
-  })
-
   const submitComposer = () => {
     const value = composer.plainText
     const normalized = value.trim()
     if (!normalized) return
     history.record(normalized)
     composer.clear()
+    if (normalized === "/sessions") {
+      modal = { kind: "sessions" }
+      renderModal()
+      return
+    }
     if (normalized.startsWith("/")) {
       const [command = "", ...argumentsList] = normalized.slice(1).split(/\s+/)
       run(() => controller.sendCommand(command, argumentsList.join(" ")))
     } else {
       run(() => controller.sendInput(normalized))
     }
-  }
-
-  const focusNext = (_reverse: boolean) => {
-    if (modal) {
-      modalSelect.focus()
-      return
-    }
-    if (!state.sessions.length) {
-      composer.focus()
-      return
-    }
-    if (!sidebar.visible) {
-      modal = { kind: "sessions" }
-      renderModal()
-      return
-    }
-    if (composer.focused) sessionSelect.focus()
-    else composer.focus()
   }
 
   const onKey = (key: KeyEvent) => {
@@ -865,16 +797,6 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
         return
       case "dismiss-modal":
         dismissModal()
-        return
-      case "blur-composer":
-        composer.blur()
-        if (sidebar.visible) sessionSelect.focus()
-        return
-      case "focus-next":
-        focusNext(false)
-        return
-      case "focus-previous":
-        focusNext(true)
         return
       case "send-input":
         submitComposer()

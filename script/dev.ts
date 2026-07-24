@@ -17,6 +17,7 @@ export interface DevProcessSpec {
     | "app"
     | "desktop"
     | "browser-host"
+    | "tui"
     | "send"
     | "build"
     | "install"
@@ -28,6 +29,7 @@ export interface DevProcessSpec {
   env?: Record<string, string | undefined>
   waitUrl?: string
   waitTimeoutMs?: number | null
+  interactive?: boolean
 }
 
 export interface DevPlan {
@@ -147,6 +149,7 @@ Commands:
   app                     Start the Vite web app against an existing server
   web                     Start server + Vite web app
   desktop                 Start the Electron desktop app for development
+  tui                     Start the source server + interactive terminal UI
   send <message...>       Send a one-off prompt through the source CLI
   build app|desktop       Build a specific development target
   help                    Show this help
@@ -155,6 +158,7 @@ Common workflows:
   bun dev prepare
   bun dev web
   bun dev desktop
+  bun dev tui
   bun dev app --attach http://localhost:4096 --open
 
 Options:
@@ -163,6 +167,10 @@ Options:
   --app-port <port>       Vite app port for web/desktop (default: 3000)
   --hostname <host>       Server and Vite bind hostname (default: 127.0.0.1)
   --attach <url>          Reuse an existing server instead of starting one
+  --directory <path>      Directory used to resolve the TUI Scope
+  --scope <id>            Explicit Scope ID for the TUI
+  --session <id>          Session opened initially by the TUI
+  --theme <mode>          TUI theme: system, light, or dark (default: system)
   --open                  Open the browser for bun dev app
   --no-open               Do not open the browser for bun dev web
   --managed               Start desktop in managed-server mode after rebuilding the app
@@ -224,6 +232,29 @@ function appProcess(input: {
       VITE_SYNERGY_CALLBACK_URL: `${server}/holos/callback`,
     },
     waitUrl: appUrl(input.hostname, input.appPort),
+  }
+}
+
+function tuiProcess(input: {
+  repoRoot: string
+  launchCwd: string
+  bunPath: string
+  attachUrl: string
+  directory?: string
+  scopeID?: string
+  sessionID?: string
+  theme: string
+}): DevProcessSpec {
+  const command = [input.bunPath, "run", "--conditions=browser", "./src/index.ts", "tui", "--attach", input.attachUrl]
+  if (input.scopeID) command.push("--scope", input.scopeID)
+  else command.push("--directory", input.directory ?? input.launchCwd)
+  if (input.sessionID) command.push("--session", input.sessionID)
+  command.push("--theme", input.theme)
+  return {
+    label: "tui",
+    command,
+    cwd: directories(input.repoRoot).synergy,
+    interactive: true,
   }
 }
 
@@ -382,6 +413,43 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         ...(attach ? [] : [{ label: "server", port: serverPort, host: displayHost(hostname) }]),
         { label: "app", port: appPort, host: displayHost(hostname) },
       ],
+      requiredServers: attach ? [attachUrl] : [],
+    }
+  }
+
+  if (command === "tui") {
+    const serverPort = numberFlag(parsed.flags, "server-port", DEFAULT_SERVER_PORT)
+    const hostname = stringFlag(parsed.flags, "hostname", DEFAULT_HOSTNAME)
+    const attach = typeof parsed.flags.attach === "string" ? normalizeUrl(parsed.flags.attach) : undefined
+    const attachUrl = attach ?? serverUrl(hostname, serverPort)
+    const scopeID = typeof parsed.flags.scope === "string" ? parsed.flags.scope : undefined
+    const directory = typeof parsed.flags.directory === "string" ? parsed.flags.directory : undefined
+    const sessionID = typeof parsed.flags.session === "string" ? parsed.flags.session : undefined
+    const theme = stringFlag(parsed.flags, "theme", "system")
+    const processes = [
+      ...(attach
+        ? []
+        : [
+            serverProcess({
+              repoRoot,
+              launchCwd,
+              bunPath,
+              port: serverPort,
+              hostname,
+              printLogs: boolFlag(parsed.flags, "print-logs"),
+              browserHostSecret,
+            }),
+          ]),
+      tuiProcess({ repoRoot, launchCwd, bunPath, attachUrl, directory, scopeID, sessionID, theme }),
+    ]
+    return {
+      kind: "run",
+      mode: "parallel",
+      command,
+      help,
+      exitCode: 0,
+      processes,
+      requiredPorts: attach ? [] : [{ label: "server", port: serverPort, host: displayHost(hostname) }],
       requiredServers: attach ? [attachUrl] : [],
     }
   }
@@ -575,17 +643,28 @@ function prefixedStream(
 
 export function spawnDevProcess(spec: DevProcessSpec) {
   const owner = randomBytes(16).toString("hex")
-  const proc = Bun.spawn(spec.command, {
-    cwd: spec.cwd,
-    env: { ...process.env, ...(spec.env ?? {}), [DEV_PROCESS_OWNER_ENV]: owner },
-    stdin: "inherit",
-    stdout: "pipe",
-    stderr: "pipe",
-    detached: process.platform !== "win32",
-  })
+  const proc = spec.interactive
+    ? Bun.spawn(spec.command, {
+        cwd: spec.cwd,
+        env: { ...process.env, ...(spec.env ?? {}), [DEV_PROCESS_OWNER_ENV]: owner },
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+        detached: process.platform !== "win32",
+      })
+    : Bun.spawn(spec.command, {
+        cwd: spec.cwd,
+        env: { ...process.env, ...(spec.env ?? {}), [DEV_PROCESS_OWNER_ENV]: owner },
+        stdin: "inherit",
+        stdout: "pipe",
+        stderr: "pipe",
+        detached: process.platform !== "win32",
+      })
   devProcessOwners.set(proc, owner)
-  prefixedStream(proc.stdout, spec.label, (chunk) => process.stdout.write(chunk))
-  prefixedStream(proc.stderr, spec.label, (chunk) => process.stderr.write(chunk))
+  if (proc.stdout instanceof ReadableStream)
+    prefixedStream(proc.stdout, spec.label, (chunk) => process.stdout.write(chunk))
+  if (proc.stderr instanceof ReadableStream)
+    prefixedStream(proc.stderr, spec.label, (chunk) => process.stderr.write(chunk))
   return proc
 }
 

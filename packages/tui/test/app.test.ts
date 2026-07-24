@@ -182,7 +182,7 @@ async function settle() {
 }
 
 describe("Synergy TUI app", () => {
-  test("renders sessions, messages, resources, and live status", async () => {
+  test("renders messages, resources, and live status without a persistent session sidebar", async () => {
     const adapter = new UiAdapter(bootstrap([session("s1", 1, "First session"), session("s2", 2, "第二个会话")]), {
       s2: page("s2", "Hello **Synergy** 你好 👋🏽"),
     })
@@ -190,7 +190,7 @@ describe("Synergy TUI app", () => {
     const frame = harness.captureCharFrame()
 
     expect(frame).toContain("HOLOS / SYNERGY")
-    expect(frame).toContain("第二个会话")
+    expect(harness.renderer.root.findDescendantById("tui-sidebar")).toBeUndefined()
     expect(frame).toContain("› YOU")
     expect(frame).toContain("Hello Synergy 你好 👋🏽")
     expect(frame).toContain("Ship TUI")
@@ -232,17 +232,14 @@ describe("Synergy TUI app", () => {
     const adapter = new UiAdapter(bootstrap([session("s1", 1, "Light session")]))
     const harness = await createHarness(adapter, 110, 32, undefined, "light")
     const root = harness.renderer.root.findDescendantById("tui-root")
-    const sidebar = harness.renderer.root.findDescendantById("tui-sidebar")
     const composerBox = harness.renderer.root.findDescendantById("tui-composer-box")
 
     expect(root).toBeInstanceOf(BoxRenderable)
-    expect(sidebar).toBeInstanceOf(BoxRenderable)
     expect(composerBox).toBeInstanceOf(BoxRenderable)
+    expect(harness.renderer.root.findDescendantById("tui-sidebar")).toBeUndefined()
     if (!(root instanceof BoxRenderable)) throw new Error("root not found")
-    if (!(sidebar instanceof BoxRenderable)) throw new Error("sidebar not found")
     if (!(composerBox instanceof BoxRenderable)) throw new Error("composer box not found")
     expect(root.backgroundColor.equals(RGBA.fromHex("#FAFAFA"))).toBe(true)
-    expect(sidebar.backgroundColor.equals(RGBA.fromHex("#F4F4F5"))).toBe(true)
     expect(composerBox.backgroundColor.equals(RGBA.fromHex("#FFFFFF"))).toBe(true)
     harness.app.stop()
   })
@@ -264,7 +261,11 @@ describe("Synergy TUI app", () => {
     )
     const harness = await createHarness(adapter)
 
+    await harness.mockInput.typeText("/sessions")
+    harness.mockInput.pressEnter()
+    await harness.flush()
     expect(harness.captureCharFrame()).toContain("Untitled session")
+    harness.mockInput.pressEscape()
     harness.mockInput.pressKey("k", { ctrl: true })
     await harness.flush()
     const frame = harness.captureCharFrame()
@@ -295,14 +296,17 @@ describe("Synergy TUI app", () => {
     harness.app.stop()
   })
 
-  test("switches sessions from the sidebar and adapts to compact width", async () => {
+  test("opens and switches sessions through the local /sessions command at every width", async () => {
     const adapter = new UiAdapter(bootstrap([session("s1", 1, "First"), session("s2", 2, "Second")]))
     const harness = await createHarness(adapter)
-    const sessions = harness.renderer.root.findDescendantById("tui-sessions")
-    expect(sessions).toBeInstanceOf(SelectRenderable)
-    if (!(sessions instanceof SelectRenderable)) throw new Error("session select not found")
 
-    harness.mockInput.pressTab()
+    expect(harness.renderer.root.findDescendantById("tui-sidebar")).toBeUndefined()
+    await harness.mockInput.typeText("/sessions")
+    harness.mockInput.pressEnter()
+    await harness.flush()
+    expect(harness.captureCharFrame()).toContain("SESSIONS")
+    expect(adapter.calls.some((call) => call.startsWith("command:") && call.includes(":sessions:"))).toBe(false)
+
     harness.mockInput.pressArrow("down")
     harness.mockInput.pressEnter()
     await settle()
@@ -312,15 +316,10 @@ describe("Synergy TUI app", () => {
 
     harness.resize(70, 24)
     await harness.flush()
-    expect(harness.captureCharFrame()).not.toContain("SESSIONS")
-    harness.mockInput.pressTab()
+    await harness.mockInput.typeText("/sessions")
+    harness.mockInput.pressEnter()
     await harness.flush()
     expect(harness.captureCharFrame()).toContain("SESSIONS")
-
-    harness.mockInput.pressEnter()
-    await settle()
-    expect(harness.controller.getState().activeSessionID).toBe("s2")
-    expect(adapter.calls).toContain("messages:s2")
     harness.app.stop()
   })
 

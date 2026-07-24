@@ -20,6 +20,7 @@ bun dev app --open
 bun dev web
 bun dev desktop
 bun dev desktop --managed
+bun dev tui
 bun dev send "your message"
 bun dev build app
 bun dev build desktop
@@ -32,9 +33,10 @@ bun dev build desktop
 | `web`               | source server, Vite app, and remote Browser Host                          |
 | `desktop`           | source server, Vite app, and Electron in external-server mode             |
 | `desktop --managed` | build plugin/app, then Electron with production-style managed server mode |
+| `tui`               | source server followed by the interactive source terminal client          |
 | `send`              | one-off source CLI execution                                              |
 
-Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--app-port`, `--hostname`, and `--attach` for combined Web or Desktop flows. `--hostname` binds both the source server and Vite app in Web and external Desktop modes. The orchestrator checks required ports and target health before starting dependent processes. Parallel and serial modes terminate complete descendant process trees, including nested package scripts that create another process group, so stopping the orchestrator does not leave servers or Electron hosts running.
+Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--app-port`, `--hostname`, and `--attach` for combined flows. `--hostname` binds the source server and any applicable Vite app. The orchestrator checks required ports and target health before starting dependent processes. Parallel and serial modes terminate complete descendant process trees, including nested package scripts that create another process group, so stopping the orchestrator does not leave an owned source server behind.
 
 Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Its server also watches the Electron parent and shuts down if Electron is force-terminated without running normal quit handlers. Normal daily Desktop work should use external mode for Vite reload speed.
 
@@ -42,19 +44,19 @@ The development orchestrator tags each spawned command so shutdown can recover d
 
 ### Terminal UI
 
-The TUI is a client of an existing server; there is no separate `bun dev tui` orchestrator mode. Start the source server in one terminal:
+Run the source TUI and a source server together from the repository root:
 
 ```bash
-bun dev server
+bun dev tui
 ```
 
-Then run the TUI source in another terminal from the repository root:
+The orchestrator waits for the source server health endpoint before giving the TUI direct ownership of terminal stdin, stdout, and stderr. Use `--server-port` and `--hostname` for the local server. Use `--directory`, `--scope`, `--session`, and `--theme system|light|dark` for TUI startup selection. To connect only the source TUI to an existing runtime without starting another server:
 
 ```bash
-bun -e 'import { runTui } from "./packages/tui/src/index.ts"; await runTui({ baseUrl: "http://127.0.0.1:4096", directory: process.cwd() })'
+bun dev tui --attach http://127.0.0.1:4097
 ```
 
-Use `synergy tui --attach http://127.0.0.1:4096` instead when testing the installed TUI package against the source server. Run TUI package checks with the commands in [Tests](#tests).
+The installed `synergy tui --attach http://127.0.0.1:4096` remains the product CLI path for testing the installed TUI package against a source server. Run TUI package checks with the commands in [Tests](#tests).
 
 ## Developing Synergy with Synergy
 

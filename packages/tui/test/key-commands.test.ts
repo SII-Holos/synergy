@@ -27,17 +27,17 @@ describe("key command resolution", () => {
     expect(resolveKeyCommand({ name: "down" }, context)).toBe("history-next")
   })
 
-  test("maps global session and navigation shortcuts", () => {
+  test("maps global session shortcuts without reserving Tab for hidden navigation", () => {
     expect(resolveKeyCommand({ name: "n", ctrl: true }, context)).toBe("create-session")
     expect(resolveKeyCommand({ name: "p", ctrl: true }, context)).toBe("toggle-pin")
     expect(resolveKeyCommand({ name: "k", ctrl: true }, context)).toBe("open-command-palette")
-    expect(resolveKeyCommand({ name: "tab" }, context)).toBe("focus-next")
-    expect(resolveKeyCommand({ name: "tab", shift: true }, context)).toBe("focus-previous")
+    expect(resolveKeyCommand({ name: "tab" }, context)).toBeUndefined()
+    expect(resolveKeyCommand({ name: "tab", shift: true }, context)).toBeUndefined()
   })
 
-  test("dismisses a modal before blurring the composer", () => {
+  test("reserves Escape for dismissing modal interactions", () => {
     expect(resolveKeyCommand({ name: "escape" }, { ...context, modalOpen: true })).toBe("dismiss-modal")
-    expect(resolveKeyCommand({ name: "escape" }, context)).toBe("blur-composer")
+    expect(resolveKeyCommand({ name: "escape" }, context)).toBeUndefined()
   })
 
   test("does not hijack ordinary text or unsupported combinations", () => {

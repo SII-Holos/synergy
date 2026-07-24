@@ -40,6 +40,7 @@ bun dev prepare
 bun dev server
 bun dev app --open
 bun dev web
+bun dev tui
 bun dev desktop
 bun dev desktop --managed
 bun dev send "request"

@@ -51,6 +51,61 @@ describe("dev orchestrator planner", () => {
     ])
   })
 
+  test("plans TUI development as a source server followed by the interactive source client", () => {
+    const plan = createDevPlan(["tui"], options)
+
+    expect(plan.kind).toBe("run")
+    expect(plan.mode).toBe("parallel")
+    expect(plan.processes.map((process) => process.label)).toEqual(["server", "tui"])
+    expect(plan.requiredPorts).toEqual([{ label: "server", port: 4096, host: "127.0.0.1" }])
+    expect(plan.requiredServers).toEqual([])
+    expect(plan.processes[0]?.waitUrl).toBe("http://127.0.0.1:4096/global/health")
+    expect(plan.processes[1]).toMatchObject({
+      label: "tui",
+      cwd: "/repo/packages/synergy",
+      interactive: true,
+    })
+    expect(plan.processes[1]?.command).toEqual([
+      "/bun",
+      "run",
+      "--conditions=browser",
+      "./src/index.ts",
+      "tui",
+      "--attach",
+      "http://127.0.0.1:4096",
+      "--directory",
+      "/workspace",
+      "--theme",
+      "system",
+    ])
+  })
+
+  test("plans an attached TUI without starting another server", () => {
+    const plan = createDevPlan(
+      ["tui", "--attach", "https://remote.example/", "--scope", "scope-1", "--session", "session-1", "--theme", "dark"],
+      options,
+    )
+
+    expect(plan.processes.map((process) => process.label)).toEqual(["tui"])
+    expect(plan.requiredPorts).toEqual([])
+    expect(plan.requiredServers).toEqual(["https://remote.example"])
+    expect(plan.processes[0]?.command).toEqual([
+      "/bun",
+      "run",
+      "--conditions=browser",
+      "./src/index.ts",
+      "tui",
+      "--attach",
+      "https://remote.example",
+      "--scope",
+      "scope-1",
+      "--session",
+      "session-1",
+      "--theme",
+      "dark",
+    ])
+  })
+
   test("plans desktop development in external mode by default", () => {
     const plan = createDevPlan(["desktop"], options)
 

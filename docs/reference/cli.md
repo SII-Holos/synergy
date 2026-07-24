@@ -73,21 +73,21 @@ synergy tui --attach http://localhost:4097 --theme dark
 
 `tui` is an interactive client and does not start a server. It requires terminal stdin and stdout, connects to `http://localhost:4096` by default, and uses the current directory to resolve the active Scope unless `--scope` is supplied. `--directory` and `--scope` are mutually exclusive. `--session` opens a specific session initially, and `--theme system|light|dark` selects terminal colors; `system` uses the terminal-reported background when available.
 
-The client renders a responsive session list, streamed Markdown and reasoning, tool activity and diffs, active Todo/DAG summaries, runtime commands, permissions, and questions. It subscribes before bootstrap, replays sequenced gaps after reconnect, and performs a full Scope resync when the runtime epoch or replay journal requires it.
+The client renders the active conversation, streamed Markdown and reasoning, tool activity and diffs, active Todo/DAG summaries, runtime commands, permissions, and questions. It does not reserve screen space for a persistent session sidebar: enter `/sessions` to open the session picker and switch conversations at any terminal width. The client subscribes before bootstrap, replays sequenced gaps after reconnect, and performs a full Scope resync when the runtime epoch or replay journal requires it.
 
-| Key                 | Action                                                                                |
-| ------------------- | ------------------------------------------------------------------------------------- |
-| `Enter`             | Send the composer text or execute a leading `/command`                                |
-| `Shift+Enter`       | Insert a newline                                                                      |
-| `Up` / `Down`       | Navigate input history at the first/last composer line                                |
-| `Tab` / `Shift+Tab` | Move between composer and sessions; compact terminals open the session picker         |
-| `Ctrl+K`            | Open the runtime command palette and insert a selected command for review             |
-| `Ctrl+N`            | Create and select a new session                                                       |
-| `Ctrl+P`            | Pin or unpin the active session                                                       |
-| `Ctrl+C`            | Abort active work when the session is busy; otherwise quit and restore terminal state |
-| `Escape`            | Dismiss a modal, or move focus out of the composer                                    |
+| Key / command | Action                                                                                |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `Enter`       | Send the composer text or execute a leading `/command`                                |
+| `Shift+Enter` | Insert a newline                                                                      |
+| `Up` / `Down` | Navigate input history at the first/last composer line                                |
+| `/sessions`   | Open the session picker and switch the active session                                 |
+| `Ctrl+K`      | Open the runtime command palette and insert a selected command for review             |
+| `Ctrl+N`      | Create and select a new session                                                       |
+| `Ctrl+P`      | Pin or unpin the active session                                                       |
+| `Ctrl+C`      | Abort active work when the session is busy; otherwise quit and restore terminal state |
+| `Escape`      | Dismiss the active modal                                                              |
 
-The footer presents context-sensitive hints rather than every binding at once. Wide idle sessions show create, pin, command, and focus actions; compact terminals prioritize the session picker, and busy sessions prioritize abort. Modal overlays replace the normal hints with navigation controls. The connection indicator uses `●` for live, `○` for offline, and `◐` for transitional states. The bindings above do not change when a hint is hidden.
+The footer presents context-sensitive hints rather than every binding at once. Idle sessions show create, pin, command, and `/sessions` actions as space allows; busy sessions prioritize abort. Modal overlays replace the normal hints with navigation controls. The connection indicator uses `●` for live, `○` for offline, and `◐` for transitional states. The bindings above do not change when a hint is hidden.
 
 Permission modals expose allow-once, allow-for-session, persistent allow, and reject decisions supported by the runtime. Question modals support single and multiple selection. All runtime and model strings are sanitized before terminal rendering.
 
