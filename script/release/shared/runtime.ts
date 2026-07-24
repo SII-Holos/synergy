@@ -2,6 +2,7 @@ import { $ } from "bun"
 import path from "path"
 import { currentRepo } from "../../shared/current-repo"
 import {
+  FIXED_REGISTRY_PACKAGES,
   NPM_REGISTRY,
   RELEASE_STATE_DIR,
   RELEASE_TAG_PREFIX,
@@ -10,11 +11,10 @@ import {
   REPO_ROOT,
 } from "./packages"
 
-const SYNERGY_NPM_PACKAGE = "@ericsanchezok/synergy"
-
 const rootPkgPath = path.join(REPO_ROOT, "package.json")
 const rootPkg = await Bun.file(rootPkgPath).json()
 const expectedBunVersion = rootPkg.packageManager?.split("@")[1]
+let registryRequestSequence = 0
 
 if (!expectedBunVersion) {
   throw new Error("packageManager field not found in root package.json")
@@ -80,7 +80,7 @@ export async function retry<T>(
 }
 
 export async function npmVersionExists(name: string, version: string) {
-  const response = await fetch(`${NPM_REGISTRY}/${name}/${version}`)
+  const response = await npmRegistryFetch(`/${name}/${version}`)
   return response.ok
 }
 
@@ -108,7 +108,7 @@ export async function waitForNpmVersion(
 }
 
 export async function npmDistTagList(name: string): Promise<Record<string, string>> {
-  const response = await fetch(`${NPM_REGISTRY}/-/package/${name}/dist-tags`)
+  const response = await npmRegistryFetch(`/-/package/${name}/dist-tags`)
   if (!response.ok) {
     throw new Error(`failed to fetch dist-tags for ${name}: ${response.status} ${response.statusText}`)
   }
@@ -147,18 +147,61 @@ export async function npmPromoteToLatest(name: string, version: string) {
   await retry(() => $`npm dist-tag add ${`${name}@${version}`} latest`)
 }
 
-export async function computeStableVersion(bump: string) {
-  const response = await fetch(`${NPM_REGISTRY}/${SYNERGY_NPM_PACKAGE}/latest`)
+function npmRegistryUrl(pathname: string) {
+  const url = new URL(pathname, NPM_REGISTRY)
+  registryRequestSequence += 1
+  url.searchParams.set("cache-bust", `${Date.now()}-${registryRequestSequence}`)
+  return url
+}
+
+async function npmRegistryFetch(pathname: string) {
+  return await fetch(npmRegistryUrl(pathname), {
+    cache: "no-store",
+    headers: {
+      "cache-control": "no-cache, no-store",
+      pragma: "no-cache",
+    },
+  })
+}
+
+export async function npmPackageVersions(name: string): Promise<string[]> {
+  const response = await npmRegistryFetch(`/${name}`)
+  if (response.status === 404) return []
   if (!response.ok) {
-    throw new Error(`failed to fetch latest stable version: ${response.status} ${response.statusText}`)
+    throw new Error(`failed to fetch published versions for ${name}: ${response.status} ${response.statusText}`)
   }
-  const data = (await response.json()) as { version?: string }
-  const version = data.version ?? "0.1.0"
-  const [major = 0, minor = 0, patch = 0] = version.split(".").map((item) => Number(item) || 0)
+  const data = (await response.json()) as { versions?: Record<string, unknown> }
+  return Object.keys(data.versions ?? {})
+}
+
+function parseStableVersion(version: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version)
+  if (!match) return null
+  return [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+function compareStableVersions(left: [number, number, number], right: [number, number, number]) {
+  return left[0] - right[0] || left[1] - right[1] || left[2] - right[2]
+}
+
+export function bumpHighestStableVersion(versions: Iterable<string>, bump: string) {
+  let highest: [number, number, number] = [0, 1, 0]
+  for (const version of versions) {
+    const parsed = parseStableVersion(version)
+    if (parsed && compareStableVersions(parsed, highest) > 0) {
+      highest = parsed
+    }
+  }
+  const [major, minor, patch] = highest
   const normalized = bump.toLowerCase()
   if (normalized === "major") return `${major + 1}.0.0`
   if (normalized === "minor") return `${major}.${minor + 1}.0`
   return `${major}.${minor}.${patch + 1}`
+}
+
+export async function computeStableVersion(bump: string) {
+  const publishedVersions = await Promise.all(FIXED_REGISTRY_PACKAGES.map((name) => npmPackageVersions(name)))
+  return bumpHighestStableVersion(publishedVersions.flat(), bump)
 }
 
 export function computeDevVersion(channel: string) {
