@@ -11532,7 +11532,7 @@ msgstr ""
 msgid "session.rollback.bannerText"
 msgstr ""
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr ""
 
@@ -11549,6 +11549,11 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -11586,7 +11591,8 @@ msgstr ""
 msgid "session.rollback.redoSuccessDesc"
 msgstr ""
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr ""
 

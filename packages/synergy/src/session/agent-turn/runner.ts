@@ -38,7 +38,39 @@ function memory() {
   return {
     rssBytes: usage.rss,
     heapUsedBytes: usage.heapUsed,
+    heapTotalBytes: usage.heapTotal,
+    externalBytes: usage.external,
+    arrayBuffersBytes: usage.arrayBuffers,
   }
+}
+
+function release(requestId: string): void {
+  const collection = process.platform === "linux" ? "full" : "none"
+  if (collection === "full") Bun.gc(true)
+  send({
+    type: "released",
+    requestId,
+    turns,
+    collection,
+    memory: memory(),
+  })
+}
+
+function rejectAndRelease(requestId: string, error: unknown): void {
+  send({
+    type: "error",
+    requestId,
+    error: AgentTurnProtocol.serializeError(error),
+  })
+  queueMicrotask(() => release(requestId))
+}
+
+function reject(requestId: string, error: unknown): void {
+  send({
+    type: "error",
+    requestId,
+    error: AgentTurnProtocol.serializeError(error),
+  })
 }
 
 async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promise<void> {
@@ -113,25 +145,30 @@ async function streamEvents(turn: ActiveTurn, stream: AsyncIterable<AgentSDKStre
   await flush()
 }
 
-async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope): Promise<void> {
-  if (active) {
-    send({
-      type: "error",
-      requestId,
-      error: AgentTurnProtocol.serializeError(new Error("Agent worker already owns a turn")),
-    })
-    return
-  }
-  const turn: ActiveTurn = {
-    requestId,
-    controller: new AbortController(),
-    acknowledgements: new Map(),
-  }
-  active = turn
+type Terminal =
+  | {
+      type: "complete"
+      requestId: string
+      turns: number
+      usage?: unknown
+      memoryBeforeDispose: AgentTurnProtocol.WorkerMemory
+      memory: AgentTurnProtocol.WorkerMemory
+    }
+  | {
+      type: "error"
+      requestId: string
+      error: AgentTurnProtocol.SerializedError
+      memoryBeforeDispose: AgentTurnProtocol.WorkerMemory
+      memory: AgentTurnProtocol.WorkerMemory
+    }
+
+async function executeTurn(turn: ActiveTurn, envelope: AgentTurnProtocol.TurnEnvelope): Promise<Terminal> {
   const input = envelope.input as unknown as AgentTurnWorkerInput
   let ownedStream: ReturnType<typeof LLM.takeFullStream> | undefined
   let usage: Awaited<LLM.StreamOutput["usage"]> | undefined
-  let terminal: AgentTurnProtocol.WorkerToHost
+  let result:
+    | { type: "complete"; requestId: string; turns: number; usage?: unknown }
+    | { type: "error"; requestId: string; error: AgentTurnProtocol.SerializedError }
 
   try {
     await ScopeContext.provide({
@@ -156,26 +193,47 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope):
       },
     })
     turns++
-    terminal = {
+    result = {
       type: "complete",
       requestId: turn.requestId,
       turns,
-      memory: memory(),
       usage,
     }
   } catch (error) {
-    terminal = {
+    result = {
       type: "error",
       requestId: turn.requestId,
       error: AgentTurnProtocol.serializeError(error),
     }
-  } finally {
-    await ownedStream?.dispose().catch(() => {})
-    for (const acknowledge of turn.acknowledgements.values()) acknowledge()
-    active = undefined
-    send(terminal!)
-    if (shuttingDown) process.exit(0)
   }
+  const memoryBeforeDispose = memory()
+  await ownedStream?.dispose().catch(() => {})
+  for (const acknowledge of turn.acknowledgements.values()) acknowledge()
+  return {
+    ...result!,
+    memoryBeforeDispose,
+    memory: memory(),
+  }
+}
+
+async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope | undefined): Promise<void> {
+  if (active) {
+    reject(requestId, new Error("Agent worker already owns a turn"))
+    return
+  }
+  const turn: ActiveTurn = {
+    requestId,
+    controller: new AbortController(),
+    acknowledgements: new Map(),
+  }
+  active = turn
+  const terminal = await executeTurn(turn, envelope!)
+  envelope = undefined
+  active = undefined
+  send(terminal)
+
+  release(requestId)
+  if (shuttingDown) process.exit(0)
 }
 
 process.on("message", (raw: unknown) => {
@@ -185,21 +243,13 @@ process.on("message", (raw: unknown) => {
       raw && typeof raw === "object" && "requestId" in raw && typeof raw.requestId === "string"
         ? raw.requestId
         : "invalid"
-    send({
-      type: "error",
-      requestId,
-      error: AgentTurnProtocol.serializeError(new Error("Invalid Agent worker protocol message")),
-    })
+    reject(requestId, new Error("Invalid Agent worker protocol message"))
     return
   }
   const message = parsed.data
   if (message.type === "run-start") {
     if (active || pending) {
-      send({
-        type: "error",
-        requestId: message.requestId,
-        error: AgentTurnProtocol.serializeError(new Error("Agent worker already owns a turn transfer")),
-      })
+      reject(message.requestId, new Error("Agent worker already owns a turn transfer"))
       return
     }
     pending = {
@@ -215,22 +265,14 @@ process.on("message", (raw: unknown) => {
   if (message.type === "run-chunk") {
     if (!pending || pending.requestId !== message.requestId || message.index !== pending.chunks.length) {
       pending = undefined
-      send({
-        type: "error",
-        requestId: message.requestId,
-        error: AgentTurnProtocol.serializeError(new Error("Invalid Agent turn request chunk sequence")),
-      })
+      rejectAndRelease(message.requestId, new Error("Invalid Agent turn request chunk sequence"))
       return
     }
     pending.chunks.push(message.data)
     pending.receivedBytes += message.data.byteLength
     if (pending.receivedBytes > pending.totalBytes || pending.chunks.length > pending.chunkCount) {
       pending = undefined
-      send({
-        type: "error",
-        requestId: message.requestId,
-        error: AgentTurnProtocol.serializeError(new Error("Agent turn request transfer exceeded declared bounds")),
-      })
+      rejectAndRelease(message.requestId, new Error("Agent turn request transfer exceeded declared bounds"))
       return
     }
     send({ type: "chunk-ack", requestId: message.requestId, index: message.index })
@@ -245,11 +287,7 @@ process.on("message", (raw: unknown) => {
       transfer.receivedBytes !== transfer.totalBytes ||
       transfer.chunks.length !== transfer.chunkCount
     ) {
-      send({
-        type: "error",
-        requestId: message.requestId,
-        error: AgentTurnProtocol.serializeError(new Error("Incomplete Agent turn request transfer")),
-      })
+      rejectAndRelease(message.requestId, new Error("Incomplete Agent turn request transfer"))
       return
     }
     try {
@@ -257,11 +295,7 @@ process.on("message", (raw: unknown) => {
       const envelope = AgentTurnProtocol.deserializeTurn(bytes)
       void run(message.requestId, envelope)
     } catch (error) {
-      send({
-        type: "error",
-        requestId: message.requestId,
-        error: AgentTurnProtocol.serializeError(error),
-      })
+      rejectAndRelease(message.requestId, error)
     }
     return
   }
@@ -276,11 +310,7 @@ process.on("message", (raw: unknown) => {
   if (message.type === "cancel") {
     if (pending?.requestId === message.requestId) {
       pending = undefined
-      send({
-        type: "error",
-        requestId: message.requestId,
-        error: AgentTurnProtocol.serializeError(new DOMException(message.reason ?? "Agent turn aborted", "AbortError")),
-      })
+      rejectAndRelease(message.requestId, new DOMException(message.reason ?? "Agent turn aborted", "AbortError"))
       return
     }
     if (active?.requestId === message.requestId) {
@@ -313,4 +343,4 @@ watchManagedParent({
   onParentExit: () => process.exit(0),
 })
 
-send({ type: "ready", protocolVersion: AgentTurnProtocol.VERSION, pid: process.pid })
+send({ type: "ready", protocolVersion: AgentTurnProtocol.VERSION, pid: process.pid, memory: memory() })

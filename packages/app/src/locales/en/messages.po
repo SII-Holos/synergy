@@ -11462,7 +11462,7 @@ msgstr "Also restore file changes"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.alsoRestore.hint"
-msgstr "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the banner."
+msgstr "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the rollback dialog."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11532,7 +11532,7 @@ msgstr "Rewind to this point"
 msgid "session.rollback.bannerText"
 msgstr "Rewound {messages, plural, one {# message} other {# messages}} ({turns, plural, one {# turn} other {# turns}})"
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr "Cannot redo"
 
@@ -11550,6 +11550,11 @@ msgstr "New messages have been added. This rollback can no longer be redone."
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
 msgstr "New messages have been added; cannot redo this rollback"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "Rewind complete"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11586,7 +11591,8 @@ msgstr "Redo failed"
 msgid "session.rollback.redoSuccessDesc"
 msgstr "Restored {count, plural, one {# message} other {# messages}}"
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr "Request failed"
 

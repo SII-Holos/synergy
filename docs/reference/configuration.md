@@ -51,11 +51,16 @@ The optional `execution` object in `120-runtime.jsonc` controls bounded Agent an
 {
   "execution": {
     "agentWorkers": 4,
+    "agentWorkerMinIdle": 0,
+    "agentWorkerIdleTimeoutMs": 60000,
     "agentQueueMax": 256,
     "agentQueueMaxMb": 256,
     "agentWorkerMaxTurns": 64,
     "agentWorkerMaxRssMb": 1536,
     "agentWorkerMaxHeapMb": 1024,
+    "agentWorkerIdleBaselineRecycle": true,
+    "agentWorkerIdleBaselineRssGrowthMb": 256,
+    "agentWorkerIdleBaselineExternalGrowthMb": 128,
     "agentCancelGraceMs": 5000,
     "agentHeartbeatTimeoutMs": 45000,
     "policyWorkers": 2,
@@ -84,7 +89,11 @@ The optional `execution` object in `120-runtime.jsonc` controls bounded Agent an
 }
 ```
 
-`agentWorkers` defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. It can be changed from Settings → Agents or the Runtime domain while the global runtime is running. Increasing it starts additional workers immediately. Decreasing it stops excess idle workers, while excess active workers finish their current turns before retiring. Agent request and event-frame protocol bounds are fixed safety invariants rather than configuration. RSS and heap-used watermarks are enforced from worker heartbeats as well as normal turn completion; the heartbeat timeout is constrained to 30-300 seconds so it cannot undercut the worker heartbeat cadence.
+`agentWorkers` is the maximum Agent-turn concurrency, not an eagerly allocated pool size. It defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. The pool starts workers on demand, keeps `agentWorkerMinIdle` idle workers warm (default 0), and retires excess workers after `agentWorkerIdleTimeoutMs` (default 60 seconds). `agentWorkerMinIdle` cannot exceed the effective `agentWorkers` limit.
+
+`agentWorkers` can be changed from Settings → Agents or the Runtime domain while the global runtime is running. Increasing it raises the ceiling and admits queued demand without eagerly filling unused capacity. Decreasing it releases excess idle workers immediately, while excess active workers finish their current turns before retiring.
+
+Agent request and event-frame protocol bounds are fixed safety invariants rather than configuration. RSS and heap-used watermarks are enforced from worker heartbeats as well as normal turn completion; the heartbeat timeout is constrained to 30-300 seconds so it cannot undercut the worker heartbeat cadence. Released workers report RSS, heap, external, and array-buffer memory after stream disposal. Linux performs one coalesced full collection at that release boundary by default, and `agentWorkerIdleBaselineRecycle` recycles a worker whose post-release RSS or external memory grows beyond its warm minimum by the configured thresholds. Baseline recycling defaults on for Linux and off elsewhere; absolute watermarks and turn-count recycling remain independent.
 
 `policyWorkers` defaults to the smaller of two or available CPUs minus one, with a minimum of one and a maximum of 16. Global-runtime startup begins prewarming without making server availability depend on the worker handshake. A cold classification waits at most ten seconds for readiness; after readiness, `policyTimeoutMs` covers queueing, transfer, and classification. Policy requests are limited to 16 MiB and transferred in 1 MiB acknowledged chunks; those protocol limits are fixed. Expiry terminates the owning worker and makes the enforcement gate return an immediate conservative denial rather than an approval prompt. The queue, aggregate bytes, request-count recycling, RSS/heap watermarks, heartbeat timeout, and shutdown grace are independently configurable.
 

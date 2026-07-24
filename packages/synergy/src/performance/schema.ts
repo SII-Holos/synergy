@@ -314,6 +314,8 @@ export namespace PerformanceSchema {
           .object({
             agentWorkers: z.object({
               configured: z.number().int().positive(),
+              minIdle: z.number().int().nonnegative(),
+              idleTimeoutMs: z.number().int().positive(),
               maxQueued: z.number().int().nonnegative(),
               maxQueuedBytes: z.number().int().positive(),
               workers: z.number().int().nonnegative(),
@@ -323,6 +325,9 @@ export namespace PerformanceSchema {
               queuedBytes: z.number().int().nonnegative(),
               rssBytes: z.number().int().nonnegative(),
               heapUsedBytes: z.number().int().nonnegative(),
+              heapTotalBytes: z.number().int().nonnegative(),
+              externalBytes: z.number().int().nonnegative(),
+              arrayBuffersBytes: z.number().int().nonnegative(),
             }),
             policyWorkers: z.object({
               configured: z.number().int().positive(),

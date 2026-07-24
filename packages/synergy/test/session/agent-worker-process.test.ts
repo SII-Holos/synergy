@@ -9,6 +9,7 @@ test("Agent worker subprocess completes the IPC handshake and shuts down", async
   let resolveRunReady!: () => void
   let resolveChunkAck: ((index: number) => void) | undefined
   let resolveTerminal!: (error: AgentTurnProtocol.SerializedError) => void
+  let resolveReleased!: () => void
   let activeRequestID = "turn_transfer_test"
   const ready = new Promise<void>((resolve) => {
     resolveReady = resolve
@@ -22,6 +23,9 @@ test("Agent worker subprocess completes the IPC handshake and shuts down", async
   const terminal = new Promise<AgentTurnProtocol.SerializedError>((resolve) => {
     resolveTerminal = resolve
   })
+  let released = new Promise<void>((resolve) => {
+    resolveReleased = resolve
+  })
   const worker = spawnAgentWorkerProcess({
     onMessage(message) {
       if (message.type === "ready") resolveReady()
@@ -29,6 +33,7 @@ test("Agent worker subprocess completes the IPC handshake and shuts down", async
       if (message.type === "run-ready") resolveRunReady()
       if (message.type === "chunk-ack") resolveChunkAck?.(message.index)
       if (message.type === "error" && message.requestId === activeRequestID) resolveTerminal(message.error)
+      if (message.type === "released" && message.requestId === activeRequestID) resolveReleased()
     },
     onExit() {},
   })
@@ -61,7 +66,10 @@ test("Agent worker subprocess completes the IPC handshake and shuts down", async
         prepared: {
           system: [],
           baseSystemLength: 0,
-          provider: { options: {} },
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
           params: { options: {} },
         },
       },
@@ -97,6 +105,7 @@ test("Agent worker subprocess completes the IPC handshake and shuts down", async
     expect(firstError.message).not.toContain('"time"')
     expect(firstError.message).not.toContain('"sandboxes"')
     expect(firstError.message).toContain("model.api.npm")
+    await released
 
     activeRequestID = "turn_transfer_reuse_test"
     const secondRunReady = new Promise<void>((resolve) => {
@@ -104,6 +113,9 @@ test("Agent worker subprocess completes the IPC handshake and shuts down", async
     })
     const secondTerminal = new Promise<AgentTurnProtocol.SerializedError>((resolve) => {
       resolveTerminal = resolve
+    })
+    released = new Promise<void>((resolve) => {
+      resolveReleased = resolve
     })
     worker.send({
       type: "run-start",
@@ -135,6 +147,7 @@ test("Agent worker subprocess completes the IPC handshake and shuts down", async
     expect(secondError.message).not.toContain('"time"')
     expect(secondError.message).not.toContain('"sandboxes"')
     expect(secondError.message).toContain("model.api.npm")
+    await released
   } finally {
     await worker.stop(1_000)
   }

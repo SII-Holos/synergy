@@ -32,11 +32,16 @@ export interface AgentTurnStream {
 
 export interface AgentWorkerPoolOptions {
   size: number
+  minIdle: number
+  idleTimeoutMs: number
   maxQueued: number
   maxQueuedBytes: number
   maxTurns: number
   maxRssBytes: number
   maxHeapBytes: number
+  idleBaselineRecycle: boolean
+  idleBaselineRssGrowthBytes: number
+  idleBaselineExternalGrowthBytes: number
   cancelGraceMs: number
   heartbeatTimeoutMs: number
 }
@@ -71,6 +76,8 @@ interface PoolTask {
   reject(error: unknown): void
   resolveUsage(usage: Awaited<LLM.StreamOutput["usage"]> | undefined): void
   started: boolean
+  terminal: boolean
+  terminalReason?: "complete" | "error"
   completed: boolean
   transferCommitted: boolean
   worker?: PoolWorker
@@ -89,6 +96,12 @@ interface PoolWorker {
   pid?: number
   rssBytes?: number
   heapUsedBytes?: number
+  heapTotalBytes?: number
+  externalBytes?: number
+  arrayBuffersBytes?: number
+  idleBaselineRssBytes?: number
+  idleBaselineExternalBytes?: number
+  idleSince?: number
   lastEventSequence: number
   lastHeartbeatAt: number
 }
@@ -179,12 +192,22 @@ export class AgentWorkerPool {
     if (!Number.isInteger(options.size) || options.size <= 0) {
       throw new Error("Agent worker pool size must be a positive integer")
     }
+    if (!Number.isInteger(options.minIdle) || options.minIdle < 0 || options.minIdle > options.size) {
+      throw new Error("Agent worker pool minIdle must be a non-negative integer no greater than size")
+    }
+    if (!Number.isInteger(options.idleTimeoutMs) || options.idleTimeoutMs <= 0) {
+      throw new Error("Agent worker pool idleTimeoutMs must be a positive integer")
+    }
     if (!Number.isInteger(options.maxQueued) || options.maxQueued < 0) {
       throw new Error("Agent worker pool maxQueued must be a non-negative integer")
     }
     this.targetSize = options.size
-    this.healthTimer = setInterval(() => this.sweepHealth(), Math.min(5_000, options.heartbeatTimeoutMs))
+    this.healthTimer = setInterval(
+      () => this.sweepHealth(),
+      Math.max(10, Math.min(5_000, options.heartbeatTimeoutMs, options.idleTimeoutMs)),
+    )
     this.healthTimer.unref()
+    this.ensureWorkers()
   }
 
   run(input: AgentTurnPoolInput): Promise<AgentTurnStream> {
@@ -192,11 +215,8 @@ export class AgentWorkerPool {
     if (this.stopping) return Promise.reject(new Error("Agent worker pool is stopping"))
     if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
     if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("Agent turn aborted", "AbortError"))
-    this.ensureWorkers()
-    if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
-    const unassignedWorkers = [...this.workers.values()].filter((worker) => !worker.stopping && !worker.task).length
-    const waitingTasks = Math.max(0, this.queue.length - unassignedWorkers)
-    if (waitingTasks >= this.options.maxQueued && this.queue.length >= unassignedWorkers) {
+    const activeTasks = this.activeTaskCount()
+    if (activeTasks + this.queue.length >= this.targetSize + this.options.maxQueued) {
       return Promise.reject(new Error(`Agent worker queue is full (${this.options.maxQueued} waiting)`))
     }
 
@@ -215,7 +235,7 @@ export class AgentWorkerPool {
     }
     const payload = AgentTurnProtocol.serializeTurn(envelope as unknown as AgentTurnProtocol.TurnEnvelope)
     const requestBytes = payload.byteLength
-    if (this.queuedBytes + requestBytes > this.options.maxQueuedBytes && !this.availableWorker()) {
+    if (this.queuedBytes + requestBytes > this.options.maxQueuedBytes) {
       return Promise.reject(
         new Error(`Agent worker queue exceeded ${this.options.maxQueuedBytes} bytes of waiting turns`),
       )
@@ -244,6 +264,7 @@ export class AgentWorkerPool {
         reject,
         resolveUsage,
         started: false,
+        terminal: false,
         completed: false,
         transferCommitted: false,
         removeAbortListener: () => signal.removeEventListener("abort", onAbort),
@@ -265,6 +286,7 @@ export class AgentWorkerPool {
         sessionID: input.sessionID,
         messageID: input.user.id,
       })
+      this.ensureWorkers()
       this.drain()
     })
   }
@@ -286,6 +308,8 @@ export class AgentWorkerPool {
     }
     return {
       configured: this.targetSize,
+      minIdle: this.options.minIdle,
+      idleTimeoutMs: this.options.idleTimeoutMs,
       maxQueued: this.options.maxQueued,
       maxQueuedBytes: this.options.maxQueuedBytes,
       workers: this.workers.size,
@@ -295,6 +319,9 @@ export class AgentWorkerPool {
       queuedBytes: this.queuedBytes,
       rssBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.rssBytes ?? 0), 0),
       heapUsedBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.heapUsedBytes ?? 0), 0),
+      heapTotalBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.heapTotalBytes ?? 0), 0),
+      externalBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.externalBytes ?? 0), 0),
+      arrayBuffersBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.arrayBuffersBytes ?? 0), 0),
     }
   }
 
@@ -323,7 +350,7 @@ export class AgentWorkerPool {
 
   private ensureWorkers(): void {
     if (this.startupRetryPending) return
-    while (!this.stopping && !this.startupCircuitError && this.workers.size < this.targetSize) {
+    while (!this.stopping && !this.startupCircuitError && this.liveWorkerCount() < this.desiredWorkerCount()) {
       if (!this.spawnWorker()) return
     }
   }
@@ -340,18 +367,18 @@ export class AgentWorkerPool {
         this.rebalancePending = false
         for (const worker of this.workers.values()) worker.retireAfterTask = false
 
-        let excess = Math.max(0, this.workers.size - this.targetSize)
+        let excess = Math.max(0, this.liveWorkerCount() - this.targetSize)
         for (const worker of [...this.workers.values()]) {
           if (excess === 0) break
-          if (worker.task) continue
+          if (worker.stopping || worker.task) continue
           this.recycle(worker, "pool_resize")
           excess--
         }
 
-        excess = Math.max(0, this.workers.size - this.targetSize)
+        excess = Math.max(0, this.liveWorkerCount() - this.targetSize)
         for (const worker of this.workers.values()) {
           if (excess === 0) break
-          if (!worker.task) continue
+          if (worker.stopping || !worker.task) continue
           worker.retireAfterTask = true
           excess--
         }
@@ -362,6 +389,19 @@ export class AgentWorkerPool {
     } finally {
       this.rebalancing = false
     }
+  }
+
+  private activeTaskCount(): number {
+    return [...this.workers.values()].filter((worker) => !worker.stopping && worker.task).length
+  }
+
+  private liveWorkerCount(): number {
+    return [...this.workers.values()].filter((worker) => !worker.stopping).length
+  }
+
+  private desiredWorkerCount(): number {
+    const demand = this.activeTaskCount() + this.queue.length
+    return Math.min(this.targetSize, Math.max(this.options.minIdle, demand + this.options.minIdle))
   }
 
   private spawnWorker(): boolean {
@@ -401,6 +441,8 @@ export class AgentWorkerPool {
       worker.startupFailureEligible = false
       worker.pid = message.pid
       worker.lastHeartbeatAt = Date.now()
+      worker.idleSince = Date.now()
+      this.recordWorkerMemory(worker, message.memory, "ready")
       this.consecutiveStartupFailures = 0
       this.startupCircuitError = undefined
       this.ensureWorkers()
@@ -412,25 +454,8 @@ export class AgentWorkerPool {
         this.terminateForProtocol(worker, "heartbeat referenced an unowned turn")
         return
       }
-      worker.rssBytes = message.memory.rssBytes
-      worker.heapUsedBytes = message.memory.heapUsedBytes
+      this.recordWorkerMemory(worker, message.memory, "heartbeat")
       worker.lastHeartbeatAt = Date.now()
-      ObservabilityMetrics.record({
-        name: "agent.worker.rss",
-        value: message.memory.rssBytes,
-        unit: "bytes",
-        module: "session",
-        processId: worker.id,
-        pid: worker.pid,
-      })
-      ObservabilityMetrics.record({
-        name: "agent.worker.heap_used",
-        value: message.memory.heapUsedBytes,
-        unit: "bytes",
-        module: "session",
-        processId: worker.id,
-        pid: worker.pid,
-      })
       if (
         message.memory.rssBytes >= this.options.maxRssBytes ||
         message.memory.heapUsedBytes >= this.options.maxHeapBytes
@@ -516,13 +541,21 @@ export class AgentWorkerPool {
       return
     }
     if (message.type === "error") {
+      if (task.terminal) {
+        this.terminateForProtocol(worker, "duplicate turn terminal")
+        return
+      }
+      task.terminal = true
+      task.terminalReason = "error"
       const error = AgentTurnProtocol.deserializeError(message.error)
+      if (message.memoryBeforeDispose) {
+        this.recordWorkerMemory(worker, message.memoryBeforeDispose, "turn.before_dispose", task)
+      }
+      if (message.memory) this.recordWorkerMemory(worker, message.memory, "turn.after_dispose", task)
       task.resolveUsage(undefined)
       if (task.started) task.stream.fail(error)
       else task.reject(error)
-      const retire = worker.retireAfterTask
-      this.finishTask(worker, task, message.type, !retire)
-      if (retire) this.recycle(worker, "pool_resize")
+      task.removeAbortListener()
       return
     }
     if (message.type === "complete") {
@@ -530,26 +563,46 @@ export class AgentWorkerPool {
         this.terminateForProtocol(worker, "turn completed before start")
         return
       }
+      if (task.terminal) {
+        this.terminateForProtocol(worker, "duplicate turn terminal")
+        return
+      }
+      task.terminal = true
+      task.terminalReason = "complete"
       worker.turns = message.turns
-      worker.rssBytes = message.memory.rssBytes
-      worker.heapUsedBytes = message.memory.heapUsedBytes
+      this.recordWorkerMemory(worker, message.memoryBeforeDispose, "turn.before_dispose", task)
+      this.recordWorkerMemory(worker, message.memory, "turn.after_dispose", task)
       task.resolveUsage(message.usage as Awaited<LLM.StreamOutput["usage"]> | undefined)
       task.stream.complete()
+      task.removeAbortListener()
+      return
+    }
+    if (message.type === "released") {
+      if (!task.terminal) {
+        this.terminateForProtocol(worker, "turn released before terminal result")
+        return
+      }
+      worker.turns = message.turns
+      this.recordWorkerMemory(worker, message.memory, "turn.released", task)
+      const baselineReason = this.baselineRecycleReason(worker, message.memory)
       const recycle =
         message.turns >= this.options.maxTurns ||
         message.memory.rssBytes >= this.options.maxRssBytes ||
-        message.memory.heapUsedBytes >= this.options.maxHeapBytes
-      const retire = worker.retireAfterTask
-      this.finishTask(worker, task, message.type, !recycle && !retire)
-      if (recycle) {
-        const reason =
-          message.turns >= this.options.maxTurns
-            ? "max_turns"
-            : message.memory.rssBytes >= this.options.maxRssBytes
-              ? "rss"
-              : "heap"
-        this.recycle(worker, reason)
-      } else if (retire) this.recycle(worker, "pool_resize")
+        message.memory.heapUsedBytes >= this.options.maxHeapBytes ||
+        baselineReason !== undefined ||
+        worker.retireAfterTask
+      this.finishTask(worker, task, task.terminalReason ?? "released", !recycle)
+      if (!recycle) return
+      const reason =
+        message.turns >= this.options.maxTurns
+          ? "max_turns"
+          : message.memory.rssBytes >= this.options.maxRssBytes
+            ? "rss"
+            : message.memory.heapUsedBytes >= this.options.maxHeapBytes
+              ? "heap"
+              : (baselineReason ?? "pool_resize")
+      this.recycle(worker, reason)
+      return
     }
   }
 
@@ -559,10 +612,12 @@ export class AgentWorkerPool {
     const startupFailure = worker.startupFailureEligible
     const task = worker.task
     if (task && !task.completed) {
-      if (task.started) task.stream.fail(error)
-      else task.reject(error)
+      if (!task.terminal) {
+        if (task.started) task.stream.fail(error)
+        else task.reject(error)
+        task.resolveUsage(undefined)
+      }
       task.completed = true
-      task.resolveUsage(undefined)
       task.removeAbortListener()
     }
     if (!this.stopping && !worker.stopping) {
@@ -642,7 +697,10 @@ export class AgentWorkerPool {
     if (task.completed) return
     task.completed = true
     task.removeAbortListener()
-    if (worker.task === task) worker.task = undefined
+    if (worker.task === task) {
+      worker.task = undefined
+      worker.idleSince = Date.now()
+    }
     if (task.startedAt !== undefined) {
       ObservabilityMetrics.record({
         name: "agent.turn.duration",
@@ -660,7 +718,59 @@ export class AgentWorkerPool {
     if (drain) this.drain()
   }
 
-  private recycle(worker: PoolWorker, reason: "max_turns" | "rss" | "heap" | "pool_resize"): void {
+  private recordWorkerMemory(
+    worker: PoolWorker,
+    memory: AgentTurnProtocol.WorkerMemory,
+    phase: "ready" | "heartbeat" | "turn.before_dispose" | "turn.after_dispose" | "turn.released",
+    task?: PoolTask,
+  ): void {
+    worker.rssBytes = memory.rssBytes
+    worker.heapUsedBytes = memory.heapUsedBytes
+    worker.heapTotalBytes = memory.heapTotalBytes
+    worker.externalBytes = memory.externalBytes
+    worker.arrayBuffersBytes = memory.arrayBuffersBytes
+    for (const [name, value] of Object.entries({
+      "agent.worker.rss": memory.rssBytes,
+      "agent.worker.heap_used": memory.heapUsedBytes,
+      "agent.worker.heap_total": memory.heapTotalBytes,
+      "agent.worker.external": memory.externalBytes,
+      "agent.worker.array_buffers": memory.arrayBuffersBytes,
+    })) {
+      ObservabilityMetrics.record({
+        name,
+        value,
+        unit: "bytes",
+        module: "session",
+        sessionID: task?.sessionID,
+        messageID: task?.messageID,
+        processId: worker.id,
+        pid: worker.pid,
+        labels: { phase, turns: worker.turns },
+      })
+    }
+  }
+
+  private baselineRecycleReason(
+    worker: PoolWorker,
+    memory: AgentTurnProtocol.WorkerMemory,
+  ): "idle_rss_growth" | "idle_external_growth" | undefined {
+    if (!this.options.idleBaselineRecycle) return
+    const baselineRss = worker.idleBaselineRssBytes
+    const baselineExternal = worker.idleBaselineExternalBytes
+    worker.idleBaselineRssBytes = baselineRss === undefined ? memory.rssBytes : Math.min(baselineRss, memory.rssBytes)
+    worker.idleBaselineExternalBytes =
+      baselineExternal === undefined ? memory.externalBytes : Math.min(baselineExternal, memory.externalBytes)
+    if (baselineRss === undefined || baselineExternal === undefined) return
+    if (memory.rssBytes > baselineRss + this.options.idleBaselineRssGrowthBytes) return "idle_rss_growth"
+    if (memory.externalBytes > baselineExternal + this.options.idleBaselineExternalGrowthBytes) {
+      return "idle_external_growth"
+    }
+  }
+
+  private recycle(
+    worker: PoolWorker,
+    reason: "max_turns" | "rss" | "heap" | "idle_rss_growth" | "idle_external_growth" | "idle_timeout" | "pool_resize",
+  ): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
     worker.ready = false
@@ -678,9 +788,14 @@ export class AgentWorkerPool {
         turns: worker.turns,
         rssBytes: worker.rssBytes,
         heapUsedBytes: worker.heapUsedBytes,
+        externalBytes: worker.externalBytes,
+        idleBaselineRssBytes: worker.idleBaselineRssBytes,
+        idleBaselineExternalBytes: worker.idleBaselineExternalBytes,
       },
     })
     void worker.host.stop(this.options.cancelGraceMs)
+    this.ensureWorkers()
+    this.drain()
   }
 
   private drain(): void {
@@ -696,6 +811,7 @@ export class AgentWorkerPool {
         continue
       }
       worker.task = task
+      worker.idleSince = undefined
       task.worker = worker
       this.send(worker, {
         type: "run-start",
@@ -723,10 +839,6 @@ export class AgentWorkerPool {
       index,
       data: task.payload.subarray(start, end),
     })
-  }
-
-  private availableWorker(): boolean {
-    return [...this.workers.values()].some((worker) => worker.ready && !worker.stopping && !worker.task)
   }
 
   private cancel(requestId: string, reason?: unknown): void {
@@ -761,11 +873,29 @@ export class AgentWorkerPool {
   }
 
   private async disposeTask(task: PoolTask): Promise<void> {
-    if (!task.completed) this.cancel(task.requestId, new DOMException("Agent turn consumer disposed", "AbortError"))
+    if (!task.terminal && !task.completed) {
+      this.cancel(task.requestId, new DOMException("Agent turn consumer disposed", "AbortError"))
+    }
   }
 
   private sweepHealth(now = Date.now()): void {
     if (this.stopping) return
+    let liveWorkers = this.liveWorkerCount()
+    const desiredWorkers = this.desiredWorkerCount()
+    for (const worker of this.workers.values()) {
+      if (liveWorkers <= desiredWorkers) break
+      if (
+        worker.stopping ||
+        worker.task ||
+        !worker.ready ||
+        worker.idleSince === undefined ||
+        now - worker.idleSince < this.options.idleTimeoutMs
+      ) {
+        continue
+      }
+      liveWorkers--
+      this.recycle(worker, "idle_timeout")
+    }
     for (const worker of this.workers.values()) {
       if (worker.stopping || now - worker.lastHeartbeatAt <= this.options.heartbeatTimeoutMs) continue
       worker.stopping = true
@@ -786,7 +916,7 @@ export class AgentWorkerPool {
     }
   }
 
-  private terminateForMemory(worker: PoolWorker, memory: { rssBytes: number; heapUsedBytes: number }): void {
+  private terminateForMemory(worker: PoolWorker, memory: AgentTurnProtocol.WorkerMemory): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
     const reason = memory.rssBytes >= this.options.maxRssBytes ? "rss" : "heap"
@@ -842,11 +972,16 @@ export class AgentWorkerPool {
 
 export const DEFAULT_AGENT_WORKER_POOL_OPTIONS: AgentWorkerPoolOptions = {
   size: Math.max(1, Math.min(4, availableParallelism() - 1)),
+  minIdle: 0,
+  idleTimeoutMs: 60_000,
   maxQueued: 256,
   maxQueuedBytes: 256 * 1024 * 1024,
   maxTurns: 64,
   maxRssBytes: 1536 * 1024 * 1024,
   maxHeapBytes: 1024 * 1024 * 1024,
+  idleBaselineRecycle: process.platform === "linux",
+  idleBaselineRssGrowthBytes: 256 * 1024 * 1024,
+  idleBaselineExternalGrowthBytes: 128 * 1024 * 1024,
   cancelGraceMs: 5_000,
   heartbeatTimeoutMs: 45_000,
 }

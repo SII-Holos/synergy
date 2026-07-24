@@ -17,6 +17,8 @@ The server derives the canonical owner key and includes it in every session-stat
 
 Chromium and Playwright start lazily when Browser is first used. The process-wide runtime holds one `BrowserSession` per owner. Each Browser session holds zero or one page plus annotations and observers.
 
+Browser execution belongs to the Control Plane/tool-runtime layer, not the Agent worker. The model receives only the serializable Browser tool definitions. Browser callbacks, canonical sessions, Playwright, Chromium discovery, host signaling, native views, and WebRTC state must not enter the Agent worker runner's static dependency graph. A proposed Browser call is authorized and scheduled only after the provider turn has released its Agent worker.
+
 Desktop-native and downloaded remote Browser Hosts run on Electron's packaged Chromium. Direct headless Browser tools in the standalone runtime discover Chrome or Chromium from `CHROMIUM_PATH`, Synergy and Playwright caches, or standard system installation paths. They return an installation hint instead of silently downloading an unverified browser when no executable is available.
 
 Creating or retrieving a Browser session does not create its page. `navigate` is the only ordinary control command that resolves or creates a missing page; commands such as click, read, resize, history, or evaluation require the page to exist.
@@ -96,3 +98,4 @@ Tool actions keep failures atomic and results directly useful to the agent. Sele
 - The network gateway authenticates and forwards; Chromium owns webpage network policy.
 - Workspace resize semantics are CSS width and height across presentations.
 - Session archive or deletion, and terminal Cortex child status, release live Browser resources while preserving restorable state.
+- Browser implementations and runtime state never load through the Agent worker runner dependency graph.
