@@ -14,6 +14,8 @@ type Entry = {
 }
 
 const INDEX_TTL_MS = 30_000
+const MAX_INDEX_FILES = 50_000
+const MAX_INDEX_RECORDS = 50_000
 const APPLY_CONCURRENCY = 16
 
 function root() {
@@ -41,16 +43,27 @@ function scanSignal(signal: AbortSignal | undefined) {
 async function scan(input?: {
   signal?: AbortSignal
 }): Promise<{ files: string[]; dirs: string[]; truncated: boolean }> {
-  const files: string[] = []
+  const files = new Set<string>()
   const dirs = new Set<string>()
   const signal = scanSignal(input?.signal)
   let truncated = false
+  let records = 0
   try {
     for await (const file of Ripgrep.files({ cwd: root(), signal })) {
       if (signal.aborted) break
       const relative = cleanRelative(file)
       if (!relative) continue
-      files.push(relative)
+      if (records >= MAX_INDEX_RECORDS) {
+        truncated = true
+        break
+      }
+      records++
+      if (files.has(relative)) continue
+      if (files.size >= MAX_INDEX_FILES) {
+        truncated = true
+        break
+      }
+      files.add(relative)
       addParents(dirs, relative)
     }
   } catch (error) {
@@ -58,7 +71,7 @@ async function scan(input?: {
     else throw error
   }
   return {
-    files: files.toSorted(),
+    files: Array.from(files).toSorted(),
     dirs: Array.from(dirs).toSorted(),
     truncated: truncated || signal.aborted,
   }

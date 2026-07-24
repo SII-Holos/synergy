@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto"
 import type { MessageV2 } from "../session/message-v2"
 import { Session } from "../session"
+import { Turn } from "../session/turn"
 import { SessionMemoryPressure } from "../session/memory-pressure"
 import { Config } from "../config/config"
 import { Global } from "../global"
@@ -8,6 +9,7 @@ import { Log } from "../util/log"
 import { LibraryDB } from "./database"
 import { detect, type Candidate } from "./experience-detect"
 import { ExperienceEncoder } from "./experience-encoder"
+import { TurnDigest } from "./turn-digest"
 
 export namespace ExperienceReencode {
   export type JobType = LibraryDB.ReencodeJob.Type
@@ -236,6 +238,7 @@ export namespace ExperienceReencode {
   type PendingItem = {
     item: LibraryDB.ReencodeJob.ItemRow
     experience: LibraryDB.Experience.Row | null
+    content: LibraryDB.Experience.ContentRow | null
   }
 
   async function processItem(input: {
@@ -246,7 +249,7 @@ export namespace ExperienceReencode {
     loaded?: LoadedSession | null
   }) {
     const { job, pending, learning, signal } = input
-    const { item, experience } = pending
+    const { item, experience, content } = pending
     const reencodeLearning = { ...learning, encoderRetries: 0 }
     if (signal.aborted) return
     if (!LibraryDB.ReencodeJob.markItemProcessing(job.id, item.experience_id)) return
@@ -256,7 +259,10 @@ export namespace ExperienceReencode {
         return
       }
 
-      const requiresHistory = job.type === "intent" || experience.reward_status === "encoding_failed"
+      const storedUserText =
+        content?.user_input ?? (content?.raw ? TurnDigest.userTextFromRendered(content.raw) : undefined)
+      const repairingFailedExperience = experience.reward_status === "encoding_failed"
+      const requiresHistory = repairingFailedExperience || (job.type === "intent" && !storedUserText)
       let loaded = input.loaded
       if (requiresHistory && loaded === undefined) {
         loaded =
@@ -276,7 +282,7 @@ export namespace ExperienceReencode {
           LibraryDB.ReencodeJob.finishItem(job.id, item.experience_id, "skipped", "msg-missing")
           return
         }
-      } else {
+      } else if (job.type === "script") {
         const session = await withStageRetry({
           retries: learning.reencodeRetries,
           backoffMs: learning.reencodeRetryBackoffMs,
@@ -290,7 +296,7 @@ export namespace ExperienceReencode {
       }
 
       const history = loaded ?? undefined
-      if (experience.reward_status === "encoding_failed") {
+      if (repairingFailedExperience) {
         if (!history) throw new Error("session history unavailable for failed experience repair")
         const outcome = await withStageRetry({
           retries: learning.reencodeRetries,
@@ -314,7 +320,12 @@ export namespace ExperienceReencode {
       }
 
       if (job.type === "intent") {
-        if (!history) throw new Error("session history unavailable for intent reencode")
+        const messages = history?.messages ?? []
+        const userText = Turn.resolveUserText(messages, item.experience_id) ?? storedUserText
+        if (!userText) {
+          LibraryDB.ReencodeJob.finishItem(job.id, item.experience_id, "skipped", "user-input-unavailable")
+          return
+        }
         const result = await withStageRetry({
           retries: learning.reencodeRetries,
           backoffMs: learning.reencodeRetryBackoffMs,
@@ -323,9 +334,10 @@ export namespace ExperienceReencode {
             ExperienceEncoder.reencodeIntent(
               item.session_id,
               item.experience_id,
-              history.messages,
+              messages,
               reencodeLearning,
               signal,
+              userText,
             ),
         })
         await withStageRetry({
@@ -335,7 +347,6 @@ export namespace ExperienceReencode {
           operation: () => LibraryDB.Experience.updateIntent(item.experience_id, result.intent, result.embedding),
         })
       } else {
-        const content = LibraryDB.Experience.getContent(item.experience_id)
         if (!content?.raw) {
           LibraryDB.ReencodeJob.finishItem(job.id, item.experience_id, "skipped", "no-raw-content")
           return
@@ -374,8 +385,14 @@ export namespace ExperienceReencode {
     const direct: PendingItem[] = []
     const sessions = new Map<string, PendingItem[]>()
     for (const item of items) {
-      const pending = { item, experience: LibraryDB.Experience.get(item.experience_id) }
-      if (!pending.experience || (job.type === "script" && pending.experience.reward_status !== "encoding_failed")) {
+      const experience = LibraryDB.Experience.get(item.experience_id)
+      const content = experience ? LibraryDB.Experience.getContent(item.experience_id) : null
+      const pending = { item, experience, content }
+      const storedUserText =
+        content?.user_input ?? (content?.raw ? TurnDigest.userTextFromRendered(content.raw) : undefined)
+      const requiresHistory =
+        experience?.reward_status === "encoding_failed" || (job.type === "intent" && !storedUserText)
+      if (!experience || !requiresHistory) {
         direct.push(pending)
         continue
       }
@@ -481,8 +498,9 @@ export namespace ExperienceReencode {
   }
 
   function isTransient(error: unknown) {
-    const details = error as { code?: unknown; status?: unknown; statusCode?: unknown }
+    const details = error as { code?: unknown; name?: unknown; status?: unknown; statusCode?: unknown }
     const code = String(details?.code)
+    if (details?.name === "TimeoutError") return true
     if (
       [
         "SQLITE_BUSY",
@@ -493,6 +511,8 @@ export namespace ExperienceReencode {
         "EAI_AGAIN",
         "ENETUNREACH",
         "UND_ERR_CONNECT_TIMEOUT",
+        "REENCODE_INVALID_OUTPUT",
+        "oversized",
         "timeout",
       ].includes(code)
     ) {
@@ -501,7 +521,7 @@ export namespace ExperienceReencode {
     const status = Number(details?.status ?? details?.statusCode)
     if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true
     const message = error instanceof Error ? error.message : String(error)
-    return /database is locked|temporarily unavailable|connection reset|connection refused|socket hang up|rate limit|too many requests|service unavailable|bad gateway|gateway timeout/i.test(
+    return /database is locked|temporarily unavailable|connection reset|connection refused|socket hang up|rate limit|too many requests|service unavailable|bad gateway|gateway timeout|operation timed out|request timed out/i.test(
       message,
     )
   }

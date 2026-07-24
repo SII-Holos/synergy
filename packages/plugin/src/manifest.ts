@@ -84,6 +84,10 @@ const SkillContribution = ContributionBase.extend({
 const McpContribution = ContributionBase.extend({
   kind: z.literal("mcp"),
   server: McpServerConfig,
+  enabledWhen: z
+    .object({ setting: z.string().min(1), equals: z.union([z.string(), z.number(), z.boolean()]) })
+    .strict()
+    .optional(),
 }).strict()
 const AuthProviderProfile = z
   .object({
@@ -281,7 +285,7 @@ export const PluginManifest = z
         }
       }
       if (
-        contribution.kind === "tool" &&
+        (contribution.kind === "tool" || contribution.kind === "mcp") &&
         contribution.enabledWhen &&
         !(contribution.enabledWhen.setting in settingProperties)
       ) {

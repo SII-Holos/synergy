@@ -186,6 +186,7 @@ export type AccountToggle = {
   key: string
   enabled: boolean
   model: string
+  variant: string
 }
 
 export type ChannelSettings = {

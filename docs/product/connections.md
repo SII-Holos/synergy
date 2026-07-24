@@ -19,6 +19,8 @@ The provider contract supports:
 
 Feishu/Lark is the current built-in provider. It owns Feishu-specific deduplication, mentions, group behavior, media transfer, cards, and reconnect handling while the Channel core owns endpoint/session routing and outbound delivery.
 
+Each Feishu/Lark account can set a default model and one of that model's exposed variants. The account selection is written onto each inbound root message so the session header and provider request agree. A conversation-level `/model` override takes precedence over the account default; because that override selects a different model, it does not inherit the account model's variant.
+
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
 
 ## Holos Identity

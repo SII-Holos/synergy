@@ -19,6 +19,7 @@ import {
   tool,
   textAction,
   workbenchPanel,
+  mcp,
 } from "../src/index"
 
 describe("definePlugin", () => {
@@ -131,24 +132,70 @@ describe("definePlugin", () => {
     })
   })
 
-  test("rejects a tool condition that references an undeclared setting", () => {
-    expect(() =>
-      definePlugin({
-        id: "diagnostics",
-        version: "1.0.0",
-        description: "Invalid setting condition",
-        contributions: [
-          tool({
-            id: "inspect",
-            description: "Inspect diagnostics",
-            input: z.object({}),
-            enabledWhen: { setting: "missing", equals: true },
-            handler: async () => "ok",
-          }),
-        ],
-      }),
-    ).toThrow('Tool contribution "inspect" references undeclared setting "missing"')
+  test("compiles setting-gated MCP servers against a declared setting", () => {
+    const plugin = definePlugin({
+      id: "frontend-kit",
+      version: "1.0.0",
+      description: "Setting-gated MCP servers",
+      contributions: [
+        mcp({
+          id: "components",
+          enabledWhen: { setting: "componentsEnabled", equals: true },
+          server: { type: "local", command: ["frontend-mcp"], startup: "eager" },
+        }),
+        settings({
+          id: "settings",
+          label: "Frontend Kit",
+          group: "Plugins",
+          formSchema: {
+            type: "object",
+            properties: { componentsEnabled: { type: "boolean", default: true } },
+            additionalProperties: false,
+          },
+        }),
+      ],
+    })
+
+    const manifest = compilePluginManifest(plugin, { generation: "generation-1" })
+    expect(manifest.contributions[0]).toMatchObject({
+      kind: "mcp",
+      enabledWhen: { setting: "componentsEnabled", equals: true },
+      server: { startup: "eager" },
+    })
   })
+
+  test.each([
+    [
+      "Tool",
+      tool({
+        id: "inspect",
+        description: "Inspect diagnostics",
+        input: z.object({}),
+        enabledWhen: { setting: "missing", equals: true },
+        handler: async () => "ok",
+      }),
+    ],
+    [
+      "MCP",
+      mcp({
+        id: "components",
+        enabledWhen: { setting: "missing", equals: true },
+        server: { type: "local", command: ["frontend-mcp"] },
+      }),
+    ],
+  ])(
+    "rejects a %s condition that references an undeclared setting",
+    (kind: string, contribution: ReturnType<typeof tool> | ReturnType<typeof mcp>) => {
+      expect(() =>
+        definePlugin({
+          id: "diagnostics",
+          version: "1.0.0",
+          description: "Invalid setting condition",
+          contributions: [contribution],
+        }),
+      ).toThrow(`${kind} contribution \"${contribution.id}\" references undeclared setting \"missing\"`)
+    },
+  )
 
   test("rejects plugin tools without a top-level object schema", () => {
     const plugin = definePlugin({

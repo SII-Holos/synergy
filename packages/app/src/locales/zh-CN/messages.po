@@ -15435,15 +15435,15 @@ msgstr "协作者署名"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力建议不会覆盖此值。"
+msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力较高时，新任务可能会提前进入队列。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryAdvisory"
-msgstr "内存建议值：{value}。当前设置仍然生效。"
+msgid "settings.runtime.agents.concurrency.memoryLimit"
+msgstr "内存安全限额已生效：{value}。新任务将排队，直到内存压力下降。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
-msgstr "由环境变量管理 · 内存建议值：{value}"
+msgid "settings.runtime.agents.concurrency.memoryLimitManaged"
+msgstr "由环境变量管理 · 内存安全限额已生效：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"

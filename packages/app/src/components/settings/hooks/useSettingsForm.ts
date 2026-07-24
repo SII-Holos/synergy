@@ -162,7 +162,8 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       ? Object.entries(cfg.channel.feishu.accounts).map(([key, account]) => ({
           key,
           enabled: account.enabled !== false,
-          model: ((account as Record<string, unknown>).model as string) ?? "",
+          model: account.model ?? "",
+          variant: account.variant ?? "",
         }))
       : [],
   })
