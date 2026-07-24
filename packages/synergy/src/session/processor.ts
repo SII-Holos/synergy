@@ -841,11 +841,6 @@ export namespace SessionProcessor {
                 ...agentTurnInput
               } = streamInput
               const stream = await AgentTurn.stream(agentTurnInput)
-              agentTurnInput.system?.splice(0)
-              agentTurnInput.lateSystem?.splice(0)
-              agentTurnInput.messages?.splice(0)
-              agentTurnInput.toolDefinitions?.splice(0)
-              agentTurnInput.activeToolIDs?.splice(0)
               SessionManager.setExecutionPhase(input.sessionID, "running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
@@ -1440,6 +1435,11 @@ export namespace SessionProcessor {
                   messageID: input.assistantMessage.id,
                 })
               }
+              agentTurnInput.system?.splice(0)
+              agentTurnInput.lateSystem?.splice(0)
+              agentTurnInput.messages?.splice(0)
+              agentTurnInput.toolDefinitions?.splice(0)
+              agentTurnInput.activeToolIDs?.splice(0)
               if (deferredToolCalls.length > 0) {
                 SessionManager.setExecutionPhase(input.sessionID, "authorizing_tools")
               }
