@@ -22,8 +22,10 @@ test("Agent worker static runtime excludes Control Plane and tool implementation
     logs: string[]
     entryFound: boolean
     forbidden: string[]
+    bootstrapStaticDependencies: string[]
   }
   expect(result.success, result.logs.join("\n")).toBe(true)
   expect(result.entryFound).toBe(true)
   expect(result.forbidden).toEqual([])
+  expect(result.bootstrapStaticDependencies).toEqual([])
 })
