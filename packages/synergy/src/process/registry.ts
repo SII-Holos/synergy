@@ -293,7 +293,7 @@ export namespace ProcessRegistry {
     else terminators.delete(proc)
   }
 
-  export async function terminate(proc: Process) {
+  export async function terminate(proc: Process, opts?: { allowExitedParent?: boolean }) {
     const terminate = terminators.get(proc)
     if (terminate) {
       await terminate()
@@ -301,7 +301,10 @@ export namespace ProcessRegistry {
     }
     if (!proc.child) return
     const { Shell } = await import("../util/shell")
-    await Shell.killTree(proc.child, { exited: () => proc.exited })
+    await Shell.killTree(proc.child, {
+      exited: () => proc.exited,
+      allowExitedParent: opts?.allowExitedParent,
+    })
   }
   export function appendOutput(proc: Process, chunk: string) {
     const outputBuffer = outputBuffers.get(proc)

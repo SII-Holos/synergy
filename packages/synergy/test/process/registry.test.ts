@@ -149,6 +149,19 @@ describe("ProcessRegistry lifecycle", () => {
     expect(terminated).toBe(1)
   })
 
+  test("forwards drain-timeout cleanup after the direct parent exits", async () => {
+    const proc = ProcessRegistry.create({ command: "exited parent" })
+    proc.exited = true
+    let terminated = 0
+    ProcessRegistry.setTerminator(proc, () => {
+      terminated++
+    })
+
+    await ProcessRegistry.terminate(proc, { allowExitedParent: true })
+
+    expect(terminated).toBe(1)
+  })
+
   test("resource snapshot reports inspected child process RSS", () => {
     const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 4096 }))
     const proc = ProcessRegistry.create({ command: "node server.js" })

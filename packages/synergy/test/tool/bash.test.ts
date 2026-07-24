@@ -7,7 +7,12 @@ import { tmpdir } from "../fixture/fixture"
 import type { PermissionNext } from "../../src/permission/next"
 import { Truncate } from "../../src/tool/truncation"
 import { ProcessRegistry } from "../../src/process/registry"
-import { detectDetachedDaemonRisk, LocalBashBackend, withLinuxChildOomPreference } from "../../src/tool/bash/local"
+import {
+  assertDetachedDaemonContainment,
+  detectDetachedDaemonRisk,
+  LocalBashBackend,
+  withLinuxChildOomPreference,
+} from "../../src/tool/bash/local"
 import { Shell } from "../../src/util/shell"
 
 const ctx = {
@@ -296,6 +301,16 @@ describe("tool.bash", () => {
       )
       expect(result.metadata.exit).toBe(0)
     })
+  })
+
+  test("rejects authorized detached daemons inside the Windows sandbox Job", () => {
+    expect(() =>
+      assertDetachedDaemonContainment({
+        platform: "win32",
+        detachedDaemonAllowed: true,
+        sandboxed: true,
+      }),
+    ).toThrow("Detached daemons are unavailable inside the Windows sandbox")
   })
 
   test("promotes printed local artifacts as attachments", async () => {

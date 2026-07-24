@@ -51,11 +51,20 @@ describe("ChildProcessClose", () => {
       const pid = child.pid!
 
       try {
+        let parentExited = false
         const result = await ChildProcessClose.wait(child, {
           drainGraceMs: 20,
-          onDrainTimeout: () => Shell.killTree(child),
+          onExit() {
+            parentExited = true
+          },
+          onDrainTimeout: () =>
+            Shell.killTree(child, {
+              exited: () => parentExited,
+              allowExitedParent: true,
+            }),
         })
 
+        expect(parentExited).toBe(true)
         expect(result.drainTimedOut).toBe(true)
         expect(processGroupExists(pid)).toBe(false)
       } finally {
