@@ -114,6 +114,12 @@ describe("BlueprintRoute start prompt", () => {
         expect(mail.model).toEqual({ providerID: "openai", modelID: "gpt-test" })
         const text = (mail.parts[0] as MessageV2.TextPart).text
         expect(text).toContain('Execute the coding Blueprint "Prompt split"')
+        expect(text).toContain("Evidence must match the semantic strength of the claim")
+        expect(text).toContain("A weaker proxy cannot prove a stronger outcome")
+        expect(text).toContain("representative use")
+        expect(text).toContain("unverified blocking limitation")
+        expect(text).toContain("After that tool succeeds, execution is closed")
+        expect(text).toContain("end the assistant turn immediately")
       },
     })
   })
@@ -341,6 +347,10 @@ describe("BlueprintRoute start prompt", () => {
         expect(text).toContain('Execute the coding Blueprint "Prompt split"')
         expect(text).toContain("migration or compatibility")
         expect(text).toContain("parallel implementation slices")
+        expect(text).toContain("Evidence must match the semantic strength of the claim")
+        expect(text).toContain("unverified blocking limitation")
+        expect(text).toContain("After that tool succeeds, execution is closed")
+        expect(text).toContain("end the assistant turn immediately")
       },
     })
   })

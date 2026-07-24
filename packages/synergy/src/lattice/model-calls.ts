@@ -1,4 +1,5 @@
 import { LatticeStore } from "./store"
+import { LatticeTypes } from "./types"
 
 /**
  * In-memory model-call accumulator. invoke increments per LLM call (hot path,
@@ -26,6 +27,7 @@ export namespace LatticeModelCalls {
     pending.delete(sessionID)
     const run = await LatticeStore.getOrUndefined(scopeID, sessionID)
     if (!run) return undefined
+    if (LatticeTypes.isTerminalRun(run.status)) return run.modelCallCount
     const updated = await LatticeStore.update(scopeID, sessionID, (draft) => {
       draft.modelCallCount += delta
     })

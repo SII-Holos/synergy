@@ -45,8 +45,9 @@ data/agenda/runs/<scope>/<item>/
 data/blueprint_loops/<scope>/
 data/superplan/runs/<scope>/
 data/superplan/events/<scope>/<run>/
-data/lattice/runs/<scope>/
-data/lattice/events/<scope>/
+data/lattice/runs/<scope>/<run>.json
+data/lattice/current/<scope>/<session>.json
+data/lattice/events/<scope>/<run>/
 data/holos/contacts/
 data/holos/mailbox/
 data/synergy_link/targets/
@@ -64,6 +65,8 @@ Synergy Link targets live under `data/synergy_link/targets/`, one JSON record pe
 Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `lightloop_terminal.json`, `inbox/`, `messages/`, and `history/` are separate records. `lightloop_terminal.json` preserves a plugin-owned Light Loop result and its `lightloop.after` delivery acknowledgement after the interactive workflow is cleared. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 
 The session index, paged-session index, child-session index, navigation index, and message-order index are derived but operationally important. `session_message_order_v1` contains sortable per-message markers and a readiness/count record for bounded newest-first reads; missing or interrupted state rebuilds from canonical message info. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
+
+Lattice stores every v2 run by immutable run ID. A session's `lattice/current` record selects the run shown as current without overwriting older terminal runs; it is a repairable index over canonical Run records. Per-run event files are idempotent, best-effort audit records, not an event-sourced reconstruction of the Run. Run, Step, Blueprint binding, and BlueprintLoop records remain the recovery facts.
 
 ## Library Database
 

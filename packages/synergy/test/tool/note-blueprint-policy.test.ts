@@ -23,9 +23,7 @@ async function createSession(input?: { workflow?: "plan" | "lattice" }) {
   if (input?.workflow) {
     await Session.update(session.id, (draft) => {
       draft.workflow =
-        input.workflow === "plan"
-          ? { kind: "plan" }
-          : { kind: "lattice", runID: "ltr_test", mode: "auto", firstBlueprintStarted: false }
+        input.workflow === "plan" ? { kind: "plan" } : { kind: "lattice", runID: "ltr_test", mode: "auto" }
     })
   }
   return session
@@ -88,19 +86,6 @@ describe("note Blueprint write policy", () => {
           ctx(session.id),
         )
         expect(implicitByDescription.metadata.reason).toBe("non_plan_blueprint_write")
-
-        const implicitByDefaultAgent = await write.execute(
-          {
-            mode: "create",
-            title: "Implicit Agent Blueprint",
-            content: "deliverable",
-            defaultAgent: "synergy-max",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(implicitByDefaultAgent.metadata.reason).toBe("non_plan_blueprint_write")
-        expect(await NoteStore.list(ScopeContext.current.scope.id)).toHaveLength(0)
 
         const created = await write.execute(
           {

@@ -36,7 +36,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useSessionTransition } from "@/context/session-transition"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
-import { LatticePanel } from "@/components/lattice/lattice-panel"
+import { useWorkbenchPanels } from "@/context/workbench"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
@@ -180,6 +180,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const files = useFile()
   const prompt = usePrompt()
   const layout = useLayout()
+  const workbench = useWorkbenchPanels()
   const params = useParams()
   const command = useCommand()
   const sessionTransition = useSessionTransition()
@@ -633,6 +634,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // new-session composer, mirroring Plan — when a config is armed for the
   // first message. The armed config is applied on submit once the session exists.
   const latticeActive = createMemo(() => (params.id ? activeWorkflow()?.kind === "lattice" : !!pendingLattice()))
+  let openedLatticeSession: string | undefined
+
+  createEffect(() => {
+    const sessionID = params.id
+    if (!sessionID || activeWorkflow()?.kind !== "lattice" || openedLatticeSession === sessionID) return
+    openedLatticeSession = sessionID
+    void workbench.openPanel("lattice", { reuseExisting: true })
+  })
 
   const enableLattice = async (config: LatticeEnableConfig) => {
     if (!params.id) {
@@ -649,9 +658,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         mode: config.mode,
         maxModelCalls: config.maxModelCalls,
         goal: config.goal,
-        action: config.action,
       },
     })
+    await workbench.openPanel("lattice", { reuseExisting: true })
   }
 
   const cancelLattice = async () => {
@@ -679,7 +688,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       event?.preventDefault()
       return
     }
-    workflowDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id} onEnable={enableLattice} />)
+    workflowDialog.show(() => <LatticeConfigDialog sdk={sdk} sessionID={params.id} onEnable={enableLattice} />)
   }
 
   const selectLatticeFromMenu = (event?: Event) => {
@@ -1710,9 +1719,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             commands={command.options}
           />
         </div>
-      </Show>
-      <Show when={params.id}>
-        <LatticePanel sdk={sdk as any} sessionID={params.id!} />
       </Show>
       <Show when={store.popover}>
         <PromptPopover

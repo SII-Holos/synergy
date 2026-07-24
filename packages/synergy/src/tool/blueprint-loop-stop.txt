@@ -1,4 +1,4 @@
-Use this when the Blueprint outcome is complete and ready for independent review.
+Request independent review only when the one current Blueprint outcome is complete and ready for audit.
 
 Parameters:
 - summary: Concise summary of the completed outcome
@@ -8,4 +8,4 @@ Parameters:
 
 Before requesting review, cancel every active Agenda item that can still wake this session. This tool rejects the request and lists the required `agenda_cancel` commands while any such item remains.
 
-This launches the configured Blueprint reviewer. The reviewer will either approve completion or return concrete work to resume. Do not call any tools to check on the reviewer — it will deliver results directly to this session when the audit completes.
+This records durable stop intent; it does not synchronously start the reviewer. A successful result closes execution work for this Blueprint and instructs you to end the assistant turn immediately because the configured reviewer can start only after the turn releases the session. After success, do not call another tool, modify files or artifacts, inspect reviewer state, repeat the request, extend the Blueprint scope, or begin a later Lattice Pathway Step. A repeated call is idempotent and returns the same end-turn instruction. The reviewer will either approve completion or return concrete work, and it delivers that verdict directly to this execution session.

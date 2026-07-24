@@ -3,9 +3,6 @@ import { AgendaStore } from "../../src/agenda/store"
 import { BlueprintLoopStore } from "../../src/blueprint"
 import { Cortex } from "../../src/cortex"
 import { Identifier } from "../../src/id/id"
-import { LatticeBridge } from "../../src/lattice/bridge"
-import { LatticeMachine } from "../../src/lattice/machine"
-import { LatticeStore } from "../../src/lattice/store"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { BlueprintLoopReviewAccess } from "../../src/session/blueprint-loop-review-access"
@@ -53,6 +50,8 @@ async function createRunningLoop(input?: {
   userPrompt?: string
   budget?: { maxRuntimeMs: number; maxIterations: number }
   auditTools?: Record<string, boolean>
+  source?: "user" | "lattice"
+  sourceDigest?: string
 }) {
   const session = await Session.create({})
   const loop = await BlueprintLoopStore.create({
@@ -62,6 +61,8 @@ async function createRunningLoop(input?: {
     auditAgent: input?.auditAgent,
     budget: input?.budget,
     auditTools: input?.auditTools,
+    source: input?.source,
+    sourceDigest: input?.sourceDigest,
   })
   const running = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
     status: "running",
@@ -173,6 +174,7 @@ describe("blueprint_loop_stop", () => {
           auditAgent: "security-reviewer",
           userPrompt: "Do not change the public CLI contract.",
           auditTools: { plugin__truthward__context_query: true, plugin__truthward__n03_artifact_get: true },
+          source: "lattice",
         })
         const launches = installReviewerLaunch()
         const tool = await BlueprintLoopStopTool.init()
@@ -188,7 +190,44 @@ describe("blueprint_loop_stop", () => {
 
         const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
         expect(result.metadata.loopStopRequested).toBe(true)
+        expect(result.metadata).toMatchObject({
+          reviewRequested: true,
+          reviewStarted: false,
+          requiredAgentAction: "end_turn",
+        })
+        expect(JSON.parse(result.output)).toMatchObject({
+          ok: true,
+          code: "BLUEPRINT_LOOP_REVIEW_QUEUED",
+          review: {
+            requested: true,
+            started: false,
+            startsAfterAssistantTurn: true,
+          },
+          requiredAgentAction: {
+            kind: "end_turn",
+          },
+        })
+        expect(result.output).toContain("Do not call another tool")
+        expect(result.output).toContain("future Lattice Pathway Step")
         expect(launches).toHaveLength(0)
+
+        const duplicateBeforeReview = await tool.execute(
+          { summary: "Duplicate request before the execution turn ends." },
+          ctx(session.id),
+        )
+        expect(JSON.parse(duplicateBeforeReview.output)).toMatchObject({
+          ok: true,
+          code: "BLUEPRINT_LOOP_REVIEW_ALREADY_QUEUED",
+          duplicate: true,
+          review: {
+            requested: true,
+            started: false,
+            startsAfterAssistantTurn: true,
+          },
+          requiredAgentAction: { kind: "end_turn" },
+        })
+        expect(launches).toHaveLength(0)
+
         expect(updated.status).toBe("running")
         expect(updated.auditSessionID).toBeUndefined()
         expect(updated.auditTaskID).toBeUndefined()
@@ -210,6 +249,9 @@ describe("blueprint_loop_stop", () => {
         expect(launches[0].prompt).toContain("Do not change the public CLI contract.")
         expect(launches[0].prompt).toContain("blueprint_loop_approve")
         expect(launches[0].prompt).toContain("blueprint_loop_reject")
+        expect(launches[0].prompt).toContain("Change Scope, boundaries, and non-goals")
+        expect(launches[0].prompt).toContain("future Lattice Pathway steps")
+        expect(launches[0].prompt).toContain("first successful blueprint_loop_stop")
         // Audit launch receives exactly persisted auditTools, no execution-only submit tool
         expect(launches[0].tools).toEqual({
           plugin__truthward__context_query: true,
@@ -236,7 +278,18 @@ describe("blueprint_loop_stop", () => {
 
         expect(launches).toHaveLength(1)
         expect(result.metadata.reviewSessionID).toBe(reviewSessionID)
-        expect(result.output).toContain("already requested")
+        expect(JSON.parse(result.output)).toMatchObject({
+          ok: true,
+          code: "BLUEPRINT_LOOP_REVIEW_ALREADY_STARTED",
+          review: {
+            requested: true,
+            started: true,
+          },
+          requiredAgentAction: {
+            kind: "end_turn",
+          },
+        })
+        expect(result.output).toContain("Do not call tools to inspect")
       },
     })
   })
@@ -331,7 +384,10 @@ describe("blueprint_loop_approve", () => {
         )
 
         expect(result.metadata.loopApproved).toBe(true)
-        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("completed")
+        expect(await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).toMatchObject({
+          status: "completed",
+          summary: "All acceptance criteria are verified.",
+        })
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].target).toBe(session.id)
         expect(deliveries[0].mail.metadata).toMatchObject({
@@ -360,53 +416,30 @@ describe("blueprint_loop_approve", () => {
     })
   })
 
-  test("advances a Lattice run before waking the execution session", async () => {
+  test("does not inject parent-session instructions for a Lattice-owned loop", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        LatticeBridge.init()
-        const scopeID = ScopeContext.current.scope.id
-        const session = await Session.create({})
-        await LatticeStore.reset({ sessionID: session.id, mode: "auto" })
-        await LatticeMachine.patch(scopeID, session.id, { steps: [{ title: "A", objective: "Complete A" }] })
-        const bound = await LatticeMachine.patch(scopeID, session.id, {
-          bindCurrentBlueprint: { noteID: "note_blueprint" },
-        })
-        const loop = await BlueprintLoopStore.create({
-          noteID: "note_blueprint",
-          title: "Test Blueprint",
-          sessionID: session.id,
+        const { session, loop, reviewSessionID } = await requestReview({
           source: "lattice",
+          sourceDigest: "digest-a",
         })
-        await LatticeMachine.onLoopStarted(scopeID, session.id, bound.currentStepID!, loop.id)
-        await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "running" })
-        await Session.update(session.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
-        })
-
-        installReviewerLaunch()
-        const stop = await BlueprintLoopStopTool.init()
-        await stop.execute({ summary: "A is complete", evidence: ["Checks pass"] }, ctx(session.id))
-        await startPendingReview(session.id)
-        const auditing = await BlueprintLoopStore.get(scopeID, loop.id)
-        let phaseAtDelivery: string | undefined
-        let deliveredText = ""
+        const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
         ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-          phaseAtDelivery = (await LatticeStore.get(scopeID, session.id)).phase
-          const part = input.mail.parts[0]
-          if (part.type === "text") deliveredText = part.text
+          deliveries.push(input)
         })
 
         const approve = await BlueprintLoopApproveTool.init()
-        await approve.execute(
+        const result = await approve.execute(
           { sessionID: session.id, summary: "All requirements verified" },
-          ctx(auditing.auditSessionID!, "supervisor"),
+          ctx(reviewSessionID, "supervisor"),
         )
 
-        expect(phaseAtDelivery).toBe("result_analysis")
-        expect(deliveredText).toContain("result_analysis")
-        expect(deliveredText).toContain("pathway_patch")
+        expect((await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)).status).toBe("completed")
+        expect(deliveries).toHaveLength(0)
+        expect(result.output).not.toContain("result_analysis")
+        expect(result.output).not.toContain("pathway_patch")
       },
     })
   })

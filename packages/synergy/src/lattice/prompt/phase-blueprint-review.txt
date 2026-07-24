@@ -1,6 +1,0 @@
-<lattice-phase>
-Current phase: blueprint_review (collaborative only).
-You should: treat every ordinary user message as discussion, revision, or clarification of the current Blueprint. Refine the Blueprint note and, if needed, adjust future (non-terminal) Pathway steps with pathway_patch.
-You should not: execute the Blueprint or start a BlueprintLoop. Do not execute just because the user seems satisfied.
-Next: only when the user triggers Continue does the backend move you to blueprint_execution.
-</lattice-phase>

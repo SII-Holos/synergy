@@ -13739,23 +13739,24 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true,
             "description": "Session ID"
           }
         ],
-        "summary": "Get session Lattice run",
-        "description": "Read the session's single Lattice run (or null).",
+        "summary": "Get the current Lattice Run for a Session",
+        "description": "Returns the current Run pointer projection, or null when the Session has no Lattice history.",
         "responses": {
           "200": {
-            "description": "Lattice run or null",
+            "description": "Current Lattice Run or null",
             "content": {
               "application/json": {
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/LatticeRun"
+                      "$ref": "#/components/schemas/LatticeRunView"
                     },
                     {
                       "type": "null"
@@ -13771,6 +13772,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeInternalServerError"
                 }
               }
             }
@@ -13803,17 +13814,17 @@
             }
           }
         ],
-        "summary": "List Lattice runs",
-        "description": "List all Lattice runs for the current scope (at most one per session).",
+        "summary": "List Lattice Runs",
+        "description": "Lists current and terminal Run history for the current Scope.",
         "responses": {
           "200": {
-            "description": "Lattice runs",
+            "description": "Lattice Run history",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/LatticeRun"
+                    "$ref": "#/components/schemas/LatticeRunView"
                   }
                 }
               }
@@ -13825,6 +13836,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeInternalServerError"
                 }
               }
             }
@@ -13860,20 +13881,21 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true,
-            "description": "Lattice run ID"
+            "description": "Lattice Run ID"
           }
         ],
-        "summary": "Get Lattice run",
+        "summary": "Get a Lattice Run",
         "responses": {
           "200": {
-            "description": "Lattice run",
+            "description": "Lattice Run",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LatticeRun"
+                  "$ref": "#/components/schemas/LatticeRunView"
                 }
               }
             }
@@ -13894,6 +13916,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeInternalServerError"
                 }
               }
             }
@@ -13929,16 +13961,18 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true,
-            "description": "Lattice run ID"
+            "description": "Lattice Run ID"
           }
         ],
-        "summary": "List Lattice run events",
+        "summary": "List Lattice Run events",
+        "description": "Returns best-effort audit events for one Run in the current Scope.",
         "responses": {
           "200": {
-            "description": "Lattice events",
+            "description": "Lattice audit events",
             "content": {
               "application/json": {
                 "schema": {
@@ -13969,6 +14003,16 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -13979,9 +14023,9 @@
         ]
       }
     },
-    "/lattice/run/{id}/continue": {
+    "/lattice/run/{id}/pause": {
       "post": {
-        "operationId": "lattice.run.continue",
+        "operationId": "lattice.run.pause",
         "parameters": [
           {
             "in": "query",
@@ -14001,21 +14045,21 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true,
-            "description": "Lattice run ID"
+            "description": "Lattice Run ID"
           }
         ],
-        "summary": "Continue a collaborative Blueprint review",
-        "description": "Start the current step's BlueprintLoop (collaborative blueprint_review only).",
+        "summary": "Pause a Lattice Run",
         "responses": {
           "200": {
-            "description": "Updated run",
+            "description": "Paused Lattice Run",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LatticeRun"
+                  "$ref": "#/components/schemas/LatticeRunView"
                 }
               }
             }
@@ -14039,6 +14083,26 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -14046,12 +14110,8 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "userPrompt": {
-                    "description": "Optional instruction merged into the loop start",
-                    "type": "string"
-                  }
-                }
+                "properties": {},
+                "additionalProperties": false
               }
             }
           }
@@ -14059,7 +14119,108 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.continue({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.pause({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/run/{id}/resume": {
+      "post": {
+        "operationId": "lattice.run.resume",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Lattice Run ID"
+          }
+        ],
+        "summary": "Resume a paused Lattice Run",
+        "responses": {
+          "200": {
+            "description": "Resumed Lattice Run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeRunView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.resume({\n  ...\n})"
           }
         ]
       }
@@ -14086,20 +14247,22 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true,
-            "description": "Lattice run ID"
+            "description": "Lattice Run ID"
           }
         ],
-        "summary": "Cancel a Lattice run",
+        "summary": "Cancel a Lattice Run",
+        "description": "Irreversibly cancels the Run while retaining its durable history.",
         "responses": {
           "200": {
-            "description": "Cancelled run",
+            "description": "Cancelled Lattice Run",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LatticeRun"
+                  "$ref": "#/components/schemas/LatticeRunView"
                 }
               }
             }
@@ -14123,12 +14286,145 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
           }
         },
         "x-codeSamples": [
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/lattice/run/{id}/approve": {
+      "post": {
+        "operationId": "lattice.run.approve",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Lattice Run ID"
+          }
+        ],
+        "summary": "Approve collaborative Blueprint execution",
+        "description": "The Panel approval is the complete user intent; attached execution instructions are rejected.",
+        "responses": {
+          "200": {
+            "description": "Updated Lattice Run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeRunView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.lattice.run.approve({\n  ...\n})"
           }
         ]
       }
@@ -14190,6 +14486,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInternalServerError"
                 }
               }
             }
@@ -29421,9 +29737,6 @@
               "mode": {
                 "type": "string",
                 "enum": ["auto", "collaborative"]
-              },
-              "firstBlueprintStarted": {
-                "type": "boolean"
               }
             },
             "required": ["kind", "runID", "mode"]
@@ -36726,6 +37039,9 @@
           "userPrompt": {
             "type": "string"
           },
+          "summary": {
+            "type": "string"
+          },
           "error": {
             "type": "string"
           },
@@ -36917,7 +37233,118 @@
         },
         "required": ["stepCount", "messageCount"]
       },
-      "LatticeStep": {
+      "LatticeRequirements": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "successCriteria": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "nonGoals": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": ["goal", "successCriteria", "constraints", "nonGoals", "assumptions"],
+        "additionalProperties": false
+      },
+      "LatticeBlueprintBindingView": {
+        "type": "object",
+        "properties": {
+          "noteID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "boundVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reviewedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "bound": {
+                "type": "number"
+              },
+              "reviewed": {
+                "type": "number"
+              }
+            },
+            "required": ["bound"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["noteID", "boundVersion", "time"],
+        "additionalProperties": false
+      },
+      "LatticeLoopAttemptView": {
+        "type": "object",
+        "properties": {
+          "loopID": {
+            "type": "string",
+            "pattern": "^bll.*"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["created", "running", "completed", "failed", "cancelled"]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "started": {
+                "type": "number"
+              },
+              "completed": {
+                "type": "number"
+              }
+            },
+            "required": ["created"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["loopID", "status", "time"],
+        "additionalProperties": false
+      },
+      "LatticeStepView": {
         "type": "object",
         "properties": {
           "id": {
@@ -36925,48 +37352,37 @@
             "pattern": "^lts.*"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "objective": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "status": {
             "type": "string",
-            "enum": [
-              "pending",
-              "ready",
-              "blueprinting",
-              "reviewing",
-              "running",
-              "completed",
-              "failed",
-              "blocked",
-              "cancelled"
-            ]
+            "enum": ["pending", "current", "executing", "completed", "failed", "cancelled"]
           },
           "acceptanceCriteria": {
-            "default": [],
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             }
           },
           "assumptions": {
-            "default": [],
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             }
           },
-          "blueprintNoteID": {
-            "type": "string"
-          },
-          "blueprintVersion": {
-            "type": "number"
-          },
-          "blueprintLoopID": {
-            "type": "string",
-            "pattern": "^bll.*"
+          "addressesFailedStepIDs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^lts.*"
+            }
           },
           "resultSummary": {
             "type": "string"
@@ -36979,13 +37395,6 @@
           },
           "worktreeID": {
             "type": "string"
-          },
-          "addressesFailedStepIDs": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^lts.*"
-            }
           },
           "time": {
             "type": "object",
@@ -37003,20 +37412,52 @@
                 "type": "number"
               }
             },
-            "required": ["created", "updated"]
+            "required": ["created", "updated"],
+            "additionalProperties": false
+          },
+          "blueprint": {
+            "$ref": "#/components/schemas/LatticeBlueprintBindingView"
+          },
+          "blueprintHistory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LatticeBlueprintBindingView"
+            }
+          },
+          "loopHistory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LatticeLoopAttemptView"
+            }
           }
         },
-        "required": ["id", "title", "objective", "status", "time"]
+        "required": [
+          "id",
+          "title",
+          "objective",
+          "status",
+          "acceptanceCriteria",
+          "assumptions",
+          "time",
+          "blueprintHistory",
+          "loopHistory"
+        ],
+        "additionalProperties": false
       },
-      "LatticeRun": {
+      "LatticeRunView": {
         "type": "object",
         "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "const": 2
+          },
           "id": {
             "type": "string",
             "pattern": "^ltr.*"
           },
           "scopeID": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "sessionID": {
             "type": "string",
@@ -37027,13 +37468,11 @@
             "enum": ["auto", "collaborative"]
           },
           "maxModelCalls": {
-            "default": 0,
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
           },
           "modelCallCount": {
-            "default": 0,
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
@@ -37045,40 +37484,42 @@
           "statusReason": {
             "type": "string"
           },
-          "phase": {
+          "state": {
             "type": "string",
             "enum": [
-              "initial_planning",
-              "step_blueprinting",
-              "blueprint_review",
-              "blueprint_execution",
-              "result_analysis"
+              "clarifying",
+              "planning",
+              "reviewing_pathway",
+              "blueprinting",
+              "reviewing_blueprint",
+              "awaiting_execution",
+              "executing"
             ]
           },
-          "goal": {
+          "goalSeed": {
             "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/LatticeRequirements"
           },
           "currentStepID": {
             "type": "string",
             "pattern": "^lts.*"
           },
-          "firstBlueprintStarted": {
-            "default": false,
-            "type": "boolean"
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
-          "assumptions": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "stateRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
-          "pathway": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LatticeStep"
-            }
+          "pathwayRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
           "time": {
             "type": "object",
@@ -37096,10 +37537,43 @@
                 "type": "number"
               }
             },
-            "required": ["created", "updated"]
+            "required": ["created", "updated"],
+            "additionalProperties": false
+          },
+          "pathway": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LatticeStepView"
+            }
           }
         },
-        "required": ["id", "scopeID", "sessionID", "mode", "status", "phase", "time"]
+        "required": [
+          "schemaVersion",
+          "id",
+          "scopeID",
+          "sessionID",
+          "mode",
+          "maxModelCalls",
+          "modelCallCount",
+          "status",
+          "state",
+          "revision",
+          "stateRevision",
+          "pathwayRevision",
+          "time",
+          "pathway"
+        ],
+        "additionalProperties": false
+      },
+      "LatticeInternalServerError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"],
+        "additionalProperties": false
       },
       "LatticeEvent": {
         "type": "object",
@@ -37113,7 +37587,8 @@
             "pattern": "^ltr.*"
           },
           "scopeID": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "sessionID": {
             "type": "string",
@@ -37124,9 +37599,10 @@
             "enum": [
               "run_created",
               "run_updated",
-              "phase_changed",
-              "step_added",
-              "step_updated",
+              "state_changed",
+              "pathway_replaced",
+              "action_submitted",
+              "action_consumed",
               "step_blueprint_bound",
               "step_started",
               "step_completed",
@@ -37138,21 +37614,24 @@
               "run_completed",
               "run_failed",
               "run_cancelled",
-              "budget_exhausted"
+              "budget_exhausted",
+              "recovery_reconciled"
             ]
           },
           "stepID": {
             "type": "string",
             "pattern": "^lts.*"
           },
-          "phase": {
+          "state": {
             "type": "string",
             "enum": [
-              "initial_planning",
-              "step_blueprinting",
-              "blueprint_review",
-              "blueprint_execution",
-              "result_analysis"
+              "clarifying",
+              "planning",
+              "reviewing_pathway",
+              "blueprinting",
+              "reviewing_blueprint",
+              "awaiting_execution",
+              "executing"
             ]
           },
           "message": {
@@ -37172,10 +37651,22 @@
                 "type": "number"
               }
             },
-            "required": ["created"]
+            "required": ["created"],
+            "additionalProperties": false
           }
         },
-        "required": ["id", "runID", "scopeID", "sessionID", "kind", "time"]
+        "required": ["id", "runID", "scopeID", "sessionID", "kind", "time"],
+        "additionalProperties": false
+      },
+      "WorkflowInternalServerError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"],
+        "additionalProperties": false
       },
       "WorkflowSetInput": {
         "anyOf": [
@@ -37187,7 +37678,8 @@
                 "const": "none"
               }
             },
-            "required": ["kind"]
+            "required": ["kind"],
+            "additionalProperties": false
           },
           {
             "type": "object",
@@ -37197,7 +37689,8 @@
                 "const": "plan"
               }
             },
-            "required": ["kind"]
+            "required": ["kind"],
+            "additionalProperties": false
           },
           {
             "type": "object",
@@ -37208,10 +37701,12 @@
               },
               "instructions": {
                 "description": "Instructions for Light Loop",
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               }
             },
-            "required": ["kind", "instructions"]
+            "required": ["kind", "instructions"],
+            "additionalProperties": false
           },
           {
             "type": "object",
@@ -37234,14 +37729,10 @@
               "goal": {
                 "description": "High-level goal for the Lattice run",
                 "type": "string"
-              },
-              "action": {
-                "description": "Resume a paused run or restart it",
-                "type": "string",
-                "enum": ["continue", "restart"]
               }
             },
-            "required": ["kind", "mode"]
+            "required": ["kind", "mode"],
+            "additionalProperties": false
           }
         ]
       },
@@ -40885,10 +41376,11 @@
             "type": "object",
             "properties": {
               "run": {
-                "$ref": "#/components/schemas/LatticeRun"
+                "$ref": "#/components/schemas/LatticeRunView"
               }
             },
-            "required": ["run"]
+            "required": ["run"],
+            "additionalProperties": false
           }
         },
         "required": ["type", "properties"]
@@ -40904,10 +41396,11 @@
             "type": "object",
             "properties": {
               "run": {
-                "$ref": "#/components/schemas/LatticeRun"
+                "$ref": "#/components/schemas/LatticeRunView"
               }
             },
-            "required": ["run"]
+            "required": ["run"],
+            "additionalProperties": false
           }
         },
         "required": ["type", "properties"]
@@ -40926,7 +41419,8 @@
                 "$ref": "#/components/schemas/LatticeEvent"
               }
             },
-            "required": ["event"]
+            "required": ["event"],
+            "additionalProperties": false
           }
         },
         "required": ["type", "properties"]
