@@ -106,6 +106,7 @@ export namespace LLMTurnMemory {
       streamStarted() {
         if (released || entry.streamActive) return
         entry.streamActive = true
+        SessionMemoryPressure.streamStarted()
         checkpoint(entry, "stream.started")
         entry.timer = setInterval(() => checkpoint(entry, "stream.periodic"), CHECKPOINT_INTERVAL_MS)
         entry.timer.unref()
@@ -135,6 +136,7 @@ export namespace LLMTurnMemory {
       streamDisposed() {
         if (released || !entry.streamActive) return
         entry.streamActive = false
+        SessionMemoryPressure.streamDisposed()
         if (entry.timer) clearInterval(entry.timer)
         entry.timer = undefined
         checkpoint(entry, "stream.disposed")
@@ -142,6 +144,7 @@ export namespace LLMTurnMemory {
       release() {
         if (released) return
         released = true
+        if (entry.streamActive) SessionMemoryPressure.streamDisposed()
         if (entry.timer) clearInterval(entry.timer)
         entry.timer = undefined
         entry.streamActive = false
@@ -237,7 +240,10 @@ export namespace LLMTurnMemory {
   }
 
   export function resetForTest() {
-    for (const entry of active.values()) if (entry.timer) clearInterval(entry.timer)
+    for (const entry of active.values()) {
+      if (entry.timer) clearInterval(entry.timer)
+      if (entry.streamActive) SessionMemoryPressure.streamDisposed()
+    }
     active.clear()
     recent.length = 0
     snapshotForTest = undefined
@@ -345,6 +351,9 @@ export namespace LLMTurnMemory {
       ...(current.cgroupCurrentBytes === undefined || start.cgroupCurrentBytes === undefined
         ? {}
         : { cgroupCurrentBytes: current.cgroupCurrentBytes - start.cgroupCurrentBytes }),
+      ...(current.cgroupWorkingSetBytes === undefined || start.cgroupWorkingSetBytes === undefined
+        ? {}
+        : { cgroupWorkingSetBytes: current.cgroupWorkingSetBytes - start.cgroupWorkingSetBytes }),
     }
   }
 

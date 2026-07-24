@@ -3,9 +3,11 @@ import { SessionMemoryPressure } from "../../src/session/memory-pressure"
 
 const env = {
   SYNERGY_SESSION_GC_MIN_INTERVAL_MS: "10000",
+  SYNERGY_SESSION_GC_FULL_MIN_INTERVAL_MS: "30000",
   SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES: "500",
   SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES: "500",
   SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES: "500",
+  SYNERGY_SESSION_GC_CGROUP_SOFT_BYTES: "500",
   SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES: "1000",
   SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES: "1000",
   SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES: "1000",
@@ -82,6 +84,99 @@ describe("SessionMemoryPressure", () => {
     expect(result?.releaseCount).toBe(2)
     expect(result?.decision.action).toBe("normal")
     expect(calls).toEqual([false])
+  })
+
+  test("uses full GC for a pressured Linux release boundary", async () => {
+    const calls: boolean[] = []
+    SessionMemoryPressure.signalRelease({
+      phase: "session.turn.complete",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 700 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    expect(result?.decision.action).toBe("linux_release_full")
+    expect(calls).toEqual([true])
+  })
+
+  test("does not change non-Linux release collection", async () => {
+    const calls: boolean[] = []
+    SessionMemoryPressure.signalRelease({
+      phase: "session.turn.complete",
+      platform: "darwin",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 700 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    expect(result?.decision.action).toBe("normal")
+    expect(calls).toEqual([false])
+  })
+
+  test("does not run full GC while a provider stream is active", async () => {
+    const calls: boolean[] = []
+    SessionMemoryPressure.streamStarted()
+    SessionMemoryPressure.signalRelease({
+      phase: "tool.execution.complete",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 700 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    SessionMemoryPressure.streamDisposed()
+    expect(result?.decision.action).toBe("normal")
+    expect(calls).toEqual([false])
+  })
+
+  test("keeps Linux full GC behind its independent cooldown", async () => {
+    const calls: boolean[] = []
+    const signal = (now: number) => ({
+      phase: "session.turn.complete",
+      platform: "linux" as const,
+      now: () => now,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 700 }),
+      collect: (synchronous: boolean) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    SessionMemoryPressure.signalRelease(signal(12_000))
+    await SessionMemoryPressure.flushReleaseSignalsForTest()
+    SessionMemoryPressure.signalRelease(signal(22_001))
+    const second = await SessionMemoryPressure.flushReleaseSignalsForTest()
+
+    expect(second?.decision.action).toBe("normal")
+    expect(calls).toEqual([true, false])
+  })
+
+  test("ignores Linux-only release signals on other platforms", async () => {
+    SessionMemoryPressure.signalRelease({
+      phase: "tool.execution.complete",
+      platform: "darwin",
+      linuxOnly: true,
+      snapshot: () => healthySnapshot,
+      collect: () => {
+        throw new Error("must not collect")
+      },
+      env,
+    })
+
+    expect(await SessionMemoryPressure.flushReleaseSignalsForTest()).toBeUndefined()
   })
 
   test("keeps released-history collection behind the minimum interval", async () => {
@@ -195,6 +290,9 @@ describe("SessionMemoryPressure", () => {
   test("classifies soft pressure before the critical boundary", () => {
     const thresholds = SessionMemoryPressure.resolveThresholds(env, healthySnapshot)
     expect(SessionMemoryPressure.pressureLevel({ ...healthySnapshot, heapUsedBytes: 700 }, thresholds)).toBe("soft")
+    expect(SessionMemoryPressure.pressureLevel({ ...healthySnapshot, cgroupWorkingSetBytes: 700 }, thresholds)).toBe(
+      "soft",
+    )
     expect(SessionMemoryPressure.pressureLevel(healthySnapshot, thresholds)).toBe("normal")
   })
 
