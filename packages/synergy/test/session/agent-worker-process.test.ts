@@ -61,7 +61,10 @@ test("Agent worker subprocess completes the IPC handshake and shuts down", async
         prepared: {
           system: [],
           baseSystemLength: 0,
-          provider: { options: {} },
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
           params: { options: {} },
         },
       },

@@ -178,7 +178,10 @@ describe("AgentTurnProtocol", () => {
         prepared: {
           system: [],
           baseSystemLength: 0,
-          provider: { options: {} },
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
           params: { options: {} },
         },
       },
@@ -219,7 +222,10 @@ describe("AgentTurnProtocol", () => {
       prepared: {
         system: [],
         baseSystemLength: 0,
-        provider: { options: {} },
+        provider: {
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+        },
         params: { options: {} },
       },
     }
@@ -377,7 +383,10 @@ describe("AgentTurnProtocol", () => {
         prepared: {
           system: [],
           baseSystemLength: 0,
-          provider: { options: {} },
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
           params: { options: {} },
         },
       }).success,

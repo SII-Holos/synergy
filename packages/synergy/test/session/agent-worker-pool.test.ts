@@ -94,7 +94,10 @@ function input(abort: AbortSignal) {
     prepared: {
       system: [],
       baseSystemLength: 0,
-      provider: { options: {} },
+      provider: {
+        options: {},
+        timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+      },
       params: { options: {} },
     },
   } as any
@@ -158,7 +161,10 @@ describe("AgentWorkerPool", () => {
         prepared: {
           system: ["prepared"],
           baseSystemLength: 1,
-          provider: { options: {} },
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
           params: { options: {} },
         },
       } as any),
@@ -472,7 +478,10 @@ describe("AgentWorkerPool", () => {
           prepared: {
             system: ["x".repeat(4_096)],
             baseSystemLength: 1,
-            provider: { options: {} },
+            provider: {
+              options: {},
+              timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+            },
             params: { options: {} },
           },
         }),

@@ -2,7 +2,7 @@ import z from "zod"
 import { deserialize, serialize } from "v8"
 import { APICallError, type FinishReason, type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Runtime as ScopeRuntime } from "@/scope/types"
-import { Workspace } from "../types"
+import { Workspace } from "../workspace-schema"
 
 export namespace AgentTurnProtocol {
   export const VERSION = 1
@@ -130,6 +130,13 @@ export namespace AgentTurnProtocol {
             .object({
               key: z.string().optional(),
               options: z.record(z.string(), z.unknown()),
+              timeouts: z
+                .object({
+                  ttfbMs: z.number().nonnegative(),
+                  idleMs: z.union([z.number().nonnegative(), z.literal(false)]),
+                  wallMs: z.union([z.number().nonnegative(), z.literal(false)]),
+                })
+                .strict(),
             })
             .strict(),
           params: z
