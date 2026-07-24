@@ -8,6 +8,7 @@ import {
   type AgentTurnStreamPart,
   type AgentWorkerPoolOptions,
 } from "./worker-pool"
+import { AgentTurnProtocol } from "./protocol"
 
 export namespace AgentTurn {
   export type Input = AgentTurnInput
@@ -61,7 +62,11 @@ export namespace AgentTurn {
       }
       const owned = LLM.takeFullStream(result)
       return {
-        fullStream: owned.stream,
+        fullStream: (async function* () {
+          for await (const value of owned.stream) {
+            yield* AgentTurnProtocol.projectEvents([value])
+          }
+        })(),
         contextUsageDraft: result.contextUsageDraft,
         usage,
         dispose: owned.dispose,
