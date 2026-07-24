@@ -11462,7 +11462,7 @@ msgstr "Also restore file changes"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.alsoRestore.hint"
-msgstr "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the banner."
+msgstr "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the rollback dialog."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11532,7 +11532,7 @@ msgstr "Rewind to this point"
 msgid "session.rollback.bannerText"
 msgstr "Rewound {messages, plural, one {# message} other {# messages}} ({turns, plural, one {# turn} other {# turns}})"
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr "Cannot redo"
 
@@ -11550,6 +11550,11 @@ msgstr "New messages have been added. This rollback can no longer be redone."
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
 msgstr "New messages have been added; cannot redo this rollback"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "Rewind complete"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11586,7 +11591,8 @@ msgstr "Redo failed"
 msgid "session.rollback.redoSuccessDesc"
 msgstr "Restored {count, plural, one {# message} other {# messages}}"
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr "Request failed"
 
@@ -12899,11 +12905,15 @@ msgstr "synergy link | remote host | target | agent | link id | key"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
-msgstr "Agent prompt behavior, subagent concurrency, provider timeouts, and tool timeout controls."
+msgstr "Agent worker capacity, subagent concurrency, provider timeouts, and tool timeout controls."
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
 msgstr "Agents"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
+msgstr "Agent Worker Pool"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
@@ -12911,7 +12921,7 @@ msgstr "Max Concurrent Subagents"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
-msgstr "agent | subagent | concurrency | timeout | provider | tool | coauthor | commit | git | prompt"
+msgstr "agent | worker | pool | parallel | subagent | concurrency | timeout | provider | tool | coauthor | commit | git | prompt"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.description"
@@ -15426,6 +15436,22 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "Agent"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr "Automatic"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr "Auto"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
+msgstr "Agent Worker Pool"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
 msgstr "Remind agents to include the Synergy co-author footer when creating git commits."
 
@@ -15483,7 +15509,7 @@ msgstr "Tool Overrides"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.page.desc"
-msgstr "Agent prompt behavior, provider timeouts, and tool timeout controls."
+msgstr "Agent capacity, prompt behavior, provider timeouts, and tool timeout controls."
 
 #. Agents
 msgid "settings.runtime.agents.page.title"

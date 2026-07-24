@@ -7,6 +7,7 @@ import { Scope } from "@/scope"
 import { SessionProgress } from "./progress"
 import { isActiveLoopStatus, BlueprintLoopStore } from "../blueprint/loop-store"
 import { LatticeStore } from "../lattice/store"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 const log = Log.create({ service: "session.working" })
 
@@ -52,7 +53,7 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
 async function hasActiveWorkflow(input: { session: Info; scopeID: Identifier.ScopeID }): Promise<boolean> {
   const workflow = input.session.workflow
   if (!workflow) return false
-  if (workflow.kind === "lightloop") return true
+  if (workflow.kind === "lightloop") return isActiveLightLoopWorkflow(workflow)
   if (workflow.kind !== "lattice") return false
   const run = await LatticeStore.getOrUndefined(input.scopeID, input.session.id).catch(() => undefined)
   return run?.status === "active" || run?.status === "paused"

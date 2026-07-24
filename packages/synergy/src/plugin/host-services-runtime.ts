@@ -24,7 +24,7 @@ import { SessionInvoke } from "../session/invoke"
 import { Agent } from "../agent/agent"
 import { AgentCall } from "../agent/call"
 import { isPathContained } from "../util/path-contain"
-import { getPluginConfig, replacePluginConfig } from "./config-store"
+import { getPluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
 import { PluginEvent } from "./event"
 import {
@@ -460,7 +460,11 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     trustedRoots,
     synergyRoot: Global.Path.root,
   })
-  const envelope = gate.evaluate("bash", { command: renderShellCommand(command), workdir: input.invocation.directory })
+  const envelope = await gate.evaluateIsolated(
+    "bash",
+    { command: renderShellCommand(command), workdir: input.invocation.directory },
+    input.signal,
+  )
   if (envelope.decision !== "allow") {
     const reason =
       envelope.refusal?.reason ??
@@ -527,9 +531,10 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       await Bun.write(target, value.content)
       return
     }
-    if (input.method === "settings.get") return getPluginConfig(input.pluginId)
+    if (input.method === "settings.get") return getPluginConfig(input.pluginId, { manifest: input.manifest })
     if (input.method === "settings.replace") {
-      return replacePluginConfig(input.pluginId, value.values, { manifest: input.manifest })
+      const { updateConfig } = await import("./lifecycle")
+      return updateConfig({ id: input.pluginId, manifest: input.manifest }, value.values)
     }
     if (input.method.startsWith("secrets.")) {
       const key = value.key

@@ -84,10 +84,16 @@ export async function npmVersionExists(name: string, version: string) {
   return response.ok
 }
 
+export const NPM_REGISTRY_WAIT_ATTEMPTS = 60
+export const NPM_REGISTRY_WAIT_DELAY_MS = 5_000
+
 export async function waitForNpmVersion(
   name: string,
   version: string,
-  { attempts = 12, delay = 5_000 }: { attempts?: number; delay?: number } = {},
+  {
+    attempts = NPM_REGISTRY_WAIT_ATTEMPTS,
+    delay = NPM_REGISTRY_WAIT_DELAY_MS,
+  }: { attempts?: number; delay?: number } = {},
 ) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     if (await npmVersionExists(name, version)) {
@@ -109,9 +115,24 @@ export async function npmDistTagList(name: string): Promise<Record<string, strin
   return (await response.json()) as Record<string, string>
 }
 
-export async function npmTagMatches(name: string, tag: string, version: string) {
-  const tags = await npmDistTagList(name)
-  return tags[tag] === version
+export async function npmTagMatches(
+  name: string,
+  tag: string,
+  version: string,
+  {
+    attempts = NPM_REGISTRY_WAIT_ATTEMPTS,
+    delay = NPM_REGISTRY_WAIT_DELAY_MS,
+  }: { attempts?: number; delay?: number } = {},
+) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const tags = await npmDistTagList(name)
+    if (tags[tag] === version) return true
+    if (attempt < attempts) {
+      console.log(`waiting for ${name}@${version} to be tagged ${tag} (${attempt}/${attempts})`)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+  return false
 }
 
 export async function npmEnsureDistTag(name: string, version: string, tag: string) {

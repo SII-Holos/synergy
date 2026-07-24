@@ -11,6 +11,45 @@ export function isReencodeJobNotFound(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && "code" in error && error.code === "REENCODE_JOB_NOT_FOUND")
 }
 
+type ReencodeJobResponse = {
+  data?: ReencodeJobState
+  error?: unknown
+}
+
+export async function currentReencodeJob(
+  request: () => Promise<ReencodeJobResponse>,
+): Promise<ReencodeJobState | undefined> {
+  try {
+    const response = await request()
+    if (response.error) {
+      if (isReencodeJobNotFound(response.error)) return
+      throw response.error
+    }
+    if (!response.data) throw new Error("Reencode job response did not include a job")
+    return response.data
+  } catch (error) {
+    if (isReencodeJobNotFound(error)) return
+    throw error
+  }
+}
+
+export async function startedReencodeJob(request: () => Promise<ReencodeJobResponse>): Promise<ReencodeJobState> {
+  try {
+    const response = await request()
+    if (response.error) {
+      const conflict = reencodeConflictJob(response.error)
+      if (conflict) return conflict
+      throw response.error
+    }
+    if (!response.data) throw new Error("Reencode job response did not include a job")
+    return response.data
+  } catch (error) {
+    const conflict = reencodeConflictJob(error)
+    if (conflict) return conflict
+    throw error
+  }
+}
+
 export function reencodeJobPercent(job: ReencodeJobState): number {
   if (job.totalCount === 0) return 0
   return Math.min(100, Math.round((job.completedCount / job.totalCount) * 100))

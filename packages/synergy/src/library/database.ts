@@ -430,6 +430,7 @@ function initialize(conn: Database) {
       id         TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
       scope_id   TEXT NOT NULL,
+      user_input TEXT,
       script     TEXT,
       raw        TEXT,
       metadata   TEXT NOT NULL DEFAULT '{}',
@@ -896,6 +897,7 @@ export namespace LibraryDB {
       id: string
       session_id: string
       scope_id: string
+      user_input: string | null
       script: string | null
       raw: string | null
       metadata: string
@@ -904,6 +906,7 @@ export namespace LibraryDB {
     }
 
     export interface ContentInput {
+      userInput?: string
       script?: string
       raw?: string
     }
@@ -1423,15 +1426,17 @@ export namespace LibraryDB {
 
       conn
         .prepare(
-          `INSERT INTO experience_content (id, session_id, scope_id, script, raw, metadata, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+          `INSERT INTO experience_content (id, session_id, scope_id, user_input, script, raw, metadata, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(id) DO UPDATE SET
-           script = excluded.script, raw = excluded.raw, metadata = excluded.metadata, updated_at = excluded.updated_at`,
+           user_input = excluded.user_input, script = excluded.script, raw = excluded.raw,
+           metadata = excluded.metadata, updated_at = excluded.updated_at`,
         )
         .run(
           input.id,
           input.sessionID,
           input.scopeID,
+          input.content.userInput ?? null,
           input.content.script ?? null,
           input.content.raw ?? null,
           JSON.stringify(input.metadata),
@@ -1506,15 +1511,17 @@ export namespace LibraryDB {
 
       conn
         .prepare(
-          `INSERT INTO experience_content (id, session_id, scope_id, script, raw, metadata, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+          `INSERT INTO experience_content (id, session_id, scope_id, user_input, script, raw, metadata, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(id) DO UPDATE SET
-           script = excluded.script, raw = excluded.raw, metadata = excluded.metadata, updated_at = excluded.updated_at`,
+           user_input = excluded.user_input, script = excluded.script, raw = excluded.raw,
+           metadata = excluded.metadata, updated_at = excluded.updated_at`,
         )
         .run(
           existingID,
           input.sessionID,
           input.scopeID,
+          input.content.userInput ?? null,
           input.content.script ?? null,
           input.content.raw ?? null,
           JSON.stringify(input.metadata),

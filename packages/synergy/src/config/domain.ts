@@ -104,6 +104,7 @@ export namespace ConfigDomain {
       "server",
       "timeout",
       "cortex",
+      "execution",
       "watcher",
       "formatter",
       "lsp",

@@ -14,6 +14,7 @@ import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
+import { ObservabilityMetrics } from "@/observability/metrics"
 
 const log = Log.create({ service: "session.manager" })
 
@@ -51,6 +52,14 @@ export namespace SessionManager {
   export type SessionMail = SessionMail.User | SessionMail.Assistant
 
   export type LoopPhase = "starting" | "running" | "stopping"
+  export type ExecutionPhase =
+    | "queued_agent"
+    | "running_agent"
+    | "authorizing_tools"
+    | "queued_tools"
+    | "running_tools"
+    | "waiting_background"
+    | "stopping"
 
   export interface LoopLease {
     readonly sessionID: string
@@ -67,6 +76,8 @@ export namespace SessionManager {
   export interface SessionRuntime {
     sessionID: string
     status: StatusInfo
+    executionPhase?: ExecutionPhase
+    executionPhaseStartedAt?: number
     owner?: LoopOwner
     waiters: {
       onComplete(result: MessageV2.WithParts): void
@@ -91,6 +102,7 @@ export namespace SessionManager {
     childCount: number
     userCount: number
     waiterCount: number
+    executionPhases: Partial<Record<ExecutionPhase, number>>
   }
 
   const runtimes = new Map<string, SessionRuntime>()
@@ -291,10 +303,14 @@ export namespace SessionManager {
     let runningCount = 0
     let childCount = 0
     let waiterCount = 0
+    const executionPhases: Partial<Record<ExecutionPhase, number>> = {}
     for (const runtime of runtimes.values()) {
       if (occupied(runtime)) runningCount++
       if (runtime.isChild) childCount++
       waiterCount += runtime.waiters.length
+      if (runtime.executionPhase) {
+        executionPhases[runtime.executionPhase] = (executionPhases[runtime.executionPhase] ?? 0) + 1
+      }
     }
     return {
       totalCount: runtimes.size,
@@ -303,6 +319,7 @@ export namespace SessionManager {
       childCount,
       userCount: runtimes.size - childCount,
       waiterCount,
+      executionPhases,
     }
   }
 
@@ -399,6 +416,7 @@ export namespace SessionManager {
       signal: controller.signal,
     }
     runtime.owner = { lease, controller, phase: "starting" }
+    transitionExecutionPhase(runtime, "queued_agent")
     runtime.status = { type: "busy" }
     return lease
   }
@@ -420,6 +438,7 @@ export namespace SessionManager {
     if (owner.phase === "stopping") return "already_stopping"
 
     owner.phase = "stopping"
+    transitionExecutionPhase(runtime, "stopping")
     owner.controller.abort()
     cancelWaiters(runtime)
     return "signaled"
@@ -440,6 +459,7 @@ export namespace SessionManager {
     runtime.owner!.controller.abort()
     cancelWaiters(runtime)
     runtime.owner = undefined
+    transitionExecutionPhase(runtime, undefined)
     runtime.status = { type: "idle" }
     emitStatus(runtime, runtime.status)
     await emitSessionUpdated(lease.sessionID).catch((error) => {
@@ -473,6 +493,30 @@ export namespace SessionManager {
     if (!runtime) return
     runtime.status = status
     emitStatus(runtime, status)
+  }
+
+  export function setExecutionPhase(sessionID: string, phase: ExecutionPhase): void {
+    const runtime = getRuntime(sessionID)
+    if (!runtime?.owner) return
+    transitionExecutionPhase(runtime, phase)
+    runtime.lastActiveAt = Date.now()
+  }
+
+  function transitionExecutionPhase(runtime: SessionRuntime, phase: ExecutionPhase | undefined): void {
+    if (runtime.executionPhase === phase) return
+    const now = Date.now()
+    if (runtime.executionPhase && runtime.executionPhaseStartedAt !== undefined) {
+      ObservabilityMetrics.record({
+        name: "session.execution_phase.duration",
+        value: now - runtime.executionPhaseStartedAt,
+        unit: "ms",
+        module: "session",
+        sessionID: runtime.sessionID,
+        labels: { phase: runtime.executionPhase },
+      })
+    }
+    runtime.executionPhase = phase
+    runtime.executionPhaseStartedAt = phase ? now : undefined
   }
 
   export async function publishStatusOnly(sessionID: string, status: StatusInfo): Promise<void> {

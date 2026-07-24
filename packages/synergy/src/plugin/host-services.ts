@@ -30,6 +30,7 @@ import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../co
 import { startBlueprint, getBlueprint, cancelBlueprint } from "../blueprint/plugin-adapter"
 import { SessionWorkflowService } from "../session/workflow"
 import { LightLoopRuntime } from "../session/light-loop-runtime"
+import { LightLoopTerminalStore } from "../session/light-loop-terminal-hook"
 
 type RuntimeContext = {
   pluginId?: string
@@ -446,14 +447,6 @@ export async function startLightLoop(input: {
   }
 }
 
-const lightLoopTerminalStatuses = new Set<LightLoopInfo["status"]>([
-  "completed",
-  "failed",
-  "cancelled",
-  "timed_out",
-  "iteration_exhausted",
-])
-
 export async function getLightLoop(input: {
   pluginId: string
   pluginGeneration: string
@@ -462,10 +455,11 @@ export async function getLightLoop(input: {
 }): Promise<LightLoopInfo> {
   const session = await Session.get(input.sessionID)
   if (!session) throw new Error(`LightLoop session not found: ${input.sessionID}`)
-  if (session.workflow?.kind !== "lightloop") throw new Error(`Session ${input.sessionID} is not a LightLoop`)
 
-  const owner = session.workflow.pluginOwner
-  if (!owner) throw new Error(`LightLoop ${input.sessionID} is not plugin-owned`)
+  const terminal = await LightLoopTerminalStore.get(session)
+  const workflow = session.workflow?.kind === "lightloop" ? session.workflow : undefined
+  const owner = workflow?.pluginOwner ?? terminal?.pluginOwner
+  if (!owner) throw new Error(`Session ${input.sessionID} is not a plugin-owned LightLoop`)
   if (
     owner.pluginId !== input.pluginId ||
     owner.pluginGeneration !== input.pluginGeneration ||
@@ -474,19 +468,20 @@ export async function getLightLoop(input: {
     throw new Error(`LightLoop not found`)
   }
 
-  const persistedStatus = session.workflow.status
-  const status: LightLoopInfo["status"] =
-    persistedStatus && lightLoopTerminalStatuses.has(persistedStatus)
-      ? persistedStatus
-      : session.workflow.stopRequest?.reviewSessionID
-        ? "reviewing"
-        : "running"
+  if (terminal) {
+    return {
+      sessionID: input.sessionID,
+      status: terminal.status,
+      instructions: terminal.instructions,
+      ...(terminal.error ? { error: terminal.error } : {}),
+    }
+  }
+  if (!workflow) throw new Error(`Session ${input.sessionID} is not a LightLoop`)
 
   return {
     sessionID: input.sessionID,
-    status,
-    instructions: session.workflow.instructions,
-    ...(session.workflow.terminalError ? { error: session.workflow.terminalError } : {}),
+    status: workflow.stopRequest?.reviewSessionID ? "reviewing" : "running",
+    instructions: workflow.instructions,
   }
 }
 
@@ -499,6 +494,22 @@ export async function cancelLightLoop(input: {
 }): Promise<LightLoopInfo> {
   const session = await Session.get(input.sessionID)
   if (!session) throw new Error(`LightLoop session not found: ${input.sessionID}`)
+  const terminal = await LightLoopTerminalStore.get(session)
+  if (terminal) {
+    if (
+      terminal.pluginOwner.pluginId !== input.pluginId ||
+      terminal.pluginOwner.pluginGeneration !== input.pluginGeneration ||
+      terminal.pluginOwner.scopeId !== input.scopeId
+    ) {
+      throw new Error(`LightLoop not found`)
+    }
+    return {
+      sessionID: input.sessionID,
+      status: terminal.status,
+      instructions: terminal.instructions,
+      ...(terminal.error ? { error: terminal.error } : {}),
+    }
+  }
   if (session.workflow?.kind !== "lightloop") throw new Error(`Session ${input.sessionID} is not a LightLoop`)
 
   const owner = session.workflow.pluginOwner
@@ -527,12 +538,14 @@ export async function cancelLightLoop(input: {
   }
 
   await LightLoopRuntime.setTerminalStatus(input.sessionID, "cancelled")
-  return getLightLoop({
-    pluginId: input.pluginId,
-    pluginGeneration: input.pluginGeneration,
-    scopeId: input.scopeId,
+  const result = await LightLoopTerminalStore.get(session)
+  if (!result) throw new Error(`LightLoop ${input.sessionID} did not persist its terminal result`)
+  return {
     sessionID: input.sessionID,
-  })
+    status: result.status,
+    instructions: result.instructions,
+    ...(result.error ? { error: result.error } : {}),
+  }
 }
 
 export async function assertPluginManifestCapability(input: {

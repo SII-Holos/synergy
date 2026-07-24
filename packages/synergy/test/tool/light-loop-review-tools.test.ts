@@ -6,6 +6,7 @@ import { SessionManager } from "../../src/session/manager"
 import { Plugin } from "../../src/plugin"
 import { LightLoopApproveTool } from "../../src/tool/light-loop-approve"
 import { LightLoopRejectTool } from "../../src/tool/light-loop-reject"
+import { LightLoopTerminalStore } from "../../src/session/light-loop-terminal-hook"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 
@@ -52,6 +53,7 @@ function lightLoopSession(
 ): Session.Info {
   return {
     id: "ses_exec",
+    scope: ScopeContext.current.scope,
     workflow: {
       kind: "lightloop" as const,
       instructions: opts.instructions ?? "Build the thing",
@@ -87,7 +89,56 @@ function mockSessions(target: Session.Info, reviewers: Session.Info[] = [reviewe
 }
 
 describe("light_loop_approve", () => {
-  test("clears LightLoop workflow when called from the recorded review session", async () => {
+  test("clears an ordinary LightLoop workflow when called from the recorded review session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = lightLoopSession({
+          stopRequest: {
+            summary: "all done",
+            requestedAt: Date.now(),
+            requesterSessionID: "ses_exec",
+            requesterMessageID: "msg_1",
+            reviewSessionID: "ses_reviewer",
+            reviewTaskID: "ctx_1",
+          },
+        })
+
+        mockSessions(session)
+        ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
+          fn(session)
+          return session
+        })
+        const hookDeliveries: unknown[][] = []
+        ;(Plugin as any).deliverHookForPlugin = mock(async (...args: unknown[]) => {
+          hookDeliveries.push(args)
+          return { status: "delivered", handlerCount: 1 }
+        })
+        const deliveries: any[] = []
+        ;(SessionManager.deliver as any) = mock(async (input: any) => {
+          deliveries.push(input)
+        })
+
+        const tool = await LightLoopApproveTool.init()
+        const result = await tool.execute(
+          { sessionID: "ses_exec", summary: "Approved: looks good" },
+          ctx("ses_reviewer"),
+        )
+
+        expect(result.metadata.loopApproved).toBe(true)
+        expect(session.workflow).toBeUndefined()
+        expect(hookDeliveries).toHaveLength(0)
+        expect(deliveries).toHaveLength(1)
+        expect(deliveries[0].mail.metadata).toMatchObject({
+          source: "light_loop_approved",
+          sourceSessionID: "ses_reviewer",
+        })
+      },
+    })
+  })
+
+  test("records plugin completion and delivers its terminal hook", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -110,12 +161,9 @@ describe("light_loop_approve", () => {
           reviewAgent: "lightloop-reviewer",
         })
 
-        let terminalStatusSet = false
         mockSessions(session)
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           fn(session)
-          if (session.workflow?.kind === "lightloop" && (session.workflow as any).status === "completed")
-            terminalStatusSet = true
         })
         const hookDeliveries: unknown[][] = []
         ;(Plugin as any).deliverHookForPlugin = mock(async (...args: unknown[]) => {
@@ -134,8 +182,8 @@ describe("light_loop_approve", () => {
         )
 
         expect(result.metadata.loopApproved).toBe(true)
-        expect(terminalStatusSet).toBe(true)
-        expect((session.workflow as any).terminalHookDeliveredAt).toBeNumber()
+        expect(session.workflow).toBeUndefined()
+        expect((await LightLoopTerminalStore.get(session))?.hookDeliveredAt).toBeNumber()
         expect(hookDeliveries).toEqual([
           [
             "review-plugin",
@@ -323,8 +371,7 @@ describe("light_loop_reject", () => {
 
         expect(result.metadata.loopExhausted).toBe(true)
         expect(result.metadata.attempts).toBe(1)
-        expect((session.workflow as any)?.status).toBe("iteration_exhausted")
-        expect((session.workflow as any)?.review?.attempts).toBe(1)
+        expect(session.workflow).toBeUndefined()
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].mail.metadata.source).toBe("light_loop_exhausted")
       },

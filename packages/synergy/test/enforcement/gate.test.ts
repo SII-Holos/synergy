@@ -2965,6 +2965,18 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(true)
     expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(false)
   })
+  test("autonomous denies a protected-branch push with stderr piped", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "main",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("bash", { command: "git push origin dev |& cat" })
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(true)
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell")).toBe(false)
+  })
 
   test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {
     const gate = await EnforcementGate.create({

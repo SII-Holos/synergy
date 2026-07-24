@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { jsonSchema } from "ai"
 import z from "zod"
 import { Agent } from "../../src/agent/agent"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
@@ -8,6 +9,7 @@ import { MCP } from "../../src/mcp"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { ExpandToolsTool } from "../../src/tool/expand-tools"
 import { ToolDiscovery } from "../../src/tool/discovery"
@@ -414,7 +416,7 @@ describe("tool exposure", () => {
           includeMCP: false,
         })
 
-        await (resolved.tools[id] as any).execute({ value: "persist me" }, { toolCallId: "call_post_persist" })
+        await (resolved.executionTools[id] as any).execute({ value: "persist me" }, { toolCallId: "call_post_persist" })
         const completed = await outcome.promise
 
         expect(committed).toBe(false)
@@ -598,14 +600,14 @@ describe("tool exposure", () => {
           includeMCP: false,
         })
 
-        const searchResult = await (resolved.tools.search_tools as any).execute(
+        const searchResult = await (resolved.executionTools.search_tools as any).execute(
           { query: "note", limit: 8 },
           { toolCallId: "call_search" },
         )
         const noteResult = (searchResult.metadata.results as Array<any>).find((result) => result.id === "note")
         expect(noteResult?.matchedToolPreview).toEqual(["note_read"])
 
-        const expandResult = await (resolved.tools.expand_tools as any).execute(
+        const expandResult = await (resolved.executionTools.expand_tools as any).execute(
           { groups: ["note"] },
           { toolCallId: "call_expand" },
         )
@@ -617,6 +619,74 @@ describe("tool exposure", () => {
         expect(ids.has("note_edit")).toBe(false)
       },
     })
+  })
+
+  test("MCP definitions keep transport-safe JSON schemas for Agent workers", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalToolEntries = MCP.toolEntries
+    const inputSchema = {
+      type: "object" as const,
+      properties: { query: { type: "string" as const } },
+      required: ["query"],
+      additionalProperties: false,
+    }
+    ;(MCP as any).toolEntries = async () => [
+      {
+        id: "mcp__search__query",
+        serverName: "search",
+        toolName: "query",
+        inputSchema,
+        tool: {
+          description: "Search MCP tool",
+          inputSchema: jsonSchema(inputSchema),
+        },
+      },
+    ]
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const definitions = await ToolResolver.definitions({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session,
+          })
+          const definition = definitions.find((item) => item.id === "mcp__search__query")!
+          const transportDefinition = {
+            id: definition.id,
+            description: definition.description,
+            inputSchema: definition.inputSchema,
+          }
+
+          expect(Object.getOwnPropertySymbols(transportDefinition.inputSchema)).toEqual([])
+          expect(() =>
+            AgentTurnProtocol.TurnInputSchema.parse({
+              user: { id: "msg_user" },
+              sessionID: session.id,
+              model: { id: model.id, providerID: model.providerID },
+              agent: { name: allowAllAgent.name },
+              system: [],
+              messages: [],
+              toolDefinitions: [transportDefinition],
+              prepared: {
+                system: [],
+                baseSystemLength: 0,
+                provider: {
+                  options: {},
+                  timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+                },
+                params: { options: {} },
+              },
+            }),
+          ).not.toThrow()
+        },
+      })
+    } finally {
+      ;(MCP as any).toolEntries = originalToolEntries
+    }
   })
 
   test("restricted subagents cannot enumerate permission-hidden MCP groups", async () => {
@@ -1064,10 +1134,10 @@ describe("tool exposure", () => {
 
         expect(resolved.activeToolIDs).toContain("bash")
         expect(resolved.activeToolIDs).not.toContain("edit")
-        expect(resolved.tools.edit).toBeDefined()
+        expect(resolved.executionTools.edit).toBeDefined()
 
         await expect(
-          (resolved.tools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
+          (resolved.executionTools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
         ).rejects.toThrow("Plan")
         const outcome = await executions.get("call_edit")
         expect(outcome.status).toBe("error")
