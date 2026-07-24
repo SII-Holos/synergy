@@ -9,6 +9,7 @@ import { ObservabilityRedaction } from "./redaction"
 import { ProcessRegistry } from "@/process/registry"
 import { ProcessMemory } from "@/process/memory-usage"
 import { ServiceMemory } from "@/process/service-memory"
+import { LinuxRuntimeMemory } from "./linux-runtime-memory"
 
 type PublicServiceMemory = NonNullable<ObservabilitySchema.ResourceSample["serviceMemory"]>
 
@@ -29,6 +30,9 @@ export namespace ObservabilityResources {
   let sampleIntervalMs: number | undefined
   const io = { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 }
   const rssWindow: Array<{ time: number; rss: number }> = []
+  let previousCgroupEvents: ServiceMemory.CgroupV2["events"]
+  let previousPressureTotals: { some?: number; full?: number } | undefined
+  let lastRuntimeMetricSampleAt = 0
 
   export function addRead(bytes: number) {
     io.appReadBytes += Math.max(0, bytes)
@@ -108,6 +112,8 @@ export namespace ObservabilityResources {
     ObservabilityStore.insertResource(sample)
     recordChildProcesses(now, config.resourceSampleIntervalMs, childProcesses)
     recordResourceMetrics(memory, utilizationRatio, lagMs)
+    recordServiceMemoryMetrics(cgroup)
+    recordLinuxRuntimeMetrics()
     detectPressure(sample, config)
   }
 
@@ -125,6 +131,8 @@ export namespace ObservabilityResources {
     if (timer) clearInterval(timer)
     timer = undefined
     sampleIntervalMs = undefined
+    previousCgroupEvents = undefined
+    previousPressureTotals = undefined
   }
 
   export function reconfigure() {
@@ -231,6 +239,162 @@ export namespace ObservabilityResources {
       module: "process",
       source: "process",
     })
+  }
+
+  function recordServiceMemoryMetrics(cgroup: ServiceMemory.CgroupV2 | undefined) {
+    if (!cgroup) return
+    const labels = { source: "cgroup_v2", platform: "linux" }
+    recordOptionalMetrics(
+      {
+        "service.memory.current": cgroup.currentBytes,
+        "service.memory.peak": cgroup.peakBytes,
+        "service.memory.high": cgroup.highBytes,
+        "service.memory.max": cgroup.maxBytes,
+        "service.memory.swap": cgroup.swapCurrentBytes,
+        "service.memory.anon": cgroup.stat?.anonBytes,
+        "service.memory.file": cgroup.stat?.fileBytes,
+        "service.memory.kernel": cgroup.stat?.kernelBytes,
+        "service.memory.slab": cgroup.stat?.slabBytes,
+        "service.memory.file.active": cgroup.stat?.activeFileBytes,
+        "service.memory.file.inactive": cgroup.stat?.inactiveFileBytes,
+        "service.memory.slab.reclaimable": cgroup.stat?.slabReclaimableBytes,
+        "service.memory.slab.unreclaimable": cgroup.stat?.slabUnreclaimableBytes,
+        "service.memory.reclaimable": cgroup.stat?.reclaimableBytes,
+        "service.memory.working_set": cgroup.stat?.workingSetBytes,
+      },
+      "bytes",
+      labels,
+    )
+    recordOptionalMetrics(
+      {
+        "service.memory.events.low": cgroup.events?.low,
+        "service.memory.events.high": cgroup.events?.high,
+        "service.memory.events.max": cgroup.events?.max,
+        "service.memory.events.oom": cgroup.events?.oom,
+        "service.memory.events.oom_kill": cgroup.events?.oomKill,
+        "service.memory.events.oom_group_kill": cgroup.events?.oomGroupKill,
+      },
+      "count",
+      labels,
+    )
+    recordOptionalMetrics(
+      {
+        "service.memory.pressure.some.avg10": cgroup.pressure?.some?.avg10,
+        "service.memory.pressure.some.avg60": cgroup.pressure?.some?.avg60,
+        "service.memory.pressure.some.avg300": cgroup.pressure?.some?.avg300,
+        "service.memory.pressure.full.avg10": cgroup.pressure?.full?.avg10,
+        "service.memory.pressure.full.avg60": cgroup.pressure?.full?.avg60,
+        "service.memory.pressure.full.avg300": cgroup.pressure?.full?.avg300,
+      },
+      "percent",
+      labels,
+    )
+
+    if (previousCgroupEvents && cgroup.events) {
+      recordOptionalMetrics(
+        {
+          "service.memory.events.low.delta": counterDelta(cgroup.events.low, previousCgroupEvents.low),
+          "service.memory.events.high.delta": counterDelta(cgroup.events.high, previousCgroupEvents.high),
+          "service.memory.events.max.delta": counterDelta(cgroup.events.max, previousCgroupEvents.max),
+          "service.memory.events.oom.delta": counterDelta(cgroup.events.oom, previousCgroupEvents.oom),
+          "service.memory.events.oom_kill.delta": counterDelta(cgroup.events.oomKill, previousCgroupEvents.oomKill),
+          "service.memory.events.oom_group_kill.delta": counterDelta(
+            cgroup.events.oomGroupKill,
+            previousCgroupEvents.oomGroupKill,
+          ),
+        },
+        "count",
+        labels,
+      )
+    }
+    previousCgroupEvents = cgroup.events ? { ...cgroup.events } : undefined
+
+    const pressureTotals = {
+      some: cgroup.pressure?.some?.totalMicros,
+      full: cgroup.pressure?.full?.totalMicros,
+    }
+    if (previousPressureTotals) {
+      recordOptionalMetrics(
+        {
+          "service.memory.pressure.some.stall_delta": counterDelta(pressureTotals.some, previousPressureTotals.some),
+          "service.memory.pressure.full.stall_delta": counterDelta(pressureTotals.full, previousPressureTotals.full),
+        },
+        "microseconds",
+        labels,
+      )
+    }
+    previousPressureTotals = pressureTotals
+  }
+
+  function recordLinuxRuntimeMetrics() {
+    const runtime = LinuxRuntimeMemory.sample()
+    if (!runtime || runtime.sampledAt === lastRuntimeMetricSampleAt) return
+    lastRuntimeMetricSampleAt = runtime.sampledAt
+    const labels = { platform: "linux" }
+    recordOptionalMetrics(
+      {
+        "runtime.jsc.heap_size": runtime.jscHeapSizeBytes,
+        "runtime.jsc.heap_capacity": runtime.jscHeapCapacityBytes,
+        "runtime.jsc.extra_memory": runtime.jscExtraMemoryBytes,
+        "runtime.allocator.rss": runtime.allocatorRssBytes,
+        "runtime.allocator.committed": runtime.allocatorCommittedBytes,
+        "runtime.allocator.reserved": runtime.allocatorReservedBytes,
+      },
+      "bytes",
+      labels,
+    )
+    recordOptionalMetrics(
+      {
+        "runtime.jsc.object_count": runtime.objectCount,
+        "runtime.jsc.protected_object_count": runtime.protectedObjectCount,
+        "runtime.allocator.abandoned_pages": runtime.allocatorAbandonedPages,
+      },
+      "count",
+      labels,
+    )
+    for (const item of runtime.topObjectTypes) {
+      ObservabilityMetrics.record({
+        name: "runtime.jsc.object_type.count",
+        value: item.count,
+        unit: "count",
+        module: "process",
+        source: "process",
+        labels: { ...labels, objectType: item.type },
+      })
+    }
+    for (const item of runtime.growingObjectTypes) {
+      ObservabilityMetrics.record({
+        name: "runtime.jsc.object_type.growth",
+        value: item.delta,
+        unit: "count",
+        module: "process",
+        source: "process",
+        labels: { ...labels, objectType: item.type, total: item.count },
+      })
+    }
+  }
+
+  function recordOptionalMetrics(
+    values: Record<string, number | undefined>,
+    unit: ObservabilitySchema.Unit,
+    labels: Record<string, string>,
+  ) {
+    for (const [name, value] of Object.entries(values)) {
+      if (value === undefined || !Number.isFinite(value)) continue
+      ObservabilityMetrics.record({
+        name,
+        value,
+        unit,
+        module: "process",
+        source: "process",
+        labels,
+      })
+    }
+  }
+
+  function counterDelta(current: number | undefined, previous: number | undefined) {
+    if (current === undefined || previous === undefined) return undefined
+    return current >= previous ? current - previous : current
   }
 
   function detectPressure(
