@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 
-test("permission evaluation emits bounded telemetry without rule contents", async () => {
+test("permission evaluation does not emit per-check telemetry at info level", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-permission-telemetry-"))
   const script = `
     import { Log } from "./src/util/log.ts"
@@ -59,17 +59,7 @@ test("permission evaluation emits bounded telemetry without rule contents", asyn
     }
 
     expect(result.action).toBe("allow")
-    expect(result.data).toMatchObject({
-      service: "permission",
-      message: "evaluate",
-      permission: result.permission,
-      patternLength: result.sensitivePattern.length,
-      rulesetCount: 257,
-    })
-    expect(result.data).not.toHaveProperty("pattern")
-    expect(result.data).not.toHaveProperty("ruleset")
-    expect(JSON.stringify(result.data)).not.toContain(result.sensitivePattern)
-    expect(JSON.stringify(result.data).length).toBeLessThan(256)
+    expect(result.data).toBeUndefined()
   } finally {
     await fs.rm(home, { recursive: true, force: true })
   }
