@@ -74,7 +74,8 @@ import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { useGlobalSDK } from "./global-sdk"
-import { ErrorPage, type InitError } from "../pages/error"
+import { FatalErrorPage } from "../pages/fatal-error"
+import type { InitError } from "../pages/error"
 import { AP } from "@/app-i18n"
 import { useLingui } from "@lingui/solid"
 import {
@@ -269,6 +270,7 @@ function createGlobalSync() {
   const [globalStore, setGlobalStore] = createStore<{
     ready: boolean
     error?: InitError
+    errorSource?: "connection" | "initialization" | "scope"
     paths: GlobalPaths
     config: Config
     scope: Scope[]
@@ -413,7 +415,10 @@ function createGlobalSync() {
       if (!children[scopeKey]) continue
       bootstrapActive.add(scopeKey)
       void bootstrapInstance(scopeKey)
-        .catch((e) => setGlobalStore("error", e))
+        .catch((e) => {
+          setGlobalStore("errorSource", "scope")
+          setGlobalStore("error", e)
+        })
         .finally(() => {
           bootstrapActive.delete(scopeKey)
           pumpBootstrapQueue()
@@ -967,6 +972,7 @@ function createGlobalSync() {
       await Promise.all(remainingRequests)
       setStore("status", "complete")
     } catch (error) {
+      setGlobalStore("errorSource", "scope")
       setGlobalStore("error", error as Error)
     }
   }
@@ -1823,6 +1829,7 @@ function createGlobalSync() {
     )
     const [health, configResult] = await Promise.all([healthRequest, configRequest])
     if (!health?.healthy) {
+      setGlobalStore("errorSource", "connection")
       setGlobalStore(
         "error",
         new Error(`Could not connect to server. Is there a server running at \`${globalSDK.url}\`?`),
@@ -1830,6 +1837,7 @@ function createGlobalSync() {
       return
     }
     if (!configResult.ok) {
+      setGlobalStore("errorSource", "initialization")
       setGlobalStore("error", configResult.error as Error)
       return
     }
@@ -1891,7 +1899,20 @@ export function GlobalSyncProvider(props: ParentProps) {
       }
     >
       <Match when={value.error}>
-        <ErrorPage error={value.error} />
+        <FatalErrorPage
+          error={value.error}
+          source={value.data.errorSource}
+          onRecover={() => value.bootstrap()}
+          onSecondaryAction={() => {
+            const dialog = (() => {
+              try {
+                return require("@ericsanchezok/synergy-ui/context/dialog")
+              } catch {
+                return { useDialog: () => ({ show: () => {} }) }
+              }
+            })()
+          }}
+        />
       </Match>
       <Match when={value.ready}>
         <GlobalSyncContext.Provider value={value}>
