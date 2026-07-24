@@ -2496,6 +2496,82 @@ msgid "app.lattice.config.unlimited"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.event.actionConsumed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.actionSubmitted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.blueprintBound"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.budgetExhausted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.loopCancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.pathwayReplaced"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.recoveryReconciled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCompleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCreated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runPaused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runResumed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runUpdated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stateChanged"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCompleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.loop.armed"
 msgstr ""
 
@@ -2524,6 +2600,10 @@ msgid "app.lattice.loop.waiting"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.acceptanceCriteria"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.actionFailed"
 msgstr ""
 
@@ -2544,27 +2624,27 @@ msgid "app.lattice.panel.approvalTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.approve"
+msgid "app.lattice.panel.assumptions"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.approving"
+msgid "app.lattice.panel.blueprintDetails"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintCurrent"
+msgid "app.lattice.panel.blueprintDetailsHint"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintHistory"
+msgid "app.lattice.panel.blueprintVersion"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintLoops"
+msgid "app.lattice.panel.boundVersion"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprints"
+msgid "app.lattice.panel.budgetGuidance"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2584,19 +2664,43 @@ msgid "app.lattice.panel.cancelConfirmTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.configure"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.confirmCancel"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.currentStep"
+msgid "app.lattice.panel.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.continuing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.emptyDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.emptyTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.executionHistory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.historyLoadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.historyLoading"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.keepRun"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.label"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2608,7 +2712,23 @@ msgid "app.lattice.panel.loading"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.loopAttempts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noBlueprints"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noHistory"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.notStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.now"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2620,7 +2740,27 @@ msgid "app.lattice.panel.pause"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.pausing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.previousStep"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.progressLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.recoveryFor"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.resume"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.resuming"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2628,7 +2768,35 @@ msgid "app.lattice.panel.retry"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.stepProgress"
+msgid "app.lattice.panel.reviewedVersion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistoryHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.settings"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.startNew"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.steps"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.stepsCompleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unavailableTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2665,6 +2833,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.lattice.reason.userPause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2737,6 +2921,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.lattice.step.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.workspace.sessionRequired"
 msgstr ""
 
 #. ── pages/layout.tsx ────────────────────────────────────────────────
@@ -4302,6 +4490,10 @@ msgstr ""
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files.openFile"
+msgstr ""
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.lattice"
 msgstr ""
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────

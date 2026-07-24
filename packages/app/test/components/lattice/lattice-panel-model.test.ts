@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import {
   controlsForRun,
+  currentStepForRun,
+  latticeEventDescriptor,
   isCurrentLatticeActionTarget,
   isLatticeConflict,
+  pathwayProgress,
   selectFresherRun,
-  shouldDismissCancelConfirmation,
   workStateDescriptor,
   type LatticeRunView,
 } from "../../../src/components/lattice/lattice-panel-model"
@@ -122,6 +124,32 @@ describe("Lattice panel model", () => {
     })
   })
 
+  test("derives the focused step and compact progress from the durable Pathway", () => {
+    const current = run({
+      currentStepID: "step-2",
+      pathway: [
+        { id: "step-1", status: "completed", title: "Foundation" },
+        { id: "step-2", status: "executing", title: "World generation" },
+        { id: "step-3", status: "pending", title: "Interaction" },
+        { id: "step-4", status: "failed", title: "Audio" },
+      ] as LatticeRunView["pathway"],
+    })
+
+    expect(currentStepForRun(current)?.id).toBe("step-2")
+    expect(pathwayProgress(current)).toEqual({
+      completed: 1,
+      failed: 1,
+      pending: 1,
+      total: 4,
+    })
+  })
+
+  test("presents audit event kinds as product language instead of persisted identifiers", () => {
+    expect(latticeEventDescriptor("step_blueprint_bound").message).toBe("Blueprint prepared")
+    expect(latticeEventDescriptor("budget_exhausted").message).toBe("Model-call budget reached")
+    expect(latticeEventDescriptor("recovery_reconciled").message).toBe("Recovery step reconciled")
+  })
+
   test("recognizes generated-client 409 conflicts so the panel can refresh reviewed state", async () => {
     const client = createSynergyClient({
       baseUrl: "http://lattice.test",
@@ -176,10 +204,5 @@ describe("Lattice panel model", () => {
 
     expect(isLatticeConflict(thrown)).toBe(false)
     expect(isLatticeConflict({ message: "validation failed", data: { reason: "missing state" } })).toBe(false)
-  })
-
-  test("keeps destructive confirmation keyboard-dismissible", () => {
-    expect(shouldDismissCancelConfirmation("Escape")).toBe(true)
-    expect(shouldDismissCancelConfirmation("Enter")).toBe(false)
   })
 })

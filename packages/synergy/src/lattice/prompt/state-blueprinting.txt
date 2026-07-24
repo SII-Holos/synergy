@@ -11,5 +11,5 @@ The required sections are:
 ## Risks and Edge Cases
 ## Verification and Done Criteria
 
-Do not execute the Blueprint. When the Note is complete, call lattice_submit with action submit_blueprint and its blueprintID, then stop this responsibility.
+Do not execute the Blueprint. When the Note is complete, call lattice_submit with action submit_blueprint and its blueprintID as the final tool call, then end the turn. The host will advance to Blueprint review.
 </lattice-state>

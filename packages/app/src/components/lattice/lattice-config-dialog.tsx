@@ -108,7 +108,7 @@ export function LatticeConfigDialog(props: {
 
   return (
     <Dialog title={_({ id: "app.lattice.config.title", message: "Configure Lattice" })} size="form">
-      <div data-slot="dialog-form" class="flex min-w-0 flex-col gap-4">
+      <div data-slot="dialog-form" class="flex min-w-0 flex-col">
         <p class="text-12-regular text-text-weak">
           {_({
             id: "app.lattice.config.description",
@@ -118,7 +118,7 @@ export function LatticeConfigDialog(props: {
         </p>
 
         <Show when={!props.sessionID}>
-          <p class="text-11-regular text-text-weak">
+          <p class="mt-2 text-11-regular text-text-weak">
             {_({
               id: "app.lattice.config.nextMessageGoal",
               message: "Your next message will start requirement alignment for this run.",
@@ -127,12 +127,12 @@ export function LatticeConfigDialog(props: {
         </Show>
 
         <Show when={loading()}>
-          <div class="text-11-regular text-text-weak" role="status" aria-live="polite">
+          <div class="mt-4 text-11-regular text-text-weak" role="status" aria-live="polite">
             {_({ id: "app.lattice.config.loading", message: "Loading previous Lattice run…" })}
           </div>
         </Show>
         <Show when={loadFailed()}>
-          <div class="text-11-regular text-text-on-critical-base" role="alert">
+          <div class="mt-4 text-11-regular text-text-on-critical-base" role="alert">
             {_({ id: "app.lattice.config.loadFailed", message: "Could not load the previous Lattice run." })}
           </div>
         </Show>
@@ -141,11 +141,11 @@ export function LatticeConfigDialog(props: {
           {(run) => {
             const state = () => runWorkState(run())
             return (
-              <div class="rounded-lg border border-border-base/60 bg-surface-weak/40 p-3">
-                <div class="text-10-medium uppercase tracking-wide text-text-weak">
+              <section class="mt-5 border-y border-border-weaker-base py-4">
+                <div class="text-11-medium uppercase tracking-wide text-text-weak">
                   {_({ id: "app.lattice.config.previousRun", message: "Previous run" })}
                 </div>
-                <div class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-12-medium text-text-strong">
+                <div class="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-13-medium text-text-strong">
                   <span>{_(RUN_STATUS_DESCRIPTORS[run().status])}</span>
                   <Show when={state()}>
                     {(value) => <span class="text-text-weak">{workStateLabel(_, value())}</span>}
@@ -157,7 +157,7 @@ export function LatticeConfigDialog(props: {
                     {pauseReasonLabel(_, run().statusReason)}
                   </div>
                 </Show>
-                <div class="mt-1 text-11-regular text-text-weak">
+                <div class="mt-2 text-11-regular text-text-weak">
                   {_({
                     id: "app.lattice.config.stepsCompleted",
                     message: "{done}/{total} steps completed",
@@ -175,52 +175,70 @@ export function LatticeConfigDialog(props: {
                   {run().maxModelCalls || _({ id: "app.lattice.config.unlimited", message: "Unlimited" })}
                 </div>
                 <Show when={run().status === "paused"}>
-                  <p class="mt-2 text-11-regular text-text-weak">
+                  <p class="mt-3 text-11-regular leading-4 text-text-weak">
                     {_({
                       id: "app.lattice.config.pausedHint",
                       message: "Resume or cancel this run from the Lattice panel before changing its settings.",
                     })}
                   </p>
                 </Show>
-              </div>
+              </section>
             )
           }}
         </Show>
 
-        <div class="flex flex-col gap-1.5">
-          <span class="text-12-medium text-text-base">
+        <section class="py-5">
+          <span class="text-12-medium text-text-strong">
             {_({ id: "app.lattice.config.mode", message: "How Lattice runs" })}
           </span>
-          <div class="flex flex-wrap gap-2">
-            <Button
-              variant={mode() === "auto" ? "primary" : "secondary"}
+          <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              aria-pressed={mode() === "auto"}
+              class="flex min-h-11 items-center gap-3 rounded-md border border-border-weak-base bg-surface-inset-base px-3 py-2 text-left text-12-medium text-text-base hover:border-border-strong-base"
+              classList={{ "border-border-strong-base bg-surface-raised-base text-text-strong": mode() === "auto" }}
               onClick={() => setMode("auto")}
               disabled={saving() || existing()?.status === "paused"}
             >
+              <span
+                class="size-2 rounded-full border border-border-strong-base"
+                classList={{ "bg-text-strong": mode() === "auto" }}
+              />
               {modeLabel("auto")}
-            </Button>
-            <Button
-              variant={mode() === "collaborative" ? "primary" : "secondary"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode() === "collaborative"}
+              class="flex min-h-11 items-center gap-3 rounded-md border border-border-weak-base bg-surface-inset-base px-3 py-2 text-left text-12-medium text-text-base hover:border-border-strong-base"
+              classList={{
+                "border-border-strong-base bg-surface-raised-base text-text-strong": mode() === "collaborative",
+              }}
               onClick={() => setMode("collaborative")}
               disabled={saving() || existing()?.status === "paused"}
             >
+              <span
+                class="size-2 rounded-full border border-border-strong-base"
+                classList={{ "bg-text-strong": mode() === "collaborative" }}
+              />
               {modeLabel("collaborative")}
-            </Button>
+            </button>
           </div>
-        </div>
+        </section>
 
-        <TextField
-          label={_({ id: "app.lattice.config.budget", message: "Model-call budget" })}
-          description={_({
-            id: "app.lattice.config.budgetDescription",
-            message:
-              "The budget is checked before Lattice continues; it counts model calls in this Lattice session, not Pathway steps. Enter 0 for no budget.",
-          })}
-          type="number"
-          value={budget()}
-          onChange={setBudget}
-          disabled={existing()?.status === "paused"}
-        />
+        <div class="border-t border-border-weaker-base py-5">
+          <TextField
+            label={_({ id: "app.lattice.config.budget", message: "Model-call budget" })}
+            description={_({
+              id: "app.lattice.config.budgetDescription",
+              message:
+                "The budget is checked before Lattice continues; it counts model calls in this Lattice session, not Pathway steps. Enter 0 for no budget.",
+            })}
+            type="number"
+            value={budget()}
+            onChange={setBudget}
+            disabled={existing()?.status === "paused"}
+          />
+        </div>
 
         <Show
           when={
@@ -231,19 +249,21 @@ export function LatticeConfigDialog(props: {
               existing()?.status === "cancelled")
           }
         >
-          <TextField
-            label={_({ id: "app.lattice.config.goalOptional", message: "Goal (optional)" })}
-            type="text"
-            placeholder={_({
-              id: "app.lattice.config.goalPlaceholder",
-              message: "What should this Lattice run accomplish?",
-            })}
-            value={goal()}
-            onChange={setGoal}
-          />
+          <div class="border-t border-border-weaker-base py-5">
+            <TextField
+              label={_({ id: "app.lattice.config.goalOptional", message: "Goal (optional)" })}
+              type="text"
+              placeholder={_({
+                id: "app.lattice.config.goalPlaceholder",
+                message: "What should this Lattice run accomplish?",
+              })}
+              value={goal()}
+              onChange={setGoal}
+            />
+          </div>
         </Show>
 
-        <div class="mt-1 flex flex-wrap justify-end gap-2">
+        <div class="flex flex-wrap justify-end gap-2 border-t border-border-weaker-base pt-4">
           <Show when={canSubmit()}>
             <Button variant="primary" onClick={() => void submit()} disabled={saving() || loading() || loadFailed()}>
               {!props.sessionID

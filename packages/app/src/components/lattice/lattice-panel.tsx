@@ -1,5 +1,8 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type {
@@ -7,19 +10,23 @@ import type {
   EventBlueprintLoopUpdated,
   EventLatticeRunCreated,
   EventLatticeRunUpdated,
+  LatticeEvent,
 } from "@ericsanchezok/synergy-sdk/client"
+import { useConfirm } from "@/components/dialog"
+import { useLocale } from "@/context/locale"
 import type { SDKContext } from "@/context/sdk"
+import { translateDescriptor } from "@/locales/translate"
 import {
   controlsForRun,
+  currentStepForRun,
   isCurrentLatticeActionTarget,
   isLatticeConflict,
+  latticeEventDescriptor,
   LOOP_STATUS_DESCRIPTORS,
+  pathwayProgress,
   pauseReasonLabel,
-  referencedLoopIDs,
   RUN_STATUS_DESCRIPTORS,
-  runWorkState,
   selectFresherRun,
-  shouldDismissCancelConfirmation,
   STEP_STATUS_DESCRIPTORS,
   workStateLabel,
   type LatticeLoopView,
@@ -29,22 +36,7 @@ import {
 
 type LatticeRunEvent = EventLatticeRunCreated | EventLatticeRunUpdated
 type LatticeLoopEvent = EventBlueprintLoopCreated | EventBlueprintLoopUpdated
-
-function stepBadgeClass(status: LatticeStepStatus): string {
-  switch (status) {
-    case "completed":
-      return "text-text-on-success-base"
-    case "failed":
-      return "text-text-on-critical-base"
-    case "current":
-    case "executing":
-      return "text-text-interactive-base"
-    case "cancelled":
-      return "text-text-weak"
-    default:
-      return "text-text-base"
-  }
-}
+type ExpandedDetails = "blueprints" | "history"
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
@@ -59,19 +51,42 @@ function mergeLoops(current: LatticeLoopView[], incoming: LatticeLoopView[]): La
   return [...byID.values()].sort((a, b) => b.time.updated - a.time.updated)
 }
 
-export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
+function statusDotClass(status: LatticeRunView["status"]): string {
+  if (status === "completed") return "bg-icon-success-base"
+  if (status === "failed") return "bg-icon-critical-base"
+  if (status === "paused") return "bg-icon-warning-base"
+  if (status === "cancelled") return "bg-text-weaker"
+  return "bg-text-strong"
+}
+
+function stepStatusClass(status: LatticeStepStatus): string {
+  if (status === "completed") return "text-text-on-success-base"
+  if (status === "failed") return "text-text-on-critical-base"
+  if (status === "cancelled") return "text-text-weak"
+  if (status === "current" || status === "executing") return "text-text-strong"
+  return "text-text-weak"
+}
+
+export function LatticePanel(props: {
+  sdk: SDKContext
+  sessionID: string
+  onConfigure?: (options?: { confirmRestart?: boolean }) => void
+}) {
   const { _ } = useLingui()
+  const { fmt, i18n } = useLocale()
+  const confirm = useConfirm()
   const [run, setRun] = createSignal<LatticeRunView | null>(null)
   const [loops, setLoops] = createSignal<LatticeLoopView[]>([])
+  const [events, setEvents] = createSignal<LatticeEvent[]>([])
+  const [expanded, setExpanded] = createSignal<ExpandedDetails>()
   const [loading, setLoading] = createSignal(true)
+  const [eventsLoading, setEventsLoading] = createSignal(false)
   const [loadError, setLoadError] = createSignal<string>()
+  const [eventsError, setEventsError] = createSignal<string>()
   const [actionError, setActionError] = createSignal<string>()
   const [approvalConflict, setApprovalConflict] = createSignal(false)
   const [approvalQueued, setApprovalQueued] = createSignal(false)
   const [busyAction, setBusyAction] = createSignal<"pause" | "resume" | "cancel" | "approve">()
-  const [confirmCancel, setConfirmCancel] = createSignal(false)
-  let cancelButton: HTMLButtonElement | undefined
-  let keepRunButton: HTMLButtonElement | undefined
   let generation = 0
 
   const modeLabel = (mode: LatticeRunView["mode"]) =>
@@ -89,11 +104,13 @@ export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
   const acceptIncomingRun = (incoming: LatticeRunView | null) => {
     const current = run()
     const next = selectFresherRun(current, incoming)
-    if (current && next && current.id !== next.id) resetActionState()
-    setRun(next)
-    if (next?.status !== "active" || next.state !== "awaiting_execution") {
-      setApprovalQueued(false)
+    if (current && next && current.id !== next.id) {
+      resetActionState()
+      setEvents([])
+      setExpanded(undefined)
     }
+    setRun(next)
+    if (next?.status !== "active" || next.state !== "awaiting_execution") setApprovalQueued(false)
     return next
   }
 
@@ -101,8 +118,7 @@ export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
     try {
       const result = await props.sdk.client.lattice.session.getRun({ id: sessionID })
       if (token !== generation || sessionID !== props.sessionID) return
-      const incoming = result.data ?? null
-      acceptIncomingRun(incoming)
+      acceptIncomingRun(result.data ?? null)
       setLoadError(undefined)
     } catch (error) {
       if (token !== generation || sessionID !== props.sessionID) return
@@ -125,15 +141,38 @@ export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
     }
   }
 
+  const refreshEvents = async (target = run(), token = generation) => {
+    if (!target) return
+    setEventsLoading(true)
+    setEventsError(undefined)
+    try {
+      const result = await props.sdk.client.lattice.run.events({ id: target.id })
+      if (token !== generation || target.id !== run()?.id) return
+      setEvents((result.data ?? []).toSorted((left, right) => right.time.created - left.time.created))
+    } catch (error) {
+      if (token !== generation || target.id !== run()?.id) return
+      setEventsError(
+        errorMessage(
+          error,
+          _({ id: "app.lattice.panel.historyLoadFailed", message: "Could not load the run history." }),
+        ),
+      )
+    } finally {
+      if (token === generation && target.id === run()?.id) setEventsLoading(false)
+    }
+  }
+
   createEffect(() => {
     const sessionID = props.sessionID
     const token = ++generation
     setRun(null)
     setLoops([])
+    setEvents([])
+    setExpanded(undefined)
     setLoading(true)
     setLoadError(undefined)
+    setEventsError(undefined)
     resetActionState()
-    setConfirmCancel(false)
 
     const acceptRun = (event: LatticeRunEvent) => {
       const incoming = event.properties.run
@@ -141,6 +180,7 @@ export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
       acceptIncomingRun(incoming)
       setLoading(false)
       setLoadError(undefined)
+      if (expanded() === "history") void refreshEvents(incoming, token)
     }
     const acceptLoop = (event: LatticeLoopEvent) => {
       const incoming = event.properties.loop
@@ -163,78 +203,23 @@ export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
 
   const currentStep = createMemo(() => {
     const current = run()
-    if (!current) return undefined
-    return (
-      current.pathway.find((step) => step.id === current.currentStepID) ??
-      current.pathway.find((step) => step.status === "current" || step.status === "executing")
-    )
+    return current ? currentStepForRun(current) : undefined
   })
-  const completedCount = createMemo(() => run()?.pathway.filter((step) => step.status === "completed").length ?? 0)
-  const remainingCount = createMemo(
-    () => run()?.pathway.filter((step) => step.status === "pending" || step.status === "current").length ?? 0,
-  )
-  const failedCount = createMemo(
-    () => run()?.pathway.filter((step) => step.status === "failed" || step.status === "cancelled").length ?? 0,
-  )
-  const runLoops = createMemo(() => {
+  const progress = createMemo(() => {
     const current = run()
-    if (!current) return []
-    const ids = referencedLoopIDs(current)
-    const fetched = new Map(
-      loops()
-        .filter((loop) => ids.has(loop.id))
-        .map((loop) => [loop.id, loop]),
-    )
-    return current.pathway.flatMap((step) =>
-      step.loopHistory.map((attempt): LatticeLoopView => {
-        const live = fetched.get(attempt.loopID)
-        if (live) return live
-        return {
-          id: attempt.loopID,
-          title: step.title,
-          sessionID: current.sessionID,
-          source: "lattice",
-          status: attempt.status === "created" ? "armed" : attempt.status,
-          summary: attempt.summary,
-          time: {
-            created: attempt.time.created,
-            updated: attempt.time.completed ?? attempt.time.started ?? attempt.time.created,
-            completed: attempt.time.completed,
-          },
-        }
-      }),
-    )
+    return current ? pathwayProgress(current) : { completed: 0, failed: 0, pending: 0, total: 0 }
   })
-  const blueprints = createMemo(() => {
-    const current = run()
-    if (!current) return []
-    return current.pathway.flatMap((step) => [
-      ...(step.blueprint
-        ? [
-            {
-              title: `${step.title} v${step.blueprint.boundVersion}`,
-              stepTitle: step.title,
-              current: true,
-            },
-          ]
-        : []),
-      ...step.blueprintHistory.map((binding) => ({
-        title: `${step.title} v${binding.boundVersion}`,
-        stepTitle: step.title,
-        current: false,
-      })),
-    ])
-  })
-
-  createEffect(() => {
-    if (!confirmCancel()) return
-    queueMicrotask(() => keepRunButton?.focus())
-  })
-
-  const closeCancelConfirmation = () => {
-    setConfirmCancel(false)
-    queueMicrotask(() => cancelButton?.focus())
-  }
+  const progressPercent = createMemo(() =>
+    progress().total > 0 ? Math.round((progress().completed / progress().total) * 100) : 0,
+  )
+  const blueprintSteps = createMemo(
+    () =>
+      run()?.pathway.filter(
+        (step) => step.blueprint || step.blueprintHistory.length > 0 || step.loopHistory.length > 0,
+      ) ?? [],
+  )
+  const loopByID = createMemo(() => new Map(loops().map((loop) => [loop.id, loop])))
+  const stepByID = createMemo(() => new Map((run()?.pathway ?? []).map((step) => [step.id, step])))
 
   const invoke = async (
     action: "pause" | "resume" | "cancel" | "approve",
@@ -242,11 +227,7 @@ export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
   ) => {
     const current = run()
     if (!current || busyAction()) return
-    const target = {
-      generation,
-      sessionID: props.sessionID,
-      runID: current.id,
-    }
+    const target = { generation, sessionID: props.sessionID, runID: current.id }
     const isCurrentTarget = () =>
       isCurrentLatticeActionTarget(target, {
         generation,
@@ -261,8 +242,6 @@ export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
       if (!isCurrentTarget()) return
       if (action === "approve") setApprovalQueued(true)
       await refreshRun(target.sessionID, target.generation)
-      if (!isCurrentTarget()) return
-      if (action === "cancel") setConfirmCancel(false)
     } catch (error) {
       if (!isCurrentTarget()) return
       if (action === "approve" && isLatticeConflict(error)) {
@@ -286,285 +265,614 @@ export function LatticePanel(props: { sdk: SDKContext; sessionID: string }) {
     }
   }
 
+  const toggleDetails = (next: ExpandedDetails) => {
+    const value = expanded() === next ? undefined : next
+    setExpanded(value)
+    if (value === "history" && events().length === 0) void refreshEvents()
+  }
+
+  const confirmCancel = () => {
+    confirm.show({
+      title: { id: "app.lattice.panel.cancelConfirmTitle", message: "Cancel this Lattice run?" },
+      description: {
+        id: "app.lattice.panel.cancelConfirm",
+        message:
+          "The run will be marked cancelled and its active BlueprintLoop will stop. It cannot be resumed, but its Pathway and history will remain available.",
+      },
+      confirmLabel: { id: "app.lattice.panel.confirmCancel", message: "Cancel run" },
+      cancelLabel: { id: "app.lattice.panel.keepRun", message: "Keep run" },
+      tone: "danger",
+      onConfirm: () => invoke("cancel", (input) => props.sdk.client.lattice.run.cancel(input)),
+    })
+  }
+
   return (
-    <Show
-      when={!loading()}
-      fallback={
-        <div
-          class="w-full min-w-0 rounded-lg border border-border-base/60 bg-surface-weak/40 px-3 py-2 text-11-regular text-text-weak"
-          role="status"
-          aria-live="polite"
-        >
-          {_({ id: "app.lattice.panel.loading", message: "Loading Lattice…" })}
-        </div>
-      }
-    >
+    <div class="flex size-full min-h-0 min-w-0 flex-col bg-background-base">
       <Show
-        when={run()}
+        when={!loading()}
         fallback={
-          <Show when={loadError()}>
-            <div
-              class="flex w-full min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border-critical-base/50 bg-surface-critical-weak/30 px-3 py-2"
-              role="alert"
-            >
-              <span class="min-w-0 flex-1 text-11-regular text-text-on-critical-base">{loadError()}</span>
-              <Button variant="secondary" size="small" onClick={() => void refreshRun()}>
-                {_({ id: "app.lattice.panel.retry", message: "Retry" })}
-              </Button>
-            </div>
-          </Show>
+          <div class="flex size-full items-center justify-center gap-2 text-12-regular text-text-weak" role="status">
+            <Spinner class="size-4" />
+            {_({ id: "app.lattice.panel.loading", message: "Loading Lattice…" })}
+          </div>
         }
       >
-        {(currentRun) => {
-          const controls = () => controlsForRun(currentRun())
-          const workState = () => runWorkState(currentRun())
-          return (
-            <section
-              class="flex w-full min-w-0 flex-col gap-3 rounded-lg border border-border-base/60 bg-surface-weak/40 px-3 py-2.5"
-              aria-label={_({ id: "app.lattice.panel.label", message: "Lattice run" })}
-            >
-              <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-11-medium">
-                <span class="rounded bg-surface-interactive-selected-weak/70 px-1.5 py-0.5 text-text-interactive-base">
-                  {_(RUN_STATUS_DESCRIPTORS[currentRun().status])}
-                </span>
-                <Show when={workState()}>
-                  {(state) => <span class="text-text-strong">{workStateLabel(_, state())}</span>}
-                </Show>
-                <span class="text-text-weak">{modeLabel(currentRun().mode)}</span>
-                <span class="ml-auto text-text-weak">
-                  {_({
-                    id: "app.lattice.panel.stepProgress",
-                    message: "{completed} completed · {remaining} remaining · {failed} failed",
-                    values: {
-                      completed: completedCount(),
-                      remaining: remainingCount(),
-                      failed: failedCount(),
-                    },
-                  })}
-                </span>
-              </div>
-
-              <Show when={currentRun().status === "paused"}>
-                <div class="rounded-md border border-border-warning-base/40 bg-surface-warning-weak/30 px-2.5 py-2 text-11-regular text-text-on-warning-base">
-                  {pauseReasonLabel(_, currentRun().statusReason)}
-                </div>
-              </Show>
-
-              <div class="grid min-w-0 grid-cols-1 gap-2 text-11-regular sm:grid-cols-2">
-                <div class="min-w-0">
-                  <div class="text-10-medium uppercase tracking-wide text-text-weak">
-                    {_({ id: "app.lattice.panel.currentStep", message: "Current step" })}
-                  </div>
-                  <div class="mt-0.5 truncate text-text-base">
-                    {currentStep()?.title ?? _({ id: "app.lattice.panel.notStarted", message: "Not started" })}
-                  </div>
-                </div>
-                <div class="min-w-0 sm:text-right">
-                  <div class="text-10-medium uppercase tracking-wide text-text-weak">
-                    {_({ id: "app.lattice.panel.calls", message: "Model calls" })}
-                  </div>
-                  <div class="mt-0.5 text-text-base">
-                    {currentRun().modelCallCount}/
-                    {currentRun().maxModelCalls || _({ id: "app.lattice.panel.unlimited", message: "Unlimited" })}
-                  </div>
-                </div>
-              </div>
-
-              <Show when={currentRun().pathway.length > 0}>
-                <div class="min-w-0">
-                  <div class="mb-1 text-10-medium uppercase tracking-wide text-text-weak">
-                    {_({ id: "app.lattice.panel.pathway", message: "Pathway" })}
-                  </div>
-                  <ol class="flex min-w-0 flex-col gap-1">
-                    <For each={currentRun().pathway}>
-                      {(step) => (
-                        <li class="flex min-w-0 items-start gap-2 text-11-regular">
-                          <span class={`shrink-0 ${stepBadgeClass(step.status)}`}>
-                            {_(STEP_STATUS_DESCRIPTORS[step.status])}
-                          </span>
-                          <span class="min-w-0 flex-1 text-text-base">
-                            <span class={step.id === currentRun().currentStepID ? "font-medium text-text-strong" : ""}>
-                              {step.title}
-                            </span>
-                            <Show when={step.resultSummary}>
-                              <span class="block text-text-weak">{step.resultSummary}</span>
-                            </Show>
-                            <Show when={step.failureReason}>
-                              <span class="block text-text-on-critical-base">{step.failureReason}</span>
-                            </Show>
-                          </span>
-                        </li>
-                      )}
-                    </For>
-                  </ol>
-                </div>
-              </Show>
-
-              <Show when={blueprints().length > 0}>
-                <div class="min-w-0">
-                  <div class="mb-1 text-10-medium uppercase tracking-wide text-text-weak">
-                    {_({ id: "app.lattice.panel.blueprints", message: "Blueprints" })}
-                  </div>
-                  <ul class="flex min-w-0 flex-col gap-1">
-                    <For each={blueprints()}>
-                      {(blueprint) => (
-                        <li class="flex min-w-0 flex-wrap items-baseline gap-x-2 text-11-regular">
-                          <span class="truncate text-text-base">{blueprint.title}</span>
-                          <span class="text-10-regular text-text-weak">
-                            {blueprint.current
-                              ? _({ id: "app.lattice.panel.blueprintCurrent", message: "Current" })
-                              : _({ id: "app.lattice.panel.blueprintHistory", message: "History" })}
-                            {` · ${blueprint.stepTitle}`}
-                          </span>
-                        </li>
-                      )}
-                    </For>
-                  </ul>
-                </div>
-              </Show>
-
-              <Show when={runLoops().length > 0}>
-                <div class="min-w-0">
-                  <div class="mb-1 text-10-medium uppercase tracking-wide text-text-weak">
-                    {_({ id: "app.lattice.panel.blueprintLoops", message: "BlueprintLoops" })}
-                  </div>
-                  <ul class="flex min-w-0 flex-col gap-1">
-                    <For each={runLoops()}>
-                      {(loop) => (
-                        <li class="flex min-w-0 items-start gap-2 text-11-regular">
-                          <span class="min-w-0 flex-1 text-text-base">
-                            <span class="block truncate">{loop.title}</span>
-                            <Show when={loop.summary}>
-                              <span class="block text-10-regular text-text-weak">{loop.summary}</span>
-                            </Show>
-                          </span>
-                          <span class="shrink-0 text-text-weak">{_(LOOP_STATUS_DESCRIPTORS[loop.status])}</span>
-                        </li>
-                      )}
-                    </For>
-                  </ul>
-                </div>
-              </Show>
-
-              <Show when={controls().approve}>
-                <div class="rounded-md border border-border-interactive-base/40 bg-surface-interactive-selected-weak/40 p-2.5">
-                  <div class="text-11-medium text-text-strong">
-                    {_({ id: "app.lattice.panel.approvalTitle", message: "Blueprint ready for your approval" })}
-                  </div>
-                  <p class="mt-1 text-10-regular text-text-weak">
-                    {_({
-                      id: "app.lattice.panel.approvalHint",
-                      message:
-                        "Ask for changes in chat or edit the Blueprint. Approve only when this version is ready to execute.",
-                    })}
-                  </p>
-                  <div class="mt-2 flex justify-end">
-                    <Button
-                      variant="primary"
-                      size="small"
-                      onClick={() => void invoke("approve", (input) => props.sdk.client.lattice.run.approve(input))}
-                      disabled={!!busyAction() || approvalQueued()}
-                    >
-                      {busyAction() === "approve" || approvalQueued()
-                        ? _({ id: "app.lattice.panel.approving", message: "Approving…" })
-                        : _({ id: "app.lattice.panel.approve", message: "Approve" })}
-                    </Button>
-                  </div>
-                </div>
-              </Show>
-
-              <Show when={approvalConflict()}>
-                <div class="text-11-regular text-text-on-warning-base" role="alert">
-                  {_({
-                    id: "app.lattice.panel.approvalConflict",
-                    message: "Blueprint changed, review required.",
-                  })}
-                </div>
-              </Show>
-              <Show when={actionError()}>
-                <div class="text-11-regular text-text-on-critical-base" role="alert">
-                  {actionError()}
-                </div>
-              </Show>
-
-              <Show when={controls().pause || controls().resume || controls().cancel}>
-                <div class="flex min-w-0 flex-wrap justify-end gap-2">
-                  <Show when={controls().pause}>
-                    <Button
-                      ref={(element: HTMLButtonElement) => {
-                        cancelButton = element
-                      }}
-                      variant="secondary"
-                      size="small"
-                      onClick={() => void invoke("pause", (input) => props.sdk.client.lattice.run.pause(input))}
-                      disabled={!!busyAction()}
-                    >
-                      {_({ id: "app.lattice.panel.pause", message: "Pause" })}
-                    </Button>
-                  </Show>
-                  <Show when={controls().resume}>
-                    <Button
-                      variant="primary"
-                      size="small"
-                      onClick={() => void invoke("resume", (input) => props.sdk.client.lattice.run.resume(input))}
-                      disabled={!!busyAction()}
-                    >
-                      {_({ id: "app.lattice.panel.resume", message: "Resume" })}
-                    </Button>
-                  </Show>
-                  <Show when={controls().cancel && !confirmCancel()}>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onClick={() => setConfirmCancel(true)}
-                      disabled={!!busyAction()}
-                    >
-                      {_({ id: "app.lattice.panel.cancel", message: "Cancel run" })}
-                    </Button>
-                  </Show>
-                </div>
-              </Show>
-
-              <Show when={confirmCancel()}>
-                <div
-                  class="flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-border-critical-base/40 bg-surface-critical-weak/30 p-2.5"
-                  role="alertdialog"
-                  aria-label={_({ id: "app.lattice.panel.cancelConfirmTitle", message: "Cancel this Lattice run?" })}
-                  onKeyDown={(event) => {
-                    if (shouldDismissCancelConfirmation(event.key)) closeCancelConfirmation()
-                  }}
+        <Show
+          when={run()}
+          fallback={
+            <div class="flex size-full min-h-0 flex-col">
+              <div class="flex flex-1 items-center justify-center px-6 py-10">
+                <Show
+                  when={!loadError()}
+                  fallback={
+                    <div class="max-w-80 text-center">
+                      <div class="text-14-medium text-text-strong">
+                        {_({ id: "app.lattice.panel.unavailableTitle", message: "Lattice is unavailable" })}
+                      </div>
+                      <p class="mt-2 text-12-regular text-text-weak" role="alert">
+                        {loadError()}
+                      </p>
+                      <Button class="mt-4" variant="secondary" onClick={() => void refreshRun()}>
+                        {_({ id: "app.lattice.panel.retry", message: "Retry" })}
+                      </Button>
+                    </div>
+                  }
                 >
-                  <p class="min-w-0 flex-1 text-11-regular text-text-base">
-                    {_({
-                      id: "app.lattice.panel.cancelConfirm",
-                      message: "Cancellation is permanent. Pathway and execution history remain available for review.",
-                    })}
-                  </p>
-                  <Button
-                    ref={(element: HTMLButtonElement) => {
-                      keepRunButton = element
-                    }}
-                    variant="secondary"
-                    size="small"
-                    onClick={closeCancelConfirmation}
-                    disabled={!!busyAction()}
-                  >
-                    {_({ id: "app.lattice.panel.keepRun", message: "Keep run" })}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="small"
-                    onClick={() => void invoke("cancel", (input) => props.sdk.client.lattice.run.cancel(input))}
-                    disabled={!!busyAction()}
-                  >
-                    {_({ id: "app.lattice.panel.confirmCancel", message: "Cancel permanently" })}
-                  </Button>
+                  <div class="max-w-80 text-center">
+                    <div class="mx-auto flex size-9 items-center justify-center rounded-lg bg-surface-inset-base text-icon-base">
+                      <Icon name={getSemanticIcon("prompt.lattice")} size="small" />
+                    </div>
+                    <div class="mt-4 text-15-medium text-text-strong">
+                      {_({ id: "app.lattice.panel.emptyTitle", message: "No Lattice run yet" })}
+                    </div>
+                    <p class="mt-2 text-12-regular leading-5 text-text-weak">
+                      {_({
+                        id: "app.lattice.panel.emptyDescription",
+                        message:
+                          "Configure a run to align requirements, plan a Pathway, and execute reviewed Blueprints.",
+                      })}
+                    </p>
+                    <Show when={props.onConfigure}>
+                      <Button class="mt-5" variant="primary" onClick={() => props.onConfigure?.()}>
+                        {_({ id: "app.lattice.panel.configure", message: "Configure Lattice" })}
+                      </Button>
+                    </Show>
+                  </div>
+                </Show>
+              </div>
+            </div>
+          }
+        >
+          {(currentRun) => {
+            const controls = () => controlsForRun(currentRun())
+            return (
+              <>
+                <div class="min-h-0 flex-1 overflow-y-auto">
+                  <div class="mx-auto flex w-full max-w-3xl flex-col px-5 py-5">
+                    <header class="border-b border-border-weaker-base pb-5">
+                      <div class="flex min-w-0 items-start gap-3">
+                        <div class="min-w-0 flex-1">
+                          <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                            <span class={`size-2 shrink-0 rounded-full ${statusDotClass(currentRun().status)}`} />
+                            <span class="text-14-medium text-text-strong">
+                              {_(RUN_STATUS_DESCRIPTORS[currentRun().status])}
+                            </span>
+                            <span class="text-12-regular text-text-weak">{workStateLabel(_, currentRun().state)}</span>
+                          </div>
+                          <div class="mt-1 text-12-regular text-text-weak">{modeLabel(currentRun().mode)}</div>
+                        </div>
+                        <Show when={props.onConfigure && currentRun().status !== "paused"}>
+                          <Button variant="ghost" size="small" onClick={() => props.onConfigure?.()}>
+                            {_({ id: "app.lattice.panel.settings", message: "Settings" })}
+                          </Button>
+                        </Show>
+                      </div>
+
+                      <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-3">
+                        <div>
+                          <div class="text-11-regular text-text-weak">
+                            {_({ id: "app.lattice.panel.steps", message: "Pathway" })}
+                          </div>
+                          <div class="mt-0.5 text-13-medium text-text-strong">
+                            {_({
+                              id: "app.lattice.panel.stepsCompleted",
+                              message: "{completed} of {total} completed",
+                              values: { completed: progress().completed, total: progress().total },
+                            })}
+                          </div>
+                        </div>
+                        <div>
+                          <div class="text-11-regular text-text-weak">
+                            {_({ id: "app.lattice.panel.calls", message: "Model calls" })}
+                          </div>
+                          <div class="mt-0.5 text-13-medium text-text-strong">
+                            {fmt.number(currentRun().modelCallCount)}
+                            <span class="font-normal text-text-weak">
+                              {" / "}
+                              {currentRun().maxModelCalls
+                                ? fmt.number(currentRun().maxModelCalls)
+                                : _({ id: "app.lattice.panel.unlimited", message: "Unlimited" })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <Show when={progress().total > 0}>
+                        <div
+                          class="mt-4 h-1 overflow-hidden rounded-full bg-surface-inset-base"
+                          role="progressbar"
+                          aria-valuemin="0"
+                          aria-valuemax="100"
+                          aria-valuenow={progressPercent()}
+                          aria-label={_({ id: "app.lattice.panel.progressLabel", message: "Pathway progress" })}
+                        >
+                          <div
+                            class={
+                              currentRun().status === "completed"
+                                ? "h-full rounded-full bg-icon-success-base"
+                                : "h-full rounded-full bg-text-strong"
+                            }
+                            style={{ width: `${progressPercent()}%` }}
+                          />
+                        </div>
+                      </Show>
+                    </header>
+
+                    <Show when={currentRun().status === "paused"}>
+                      <div class="border-b border-border-weaker-base py-4">
+                        <div class="text-12-medium text-text-strong">
+                          {pauseReasonLabel(_, currentRun().statusReason)}
+                        </div>
+                        <Show when={currentRun().statusReason === "model_call_budget_exhausted"}>
+                          <p class="mt-1 text-12-regular leading-5 text-text-weak">
+                            {_({
+                              id: "app.lattice.panel.budgetGuidance",
+                              message:
+                                "This paused run cannot change its budget. Cancel it to start a new run with a larger limit.",
+                            })}
+                          </p>
+                        </Show>
+                      </div>
+                    </Show>
+
+                    <section class="border-b border-border-weaker-base py-5">
+                      <div class="text-11-medium uppercase tracking-wide text-text-weak">
+                        {_({ id: "app.lattice.panel.now", message: "Now" })}
+                      </div>
+                      <Show
+                        when={currentStep()}
+                        fallback={
+                          <div class="mt-3 text-13-regular text-text-weak">
+                            {_({ id: "app.lattice.panel.notStarted", message: "The Pathway has not started yet." })}
+                          </div>
+                        }
+                      >
+                        {(step) => (
+                          <div class="mt-3 border-l-2 border-border-strong-base pl-4">
+                            <div class="text-14-medium leading-5 text-text-strong">{step().title}</div>
+                            <p class="mt-1 text-12-regular leading-5 text-text-base">{step().objective}</p>
+                            <Show when={step().failureReason}>
+                              <p class="mt-2 text-12-regular leading-5 text-text-on-critical-base">
+                                {step().failureReason}
+                              </p>
+                            </Show>
+                            <Show when={step().addressesFailedStepIDs?.length}>
+                              <p class="mt-2 text-11-regular text-text-weak">
+                                {_({
+                                  id: "app.lattice.panel.recoveryFor",
+                                  message: "Recovery for {steps}",
+                                  values: {
+                                    steps: fmt.list(
+                                      step().addressesFailedStepIDs!.map(
+                                        (id) =>
+                                          stepByID().get(id)?.title ??
+                                          _({ id: "app.lattice.panel.previousStep", message: "previous step" }),
+                                      ),
+                                    ),
+                                  },
+                                })}
+                              </p>
+                            </Show>
+                          </div>
+                        )}
+                      </Show>
+                    </section>
+
+                    <Show when={currentRun().pathway.length > 0}>
+                      <section class="border-b border-border-weaker-base py-5">
+                        <div class="mb-3 text-11-medium uppercase tracking-wide text-text-weak">
+                          {_({ id: "app.lattice.panel.pathway", message: "Pathway" })}
+                        </div>
+                        <ol class="flex min-w-0 flex-col">
+                          <For each={currentRun().pathway}>
+                            {(step, index) => (
+                              <li
+                                class="relative flex min-w-0 gap-3 border-t border-border-weaker-base py-3 first:border-t-0"
+                                classList={{
+                                  "border-l-2 border-l-border-strong-base bg-surface-inset-base px-3":
+                                    step.id === currentRun().currentStepID,
+                                }}
+                              >
+                                <span class="w-5 shrink-0 pt-0.5 text-11-regular tabular-nums text-text-weaker">
+                                  {fmt.number(index() + 1)}
+                                </span>
+                                <div class="min-w-0 flex-1">
+                                  <div class="flex min-w-0 items-start gap-3">
+                                    <span class="min-w-0 flex-1 text-13-medium leading-5 text-text-strong">
+                                      {step.title}
+                                    </span>
+                                    <span class={`shrink-0 text-11-regular ${stepStatusClass(step.status)}`}>
+                                      {_(STEP_STATUS_DESCRIPTORS[step.status])}
+                                    </span>
+                                  </div>
+                                  <Show when={step.resultSummary}>
+                                    <p class="mt-1 text-12-regular leading-5 text-text-weak">{step.resultSummary}</p>
+                                  </Show>
+                                  <Show when={step.failureReason}>
+                                    <p class="mt-1 text-12-regular leading-5 text-text-on-critical-base">
+                                      {step.failureReason}
+                                    </p>
+                                  </Show>
+                                  <Show when={step.blueprint || step.loopHistory.length > 0}>
+                                    <p class="mt-1 text-11-regular text-text-weak">
+                                      <Show when={step.blueprint}>
+                                        {(binding) =>
+                                          _({
+                                            id: "app.lattice.panel.blueprintVersion",
+                                            message: "Blueprint v{version}",
+                                            values: { version: binding().boundVersion },
+                                          })
+                                        }
+                                      </Show>
+                                      <Show when={step.blueprint && step.loopHistory.length > 0}>{" · "}</Show>
+                                      <Show when={step.loopHistory.length > 0}>
+                                        {_({
+                                          id: "app.lattice.panel.loopAttempts",
+                                          message:
+                                            "{count, plural, one {# execution attempt} other {# execution attempts}}",
+                                          values: { count: step.loopHistory.length },
+                                        })}
+                                      </Show>
+                                    </p>
+                                  </Show>
+                                </div>
+                              </li>
+                            )}
+                          </For>
+                        </ol>
+                      </section>
+                    </Show>
+
+                    <section class="border-b border-border-weaker-base">
+                      <button
+                        type="button"
+                        class="flex w-full items-center gap-3 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
+                        aria-expanded={expanded() === "blueprints"}
+                        onClick={() => toggleDetails("blueprints")}
+                      >
+                        <span class="min-w-0 flex-1">
+                          <span class="block text-13-medium text-text-strong">
+                            {_({ id: "app.lattice.panel.blueprintDetails", message: "Blueprint details" })}
+                          </span>
+                          <span class="mt-0.5 block text-11-regular text-text-weak">
+                            {_({
+                              id: "app.lattice.panel.blueprintDetailsHint",
+                              message: "Objectives, acceptance criteria, assumptions, and execution attempts",
+                            })}
+                          </span>
+                        </span>
+                        <Icon
+                          name={getSemanticIcon(
+                            expanded() === "blueprints" ? "navigation.collapse" : "navigation.expand",
+                          )}
+                          size="small"
+                        />
+                      </button>
+                      <Show when={expanded() === "blueprints"}>
+                        <div class="pb-5">
+                          <For
+                            each={blueprintSteps()}
+                            fallback={
+                              <p class="text-12-regular text-text-weak">
+                                {_({
+                                  id: "app.lattice.panel.noBlueprints",
+                                  message: "No Blueprint has been prepared yet.",
+                                })}
+                              </p>
+                            }
+                          >
+                            {(step) => (
+                              <article class="border-t border-border-weaker-base py-4 first:border-t-0 first:pt-0">
+                                <div class="text-13-medium text-text-strong">{step.title}</div>
+                                <p class="mt-1 text-12-regular leading-5 text-text-base">{step.objective}</p>
+                                <Show when={step.blueprint}>
+                                  {(binding) => (
+                                    <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-11-regular text-text-weak">
+                                      <span>
+                                        {_({
+                                          id: "app.lattice.panel.boundVersion",
+                                          message: "Bound version {version}",
+                                          values: { version: binding().boundVersion },
+                                        })}
+                                      </span>
+                                      <Show when={binding().reviewedVersion !== undefined}>
+                                        <span>
+                                          {_({
+                                            id: "app.lattice.panel.reviewedVersion",
+                                            message: "Reviewed version {version}",
+                                            values: { version: binding().reviewedVersion },
+                                          })}
+                                        </span>
+                                      </Show>
+                                    </div>
+                                  )}
+                                </Show>
+                                <Show when={step.acceptanceCriteria.length > 0}>
+                                  <div class="mt-4">
+                                    <div class="text-11-medium text-text-weak">
+                                      {_({
+                                        id: "app.lattice.panel.acceptanceCriteria",
+                                        message: "Acceptance criteria",
+                                      })}
+                                    </div>
+                                    <ul class="mt-2 space-y-1.5">
+                                      <For each={step.acceptanceCriteria}>
+                                        {(criterion) => (
+                                          <li class="flex gap-2 text-12-regular leading-5 text-text-base">
+                                            <span aria-hidden="true" class="text-text-weaker">
+                                              —
+                                            </span>
+                                            <span>{criterion}</span>
+                                          </li>
+                                        )}
+                                      </For>
+                                    </ul>
+                                  </div>
+                                </Show>
+                                <Show when={step.assumptions.length > 0}>
+                                  <div class="mt-4">
+                                    <div class="text-11-medium text-text-weak">
+                                      {_({ id: "app.lattice.panel.assumptions", message: "Assumptions" })}
+                                    </div>
+                                    <ul class="mt-2 space-y-1.5">
+                                      <For each={step.assumptions}>
+                                        {(assumption) => (
+                                          <li class="flex gap-2 text-12-regular leading-5 text-text-base">
+                                            <span aria-hidden="true" class="text-text-weaker">
+                                              —
+                                            </span>
+                                            <span>{assumption}</span>
+                                          </li>
+                                        )}
+                                      </For>
+                                    </ul>
+                                  </div>
+                                </Show>
+                                <Show when={step.loopHistory.length > 0}>
+                                  <div class="mt-4">
+                                    <div class="text-11-medium text-text-weak">
+                                      {_({ id: "app.lattice.panel.executionHistory", message: "Execution attempts" })}
+                                    </div>
+                                    <div class="mt-2">
+                                      <For each={step.loopHistory}>
+                                        {(attempt) => {
+                                          const loop = () => loopByID().get(attempt.loopID)
+                                          const status = () =>
+                                            loop()?.status ?? (attempt.status === "created" ? "armed" : attempt.status)
+                                          return (
+                                            <div class="border-t border-border-weaker-base py-2.5 first:border-t-0">
+                                              <div class="flex items-center gap-3">
+                                                <span class="min-w-0 flex-1 text-12-regular text-text-base">
+                                                  {fmt.dateTime(
+                                                    attempt.time.started ??
+                                                      attempt.time.completed ??
+                                                      attempt.time.created,
+                                                  )}
+                                                </span>
+                                                <span class="text-11-regular text-text-weak">
+                                                  {_(LOOP_STATUS_DESCRIPTORS[status()])}
+                                                </span>
+                                              </div>
+                                              <Show when={loop()?.summary ?? attempt.summary}>
+                                                <p class="mt-1 text-11-regular leading-4 text-text-weak">
+                                                  {loop()?.summary ?? attempt.summary}
+                                                </p>
+                                              </Show>
+                                              <Show when={attempt.error}>
+                                                <p class="mt-1 text-11-regular leading-4 text-text-on-critical-base">
+                                                  {attempt.error}
+                                                </p>
+                                              </Show>
+                                            </div>
+                                          )
+                                        }}
+                                      </For>
+                                    </div>
+                                  </div>
+                                </Show>
+                              </article>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
+                    </section>
+
+                    <section>
+                      <button
+                        type="button"
+                        class="flex w-full items-center gap-3 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
+                        aria-expanded={expanded() === "history"}
+                        onClick={() => toggleDetails("history")}
+                      >
+                        <span class="min-w-0 flex-1">
+                          <span class="block text-13-medium text-text-strong">
+                            {_({ id: "app.lattice.panel.runHistory", message: "Run history" })}
+                          </span>
+                          <span class="mt-0.5 block text-11-regular text-text-weak">
+                            {_({
+                              id: "app.lattice.panel.runHistoryHint",
+                              message: "Durable lifecycle and Pathway events",
+                            })}
+                          </span>
+                        </span>
+                        <Icon
+                          name={getSemanticIcon(expanded() === "history" ? "navigation.collapse" : "navigation.expand")}
+                          size="small"
+                        />
+                      </button>
+                      <Show when={expanded() === "history"}>
+                        <div class="pb-5">
+                          <Show when={eventsLoading()}>
+                            <div class="flex items-center gap-2 py-3 text-12-regular text-text-weak" role="status">
+                              <Spinner class="size-4" />
+                              {_({ id: "app.lattice.panel.historyLoading", message: "Loading run history…" })}
+                            </div>
+                          </Show>
+                          <Show when={eventsError()}>
+                            <div class="flex items-center gap-3 py-3" role="alert">
+                              <span class="min-w-0 flex-1 text-12-regular text-text-on-critical-base">
+                                {eventsError()}
+                              </span>
+                              <Button variant="ghost" size="small" onClick={() => void refreshEvents()}>
+                                {_({ id: "app.lattice.panel.retry", message: "Retry" })}
+                              </Button>
+                            </div>
+                          </Show>
+                          <Show when={!eventsLoading() && !eventsError()}>
+                            <For
+                              each={events()}
+                              fallback={
+                                <p class="py-3 text-12-regular text-text-weak">
+                                  {_({ id: "app.lattice.panel.noHistory", message: "No audit events are available." })}
+                                </p>
+                              }
+                            >
+                              {(event) => (
+                                <div class="flex gap-3 border-t border-border-weaker-base py-3 first:border-t-0">
+                                  <div class="mt-1.5 size-1.5 shrink-0 rounded-full bg-text-weaker" />
+                                  <div class="min-w-0 flex-1">
+                                    <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                      <span class="text-12-medium text-text-strong">
+                                        {translateDescriptor(latticeEventDescriptor(event.kind), i18n)}
+                                      </span>
+                                      <time
+                                        class="text-11-regular text-text-weaker"
+                                        datetime={new Date(event.time.created).toISOString()}
+                                        title={fmt.dateTime(event.time.created)}
+                                      >
+                                        {fmt.relative(event.time.created)}
+                                      </time>
+                                    </div>
+                                    <Show when={event.stepID ? stepByID().get(event.stepID) : undefined}>
+                                      {(step) => (
+                                        <div class="mt-0.5 text-11-regular text-text-weak">{step().title}</div>
+                                      )}
+                                    </Show>
+                                    <Show when={event.message}>
+                                      <p class="mt-1 text-11-regular leading-4 text-text-weak">{event.message}</p>
+                                    </Show>
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </Show>
+                        </div>
+                      </Show>
+                    </section>
+
+                    <Show when={controls().approve}>
+                      <section class="mt-2 border-t border-border-weaker-base py-5">
+                        <div class="text-13-medium text-text-strong">
+                          {_({ id: "app.lattice.panel.approvalTitle", message: "Blueprint ready for review" })}
+                        </div>
+                        <p class="mt-1 text-12-regular leading-5 text-text-weak">
+                          {_({
+                            id: "app.lattice.panel.approvalHint",
+                            message:
+                              "Review the bound Blueprint above. Continue when this exact version is ready to execute.",
+                          })}
+                        </p>
+                      </section>
+                    </Show>
+
+                    <Show when={approvalConflict()}>
+                      <div class="mt-3 text-12-regular text-text-on-warning-base" role="alert">
+                        {_({
+                          id: "app.lattice.panel.approvalConflict",
+                          message: "The Blueprint changed. Review the latest version before continuing.",
+                        })}
+                      </div>
+                    </Show>
+                    <Show when={actionError()}>
+                      <div class="mt-3 text-12-regular text-text-on-critical-base" role="alert">
+                        {actionError()}
+                      </div>
+                    </Show>
+                  </div>
                 </div>
-              </Show>
-            </section>
-          )
-        }}
+
+                <footer class="shrink-0 border-t border-border-weak-base bg-surface-base px-4 py-3">
+                  <div class="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-end gap-2">
+                    <Show
+                      when={
+                        currentRun().status === "completed" ||
+                        currentRun().status === "failed" ||
+                        currentRun().status === "cancelled"
+                      }
+                    >
+                      <Button variant="primary" onClick={() => props.onConfigure?.({ confirmRestart: true })}>
+                        {_({ id: "app.lattice.panel.startNew", message: "Start new run" })}
+                      </Button>
+                    </Show>
+                    <Show when={controls().pause}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void invoke("pause", (input) => props.sdk.client.lattice.run.pause(input))}
+                        disabled={!!busyAction()}
+                      >
+                        {busyAction() === "pause"
+                          ? _({ id: "app.lattice.panel.pausing", message: "Pausing…" })
+                          : _({ id: "app.lattice.panel.pause", message: "Pause" })}
+                      </Button>
+                    </Show>
+                    <Show when={controls().resume}>
+                      <Button
+                        variant="primary"
+                        onClick={() => void invoke("resume", (input) => props.sdk.client.lattice.run.resume(input))}
+                        disabled={!!busyAction()}
+                      >
+                        {busyAction() === "resume"
+                          ? _({ id: "app.lattice.panel.resuming", message: "Resuming…" })
+                          : _({ id: "app.lattice.panel.resume", message: "Resume" })}
+                      </Button>
+                    </Show>
+                    <Show when={controls().approve}>
+                      <Button
+                        variant="primary"
+                        onClick={() => void invoke("approve", (input) => props.sdk.client.lattice.run.approve(input))}
+                        disabled={!!busyAction() || approvalQueued()}
+                      >
+                        {busyAction() === "approve" || approvalQueued()
+                          ? _({ id: "app.lattice.panel.continuing", message: "Continuing…" })
+                          : _({ id: "app.lattice.panel.continue", message: "Continue" })}
+                      </Button>
+                    </Show>
+                    <Show when={controls().cancel}>
+                      <Button
+                        variant="ghost"
+                        class="text-text-on-critical-base"
+                        onClick={confirmCancel}
+                        disabled={!!busyAction()}
+                      >
+                        {_({ id: "app.lattice.panel.cancel", message: "Cancel run" })}
+                      </Button>
+                    </Show>
+                  </div>
+                </footer>
+              </>
+            )
+          }}
+        </Show>
       </Show>
-    </Show>
+    </div>
   )
 }

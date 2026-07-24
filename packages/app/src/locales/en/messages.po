@@ -2496,6 +2496,82 @@ msgid "app.lattice.config.unlimited"
 msgstr "Unlimited"
 
 #. js-lingui-explicit-id
+msgid "app.lattice.event.actionConsumed"
+msgstr "Work accepted"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.actionSubmitted"
+msgstr "Work submitted"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.blueprintBound"
+msgstr "Blueprint prepared"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.budgetExhausted"
+msgstr "Model-call budget reached"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.loopCancelled"
+msgstr "BlueprintLoop cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.pathwayReplaced"
+msgstr "Pathway updated"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.recoveryReconciled"
+msgstr "Recovery step reconciled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCancelled"
+msgstr "Run cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCompleted"
+msgstr "Run completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCreated"
+msgstr "Run started"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runFailed"
+msgstr "Run failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runPaused"
+msgstr "Run paused"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runResumed"
+msgstr "Run resumed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runUpdated"
+msgstr "Run updated"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stateChanged"
+msgstr "Work state changed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCancelled"
+msgstr "Step cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCompleted"
+msgstr "Step completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepFailed"
+msgstr "Step failed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepStarted"
+msgstr "Step started"
+
+#. js-lingui-explicit-id
 msgid "app.lattice.loop.armed"
 msgstr "Ready"
 
@@ -2524,6 +2600,10 @@ msgid "app.lattice.loop.waiting"
 msgstr "Waiting"
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.acceptanceCriteria"
+msgstr "Acceptance criteria"
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.actionFailed"
 msgstr "The Lattice action failed."
 
@@ -2533,39 +2613,39 @@ msgstr "Lattice action failed"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.approvalConflict"
-msgstr "Blueprint changed, review required."
+msgstr "The Blueprint changed. Review the latest version before continuing."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.approvalHint"
-msgstr "Ask for changes in chat or edit the Blueprint. Approve only when this version is ready to execute."
+msgstr "Review the bound Blueprint above. Continue when this exact version is ready to execute."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.approvalTitle"
-msgstr "Blueprint ready for your approval"
+msgstr "Blueprint ready for review"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.approve"
-msgstr "Approve"
+msgid "app.lattice.panel.assumptions"
+msgstr "Assumptions"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.approving"
-msgstr "Approving…"
+msgid "app.lattice.panel.blueprintDetails"
+msgstr "Blueprint details"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintCurrent"
-msgstr "Current"
+msgid "app.lattice.panel.blueprintDetailsHint"
+msgstr "Objectives, acceptance criteria, assumptions, and execution attempts"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintHistory"
-msgstr "History"
+msgid "app.lattice.panel.blueprintVersion"
+msgstr "Blueprint v{version}"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintLoops"
-msgstr "BlueprintLoops"
+msgid "app.lattice.panel.boundVersion"
+msgstr "Bound version {version}"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprints"
-msgstr "Blueprints"
+msgid "app.lattice.panel.budgetGuidance"
+msgstr "This paused run cannot change its budget. Cancel it to start a new run with a larger limit."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.calls"
@@ -2577,27 +2657,51 @@ msgstr "Cancel run"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.cancelConfirm"
-msgstr "Cancellation is permanent. Pathway and execution history remain available for review."
+msgstr "The run will be marked cancelled and its active BlueprintLoop will stop. It cannot be resumed, but its Pathway and history will remain available."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.cancelConfirmTitle"
 msgstr "Cancel this Lattice run?"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.confirmCancel"
-msgstr "Cancel permanently"
+msgid "app.lattice.panel.configure"
+msgstr "Configure Lattice"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.currentStep"
-msgstr "Current step"
+msgid "app.lattice.panel.confirmCancel"
+msgstr "Cancel run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.continue"
+msgstr "Continue"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.continuing"
+msgstr "Continuing…"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.emptyDescription"
+msgstr "Configure a run to align requirements, plan a Pathway, and execute reviewed Blueprints."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.emptyTitle"
+msgstr "No Lattice run yet"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.executionHistory"
+msgstr "Execution attempts"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.historyLoadFailed"
+msgstr "Could not load the run history."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.historyLoading"
+msgstr "Loading run history…"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.keepRun"
 msgstr "Keep run"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.label"
-msgstr "Lattice run"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.loadFailed"
@@ -2608,8 +2712,24 @@ msgid "app.lattice.panel.loading"
 msgstr "Loading Lattice…"
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.loopAttempts"
+msgstr "{count, plural, one {# execution attempt} other {# execution attempts}}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noBlueprints"
+msgstr "No Blueprint has been prepared yet."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noHistory"
+msgstr "No audit events are available."
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.notStarted"
-msgstr "Not started"
+msgstr "The Pathway has not started yet."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.now"
+msgstr "Now"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.pathway"
@@ -2620,16 +2740,64 @@ msgid "app.lattice.panel.pause"
 msgstr "Pause"
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.pausing"
+msgstr "Pausing…"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.previousStep"
+msgstr "previous step"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.progressLabel"
+msgstr "Pathway progress"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.recoveryFor"
+msgstr "Recovery for {steps}"
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.resume"
 msgstr "Resume"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.resuming"
+msgstr "Resuming…"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.retry"
 msgstr "Retry"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.stepProgress"
-msgstr "{completed} completed · {remaining} remaining · {failed} failed"
+msgid "app.lattice.panel.reviewedVersion"
+msgstr "Reviewed version {version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistory"
+msgstr "Run history"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistoryHint"
+msgstr "Durable lifecycle and Pathway events"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.settings"
+msgstr "Settings"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.startNew"
+msgstr "Start new run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.steps"
+msgstr "Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.stepsCompleted"
+msgstr "{completed} of {total} completed"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unavailableTitle"
+msgstr "Lattice is unavailable"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.unlimited"
@@ -2666,6 +2834,22 @@ msgstr "Exited by you"
 #. js-lingui-explicit-id
 msgid "app.lattice.reason.userPause"
 msgstr "Paused by you"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.cancel"
+msgstr "Keep current run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.confirm"
+msgstr "Start new run"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.description"
+msgstr "A new run will replace the current Session pointer with a fresh Pathway and model-call count. The previous run and its history will remain available."
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.title"
+msgstr "Start a new Lattice run?"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.state.awaitingExecution"
@@ -2738,6 +2922,10 @@ msgstr "Failed"
 #. js-lingui-explicit-id
 msgid "app.lattice.step.pending"
 msgstr "Pending"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.workspace.sessionRequired"
+msgstr "Open a Session to use Lattice."
 
 #. ── pages/layout.tsx ────────────────────────────────────────────────
 msgid "app.layout.colorScheme"
@@ -4303,6 +4491,10 @@ msgstr "Files"
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files.openFile"
 msgstr "Open file"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.lattice"
+msgstr "Lattice"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.notes"

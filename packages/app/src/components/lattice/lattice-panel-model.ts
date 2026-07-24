@@ -1,5 +1,9 @@
 import type { MessageDescriptor } from "@lingui/core"
-import type { BlueprintLoopInfo, LatticeRunView as GeneratedLatticeRunView } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  BlueprintLoopInfo,
+  LatticeEvent,
+  LatticeRunView as GeneratedLatticeRunView,
+} from "@ericsanchezok/synergy-sdk/client"
 
 export type LatticeRunView = GeneratedLatticeRunView
 export type LatticeMode = LatticeRunView["mode"]
@@ -53,6 +57,28 @@ export const LOOP_STATUS_DESCRIPTORS = {
   cancelled: { id: "app.lattice.loop.cancelled", message: "Cancelled" },
 } satisfies Record<LatticeLoopView["status"], MessageDescriptor>
 
+const EVENT_DESCRIPTORS = {
+  run_created: { id: "app.lattice.event.runCreated", message: "Run started" },
+  run_updated: { id: "app.lattice.event.runUpdated", message: "Run updated" },
+  state_changed: { id: "app.lattice.event.stateChanged", message: "Work state changed" },
+  pathway_replaced: { id: "app.lattice.event.pathwayReplaced", message: "Pathway updated" },
+  action_submitted: { id: "app.lattice.event.actionSubmitted", message: "Work submitted" },
+  action_consumed: { id: "app.lattice.event.actionConsumed", message: "Work accepted" },
+  step_blueprint_bound: { id: "app.lattice.event.blueprintBound", message: "Blueprint prepared" },
+  step_started: { id: "app.lattice.event.stepStarted", message: "Step started" },
+  step_completed: { id: "app.lattice.event.stepCompleted", message: "Step completed" },
+  step_failed: { id: "app.lattice.event.stepFailed", message: "Step failed" },
+  step_cancelled: { id: "app.lattice.event.stepCancelled", message: "Step cancelled" },
+  loop_cancelled: { id: "app.lattice.event.loopCancelled", message: "BlueprintLoop cancelled" },
+  run_paused: { id: "app.lattice.event.runPaused", message: "Run paused" },
+  run_resumed: { id: "app.lattice.event.runResumed", message: "Run resumed" },
+  run_completed: { id: "app.lattice.event.runCompleted", message: "Run completed" },
+  run_failed: { id: "app.lattice.event.runFailed", message: "Run failed" },
+  run_cancelled: { id: "app.lattice.event.runCancelled", message: "Run cancelled" },
+  budget_exhausted: { id: "app.lattice.event.budgetExhausted", message: "Model-call budget reached" },
+  recovery_reconciled: { id: "app.lattice.event.recoveryReconciled", message: "Recovery step reconciled" },
+} satisfies Record<LatticeEvent["kind"], MessageDescriptor>
+
 const PAUSE_REASON_DESCRIPTORS: Record<string, MessageDescriptor> = {
   user_paused: { id: "app.lattice.reason.userPause", message: "Paused by you" },
   user_exit: { id: "app.lattice.reason.userExit", message: "Exited by you" },
@@ -88,6 +114,31 @@ export function runWorkState(run: LatticeRunView): LatticeWorkState {
   return run.state
 }
 
+export function latticeEventDescriptor(kind: LatticeEvent["kind"]): MessageDescriptor {
+  return EVENT_DESCRIPTORS[kind]
+}
+
+export function currentStepForRun(run: LatticeRunView): LatticeRunView["pathway"][number] | undefined {
+  return (
+    run.pathway.find((step) => step.id === run.currentStepID) ??
+    run.pathway.find((step) => step.status === "current" || step.status === "executing")
+  )
+}
+
+export function pathwayProgress(run: LatticeRunView): {
+  completed: number
+  failed: number
+  pending: number
+  total: number
+} {
+  return {
+    completed: run.pathway.filter((step) => step.status === "completed").length,
+    failed: run.pathway.filter((step) => step.status === "failed" || step.status === "cancelled").length,
+    pending: run.pathway.filter((step) => step.status === "pending" || step.status === "current").length,
+    total: run.pathway.length,
+  }
+}
+
 export function selectFresherRun(
   current: LatticeRunView | null,
   incoming: LatticeRunView | null,
@@ -121,10 +172,6 @@ export function controlsForRun(run: LatticeRunView) {
   }
 }
 
-export function referencedLoopIDs(run: LatticeRunView): Set<string> {
-  return new Set(run.pathway.flatMap((step) => step.loopHistory.map((attempt) => attempt.loopID)))
-}
-
 export function isLatticeConflict(error: unknown): boolean {
   if (error instanceof Error && error.name === "APIError") {
     const data = (error as { data?: { statusCode?: number } }).data
@@ -135,8 +182,4 @@ export function isLatticeConflict(error: unknown): boolean {
   if (typeof body.message !== "string" || !body.data || typeof body.data !== "object") return false
   const data = body.data as { state?: unknown; reason?: unknown }
   return typeof data.state === "string" && typeof data.reason === "string" && data.reason.trim().length > 0
-}
-
-export function shouldDismissCancelConfirmation(key: string): boolean {
-  return key === "Escape"
 }

@@ -2,9 +2,13 @@ import { describe, expect, test } from "bun:test"
 import PLAN from "../../src/session/prompt/plan.txt"
 import PLAN_SYNERGY from "../../src/session/prompt/plan-synergy.txt"
 import PLAN_SYNERGY_MAX from "../../src/session/prompt/plan-synergy-max.txt"
+import LATTICE_BASE from "../../src/lattice/prompt/base.txt"
+import LATTICE_AWAITING_EXECUTION from "../../src/lattice/prompt/state-awaiting-execution.txt"
 import LATTICE_CLARIFYING from "../../src/lattice/prompt/state-clarifying.txt"
 import LATTICE_AUTO from "../../src/lattice/prompt/mode-auto.txt"
 import LATTICE_BLUEPRINTING from "../../src/lattice/prompt/state-blueprinting.txt"
+import LATTICE_PLANNING from "../../src/lattice/prompt/state-planning.txt"
+import LATTICE_REVIEWING_BLUEPRINT from "../../src/lattice/prompt/state-reviewing-blueprint.txt"
 import LATTICE_REVIEWING_PATHWAY from "../../src/lattice/prompt/state-reviewing-pathway.txt"
 
 const REQUIRED_BLUEPRINT_SECTIONS = [
@@ -57,6 +61,24 @@ describe("Plan Blueprint prompt contract", () => {
     expect(LATTICE_BLUEPRINTING).toContain("one material implementation route")
     for (const section of REQUIRED_BLUEPRINT_SECTIONS) {
       expect(LATTICE_BLUEPRINTING).toContain(section)
+    }
+  })
+
+  test("ends the turn after a successful Lattice state submission", () => {
+    expect(LATTICE_BASE).toContain("final tool call")
+    expect(LATTICE_BASE).toContain("still report the current state")
+    expect(LATTICE_BASE).toContain("Do not poll, resubmit, or begin the next state")
+
+    for (const statePrompt of [
+      LATTICE_AWAITING_EXECUTION,
+      LATTICE_CLARIFYING,
+      LATTICE_PLANNING,
+      LATTICE_REVIEWING_PATHWAY,
+      LATTICE_BLUEPRINTING,
+      LATTICE_REVIEWING_BLUEPRINT,
+    ]) {
+      expect(statePrompt).toContain("final tool call")
+      expect(statePrompt).toContain("end the turn")
     }
   })
 })
