@@ -103,6 +103,7 @@ export interface SkillContribution extends ContributionBase<"skill"> {
 
 export interface McpContribution extends ContributionBase<"mcp"> {
   server: McpServerConfig
+  enabledWhen?: PluginSettingCondition
 }
 
 export interface PluginAuthProviderProfile {

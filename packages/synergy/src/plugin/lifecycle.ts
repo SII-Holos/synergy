@@ -13,6 +13,7 @@ import {
   contributions,
   type LoadedPlugin,
 } from "./loader"
+import { getPluginConfig, matchesPluginSettingCondition, replacePluginConfig } from "./config-store"
 import { replaceForPlugins } from "./mcp"
 import Ajv2020 from "ajv/dist/2020"
 import { LightLoopRuntime } from "../session/light-loop-runtime"
@@ -20,8 +21,19 @@ import { BlueprintLoopRuntime } from "../blueprint/loop-runtime"
 
 const log = Log.create({ service: "plugin.lifecycle" })
 
-function mcpDeclarations(plugin: LoadedPlugin) {
-  return Object.fromEntries(contributions(plugin, "mcp").map((item) => [item.id, item.server]))
+export async function mcpDeclarations(plugin: LoadedPlugin) {
+  const values = await getPluginConfig(plugin.id, { manifest: plugin.manifest })
+  return Object.fromEntries(
+    contributions(plugin, "mcp")
+      .filter((item) => !item.enabledWhen || matchesPluginSettingCondition(item.enabledWhen, values))
+      .map((item) => [item.id, item.server]),
+  )
+}
+
+async function mcpCandidates(plugins: LoadedPlugin[]) {
+  return Promise.all(
+    plugins.map(async (plugin) => ({ pluginId: plugin.id, declarations: await mcpDeclarations(plugin) })),
+  )
 }
 
 function hookContributions(plugin: LoadedPlugin, point: string) {
@@ -255,7 +267,7 @@ export async function deliverHookForPlugin<Input>(
 
 export async function init() {
   const plugins = await state().then((value) => value.loaded)
-  await replaceForPlugins(plugins.map((plugin) => ({ pluginId: plugin.id, declarations: mcpDeclarations(plugin) })))
+  await replaceForPlugins(await mcpCandidates(plugins))
   await LightLoopRuntime.reattachPluginTimers()
   await BlueprintLoopRuntime.reattachPluginTimers()
 }
@@ -269,14 +281,22 @@ export async function reload() {
   const [{ Agent }, { ToolRegistry }] = await Promise.all([import("../agent/agent"), import("../tool/registry")])
   await Promise.all([Agent.reload(), ToolRegistry.reload()])
   const loaded = await getLoadedPlugins()
-  await replaceForPlugins(loaded.map((plugin) => ({ pluginId: plugin.id, declarations: mcpDeclarations(plugin) })))
+  await replaceForPlugins(await mcpCandidates(loaded))
   await LightLoopRuntime.reattachPluginTimers()
   await BlueprintLoopRuntime.reattachPluginTimers()
 }
 
 export async function reloadMcpContributions() {
   const plugins = await getLoadedPlugins()
-  await replaceForPlugins(plugins.map((plugin) => ({ pluginId: plugin.id, declarations: mcpDeclarations(plugin) })))
+  await replaceForPlugins(await mcpCandidates(plugins))
+}
+
+export async function updateConfig(plugin: Pick<LoadedPlugin, "id" | "manifest">, values: unknown) {
+  const updated = await replacePluginConfig(plugin.id, values, { manifest: plugin.manifest })
+  const { ToolRegistry } = await import("../tool/registry")
+  await Promise.all([ToolRegistry.reload(), reloadMcpContributions()])
+  await notifyConfigHooks({ source: "plugin_reload", changedFields: Object.keys(updated) })
+  return updated
 }
 
 export async function notifyConfigHooks(input: {

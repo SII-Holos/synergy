@@ -122,9 +122,14 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
       ? (settings.formSchema.properties as Record<string, unknown>)
       : {}
   for (const contribution of input.contributions) {
-    if (contribution.kind === "tool" && contribution.enabledWhen && !(contribution.enabledWhen.setting in properties)) {
+    if (
+      (contribution.kind === "tool" || contribution.kind === "mcp") &&
+      contribution.enabledWhen &&
+      !(contribution.enabledWhen.setting in properties)
+    ) {
+      const label = contribution.kind === "tool" ? "Tool" : "MCP"
       throw new Error(
-        `Tool contribution "${contribution.id}" references undeclared setting "${contribution.enabledWhen.setting}"`,
+        `${label} contribution "${contribution.id}" references undeclared setting "${contribution.enabledWhen.setting}"`,
       )
     }
   }
@@ -192,7 +197,12 @@ function compileContribution(
     case "skill":
       return { ...base, kind: "skill", skill: contribution.skill as unknown as Record<string, unknown> }
     case "mcp":
-      return { ...base, kind: "mcp", server: contribution.server }
+      return {
+        ...base,
+        kind: "mcp",
+        server: contribution.server,
+        ...(contribution.enabledWhen ? { enabledWhen: contribution.enabledWhen } : {}),
+      }
     case "authProvider": {
       return {
         ...base,
