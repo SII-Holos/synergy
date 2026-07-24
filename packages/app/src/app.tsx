@@ -26,7 +26,7 @@ import { HolosProvider } from "@/context/holos"
 import { InputProvider } from "@/context/input"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
-import { ErrorPage } from "./pages/error"
+import { FatalErrorPage } from "./pages/fatal-error"
 import {
   PluginComposerSlotBridge,
   PluginThemeConfigBridge,
@@ -124,7 +124,7 @@ export function AppBaseProviders(props: ParentProps) {
       <LocaleProvider>
         <ThemeProvider>
           <DesktopThemeSync />
-          <ErrorBoundary fallback={(error) => <ErrorPage error={error} />}>
+          <ErrorBoundary fallback={(error) => <FatalErrorPage error={error} />}>
             <DialogProvider>
               <MarkedProvider>
                 <DiffComponentProvider component={Diff}>

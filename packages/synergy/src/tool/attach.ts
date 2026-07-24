@@ -33,10 +33,7 @@ export const AttachTool = Tool.define("attach", {
     const attachments: MessageV2.AttachmentPart[] = []
 
     for (let i = 0; i < paths.length; i++) {
-      let filePath = paths[i]
-      if (!path.isAbsolute(filePath)) {
-        filePath = path.join(ScopeContext.current.directory, filePath)
-      }
+      const filePath = path.resolve(ScopeContext.current.directory, paths[i])
 
       const file = Bun.file(filePath)
       if (!(await file.exists())) {
@@ -57,9 +54,18 @@ export const AttachTool = Tool.define("attach", {
         mime,
         filename,
         url: `asset://${assetId}`,
+        localPath: filePath,
         model: {
           mode: "summary",
           summary: `${filename} (${mime}, ${formatSize(buffer.length)}) delivered to the user`,
+        },
+        metadata: {
+          kind: "attachment",
+          attachment: {
+            originTool: "attach",
+            sourcePath: filePath,
+            size: buffer.length,
+          },
         },
       })
     }

@@ -179,6 +179,7 @@ describe("tool.openai_image_gen", () => {
         expect(attachment?.filename).toBe("star.png")
         expect(attachment?.url).toStartWith("asset://")
         expect(attachment?.url).not.toStartWith("data:")
+        expect(attachment?.localPath).toBe(outputPath)
         expect(attachment?.presentation).toEqual({ renderer: "image", size: "medium", crop: false })
         expect(attachment?.model).toEqual({
           mode: "provider-file",

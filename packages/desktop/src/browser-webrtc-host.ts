@@ -15,6 +15,7 @@ import {
 import { BrowserHostDiagnostics } from "./browser-host-diagnostics.js"
 import { BrowserWebContentsControl } from "./browser-webcontents-control.js"
 import { browserProfilePartition } from "./browser-profile.js"
+import { isBrowserDisplayCapturePermission, startBrowserDisplayCapture } from "./browser-display-capture.js"
 import { desktopThemeBackground, type DesktopThemeSnapshot } from "./theme.js"
 
 export interface BrowserWebRTCHostOptions {
@@ -171,11 +172,10 @@ export class BrowserWebRTCHost {
       },
     })
     this.rtcWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
-      const requestedPermission = String(permission)
-      return webContents === this.rtcWindow?.webContents && this.isControllerMediaPermission(requestedPermission)
+      return webContents === this.rtcWindow?.webContents && isBrowserDisplayCapturePermission(String(permission))
     })
     this.rtcWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-      callback(webContents === this.rtcWindow?.webContents && this.isControllerMediaPermission(String(permission)))
+      callback(webContents === this.rtcWindow?.webContents && isBrowserDisplayCapturePermission(String(permission)))
     })
     this.rtcWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
       const frame = this.browserWindow?.webContents.mainFrame
@@ -209,6 +209,7 @@ export class BrowserWebRTCHost {
       if (url !== controllerURL) event.preventDefault()
     })
     await this.rtcWindow.loadFile(controllerPath)
+    await startBrowserDisplayCapture(this.rtcWindow.webContents)
     const initialURL = this.initialURL()
     if (initialURL !== "about:blank") {
       await this.control.execute({ type: "navigate", url: initialURL, source: "user" })
@@ -270,10 +271,6 @@ export class BrowserWebRTCHost {
 
   private dispatchInput(payload: Record<string, unknown>): void {
     this.control?.dispatchInput(payload)
-  }
-
-  private isControllerMediaPermission(permission: string): boolean {
-    return permission === "display-capture"
   }
 
   private installBrowserEvents(): void {

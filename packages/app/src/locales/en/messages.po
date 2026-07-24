@@ -738,6 +738,70 @@ msgstr "External"
 msgid "app.agentVisual.external"
 msgstr "External"
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr "Download"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr "View source in Files"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr "Loading attachment…"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr "Attachment view mode"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr "Preview"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr "Source"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr "Fit width"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr "Next page"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr "{page} / {count}"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr "Previous page"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr "Zoom in"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr "Zoom out"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr "Unable to preview this attachment."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr "This attachment is too large to preview. Download it to view the full file."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr "This attachment is no longer available in the conversation."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr "Preview is not available for this file type."
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr "Cancel"
@@ -2065,6 +2129,62 @@ msgstr "Unknown error"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.versionLabel"
 msgstr "Version: {version}"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr "Change server"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr "Reload interface"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr "Try again"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr "The Synergy server is not responding right now. The state of running tasks is unknown."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr "Could not reach the server"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr "A configuration, provider, or setup error prevented Synergy from starting."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr "Synergy could not finish starting"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr "Reloading this page will not stop any tasks already running on the server."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr "The interface encountered a problem"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr "The workspace could not be loaded. This may be temporary or due to a configuration issue."
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr "Could not load this project"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr "Summary"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
@@ -4083,6 +4203,10 @@ msgstr "Response ready"
 #. ── Notifications ────────────────────────────────────────────────────────────
 msgid "app.notification.session.error"
 msgstr "Session error"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr "Attachment"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
@@ -7402,6 +7526,14 @@ msgstr "Workspace"
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.mobileHeader.close"
 msgstr "Close workspace"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr "Reload app"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
+msgstr "Retry"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
@@ -17322,6 +17454,10 @@ msgstr "No image selected"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
 msgstr "Open image in new window"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
+msgstr "View source in Files"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.previous"

@@ -9,6 +9,7 @@ export interface ImagePreviewImage {
   alt?: string
   downloadUrl?: string
   externalUrl?: string
+  sourcePath?: string
 }
 
 export interface ImagePreviewDimensions {

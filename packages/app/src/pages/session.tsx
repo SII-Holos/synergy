@@ -126,10 +126,6 @@ function SessionPageContent() {
   const sideOpen = createMemo(() => sideSurface().opened())
   const view = createMemo(() => layout.view(sessionKey()))
 
-  createEffect(() => {
-    layout.tryRevealInitialSideWorkspace(sessionKey())
-  })
-
   createEffect(
     on(
       () => [params.dir, params.id, sync.data.scopeID] as const,
