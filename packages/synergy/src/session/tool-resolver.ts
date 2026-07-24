@@ -1500,7 +1500,7 @@ export namespace ToolResolver {
                   workspaceType: workspaceInfo?.type ?? "scope",
                 })
 
-                const envelope = gate.evaluate(item.id, args as Record<string, any>)
+                const envelope = await gate.evaluateIsolated(item.id, args as Record<string, any>, ctx.abort)
                 const modeDiagnostic = SessionModePolicy.evaluateCall({
                   toolName: item.id,
                   args: args as Record<string, any>,
@@ -1752,7 +1752,7 @@ export namespace ToolResolver {
                     workspace,
                     workspaceType: workspaceInfo?.type ?? "scope",
                   })
-                  const envelope = gate.evaluate(key, args as Record<string, any>)
+                  const envelope = await gate.evaluateIsolated(key, args as Record<string, any>, ctx.abort)
                   const modeDiagnostic = SessionModePolicy.evaluateCall({
                     toolName: key,
                     args: args as Record<string, any>,

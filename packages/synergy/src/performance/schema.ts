@@ -324,6 +324,18 @@ export namespace PerformanceSchema {
               rssBytes: z.number().int().nonnegative(),
               heapUsedBytes: z.number().int().nonnegative(),
             }),
+            policyWorkers: z.object({
+              configured: z.number().int().positive(),
+              maxQueued: z.number().int().nonnegative(),
+              maxQueuedBytes: z.number().int().positive(),
+              workers: z.number().int().nonnegative(),
+              ready: z.number().int().nonnegative(),
+              active: z.number().int().nonnegative(),
+              queued: z.number().int().nonnegative(),
+              queuedBytes: z.number().int().nonnegative(),
+              rssBytes: z.number().int().nonnegative(),
+              heapUsedBytes: z.number().int().nonnegative(),
+            }),
             toolTasks: z.object({
               active: z.number().int().nonnegative(),
               queued: z.number().int().nonnegative(),

@@ -1389,6 +1389,69 @@ export const Info = z
           .max(300_000)
           .optional()
           .describe("Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)"),
+        policyWorkers: z
+          .number()
+          .int()
+          .positive()
+          .max(16)
+          .optional()
+          .describe("Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)"),
+        policyQueueMax: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(32_768)
+          .optional()
+          .describe("Maximum queued Policy classifications waiting for a worker (default: 256)"),
+        policyQueueMaxMb: z
+          .number()
+          .int()
+          .positive()
+          .max(1_024)
+          .optional()
+          .describe("Maximum aggregate queued Policy-classification payload size in MiB (default: 64)"),
+        policyTimeoutMs: z
+          .number()
+          .int()
+          .min(50)
+          .max(10_000)
+          .optional()
+          .describe("Maximum total time for a Policy classification before conservative fallback (default: 1000)"),
+        policyWorkerMaxRequests: z
+          .number()
+          .int()
+          .positive()
+          .max(100_000)
+          .optional()
+          .describe("Classifications completed before a Policy worker is recycled (default: 512)"),
+        policyWorkerMaxRssMb: z
+          .number()
+          .int()
+          .positive()
+          .max(16_384)
+          .optional()
+          .describe("RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)"),
+        policyWorkerMaxHeapMb: z
+          .number()
+          .int()
+          .positive()
+          .max(16_384)
+          .optional()
+          .describe("Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)"),
+        policyCancelGraceMs: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(10_000)
+          .optional()
+          .describe("Shutdown grace period before terminating a Policy worker (default: 25)"),
+        policyHeartbeatTimeoutMs: z
+          .number()
+          .int()
+          .min(10_000)
+          .max(120_000)
+          .optional()
+          .describe("Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)"),
         toolConcurrency: z
           .number()
           .int()

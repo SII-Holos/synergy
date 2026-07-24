@@ -11,6 +11,7 @@ import { PerformanceProjection } from "./projection"
 import { PerformanceSchema } from "./schema"
 import { AgentTurn } from "@/session/agent-turn"
 import { ToolScheduler } from "@/session/tool-scheduler"
+import { PolicyWorker } from "@/enforcement/policy-worker"
 
 export namespace PerformanceDashboard {
   type MetricRow = ObservabilityStore.StoredMetric & { labels: Record<string, unknown> }
@@ -43,6 +44,7 @@ export namespace PerformanceDashboard {
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
     const runtimeStats = SessionManager.runtimeStats()
     const agentWorkers = AgentTurn.stats()
+    const policyWorkers = PolicyWorker.stats()
     const toolTasks = ToolScheduler.stats()
     const messageCacheStats = SessionMessageCache.stats()
     const llmTurnStats = LLMTurnMemory.stats()
@@ -182,6 +184,7 @@ export namespace PerformanceDashboard {
         sessionRuntimes: runtimeStats,
         execution: {
           agentWorkers,
+          policyWorkers,
           toolTasks,
         },
         messageCache: {
