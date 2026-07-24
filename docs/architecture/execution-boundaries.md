@@ -28,6 +28,14 @@ The Agent worker never receives an `execute()` callback. It emits proposed calls
 
 The scheduler is one logical execution layer, not one universal sandbox process. Local commands and command-backed search remain child processes with bounded output; installed plugin implementations reuse the plugin process runtime; MCP, Browser, and Link use their existing isolated transports or canonical runtimes. File operations and narrow operations that mutate canonical session/workflow state run asynchronously under scheduled Control Plane ownership. Classification changes admission and fault accounting, not authorization semantics.
 
+The process boundary follows three ownership layers:
+
+- the Control Plane owns HTTP/WebSocket service, sessions, durable state, authorization, scheduling, Browser session ownership, and plugin coordination;
+- the elastic Agent worker pool owns provider inference and emits only projected model events and proposed tool calls;
+- tool runtimes own physical execution through their existing process, child-process, MCP, Browser, Link, or Control Plane transports.
+
+This split is a dependency boundary as well as an IPC boundary. The Agent worker runner's static import graph excludes Browser, Tool, Plugin, and Plugin Runtime implementations. Tool names, descriptions, and JSON Schemas cross into a worker; callbacks, Playwright/Chromium state, plugin processes, MCP clients, approval promises, and session writers do not. A model turn reaches its terminal provider result, disposes and releases the Agent worker, and only then can the Control Plane authorize and dispatch its proposed tools.
+
 Policy workers isolate capability analysis from the HTTP/WebSocket event loop. Their protocol carries only the tool name, JSON-like arguments, and immutable workspace/plugin classification context. It bounds request size, queue depth, aggregate queued bytes, per-request time, IPC frames, request count, RSS, and heap use. Global-runtime startup begins prewarming without making HTTP/WebSocket availability depend on the child process; the first classification waits up to the fixed ten-second handshake deadline before the shorter per-request queue/transfer/classification deadline begins. Repeated pre-ready exits use exponential backoff and open a finite startup circuit instead of entering a respawn loop. The Control Plane remains the sole owner of profile compilation results, approval state, audit state, sandbox accumulation, and the final allow/ask/deny decision.
 
 Classification failure never re-enters the in-process top-level classifier. Worker startup timeout, request timeout, crash, protocol failure, queue rejection, or malformed input returns one opaque, non-bypassable `protected_op` capability and an immediate transient denial. Infrastructure failure cannot enter the approval system because the user cannot safely authorize an operation whose capabilities are unknown; this also keeps `guarded` and `full_access` from turning an ordinary runtime failure into execution. Cancellation remains cancellation rather than being converted into a policy result.
@@ -129,6 +137,7 @@ These restrictions are evaluated before the tool implementation. A permissive co
 
 - Every executable tool path passes through the centralized enforcement gate.
 - Model-facing tool definitions never contain executable callbacks.
+- Agent worker static imports never reach Browser, Tool, Plugin, or Plugin Runtime implementations.
 - Permission decisions remain in the Control Plane and occur only after the Agent worker has released its turn.
 - Capability analysis runs in bounded Policy workers; those workers never decide authorization or execute tools.
 - Policy worker failure produces a finite conservative denial, never opens an approval wait, and cannot block HTTP/WebSocket service.

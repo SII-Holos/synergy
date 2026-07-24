@@ -32,6 +32,8 @@ export interface AgentTurnStream {
 
 export interface AgentWorkerPoolOptions {
   size: number
+  minIdle: number
+  idleTimeoutMs: number
   maxQueued: number
   maxQueuedBytes: number
   maxTurns: number
@@ -98,6 +100,7 @@ interface PoolWorker {
   arrayBuffersBytes?: number
   idleBaselineRssBytes?: number
   idleBaselineExternalBytes?: number
+  idleSince?: number
   lastEventSequence: number
   lastHeartbeatAt: number
 }
@@ -185,11 +188,21 @@ export class AgentWorkerPool {
     if (!Number.isInteger(options.size) || options.size <= 0) {
       throw new Error("Agent worker pool size must be a positive integer")
     }
+    if (!Number.isInteger(options.minIdle) || options.minIdle < 0 || options.minIdle > options.size) {
+      throw new Error("Agent worker pool minIdle must be a non-negative integer no greater than size")
+    }
+    if (!Number.isInteger(options.idleTimeoutMs) || options.idleTimeoutMs <= 0) {
+      throw new Error("Agent worker pool idleTimeoutMs must be a positive integer")
+    }
     if (!Number.isInteger(options.maxQueued) || options.maxQueued < 0) {
       throw new Error("Agent worker pool maxQueued must be a non-negative integer")
     }
-    this.healthTimer = setInterval(() => this.sweepHealth(), Math.min(5_000, options.heartbeatTimeoutMs))
+    this.healthTimer = setInterval(
+      () => this.sweepHealth(),
+      Math.max(10, Math.min(5_000, options.heartbeatTimeoutMs, options.idleTimeoutMs)),
+    )
     this.healthTimer.unref()
+    this.ensureWorkers()
   }
 
   run(input: AgentTurnPoolInput): Promise<AgentTurnStream> {
@@ -197,11 +210,8 @@ export class AgentWorkerPool {
     if (this.stopping) return Promise.reject(new Error("Agent worker pool is stopping"))
     if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
     if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("Agent turn aborted", "AbortError"))
-    this.ensureWorkers()
-    if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
-    const unassignedWorkers = [...this.workers.values()].filter((worker) => !worker.stopping && !worker.task).length
-    const waitingTasks = Math.max(0, this.queue.length - unassignedWorkers)
-    if (waitingTasks >= this.options.maxQueued && this.queue.length >= unassignedWorkers) {
+    const activeTasks = this.activeTaskCount()
+    if (activeTasks + this.queue.length >= this.options.size + this.options.maxQueued) {
       return Promise.reject(new Error(`Agent worker queue is full (${this.options.maxQueued} waiting)`))
     }
 
@@ -220,7 +230,7 @@ export class AgentWorkerPool {
     }
     const payload = AgentTurnProtocol.serializeTurn(envelope as unknown as AgentTurnProtocol.TurnEnvelope)
     const requestBytes = payload.byteLength
-    if (this.queuedBytes + requestBytes > this.options.maxQueuedBytes && !this.availableWorker()) {
+    if (this.queuedBytes + requestBytes > this.options.maxQueuedBytes) {
       return Promise.reject(
         new Error(`Agent worker queue exceeded ${this.options.maxQueuedBytes} bytes of waiting turns`),
       )
@@ -271,6 +281,7 @@ export class AgentWorkerPool {
         sessionID: input.sessionID,
         messageID: input.user.id,
       })
+      this.ensureWorkers()
       this.drain()
     })
   }
@@ -284,6 +295,8 @@ export class AgentWorkerPool {
     }
     return {
       configured: this.options.size,
+      minIdle: this.options.minIdle,
+      idleTimeoutMs: this.options.idleTimeoutMs,
       maxQueued: this.options.maxQueued,
       maxQueuedBytes: this.options.maxQueuedBytes,
       workers: this.workers.size,
@@ -324,9 +337,22 @@ export class AgentWorkerPool {
 
   private ensureWorkers(): void {
     if (this.startupRetryPending) return
-    while (!this.stopping && !this.startupCircuitError && this.workers.size < this.options.size) {
+    while (!this.stopping && !this.startupCircuitError && this.liveWorkerCount() < this.desiredWorkerCount()) {
       if (!this.spawnWorker()) return
     }
+  }
+
+  private activeTaskCount(): number {
+    return [...this.workers.values()].filter((worker) => !worker.stopping && worker.task).length
+  }
+
+  private liveWorkerCount(): number {
+    return [...this.workers.values()].filter((worker) => !worker.stopping).length
+  }
+
+  private desiredWorkerCount(): number {
+    const demand = this.activeTaskCount() + this.queue.length
+    return Math.min(this.options.size, Math.max(this.options.minIdle, demand + this.options.minIdle))
   }
 
   private spawnWorker(): boolean {
@@ -365,6 +391,7 @@ export class AgentWorkerPool {
       worker.startupFailureEligible = false
       worker.pid = message.pid
       worker.lastHeartbeatAt = Date.now()
+      worker.idleSince = Date.now()
       this.recordWorkerMemory(worker, message.memory, "ready")
       this.consecutiveStartupFailures = 0
       this.startupCircuitError = undefined
@@ -620,7 +647,10 @@ export class AgentWorkerPool {
     if (task.completed) return
     task.completed = true
     task.removeAbortListener()
-    if (worker.task === task) worker.task = undefined
+    if (worker.task === task) {
+      worker.task = undefined
+      worker.idleSince = Date.now()
+    }
     if (task.startedAt !== undefined) {
       ObservabilityMetrics.record({
         name: "agent.turn.duration",
@@ -689,7 +719,7 @@ export class AgentWorkerPool {
 
   private recycle(
     worker: PoolWorker,
-    reason: "max_turns" | "rss" | "heap" | "idle_rss_growth" | "idle_external_growth",
+    reason: "max_turns" | "rss" | "heap" | "idle_rss_growth" | "idle_external_growth" | "idle_timeout",
   ): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
@@ -713,6 +743,8 @@ export class AgentWorkerPool {
       },
     })
     void worker.host.stop(this.options.cancelGraceMs)
+    this.ensureWorkers()
+    this.drain()
   }
 
   private drain(): void {
@@ -728,6 +760,7 @@ export class AgentWorkerPool {
         continue
       }
       worker.task = task
+      worker.idleSince = undefined
       task.worker = worker
       this.send(worker, {
         type: "run-start",
@@ -755,10 +788,6 @@ export class AgentWorkerPool {
       index,
       data: task.payload.subarray(start, end),
     })
-  }
-
-  private availableWorker(): boolean {
-    return [...this.workers.values()].some((worker) => worker.ready && !worker.stopping && !worker.task)
   }
 
   private cancel(requestId: string, reason?: unknown): void {
@@ -800,6 +829,22 @@ export class AgentWorkerPool {
 
   private sweepHealth(now = Date.now()): void {
     if (this.stopping) return
+    let liveWorkers = this.liveWorkerCount()
+    const desiredWorkers = this.desiredWorkerCount()
+    for (const worker of this.workers.values()) {
+      if (liveWorkers <= desiredWorkers) break
+      if (
+        worker.stopping ||
+        worker.task ||
+        !worker.ready ||
+        worker.idleSince === undefined ||
+        now - worker.idleSince < this.options.idleTimeoutMs
+      ) {
+        continue
+      }
+      liveWorkers--
+      this.recycle(worker, "idle_timeout")
+    }
     for (const worker of this.workers.values()) {
       if (worker.stopping || now - worker.lastHeartbeatAt <= this.options.heartbeatTimeoutMs) continue
       worker.stopping = true
@@ -876,6 +921,8 @@ export class AgentWorkerPool {
 
 export const DEFAULT_AGENT_WORKER_POOL_OPTIONS: AgentWorkerPoolOptions = {
   size: Math.max(1, Math.min(4, availableParallelism() - 1)),
+  minIdle: 0,
+  idleTimeoutMs: 60_000,
   maxQueued: 256,
   maxQueuedBytes: 256 * 1024 * 1024,
   maxTurns: 64,

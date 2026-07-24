@@ -96,6 +96,8 @@ export namespace AgentTurn {
     return (
       pool?.stats() ?? {
         configured: options.size,
+        minIdle: options.minIdle,
+        idleTimeoutMs: options.idleTimeoutMs,
         maxQueued: options.maxQueued,
         maxQueuedBytes: options.maxQueuedBytes,
         workers: 0,
@@ -105,6 +107,9 @@ export namespace AgentTurn {
         queuedBytes: 0,
         rssBytes: 0,
         heapUsedBytes: 0,
+        heapTotalBytes: 0,
+        externalBytes: 0,
+        arrayBuffersBytes: 0,
       }
     )
   }

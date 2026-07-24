@@ -97,6 +97,8 @@ function releaseTurn(worker: FakeWorker, requestId: string, turns = 1, memory = 
 
 const options: AgentWorkerPoolOptions = {
   size: 1,
+  minIdle: 0,
+  idleTimeoutMs: 60_000,
   maxQueued: 8,
   maxQueuedBytes: 8 * 1024 * 1024,
   maxTurns: 64,
@@ -136,6 +138,99 @@ async function inScope<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("AgentWorkerPool", () => {
+  test("rejects an idle reserve larger than the worker concurrency limit", () => {
+    expect(() => new AgentWorkerPool({ ...options, size: 1, minIdle: 2 }, fakeWorkers().spawn)).toThrow("minIdle")
+  })
+
+  test("scales workers with concurrent demand instead of filling the pool eagerly", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 3 }, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+
+    expect(fake.workers).toHaveLength(1)
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    expect(fake.workers).toHaveLength(2)
+    fake.workers[1].ready()
+    const secondRun = startTurn(fake.workers[1])
+    fake.workers[1].receive({ type: "started", requestId: secondRun.requestId })
+    const second = await secondPromise
+
+    for (const [worker, run] of [
+      [fake.workers[0], firstRun],
+      [fake.workers[1], secondRun],
+    ] as const) {
+      worker.receive({
+        type: "complete",
+        requestId: run.requestId,
+        turns: 1,
+        memoryBeforeDispose: workerMemory(2, 2),
+        memory: workerMemory(),
+      })
+      releaseTurn(worker, run.requestId)
+    }
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(pool.stats()).toMatchObject({ configured: 3, workers: 2, active: 0 })
+    await pool.stop()
+  })
+
+  test("retires all workers after the idle timeout when the warm reserve is zero", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 2, minIdle: 0, idleTimeoutMs: 10 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], run.requestId)
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+
+    await Bun.sleep(40)
+
+    expect(pool.stats()).toMatchObject({ configured: 2, workers: 0, ready: 0, active: 0 })
+    await pool.stop()
+  })
+
+  test("preserves the configured warm reserve after excess workers time out", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 2, minIdle: 1, idleTimeoutMs: 10 }, fake.spawn)
+    expect(fake.workers).toHaveLength(1)
+
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    expect(fake.workers).toHaveLength(2)
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    fake.workers[1].ready()
+    const stream = await streamPromise
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], run.requestId)
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+
+    await Bun.sleep(40)
+
+    expect(pool.stats()).toMatchObject({ configured: 2, minIdle: 1, workers: 1, ready: 1, active: 0 })
+    await pool.stop()
+  })
+
   test("acknowledges a frame only after its final event has been consumed", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool(options, fake.spawn)
@@ -222,7 +317,7 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("fails only the owned turn and replaces a crashed worker", async () => {
+  test("fails only the owned turn and replaces a crashed worker on the next demand", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool(options, fake.spawn)
     const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -234,9 +329,10 @@ describe("AgentWorkerPool", () => {
 
     const iterator = first.fullStream[Symbol.asyncIterator]()
     await expect(iterator.next()).rejects.toThrow("Agent worker exited")
-    expect(fake.workers).toHaveLength(2)
+    expect(fake.workers).toHaveLength(1)
 
     const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    expect(fake.workers).toHaveLength(2)
     fake.workers[1].ready()
     const secondRun = startTurn(fake.workers[1])
     fake.workers[1].receive({ type: "started", requestId: secondRun.requestId })
@@ -290,7 +386,7 @@ describe("AgentWorkerPool", () => {
     const fake = fakeWorkers()
     const delays: number[] = []
     const retries: Array<() => void> = []
-    const pool = new AgentWorkerPool({ ...options, size: 3 }, fake.spawn, {
+    const pool = new AgentWorkerPool({ ...options, size: 3, minIdle: 2 }, fake.spawn, {
       startupBackoffBaseMs: 100,
       startupBackoffMaxMs: 1_600,
       maxConsecutiveStartupFailures: 5,
@@ -358,7 +454,7 @@ describe("AgentWorkerPool", () => {
 
   test("recovers an open startup circuit when an existing worker completes its handshake", async () => {
     const fake = fakeWorkers()
-    const pool = new AgentWorkerPool({ ...options, size: 2 }, fake.spawn, {
+    const pool = new AgentWorkerPool({ ...options, size: 2, minIdle: 1 }, fake.spawn, {
       startupBackoffBaseMs: 100,
       startupBackoffMaxMs: 1_600,
       maxConsecutiveStartupFailures: 5,
@@ -417,7 +513,7 @@ describe("AgentWorkerPool", () => {
     })
 
     await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow()
-    expect(fake.workers).toHaveLength(2)
+    expect(fake.workers).toHaveLength(1)
     await pool.stop()
   })
 
@@ -438,7 +534,7 @@ describe("AgentWorkerPool", () => {
     })
 
     await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
-    expect(fake.workers).toHaveLength(2)
+    expect(fake.workers).toHaveLength(1)
     await pool.stop()
   })
 
@@ -465,6 +561,7 @@ describe("AgentWorkerPool", () => {
 
     releaseTurn(fake.workers[0], firstRun.requestId)
     expect(fake.workers).toHaveLength(2)
+    expect(pool.stats().workers).toBe(1)
     expect(fake.workers[0].sent.filter((message) => message.type === "run-start")).toHaveLength(1)
 
     fake.workers[1].ready()
@@ -524,7 +621,8 @@ describe("AgentWorkerPool", () => {
     releaseTurn(fake.workers[0], secondRun.requestId, 2, workerMemory(357, 100))
     const second = await secondPromise
     expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
-    expect(fake.workers).toHaveLength(2)
+    expect(fake.workers).toHaveLength(1)
+    expect(pool.stats().workers).toBe(0)
     await pool.stop()
   })
 
@@ -616,7 +714,7 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("terminates and replaces a worker that crosses its heap watermark", async () => {
+  test("terminates a worker that crosses its heap watermark", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 64 }, fake.spawn)
     const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -633,7 +731,7 @@ describe("AgentWorkerPool", () => {
     })
 
     await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
-    expect(fake.workers).toHaveLength(2)
+    expect(fake.workers).toHaveLength(1)
     await pool.stop()
   })
 })

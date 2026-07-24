@@ -36,6 +36,8 @@ export namespace GlobalRuntime {
           CortexConcurrency.configure(config.cortex?.maxConcurrentTasks)
           AgentTurn.configure({
             size: config.execution?.agentWorkers,
+            minIdle: config.execution?.agentWorkerMinIdle,
+            idleTimeoutMs: config.execution?.agentWorkerIdleTimeoutMs,
             maxQueued: config.execution?.agentQueueMax,
             maxQueuedBytes:
               config.execution?.agentQueueMaxMb === undefined

@@ -1339,7 +1339,21 @@ export const Info = z
           .positive()
           .max(64)
           .optional()
-          .describe("Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)"),
+          .describe("Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)"),
+        agentWorkerMinIdle: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(64)
+          .optional()
+          .describe("Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)"),
+        agentWorkerIdleTimeoutMs: z
+          .number()
+          .int()
+          .min(1_000)
+          .max(3_600_000)
+          .optional()
+          .describe("Time an excess idle Agent worker remains warm before retirement (default: 60000)"),
         agentQueueMax: z
           .number()
           .int()
