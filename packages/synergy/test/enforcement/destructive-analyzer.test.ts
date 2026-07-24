@@ -39,8 +39,11 @@ describe("splitCompoundCommands", () => {
     expect(lexed.segments).toEqual(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"])
   })
 
-  test("does not treat quoted, escaped, or redirect joins as compound operators", () => {
-    expect(lexCompoundCommands(`echo "|&" '\\;' \\| 2>&1 &>output`).operators).toEqual([])
+  test("does not treat quoted, escaped, or redirect operators as compound operators", () => {
+    const command = String.raw`echo "|&" '\;' \| 2>&1 &>output >| clobbered`
+    const lexed = lexCompoundCommands(command)
+    expect(lexed.operators).toEqual([])
+    expect(lexed.segments).toEqual([command])
   })
 })
 

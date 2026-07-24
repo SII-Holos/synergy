@@ -18,6 +18,8 @@ function compoundOperatorAt(command: string, index: number): ShellCompoundOperat
   for (const operator of COMPOUND_OPERATORS) {
     if (!command.startsWith(operator, index)) continue
     if (operator === "&" && (previous === ">" || previous === "<" || command[index + 1] === ">")) continue
+    if (operator === "|" && previous === ">") continue
+
     return operator
   }
   return undefined

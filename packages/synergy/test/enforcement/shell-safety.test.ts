@@ -1130,6 +1130,27 @@ describe("ShellSafety compound command recursion", () => {
     expect(typeof ShellSafety.classifyCompoundRisk("ls && ls && ls")).toBe("string")
   })
 
+  test("trailing separators return a conservative finite risk", () => {
+    expect(ShellSafety.classifyBashRisk("ls;")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk(`printf '%s\\n' "$line";`)).toBe("shell")
+    expect(ShellSafety.classifyBashRisk(";")).toBe("shell")
+  })
+  test("pipe stderr preserves the highest command risk", () => {
+    expect(ShellSafety.classifyBashRisk("git push origin main |& cat")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh pr edit 123 --title updated |& cat")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh pr merge 123 --squash |& cat")).toBe("shell_destructive")
+    expect(ShellSafety.classifyBashRisk("git switch dev |& cat")).toBe("shell_branch_mutation")
+  })
+  test("clobber redirects do not lower command risk", () => {
+    expect(ShellSafety.classifyBashRisk("git push origin main >| output.log")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh pr edit 123 --title updated >| output.log")).toBe("shell_remote_write")
+  })
+
+  test("classifies a while/case command with a trailing case separator", () => {
+    const command = `pid=$(lsof -t -iTCP:18081 -sTCP:LISTEN) && lsof -nP -a -p "$pid" -iTCP | while read -r line; do case "$line" in *"api.holosai.io"*|*"clarus.holosai.io"*) printf '%s\\n' "$line";; esac; done`
+    expect(ShellSafety.classifyBashRisk(command)).toBe("shell")
+  })
+
   test("depth limit: deep nesting returns some result", () => {
     const deep = Array(10).fill("ls").join(" && ")
     const result = ShellSafety.classifyCompoundRisk(deep)
