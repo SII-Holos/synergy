@@ -382,7 +382,7 @@ export namespace PerformanceCatalog {
       "latest",
       "process",
       "process",
-      ["platform", "objectType", "total"],
+      ["platform", "objectType"],
     ),
     metric("runtime.allocator.rss", "Allocator RSS", "bytes", "gauge", "latest", "process", "process", ["platform"]),
     metric(

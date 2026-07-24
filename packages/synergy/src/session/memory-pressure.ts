@@ -71,11 +71,21 @@ export namespace SessionMemoryPressure {
   }
 
   type ReleaseResult = CollectionResult & { releaseCount: number }
+  type CollectionPriority = 0 | 1
+  type ActiveCollection = { promise: Promise<CollectionResult> }
+  type PendingCollection = {
+    input: CollectionInput
+    priority: CollectionPriority
+    promise: Promise<CollectionResult>
+    resolve: (result: CollectionResult) => void
+    reject: (error: unknown) => void
+  }
 
   let lastGCAt = 0
   let lastFullGCAt = 0
   let activeStreamCount = 0
-  let collectionInFlight: Promise<CollectionResult> | undefined
+  let collectionInFlight: ActiveCollection | undefined
+  let pendingCollection: PendingCollection | undefined
   let pendingRelease: { count: number; input: CollectionInput } | undefined
   let releaseTimer: ReturnType<typeof setTimeout> | undefined
   let releaseFlushInFlight: Promise<ReleaseResult | undefined> | undefined
@@ -172,16 +182,50 @@ export namespace SessionMemoryPressure {
     return "normal"
   }
 
-  export async function maybeCollect(input: CollectionInput): Promise<CollectionResult> {
-    if (collectionInFlight) return collectionInFlight
+  export function maybeCollect(input: CollectionInput): Promise<CollectionResult> {
+    const priority = collectionPriority(input)
+    const active = collectionInFlight
+    if (!active) return startCollection(input)
 
-    const pending = collectOnce(input)
-    collectionInFlight = pending
-    try {
-      return await pending
-    } finally {
-      if (collectionInFlight === pending) collectionInFlight = undefined
+    const queued = pendingCollection
+    if (queued) {
+      if (priority >= queued.priority) {
+        queued.input = input
+        queued.priority = priority
+      }
+      return queued.promise
     }
+    if (priority === 0) return active.promise
+
+    let resolve!: (result: CollectionResult) => void
+    let reject!: (error: unknown) => void
+    const promise = new Promise<CollectionResult>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise
+      reject = rejectPromise
+    })
+    pendingCollection = { input, priority, promise, resolve, reject }
+    return promise
+  }
+
+  function startCollection(input: CollectionInput): Promise<CollectionResult> {
+    const promise = collectOnce(input)
+    collectionInFlight = { promise }
+    const finish = () => completeCollection(promise)
+    void promise.then(finish, finish)
+    return promise
+  }
+
+  function completeCollection(promise: Promise<CollectionResult>) {
+    if (collectionInFlight?.promise !== promise) return
+    collectionInFlight = undefined
+    const queued = pendingCollection
+    pendingCollection = undefined
+    if (!queued) return
+    void startCollection(queued.input).then(queued.resolve, queued.reject)
+  }
+
+  function collectionPriority(input: CollectionInput): CollectionPriority {
+    return (input.platform ?? process.platform) === "linux" && input.releaseBoundary === true ? 1 : 0
   }
 
   async function collectOnce(input: CollectionInput): Promise<CollectionResult> {
@@ -339,6 +383,7 @@ export namespace SessionMemoryPressure {
     lastFullGCAt = lastFullRunAt
     activeStreamCount = 0
     collectionInFlight = undefined
+    pendingCollection = undefined
     pendingRelease = undefined
     releaseTimer = undefined
     releaseFlushInFlight = undefined
