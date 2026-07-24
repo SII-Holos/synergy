@@ -139,7 +139,11 @@ describe("LatticeBridge", () => {
       await LatticeRuntime.init()
 
       const completedLoop = await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "completed" })
-      const completedRun = await waitForRun(scopeID, session.id, (run) => run.status === "completed")
+      const completedRun = await waitForRun(
+        scopeID,
+        session.id,
+        (run) => run.status === "completed" && run.effect === undefined,
+      )
 
       expect(completedRun.pathway[0].status).toBe("completed")
       expect(completedRun.pathway[0].loopHistory[0]).toMatchObject({
