@@ -1,5 +1,8 @@
 import type { ImagePreviewImage } from "./image-preview-model"
 export interface AttachmentFile {
+  id?: string
+  sessionID?: string
+  messageID?: string
   mime: string
   filename?: string
   url?: string
@@ -12,6 +15,7 @@ export interface AttachmentFile {
 }
 
 export type AttachmentRenderer = "image" | "video" | "audio" | "thumbnail" | "file"
+export type AttachmentOpenTarget = "image-preview" | "attachment-workspace" | "compatibility"
 export type AttachmentDisplaySize = "original" | "small" | "medium" | "large"
 
 export interface AttachmentPresentation {
@@ -158,11 +162,26 @@ export function resolveImagePreviewImage(
     alt: filename,
     downloadUrl: src,
     externalUrl: src,
+    sourcePath: attachmentSourcePath(file),
   }
 }
 
 export function isImageAttachment(file: AttachmentFile): boolean {
   return file.mime.startsWith("image/")
+}
+
+export function resolveAttachmentOpenTarget(file: AttachmentFile): AttachmentOpenTarget {
+  if (isImageAttachment(file)) return "image-preview"
+  if (file.id && file.sessionID && file.messageID) return "attachment-workspace"
+  return "compatibility"
+}
+
+export function attachmentSourcePath(file: AttachmentFile): string | undefined {
+  if (file.localPath) return file.localPath
+  const source = file.source as { type?: unknown; path?: unknown } | undefined
+  if (source?.type === "file" && typeof source.path === "string" && source.path) return source.path
+  const attachment = file.metadata?.attachment as Record<string, unknown> | undefined
+  return typeof attachment?.sourcePath === "string" && attachment.sourcePath ? attachment.sourcePath : undefined
 }
 
 export function isPdfAttachment(file: AttachmentFile): boolean {

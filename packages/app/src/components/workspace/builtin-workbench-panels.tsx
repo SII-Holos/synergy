@@ -42,6 +42,24 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         title: () => i18n._(P.review),
       }),
       registerWorkbenchPanel({
+        id: "attachment",
+        label: i18n._(P.attachment),
+        icon: getSemanticIcon("workspace.files"),
+        surface: "side",
+        cardinality: "multi",
+        requiresSession: true,
+        launchable: false,
+        pluginId: "builtin",
+        order: 17,
+        loader: async () => ({
+          default: (await import("@/components/attachment-workbench/content")).AttachmentWorkbenchContent,
+        }),
+        title: (tab) => tab.title ?? i18n._(P.attachment),
+        tabIcon(tab) {
+          return <FileIcon node={{ path: tab.title ?? "attachment", type: "file" }} class="size-4" />
+        },
+      }),
+      registerWorkbenchPanel({
         id: "file",
         label: i18n._(P.files),
         icon: getSemanticIcon("workspace.files"),

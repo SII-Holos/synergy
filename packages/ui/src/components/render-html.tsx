@@ -8,7 +8,7 @@ const MIN_HEIGHT = 120
 const DEFAULT_HEIGHT = 280
 const MAX_HEIGHT = 720
 
-const CSP = [
+export const RENDER_HTML_CSP = [
   "default-src 'none'",
   "script-src 'none'",
   "style-src 'unsafe-inline'",
@@ -205,8 +205,8 @@ function fallbackThemeCss(mode: "light" | "dark") {
   return `:root {\n${lines.map((line) => `  ${line}`).join("\n")}\n}`
 }
 
-function wrapHtml(html: string, themeCss: string) {
-  const csp = `<meta http-equiv="Content-Security-Policy" content="${CSP}">`
+export function renderHtmlDocument(html: string, themeCss: string) {
+  const csp = `<meta http-equiv="Content-Security-Policy" content="${RENDER_HTML_CSP}">`
   const base = `<style data-synergy-render-base>\n${themeCss}\n${BASE_STYLE}\n</style>`
   const headContent = `${csp}\n${base}`
 
@@ -234,7 +234,7 @@ export function RenderHtml(props: { html: string }) {
   const [themeVersion, setThemeVersion] = createSignal(0)
   const srcdoc = createMemo(() => {
     themeVersion()
-    return wrapHtml(props.html, readThemeCss())
+    return renderHtmlDocument(props.html, readThemeCss())
   })
   let iframeRef: HTMLIFrameElement | undefined
   let observer: ResizeObserver | undefined

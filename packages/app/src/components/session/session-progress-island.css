@@ -1,4 +1,8 @@
 .session-progress-island {
+  --session-progress-island-collapsed-height: 34px;
+  --session-progress-island-collapsed-gap: 8px;
+  --session-progress-island-collapsed-padding-inline: 12px;
+  --session-progress-island-collapsed-max-width: min(620px, calc(100vw - 24px));
   /* Now a normal-flow flex child inside the shared absolute wrapper at
      prompt-dock.tsx:67 (absolute inset-x-0 bottom-full). The wrapper
      guarantees that expanding the island never changes --prompt-height.
@@ -13,33 +17,44 @@
 .session-progress-island-surface {
   overflow: hidden;
   width: fit-content;
-  max-width: min(620px, calc(100vw - 24px));
+  max-width: var(--session-progress-island-collapsed-max-width);
   border-radius: 999px;
   color: var(--text-base);
   background: var(--workbench-card-bg, var(--surface-raised-stronger));
   transition:
-    max-width 240ms cubic-bezier(0.2, 0, 0, 1),
-    border-radius 240ms cubic-bezier(0.2, 0, 0, 1);
+    width 290ms cubic-bezier(0.22, 1, 0.36, 1) 80ms,
+    border-radius 240ms cubic-bezier(0.4, 0, 0.2, 1) 70ms,
+    background-color 140ms ease-out;
   animation: session-progress-island-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.session-progress-island[data-collapsed-width="measured"] .session-progress-island-surface {
+  width: min(var(--session-progress-island-collapsed-width), 100%);
+  max-width: min(900px, calc(100vw - 24px));
 }
 
 .session-progress-island[data-expanded="true"] .session-progress-island-surface {
   width: 100%;
   max-width: min(900px, calc(100vw - 24px));
   border-radius: 22px;
+  transition:
+    width 380ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 140ms ease-out;
 }
 
 .session-progress-island-header {
   display: flex;
   width: 100%;
   min-width: 0;
-  height: 34px;
+  height: var(--session-progress-island-collapsed-height);
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+  gap: var(--session-progress-island-collapsed-gap);
+  padding: 0 var(--session-progress-island-collapsed-padding-inline);
   color: var(--text-weak);
   transition:
-    height 260ms cubic-bezier(0.2, 0, 0, 1),
+    height 260ms cubic-bezier(0.22, 1, 0.36, 1) 70ms,
+    padding 260ms cubic-bezier(0.22, 1, 0.36, 1) 70ms,
     color 140ms ease-out,
     background-color 140ms ease-out;
 }
@@ -52,6 +67,11 @@
 .session-progress-island[data-expanded="true"] .session-progress-island-header {
   height: 44px;
   padding: 0 16px;
+  transition:
+    height 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    padding 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 140ms ease-out,
+    background-color 140ms ease-out;
 }
 
 .session-progress-island-indicator {
@@ -93,6 +113,26 @@
   letter-spacing: -0.01em;
 }
 
+.session-progress-island-measure {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  display: flex;
+  width: max-content;
+  max-width: var(--session-progress-island-collapsed-max-width);
+  height: var(--session-progress-island-collapsed-height);
+  align-items: center;
+  gap: var(--session-progress-island-collapsed-gap);
+  padding: 0 var(--session-progress-island-collapsed-padding-inline);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.session-progress-island-measure [data-slot="progress-circle-progress"] {
+  animation: none !important;
+}
+
 .session-progress-island-detail {
   flex: 0 0 auto;
   color: var(--text-weaker);
@@ -109,54 +149,53 @@
   transform: rotate(180deg);
 }
 
-/* Expand/collapse with the panel taken out of normal flow.
+/* Keep the large DAG panel out of normal flow during expand and collapse.
 
    5 Chrome traces showed the DAG panel's ~7000 DOM elements make any height
    animation expensive when the panel is in flow (grid 0fr→1fr, max-height,
    contain, content-visibility all recalc'd thousands of elements per frame),
    and display:none caused a 60ms cold-layout on each toggle.
 
-   Solution: position:absolute the panel so it never participates in the
-   wrapper's layout. The wrapper animates its own height via max-height (cheap
-   — it's an empty container). The panel is always rendered (no cold layout),
-   animating only opacity + a compositor-friendly transform. Neither property
-   triggers style recalc or layout. */
+   The panel therefore stays rendered, absolute, and fixed at its expanded
+   width while the empty wrapper animates height and the shell clips it. */
 .session-progress-island-panel-wrap {
   position: relative;
   height: 0;
   overflow: hidden;
-  transition: height 240ms cubic-bezier(0.2, 0, 0, 1);
+  transition: height 290ms cubic-bezier(0.4, 0, 0.2, 1) 25ms;
 }
 
 .session-progress-island-panel-wrap[data-expanded="true"] {
   height: min(52vh, 560px);
+  transition: height 420ms cubic-bezier(0.16, 1, 0.3, 1) 20ms;
 }
 
 .session-progress-island-panel {
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 50%;
   display: flex;
+  width: min(900px, calc(100vw - 24px));
   height: min(52vh, 560px);
   flex-direction: column;
   overflow: hidden;
   border-top: 1px solid var(--border-weak-base);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-8px);
+  transform: translateX(-50%) translateY(-7px) scale(0.992);
+  transform-origin: top center;
   transition:
-    opacity 200ms ease-out,
-    transform 200ms cubic-bezier(0.2, 0, 0, 1);
+    opacity 135ms ease-out,
+    transform 170ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .session-progress-island-panel-wrap[data-expanded="true"] .session-progress-island-panel {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0) scale(1);
   transition:
-    opacity 220ms ease-out 40ms,
-    transform 240ms cubic-bezier(0.2, 0, 0, 1) 40ms;
+    opacity 230ms ease-out 105ms,
+    transform 300ms cubic-bezier(0.16, 1, 0.3, 1) 85ms;
 }
 
 .session-progress-island-panel-topline {
@@ -245,14 +284,15 @@
   .session-progress-island-header,
   .session-progress-island-chevron,
   .session-progress-island-tab,
-  .session-progress-island-panel-wrap {
-    transition: none;
+  .session-progress-island-panel-wrap,
+  .session-progress-island-panel {
+    transition: none !important;
   }
 
   .session-progress-island-surface,
   .session-progress-island[data-tone="running"]
     .session-progress-island-indicator
     [data-slot="progress-circle-progress"] {
-    animation: none;
+    animation: none !important;
   }
 }
