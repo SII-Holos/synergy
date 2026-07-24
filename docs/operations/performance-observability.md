@@ -107,6 +107,8 @@ Experience re-encode jobs use the same critical thresholds to pause new item cla
 
 The server exposes local-first endpoints under `/global/performance`:
 
+The performance summary reports Agent worker and Policy worker pool capacity, readiness, active/queued work, queued bytes, RSS, and heap-used bytes alongside ToolTask scheduler state. Policy timeout, crash, recycle, startup-circuit, queue-wait, and conservative-fallback metrics are written only by the Control Plane; Policy processes do not initialize an observability store.
+
 - `GET /global/performance/summary`
 - `GET /global/performance/inflight`
 - `GET /global/performance/timeline`

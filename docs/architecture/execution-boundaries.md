@@ -13,7 +13,7 @@ The Agent worker never receives an `execute()` callback. It emits proposed calls
 
 1. verify that the current execution context permits the tool
 2. resolve the effective control profile
-3. classify the requested operation into a capability envelope
+3. send a bounded classification request to the Policy worker pool and receive a capability envelope
 4. apply workflow and session-mode restrictions
 5. combine profile policy, saved permissions, session permissions, and eligible SmartAllow decisions
 6. deny, ask, or authorize the operation
@@ -28,6 +28,10 @@ The Agent worker never receives an `execute()` callback. It emits proposed calls
 
 The scheduler is one logical execution layer, not one universal sandbox process. Local commands and command-backed search remain child processes with bounded output; installed plugin implementations reuse the plugin process runtime; MCP, Browser, and Link use their existing isolated transports or canonical runtimes. File operations and narrow operations that mutate canonical session/workflow state run asynchronously under scheduled Control Plane ownership. Classification changes admission and fault accounting, not authorization semantics.
 
+Policy workers isolate capability analysis from the HTTP/WebSocket event loop. Their protocol carries only the tool name, JSON-like arguments, and immutable workspace/plugin classification context. It bounds request size, queue depth, aggregate queued bytes, per-request time, IPC frames, request count, RSS, and heap use. Repeated pre-ready exits use exponential backoff and open a finite startup circuit instead of entering a respawn loop. The Control Plane remains the sole owner of profile compilation results, approval state, audit state, sandbox accumulation, and the final allow/ask/deny decision.
+
+Classification failure never re-enters the in-process top-level classifier. Worker timeout, crash, protocol failure, queue rejection, or malformed input returns one opaque, non-bypassable `protected_op` capability. This is a finite conservative result: `guarded` can surface an approval, `autonomous` converts it to a denial, and `full_access` preserves its explicit author-at-own-risk contract. Cancellation remains cancellation rather than being converted into a policy result.
+
 The enforcement gate owns the security decision. A tool implementation can still reject malformed input or fail for ordinary runtime reasons after authorization.
 
 Tool exposure is a context-budget decision, not an authorization decision. `search_tools` and `expand_tools` let an eligible agent discover or activate deferred tools, but the resolver still removes every tool denied by agent, session, user-tool, or workflow policy.
@@ -36,7 +40,7 @@ Tool exposure is a context-budget decision, not an authorization decision. `sear
 
 Classification describes what an operation can do, independently of which tool requested it. Capabilities cover file access, shell behavior, network access, browser control, session state, secrets, identity and messaging actions, plugin/platform operations, and other protected boundaries.
 
-Risk is not inferred from a tool name alone. Shell commands are split and classified by their effective operations; file paths are resolved against the current workspace and checked for external, protected, credential, VCS, and secret-like regions. Plugin tools declare capability envelopes in their manifests, and MCP calls pass through the same gate.
+Risk is not inferred from a tool name alone. Shell commands are split and classified by their effective operations; one quote- and escape-aware longest-match lexer owns the compound operators `&&`, `||`, `|&`, `|`, `;;&`, `;;`, `;&`, `;`, and `&`. Redirect joins such as `2>&1` are not compound operators. Classification uses one shared time/depth/active-input budget, and no-progress, repeated, or over-depth analysis returns finite `shell` risk without restarting the top-level classifier. File paths are resolved against the current workspace and checked for external, protected, credential, VCS, and secret-like regions. Plugin tools declare capability envelopes in their manifests, and MCP calls pass through the same gate.
 
 This separation lets one profile make consistent decisions across built-in tools, plugins, MCP servers, and future execution surfaces.
 
@@ -126,6 +130,8 @@ These restrictions are evaluated before the tool implementation. A permissive co
 - Every executable tool path passes through the centralized enforcement gate.
 - Model-facing tool definitions never contain executable callbacks.
 - Permission decisions remain in the Control Plane and occur only after the Agent worker has released its turn.
+- Capability analysis runs in bounded Policy workers; those workers never decide authorization or execute tools.
+- Policy worker failure produces a finite conservative capability and cannot block HTTP/WebSocket service.
 - ToolTask queues are bounded globally and per executor class; duplicate dispatch identity cannot execute twice.
 - Executor classification never bypasses capability classification, approval, sandboxing, or canonical runtime ownership.
 - Availability, authorization, and sandboxing remain separate decisions.

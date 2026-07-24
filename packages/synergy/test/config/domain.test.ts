@@ -55,9 +55,22 @@ test("execution isolation settings are owned by the runtime domain", () => {
 })
 
 test("execution isolation settings reject unsafe process and concurrency limits", () => {
-  expect(Config.Info.safeParse({ execution: { agentWorkers: 64, agentHeartbeatTimeoutMs: 30_000 } }).success).toBe(true)
+  expect(
+    Config.Info.safeParse({
+      execution: {
+        agentWorkers: 64,
+        agentHeartbeatTimeoutMs: 30_000,
+        policyWorkers: 16,
+        policyTimeoutMs: 1_000,
+        policyHeartbeatTimeoutMs: 15_000,
+      },
+    }).success,
+  ).toBe(true)
   expect(Config.Info.safeParse({ execution: { agentWorkers: 65 } }).success).toBe(false)
   expect(Config.Info.safeParse({ execution: { agentHeartbeatTimeoutMs: 29_999 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { policyWorkers: 17 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { policyTimeoutMs: 49 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { policyHeartbeatTimeoutMs: 9_999 } }).success).toBe(false)
   expect(Config.Info.safeParse({ execution: { toolConcurrency: 513 } }).success).toBe(false)
 })
 

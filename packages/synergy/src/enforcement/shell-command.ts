@@ -4,17 +4,44 @@
  */
 const COMMAND_WRAPPERS = ["timeout", "nice", "nohup", "exec", "command", "env", "xargs", "sudo", "time"]
 
+export type ShellCompoundOperator = "&&" | "||" | "|&" | "|" | ";;&" | ";;" | ";&" | ";" | "&"
+
+export interface ShellCompoundLexResult {
+  segments: string[]
+  operators: ShellCompoundOperator[]
+}
+
+const COMPOUND_OPERATORS = [";;&", "&&", "||", "|&", ";;", ";&", "|", ";", "&"] as const
+
+function compoundOperatorAt(command: string, index: number): ShellCompoundOperator | undefined {
+  const previous = command[index - 1]
+  for (const operator of COMPOUND_OPERATORS) {
+    if (!command.startsWith(operator, index)) continue
+    if (operator === "&" && (previous === ">" || previous === "<" || command[index + 1] === ">")) continue
+    return operator
+  }
+  return undefined
+}
+
 /**
- * Split a compound shell command into its sub-commands for independent
- * destructive analysis. `rm -rf / && echo done` yields two sub-commands.
+ * Lex the shell list/pipeline operators used by policy classification.
+ * Operators inside quotes, escaped operators, and redirect file-descriptor
+ * joins such as `2>&1` remain part of their command segment.
  */
-export function splitCompoundCommands(command: string): string[] {
-  const parts: string[] = []
+export function lexCompoundCommands(command: string): ShellCompoundLexResult {
+  const segments: string[] = []
+  const operators: ShellCompoundOperator[] = []
   let current = ""
   let inSingle = false
   let inDouble = false
+
   for (let i = 0; i < command.length; i++) {
     const ch = command[i]
+    if (ch === "\\" && !inSingle) {
+      current += ch
+      if (i + 1 < command.length) current += command[++i]
+      continue
+    }
     if (ch === "'" && !inDouble) {
       inSingle = !inSingle
       current += ch
@@ -26,28 +53,27 @@ export function splitCompoundCommands(command: string): string[] {
       continue
     }
     if (!inSingle && !inDouble) {
-      if (ch === "&" && command[i + 1] === "&") {
-        parts.push(current)
+      const operator = compoundOperatorAt(command, i)
+      if (operator) {
+        if (current.trim()) segments.push(current.trim())
+        operators.push(operator)
         current = ""
-        i++
-        continue
-      }
-      if (ch === "|" && command[i + 1] === "|") {
-        parts.push(current)
-        current = ""
-        i++
-        continue
-      }
-      if (ch === ";" || ch === "|") {
-        parts.push(current)
-        current = ""
+        i += operator.length - 1
         continue
       }
     }
     current += ch
   }
-  if (current.trim()) parts.push(current)
-  return parts
+  if (current.trim()) segments.push(current.trim())
+  return { segments, operators }
+}
+
+/**
+ * Split a compound shell command into its sub-commands for independent
+ * destructive analysis. `rm -rf / && echo done` yields two sub-commands.
+ */
+export function splitCompoundCommands(command: string): string[] {
+  return lexCompoundCommands(command).segments
 }
 
 /**

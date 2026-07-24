@@ -45,6 +45,7 @@ import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
 import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { BashVirtualPath } from "@/tool/bash/virtual-path"
+import { PolicyWorker } from "./policy-worker"
 
 export interface Capability {
   class: string
@@ -1054,7 +1055,7 @@ export namespace EnforcementGate {
       return classes.join("|") || "file_read"
     }
 
-    function evaluate(toolName: string, args: Record<string, any>): Envelope {
+    function evaluateClassified(toolName: string, args: Record<string, any>, classification: ClassifyResult): Envelope {
       const perfStart = performance.now()
       // ── ExecPolicy: bash command routing ──────────────────────────────
       let execPolicyMatch: RuleMatch | undefined
@@ -1111,7 +1112,7 @@ export namespace EnforcementGate {
         amendment = generateAmendment(execPolicyMatch) ?? undefined
       }
 
-      const { capabilities } = classify(toolName, args)
+      const { capabilities } = classification
 
       let decision: "allow" | "ask" | "deny" = "allow"
       const rules = resolved.ruleset
@@ -1236,9 +1237,52 @@ export namespace EnforcementGate {
       return envelope
     }
 
+    function evaluate(toolName: string, args: Record<string, any>): Envelope {
+      return evaluateClassified(toolName, args, classify(toolName, args))
+    }
+
+    async function evaluateIsolated(
+      toolName: string,
+      args: Record<string, any>,
+      signal?: AbortSignal,
+    ): Promise<Envelope> {
+      let classification: ClassifyResult
+      try {
+        classification = await PolicyWorker.classify({
+          context: PolicyWorker.context(options),
+          toolName,
+          args,
+          signal,
+        })
+      } catch (error) {
+        if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error
+        const name = error instanceof Error ? error.name : "Error"
+        classification = {
+          capabilities: [
+            {
+              class: "protected_op",
+              nonBypassable: true,
+              opaque: true,
+              reason: "policy classification unavailable",
+              metadata: { failure: name },
+            },
+          ],
+        }
+        ObservabilityMetrics.record({
+          name: "enforcement.policy.fallback",
+          value: 1,
+          unit: "count",
+          module: "enforcement",
+          labels: { tool: toolName, failure: name },
+        })
+      }
+      return evaluateClassified(toolName, args, classification)
+    }
+
     return {
       classify,
       evaluate,
+      evaluateIsolated,
       getSandbox(): ProfileSandbox {
         return resolved.sandbox
       },

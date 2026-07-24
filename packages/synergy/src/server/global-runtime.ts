@@ -19,6 +19,7 @@ import { SessionInvoke } from "@/session/invoke"
 import { Embedding } from "@/vector/embedding"
 import { AgentTurn } from "@/session/agent-turn"
 import { ToolScheduler } from "@/session/tool-scheduler"
+import { PolicyWorker } from "@/enforcement/policy-worker"
 
 export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
@@ -52,6 +53,27 @@ export namespace GlobalRuntime {
             cancelGraceMs: config.execution?.agentCancelGraceMs,
             heartbeatTimeoutMs: config.execution?.agentHeartbeatTimeoutMs,
           })
+          PolicyWorker.configure({
+            size: config.execution?.policyWorkers,
+            maxQueued: config.execution?.policyQueueMax,
+            maxQueuedBytes:
+              config.execution?.policyQueueMaxMb === undefined
+                ? undefined
+                : config.execution.policyQueueMaxMb * 1024 * 1024,
+            timeoutMs: config.execution?.policyTimeoutMs,
+            maxRequests: config.execution?.policyWorkerMaxRequests,
+            maxRssBytes:
+              config.execution?.policyWorkerMaxRssMb === undefined
+                ? undefined
+                : config.execution.policyWorkerMaxRssMb * 1024 * 1024,
+            maxHeapBytes:
+              config.execution?.policyWorkerMaxHeapMb === undefined
+                ? undefined
+                : config.execution.policyWorkerMaxHeapMb * 1024 * 1024,
+            cancelGraceMs: config.execution?.policyCancelGraceMs,
+            heartbeatTimeoutMs: config.execution?.policyHeartbeatTimeoutMs,
+          })
+          PolicyWorker.start()
           ToolScheduler.configure({
             maxConcurrent: config.execution?.toolConcurrency,
             maxQueued: config.execution?.toolQueueMax,
@@ -83,7 +105,7 @@ export namespace GlobalRuntime {
   }
 
   export async function stop() {
-    const executionStop = Promise.all([AgentTurn.stop(), ToolScheduler.stop()])
+    const executionStop = Promise.all([AgentTurn.stop(), PolicyWorker.stop(), ToolScheduler.stop()])
     await GitHubPollRuntime.stop()
     await GitHubRuntime.stop()
     Agenda.stop()
