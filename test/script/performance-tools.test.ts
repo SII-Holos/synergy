@@ -35,8 +35,13 @@ describe("optional performance tooling integration", () => {
     expect(docs).toContain("tool-stream")
     expect(docs).toContain("runtime footprint")
     expect(docs).toContain("perf:memory:runtime")
+    expect(docs).toContain("perf:memory:runtime:matrix")
     expect(docs).toContain("deterministic local mock provider")
     expect(docs).toContain("anonymized completed Synergy trajectory")
+    expect(docs).toContain("--scenario parallel")
+    expect(docs).toContain("--scenario sequential")
+    expect(docs).toContain("process-tree RSS")
+    expect(docs).toContain("workload fingerprint")
   })
 
   test("keeps the public trajectory fixture structural and source-data free", async () => {

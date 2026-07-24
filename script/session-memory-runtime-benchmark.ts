@@ -6,7 +6,15 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 type PresetName = keyof typeof presets
-type Phase = "idle" | "trajectory-root" | "parallel-subagents" | "terminal" | "release"
+type Scenario = "trajectory" | "parallel" | "sequential"
+type Phase =
+  | "idle"
+  | "trajectory-root"
+  | "parallel-primary"
+  | "parallel-subagents"
+  | "sequential-primary"
+  | "terminal"
+  | "release"
 
 interface TrajectoryFixture {
   schemaVersion: number
@@ -82,6 +90,15 @@ interface ServiceMemory {
   completeness: string
 }
 
+interface ProcessTreeMemory {
+  source: "procfs" | "ps" | "powershell"
+  rootPid: number
+  processCount: number
+  descendantProcessCount: number
+  rssBytes: number
+  descendantRssBytes: number
+}
+
 interface MemorySample {
   label: string
   phase: Phase
@@ -94,6 +111,7 @@ interface MemorySample {
   arrayBuffersBytes: number
   childProcessCount: number
   childProcessRssBytes: number
+  processTree: ProcessTreeMemory
   serviceMemory: ServiceMemory | null
   runtime: {
     sessionRuntimeCount: number
@@ -151,6 +169,7 @@ interface SessionStatus {
 
 interface ProviderRequestStat {
   kind: "trajectory" | "support"
+  replica: string | null
   fixtureSession: string | null
   fixtureMessage: string | null
   userMessageCount: number
@@ -161,6 +180,8 @@ interface ProviderRequestStat {
 const presets = {
   smoke: {
     fullTrajectory: false,
+    parallelReplicas: 2,
+    sequentialReplicas: 2,
     durationScale: 0,
     idleSettleMs: 1_500,
     sampleIntervalMs: 500,
@@ -168,6 +189,8 @@ const presets = {
   },
   standard: {
     fullTrajectory: true,
+    parallelReplicas: 5,
+    sequentialReplicas: 5,
     durationScale: 0.01,
     idleSettleMs: 5_000,
     sampleIntervalMs: 1_000,
@@ -178,11 +201,22 @@ const presets = {
 const MODEL = { providerID: "benchmark", modelID: "benchmark-model" } as const
 const PAYLOAD_TOOL = "mcp__trajectory__payload"
 const TRAJECTORY_MARKER = "SYNERGY_TRAJECTORY:"
+const PRIMARY_TERMINAL_TEXT = "Primary benchmark turn complete"
+const WORKLOAD_CONTRACT_VERSION = 1
 const TERMINAL_CORTEX_STATUSES = new Set(["completed", "error", "cancelled", "interrupted"])
 
 const presetName = argument("--preset") ?? "standard"
 if (!(presetName in presets)) throw new Error(`Unknown preset: ${presetName}`)
 const preset = presets[presetName as PresetName]
+const scenarioName = argument("--scenario") ?? "trajectory"
+if (!["trajectory", "parallel", "sequential", "all"].includes(scenarioName)) {
+  throw new Error(`Unknown scenario: ${scenarioName}`)
+}
+if (scenarioName === "all") {
+  console.log(JSON.stringify(await runScenarioSuite(), null, 2))
+  process.exit(0)
+}
+const scenario = scenarioName as Scenario
 
 const repositoryRoot = path.join(import.meta.dir, "..")
 const packagesSynergyDirectory = path.join(repositoryRoot, "packages", "synergy")
@@ -200,7 +234,7 @@ const mock = createMockProvider()
 const serverPort = reservePort()
 let server: ReturnType<typeof Bun.spawn> | undefined
 let serverOutput: ReturnType<typeof captureTail> | undefined
-let primarySessionID: string | undefined
+const activeSessionIDs = new Set<string>()
 let result: Record<string, unknown> | undefined
 let cleanupComplete = false
 
@@ -231,6 +265,7 @@ try {
     stderr: "pipe",
   })
   serverOutput = captureTail(server.stdout, server.stderr)
+  const serverPid = server.pid
 
   const baseUrl = `http://127.0.0.1:${serverPort}`
   await waitForHealth(baseUrl, server)
@@ -246,7 +281,7 @@ try {
   const sampler = (async () => {
     while (samplerRunning) {
       try {
-        samples.push(await sampleMemory(baseUrl, "periodic", phase, startedAt, releaseAt))
+        samples.push(await sampleMemory(baseUrl, serverPid, "periodic", phase, startedAt, releaseAt))
       } catch (error) {
         samplerError = error
         break
@@ -257,7 +292,7 @@ try {
 
   const setPhase = async (next: Phase) => {
     phase = next
-    samples.push(await sampleMemory(baseUrl, "boundary", phase, startedAt, releaseAt))
+    samples.push(await sampleMemory(baseUrl, serverPid, "boundary", phase, startedAt, releaseAt))
   }
 
   await setPhase("idle")
@@ -268,62 +303,74 @@ try {
   tools.task = true
   tools.task_output = true
 
-  primarySessionID = (await createSession(baseUrl, workspace, "Trajectory memory benchmark", "full_access")).id
   const rootFixture = fixture.sessions.find((session) => session.relation === "root")!
   const rootTurns = fixtureTurns.get(rootFixture.session)!
-  const manualTurns = rootTurns.filter((turn) => turn.user.originType === "user")
-  const replayStartedAt = Date.now()
+  const replicas = scenarioReplicas(scenario)
+  const verifications: Array<Record<string, unknown>> = []
 
-  await setPhase("trajectory-root")
-  await promptAsync(
-    baseUrl,
-    workspace,
-    primarySessionID,
-    tools,
-    trajectoryText(rootTurns[0].user.textPayloadBytes, `${TRAJECTORY_MARKER}${rootFixture.session}`),
-  )
-
-  if (preset.fullTrajectory) {
-    if (manualTurns.length !== 2) throw new Error(`Expected two manual root turns, received ${manualTurns.length}`)
-    const followUp = manualTurns[1]
-    await sleepUntil(replayStartedAt + scaleTime(followUp.user.startOffsetMs))
-    await promptAsync(
+  if (scenario === "trajectory") {
+    await setPhase("trajectory-root")
+    const replay = replayTrajectory({
       baseUrl,
-      workspace,
-      primarySessionID,
+      directory: workspace,
       tools,
-      trajectoryText(followUp.user.textPayloadBytes, `${TRAJECTORY_MARKER}${rootFixture.session}`),
+      replica: replicas[0],
+      fullTrajectory: preset.fullTrajectory,
+      mock,
+      onCreated: (sessionID) => activeSessionIDs.add(sessionID),
+    })
+    if (preset.fullTrajectory) {
+      await withTimeout(mock.firstChildRequest(replicas[0]), 60_000, "first trajectory child request")
+      await setPhase("parallel-subagents")
+    }
+    verifications.push(await replay)
+  } else if (scenario === "parallel") {
+    await setPhase("parallel-primary")
+    const replays = replicas.map((replica) =>
+      replayPrimaryTurn({
+        baseUrl,
+        directory: workspace,
+        tools,
+        replica,
+        mock,
+        onCreated: (sessionID) => activeSessionIDs.add(sessionID),
+      }),
     )
-    await withTimeout(mock.firstChildRequest, 60_000, "first trajectory child request")
-    await setPhase("parallel-subagents")
+    verifications.push(...(await Promise.all(replays)))
+  } else {
+    await setPhase("sequential-primary")
+    for (const replica of replicas) {
+      const verification = await replayPrimaryTurn({
+        baseUrl,
+        directory: workspace,
+        tools,
+        replica,
+        mock,
+        onCreated: (sessionID) => activeSessionIDs.add(sessionID),
+      })
+      verifications.push(verification)
+      const sessionID = requiredString(verification.rootSessionID, `${replica} rootSessionID`)
+      await deleteSession(baseUrl, workspace, sessionID)
+      activeSessionIDs.delete(sessionID)
+      samples.push(
+        await sampleMemory(baseUrl, serverPid, `${replica}-after-delete`, "sequential-primary", startedAt, releaseAt),
+      )
+    }
   }
 
-  const expectedResponses = preset.fullTrajectory ? fixture.aggregate.roles.assistant : rootTurns[0].responses.length
-  await waitForReplayTerminal({
-    baseUrl,
-    directory: workspace,
-    rootSessionID: primarySessionID,
-    expectedChildren: preset.fullTrajectory ? fixture.aggregate.childSessions : 0,
-    expectedResponses,
-    mock,
-  })
   await setPhase("terminal")
-
-  const verification = await verifyReplay({
-    baseUrl,
-    directory: workspace,
-    rootSessionID: primarySessionID,
-    fullTrajectory: preset.fullTrajectory,
-  })
-
-  await deleteSession(baseUrl, workspace, primarySessionID)
-  primarySessionID = undefined
+  for (const sessionID of [...activeSessionIDs]) {
+    await deleteSession(baseUrl, workspace, sessionID)
+    activeSessionIDs.delete(sessionID)
+  }
 
   releaseAt = Date.now()
   await setPhase("release")
   for (const offset of preset.releaseOffsetsMs) {
     await sleepUntil(releaseAt + offset)
-    samples.push(await sampleMemory(baseUrl, `release-plus-${formatOffset(offset)}`, phase, startedAt, releaseAt))
+    samples.push(
+      await sampleMemory(baseUrl, serverPid, `release-plus-${formatOffset(offset)}`, phase, startedAt, releaseAt),
+    )
   }
 
   samplerRunning = false
@@ -332,20 +379,41 @@ try {
 
   const idle = samples.find((sample) => sample.phase === "idle")
   if (!idle) throw new Error("Idle memory sample is missing")
+  const workload = workloadDescriptor(rootTurns, replicas.length)
   result = {
-    schemaVersion: 2,
+    schemaVersion: 4,
     harness: "synergy-session-runtime-memory",
     generatedAt: new Date().toISOString(),
+    revision: await sourceRevision(),
     platform: process.platform,
     arch: process.arch,
     bunVersion: Bun.version,
     preset: presetName,
+    scenario,
+    replicaCount: replicas.length,
+    execution: {
+      agentWorkers: agentWorkerCount(),
+      cortexMaxConcurrentTasks: 8,
+    },
+    workload: {
+      contractVersion: WORKLOAD_CONTRACT_VERSION,
+      fingerprint: workloadFingerprint(workload),
+      descriptor: workload,
+    },
     fixture: {
       name: fixture.name,
       schemaVersion: fixture.schemaVersion,
-      replay: preset.fullTrajectory ? "complete" : "first-completed-exchange",
+      replay:
+        scenario === "trajectory"
+          ? preset.fullTrajectory
+            ? "complete"
+            : "first-completed-exchange"
+          : preset.fullTrajectory
+            ? "heavy-primary-turn"
+            : "first-completed-exchange",
       provenance: fixture.provenance,
-      aggregate: preset.fullTrajectory ? fixture.aggregate : summarizeSmoke(rootTurns[0]),
+      aggregatePerReplica: scenarioAggregate(rootTurns),
+      aggregateTotal: multiplyAggregate(scenarioAggregate(rootTurns), replicas.length),
       durationScale: preset.durationScale,
     },
     adapter: {
@@ -361,13 +429,15 @@ try {
       fixtureValidated: true,
       fullHttpSessionFlow: true,
       providerStreaming: true,
-      backgroundSubagents: preset.fullTrajectory,
-      cortexNotifications: preset.fullTrajectory,
-      taskOutputRetrieval: preset.fullTrajectory,
+      backgroundSubagents: scenario === "trajectory" && preset.fullTrajectory,
+      concurrentPrimarySessions: scenario === "parallel",
+      sequentialSessionLifecycles: scenario === "sequential",
+      cortexNotifications: scenario === "trajectory" && preset.fullTrajectory,
+      taskOutputRetrieval: scenario === "trajectory" && preset.fullTrajectory,
       terminalState: true,
       pendingReplyCleared: true,
       noRunningTools: true,
-      ...verification,
+      replicas: verifications,
     },
     provider: summarizeProvider(mock.requests),
     phasePeaks: summarizePhasePeaks(samples),
@@ -377,6 +447,11 @@ try {
   const detail = serverOutput?.value ? `\nServer output:\n${sanitize(serverOutput.value, temporaryRoot)}` : ""
   throw new Error(`${error instanceof Error ? error.message : String(error)}${detail}`, { cause: error })
 } finally {
+  if (server?.exitCode === null) {
+    for (const sessionID of [...activeSessionIDs]) {
+      await deleteSession(`http://127.0.0.1:${serverPort}`, workspace, sessionID).catch(() => {})
+    }
+  }
   if (server && server.exitCode === null) await stopProcess(server)
   await serverOutput?.done.catch(() => {})
   mock.stop()
@@ -399,11 +474,23 @@ function benchmarkConfig(mockUrl: string, mcpPath: string) {
     mid_model: model,
     thinking_model: model,
     default_agent: "synergy",
+    cortex: { maxConcurrentTasks: 8 },
+    execution: {
+      agentWorkers: agentWorkerCount(),
+      agentQueueMax: 256,
+      agentQueueMaxMb: 256,
+    },
     agent: {
       synergy: {
         model,
         steps: 10,
         permission: { "*": "deny", read: "allow", task: "allow", task_output: "allow", ...payloadPermission },
+      },
+      "benchmark-primary": {
+        mode: "primary",
+        model,
+        steps: 32,
+        permission: { "*": "deny", read: "allow", ...payloadPermission },
       },
       "benchmark-subagent": {
         mode: "subagent",
@@ -498,23 +585,21 @@ function isolatedEnvironment(config: ReturnType<typeof benchmarkConfig>) {
 function createMockProvider() {
   const requests: ProviderRequestStat[] = []
   const cursors = new Map<string, number>()
-  const terminalChild = new Map(
-    fixture.sessions
-      .filter((session) => session.relation === "child")
-      .map((session) => [session.session, deferred<void>()]),
-  )
-  const responseObserved = new Map(
-    fixture.sessions
-      .flatMap((session) => session.messages)
-      .filter((message) => message.role === "assistant")
-      .map((message) => [message.message, deferred<void>()]),
-  )
-  const firstChild = deferred<void>()
-  let trajectoryResponseCount = 0
+  const terminalChildren = new Map<string, ReturnType<typeof deferred<void>>>()
+  const observedResponses = new Map<string, ReturnType<typeof deferred<void>>>()
+  const firstChildren = new Map<string, ReturnType<typeof deferred<void>>>()
+  const responseCounts = new Map<string, number>()
+  const key = (replica: string, id: string) => `${replica}:${id}`
+  const terminalChild = (replica: string, session: string) =>
+    mapValue(terminalChildren, key(replica, session), () => deferred<void>())
+  const responseObserved = (replica: string, message: string) =>
+    mapValue(observedResponses, key(replica, message), () => deferred<void>())
+  const firstChild = (replica: string) => mapValue(firstChildren, replica, () => deferred<void>())
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
+    idleTimeout: 120,
     async fetch(request) {
       const url = new URL(request.url)
       if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {
@@ -529,6 +614,7 @@ function createMockProvider() {
       if (isSupportRequest(messages)) {
         requests.push({
           kind: "support",
+          replica: null,
           fixtureSession: null,
           fixtureMessage: null,
           userMessageCount: messages.filter((message) => message.role === "user").length,
@@ -538,25 +624,46 @@ function createMockProvider() {
         return textStream("Trajectory benchmark")
       }
 
-      const fixtureSessionID = findFixtureSession(messages)
+      const marker = findFixtureSession(messages)
+      const { replica, fixtureSessionID, fixtureTurnIndex } = marker
       const session = fixtureSessions.get(fixtureSessionID)
       const turns = fixtureTurns.get(fixtureSessionID)
       if (!session || !turns) return new Response("Unknown trajectory session", { status: 400 })
-      if (session.relation === "child") firstChild.resolve()
+      if (session.relation === "child") firstChild(replica).resolve()
 
       const userMessageCount = messages.filter((message) => message.role === "user").length
-      const turn = turns[userMessageCount - 1]
+      const turn = turns[(fixtureTurnIndex ?? 0) + userMessageCount - 1]
       if (!turn) return new Response("Unexpected trajectory user turn", { status: 400 })
-      const cursorKey = `${fixtureSessionID}:${userMessageCount}`
+      const cursorKey = `${replica}:${fixtureSessionID}:${userMessageCount}`
       const cursor = cursors.get(cursorKey) ?? 0
       const responseFixture = turn.responses[cursor]
+      if (
+        !responseFixture &&
+        fixtureTurnIndex !== undefined &&
+        cursor === turn.responses.length &&
+        turn.responses.at(-1)?.finish !== "stop"
+      ) {
+        cursors.set(cursorKey, cursor + 1)
+        responseCounts.set(replica, (responseCounts.get(replica) ?? 0) + 1)
+        requests.push({
+          kind: "trajectory",
+          replica,
+          fixtureSession: fixtureSessionID,
+          fixtureMessage: null,
+          userMessageCount,
+          requestBytes: Buffer.byteLength(raw),
+          toolDefinitionCount: body.tools?.length ?? 0,
+        })
+        return textStream(PRIMARY_TERMINAL_TEXT)
+      }
       if (!responseFixture) return new Response("Trajectory response exhausted", { status: 400 })
       cursors.set(cursorKey, cursor + 1)
-      trajectoryResponseCount++
-      responseObserved.get(responseFixture.message)?.resolve()
+      responseCounts.set(replica, (responseCounts.get(replica) ?? 0) + 1)
+      responseObserved(replica, responseFixture.message).resolve()
 
       requests.push({
         kind: "trajectory",
+        replica,
         fixtureSession: fixtureSessionID,
         fixtureMessage: responseFixture.message,
         userMessageCount,
@@ -568,14 +675,18 @@ function createMockProvider() {
       const taskID = responseFixture.tools.some((tool) => tool.tool === "task_output")
         ? taskIDFromLatestNotification(messages)
         : undefined
-      const response = completionFor(responseFixture, taskID)
+      const response = completionFor(responseFixture, taskID, replica, fixtureTurnIndex === undefined)
       const childTerminal =
         session.relation === "child" && lastResponse && responseFixture.finish === "stop"
-          ? terminalChild.get(session.session)
+          ? terminalChild(replica, session.session)
           : undefined
-      const childCompletionGuard = childTerminal ? rootMessageObservedBeforeChildCompletion(session) : undefined
+      const childCompletionGuard =
+        childTerminal && scenario !== "parallel" ? rootMessageObservedBeforeChildCompletion(session) : undefined
       const nextNotificationChild =
-        session.relation === "root" && lastResponse && responseFixture.tools.length > 0
+        fixtureTurnIndex === undefined &&
+        session.relation === "root" &&
+        lastResponse &&
+        responseFixture.tools.length > 0
           ? childForNextCortexTurn(turns, userMessageCount)
           : undefined
 
@@ -586,13 +697,17 @@ function createMockProvider() {
             ? async () => {
                 if (childCompletionGuard) {
                   await withTimeout(
-                    responseObserved.get(childCompletionGuard)!.promise,
-                    60_000,
-                    `${session.session} completion ordering`,
+                    responseObserved(replica, childCompletionGuard).promise,
+                    180_000,
+                    `${replica}:${session.session} completion ordering`,
                   )
                 }
                 if (!nextNotificationChild) return
-                await withTimeout(terminalChild.get(nextNotificationChild)!.promise, 60_000, nextNotificationChild)
+                await withTimeout(
+                  terminalChild(replica, nextNotificationChild).promise,
+                  180_000,
+                  `${replica}:${nextNotificationChild}`,
+                )
                 await Bun.sleep(50)
               }
             : undefined,
@@ -604,14 +719,12 @@ function createMockProvider() {
   return {
     url: `http://127.0.0.1:${server.port}`,
     requests,
-    firstChildRequest: firstChild.promise,
-    get trajectoryResponseCount() {
-      return trajectoryResponseCount
-    },
-    get missingResponseMessages() {
+    firstChildRequest: (replica: string) => firstChild(replica).promise,
+    trajectoryResponseCount: (replica: string) => responseCounts.get(replica) ?? 0,
+    missingResponseMessages(replica: string) {
       const seen = new Set(
         requests
-          .filter((request) => request.kind === "trajectory")
+          .filter((request) => request.kind === "trajectory" && request.replica === replica)
           .map((request) => request.fixtureMessage)
           .filter((message): message is string => Boolean(message)),
       )
@@ -624,15 +737,20 @@ function createMockProvider() {
   }
 }
 
-function completionFor(message: TrajectoryMessage, taskID: string | undefined) {
+function completionFor(
+  message: TrajectoryMessage,
+  taskID: string | undefined,
+  replica: string,
+  spawnChildren: boolean,
+) {
   const content = deterministicText(message.textPayloadBytes, message.message)
   const toolCalls = message.tools.map((tool, index) => ({
     index,
     id: `call_${message.message.replaceAll("-", "_")}_${index}`,
     type: "function",
     function: {
-      name: replayToolName(tool),
-      arguments: replayToolArguments(tool, message, index, taskID),
+      name: replayToolName(tool, spawnChildren),
+      arguments: replayToolArguments(tool, message, index, taskID, replica, spawnChildren),
     },
   }))
   const delta: Record<string, unknown> = { role: "assistant" }
@@ -652,8 +770,8 @@ function completionFor(message: TrajectoryMessage, taskID: string | undefined) {
   }
 }
 
-function replayToolName(tool: TrajectoryTool) {
-  if (tool.tool === "task" || tool.tool === "task_output") return tool.tool
+function replayToolName(tool: TrajectoryTool, spawnChildren: boolean) {
+  if (spawnChildren && (tool.tool === "task" || tool.tool === "task_output")) return tool.tool
   if (tool.tool === "read" && tool.status === "error") return "read"
   return PAYLOAD_TOOL
 }
@@ -663,13 +781,15 @@ function replayToolArguments(
   message: TrajectoryMessage,
   index: number,
   taskID: string | undefined,
+  replica: string,
+  spawnChildren: boolean,
 ) {
-  if (tool.tool === "task") {
+  if (spawnChildren && tool.tool === "task") {
     if (!tool.child) throw new Error(`Task fixture ${message.message}:${index} is missing its child link`)
     return exactJson(
       {
         description: `Trajectory child ${tool.child}`,
-        prompt: `${TRAJECTORY_MARKER}${tool.child}`,
+        prompt: `${TRAJECTORY_MARKER}${replica}:${tool.child}`,
         subagent_type: "benchmark-subagent",
         background: true,
       },
@@ -678,7 +798,7 @@ function replayToolArguments(
       `${message.message}-task-${index}`,
     )
   }
-  if (tool.tool === "task_output") {
+  if (spawnChildren && tool.tool === "task_output") {
     if (!taskID) throw new Error(`Task output fixture ${message.message}:${index} has no completion notification ID`)
     return JSON.stringify({ task_id: taskID, mode: "full" })
   }
@@ -822,9 +942,13 @@ function rootMessageObservedBeforeChildCompletion(child: TrajectorySession) {
 
 function findFixtureSession(messages: Array<{ role?: string; content?: unknown }>) {
   const serialized = JSON.stringify(messages)
-  const match = serialized.match(new RegExp(`${TRAJECTORY_MARKER}(s\\d+)`))
+  const match = serialized.match(new RegExp(`${TRAJECTORY_MARKER}([a-z0-9-]+):(s\\d+)(?::t(\\d+))?`))
   if (!match) throw new Error("Provider request did not contain a trajectory marker")
-  return match[1]
+  return {
+    replica: match[1],
+    fixtureSessionID: match[2],
+    fixtureTurnIndex: match[3] === undefined ? undefined : Number(match[3]),
+  }
 }
 
 function taskIDFromLatestNotification(messages: Array<{ role?: string; content?: unknown }>) {
@@ -913,19 +1037,136 @@ async function promptAsync(
   sessionID: string,
   tools: Record<string, boolean>,
   text: string,
+  agent = "synergy",
 ) {
   const response = await scopedRequest(baseUrl, directory, `/session/${encodeURIComponent(sessionID)}/prompt_async`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
-      agent: "synergy",
+      agent,
       tools,
       parts: [{ type: "text", text }],
     }),
   })
   if (!response.ok)
     throw new Error(`Async prompt failed with HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`)
+}
+
+async function replayTrajectory(input: {
+  baseUrl: string
+  directory: string
+  tools: Record<string, boolean>
+  replica: string
+  fullTrajectory: boolean
+  mock: ReturnType<typeof createMockProvider>
+  onCreated: (sessionID: string) => void
+}) {
+  const rootFixture = fixture.sessions.find((session) => session.relation === "root")!
+  const rootTurns = fixtureTurns.get(rootFixture.session)!
+  const manualTurns = rootTurns.filter((turn) => turn.user.originType === "user")
+  const root = await createSession(
+    input.baseUrl,
+    input.directory,
+    `Trajectory memory benchmark ${input.replica}`,
+    "full_access",
+  )
+  input.onCreated(root.id)
+  const replayStartedAt = Date.now()
+  const marker = `${TRAJECTORY_MARKER}${input.replica}:${rootFixture.session}`
+
+  await promptAsync(
+    input.baseUrl,
+    input.directory,
+    root.id,
+    input.tools,
+    trajectoryText(rootTurns[0].user.textPayloadBytes, marker),
+  )
+
+  if (input.fullTrajectory) {
+    if (manualTurns.length !== 2) throw new Error(`Expected two manual root turns, received ${manualTurns.length}`)
+    const followUp = manualTurns[1]
+    await sleepUntil(replayStartedAt + scaleTime(followUp.user.startOffsetMs))
+    await promptAsync(
+      input.baseUrl,
+      input.directory,
+      root.id,
+      input.tools,
+      trajectoryText(followUp.user.textPayloadBytes, marker),
+    )
+  }
+
+  const expectedResponses = input.fullTrajectory ? fixture.aggregate.roles.assistant : rootTurns[0].responses.length
+  await waitForReplayTerminal({
+    baseUrl: input.baseUrl,
+    directory: input.directory,
+    replica: input.replica,
+    rootSessionID: root.id,
+    expectedChildren: input.fullTrajectory ? fixture.aggregate.childSessions : 0,
+    expectedResponses,
+    mock: input.mock,
+  })
+  return {
+    replica: input.replica,
+    rootSessionID: root.id,
+    ...(await verifyReplay({
+      baseUrl: input.baseUrl,
+      directory: input.directory,
+      rootSessionID: root.id,
+      fullTrajectory: input.fullTrajectory,
+    })),
+  }
+}
+
+async function replayPrimaryTurn(input: {
+  baseUrl: string
+  directory: string
+  tools: Record<string, boolean>
+  replica: string
+  mock: ReturnType<typeof createMockProvider>
+  onCreated: (sessionID: string) => void
+}) {
+  const rootFixture = fixture.sessions.find((session) => session.relation === "root")!
+  const rootTurns = fixtureTurns.get(rootFixture.session)!
+  const fixtureTurnIndex = preset.fullTrajectory ? 1 : 0
+  const fixtureTurn = rootTurns[fixtureTurnIndex]
+  const root = await createSession(
+    input.baseUrl,
+    input.directory,
+    `Primary concurrency benchmark ${input.replica}`,
+    "full_access",
+  )
+  input.onCreated(root.id)
+  const marker = `${TRAJECTORY_MARKER}${input.replica}:${rootFixture.session}:t${fixtureTurnIndex}`
+  await promptAsync(
+    input.baseUrl,
+    input.directory,
+    root.id,
+    input.tools,
+    trajectoryText(fixtureTurn.user.textPayloadBytes, marker),
+    "benchmark-primary",
+  )
+  const terminalResponseCount = fixtureTurn.responses.at(-1)?.finish === "stop" ? 0 : 1
+  await waitForReplayTerminal({
+    baseUrl: input.baseUrl,
+    directory: input.directory,
+    replica: input.replica,
+    rootSessionID: root.id,
+    expectedChildren: 0,
+    expectedResponses: fixtureTurn.responses.length + terminalResponseCount,
+    mock: input.mock,
+  })
+  return {
+    replica: input.replica,
+    rootSessionID: root.id,
+    ...(await verifyPrimaryTurn({
+      baseUrl: input.baseUrl,
+      directory: input.directory,
+      rootSessionID: root.id,
+      fixtureTurn,
+      terminalResponseCount,
+    })),
+  }
 }
 
 async function deleteSession(baseUrl: string, directory: string, sessionID: string) {
@@ -935,9 +1176,44 @@ async function deleteSession(baseUrl: string, directory: string, sessionID: stri
   if (!removed) throw new Error("Session deletion returned false")
 }
 
+async function verifyPrimaryTurn(input: {
+  baseUrl: string
+  directory: string
+  rootSessionID: string
+  fixtureTurn: TrajectoryTurn
+  terminalResponseCount: number
+}) {
+  const history = await scopedJson<HistoryMessage[]>(
+    input.baseUrl,
+    input.directory,
+    `/session/${encodeURIComponent(input.rootSessionID)}/message?limit=100`,
+  )
+  const runtimeBoundaries = history.filter(isRuntimeBoundaryMessage).length
+  const expectedRuntimeBoundaries = 0
+  const toolParts = history.flatMap((message) => message.parts).filter(isToolPart)
+  const expectedTools = input.fixtureTurn.responses.reduce((sum, response) => sum + response.tools.length, 0)
+  assertNumber(runtimeBoundaries, expectedRuntimeBoundaries, "primary runtime boundary message count")
+  assertNumber(
+    history.length - runtimeBoundaries,
+    1 + input.fixtureTurn.responses.length + input.terminalResponseCount,
+    "primary trajectory message count",
+  )
+  assertNumber(toolParts.length, expectedTools, "primary tool call count")
+  assertNumber(countRunningTools(history), 0, "primary running tools")
+  return {
+    verifiedRootMessages: history.length,
+    verifiedRuntimeBoundaryMessages: runtimeBoundaries,
+    verifiedTrajectoryMessages: history.length - runtimeBoundaries,
+    verifiedToolCalls: toolParts.length,
+    verifiedCompletedTools: toolParts.filter((part) => part.state?.status === "completed").length,
+    verifiedErrorTools: toolParts.filter((part) => part.state?.status === "error").length,
+  }
+}
+
 async function waitForReplayTerminal(input: {
   baseUrl: string
   directory: string
+  replica: string
   rootSessionID: string
   expectedChildren: number
   expectedResponses: number
@@ -963,14 +1239,15 @@ async function waitForReplayTerminal(input: {
       children.items.every((child) => child.cortex?.status && TERMINAL_CORTEX_STATUSES.has(child.cortex.status))
     const rootIdle =
       !root.pendingReply && (!statuses[input.rootSessionID] || statuses[input.rootSessionID].type === "idle")
-    const responsesComplete = input.mock.trajectoryResponseCount === input.expectedResponses
+    const responseCount = input.mock.trajectoryResponseCount(input.replica)
+    const responsesComplete = responseCount === input.expectedResponses
     detail = JSON.stringify({
       rootIdle,
       childCount: children.total,
       childrenTerminal,
-      responses: input.mock.trajectoryResponseCount,
+      responses: responseCount,
       expectedResponses: input.expectedResponses,
-      missingResponses: input.mock.missingResponseMessages,
+      missingResponses: input.mock.missingResponseMessages(input.replica),
     })
     if (rootIdle && childrenTerminal && responsesComplete) return
     if (rootIdle && childrenTerminal) {
@@ -1133,12 +1410,16 @@ function scopedRequest(baseUrl: string, directory: string, pathname: string, ini
 
 async function sampleMemory(
   baseUrl: string,
+  serverPid: number,
   label: string,
   phase: Phase,
   benchmarkStartedAt: number,
   releaseAt: number | undefined,
 ): Promise<MemorySample> {
-  const summary = await requestJson<PerformanceSummary>(`${baseUrl}/global/performance/summary`)
+  const [summary, processTree] = await Promise.all([
+    requestJson<PerformanceSummary>(`${baseUrl}/global/performance/summary`),
+    measureProcessTree(serverPid),
+  ])
   return {
     label,
     phase,
@@ -1151,6 +1432,7 @@ async function sampleMemory(
     arrayBuffersBytes: requiredNumber(summary.resources.arrayBuffersBytes, "resources.arrayBuffersBytes"),
     childProcessCount: summary.resources.childProcessCount ?? 0,
     childProcessRssBytes: summary.resources.childProcessRssBytes ?? 0,
+    processTree,
     serviceMemory: summary.resources.serviceMemory ?? null,
     runtime: {
       sessionRuntimeCount: summary.runtime.sessionRuntimes.totalCount,
@@ -1181,6 +1463,11 @@ function summarizeProvider(requests: ProviderRequestStat[]) {
         trajectory.filter((request) => request.fixtureSession === session.session).length,
       ]),
     ),
+    byReplica: Object.fromEntries(
+      [...new Set(trajectory.map((request) => request.replica).filter((replica): replica is string => !!replica))].map(
+        (replica) => [replica, trajectory.filter((request) => request.replica === replica).length],
+      ),
+    ),
   }
 }
 
@@ -1194,15 +1481,97 @@ function summarizeValues(values: number[]) {
   }
 }
 
-function summarizeSmoke(turn: TrajectoryTurn) {
+function summarizeStandalonePrimary(turn: TrajectoryTurn) {
+  const addsSyntheticTerminal = turn.responses.at(-1)?.finish !== "stop"
   return {
     sessions: 1,
     childSessions: 0,
-    messages: 1 + turn.responses.length,
+    messages: 1 + turn.responses.length + Number(addsSyntheticTerminal),
     tools: turn.responses.reduce((sum, response) => sum + response.tools.length, 0),
     textPayloadBytes:
-      turn.user.textPayloadBytes + turn.responses.reduce((sum, response) => sum + response.textPayloadBytes, 0),
+      turn.user.textPayloadBytes +
+      turn.responses.reduce((sum, response) => sum + response.textPayloadBytes, 0) +
+      (addsSyntheticTerminal ? Buffer.byteLength(PRIMARY_TERMINAL_TEXT) : 0),
   }
+}
+
+function scenarioAggregate(rootTurns: TrajectoryTurn[]) {
+  if (scenario === "trajectory" && preset.fullTrajectory) return fixture.aggregate
+  return summarizeStandalonePrimary(rootTurns[preset.fullTrajectory ? 1 : 0])
+}
+
+function workloadDescriptor(rootTurns: TrajectoryTurn[], replicaCount: number) {
+  return {
+    contractVersion: WORKLOAD_CONTRACT_VERSION,
+    fixture: {
+      name: fixture.name,
+      schemaVersion: fixture.schemaVersion,
+      provenanceKind: fixture.provenance.kind,
+    },
+    scenario,
+    preset: presetName,
+    replicaCount,
+    replay:
+      scenario === "trajectory"
+        ? preset.fullTrajectory
+          ? "complete-trajectory"
+          : "first-completed-exchange"
+        : preset.fullTrajectory
+          ? "heavy-primary-turn"
+          : "first-completed-exchange",
+    aggregatePerReplica: scenarioAggregate(rootTurns),
+    aggregateTotal: multiplyAggregate(scenarioAggregate(rootTurns), replicaCount),
+    execution: {
+      agentWorkers: agentWorkerCount(),
+      cortexMaxConcurrentTasks: 8,
+      agentSteps: scenario === "trajectory" ? 10 : 32,
+    },
+    timing: {
+      durationScale: preset.durationScale,
+      sampleIntervalMs: preset.sampleIntervalMs,
+      releaseOffsetsMs: [...preset.releaseOffsetsMs],
+    },
+    adapter: {
+      provider: "deterministic-local-openai-compatible",
+      sideEffectingTools: "byte-preserving-payload-tool",
+      subagentTasks: scenario === "trajectory" && preset.fullTrajectory,
+      syntheticTerminalResponse:
+        scenario !== "trajectory" && preset.fullTrajectory && rootTurns[1].responses.at(-1)?.finish !== "stop",
+    },
+  }
+}
+
+function workloadFingerprint(descriptor: ReturnType<typeof workloadDescriptor>) {
+  return new Bun.CryptoHasher("sha256").update(JSON.stringify(descriptor)).digest("hex")
+}
+
+async function sourceRevision() {
+  const [commit, status] = await Promise.all([
+    commandOutput(["git", "-C", repositoryRoot, "rev-parse", "HEAD"]),
+    commandOutput(["git", "-C", repositoryRoot, "status", "--short"]),
+  ])
+  return {
+    commit: commit.trim(),
+    dirty: status.trim().length > 0,
+  }
+}
+
+function scenarioReplicas(value: Scenario) {
+  const count = value === "trajectory" ? 1 : value === "parallel" ? preset.parallelReplicas : preset.sequentialReplicas
+  return Array.from({ length: count }, (_, index) => `run-${index + 1}`)
+}
+
+function agentWorkerCount() {
+  if (scenario !== "parallel") return 4
+  return preset.fullTrajectory ? 5 : 2
+}
+
+function multiplyAggregate(value: unknown, factor: number): unknown {
+  if (typeof value === "number") return value * factor
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, multiplyAggregate(item, factor)]),
+  )
 }
 
 function summarizePhasePeaks(samples: MemorySample[]) {
@@ -1218,6 +1587,8 @@ function summarizePhasePeaks(samples: MemorySample[]) {
       peakHeapUsedBytes: peak("heapUsedBytes"),
       peakExternalBytes: peak("externalBytes"),
       peakArrayBuffersBytes: peak("arrayBuffersBytes"),
+      peakProcessTreeRssBytes: Math.max(...phaseSamples.map((sample) => sample.processTree.rssBytes)),
+      peakDescendantRssBytes: Math.max(...phaseSamples.map((sample) => sample.processTree.descendantRssBytes)),
     }
   })
 }
@@ -1230,6 +1601,8 @@ function subtractMemory(sample: MemorySample, baseline: MemorySample) {
     externalBytes: sample.externalBytes - baseline.externalBytes,
     arrayBuffersBytes: sample.arrayBuffersBytes - baseline.arrayBuffersBytes,
     childProcessRssBytes: sample.childProcessRssBytes - baseline.childProcessRssBytes,
+    processTreeRssBytes: sample.processTree.rssBytes - baseline.processTree.rssBytes,
+    descendantRssBytes: sample.processTree.descendantRssBytes - baseline.processTree.descendantRssBytes,
     serviceMemoryRssBytes:
       sample.serviceMemory && baseline.serviceMemory
         ? sample.serviceMemory.rssBytes - baseline.serviceMemory.rssBytes
@@ -1260,6 +1633,136 @@ function assertNumber(actual: number, expected: number, label: string) {
 function requiredNumber(value: number | undefined, label: string) {
   if (!Number.isFinite(value)) throw new Error(`Performance summary omitted ${label}`)
   return value!
+}
+
+function requiredString(value: unknown, label: string) {
+  if (typeof value !== "string" || value.length === 0) throw new Error(`${label} is missing`)
+  return value
+}
+
+function mapValue<K, V>(values: Map<K, V>, key: K, create: () => V) {
+  const existing = values.get(key)
+  if (existing !== undefined) return existing
+  const value = create()
+  values.set(key, value)
+  return value
+}
+
+async function measureProcessTree(rootPid: number): Promise<ProcessTreeMemory> {
+  if (process.platform === "linux") return measureLinuxProcessTree(rootPid)
+  if (process.platform === "darwin") {
+    const rows = await processRows(["ps", "-axo", "pid=,ppid=,rss="], "ps", (line) => {
+      const [pid, ppid, rssKiB] = line.trim().split(/\s+/).map(Number)
+      return { pid, ppid, rssBytes: rssKiB * 1024 }
+    })
+    return summarizeProcessTree("ps", rootPid, rows)
+  }
+  if (process.platform === "win32") {
+    const script =
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize | ConvertTo-Json -Compress"
+    const output = await commandOutput(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script])
+    const parsed = JSON.parse(output) as
+      | { ProcessId: number; ParentProcessId: number; WorkingSetSize: number }
+      | Array<{ ProcessId: number; ParentProcessId: number; WorkingSetSize: number }>
+    const items = Array.isArray(parsed) ? parsed : [parsed]
+    return summarizeProcessTree(
+      "powershell",
+      rootPid,
+      items.map((item) => ({
+        pid: Number(item.ProcessId),
+        ppid: Number(item.ParentProcessId),
+        rssBytes: Number(item.WorkingSetSize),
+      })),
+    )
+  }
+  throw new Error(`Process-tree memory is unsupported on ${process.platform}`)
+}
+
+async function measureLinuxProcessTree(rootPid: number): Promise<ProcessTreeMemory> {
+  const rows: Array<{ pid: number; ppid: number; rssBytes: number }> = []
+  const queue = [{ pid: rootPid, ppid: 0 }]
+  const seen = new Set<number>()
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    if (seen.has(current.pid)) continue
+    seen.add(current.pid)
+    try {
+      const [status, children] = await Promise.all([
+        Bun.file(`/proc/${current.pid}/status`).text(),
+        Bun.file(`/proc/${current.pid}/task/${current.pid}/children`)
+          .text()
+          .catch(() => ""),
+      ])
+      const rssKiB = Number(status.match(/^VmRSS:\s+(\d+)\s+kB$/m)?.[1] ?? Number.NaN)
+      if (!Number.isFinite(rssKiB)) throw new Error(`VmRSS is unavailable for pid ${current.pid}`)
+      rows.push({ pid: current.pid, ppid: current.ppid, rssBytes: rssKiB * 1024 })
+      for (const child of children.trim().split(/\s+/).filter(Boolean).map(Number)) {
+        queue.push({ pid: child, ppid: current.pid })
+      }
+    } catch (error) {
+      if (current.pid === rootPid) throw error
+    }
+  }
+  return summarizeProcessTree("procfs", rootPid, rows)
+}
+
+async function processRows(
+  command: string[],
+  source: string,
+  parse: (line: string) => { pid: number; ppid: number; rssBytes: number },
+) {
+  const output = await commandOutput(command)
+  const rows = output
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .map(parse)
+    .filter((row) => Number.isFinite(row.pid) && Number.isFinite(row.ppid) && Number.isFinite(row.rssBytes))
+  if (rows.length === 0) throw new Error(`${source} returned no process memory rows`)
+  return rows
+}
+
+async function commandOutput(command: string[]) {
+  const child = Bun.spawn({ cmd: command, stdout: "pipe", stderr: "pipe" })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  if (exitCode !== 0) throw new Error(`${command[0]} exited with ${exitCode}: ${stderr.slice(-1_000)}`)
+  return stdout
+}
+
+function summarizeProcessTree(
+  source: ProcessTreeMemory["source"],
+  rootPid: number,
+  rows: Array<{ pid: number; ppid: number; rssBytes: number }>,
+): ProcessTreeMemory {
+  const byParent = new Map<number, number[]>()
+  for (const row of rows) {
+    const children = byParent.get(row.ppid) ?? []
+    children.push(row.pid)
+    byParent.set(row.ppid, children)
+  }
+  const included = new Set<number>()
+  const queue = [rootPid]
+  while (queue.length > 0) {
+    const pid = queue.shift()!
+    if (included.has(pid)) continue
+    included.add(pid)
+    queue.push(...(byParent.get(pid) ?? []))
+  }
+  const tree = rows.filter((row) => included.has(row.pid))
+  const root = tree.find((row) => row.pid === rootPid)
+  if (!root) throw new Error(`${source} did not report benchmark server pid ${rootPid}`)
+  const rssBytes = tree.reduce((sum, row) => sum + row.rssBytes, 0)
+  return {
+    source,
+    rootPid,
+    processCount: tree.length,
+    descendantProcessCount: tree.length - 1,
+    rssBytes,
+    descendantRssBytes: rssBytes - root.rssBytes,
+  }
 }
 
 function reservePort() {
@@ -1358,4 +1861,35 @@ function deferred<T>() {
 function argument(name: string) {
   const index = process.argv.indexOf(name)
   return index === -1 ? undefined : process.argv[index + 1]
+}
+
+async function runScenarioSuite() {
+  const results = []
+  for (const childScenario of ["trajectory", "parallel", "sequential"] satisfies Scenario[]) {
+    const child = Bun.spawn({
+      cmd: [process.execPath, import.meta.path, "--preset", presetName, "--scenario", childScenario],
+      env: process.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    if (exitCode !== 0) {
+      throw new Error(`${childScenario} scenario exited with ${exitCode}: ${stderr.slice(-4_000)}`)
+    }
+    results.push(JSON.parse(stdout.trim()))
+  }
+  return {
+    schemaVersion: 1,
+    harness: "synergy-session-runtime-memory-suite",
+    generatedAt: new Date().toISOString(),
+    platform: process.platform,
+    arch: process.arch,
+    bunVersion: Bun.version,
+    preset: presetName,
+    scenarios: results,
+  }
 }
