@@ -7,6 +7,10 @@ import { Cortex } from "../../src/cortex/manager"
 import { Identifier } from "../../src/id/id"
 import { ContinuationKernel } from "../../src/session/continuation-kernel"
 import { Session } from "../../src/session"
+import { SessionDrive } from "../../src/session/drive"
+import { SessionInbox } from "../../src/session/inbox"
+import { SessionInvoke } from "../../src/session/invoke"
+import { SessionManager } from "../../src/session/manager"
 import { MessageV2 } from "../../src/session/message-v2"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
@@ -17,11 +21,15 @@ const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 }
 let originalGetTasksForSession: typeof Cortex.getTasksForSession
 
 beforeEach(() => {
+  Cortex.reset()
+  SessionDrive.reset()
   originalGetTasksForSession = Cortex.getTasksForSession
   ;(Cortex.getTasksForSession as any) = mock(() => [])
 })
 afterEach(() => {
   ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
+  Cortex.reset()
+  SessionDrive.reset()
   ContinuationKernel.reset()
 })
 
@@ -58,6 +66,34 @@ async function terminalSession() {
     finish: "stop",
   })
   return session
+}
+
+async function completeChildSession(sessionID: string) {
+  const parentID = Identifier.ascending("message")
+  const message = await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    role: "assistant",
+    sessionID,
+    parentID,
+    rootID: parentID,
+    mode: "developer",
+    agent: "developer",
+    path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+    cost: 0,
+    tokens,
+    modelID: model.modelID,
+    providerID: model.providerID,
+    time: { created: Date.now(), completed: Date.now() },
+    finish: "stop",
+  })
+  const part = await Session.updatePart({
+    id: Identifier.ascending("part"),
+    sessionID,
+    messageID: message.id,
+    type: "text",
+    text: "completed",
+  })
+  return { info: message, parts: [part] }
 }
 
 describe("ContinuationKernel arbitration", () => {
@@ -163,6 +199,79 @@ describe("ContinuationKernel arbitration", () => {
           },
         })
         expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+      },
+    })
+  }, 15_000)
+  test("resumes LightLoop when the last silent Cortex task becomes terminal", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalInvokeInternal = SessionInvoke.invokeInternal
+        const originalLoop = SessionInvoke.loop
+        const childMayFinish = Promise.withResolvers<void>()
+        const parentWoke = Promise.withResolvers<void>()
+        let parentSessionID = ""
+
+        ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
+        ;(SessionInvoke.invokeInternal as any) = mock(
+          async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+            await childMayFinish.promise
+            return completeChildSession(input.sessionID)
+          },
+        )
+        ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+          if (sessionID === parentSessionID) parentWoke.resolve()
+        })
+
+        try {
+          const session = await terminalSession()
+          parentSessionID = session.id
+          await Session.update(session.id, (draft) => {
+            draft.workflow = { kind: "lightloop", instructions: "Finish the task" }
+          })
+          await Cortex.launch({
+            description: "Silent delegated work",
+            prompt: "Finish delegated work",
+            agent: "developer",
+            parentSessionID: session.id,
+            parentMessageID: "msg_test01234567890abc",
+            model,
+            visibility: "hidden",
+            notifyParentOnComplete: false,
+          })
+
+          expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+
+          childMayFinish.resolve()
+          const continuation = await Promise.race([
+            (async () => {
+              for (let attempt = 0; attempt < 100; attempt++) {
+                const item = (await SessionInbox.list(session.id)).find(
+                  (candidate) => candidate.message?.metadata?.source === "light_loop_continuation",
+                )
+                if (item) return item
+                await Bun.sleep(10)
+              }
+              return undefined
+            })(),
+            Bun.sleep(2_000).then(() => undefined),
+          ])
+
+          expect(continuation?.message?.summary?.title).toBe("Continue light loop")
+          expect((await SessionInbox.list(session.id)).some((item) => item.source.type === "cortex")).toBe(false)
+          await Promise.race([
+            parentWoke.promise,
+            Bun.sleep(2_000).then(() => {
+              throw new Error("Parent session was not woken for LightLoop continuation")
+            }),
+          ])
+        } finally {
+          childMayFinish.resolve()
+          ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          ;(SessionInvoke.loop as any) = originalLoop
+          if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
+        }
       },
     })
   }, 15_000)
