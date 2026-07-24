@@ -32,13 +32,19 @@ export const AP = {
   commandCategorySuggested: { id: "app.command.category.suggested", message: "Suggested" },
 
   // ── pages/error.tsx ─────────────────────────────────────────────────
-  errorTitle: { id: "app.error.title", message: "Something went wrong" },
+  errorTitle: { id: "app.error.title", message: "Synergy needs a quick refresh" },
   errorSubtitle: {
     id: "app.error.subtitle",
-    message: "An error occurred while loading the application.",
+    message: "The interface ran into a problem and cannot continue displaying this view.",
   },
+  errorTaskSafety: {
+    id: "app.error.taskSafety",
+    message:
+      "Your running tasks are safe. Reloading only refreshes this interface and will not stop work on the server.",
+  },
+  errorReloadInterface: { id: "app.error.reloadInterface", message: "Reload interface" },
+  errorTechnicalDetails: { id: "app.error.technicalDetails", message: "Technical details" },
   errorDetailsLabel: { id: "app.error.detailsLabel", message: "Error Details" },
-  errorRestart: { id: "app.error.restart", message: "Restart" },
   errorReport: {
     id: "app.error.report",
     message: "Report this issue on GitHub",

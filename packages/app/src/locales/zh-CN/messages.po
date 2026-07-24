@@ -2024,6 +2024,11 @@ msgstr "无法初始化提供商“{providerID}”。请检查凭据和配置。
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.reloadInterface"
+msgstr "重新加载界面"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.report"
 msgstr "在 GitHub 上报告此问题"
 
@@ -2031,11 +2036,6 @@ msgstr "在 GitHub 上报告此问题"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.responseBody"
 msgstr "响应正文："
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.error.restart"
-msgstr "重启"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -2050,11 +2050,21 @@ msgstr "状态：{code}"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.subtitle"
-msgstr "加载应用时发生错误。"
+msgstr "界面遇到问题，暂时无法继续显示。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.taskSafety"
+msgstr "正在运行的任务是安全的。重新加载只会刷新界面，不会停止服务器上的工作。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.technicalDetails"
+msgstr "技术详情"
 
 #. ── pages/error.tsx ─────────────────────────────────────────────────
 msgid "app.error.title"
-msgstr "出现问题"
+msgstr "Synergy 需要快速刷新"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

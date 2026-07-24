@@ -2024,6 +2024,11 @@ msgstr "Failed to initialize provider \"{providerID}\". Check credentials and co
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.reloadInterface"
+msgstr "Reload interface"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.report"
 msgstr "Report this issue on GitHub"
 
@@ -2031,11 +2036,6 @@ msgstr "Report this issue on GitHub"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.responseBody"
 msgstr "Response body:"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.error.restart"
-msgstr "Restart"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -2050,11 +2050,21 @@ msgstr "Status: {code}"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.subtitle"
-msgstr "An error occurred while loading the application."
+msgstr "The interface ran into a problem and cannot continue displaying this view."
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.taskSafety"
+msgstr "Your running tasks are safe. Reloading only refreshes this interface and will not stop work on the server."
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.technicalDetails"
+msgstr "Technical details"
 
 #. ── pages/error.tsx ─────────────────────────────────────────────────
 msgid "app.error.title"
-msgstr "Something went wrong"
+msgstr "Synergy needs a quick refresh"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

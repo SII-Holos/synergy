@@ -2024,17 +2024,17 @@ msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.reloadInterface"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.report"
 msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.responseBody"
-msgstr ""
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.error.restart"
 msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
@@ -2050,6 +2050,16 @@ msgstr ""
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.subtitle"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.taskSafety"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.error.technicalDetails"
 msgstr ""
 
 #. ── pages/error.tsx ─────────────────────────────────────────────────
