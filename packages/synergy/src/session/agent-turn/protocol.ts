@@ -1,6 +1,6 @@
 import z from "zod"
 import { deserialize, serialize } from "v8"
-import { APICallError } from "ai"
+import { APICallError, type FinishReason, type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Runtime as ScopeRuntime } from "@/scope/types"
 import { Workspace } from "../types"
 
@@ -46,6 +46,57 @@ export namespace AgentTurnProtocol {
       error: SerializedError,
     })
     .strict()
+  const ProviderMetadataSchema = z.custom<ProviderMetadata>(
+    (value) => value !== null && typeof value === "object",
+    "Invalid provider metadata",
+  )
+  const UsageSchema = z.custom<LanguageModelUsage>(
+    (value) => value !== null && typeof value === "object",
+    "Invalid language model usage",
+  )
+  const FinishReasonSchema = z.custom<FinishReason>((value) => typeof value === "string", "Invalid finish reason")
+  const metadata = {
+    providerMetadata: ProviderMetadataSchema.optional(),
+  }
+
+  export const StreamEventSchema = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("start") }).strict(),
+    z.object({ type: z.literal("reasoning-start"), id: z.string(), ...metadata }).strict(),
+    z.object({ type: z.literal("reasoning-delta"), id: z.string(), text: z.string(), ...metadata }).strict(),
+    z.object({ type: z.literal("reasoning-end"), id: z.string(), ...metadata }).strict(),
+    z.object({ type: z.literal("tool-input-start"), id: z.string(), toolName: z.string(), ...metadata }).strict(),
+    z.object({ type: z.literal("tool-input-delta"), id: z.string(), delta: z.string() }).strict(),
+    z.object({ type: z.literal("tool-input-end"), id: z.string() }).strict(),
+    z
+      .object({
+        type: z.literal("tool-call"),
+        toolCallId: z.string(),
+        toolName: z.string(),
+        input: z.unknown(),
+        ...metadata,
+      })
+      .strict(),
+    z.object({ type: z.literal("tool-result"), toolCallId: z.string() }).strict(),
+    z
+      .object({ type: z.literal("tool-error"), toolCallId: z.string(), toolName: z.string(), error: z.unknown() })
+      .strict(),
+    z.object({ type: z.literal("error"), error: z.unknown() }).strict(),
+    z.object({ type: z.literal("start-step") }).strict(),
+    z
+      .object({
+        type: z.literal("finish-step"),
+        finishReason: FinishReasonSchema,
+        usage: UsageSchema,
+        ...metadata,
+      })
+      .strict(),
+    z.object({ type: z.literal("text-start"), id: z.string(), ...metadata }).strict(),
+    z.object({ type: z.literal("text-delta"), id: z.string(), text: z.string(), ...metadata }).strict(),
+    z.object({ type: z.literal("text-end"), id: z.string(), ...metadata }).strict(),
+    z.object({ type: z.literal("finish") }).strict(),
+    z.object({ type: z.literal("abort") }).strict(),
+  ])
+  export type StreamEvent = z.infer<typeof StreamEventSchema>
 
   export const TurnInputSchema = z
     .object({
@@ -118,7 +169,7 @@ export namespace AgentTurnProtocol {
     | { type: "run-ready"; requestId: string }
     | { type: "chunk-ack"; requestId: string; index: number }
     | { type: "started"; requestId: string; contextUsageDraft?: unknown }
-    | { type: "events"; requestId: string; sequence: number; events: unknown[] }
+    | { type: "events"; requestId: string; sequence: number; events: StreamEvent[] }
     | {
         type: "complete"
         requestId: string
@@ -194,7 +245,7 @@ export namespace AgentTurnProtocol {
         type: z.literal("events"),
         requestId: z.string(),
         sequence: z.number().int().nonnegative(),
-        events: z.array(z.unknown()),
+        events: z.array(StreamEventSchema),
       })
       .strict(),
     z
@@ -377,25 +428,31 @@ export namespace AgentTurnProtocol {
     })
   }
 
-  export function encodeEvents(events: readonly unknown[]): unknown[] {
-    return events.map((event) => {
-      if (!event || typeof event !== "object" || !("type" in event)) return event
-      if ((event.type !== "error" && event.type !== "tool-error") || !("error" in event) || event.error === undefined) {
-        return event
+  export function encodeEvents(events: readonly unknown[]): StreamEvent[] {
+    return projectEvents(events).map((projected) => {
+      if ((projected.type !== "error" && projected.type !== "tool-error") || projected.error === undefined) {
+        return projected
       }
       return {
-        ...event,
+        ...projected,
         error: {
           __synergyAgentError: true,
-          error: serializeError(event.error),
+          error: serializeError(projected.error),
         },
       }
     })
   }
 
-  export function decodeEvents(events: readonly unknown[]): unknown[] {
+  export function projectEvents(events: readonly unknown[]): StreamEvent[] {
+    return events.flatMap((event) => {
+      const projected = projectEvent(event)
+      return projected ? [projected] : []
+    })
+  }
+
+  export function decodeEvents(events: readonly StreamEvent[]): StreamEvent[] {
     return events.map((event) => {
-      if (!event || typeof event !== "object" || !("error" in event)) return event
+      if (!("error" in event)) return event
       const encoded = EventError.safeParse(event.error)
       if (!encoded.success) return event
       return {
@@ -403,6 +460,93 @@ export namespace AgentTurnProtocol {
         error: deserializeError(encoded.data.error),
       }
     })
+  }
+
+  function projectEvent(event: unknown): StreamEvent | undefined {
+    if (!event || typeof event !== "object" || !("type" in event) || typeof event.type !== "string") return
+    const value = event as Record<string, unknown>
+    const providerMetadata =
+      value.providerMetadata === undefined
+        ? {}
+        : {
+            providerMetadata: value.providerMetadata as ProviderMetadata,
+          }
+    switch (event.type) {
+      case "start":
+      case "start-step":
+      case "finish":
+      case "abort":
+        return { type: event.type }
+      case "reasoning-start":
+      case "reasoning-end":
+      case "text-start":
+      case "text-end":
+        return {
+          type: event.type,
+          id: value.id as string,
+          ...providerMetadata,
+        }
+      case "reasoning-delta":
+      case "text-delta":
+        return {
+          type: event.type,
+          id: value.id as string,
+          text: value.text as string,
+          ...providerMetadata,
+        }
+      case "tool-input-start":
+        return {
+          type: event.type,
+          id: value.id as string,
+          toolName: value.toolName as string,
+          ...providerMetadata,
+        }
+      case "tool-input-delta":
+        return {
+          type: event.type,
+          id: value.id as string,
+          delta: value.delta as string,
+        }
+      case "tool-input-end":
+        return {
+          type: event.type,
+          id: value.id as string,
+        }
+      case "tool-call":
+        return {
+          type: event.type,
+          toolCallId: value.toolCallId as string,
+          toolName: value.toolName as string,
+          input: value.input,
+          ...providerMetadata,
+        }
+      case "tool-result":
+        return {
+          type: event.type,
+          toolCallId: value.toolCallId as string,
+        }
+      case "tool-error":
+        return {
+          type: event.type,
+          toolCallId: value.toolCallId as string,
+          toolName: value.toolName as string,
+          error: value.error,
+        }
+      case "error":
+        return {
+          type: event.type,
+          error: value.error,
+        }
+      case "finish-step":
+        return {
+          type: event.type,
+          finishReason: value.finishReason as FinishReason,
+          usage: value.usage as LanguageModelUsage,
+          ...providerMetadata,
+        }
+      default:
+        return
+    }
   }
 
   function boundedSerializable(value: unknown, maxBytes: number): unknown {

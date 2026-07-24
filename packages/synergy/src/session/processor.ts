@@ -1421,12 +1421,6 @@ export namespace SessionProcessor {
                     case "abort":
                       streamAborted = true
                       break
-
-                    default:
-                      log.info("unhandled", {
-                        ...value,
-                      })
-                      continue
                   }
                 }
                 ObservabilitySpans.end(llmSpan, {
