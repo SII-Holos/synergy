@@ -3,7 +3,7 @@ import { heapStats } from "bun:jsc"
 export namespace LinuxRuntimeMemory {
   const DEFAULT_INTERVAL_MS = 60_000
   const TOP_TYPE_LIMIT = 12
-  let lastSampleAt = 0
+  let lastAttemptAt: number | undefined
   let last: Snapshot | undefined
   let previousTypeCounts: Map<string, number> | undefined
 
@@ -55,7 +55,8 @@ export namespace LinuxRuntimeMemory {
     if ((input.platform ?? process.platform) !== "linux") return
     const now = input.now ?? Date.now()
     const interval = envNumber(input.env?.SYNERGY_LINUX_HEAP_STATS_INTERVAL_MS) ?? DEFAULT_INTERVAL_MS
-    if (!input.force && last && now - lastSampleAt < interval) return last
+    if (!input.force && lastAttemptAt !== undefined && now - lastAttemptAt < interval) return last
+    lastAttemptAt = now
 
     try {
       const stats = input.readStats?.() ?? (heapStats() as HeapStatsSnapshot)
@@ -88,7 +89,6 @@ export namespace LinuxRuntimeMemory {
         growingObjectTypes: growth.slice(0, TOP_TYPE_LIMIT),
       }
       previousTypeCounts = counts
-      lastSampleAt = now
       return last
     } catch {
       return last
@@ -96,7 +96,7 @@ export namespace LinuxRuntimeMemory {
   }
 
   export function resetForTest() {
-    lastSampleAt = 0
+    lastAttemptAt = undefined
     last = undefined
     previousTypeCounts = undefined
   }

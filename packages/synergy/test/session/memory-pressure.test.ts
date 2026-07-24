@@ -349,6 +349,185 @@ describe("SessionMemoryPressure", () => {
     expect(calls).toEqual([false])
   })
 
+  test("re-evaluates a critical Linux release after an in-flight normal collection", async () => {
+    const calls: boolean[] = []
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let finishFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const normal = SessionMemoryPressure.maybeCollect({
+      phase: "test.normal",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: async (synchronous) => {
+        calls.push(synchronous)
+        releaseFirst()
+        await firstGate
+      },
+      env,
+    })
+    await firstStarted
+
+    const release = {
+      phase: "test.release",
+      platform: "linux" as const,
+      now: () => 22_001,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous: boolean) => {
+        calls.push(synchronous)
+      },
+      env,
+    }
+    SessionMemoryPressure.signalRelease(release)
+    SessionMemoryPressure.signalRelease(release)
+    const flushing = SessionMemoryPressure.flushReleaseSignalsForTest()
+    finishFirst()
+
+    const [, released] = await Promise.all([normal, flushing])
+    expect(released?.releaseCount).toBe(2)
+    expect(released?.decision.action).toBe("linux_release_full")
+    expect(released?.processPressure).toBe("critical")
+    expect(calls).toEqual([false, true])
+  })
+
+  test("rechecks active streams before a queued full collection", async () => {
+    const calls: boolean[] = []
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let finishFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const normal = SessionMemoryPressure.maybeCollect({
+      phase: "test.normal",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: async (synchronous) => {
+        calls.push(synchronous)
+        releaseFirst()
+        await firstGate
+      },
+      env,
+    })
+    await firstStarted
+
+    SessionMemoryPressure.signalRelease({
+      phase: "test.release",
+      platform: "linux",
+      now: () => 22_001,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+    const flushing = SessionMemoryPressure.flushReleaseSignalsForTest()
+    SessionMemoryPressure.streamStarted()
+    finishFirst()
+
+    const [, released] = await Promise.all([normal, flushing])
+    SessionMemoryPressure.streamDisposed()
+    expect(released?.decision.action).toBe("critical")
+    expect(calls).toEqual([false, false])
+  })
+  test("keeps a queued release redecision behind the minimum interval", async () => {
+    const calls: boolean[] = []
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let finishFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const normal = SessionMemoryPressure.maybeCollect({
+      phase: "test.normal",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: async (synchronous) => {
+        calls.push(synchronous)
+        releaseFirst()
+        await firstGate
+      },
+      env,
+    })
+    await firstStarted
+
+    SessionMemoryPressure.signalRelease({
+      phase: "test.release",
+      platform: "linux",
+      now: () => 15_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+    const flushing = SessionMemoryPressure.flushReleaseSignalsForTest()
+    finishFirst()
+
+    const [, released] = await Promise.all([normal, flushing])
+    expect(released?.decision).toMatchObject({ action: "skip", reason: "interval", critical: true })
+    expect(calls).toEqual([false])
+  })
+
+  test("rechecks process ownership before a queued release collection", async () => {
+    const calls: boolean[] = []
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let finishFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const normal = SessionMemoryPressure.maybeCollect({
+      phase: "test.normal",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: async (synchronous) => {
+        calls.push(synchronous)
+        releaseFirst()
+        await firstGate
+      },
+      env,
+    })
+    await firstStarted
+
+    SessionMemoryPressure.signalRelease({
+      phase: "test.release",
+      platform: "linux",
+      now: () => 22_001,
+      snapshot: () => ({
+        ...healthySnapshot,
+        cgroupCurrentBytes: 2_000,
+        cgroupWorkingSetBytes: 2_000,
+      }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+    const flushing = SessionMemoryPressure.flushReleaseSignalsForTest()
+    finishFirst()
+
+    const [, released] = await Promise.all([normal, flushing])
+    expect(released?.decision).toMatchObject({ action: "skip", reason: "service_pressure_external" })
+    expect(released?.processPressure).toBe("normal")
+    expect(released?.servicePressure).toBe("critical")
+    expect(calls).toEqual([false])
+  })
+
   test("treats JavaScript heap and external allocations as critical pressure", () => {
     const thresholds = SessionMemoryPressure.resolveThresholds(env, healthySnapshot)
 

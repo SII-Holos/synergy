@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import { LinuxRuntimeMemory } from "../../src/observability/linux-runtime-memory"
+import { PerformanceCatalog } from "../../src/performance/catalog"
 
 function stats(input: { arrays: number; strings: number; heapSize?: number }) {
   return {
@@ -58,5 +59,53 @@ describe("LinuxRuntimeMemory", () => {
     expect(first?.topObjectTypes.every((item) => item.delta === 0)).toBe(true)
     expect(second?.growingObjectTypes).toContainEqual({ type: "Array", count: 13, delta: 3 })
     expect(second?.growingObjectTypes.some((item) => item.type === "String")).toBe(false)
+  })
+  test("throttles repeated failures by the normal sampling interval", () => {
+    let reads = 0
+    const readStats = () => {
+      reads++
+      throw new Error("heap stats unavailable")
+    }
+
+    expect(LinuxRuntimeMemory.sample({ platform: "linux", now: 1_000, readStats })).toBeUndefined()
+    expect(LinuxRuntimeMemory.sample({ platform: "linux", now: 5_000, readStats })).toBeUndefined()
+    expect(LinuxRuntimeMemory.sample({ platform: "linux", now: 61_001, readStats })).toBeUndefined()
+    expect(reads).toBe(2)
+  })
+
+  test("keeps the last successful snapshot while a failed retry is throttled", () => {
+    let reads = 0
+    const first = LinuxRuntimeMemory.sample({
+      platform: "linux",
+      now: 1_000,
+      readStats: () => {
+        reads++
+        return stats({ arrays: 10, strings: 5 })
+      },
+    })
+    const failed = LinuxRuntimeMemory.sample({
+      platform: "linux",
+      now: 61_001,
+      readStats: () => {
+        reads++
+        throw new Error("heap stats unavailable")
+      },
+    })
+    const throttled = LinuxRuntimeMemory.sample({
+      platform: "linux",
+      now: 62_000,
+      readStats: () => {
+        reads++
+        return stats({ arrays: 20, strings: 5 })
+      },
+    })
+
+    expect(failed).toBe(first)
+    expect(throttled).toBe(first)
+    expect(reads).toBe(2)
+  })
+
+  test("keeps JSC object growth labels low-cardinality", () => {
+    expect(PerformanceCatalog.get("runtime.jsc.object_type.growth")?.labels).toEqual(["platform", "objectType"])
   })
 })
