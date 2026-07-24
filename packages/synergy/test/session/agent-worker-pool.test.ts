@@ -85,6 +85,16 @@ function startTurn(worker: FakeWorker) {
   return start
 }
 
+function releaseTurn(worker: FakeWorker, requestId: string, turns = 1) {
+  worker.receive({
+    type: "released",
+    requestId,
+    turns,
+    collection: "full",
+    memory: workerMemory(),
+  })
+}
+
 const options: AgentWorkerPoolOptions = {
   size: 1,
   maxQueued: 8,
@@ -429,7 +439,7 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("recycles a completed worker before assigning the next queued turn", async () => {
+  test("waits for release before recycling a completed worker or assigning the next turn", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, maxTurns: 1 }, fake.spawn)
     const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -447,6 +457,10 @@ describe("AgentWorkerPool", () => {
       memory: workerMemory(),
     })
     expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers).toHaveLength(1)
+    expect(fake.workers[0].sent.filter((message) => message.type === "run-start")).toHaveLength(1)
+
+    releaseTurn(fake.workers[0], firstRun.requestId)
     expect(fake.workers).toHaveLength(2)
     expect(fake.workers[0].sent.filter((message) => message.type === "run-start")).toHaveLength(1)
 
@@ -460,6 +474,7 @@ describe("AgentWorkerPool", () => {
       memoryBeforeDispose: workerMemory(2, 2),
       memory: workerMemory(),
     })
+    releaseTurn(fake.workers[1], secondRun.requestId)
     const second = await secondPromise
     expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
     await pool.stop()

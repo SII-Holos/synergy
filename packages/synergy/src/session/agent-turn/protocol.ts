@@ -5,7 +5,7 @@ import { Runtime as ScopeRuntime } from "@/scope/types"
 import { Workspace } from "../workspace-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 2
+  export const VERSION = 3
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -204,6 +204,13 @@ export namespace AgentTurnProtocol {
         memory?: WorkerMemory
       }
     | {
+        type: "released"
+        requestId: string
+        turns: number
+        collection: "full" | "none"
+        memory: WorkerMemory
+      }
+    | {
         type: "heartbeat"
         requestId?: string
         turns: number
@@ -291,6 +298,15 @@ export namespace AgentTurnProtocol {
         error: SerializedError,
         memoryBeforeDispose: WorkerMemory.optional(),
         memory: WorkerMemory.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("released"),
+        requestId: z.string(),
+        turns: z.number().int().nonnegative(),
+        collection: z.enum(["full", "none"]),
+        memory: WorkerMemory,
       })
       .strict(),
     z
