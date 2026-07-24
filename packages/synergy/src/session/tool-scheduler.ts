@@ -440,13 +440,17 @@ export namespace ToolScheduler {
     accepting = false
     const current = scheduler
     stopPromise = (async () => {
-      await current?.stop()
-      if (scheduler === current) scheduler = undefined
+      try {
+        await current?.stop()
+      } finally {
+        if (scheduler === current) scheduler = undefined
+      }
     })()
     try {
       await stopPromise
     } finally {
       stopPromise = undefined
+      accepting = true
     }
   }
 }
