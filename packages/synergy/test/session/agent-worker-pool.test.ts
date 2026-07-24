@@ -9,6 +9,7 @@ interface FakeWorker {
   options: SpawnAgentWorkerProcessOptions
   sent: AgentTurnProtocol.HostToWorker[]
   host: AgentWorkerProcess
+  stops: number
   ready(): void
   receive(message: AgentTurnProtocol.WorkerToHost): void
   exit(code?: number | null, signal?: string | null): void
@@ -29,6 +30,7 @@ function fakeWorkers() {
         sent.push(message)
       },
       async stop() {
+        worker.stops += 1
         options.onExit(0, null)
       },
     }
@@ -36,6 +38,7 @@ function fakeWorkers() {
       options,
       sent,
       host,
+      stops: 0,
       ready() {
         options.onMessage({ type: "ready", protocolVersion: 1, pid: 1000 + workers.indexOf(worker) })
       },
@@ -478,6 +481,126 @@ describe("AgentWorkerPool", () => {
         }),
       ),
     ).rejects.toThrow("queue exceeded")
+    await pool.stop()
+  })
+
+  test("grows the worker pool immediately", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    expect(fake.workers).toHaveLength(1)
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    pool.resize(3)
+
+    expect(fake.workers).toHaveLength(3)
+    expect(pool.stats()).toMatchObject({
+      configured: 3,
+      workers: 3,
+      active: 1,
+    })
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("shrinks by releasing idle workers without stopping an active turn", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 3 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    expect(fake.workers).toHaveLength(3)
+    for (const worker of fake.workers) worker.ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    pool.resize(1)
+
+    expect(fake.workers[0].stops).toBe(0)
+    expect(fake.workers[1].stops).toBe(1)
+    expect(fake.workers[2].stops).toBe(1)
+    expect(pool.stats()).toMatchObject({
+      configured: 1,
+      workers: 1,
+      active: 1,
+    })
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("retires excess active workers only after their turns complete", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 3 }, fake.spawn)
+    const streamPromises = Array.from({ length: 3 }, () => inScope(() => pool.run(input(new AbortController().signal))))
+    expect(fake.workers).toHaveLength(3)
+    for (const worker of fake.workers) worker.ready()
+    const runs = fake.workers.map((worker) => startTurn(worker))
+    for (const [index, worker] of fake.workers.entries()) {
+      worker.receive({ type: "started", requestId: runs[index].requestId })
+    }
+    const streams = await Promise.all(streamPromises)
+
+    pool.resize(1)
+
+    expect(fake.workers.map((worker) => worker.stops)).toEqual([0, 0, 0])
+    expect(pool.stats()).toMatchObject({
+      configured: 1,
+      workers: 3,
+      active: 3,
+    })
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: runs[0].requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    expect((await streams[0].fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers[0].stops).toBe(1)
+    expect(pool.stats()).toMatchObject({
+      configured: 1,
+      workers: 2,
+      active: 2,
+    })
+
+    fake.workers[1].receive({
+      type: "complete",
+      requestId: runs[1].requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    expect((await streams[1].fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers[1].stops).toBe(1)
+    expect(pool.stats()).toMatchObject({
+      configured: 1,
+      workers: 1,
+      active: 1,
+    })
+
+    fake.workers[2].receive({
+      type: "complete",
+      requestId: runs[2].requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    expect((await streams[2].fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers[2].stops).toBe(0)
     await pool.stop()
   })
 

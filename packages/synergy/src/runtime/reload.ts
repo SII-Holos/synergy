@@ -12,6 +12,7 @@ import { Log } from "../util/log"
 import { isPathContained } from "../util/path-contain"
 import type { Skill } from "../skill/skill"
 import { RuntimeReloadPath } from "./reload-path"
+import { AgentTurn } from "../session/agent-turn"
 
 export namespace RuntimeReload {
   export const Target = RuntimeSchema.ReloadTarget
@@ -289,6 +290,14 @@ export namespace RuntimeReload {
         }
         if (resolvedScope === "global" && result.changedFields.includes("cortex")) {
           CortexConcurrency.configure(result.config.cortex?.maxConcurrentTasks)
+        }
+        if (
+          resolvedScope === "global" &&
+          result.changedFields.includes("execution") &&
+          result.oldConfig?.execution?.agentWorkers !== result.config.execution?.agentWorkers
+        ) {
+          AgentTurn.resize(result.config.execution?.agentWorkers)
+          ctx.liveApplied.add("execution.agentWorkers")
         }
         if (resolvedScope === "global" && result.changedFields.includes("github")) {
           const [{ GitHubPollRuntime }, { GitHubRuntime }] = await Promise.all([

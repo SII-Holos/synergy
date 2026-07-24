@@ -83,6 +83,7 @@ interface PoolWorker {
   ready: boolean
   startupFailureEligible: boolean
   stopping: boolean
+  retireAfterTask: boolean
   task?: PoolTask
   turns: number
   pid?: number
@@ -165,6 +166,9 @@ export class AgentWorkerPool {
   private startupRetryGeneration = 0
   private startupCircuitError: Error | undefined
   private startupRetryPending = false
+  private targetSize: number
+  private rebalancing = false
+  private rebalancePending = false
 
   constructor(
     private readonly options: AgentWorkerPoolOptions,
@@ -178,6 +182,7 @@ export class AgentWorkerPool {
     if (!Number.isInteger(options.maxQueued) || options.maxQueued < 0) {
       throw new Error("Agent worker pool maxQueued must be a non-negative integer")
     }
+    this.targetSize = options.size
     this.healthTimer = setInterval(() => this.sweepHealth(), Math.min(5_000, options.heartbeatTimeoutMs))
     this.healthTimer.unref()
   }
@@ -264,6 +269,14 @@ export class AgentWorkerPool {
     })
   }
 
+  resize(size: number): void {
+    if (!Number.isInteger(size) || size <= 0) {
+      throw new Error("Agent worker pool size must be a positive integer")
+    }
+    this.targetSize = size
+    this.rebalanceCapacity()
+  }
+
   stats() {
     let active = 0
     let ready = 0
@@ -272,7 +285,7 @@ export class AgentWorkerPool {
       if (worker.task) active++
     }
     return {
-      configured: this.options.size,
+      configured: this.targetSize,
       maxQueued: this.options.maxQueued,
       maxQueuedBytes: this.options.maxQueuedBytes,
       workers: this.workers.size,
@@ -310,8 +323,44 @@ export class AgentWorkerPool {
 
   private ensureWorkers(): void {
     if (this.startupRetryPending) return
-    while (!this.stopping && !this.startupCircuitError && this.workers.size < this.options.size) {
+    while (!this.stopping && !this.startupCircuitError && this.workers.size < this.targetSize) {
       if (!this.spawnWorker()) return
+    }
+  }
+
+  private rebalanceCapacity(): void {
+    if (this.stopping) return
+    if (this.rebalancing) {
+      this.rebalancePending = true
+      return
+    }
+    this.rebalancing = true
+    try {
+      do {
+        this.rebalancePending = false
+        for (const worker of this.workers.values()) worker.retireAfterTask = false
+
+        let excess = Math.max(0, this.workers.size - this.targetSize)
+        for (const worker of [...this.workers.values()]) {
+          if (excess === 0) break
+          if (worker.task) continue
+          this.recycle(worker, "pool_resize")
+          excess--
+        }
+
+        excess = Math.max(0, this.workers.size - this.targetSize)
+        for (const worker of this.workers.values()) {
+          if (excess === 0) break
+          if (!worker.task) continue
+          worker.retireAfterTask = true
+          excess--
+        }
+
+        this.ensureWorkers()
+        this.drain()
+      } while (this.rebalancePending)
+    } finally {
+      this.rebalancing = false
     }
   }
 
@@ -329,6 +378,7 @@ export class AgentWorkerPool {
         ready: false,
         startupFailureEligible: true,
         stopping: false,
+        retireAfterTask: false,
         turns: 0,
         lastEventSequence: 0,
         lastHeartbeatAt: Date.now(),
@@ -470,7 +520,9 @@ export class AgentWorkerPool {
       task.resolveUsage(undefined)
       if (task.started) task.stream.fail(error)
       else task.reject(error)
-      this.finishTask(worker, task, message.type)
+      const retire = worker.retireAfterTask
+      this.finishTask(worker, task, message.type, !retire)
+      if (retire) this.recycle(worker, "pool_resize")
       return
     }
     if (message.type === "complete") {
@@ -487,7 +539,8 @@ export class AgentWorkerPool {
         message.turns >= this.options.maxTurns ||
         message.memory.rssBytes >= this.options.maxRssBytes ||
         message.memory.heapUsedBytes >= this.options.maxHeapBytes
-      this.finishTask(worker, task, message.type, !recycle)
+      const retire = worker.retireAfterTask
+      this.finishTask(worker, task, message.type, !recycle && !retire)
       if (recycle) {
         const reason =
           message.turns >= this.options.maxTurns
@@ -496,7 +549,7 @@ export class AgentWorkerPool {
               ? "rss"
               : "heap"
         this.recycle(worker, reason)
-      }
+      } else if (retire) this.recycle(worker, "pool_resize")
     }
   }
 
@@ -529,8 +582,7 @@ export class AgentWorkerPool {
       this.handleStartupFailure(error)
       return
     }
-    this.ensureWorkers()
-    this.drain()
+    this.rebalanceCapacity()
   }
 
   private handleStartupFailure(cause: unknown): void {
@@ -608,10 +660,11 @@ export class AgentWorkerPool {
     if (drain) this.drain()
   }
 
-  private recycle(worker: PoolWorker, reason: "max_turns" | "rss" | "heap"): void {
+  private recycle(worker: PoolWorker, reason: "max_turns" | "rss" | "heap" | "pool_resize"): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
     worker.ready = false
+    worker.startupFailureEligible = false
     this.workers.delete(worker.id)
     ObservabilityMetrics.record({
       name: "agent.worker.recycle",
