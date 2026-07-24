@@ -180,6 +180,7 @@ export namespace ChannelHost {
           text: string
           agent?: string
           retryOfTaskID?: string
+          boundSessionID?: string
           systemGuidance?: { deliveryKey: string; text: string }
           beforeWake?: (result: { sessionID: string; deliveryCreated: boolean }) => void | Promise<void>
           prepare?: (result: {
@@ -203,6 +204,7 @@ export namespace ChannelHost {
             interaction: SessionInteraction.unattended(`channel:${channelType}`),
             title: input.title,
             agentOverride: input.agent,
+            boundSessionID: input.boundSessionID,
           })
 
           const result = await SessionInbox.deliverUnique({

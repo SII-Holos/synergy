@@ -58,6 +58,11 @@ export namespace Session {
     }),
   )
 
+  export const EndpointSessionArchivedError = NamedError.create(
+    "SessionEndpointSessionArchivedError",
+    z.object({ sessionID: z.string() }),
+  )
+
   const log = Log.create({ service: "session" })
   const { asScopeID, asSessionID, asMessageID, asPartID } = Identifier
 
@@ -1200,11 +1205,23 @@ export namespace Session {
       title?: string
       agentOverride?: Info["agentOverride"]
       controlProfile?: Info["controlProfile"]
+      boundSessionID?: string
     },
   ) {
     const lock = await Lock.write(endpointLockKey(endpoint))
     try {
-      const existing = await SessionManager.getSession(endpoint)
+      let bound: Info | undefined
+      if (options.boundSessionID) {
+        bound = await SessionManager.requireSession(options.boundSessionID)
+        assertEndpointScope(bound, options.scope)
+        if (!bound.endpoint || SessionEndpoint.toKey(bound.endpoint) !== SessionEndpoint.toKey(endpoint)) {
+          throw new Storage.NotFoundError({
+            message: `Session ${options.boundSessionID} is not bound to the requested endpoint`,
+          })
+        }
+        if (bound.time.archived) throw new EndpointSessionArchivedError({ sessionID: bound.id })
+      }
+      const existing = bound ?? (await SessionManager.getSession(endpoint))
       if (existing) {
         assertEndpointScope(existing, options.scope)
         const existingChatName = existing.endpoint?.kind === "channel" ? existing.endpoint.channel?.chatName : undefined

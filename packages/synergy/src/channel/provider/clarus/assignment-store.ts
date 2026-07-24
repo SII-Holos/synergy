@@ -11,6 +11,7 @@ const Assignment = z.object({
   taskID: z.string(),
   runID: z.string(),
   subtaskID: z.string(),
+  attempt: z.number().int().positive().default(1),
   sessionID: z.string(),
   title: z.string(),
   status: z.enum(["assigned", "running", "completed", "cancelled", "reconciliation_error"]),
@@ -241,13 +242,18 @@ export namespace ClarusAssignmentStore {
     }
 
     const now = Date.now()
-    const reassigned = existing !== undefined && existing.runID !== input.event.runID
+    const reassigned =
+      existing !== undefined &&
+      (existing.runID !== input.event.runID ||
+        existing.subtaskID !== input.event.subtaskID ||
+        existing.attempt !== input.event.attempt)
     const assignment = Assignment.parse({
       accountId: input.accountId,
       projectID: input.event.projectID,
       taskID: input.event.taskID,
       runID: input.event.runID,
       subtaskID: input.event.subtaskID,
+      attempt: input.event.attempt,
       sessionID: input.sessionID,
       title: input.title,
       status: existing && !reassigned ? existing.status : "running",

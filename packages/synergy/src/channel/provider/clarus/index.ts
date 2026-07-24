@@ -5,7 +5,11 @@ import { HolosAuth } from "@/holos/auth"
 import { HolosRuntime } from "@/holos/runtime"
 import { Log } from "@/util/log"
 import type { ClarusAgentTunnelPort, ClarusObservedEvent, RuntimeTaskAssignedEvent } from "./agent-tunnel-port"
-import { ClarusAssignmentRuntime } from "./assignment-runtime"
+import {
+  ClarusAssignmentExpiredError,
+  ClarusAssignmentRuntime,
+  ClarusAssignmentSessionArchivedError,
+} from "./assignment-runtime"
 import { ClarusAssignmentStore, type ClarusAssignment } from "./assignment-store"
 import { ClarusDeadlineAgenda } from "./deadline-agenda"
 import { ClarusProjectClient } from "./project-client"
@@ -15,6 +19,27 @@ import { createClarusAgentTunnelAdapter } from "./tunnel-adapter"
 import { createClarusCliRunner } from "./cli-runner"
 const PROJECT_REFRESH_TIMEOUT_MS = 60_000
 const PROJECT_SUBSCRIBE_TIMEOUT_MS = 15_000
+const INVALID_EVENT_MAX_ISSUES = 20
+const INVALID_EVENT_MAX_TEXT_LENGTH = 500
+
+function boundDiagnosticText(value: string): string {
+  return value.length <= INVALID_EVENT_MAX_TEXT_LENGTH ? value : `${value.slice(0, INVALID_EVENT_MAX_TEXT_LENGTH - 1)}…`
+}
+
+function invalidEventDiagnostic(event: Extract<ClarusObservedEvent, { kind: "invalid" }>) {
+  return {
+    level: "warn",
+    message: "Invalid Clarus event",
+    data: {
+      eventType: boundDiagnosticText(event.sourceType),
+      issues: event.issues.slice(0, INVALID_EVENT_MAX_ISSUES).map((issue) => ({
+        path: boundDiagnosticText(issue.path.map(String).join(".")),
+        message: boundDiagnosticText(issue.message),
+      })),
+      ...(event.issues.length > INVALID_EVENT_MAX_ISSUES ? { issuesTruncated: true } : {}),
+    },
+  }
+}
 
 type ClarusHolosDependencies = {
   auth: Pick<typeof HolosAuth, "getCredentialOrThrow" | "getStoredCredential">
@@ -356,7 +381,12 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
   }
 
   private async handleEvent(connection: AccountConnection, event: ClarusObservedEvent): Promise<void> {
-    if (connection.signal.aborted || event.agentID !== connection.accountId || event.kind !== "known") return
+    if (connection.signal.aborted || event.agentID !== connection.accountId) return
+    if (event.kind === "invalid") {
+      await connection.host.diagnostics.record(invalidEventDiagnostic(event))
+      return
+    }
+    if (event.kind !== "known") return
     if (event.requestID && connection.outboundRequests.has(event.requestID)) return
     switch (event.type) {
       case "projectSubscribed":
@@ -449,12 +479,40 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
       connection.config.apiUrl ??
       (await import("@/config/config").then(({ Config }) => Config.current())).holos?.apiUrl ??
       "https://api.holosai.io"
-    await ClarusAssignmentRuntime.dispatch({
-      host: connection.host,
-      accountId: connection.accountId,
-      event,
-      agentOverride: connection.config.agent || undefined,
-      cliRunner: createClarusCliRunner({ apiUrl, credential }),
-    })
+    try {
+      await ClarusAssignmentRuntime.dispatch({
+        host: connection.host,
+        accountId: connection.accountId,
+        event,
+        agentOverride: connection.config.agent || undefined,
+        cliRunner: createClarusCliRunner({ apiUrl, credential }),
+      })
+    } catch (error) {
+      if (ClarusAssignmentExpiredError.isInstance(error)) {
+        await connection.host.diagnostics.record({
+          level: "info",
+          message: "Skipped expired Clarus assignment",
+          data: {
+            projectHash: hash(event.projectID),
+            taskHash: hash(event.taskID),
+            deadlineAt: error.data.deadlineAt,
+          },
+        })
+        return
+      }
+      if (ClarusAssignmentSessionArchivedError.isInstance(error)) {
+        await connection.host.diagnostics.record({
+          level: "warn",
+          message: "Clarus assignment blocked by archived Session",
+          data: {
+            projectHash: hash(event.projectID),
+            taskHash: hash(event.taskID),
+            sessionID: error.data.sessionID,
+          },
+        })
+        return
+      }
+      throw error
+    }
   }
 }

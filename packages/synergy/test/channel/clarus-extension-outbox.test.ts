@@ -4,6 +4,7 @@ import { ChannelHost } from "../../src/channel/host"
 import { ClarusAssignmentRuntime } from "../../src/channel/provider/clarus/assignment-runtime"
 import { ClarusAssignmentStore } from "../../src/channel/provider/clarus/assignment-store"
 import { ClarusDeadlineAgenda } from "../../src/channel/provider/clarus/deadline-agenda"
+import { ClarusExtendPayload } from "../../src/channel/provider/clarus/extension-outbox"
 import type { RuntimeTaskAssignedEvent } from "../../src/channel/provider/clarus/agent-tunnel-port"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
@@ -19,7 +20,7 @@ import { tmpdir } from "../fixture/fixture"
 
 // ── Expected payload schema ─────────────────────────────────────────
 // Mirrors agent-tunnel-port's ExtendTaskInput with clean naming:
-// extend_seconds: required int in [60, 86400]
+// extend_seconds: required int in [60, 3600]
 // progress: optional concise string, max 500 chars
 // payload: optional bounded record
 
@@ -109,6 +110,14 @@ function hash(value: string): string {
 // =============================================================================
 // 1. Extension payload persistence and outbox dispositions
 // =============================================================================
+
+describe("Clarus extension payload validation", () => {
+  test("extend_seconds is bounded to the upstream [60, 3600] contract", () => {
+    expect(ClarusExtendPayload.safeParse({ extend_seconds: 60 }).success).toBe(true)
+    expect(ClarusExtendPayload.safeParse({ extend_seconds: 3600 }).success).toBe(true)
+    expect(ClarusExtendPayload.safeParse({ extend_seconds: 3601 }).success).toBe(false)
+  })
+})
 
 describe("Clarus extension outbox disposition", () => {
   test("extension payload persists before send", async () => {

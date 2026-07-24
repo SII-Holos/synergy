@@ -64,8 +64,8 @@ const RuntimeTaskAssignedPayload = z
     subtask_id: z.string(),
     attempt: z.number(),
     deadline_at: z.string().nullable(),
-    attempt_mode: z.string().optional(),
-    retry_of_task_id: z.string().optional(),
+    attempt_mode: z.string().nullable().optional(),
+    retry_of_task_id: z.string().nullable().optional(),
   })
   .passthrough()
 
@@ -79,8 +79,8 @@ const ClarusTaskWire = z
     attempt: z.number(),
     assigned_agent_id: z.string().optional(),
     resolution_id: z.string().optional(),
-    attempt_mode: z.string().optional(),
-    retry_of_task_id: z.string().optional(),
+    attempt_mode: z.string().nullable().optional(),
+    retry_of_task_id: z.string().nullable().optional(),
     superseded_at: z.string().nullable().optional(),
     status: z.string(),
     input: z.unknown().optional(),
@@ -230,8 +230,8 @@ function toSemanticDTO(
         subtaskID: Bounds.id(p.subtask_id),
         attempt: p.attempt,
         deadlineAt: p.deadline_at,
-        attemptMode: p.attempt_mode === undefined ? undefined : Bounds.id(p.attempt_mode),
-        retryOfTaskID: p.retry_of_task_id === undefined ? undefined : Bounds.id(p.retry_of_task_id),
+        attemptMode: p.attempt_mode == null ? undefined : Bounds.id(p.attempt_mode),
+        retryOfTaskID: p.retry_of_task_id == null ? undefined : Bounds.id(p.retry_of_task_id),
         goal,
         instructions,
         input,
