@@ -125,7 +125,7 @@ export namespace ExperienceEncoder {
     const rawIntent = await generateIntent(ctx, history, userText)
     const result = Intent.sanitizeWithReason(rawIntent, userText)
     const intent = result.value
-    const usedFallback = intent === userText
+    const usedFallback = result.reason !== "ok"
 
     log.info("reencode intent", {
       sessionID,
@@ -167,7 +167,7 @@ export namespace ExperienceEncoder {
     const rawScript = await generateScript(ctx, content)
     const result = Script.sanitizeWithReason(rawScript, raw)
     const script = result.value
-    const usedFallback = script === raw
+    const usedFallback = result.reason !== "ok"
 
     log.info("reencode script", {
       sessionID,
@@ -341,7 +341,7 @@ export namespace ExperienceEncoder {
             sourceModelID: sourceAssistant?.info.role === "assistant" ? sourceAssistant.info.modelID : undefined,
             intentEmbedding,
             scriptEmbedding,
-            content: { script, raw },
+            content: { userInput: userText, script, raw },
             metadata: { changes: digest.changes, channel: digest.channel },
             retrievedExperienceIDs: retrievedIDs,
           })
@@ -385,7 +385,7 @@ export namespace ExperienceEncoder {
         sourceModelID: sourceAssistant?.info.role === "assistant" ? sourceAssistant.info.modelID : undefined,
         intentEmbedding,
         scriptEmbedding,
-        content: { script, raw },
+        content: { userInput: userText, script, raw },
         metadata: { changes: digest.changes, channel: digest.channel },
         retrievedExperienceIDs: retrievedIDs,
         createdAt: userInfo.time.created,

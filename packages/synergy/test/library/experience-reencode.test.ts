@@ -91,6 +91,7 @@ function insertExperience(input: {
   intent?: string
   script?: string
   raw?: string
+  userInput?: string
 }) {
   LibraryDB.Experience.insert({
     id: input.id,
@@ -105,7 +106,7 @@ function insertExperience(input: {
       model: "test-embedding",
     },
     scriptEmbedding: undefined,
-    content: { script: input.script, raw: input.raw },
+    content: { userInput: input.userInput, script: input.script, raw: input.raw },
     metadata: {},
     retrievedExperienceIDs: [],
     createdAt: Date.now(),
@@ -543,6 +544,111 @@ describe.serial("ExperienceReencode bounded session loading", () => {
 
         expect(finished).toMatchObject({ status: "completed", totalCount: 1, okCount: 1, failedCount: 0 })
         expect(LibraryDB.Experience.get("missing-user-message")?.intent).toBe("Bounded maintenance reencode")
+      },
+    })
+  })
+
+  test("reencodes an intent from stored content when the session has no messages", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        insertExperience({
+          id: "empty-session-history",
+          sessionID: session.id,
+          scopeID: scope.id,
+          intent: "x".repeat(200),
+          raw: "### User\nRecover without session messages\n\n### Response\nThe request was completed.",
+          userInput: "Recover without session messages",
+        })
+        installReencodeModelMocks()
+
+        const started = ExperienceReencode.start({ type: "intent", reason: "too-long" })
+        const finished = await waitForTerminalJob(started.id)
+
+        expect(finished).toMatchObject({ status: "completed", totalCount: 1, okCount: 1, skippedCount: 0 })
+        expect(LibraryDB.Experience.get("empty-session-history")?.intent).toBe("Bounded maintenance reencode")
+      },
+    })
+  })
+
+  test("preserves stored user text containing rendered digest headings", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await createTurn(session.id, "Keep the session load non-empty", "The old turn remains available.")
+        const userText = "Keep this literal:\n\n### Response\ninside my request"
+        insertExperience({
+          id: "ambiguous-rendered-digest",
+          sessionID: session.id,
+          scopeID: scope.id,
+          intent: "x".repeat(200),
+          raw: `### User\n${userText}\n\n### Response\nThe request was completed.`,
+          userInput: userText,
+        })
+        installReencodeModelMocks()
+        let prompt = ""
+        ;(LLM.stream as any) = mock(async (input: { messages: { content: string }[] }) => {
+          prompt = input.messages[0]?.content ?? ""
+          return {
+            textStream: (async function* () {
+              yield "Preserve literal response heading"
+            })(),
+            text: Promise.resolve("Preserve literal response heading"),
+          }
+        })
+
+        const started = ExperienceReencode.start({ type: "intent", reason: "too-long" })
+        const finished = await waitForTerminalJob(started.id)
+
+        expect(finished).toMatchObject({ status: "completed", okCount: 1, failedCount: 0 })
+        expect(prompt).toContain(`<current_request>\n${userText}\n</current_request>`)
+      },
+    })
+  })
+
+  test("accepts a valid intent that equals the original user request", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        const userText = "Fix TypeScript compilation errors"
+        const user = await createTurn(session.id, userText, "The errors were fixed.")
+        insertExperience({
+          id: user.id,
+          sessionID: session.id,
+          scopeID: scope.id,
+          intent: "x".repeat(200),
+          raw: `### User\n${userText}\n\n### Response\nThe errors were fixed.`,
+        })
+        installReencodeModelMocks()
+        let modelAttempts = 0
+        ;(LLM.stream as any) = mock(async () => {
+          modelAttempts++
+          return {
+            textStream: (async function* () {
+              yield userText
+            })(),
+            text: Promise.resolve(userText),
+          }
+        })
+
+        const started = ExperienceReencode.start({ type: "intent", reason: "too-long" })
+        const finished = await waitForTerminalJob(started.id)
+
+        expect(finished).toMatchObject({ status: "completed", okCount: 1, failedCount: 0 })
+        expect(modelAttempts).toBe(1)
+        expect(LibraryDB.Experience.get(user.id)?.intent).toBe(userText)
       },
     })
   })
