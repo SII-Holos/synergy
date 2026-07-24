@@ -1687,12 +1687,7 @@ export namespace ToolResolver {
         const key = entry.id
         const item = entry.tool
         const exposure = ToolExposure.mcpExposure(mcpEntries.length, entry.serverName)
-        const schema = {
-          ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
-          type: "object",
-          properties: ((item.inputSchema as JSONSchema7 | undefined)?.properties ?? {}) as JSONSchema7["properties"],
-          additionalProperties: false,
-        } satisfies JSONSchema7
+        const schema = entry.inputSchema
         result.push({
           id: key,
           exposure,
