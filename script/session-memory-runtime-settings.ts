@@ -1,6 +1,6 @@
 export type SessionMemoryBenchmarkScenario = "trajectory" | "parallel" | "sequential"
 
-export const SESSION_MEMORY_WORKLOAD_CONTRACT_VERSION = 2
+export const SESSION_MEMORY_WORKLOAD_CONTRACT_VERSION = 3
 
 const RUNTIME_ENV_ALLOWLIST = [
   "PATH",
@@ -35,6 +35,8 @@ export function sessionMemoryWorkerPoolSettings(input: {
     agentWorkerMinIdle: 0,
     agentWorkerIdleTimeoutMs: 60_000,
     agentWorkerMaxTurns: 64,
+    agentWorkerMaxRssMb: 3_072,
+    agentWorkerMaxHeapMb: 2_048,
     agentWorkerIdleBaselineRecycle: true,
     agentWorkerIdleBaselineRssGrowthMb: 256,
     agentWorkerIdleBaselineExternalGrowthMb: 128,
