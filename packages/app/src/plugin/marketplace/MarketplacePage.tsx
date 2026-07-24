@@ -19,6 +19,7 @@ import type { InstalledPlugin } from "./types"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
 import { PluginDetailDialog, type RegistrySource } from "./PluginDetailDialog"
+import { loadRegistryResource } from "./registry-resource"
 import {
   installationLabel,
   installedPluginStatusView,
@@ -60,14 +61,15 @@ export function MarketplacePage(props: MarketplacePageProps) {
 
   const [searchResults, { refetch: refetchSearchResults }] = createResource(
     () => (view() === "discover" ? { q: debouncedQuery(), source: catalogSource() } : undefined),
-    async (input) => {
-      const res = await globalSDK.client.registry.plugins.search({
-        q: input.q || undefined,
-        limit: 50,
-        source: input.source,
-      })
-      return (res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []
-    },
+    (input) =>
+      loadRegistryResource(async () => {
+        const res = await globalSDK.client.registry.plugins.search({
+          q: input.q || undefined,
+          limit: 50,
+          source: input.source,
+        })
+        return (res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []
+      }, []),
   )
 
   const [installedPlugins, { refetch: refetchInstalledPlugins }] = createResource(
@@ -95,7 +97,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
   })
 
   const resultCount = createMemo(() =>
-    view() === "discover" ? (searchResults()?.length ?? 0) : installedList().length,
+    view() === "discover" ? (searchResults()?.data.length ?? 0) : installedList().length,
   )
   const currentLabel = createMemo(
     () => localizedNavItems().find((item) => item.id === view())?.label ?? _(pluginMarketplace.navDiscover),
@@ -238,7 +240,22 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 <SkeletonRows />
               </Show>
 
-              <Show when={view() === "discover" && !searchResults.loading && (searchResults()?.length ?? 0) === 0}>
+              <Show when={view() === "discover" && !searchResults.loading && searchResults()?.unavailable}>
+                <EmptyState
+                  title={_(pluginMarketplace.registryUnavailableTitle)}
+                  description={_(pluginMarketplace.registryUnavailableDescription)}
+                  onRetry={() => void refetchSearchResults()}
+                />
+              </Show>
+
+              <Show
+                when={
+                  view() === "discover" &&
+                  !searchResults.loading &&
+                  !searchResults()?.unavailable &&
+                  (searchResults()?.data.length ?? 0) === 0
+                }
+              >
                 <EmptyState
                   title={
                     debouncedQuery()
@@ -308,9 +325,9 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 />
               </Show>
 
-              <Show when={view() === "discover" && (searchResults()?.length ?? 0) > 0}>
+              <Show when={view() === "discover" && (searchResults()?.data.length ?? 0) > 0}>
                 <div class="plugin-marketplace-list">
-                  <For each={searchResults()}>
+                  <For each={searchResults()?.data}>
                     {(plugin) => {
                       const installed = () =>
                         installedVersionById().get(plugin.id) ??
@@ -538,14 +555,26 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
   )
 }
 
-function EmptyState(props: { title: string; description: string }) {
+function EmptyState(props: { title: string; description: string; onRetry?: () => void }) {
+  const { _ } = useLingui()
   return (
     <div class="plugin-marketplace-empty">
       <span class="plugin-marketplace-empty-icon">
-        <Icon name={getSemanticIcon("plugins.main")} size="large" class="text-icon-weak-base" />
+        <Icon
+          name={getSemanticIcon(props.onRetry ? "state.warning" : "plugins.main")}
+          size="large"
+          class="text-icon-weak-base"
+        />
       </span>
       <span class="plugin-marketplace-empty-title">{props.title}</span>
       <span class="plugin-marketplace-empty-description">{props.description}</span>
+      <Show when={props.onRetry}>
+        {(onRetry) => (
+          <button type="button" class="plugin-marketplace-retry" onClick={onRetry()}>
+            {_(pluginMarketplace.retry)}
+          </button>
+        )}
+      </Show>
     </div>
   )
 }

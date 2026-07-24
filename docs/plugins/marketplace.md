@@ -20,6 +20,8 @@ The default official index is the reviewed `SII-Holos/synergy-plugins` GitHub re
 
 Registry identity, generated manifest ID, approval ID, lockfile key, signature plugin ID, and UI/runtime namespace must match.
 
+When an official registry read cannot reach its upstream source and no cached data can satisfy the request, the server returns a structured `503 Service Unavailable` response. The Marketplace keeps installed or cached plugin details usable when possible, shows a registry-unavailable state instead of a generic application error, and offers an explicit retry action.
+
 ## Publish Flow
 
 ```bash

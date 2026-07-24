@@ -490,6 +490,52 @@ describe("plugin registry routes v2", () => {
     }
   })
 
+  test("official registry reads return 503 when the registry is unavailable", async () => {
+    const registryUrl = "http://127.0.0.1:1/registry.json"
+    const previousDomain = await Config.domainGet("plugins")
+    cleanRegistry()
+
+    try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          pluginMarketplace: {
+            ...PLUGIN_MARKETPLACE_DEFAULTS,
+            enabled: true,
+            registryUrl,
+            offlineCache: false,
+            requestTimeoutMs: 50,
+          },
+        },
+        { mode: "replace-domain" },
+      )
+      await Config.reload("global")
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const app = Server.App()
+          const paths = [
+            "/api/registry/search?source=official",
+            "/api/registry/unavailable-plugin?source=official",
+            "/api/registry/unavailable-plugin/versions?source=official",
+            "/api/registry/unavailable-plugin/versions/1.0.0?source=official",
+          ]
+
+          for (const route of paths) {
+            const res = await app.request(route)
+            expect(res.status).toBe(503)
+            expect(await res.json()).toEqual({ message: "Official plugin registry temporarily unavailable" })
+          }
+        },
+      })
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Config.reload("global")
+    }
+  })
+
   test("search returns empty result without v2 fields for empty registry", async () => {
     await using tmp = await tmpdir({ git: true })
     cleanRegistry()
