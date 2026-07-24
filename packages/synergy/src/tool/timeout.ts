@@ -18,6 +18,12 @@ export namespace ToolTimeout {
     source: Source
   }
 
+  export interface ExecutionDeadline {
+    signal: AbortSignal
+    run<T>(operation: Promise<T>): Promise<T>
+    dispose(): void
+  }
+
   export const DEFAULTS = {
     globMs: 15_000,
     listMs: 15_000,
@@ -51,6 +57,43 @@ export namespace ToolTimeout {
       ...(operationTimeoutMs !== undefined ? { operationTimeoutMs } : {}),
       displayMs: operationTimeoutMs ?? input.toolTimeoutMs,
       source: operationTimeoutMs !== undefined ? (input.source ?? "wait") : "tool_timeout",
+    }
+  }
+
+  export function executionDeadline(input: {
+    signal: AbortSignal
+    timeoutMs: number
+    label?: string
+  }): ExecutionDeadline {
+    const timeout = new AbortController()
+    const signal = AbortSignal.any([input.signal, timeout.signal])
+    const timer = setTimeout(() => {
+      timeout.abort(
+        new DOMException(`${input.label ?? "Tool execution"} timed out after ${input.timeoutMs}ms.`, "TimeoutError"),
+      )
+    }, input.timeoutMs)
+    if (typeof timer === "object" && "unref" in timer) timer.unref()
+
+    let disposed = false
+    return {
+      signal,
+      run<T>(operation: Promise<T>) {
+        if (signal.aborted) {
+          return Promise.reject(signal.reason ?? new DOMException("Tool execution aborted.", "AbortError"))
+        }
+        return new Promise<T>((resolve, reject) => {
+          const onAbort = () => {
+            reject(signal.reason ?? new DOMException("Tool execution aborted.", "AbortError"))
+          }
+          signal.addEventListener("abort", onAbort, { once: true })
+          operation.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort))
+        })
+      },
+      dispose() {
+        if (disposed) return
+        disposed = true
+        clearTimeout(timer)
+      },
     }
   }
 
