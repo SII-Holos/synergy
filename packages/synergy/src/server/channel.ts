@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import * as ChannelTypes from "../channel/types"
+import { Channel } from "../channel"
 import { Config } from "../config/config"
 import { registerProviders } from "../channel/provider"
 import { Session } from "../session"
@@ -19,6 +20,10 @@ const ChannelStatusResponse = {
 }
 
 const channelKeyParam = validator("param", z.object({ channelType: z.string(), accountId: z.string() }))
+
+function diagnosticFilenamePart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "unknown"
+}
 
 async function reloadGlobalChannelConfig() {
   await Config.reload("global")
@@ -177,5 +182,102 @@ export const ChannelRoute = new Hono()
       const { AppChannel } = await import("../channel/app")
       await AppChannel.reset()
       return c.json({ success: true as const })
+    },
+  )
+  .post(
+    "/:channelType/:accountId/projects/refresh",
+    describeRoute({
+      summary: "Refresh channel account projects",
+      description: "Discover and reconcile projects for one channel account, then return when this refresh completes.",
+      operationId: "channel.refreshProjects",
+      responses: {
+        200: {
+          description: "Refresh completed",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ completed: z.literal(true) })),
+            },
+          },
+        },
+        500: {
+          description: "Refresh failed",
+          content: {
+            "application/json": {
+              schema: resolver(Channel.RefreshError.Schema),
+            },
+          },
+        },
+      },
+    }),
+    channelKeyParam,
+    async (c) => {
+      const { channelType, accountId } = c.req.valid("param")
+      await Channel.refreshProjects(channelType, accountId)
+      return c.json({ completed: true as const })
+    },
+  )
+  .get(
+    "/:channelType/:accountId/diagnostics.ndjson",
+    describeRoute({
+      summary: "Download channel account diagnostics",
+      description: "Stream the retained diagnostics window as bounded NDJSON. Each line is a valid JSON record.",
+      operationId: "channel.downloadDiagnostics",
+      responses: {
+        200: {
+          description: "NDJSON diagnostic stream",
+          content: {
+            "application/x-ndjson": {
+              schema: resolver(
+                z.array(
+                  z.object({
+                    timestamp: z.number(),
+                    level: z.string(),
+                    message: z.string(),
+                    data: z.record(z.string(), z.unknown()).optional(),
+                  }),
+                ),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    channelKeyParam,
+    async (c) => {
+      const { channelType, accountId } = c.req.valid("param")
+      const { Channel } = await import("../channel")
+      // Validate account/provider exists before attempting to read diagnostics
+      const cfg = await Config.current()
+      const channelConfig = cfg.channel?.[channelType]
+      if (!channelConfig) return c.json({ error: "not found" }, 404)
+      const accounts = "accounts" in channelConfig ? channelConfig.accounts : {}
+      if (!(accountId in accounts)) return c.json({ error: "not found" }, 404)
+      const provider = Channel.getProvider(channelType)
+      if (!provider) return c.json({ error: "not found" }, 404)
+
+      const filename = `channel-${diagnosticFilenamePart(channelType)}-${diagnosticFilenamePart(accountId)}-diagnostics.ndjson`
+      const records = Channel.streamDiagnostics(channelType, accountId)
+      const encoder = new TextEncoder()
+      const body = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const next = await records.next()
+            if (next.done) {
+              controller.close()
+              return
+            }
+            controller.enqueue(encoder.encode(JSON.stringify(next.value) + "\n"))
+          } catch (error) {
+            controller.error(error)
+          }
+        },
+        async cancel() {
+          await records.return(undefined)
+        },
+      })
+      return c.newResponse(body, 200, {
+        "Content-Type": "application/x-ndjson",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      })
     },
   )

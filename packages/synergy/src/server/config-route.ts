@@ -399,11 +399,14 @@ async function reloadAfterConfigChange(changedFields: Set<string>, reason: strin
     log.info("config updated (live-applied, no cascade)", { changedFields: [...changedFields] })
     return
   }
-  const result = await RuntimeReload.reload({
-    targets: ["config"],
-    scope: "global",
-    reason,
-  })
+  const result = await RuntimeReload.reload(
+    {
+      targets: ["config"],
+      scope: "global",
+      reason,
+    },
+    { knownChangedFields: changedFields },
+  )
   log.info("config updated", {
     changedFields: result.changedFields,
     restartRequired: result.restartRequired,

@@ -6,6 +6,7 @@ import { Scope } from "../scope"
 import z from "zod"
 import { errors } from "./error"
 import { SessionNav, ScopeNavEntry } from "../session/nav"
+import { ManagedProjectArchiveError } from "../channel/managed-project-ownership"
 
 export const ScopeRoute = new Hono()
   .get(
@@ -89,6 +90,14 @@ export const ScopeRoute = new Hono()
           },
         },
         ...errors(400, 404),
+        409: {
+          description: "Managed project archive conflict",
+          content: {
+            "application/json": {
+              schema: resolver(ManagedProjectArchiveError.Schema),
+            },
+          },
+        },
       },
     }),
     validator("param", z.object({ scopeID: z.string() })),
@@ -120,6 +129,14 @@ export const ScopeRoute = new Hono()
           content: {
             "application/json": {
               schema: resolver(z.object({ ok: z.boolean() })),
+            },
+          },
+        },
+        409: {
+          description: "Managed project archive conflict",
+          content: {
+            "application/json": {
+              schema: resolver(ManagedProjectArchiveError.Schema),
             },
           },
         },

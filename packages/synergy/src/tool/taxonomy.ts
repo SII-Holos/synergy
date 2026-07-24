@@ -202,6 +202,8 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   question: entry("communication.question"),
   email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
+  clarus_submit_task_result: entry("platform.collaboration", { stateful: true, externalIO: true }),
+  clarus_extend_task: entry("platform.collaboration", { stateful: true, externalIO: true }),
   openai_image_gen: entry("communication.visual", { externalIO: true, stateful: true }),
   openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
   // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
@@ -329,7 +331,7 @@ export namespace ToolTaxonomy {
     "platform.config": "Config",
     "platform.tooling": "Tools",
     "platform.compute": "Compute",
-    "platform.collaboration": "Agora",
+    "platform.collaboration": "Collaboration",
     "platform.external": "Tool",
     "communication.question": "Ask",
     "communication.email": "Email",

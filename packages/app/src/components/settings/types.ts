@@ -183,6 +183,11 @@ export type EmailSettings = {
   imapPassword: string
 }
 
+export type BasicAccountToggle = {
+  key: string
+  enabled: boolean
+}
+
 export type AccountToggle = {
   key: string
   enabled: boolean
@@ -192,6 +197,7 @@ export type AccountToggle = {
 
 export type ChannelSettings = {
   feishuAccounts: AccountToggle[]
+  clarusAccounts: BasicAccountToggle[]
 }
 
 export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
@@ -442,6 +448,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
     },
     channels: {
       feishuAccounts: [],
+      clarusAccounts: [],
     },
     roleVariant: {},
   }

@@ -29,6 +29,7 @@
 - [Sessions and messages](docs/architecture/session-and-messages.md): canonical message semantics, inbox modes, task grouping, persistence, history, and attachments.
 - [LLM loop and compaction](docs/architecture/llm-loop.md): serial task loop, context construction, model calls, tools, retries, and compaction.
 - [Frontend data sync](docs/architecture/frontend-data-sync.md): reconcile writes, sequence/epoch events, replay, streaming, and eviction.
+- [Channels](docs/architecture/channels.md): targets, provider lifecycle, managed Projects, task routing, borrowed transports, diagnostics, and navigation projection.
 - [Execution boundaries](docs/architecture/execution-boundaries.md): taxonomy, control profiles, permission enforcement, sandboxing, and worktree isolation.
 - [Cortex](docs/architecture/cortex.md): delegated child sessions, task lifecycle, outputs, and parent notification.
 - [Workflow engine](docs/architecture/workflows.md): Plan, BlueprintLoop, Light Loop, Lattice, and SuperPlan storage substrate.
@@ -76,7 +77,7 @@ The project-local `.synergy/skill/` files are executable workflows for this repo
 - `architecture`, `develop-synergy`, `testing-guide`, and `git-guide`
 - `development-standards`, `develop-frontend`, and `integrate-llm`
 - `change-server-api` and `change-persistence`
-- `change-execution-boundaries`, `change-browser-runtime`, and `change-plugin-runtime`
+- `change-execution-boundaries`, `change-channel-runtime`, `change-browser-runtime`, and `change-plugin-runtime`
 - `add-agent`, `add-cli-command`, and `add-tool`
 - `find-logs`, `inspect-sessions`, and `release-log-workflow`
 

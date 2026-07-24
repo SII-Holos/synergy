@@ -6355,6 +6355,42 @@ msgstr "Working..."
 msgid "app.sidebar.brand.logo"
 msgstr "HOLOS"
 
+#. Channel account status
+msgid "app.sidebar.channel.account.connected"
+msgstr "Connected"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.degraded"
+msgstr "Degraded"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.disabled"
+msgstr "Disabled"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.disconnected"
+msgstr "Disconnected"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.syncFailed"
+msgstr "Sync failed"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.syncing"
+msgstr "Syncing…"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.waitingForTransport"
+msgstr "Waiting for transport"
+
+#. Channel account section header
+msgid "app.sidebar.channel.accounts"
+msgstr "Channel Accounts"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.downloadDiagnostics"
+msgstr "Download diagnostics"
+
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.channel.feishu"
 msgstr "Feishu"
@@ -6362,6 +6398,10 @@ msgstr "Feishu"
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr "Other"
+
+#. Channel account actions
+msgid "app.sidebar.channel.refreshProjects"
+msgstr "Refresh projects"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.collapse"
@@ -13226,6 +13266,38 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr "worktree | git | checkout | branch | delete | project"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.accounts"
+msgstr "Clarus accounts"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.description"
+msgstr "Enable or disable Clarus task execution for Holos Agent accounts."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnostics"
+msgstr "Download diagnostics"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnosticsFailed"
+msgstr "Failed to download Clarus diagnostics"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.empty"
+msgstr "No Clarus accounts configured yet."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refresh"
+msgstr "Refresh projects"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshFailed"
+msgstr "Failed to refresh Clarus projects"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.title"
+msgstr "Clarus"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.feishu.accounts"
 msgstr "Feishu accounts"
 
@@ -13248,6 +13320,38 @@ msgstr "External messaging channel accounts."
 #. js-lingui-explicit-id
 msgid "settings.channels.page.title"
 msgstr "Channels"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connecting"
+msgstr "Connecting…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disabled"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disconnected"
+msgstr "Disconnected"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.failed"
+msgstr "Connection failed"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.syncing"
+msgstr "Syncing…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.unavailable"
+msgstr "Status unavailable"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.waitingForTransport"
+msgstr "Waiting for transport"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
@@ -16752,6 +16856,14 @@ msgstr "Cancel Agenda"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "Manage research claims"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-extend-task"
+msgstr "Extend Clarus Task"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-submit-task-result"
+msgstr "Submit Clarus Result"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"

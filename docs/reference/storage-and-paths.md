@@ -37,6 +37,11 @@ data/session_nav_v2/
 data/sessions/<scope>/<session>/
 data/session_message_order_v1/<scope>/<session>/
 data/endpoint_session/
+data/channel/managed_ownership/
+data/channel/managed_ownership_reverse/
+data/channel/workspaces/<identity-hash>/workspace/
+data/channel/diagnostics/
+data/channel/providers/clarus/accounts/
 data/permissions/
 data/permission-rules.json
 data/notes/<scope>/
@@ -56,6 +61,10 @@ data/github/ci/
 data/github/runtime.json
 data/github/poll-state/
 ```
+
+Channel-managed Project ownership uses a hashed forward record under `managed_ownership/` and a Scope-ID reverse index under `managed_ownership_reverse/`. Raw external account and Project IDs remain record values rather than path components. `workspaces/<identity-hash>/workspace/` is the deterministic, symlink-rejecting Project directory and an independent Git repository.
+
+Channel diagnostics store bounded, redacted, independently addressable records below `data/channel/diagnostics/accounts/<account-hash>/records/`. Account-level NDJSON downloads first scan the bounded set of at most 10,000 retained record IDs, then read, validate, and encode one record per response pull instead of materializing record payloads. Obsolete pre-release per-account array files directly under `data/channel/diagnostics/` are left untouched and ignored. Clarus provider-private state is isolated below each hashed account root: `assignments/`, `assignment_session_index/`, `dedup/`, `outbox/results/`, and `outbox/extensions/`. Result and extension outboxes are durable-before-send recovery state; pending records recovered after an interrupted process become ambiguous rather than being retried blindly.
 
 GitHub integration deliveries, CI failure state, runtime anchors, and per-repository poll state live under `data/github/`. Each delivery is keyed by its synthetic delivery GUID. Poll state files use URI-encoded repository names.
 

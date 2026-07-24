@@ -5,6 +5,7 @@ import { SessionManager } from "@/session/manager"
 import { SessionEndpoint } from "@/session/endpoint"
 import { Session } from "@/session"
 import { Channel } from "."
+import { externalIdentityHash } from "./identity"
 
 const log = Log.create({ service: "channel.outbound" })
 
@@ -41,13 +42,15 @@ export namespace ChannelOutbound {
         log.warn("no provider for channel type", { type: channelInfo.type, sessionID: msg.sessionID })
         return
       }
+      const pushMessage = provider.pushMessage?.bind(provider)
+      if (!pushMessage) return
 
       const parts = await MessageV2.parts({ sessionID: msg.sessionID, messageID: msg.id }).catch(() => [])
       const text = MessageV2.extractText(parts, { includeSynthetic: false })
       if (!text) return
 
       try {
-        await provider.pushMessage({
+        await pushMessage({
           accountId: channelInfo.accountId,
           chatId: channelInfo.chatId,
           parts: [{ type: "text", text }],
@@ -64,14 +67,14 @@ export namespace ChannelOutbound {
         log.info("message pushed to channel", {
           sessionID: msg.sessionID,
           channelType: channelInfo.type,
-          accountId: channelInfo.accountId,
-          chatId: channelInfo.chatId,
+          accountHash: externalIdentityHash(channelInfo.accountId),
+          chatHash: externalIdentityHash(channelInfo.chatId),
         })
       } catch (err) {
         log.error("channel outbound push failed", {
           sessionID: msg.sessionID,
           channelType: channelInfo.type,
-          chatId: channelInfo.chatId,
+          chatHash: externalIdentityHash(channelInfo.chatId),
           error: err,
         })
       }

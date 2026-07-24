@@ -92,6 +92,8 @@ import { Truncate } from "./truncation"
 import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
+import { ClarusSubmitTaskResultTool } from "./clarus-submit-task-result"
+import { ClarusExtendTaskTool } from "./clarus-extend-task"
 import { RuntimeReloadTool } from "./runtime-reload"
 import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
@@ -404,6 +406,8 @@ export namespace ToolRegistry {
       RenderTool,
       EmailSendTool,
       EmailReadTool,
+      ClarusSubmitTaskResultTool,
+      ClarusExtendTaskTool,
       RuntimeReloadTool,
       WorktreeEnterTool,
       WorktreeLeaveTool,

@@ -106,14 +106,17 @@ test("getOrCreateForEndpoint applies explicit unattended interaction", async () 
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
+      const scope = await tmp.scope()
       const session = await Session.getOrCreateForEndpoint(
         SessionEndpoint.fromChannel({
           type: "feishu",
           accountId: "acct_1",
           chatId: "chat_1",
         }),
-        undefined,
-        SessionInteraction.unattended("channel:feishu"),
+        {
+          scope,
+          interaction: SessionInteraction.unattended("channel:feishu"),
+        },
       )
 
       expect(session.interaction).toEqual({

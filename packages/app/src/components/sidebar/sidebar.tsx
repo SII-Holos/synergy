@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { FlipList } from "./flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
@@ -35,6 +35,12 @@ import {
 } from "@/components/sidebar/session-visual-state"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import "./sidebar.css"
+import {
+  channelProviderGroups,
+  filterGenericScopeWorktrees,
+  selectVisibleProjectEntries,
+  type ChannelProviderGroup as ChannelProviderGroupModel,
+} from "./channel-account-model"
 
 const ORPHAN_CHAT_GROUP_ID = "__orphan__"
 
@@ -137,6 +143,13 @@ export function Sidebar(props: SidebarProps) {
   const scopeWorktrees = createMemo(() => scopes().map((scope) => scope.worktree))
   const scopeByWorktree = createMemo(() => new Map(scopes().map((scope) => [scope.worktree, scope])))
 
+  const managedWorktrees = createMemo(() => {
+    const accounts = layout.channelProjection().channelAccounts
+    return new Set(accounts.flatMap((account) => account.projects.map((project) => project.directory)))
+  })
+  const genericScopeWorktrees = createMemo(() => filterGenericScopeWorktrees(scopeWorktrees(), managedWorktrees()))
+  const managedChannelGroups = createMemo(() => channelProviderGroups(layout.channelProjection().channelAccounts))
+
   onCleanup(subscribeNavigation(() => setNavigationRegistryVersion((version) => version + 1)))
   const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
   const channelEntries = createMemo(() => layout.nav.rootNavEntries("channel"))
@@ -198,6 +211,7 @@ export function Sidebar(props: SidebarProps) {
     return undefined
   })
   const currentDirectory = createMemo(() => (dir() === "home" ? undefined : dir()))
+
   const handleNewSession = () => {
     navigate(`/${base64Encode("home")}/session`)
   }
@@ -485,45 +499,78 @@ export function Sidebar(props: SidebarProps) {
               </div>
               <Show when={channelSectionOpen()}>
                 <Show
-                  when={channelGroupedEntries().length > 0}
+                  when={channelGroupedEntries().length > 0 || managedChannelGroups().length > 0}
                   fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
                 >
-                  <div class="sb-session-group">
-                    <div
-                      class="sb-session-group-header"
-                      onClick={() => setFeishuGroupOpen((v) => !v)}
-                      role="button"
-                      tabindex="0"
-                    >
-                      <Icon
-                        name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
-                        size="small"
-                        class="sb-section-chevron"
-                      />
-                      <span>{_(sidebar.channelFeishu)}</span>
+                  <Show when={channelGroupedEntries().length > 0}>
+                    <div class="sb-session-group">
+                      <div
+                        class="sb-session-group-header"
+                        onClick={() => setFeishuGroupOpen((v) => !v)}
+                        role="button"
+                        tabindex="0"
+                      >
+                        <Icon
+                          name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
+                          size="small"
+                          class="sb-section-chevron"
+                        />
+                        <span>{_(sidebar.channelFeishu)}</span>
+                      </div>
+                      <Show when={feishuGroupOpen()}>
+                        <For each={channelGroupedEntries()}>
+                          {(group) => (
+                            <ChannelChatPartnerGroup
+                              name={group.name}
+                              sessions={group.sessions}
+                              activeID={params.id}
+                              onSessionClick={handleNavEntryClick}
+                            />
+                          )}
+                        </For>
+                      </Show>
                     </div>
-                    <Show when={feishuGroupOpen()}>
-                      <For each={channelGroupedEntries()}>
-                        {(group) => (
-                          <ChannelChatPartnerGroup
-                            name={group.name}
-                            sessions={group.sessions}
-                            activeID={params.id}
-                            onSessionClick={handleNavEntryClick}
-                          />
-                        )}
-                      </For>
+                    <Show when={layout.nav.hasMoreRootNavSection("channel")}>
+                      <button
+                        type="button"
+                        class="sb-load-more-btn"
+                        onClick={() => layout.nav.loadMoreRootNavSection("channel")}
+                      >
+                        {_(sidebar.loadMore)}
+                      </button>
                     </Show>
-                  </div>
-                  <Show when={layout.nav.hasMoreRootNavSection("channel")}>
-                    <button
-                      type="button"
-                      class="sb-load-more-btn"
-                      onClick={() => layout.nav.loadMoreRootNavSection("channel")}
-                    >
-                      {_(sidebar.loadMore)}
-                    </button>
                   </Show>
+                  <For each={managedChannelGroups()}>
+                    {(group) => (
+                      <ChannelProviderGroup group={group} _={_}>
+                        <For each={group.projects}>
+                          {(project) => (
+                            <SidebarProjectGroup
+                              scope={() => layout.scopes.managed(project.directory)}
+                              activeID={params.id}
+                              currentDirectory={currentDirectory()}
+                              isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
+                              navLoaded={(scope) => !!layout.nav.navEntries()[scope.worktree]}
+                              projectNavEntries={(scope) => layout.nav.projectNavEntries(scope)}
+                              hasMoreForProject={hasMoreForProject}
+                              managed
+                              onProjectToggle={handleProjectToggle}
+                              onProjectClick={handleProjectClick}
+                              onProjectPlus={handleProjectPlus}
+                              onProjectEdit={handleProjectEdit}
+                              onProjectArchive={handleProjectArchive}
+                              onProjectPin={handleProjectPin}
+                              onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.worktree)}
+                              onLoadMore={(scope) => layout.nav.loadMoreNav(scope.worktree)}
+                              activeSessionID={params.id}
+                              onSessionClick={handleSessionClick}
+                              _={_}
+                            />
+                          )}
+                        </For>
+                      </ChannelProviderGroup>
+                    )}
+                  </For>
                 </Show>
               </Show>
             </div>
@@ -596,8 +643,8 @@ export function Sidebar(props: SidebarProps) {
               </div>
 
               <Show when={projectsSectionOpen()}>
-                <FlipList entries={scopeWorktrees()} selector="[data-scope-id]" dataKey="scopeId">
-                  <For each={scopeWorktrees()}>
+                <FlipList entries={genericScopeWorktrees()} selector="[data-scope-id]" dataKey="scopeId">
+                  <For each={genericScopeWorktrees()}>
                     {(worktree) => (
                       <SidebarProjectGroup
                         scope={() => scopeByWorktree().get(worktree)}
@@ -670,7 +717,6 @@ export function Sidebar(props: SidebarProps) {
     </div>
   )
 }
-
 function SidebarProjectGroup(props: {
   scope: () => LocalScope | undefined
   activeID?: string
@@ -679,6 +725,7 @@ function SidebarProjectGroup(props: {
   navLoaded: (scope: LocalScope) => boolean
   projectNavEntries: (scope: LocalScope) => NavEntry[]
   hasMoreForProject: (scope: LocalScope) => boolean
+  managed?: boolean
   onProjectToggle: (event: MouseEvent, scope: LocalScope) => void
   onProjectClick: (worktree: string) => void
   onProjectPlus: (event: MouseEvent, scope: LocalScope) => void
@@ -844,6 +891,7 @@ function SidebarProjectGroup(props: {
                   entries={entries()}
                   scope={props.scope()}
                   activeID={props.activeID}
+                  managed={props.managed}
                   onSessionClick={(entry) => {
                     const scope = props.scope()
                     if (scope) props.onSessionClick(scope, entry)
@@ -878,6 +926,7 @@ function SidebarProjectGroup(props: {
                 entries={entries()}
                 scope={props.scope()}
                 activeID={props.activeID}
+                managed={props.managed}
                 onSessionClick={(entry) => {
                   const scope = props.scope()
                   if (scope) props.onSessionClick(scope, entry)
@@ -980,9 +1029,10 @@ function GroupedSessionList(props: {
   entries: NavEntry[]
   scope?: LocalScope
   activeID?: string
+  managed?: boolean
   onSessionClick: (entry: NavEntry) => void
 }) {
-  const entries = createMemo(() => props.entries.filter((entry) => entry.category === "project"))
+  const entries = createMemo(() => selectVisibleProjectEntries(props.entries, props.managed ?? false))
 
   return (
     <SidebarSessionList
@@ -1011,6 +1061,31 @@ function ChannelChatPartnerGroup(props: {
       </div>
       <Show when={open()}>
         <SidebarSessionList entries={props.sessions} activeID={props.activeID} onSessionClick={props.onSessionClick} />
+      </Show>
+    </div>
+  )
+}
+
+function ChannelProviderGroup(props: {
+  group: ChannelProviderGroupModel
+  _: ReturnType<typeof useLingui>["_"]
+  children: JSX.Element
+}) {
+  const [open, setOpen] = createSignal(true)
+
+  return (
+    <div class="sb-channel-account-group">
+      <div class="sb-session-group-header" onClick={() => setOpen((v) => !v)} role="button" tabindex="0">
+        <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
+        <span>{props.group.label}</span>
+      </div>
+      <Show when={open()}>
+        <Show
+          when={props.group.projects.length > 0}
+          fallback={<div class="sb-section-empty">{props._(sidebar.noSessions)}</div>}
+        >
+          {props.children}
+        </Show>
       </Show>
     </div>
   )

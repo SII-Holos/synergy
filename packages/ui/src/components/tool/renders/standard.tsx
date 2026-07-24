@@ -1657,6 +1657,52 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "clarus_submit_task_result",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "send",
+          title: TOOL_TITLE_DESC["clarus_submit_task_result"],
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "clarus_extend_task",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "timer",
+          title: TOOL_TITLE_DESC["clarus_extend_task"],
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "email_read",
   render(props) {
     return (

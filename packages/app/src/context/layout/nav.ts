@@ -1,4 +1,4 @@
-import type { NavEntry, NavListState, ScopeNavEntry } from "./index"
+import type { LocalScope, NavEntry, NavListState, ScopeNavEntry } from "./index"
 
 // Instant in-place projection of a session.updated event onto a nav list
 // (frontend sync redesign, P3). Applying the event directly gives the sidebar
@@ -106,6 +106,21 @@ export function mergeNavListByID(previous: NavListState | undefined, next: NavLi
   }
 }
 
+export function managedProjectLocalScope(
+  entry: ScopeNavEntry,
+  metadata: Partial<LocalScope> | undefined,
+  expanded: boolean,
+): LocalScope {
+  return {
+    ...metadata,
+    id: entry.scopeID,
+    worktree: entry.directory,
+    name: entry.name ?? metadata?.name,
+    icon: { url: entry.icon?.url ?? metadata?.icon?.url, color: entry.icon?.color ?? metadata?.icon?.color },
+    expanded,
+  }
+}
+
 export function removeScopeFromIndex(
   entries: readonly ScopeNavEntry[],
   scopeID: string,
@@ -118,4 +133,98 @@ export function removeScopeFromIndex(
     directory: removed.directory || fallbackDirectory,
     removed: true,
   }
+}
+
+export type ChannelAccountStatus =
+  | { kind: "disabled" }
+  | { kind: "waiting_for_transport"; reason?: string }
+  | { kind: "disconnected"; reason?: string }
+  | { kind: "syncing" }
+  | { kind: "connected" }
+  | { kind: "sync_failed"; error?: string; lastGoodAt?: number }
+  | { kind: "degraded"; error?: string }
+
+export interface ChannelAccountActions {
+  canRefreshProjects: boolean
+  canDownloadDiagnostics: boolean
+  hiddenActions: string[]
+}
+
+export interface ChannelAccount {
+  channelType: string
+  accountId: string
+  projects: ScopeNavEntry[]
+  status?: ChannelAccountStatus
+}
+export function managedProjectScopesByWorktree(
+  accounts: readonly ChannelAccount[],
+  metadataByID: ReadonlyMap<string, Partial<LocalScope>>,
+  expandedWorktrees: ReadonlySet<string>,
+): Map<string, LocalScope> {
+  return new Map(
+    accounts.flatMap((account) =>
+      account.projects.map((entry) => [
+        entry.directory,
+        managedProjectLocalScope(entry, metadataByID.get(entry.scopeID), expandedWorktrees.has(entry.directory)),
+      ]),
+    ),
+  )
+}
+
+export function partitionScopeNavigation(entries: readonly ScopeNavEntry[]): {
+  genericProjects: ScopeNavEntry[]
+  channelAccounts: ChannelAccount[]
+} {
+  const accountsByChannel = new Map<string, Map<string, ChannelAccount>>()
+  const genericProjects: ScopeNavEntry[] = []
+  for (const entry of entries) {
+    if (entry.scopeType !== "project") continue
+    const managedProject = entry.managedProject
+    if (!managedProject) {
+      genericProjects.push(entry)
+      continue
+    }
+    let accounts = accountsByChannel.get(managedProject.channelType)
+    if (!accounts) {
+      accounts = new Map()
+      accountsByChannel.set(managedProject.channelType, accounts)
+    }
+    let account = accounts.get(managedProject.accountId)
+    if (!account) {
+      account = {
+        channelType: managedProject.channelType,
+        accountId: managedProject.accountId,
+        projects: [],
+        status: { kind: "connected" },
+      }
+      accounts.set(managedProject.accountId, account)
+    }
+    account.projects.push(entry)
+  }
+  const channelAccounts = Array.from(accountsByChannel.values()).flatMap((accounts) => Array.from(accounts.values()))
+  for (const account of channelAccounts) {
+    account.projects.sort((a, b) => b.latestActivityAt - a.latestActivityAt || a.scopeID.localeCompare(b.scopeID))
+  }
+  channelAccounts.sort((a, b) => {
+    if (a.channelType !== b.channelType) return a.channelType.localeCompare(b.channelType)
+    return a.accountId.localeCompare(b.accountId)
+  })
+  return { genericProjects, channelAccounts }
+}
+
+const CHANNEL_ACCOUNT_PROVIDER_ACTIONS: Record<string, Partial<ChannelAccountActions>> = {
+  clarus: {
+    canRefreshProjects: true,
+    canDownloadDiagnostics: true,
+  },
+}
+
+export function deriveChannelAccountActions(channelType: string): ChannelAccountActions {
+  const providerActions = CHANNEL_ACCOUNT_PROVIDER_ACTIONS[channelType]
+  const canRefreshProjects = providerActions?.canRefreshProjects ?? false
+  const canDownloadDiagnostics = providerActions?.canDownloadDiagnostics ?? false
+  const hiddenActions: string[] = []
+  if (!canRefreshProjects) hiddenActions.push("refreshProjects")
+  if (!canDownloadDiagnostics) hiddenActions.push("downloadDiagnostics")
+  return { canRefreshProjects, canDownloadDiagnostics, hiddenActions }
 }

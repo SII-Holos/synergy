@@ -401,4 +401,33 @@ describe("ToolTaskScheduler", () => {
     ToolScheduler.configure()
     await ToolScheduler.stop()
   })
+
+  test("accepts new work after runtime shutdown completes", async () => {
+    await ToolScheduler.stop()
+    const target = processor()
+    const tool = {
+      async execute(input: unknown, options: { toolCallId: string }) {
+        target.beginExecution(options.toolCallId).complete(input, {
+          title: "restarted",
+          output: "restarted",
+          metadata: {},
+        })
+      },
+    } as unknown as AITool
+
+    const result = await ToolScheduler.dispatch({
+      sessionID: "ses_test",
+      generation: 1,
+      messageID: "msg_test",
+      callID: "call_after_shutdown",
+      toolName: "probe",
+      input: {},
+      tool,
+      processor: target,
+      signal: new AbortController().signal,
+    })
+
+    expect(result.state).toBe("completed")
+    await ToolScheduler.stop()
+  })
 })

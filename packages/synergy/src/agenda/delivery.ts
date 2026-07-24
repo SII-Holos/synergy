@@ -16,6 +16,11 @@ export namespace AgendaDelivery {
   }
 
   export async function deliver(input: DeliverInput): Promise<void> {
+    if (input.item.deliveryMode === "session_guidance") {
+      await deliverSessionGuidance(input)
+      return
+    }
+
     if (input.item.silent) return
 
     const text = input.lastMessage ?? `Agenda task "${input.item.title}" completed.`
@@ -75,5 +80,33 @@ export namespace AgendaDelivery {
         error: err instanceof Error ? err : new Error(String(err)),
       })
     }
+  }
+  async function deliverSessionGuidance(input: DeliverInput): Promise<void> {
+    if (input.item.silent) return
+    const target = input.item.origin.sessionID
+    if (!target) {
+      log.warn("session guidance target missing", { itemID: input.item.id })
+      return
+    }
+
+    const session = await SessionManager.getSession(target)
+    if (!session) {
+      log.warn("session guidance target not found", { itemID: input.item.id, sessionID: target })
+      return
+    }
+
+    await SessionInbox.deliverUnique({
+      sessionID: session.id,
+      deliveryKey: input.deliveryKey,
+      mode: "steer",
+      message: {
+        role: "user",
+        visible: false,
+        origin: { type: "agenda", sessionID: input.sessionID },
+        metadata: { source: "agenda", sourceSessionID: input.sessionID, agendaItemID: input.item.id },
+        parts: [{ type: "text", text: input.item.prompt, origin: "system" }],
+      },
+    })
+    await SessionDrive.request(session.id, "agenda-session-guidance")
   }
 }

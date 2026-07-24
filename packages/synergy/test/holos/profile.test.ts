@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { Config } from "../../src/config/config"
 import { Global } from "../../src/global"
 import { HolosAccounts } from "../../src/holos/accounts"
 import { migrations } from "../../src/holos/migration"
@@ -294,6 +295,7 @@ describe("Holos profile routes", () => {
     })
     expect(calls.some((call) => call.url.endsWith("/api/v1/holos/agent_tunnel/me/profile"))).toBe(false)
     expect((await HolosAccounts.getActiveAccount())?.agentId).toBe("agent_imported")
+    expect((await Config.globalResolved()).channel?.clarus?.accounts.agent_imported).toEqual({ enabled: false })
   })
 
   test("profile update route preserves unknown fields and returns normalized profile", async () => {

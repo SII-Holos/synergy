@@ -17,6 +17,7 @@ import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
+import { validateHolosEndpoint } from "../holos/security"
 
 export const McpRetry = McpRetryConfig
 export type McpRetry = McpRetryConfig
@@ -108,6 +109,41 @@ export const ChannelFeishu = z
   .strict()
   .meta({ ref: "ChannelFeishuConfig" })
 export type ChannelFeishu = z.infer<typeof ChannelFeishu>
+
+export const ChannelClarusAccount = z
+  .object({
+    enabled: z.boolean().optional().default(false),
+    apiUrl: z
+      .string()
+      .optional()
+      .describe("Clarus REST API origin override; defaults to the configured Holos API origin"),
+    agent: z.string().optional().describe("Primary Synergy agent for project and assignment Sessions"),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.apiUrl) return
+    try {
+      const url = validateHolosEndpoint(value.apiUrl, "api")
+      if (url.pathname !== "/" || url.search || url.hash) throw new Error("Clarus apiUrl must be an origin")
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["apiUrl"],
+        message: error instanceof Error ? error.message : "Invalid Clarus apiUrl",
+      })
+    }
+  })
+  .meta({ ref: "ChannelClarusAccountConfig" })
+export type ChannelClarusAccount = z.infer<typeof ChannelClarusAccount>
+
+export const ChannelClarus = z
+  .object({
+    type: z.literal("clarus"),
+    accounts: z.record(z.string(), ChannelClarusAccount),
+  })
+  .strict()
+  .meta({ ref: "ChannelClarusConfig" })
+export type ChannelClarus = z.infer<typeof ChannelClarus>
 
 export const Holos = z
   .object({
@@ -302,7 +338,7 @@ export const ObservabilityConfig = z
   .meta({ ref: "ObservabilityConfig" })
 export type ObservabilityConfig = z.infer<typeof ObservabilityConfig>
 
-export const Channel = z.discriminatedUnion("type", [ChannelFeishu])
+export const Channel = z.discriminatedUnion("type", [ChannelFeishu, ChannelClarus])
 export type Channel = z.infer<typeof Channel>
 
 export const EmailSmtp = z

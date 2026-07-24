@@ -74,6 +74,14 @@ export namespace HolosProtocol {
   })
   export type Caller = z.infer<typeof Caller>
 
+  export const TunnelCaller = z.record(z.string(), z.unknown())
+  export type TunnelCaller = z.infer<typeof TunnelCaller>
+
+  export const GatewayErrorPayload = z.object({
+    code: z.string(),
+    message: z.string(),
+  })
+
   export const EnvelopeType = z.enum([
     "connected",
     "ping",
@@ -91,7 +99,7 @@ export namespace HolosProtocol {
     request_id: z.string().nullable(),
     meta: z.record(z.string(), z.unknown()),
     payload: z.unknown().nullable(),
-    caller: Caller.nullable().optional(),
+    caller: TunnelCaller.nullable().optional(),
   })
   export type Envelope = z.infer<typeof Envelope>
 

@@ -1,7 +1,12 @@
+import type { ZodError } from "zod"
 import { Log } from "@/util/log"
 import { HolosProtocol } from "./protocol"
 
 const log = Log.create({ service: "holos.envelope" })
+
+function validationIssues(error: ZodError) {
+  return error.issues.map((issue) => ({ code: issue.code, path: issue.path }))
+}
 
 export namespace Envelope {
   export type Caller = HolosProtocol.Caller
@@ -13,6 +18,14 @@ export namespace Envelope {
     | { kind: "ws_send"; requestId: string; event: string; payload: unknown; caller: Caller }
     | { kind: "ws_failed"; requestId: string; code: string; message: string }
     | {
+        kind: "native"
+        requestId: string | null
+        nativeType: string
+        payload: unknown
+        meta: Record<string, unknown>
+        caller: HolosProtocol.TunnelCaller | null
+      }
+    | {
         kind: "http_request"
         requestId: string
         method: string
@@ -23,7 +36,6 @@ export namespace Envelope {
         payload: unknown
         caller: Caller
       }
-    | { kind: "unknown"; raw: unknown }
 
   export function parse(raw: string): Parsed | null {
     let data: unknown
@@ -36,7 +48,7 @@ export namespace Envelope {
 
     const result = HolosProtocol.Envelope.safeParse(data)
     if (!result.success) {
-      log.warn("envelope parse failed", { error: result.error })
+      log.warn("envelope parse failed", { issues: validationIssues(result.error) })
       return null
     }
 
@@ -55,16 +67,22 @@ export namespace Envelope {
           kind: "pong",
           sessionId: meta.session_id ? String(meta.session_id) : undefined,
         }
-      case "error":
+      case "error": {
+        const payload = HolosProtocol.GatewayErrorPayload.safeParse(env.payload)
         return {
           kind: "error",
           requestId: env.request_id,
-          code: String(meta.code ?? "UNKNOWN"),
-          message: String(meta.message ?? "Unknown error"),
+          code: payload.success ? payload.data.code : String(meta.code ?? "UNKNOWN"),
+          message: payload.success ? payload.data.message : String(meta.message ?? "Unknown error"),
         }
+      }
       case "ws_send": {
-        if (!env.caller) {
-          log.warn("ws_send missing caller", { requestId: env.request_id })
+        const caller = HolosProtocol.Caller.safeParse(env.caller)
+        if (!caller.success) {
+          log.warn("ws_send has invalid caller", {
+            requestId: env.request_id?.slice(0, 128) ?? null,
+            issues: validationIssues(caller.error),
+          })
           return null
         }
         return {
@@ -72,7 +90,7 @@ export namespace Envelope {
           requestId: env.request_id ?? "",
           event: String(meta.event ?? ""),
           payload: env.payload,
-          caller: env.caller,
+          caller: caller.data,
         }
       }
       case "ws_failed":
@@ -83,8 +101,12 @@ export namespace Envelope {
           message: String(meta.message ?? "Unknown failure"),
         }
       case "http_request": {
-        if (!env.caller) {
-          log.warn("http_request missing caller", { requestId: env.request_id })
+        const caller = HolosProtocol.Caller.safeParse(env.caller)
+        if (!caller.success) {
+          log.warn("http_request has invalid caller", {
+            requestId: env.request_id?.slice(0, 128) ?? null,
+            issues: validationIssues(caller.error),
+          })
           return null
         }
         return {
@@ -96,11 +118,18 @@ export namespace Envelope {
           headers: (meta.headers as Record<string, string>) ?? {},
           contentType: meta.content_type ? String(meta.content_type) : undefined,
           payload: env.payload,
-          caller: env.caller,
+          caller: caller.data,
         }
       }
       default:
-        return { kind: "unknown", raw: data }
+        return {
+          kind: "native",
+          requestId: env.request_id,
+          nativeType: env.type,
+          payload: env.payload,
+          meta,
+          caller: env.caller ?? null,
+        }
     }
   }
 
@@ -138,6 +167,21 @@ export namespace Envelope {
         headers: { "content-type": "application/json", ...input.headers },
         content_type: "application/json",
       },
+      payload: input.payload,
+      caller: null,
+    })
+  }
+
+  export function nativeRequest(input: {
+    requestID: string
+    nativeType: string
+    payload: unknown
+    meta?: Record<string, unknown>
+  }): string {
+    return JSON.stringify({
+      type: input.nativeType,
+      request_id: input.requestID,
+      meta: input.meta ?? {},
       payload: input.payload,
       caller: null,
     })

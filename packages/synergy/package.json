@@ -80,6 +80,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "@openrouter/ai-sdk-provider": "1.5.2",
     "@parcel/watcher": "2.5.6",
+    "@sii-holos/holos-cli": "0.1.1",
     "@zip.js/zip.js": "2.8.26",
     "ai": "catalog:",
     "ajv": "8.18.0",

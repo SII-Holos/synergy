@@ -105,7 +105,7 @@ export namespace RuntimeReload {
 
   // ─── Core reload function ────────────────────────────────────────────
 
-  export async function reload(input: Input): Promise<Result> {
+  export async function reload(input: Input, options: { knownChangedFields?: Iterable<string> } = {}): Promise<Result> {
     const params = Input.parse(input)
     const requested = normalizeTargets(params.targets)
     const executed = [] as Target[]
@@ -140,6 +140,7 @@ export namespace RuntimeReload {
       restartRequired,
       liveApplied,
       warnings,
+      knownChangedFields: [...(options.knownChangedFields ?? [])],
     }
 
     const targetsToExecute = requested.includes("all")
@@ -212,6 +213,7 @@ export namespace RuntimeReload {
     restartRequired: Set<string>
     liveApplied: Set<string>
     warnings: string[]
+    knownChangedFields: string[]
   }
 
   // ─── Target executor ─────────────────────────────────────────────────
@@ -230,12 +232,12 @@ export namespace RuntimeReload {
 
     // P9: Error isolation — one subsystem failure doesn't abort the whole reload
     try {
-      await executeTargetCore(target, ctx)
+      const dynamicCascades = await executeTargetCore(target, ctx)
       ctx.executed.push(target)
 
-      // Execute inline cascades (e.g. provider → agent)
-      const cascades = TARGET_CASCADES[target]
-      if (cascades) {
+      // Combine static target cascades with dynamic cascades inferred from config changes.
+      const cascades = unique([...(TARGET_CASCADES[target] ?? []), ...(dynamicCascades ?? [])])
+      if (cascades.length > 0) {
         await Promise.all(cascades.map((cascade) => executeTarget(cascade, ctx)))
       }
     } catch (err) {
@@ -273,7 +275,8 @@ export namespace RuntimeReload {
       case "config": {
         const resolvedScope = resolveConfigScope(ctx.scope)
         const result = await Config.reload(resolvedScope)
-        for (const field of result.changedFields) {
+        const allChangedFields = unique([...result.changedFields, ...ctx.knownChangedFields])
+        for (const field of allChangedFields) {
           ctx.changedFields.add(field)
           if (CONFIG_RESTART_REQUIRED.has(field)) ctx.restartRequired.add(field)
           if (CONFIG_LIVE_APPLIED.has(field)) ctx.liveApplied.add(field)
@@ -288,7 +291,7 @@ export namespace RuntimeReload {
             })
           }
         }
-        if (resolvedScope === "global" && result.changedFields.includes("cortex")) {
+        if (resolvedScope === "global" && allChangedFields.includes("cortex")) {
           CortexConcurrency.configure(result.config.cortex?.maxConcurrentTasks)
         }
         if (
@@ -299,7 +302,7 @@ export namespace RuntimeReload {
           AgentTurn.resize(result.config.execution?.agentWorkers)
           ctx.liveApplied.add("execution.agentWorkers")
         }
-        if (resolvedScope === "global" && result.changedFields.includes("github")) {
+        if (resolvedScope === "global" && allChangedFields.includes("github")) {
           const [{ GitHubPollRuntime }, { GitHubRuntime }] = await Promise.all([
             import("../github/poll-runtime"),
             import("../github/runtime"),
@@ -308,12 +311,9 @@ export namespace RuntimeReload {
           await GitHubRuntime.reload(result.config.github)
           await GitHubPollRuntime.start(result.config.github)
         }
-        // Infer cascades from changed config fields
-        for (const cascadedTarget of inferConfigCascades(result.changedFields)) {
-          await executeTarget(cascadedTarget, ctx)
-        }
+        const configCascades = inferConfigCascades(allChangedFields)
         // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
-        if (result.changedFields.includes("library") && result.oldConfig) {
+        if (allChangedFields.includes("library") && result.oldConfig) {
           const oldAutonomy = result.oldConfig.library?.autonomy !== false
           const newAutonomy = result.config.library?.autonomy !== false
           if (oldAutonomy !== newAutonomy) {
@@ -327,13 +327,13 @@ export namespace RuntimeReload {
             }
           }
         }
-        if (result.changedFields.includes("timeout")) {
+        if (allChangedFields.includes("timeout")) {
           const { TimeoutConfig } = await import("@/util/timeout-config")
           TimeoutConfig.invalidate()
         }
         const { Plugin } = await import("../plugin")
-        await Plugin.notifyConfigHooks({ source: "reload", config: result.config, changedFields: result.changedFields })
-        return
+        await Plugin.notifyConfigHooks({ source: "reload", config: result.config, changedFields: allChangedFields })
+        return configCascades
       }
       case "provider": {
         const { Provider } = await import("../provider/provider")

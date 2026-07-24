@@ -20,9 +20,11 @@ import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
   githubNavQuery,
+  managedProjectScopesByWorktree,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
+  partitionScopeNavigation,
   removeScopeFromIndex,
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
@@ -81,6 +83,12 @@ export interface NavEntry {
   chatId?: string
   chatName?: string
   chatType?: string
+  channelType?: string
+  channelAccountId?: string
+  channelTarget?:
+    | { kind: "chat"; chatId: string }
+    | { kind: "project"; externalProjectId: string }
+    | { kind: "task"; externalProjectId: string; externalTaskId: string }
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -100,6 +108,12 @@ export interface ScopeNavEntry {
   latestActivityAt: number
   sessionCount: number
   icon?: { url?: string; color?: string }
+  managedProject?: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+    remoteState: "active" | "paused" | "stale" | "archived"
+  }
 }
 
 const ROOT_NAV_SECTION_LIMIT = 100
@@ -273,6 +287,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     })
     const navPending = new Set<string>()
     const [scopeIndexLoaded, setScopeIndexLoaded] = createSignal(false)
+
+    const channelProjection = createMemo(() => {
+      const index = scopeIndex()
+      if (index.length === 0) return { genericProjects: [] as ScopeNavEntry[], channelAccounts: [] }
+      return partitionScopeNavigation(index)
+    })
 
     async function loadScopeIndex() {
       await globalSdk.client.scope.list()
@@ -810,7 +830,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       // Locally-tracked scopes (user-opened, persisted in localStorage).
       const local = enriched().flatMap(colorize)
       const index = scopeIndex()
-      if (index.length === 0) return local
+      const managedScopeIDs = new Set(
+        channelProjection().channelAccounts.flatMap((account) => account.projects.map((p) => p.scopeID)),
+      )
+      if (index.length === 0) return local.filter((s) => !s.id || !managedScopeIDs.has(s.id))
 
       // Supplement server-side projects that are NOT locally tracked, so the
       // sidebar reflects all projects (not just manually-opened ones). These
@@ -824,6 +847,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const supplemented: LocalScope[] = []
       for (const entry of index) {
         if (entry.scopeType !== "project") continue
+        if (managedScopeIDs.has(entry.scopeID)) continue
         if (entry.directory && seenDirectories.has(entry.directory)) continue
         if (entry.scopeID && seenIDs.has(entry.scopeID)) continue
         const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID || s.worktree === entry.directory)
@@ -836,7 +860,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
       }
 
-      const raw = [...local, ...supplemented.flatMap(colorize)]
+      const raw = [...local.filter((s) => !s.id || !managedScopeIDs.has(s.id)), ...supplemented.flatMap(colorize)]
 
       // Stable sort: pinned projects first (most-recently-pinned on top),
       // then by creation time ascending (oldest first), with directory as
@@ -855,6 +879,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         return a.worktree.localeCompare(b.worktree)
       })
     })
+
+    const managedScopesByWorktree = createMemo(() =>
+      managedProjectScopesByWorktree(
+        channelProjection().channelAccounts,
+        new Map(globalSync.data.scope.map((scope) => [scope.id, scope])),
+        supplementalExpanded(),
+      ),
+    )
 
     // Whether a project is supplemental (not locally tracked). Supplemental
     // projects manage expand state in-memory and load sessions lazily.
@@ -1141,6 +1173,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const isDesktop = createMediaQuery("(min-width: 768px)")
 
     return {
+      channelProjection: () => channelProjection(),
       ready,
       isDesktop,
       nav: {
@@ -1168,6 +1201,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       scopes: {
         list,
+        managed: (directory: string) => managedScopesByWorktree().get(directory),
         isSupplemental: isSupplementalScope,
         toggleSupplementalExpand,
         async open(directory: string) {

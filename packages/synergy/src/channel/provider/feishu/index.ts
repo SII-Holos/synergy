@@ -19,6 +19,7 @@ import {
 import type { FeishuEventPayload, FeishuMessage, FeishuMention, FeishuSender } from "./feishu-types"
 import type { FeishuApiContext } from "./api-context"
 import { FeishuOutboundMedia } from "./outbound-media"
+import { Scope } from "@/scope"
 
 const log = Log.create({ service: "channel.feishu" })
 
@@ -161,6 +162,7 @@ export function filterInboundMessage(input: MessageFilterInput): MessageFilterRe
 
 export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeishuAccount, Config.ChannelFeishu> {
   readonly type = "feishu"
+  readonly lifecycle = "self_connected" as const
 
   private accounts = new Map<string, AccountState>()
 
@@ -311,7 +313,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       resolveText: (event) => event.ctx.text,
       onFlush: async (merged) => {
         const ctx = { ...merged.last.ctx, text: merged.combinedText }
-        await enqueueChatTask(ctx.chatId, () => onMessage(ctx))
+        await enqueueChatTask(ctx.chatId, () => onMessage(ctx, Scope.home()))
       },
       onError: (err) => log.error("debounce flush failed", { accountId, error: err }),
     })
@@ -359,7 +361,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
             if (debounceMs > 0) {
               debouncer.enqueue({ ctx })
             } else {
-              await enqueueChatTask(ctx.chatId, () => onMessage(ctx))
+              await enqueueChatTask(ctx.chatId, () => onMessage(ctx, Scope.home()))
             }
           } catch (err) {
             log.error("failed to process message", { messageId: rawMessageId, error: err })

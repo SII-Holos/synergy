@@ -6355,6 +6355,42 @@ msgstr "正在工作…"
 msgid "app.sidebar.brand.logo"
 msgstr "HOLOS"
 
+#. Channel account status
+msgid "app.sidebar.channel.account.connected"
+msgstr "已连接"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.degraded"
+msgstr "已降级"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.disabled"
+msgstr "已禁用"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.disconnected"
+msgstr "已断开"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.syncFailed"
+msgstr "同步失败"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.syncing"
+msgstr "正在同步…"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.waitingForTransport"
+msgstr "等待传输"
+
+#. Channel account section header
+msgid "app.sidebar.channel.accounts"
+msgstr "Channel 账户"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.downloadDiagnostics"
+msgstr "下载诊断"
+
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.channel.feishu"
 msgstr "飞书"
@@ -6362,6 +6398,10 @@ msgstr "飞书"
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr "其他"
+
+#. Channel account actions
+msgid "app.sidebar.channel.refreshProjects"
+msgstr "刷新项目"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.collapse"
@@ -13226,6 +13266,38 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr "工作树 | git | 工作区 | 分支 | 删除 | 项目"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.accounts"
+msgstr "Clarus 账号"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.description"
+msgstr "启用或禁用 Holos Agent 账号的 Clarus 任务执行。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnostics"
+msgstr "下载诊断"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnosticsFailed"
+msgstr "下载 Clarus 诊断失败"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.empty"
+msgstr "尚未配置 Clarus 账号。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refresh"
+msgstr "刷新项目"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshFailed"
+msgstr "刷新 Clarus 项目失败"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.title"
+msgstr "Clarus"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.feishu.accounts"
 msgstr "飞书账号"
 
@@ -13248,6 +13320,38 @@ msgstr "外部消息频道账号。"
 #. js-lingui-explicit-id
 msgid "settings.channels.page.title"
 msgstr "频道"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connected"
+msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connecting"
+msgstr "正在连接…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disabled"
+msgstr "已禁用"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disconnected"
+msgstr "已断开"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.failed"
+msgstr "连接失败"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.syncing"
+msgstr "正在同步…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.unavailable"
+msgstr "状态不可用"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.waitingForTransport"
+msgstr "等待传输连接"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
@@ -16752,6 +16856,14 @@ msgstr "取消日程"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "管理研究论点"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-extend-task"
+msgstr "延长 Clarus 任务"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-submit-task-result"
+msgstr "提交 Clarus 结果"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"
