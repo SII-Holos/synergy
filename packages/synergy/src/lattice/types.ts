@@ -258,8 +258,21 @@ export namespace LatticeTypes {
     .strict()
   export type StartBlueprintLoopEffect = z.infer<typeof StartBlueprintLoopEffect>
 
+  export const CompletionEffect = z
+    .object({
+      ...EffectBase,
+      kind: z.literal("deliver_completion"),
+      deliveryKey: z.string().min(1),
+    })
+    .strict()
+  export type CompletionEffect = z.infer<typeof CompletionEffect>
+
+  export function completionDeliveryKey(runID: string): string {
+    return `lattice:${runID}:completion`
+  }
+
   export const Effect = z
-    .discriminatedUnion("kind", [PromptEffect, CreateBlueprintLoopEffect, StartBlueprintLoopEffect])
+    .discriminatedUnion("kind", [PromptEffect, CreateBlueprintLoopEffect, StartBlueprintLoopEffect, CompletionEffect])
     .meta({ ref: "LatticeEffect" })
   export type Effect = z.infer<typeof Effect>
 

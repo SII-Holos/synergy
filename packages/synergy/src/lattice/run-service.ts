@@ -241,9 +241,11 @@ export namespace LatticeRunService {
 
   async function removeRunInbox(run: LatticeTypes.Run): Promise<void> {
     const prefix = `lattice:${run.id}:`
+    const completionDeliveryKey = LatticeTypes.completionDeliveryKey(run.id)
     const items = await SessionInbox.list(run.sessionID)
     for (const item of items) {
       if (!item.deliveryKey?.startsWith(prefix)) continue
+      if (item.deliveryKey === completionDeliveryKey) continue
       await SessionInbox.remove({ sessionID: run.sessionID, itemID: item.id })
     }
   }

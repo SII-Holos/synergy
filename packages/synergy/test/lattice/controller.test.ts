@@ -16,7 +16,6 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionDrive } from "../../src/session/drive"
 import { SessionInbox } from "../../src/session/inbox"
-import { SessionManager } from "../../src/session/manager"
 import { tmpdir } from "../fixture/fixture"
 
 setDefaultTimeout(30_000)
@@ -182,50 +181,138 @@ describe("LatticeController", () => {
       })
       LatticeModelCalls.record(session.id)
 
-      const deliver = SessionManager.deliver
-      const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-      ;(SessionManager.deliver as any) = async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-        deliveries.push(input)
+      await LatticeController.reconcileDirect(scopeID, session.id, "loop_terminal")
+
+      const completed = await LatticeStore.getByRunID(scopeID, run.id)
+      expect(completed).toMatchObject({
+        status: "completed",
+        modelCallCount: 1,
+        pathway: [{ status: "completed", resultSummary: "Final Step verified" }],
+      })
+      expect(completed?.effect).toBeUndefined()
+      expect((await Session.get(session.id)).workflow).toBeUndefined()
+
+      const items = await SessionInbox.list(session.id)
+      expect(items).toHaveLength(1)
+      expect(items[0]).toMatchObject({
+        deliveryKey: `lattice:${run.id}:completion`,
+        mode: "task",
+        source: { type: "lattice_completed", label: "lattice_completed" },
+        message: {
+          role: "user",
+          metadata: {
+            source: "lattice_completed",
+            runID: run.id,
+            status: "completed",
+            completedSteps: 1,
+            totalSteps: 1,
+            finalStepTitle: "Recover interrupted execution",
+            summary: "Final Step verified",
+          },
+          summary: { title: "Lattice completed" },
+        },
+      })
+      expect(items[0].message?.parts[0]).toMatchObject({ type: "text", origin: "system" })
+
+      const revision = completed?.revision
+      await LatticeModelCalls.flush(scopeID, session.id)
+      await LatticeController.reconcileDirect(scopeID, session.id, "loop_terminal")
+      expect((await LatticeStore.getByRunID(scopeID, run.id))?.revision).toBe(revision)
+      expect(await SessionInbox.list(session.id)).toHaveLength(1)
+    })
+  })
+
+  test("cold start delivers a completion effect persisted before the process exits", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const scopeID = ScopeContext.current.scope.id
+      const run = await LatticeStore.create({ sessionID: session.id, mode: "auto" })
+      const loop = await attachRecoveryLoop({
+        scopeID,
+        runID: run.id,
+        sessionID: session.id,
+        sourceDigest: "completion-recovery-digest",
+      })
+      await Session.update(session.id, (draft) => {
+        draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
+      })
+      await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+        status: "completed",
+        summary: "Recovered final summary",
+      })
+
+      const completed = await LatticeStore.updateByRunID(scopeID, run.id, (draft) =>
+        LatticeMachine.onLoopTerminal(draft, {
+          loopID: loop.id,
+          status: "completed",
+          summary: "Recovered final summary",
+        }),
+      )
+      expect(completed.effect).toMatchObject({
+        kind: "deliver_completion",
+        deliveryKey: `lattice:${run.id}:completion`,
+      })
+      await SessionInbox.enqueueMailUnique({
+        sessionID: session.id,
+        deliveryKey: `lattice:${run.id}:completion`,
+        mail: {
+          type: "user",
+          summary: { title: "Lattice completed" },
+          metadata: {
+            source: "lattice_completed",
+            runID: run.id,
+            status: "completed",
+            completedSteps: 1,
+            totalSteps: 1,
+            summary: "Recovered final summary",
+          },
+          parts: [
+            {
+              id: Identifier.ascending("part"),
+              sessionID: session.id,
+              messageID: "",
+              type: "text",
+              text: "Recovered completion",
+              origin: "system",
+            },
+          ],
+        },
+      })
+
+      const request = SessionDrive.request
+      const requests: string[] = []
+      ;(SessionDrive.request as any) = async (sessionID: string) => {
+        requests.push(sessionID)
+        return false
       }
       try {
-        await LatticeController.reconcileDirect(scopeID, session.id, "loop_terminal")
+        await LatticeController.reconcileScope(scopeID, true)
 
-        const completed = await LatticeStore.getByRunID(scopeID, run.id)
-        expect(completed).toMatchObject({
-          status: "completed",
-          modelCallCount: 1,
-          pathway: [{ status: "completed", resultSummary: "Final Step verified" }],
-        })
-        expect((await Session.get(session.id)).workflow).toBeUndefined()
-        expect(deliveries).toHaveLength(1)
-        expect(deliveries[0]).toMatchObject({
-          target: session.id,
-          waitForProcessing: false,
-          mail: {
-            type: "user",
+        const items = await SessionInbox.list(session.id)
+        expect(items).toHaveLength(1)
+        expect(items[0]).toMatchObject({
+          deliveryKey: `lattice:${run.id}:completion`,
+          mode: "task",
+          message: {
             metadata: {
               source: "lattice_completed",
               runID: run.id,
               status: "completed",
               completedSteps: 1,
               totalSteps: 1,
-              finalStepTitle: "Recover interrupted execution",
-              summary: "Final Step verified",
+              summary: "Recovered final summary",
             },
           },
         })
-        expect(deliveries[0].mail.parts[0]).toMatchObject({
-          type: "text",
-          origin: "system",
-        })
+        expect((await LatticeStore.getByRunID(scopeID, run.id))?.effect).toBeUndefined()
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect(requests).toEqual([session.id])
 
-        const revision = completed?.revision
-        await LatticeModelCalls.flush(scopeID, session.id)
-        await LatticeController.reconcileDirect(scopeID, session.id, "loop_terminal")
-        expect((await LatticeStore.getByRunID(scopeID, run.id))?.revision).toBe(revision)
-        expect(deliveries).toHaveLength(1)
+        await LatticeController.reconcileScope(scopeID, true)
+        expect(await SessionInbox.list(session.id)).toHaveLength(1)
+        expect(requests).toEqual([session.id, session.id])
       } finally {
-        ;(SessionManager.deliver as any) = deliver
+        ;(SessionDrive.request as any) = request
       }
     })
   })

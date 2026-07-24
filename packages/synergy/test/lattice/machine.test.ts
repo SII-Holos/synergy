@@ -313,6 +313,10 @@ describe("LatticeMachine", () => {
     )
     expect(final.status).toBe("completed")
     expect(final.currentStepID).toBeUndefined()
+    expect(final.effect).toMatchObject({
+      kind: "deliver_completion",
+      deliveryKey: `lattice:${final.id}:completion`,
+    })
   })
 
   test("pauses on loop failure and only resume reopens the same step", () => {

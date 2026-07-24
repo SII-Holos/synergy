@@ -6,7 +6,7 @@ import type { ContinuationKernel } from "../session/continuation-kernel"
 import { SessionDrive } from "../session/drive"
 import { SessionHistory } from "../session/history"
 import { SessionInbox } from "../session/inbox"
-import { SessionManager } from "../session/manager"
+import type { SessionManager } from "../session/manager"
 import { Log } from "../util/log"
 import { LatticeError } from "./error"
 import { LatticeLock } from "./lock"
@@ -29,7 +29,6 @@ export namespace LatticeController {
   type DirectOutcome = {
     shouldDrive: boolean
     terminalRunID?: string
-    completedRun?: LatticeTypes.Run
   }
 
   export async function reconcileGate(gate: ContinuationKernel.Gate): Promise<ContinuationKernel.PolicyResult> {
@@ -48,8 +47,9 @@ export namespace LatticeController {
     let run = await LatticeStore.getOrUndefined(gate.scopeID, gate.sessionID)
     if (!run) return { result: undefined }
     if (run.status !== "active") {
+      const shouldDrive = await reconcileCompletionDelivery(gate.scopeID, run)
       return {
-        result: undefined,
+        result: shouldDrive ? { kind: "handled" } : undefined,
         terminalRunID: LatticeTypes.isTerminalRun(run.status) ? run.id : undefined,
       }
     }
@@ -68,8 +68,9 @@ export namespace LatticeController {
     run = await executeEffects(gate.scopeID, run, false)
 
     if (run.status !== "active") {
+      const shouldDrive = await reconcileCompletionDelivery(gate.scopeID, run)
       return {
-        result: undefined,
+        result: shouldDrive ? { kind: "handled" } : undefined,
         terminalRunID: LatticeTypes.isTerminalRun(run.status) ? run.id : undefined,
       }
     }
@@ -99,7 +100,6 @@ export namespace LatticeController {
     if (outcome.terminalRunID) {
       await clearTerminalWorkflowProjection(sessionID, outcome.terminalRunID)
     }
-    if (outcome.completedRun) await deliverCompletion(outcome.completedRun)
     if (outcome.shouldDrive) await SessionDrive.request(sessionID, `lattice-${reason}`)
   }
 
@@ -111,14 +111,16 @@ export namespace LatticeController {
     let run = await LatticeStore.getOrUndefined(scopeID, sessionID)
     if (!run) return { shouldDrive: false }
     if (LatticeTypes.isTerminalRun(run.status)) {
-      return { shouldDrive: false, terminalRunID: run.id }
+      const shouldDrive = await reconcileCompletionDelivery(scopeID, run)
+      return { shouldDrive, terminalRunID: run.id }
     }
     if (run.status === "paused") {
       if (reason === "loop_terminal" || reason === "startup" || reason === "resume") {
         run = await reconcileLoopRecords(scopeID, run, reason === "startup")
       }
+      const shouldDrive = await reconcileCompletionDelivery(scopeID, run)
       return {
-        shouldDrive: false,
+        shouldDrive,
         terminalRunID: LatticeTypes.isTerminalRun(run.status) ? run.id : undefined,
       }
     }
@@ -130,10 +132,10 @@ export namespace LatticeController {
     run = await reconcileBlueprintRevision(scopeID, run)
     run = await reconcileLoopRecords(scopeID, run, reason === "startup")
     if (run.status !== "active") {
+      const shouldDrive = await reconcileCompletionDelivery(scopeID, run)
       return {
-        shouldDrive: false,
+        shouldDrive,
         terminalRunID: LatticeTypes.isTerminalRun(run.status) ? run.id : undefined,
-        completedRun: run.status === "completed" ? run : undefined,
       }
     }
     if (run.maxModelCalls > 0 && count >= run.maxModelCalls) {
@@ -144,10 +146,10 @@ export namespace LatticeController {
     run = await executeEffects(scopeID, run, reason === "startup")
 
     if (run.status !== "active") {
+      const shouldDrive = await reconcileCompletionDelivery(scopeID, run)
       return {
-        shouldDrive: false,
+        shouldDrive,
         terminalRunID: LatticeTypes.isTerminalRun(run.status) ? run.id : undefined,
-        completedRun: run.status === "completed" ? run : undefined,
       }
     }
     if (run.effect?.kind !== "deliver_prompt") return { shouldDrive: false }
@@ -173,12 +175,23 @@ export namespace LatticeController {
 
   export async function reconcileScope(scopeID: string, coldStart: boolean): Promise<void> {
     const runs = await LatticeStore.listCurrent(scopeID)
+    const completionSessionIDs = new Set<string>()
     if (coldStart) {
       const { LatticeRunService } = await import("./run-service")
       const allRuns = await LatticeStore.list(scopeID)
       for (const run of allRuns) {
         if (run.status === "active") continue
         await LatticeRunService.cleanupInactiveRun(scopeID, run.id)
+      }
+      for (const run of allRuns) {
+        if (run.status !== "completed") continue
+        let shouldDrive = false
+        {
+          using _ = await LatticeLock.write(scopeID, run.sessionID)
+          const current = await LatticeStore.getByRunID(scopeID, run.id)
+          if (current) shouldDrive = await reconcileCompletionDelivery(scopeID, current)
+        }
+        if (shouldDrive) completionSessionIDs.add(run.sessionID)
       }
     }
     for (const run of runs) {
@@ -187,6 +200,14 @@ export namespace LatticeController {
         log.error("scope reconciliation failed", { runID: run.id, error })
       })
     }
+    await Promise.all(
+      [...completionSessionIDs].map((sessionID) =>
+        SessionDrive.request(sessionID, "lattice-startup").catch((error) => {
+          log.error("completion delivery drive failed", { sessionID, error })
+          return false
+        }),
+      ),
+    )
   }
 
   export async function onLoopChanged(loop: BlueprintLoopInfo): Promise<void> {
@@ -241,7 +262,25 @@ export namespace LatticeController {
     await SessionWorkflowService.clearIfLattice(sessionID, runID)
   }
 
-  async function deliverCompletion(run: LatticeTypes.Run): Promise<void> {
+  async function reconcileCompletionDelivery(scopeID: string, run: LatticeTypes.Run): Promise<boolean> {
+    if (run.status !== "completed") return false
+    const deliveryKey = LatticeTypes.completionDeliveryKey(run.id)
+    const effect = run.effect
+    if (effect?.kind === "deliver_completion") {
+      await SessionInbox.enqueueMailUnique({
+        sessionID: run.sessionID,
+        deliveryKey,
+        mail: completionMail(run),
+      })
+      await LatticeStore.updateByRunID(scopeID, run.id, (draft) => {
+        if (draft.effect?.kind !== "deliver_completion" || draft.effect.id !== effect.id) return
+        return LatticeMachine.completeEffect(draft, effect.id)
+      })
+    }
+    return (await SessionInbox.list(run.sessionID)).some((item) => item.deliveryKey === deliveryKey)
+  }
+
+  function completionMail(run: LatticeTypes.Run): SessionManager.SessionMail.User {
     const completedSteps = run.pathway.filter((step) => step.status === "completed")
     const finalStep = completedSteps.at(-1)
     const summary = finalStep?.resultSummary?.trim()
@@ -255,33 +294,29 @@ export namespace LatticeController {
       .filter(Boolean)
       .join("\n")
 
-    await SessionManager.deliver({
-      target: run.sessionID,
-      waitForProcessing: false,
-      mail: {
-        type: "user",
-        summary: { title: "Lattice completed" },
-        parts: [
-          {
-            id: Identifier.ascending("part"),
-            sessionID: run.sessionID,
-            messageID: "",
-            type: "text",
-            text,
-            origin: "system",
-          },
-        ],
-        metadata: {
-          source: "lattice_completed",
-          runID: run.id,
-          status: run.status,
-          completedSteps: completedSteps.length,
-          totalSteps: run.pathway.length,
-          ...(finalStep ? { finalStepID: finalStep.id, finalStepTitle: finalStep.title } : {}),
-          ...(summary ? { summary } : {}),
+    return {
+      type: "user",
+      summary: { title: "Lattice completed" },
+      parts: [
+        {
+          id: Identifier.ascending("part"),
+          sessionID: run.sessionID,
+          messageID: "",
+          type: "text",
+          text,
+          origin: "system",
         },
+      ],
+      metadata: {
+        source: "lattice_completed",
+        runID: run.id,
+        status: run.status,
+        completedSteps: completedSteps.length,
+        totalSteps: run.pathway.length,
+        ...(finalStep ? { finalStepID: finalStep.id, finalStepTitle: finalStep.title } : {}),
+        ...(summary ? { summary } : {}),
       },
-    })
+    }
   }
 
   async function settleDeliveredPrompt(
@@ -392,7 +427,7 @@ export namespace LatticeController {
     for (let iteration = 0; iteration < 4; iteration++) {
       if (run.status !== "active") return run
       const effect = run.effect
-      if (!effect || effect.kind === "deliver_prompt") break
+      if (!effect || effect.kind === "deliver_prompt" || effect.kind === "deliver_completion") break
 
       if (effect.kind === "create_blueprint_loop") {
         const recovery = await matchingCreatedLoops(scopeID, run, effect)

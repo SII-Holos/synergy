@@ -405,6 +405,12 @@ export namespace LatticeMachine {
           setState(draft, "reviewing_pathway")
         } else {
           draft.status = "completed"
+          draft.effect = {
+            id: Identifier.ascending("lattice_effect"),
+            kind: "deliver_completion",
+            deliveryKey: LatticeTypes.completionDeliveryKey(draft.id),
+            time: { created: now },
+          }
           draft.time.completed = now
         }
       } else {
