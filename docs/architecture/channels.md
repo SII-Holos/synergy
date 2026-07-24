@@ -89,6 +89,7 @@ Providers receive an account-bound `ChannelHost` rather than direct Scope or Ses
 - it requires active owned Project state;
 - it resolves the managed Project Scope;
 - it keys one endpoint Session by provider, account, external Project, and external Task;
+- it runs provider preparation before Session creation or inbox delivery, so a failed precondition leaves no empty Task Session;
 - it creates that Session with `autonomous` control and unattended interaction;
 - it delivers the assignment as a visible `task` inbox item;
 - it may deliver separate hidden system-origin participation guidance as a deduplicated `steer` item;
@@ -111,9 +112,13 @@ On connect or manual refresh, Clarus:
 
 The provider accepts only subscription state and runtime Task events. Legacy Project message, file, system, and notary events are not Channel behaviors and are classified as unknown by the task-only adapter.
 
-`clarus.runtime.task.assigned` dispatches a Task Session through `ChannelHost`. The visible assignment prompt contains supplied task identity, goal, instructions, input, context, attempt mode, and retry lineage in deterministic order. Separate hidden guidance explains participation rules without pretending to be user-authored text.
+`clarus.runtime.task.assigned` resolves declared `input_refs` before dispatch. The provider uses the version-locked Holos CLI as a REST companion to read runtime context and phase state, map artifact names to inline bodies or file references, and preview or download files into the managed Project workspace. Hydration is bounded, path-safe, cached per run, and fail-closed: unresolved declared inputs prevent Session creation, assignment persistence, inbox delivery, and model wake. Assignments without `input_refs` make no additional CLI or network call.
 
-Every installation ships `clarus-agent-participation` as a memory-backed builtin Skill. It documents only the native assignment Session workflow and the `clarus_submit_task_result` / `clarus_extend_task` tools; it does not install a standalone listener, open another WebSocket, own credentials, or depend on external scripts.
+After successful preparation, Clarus dispatches the Task Session through `ChannelHost`. The visible assignment prompt contains supplied task identity, goal, instructions, input, context, attempt mode, retry lineage, and resolved artifact paths in deterministic order. Separate hidden guidance explains participation rules without pretending to be user-authored text.
+
+Synergy declares an exact `@sii-holos/holos-cli` runtime dependency. Source runs resolve that package directly; standalone runtime builds copy its executable modules and required `ws` / `zod` dependencies into `lib/holos-cli`, and Desktop copies the complete runtime directory into application resources. This companion performs bounded REST preflight only. It does not install at first use, depend on the user `PATH`, open another Agent Tunnel, or own a parallel Clarus lifecycle.
+
+Every installation also ships `clarus-agent-participation` as a memory-backed builtin Skill. It documents only the native assignment Session workflow and the `clarus_submit_task_result` / `clarus_extend_task` tools; it does not install a standalone listener, open another WebSocket, own credentials, or depend on external scripts.
 
 Each running assignment may have one deterministic deadline Agenda item. The item belongs to the assignment Session's Project Scope and uses `session_guidance` delivery: when it fires, it injects hidden system-origin `steer` guidance into the same Task Session instead of creating a visible user prompt or a second Agenda Session. Authoritative extension events update the assignment deadline and reschedule the same Agenda item. Result acknowledgement or explicit Session abort cancels the reminder.
 
@@ -145,7 +150,7 @@ The Sidebar groups managed Projects under Channel account rows. Account state di
 
 - Channel core owns Scope and Session integration; providers own remote protocol state.
 - A managed external Project maps to one deterministic real Project Scope and never to a synthetic Project conversation Session.
-- A remote Task maps to one ordinary unattended Session inside its managed Project Scope.
+- A remote Task maps to one ordinary unattended Session inside its managed Project Scope, and that Session appears beneath the managed Project even though its navigation category is `channel`.
 - New endpoint identities use typed Channel targets; existing Feishu chat keys remain byte-for-byte compatible.
 - Borrowed providers never create a second transport or reconnect loop.
 - Durable outbound state is written before send, and ambiguous dispatch is never retried automatically.

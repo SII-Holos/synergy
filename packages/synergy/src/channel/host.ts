@@ -182,8 +182,20 @@ export namespace ChannelHost {
           retryOfTaskID?: string
           systemGuidance?: { deliveryKey: string; text: string }
           beforeWake?: (result: { sessionID: string; deliveryCreated: boolean }) => void | Promise<void>
+          prepare?: (result: {
+            scope: Scope.Project
+          }) =>
+            | void
+            | { text?: string; systemGuidanceText?: string }
+            | Promise<void | { text?: string; systemGuidanceText?: string }>
         }) {
           const { scope } = await resolveScopeForProject(hostIdentity, input.externalProjectId)
+          const prepared = await ScopeContext.provide({
+            scope,
+            fn: () => input.prepare?.({ scope }),
+          })
+          const taskText = prepared?.text ?? input.text
+          const guidanceText = prepared?.systemGuidanceText ?? input.systemGuidance?.text
           const endpoint = taskEndpoint(hostIdentity, input.externalProjectId, input.externalTaskId)
           const session = await Session.getOrCreateForEndpoint(endpoint, {
             scope,
@@ -199,19 +211,19 @@ export namespace ChannelHost {
             mode: "task",
             message: {
               role: "user",
-              parts: [{ type: "text", text: input.text }],
+              parts: [{ type: "text", text: taskText }],
               visible: true,
               origin: { type: "channel" as const, label: channelType },
             },
           })
-          if (input.systemGuidance) {
+          if (input.systemGuidance && guidanceText) {
             await SessionInbox.deliverUnique({
               sessionID: session.id,
               deliveryKey: input.systemGuidance.deliveryKey,
               mode: "steer",
               message: {
                 role: "user",
-                parts: [{ type: "text", text: input.systemGuidance.text, origin: "system" }],
+                parts: [{ type: "text", text: guidanceText, origin: "system" }],
                 visible: false,
                 origin: { type: "channel" as const, label: channelType },
               },

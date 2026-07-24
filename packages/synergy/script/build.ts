@@ -21,6 +21,7 @@ import {
   type SandboxRuntimeTarget,
 } from "./sandbox-assets"
 import { stagePlaywrightCoreRuntime } from "./playwright-runtime-assets"
+import { copyHolosCliAsset } from "./holos-cli-assets
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -148,6 +149,7 @@ for (const item of targets) {
   if (shouldReusePublishedRuntime(item)) {
     await extractPublishedRuntimePackage(name, Script.version)
     await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
+    copyHolosCliAsset(path.join("dist", name))
     if (requireSandboxAssets) assertPackagedSandboxAsset(item, path.join("dist", name))
     binaries[name] = Script.version
     continue
@@ -197,6 +199,7 @@ for (const item of targets) {
       2,
     ),
   )
+  copyHolosCliAsset(path.join("dist", name))
   binaries[name] = Script.version
   await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
 
