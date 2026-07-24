@@ -1,8 +1,17 @@
 import { createEffect, onCleanup, onMount } from "solid-js"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"
 import { normalizeBrowserError } from "./browser-error"
+
+export function nativeBrowserViewVisible(input: {
+  appDialogOpen: boolean
+  fileChooserOpen: boolean
+  pageDialogOpen: boolean
+}) {
+  return !input.appDialogOpen && !input.fileChooserOpen && !input.pageDialogOpen
+}
 
 export function nativeBounds(rect: Pick<DOMRect, "x" | "y" | "width" | "height">) {
   if (![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) return null
@@ -14,6 +23,7 @@ export function nativeBounds(rect: Pick<DOMRect, "x" | "y" | "width" | "height">
 
 export function NativeBrowserSurface(props: { container: () => HTMLDivElement | undefined; ownerKey: string }) {
   const browser = useBrowser()
+  const dialog = useDialog()
   const platform = usePlatform()
   let attachedPageId: string | null = null
   let disposed = false
@@ -97,12 +107,18 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
 
     const bounds = nativeBounds(container.getBoundingClientRect())
     if (!bounds) return
+    const visible = nativeBrowserViewVisible({
+      appDialogOpen: Boolean(dialog.active),
+      fileChooserOpen: Boolean(browser.fileChooserRequest()),
+      pageDialogOpen: Boolean(browser.dialogRequest()),
+    })
     void native
       .attachView({
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         ownerKey: props.ownerKey,
         pageId: page.id,
         bounds,
+        visible,
       })
       .then(
         () => {

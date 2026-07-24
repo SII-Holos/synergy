@@ -37,12 +37,14 @@ describe("desktop ipc contract", () => {
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         bounds: { x: 0, y: 0, width: 640, height: 480 },
+        visible: false,
       }),
     ).toEqual({
       protocolVersion: 2,
       ownerKey: "scope:scope:session:session",
       pageId: "page",
       bounds: { x: 0, y: 0, width: 640, height: 480 },
+      visible: false,
     })
   })
 

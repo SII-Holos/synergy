@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { nativeBounds } from "../../../../src/components/workspace/browser/native-browser-surface"
+import {
+  nativeBounds,
+  nativeBrowserViewVisible,
+} from "../../../../src/components/workspace/browser/native-browser-surface"
 
 describe("nativeBounds", () => {
   test("returns finite integer bounds only after the Browser surface has a real size", () => {
@@ -11,5 +14,38 @@ describe("nativeBounds", () => {
     })
     expect(nativeBounds({ x: 0, y: 0, width: 0, height: 600 })).toBeNull()
     expect(nativeBounds({ x: 0, y: 0, width: Number.NaN, height: 600 })).toBeNull()
+  })
+})
+
+describe("nativeBrowserViewVisible", () => {
+  test("hides the native view behind blocking DOM overlays", () => {
+    expect(
+      nativeBrowserViewVisible({
+        appDialogOpen: false,
+        fileChooserOpen: false,
+        pageDialogOpen: false,
+      }),
+    ).toBe(true)
+    expect(
+      nativeBrowserViewVisible({
+        appDialogOpen: true,
+        fileChooserOpen: false,
+        pageDialogOpen: false,
+      }),
+    ).toBe(false)
+    expect(
+      nativeBrowserViewVisible({
+        appDialogOpen: false,
+        fileChooserOpen: true,
+        pageDialogOpen: false,
+      }),
+    ).toBe(false)
+    expect(
+      nativeBrowserViewVisible({
+        appDialogOpen: false,
+        fileChooserOpen: false,
+        pageDialogOpen: true,
+      }),
+    ).toBe(false)
   })
 })

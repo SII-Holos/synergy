@@ -177,6 +177,7 @@ export type BrowserNativePageRequest = z.infer<typeof BrowserNativePageRequestSc
 
 export const BrowserNativeAttachRequestSchema = BrowserNativePageRequestSchema.extend({
   bounds: BrowserNativeBoundsSchema.optional(),
+  visible: z.boolean().optional(),
 }).strict()
 export type BrowserNativeAttachRequest = z.infer<typeof BrowserNativeAttachRequestSchema>
 
