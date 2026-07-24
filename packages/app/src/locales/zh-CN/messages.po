@@ -11553,6 +11553,11 @@ msgstr "已添加新消息；无法重做此回滚"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "回退完成"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.dismiss"
 msgstr "关闭"
 

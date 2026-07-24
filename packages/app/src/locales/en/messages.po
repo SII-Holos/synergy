@@ -11553,6 +11553,11 @@ msgstr "New messages have been added; cannot redo this rollback"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "Rewind complete"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.dismiss"
 msgstr "Dismiss"
 

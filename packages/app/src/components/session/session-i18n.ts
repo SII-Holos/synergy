@@ -149,6 +149,7 @@ export const S = {
   rollbackRestoreFiles: { id: "session.rollback.restoreFiles", message: "Restore files ({count})" },
   rollbackDismiss: { id: "session.rollback.dismiss", message: "Dismiss" },
   rollbackRestoreTooltip: { id: "session.rollback.restoreTooltip", message: "Restore the rewound messages" },
+  rollbackComplete: { id: "session.rollback.complete", message: "Rewind complete" },
 
   rollbackRequestFailed: { id: "session.rollback.requestFailed", message: "Request failed" },
   rollbackRedoSuccessDesc: {

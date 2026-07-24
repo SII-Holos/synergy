@@ -184,8 +184,7 @@ function SessionPageContent() {
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
-  let presentedRollbackKey: string | undefined
-  let dismissedRollbackKey: string | undefined
+  let activeRollbackKey: string | undefined
   let rollbackDialogID: string | undefined
   const visibleSessionTransitionEntry = createMemo(() => {
     const sessionID = params.id
@@ -316,12 +315,13 @@ function SessionPageContent() {
     const summary = rollback()
     const sessionID = params.id
     const rollbackKey = summary && sessionID ? `${sessionID}:${summary.id}` : undefined
+    const seenKey = sessionID ? sync.data.rollbackDialogPresentation[sessionID]?.seenKey : undefined
     const action = rollbackDialogAction({
       rollbackKey,
       activeDialogID: dialog.active?.id,
       rollbackDialogID,
-      presentedKey: presentedRollbackKey,
-      dismissedKey: dismissedRollbackKey,
+      activeRollbackKey,
+      seenKey,
     })
 
     if (action === "close") {
@@ -329,24 +329,28 @@ function SessionPageContent() {
       return
     }
     if (!rollbackKey) {
-      presentedRollbackKey = undefined
-      dismissedRollbackKey = undefined
+      activeRollbackKey = undefined
       rollbackDialogID = undefined
       return
     }
     if (action !== "show" || !summary || !sessionID) return
 
-    presentedRollbackKey = rollbackKey
+    activeRollbackKey = rollbackKey
     let mountedDialogID: string | undefined
     dialog.show(
       () => <RollbackDialog sessionID={sessionID} rollback={() => rollback() ?? summary} sdk={sdk} />,
       () => {
-        if (presentedRollbackKey === rollbackKey) dismissedRollbackKey = rollbackKey
-        if (rollbackDialogID === mountedDialogID) rollbackDialogID = undefined
+        if (rollbackDialogID !== mountedDialogID) return
+        activeRollbackKey = undefined
+        rollbackDialogID = undefined
       },
     )
     mountedDialogID = dialog.active?.id
     rollbackDialogID = mountedDialogID
+    sync.rollbackDialog.markPresented(sessionID, rollbackKey)
+  })
+  onCleanup(() => {
+    if (rollbackDialogID && dialog.active?.id === rollbackDialogID) dialog.close()
   })
   const hiddenMessageIDs = createMemo(() => {
     const rb = rollback()

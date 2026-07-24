@@ -17,28 +17,31 @@ describe("rollback dialog presentation", () => {
     ).toBe("show")
   })
 
-  test("shows each rollback once and keeps a dismissed rollback closed", () => {
+  test("shows each rollback once", () => {
     expect(
       rollbackDialogAction({
         rollbackKey: "session-a:rollback-a",
-        presentedKey: "session-a:rollback-a",
-      }),
-    ).toBe("wait")
-
-    expect(
-      rollbackDialogAction({
-        rollbackKey: "session-a:rollback-a",
-        dismissedKey: "session-a:rollback-a",
+        seenKey: "session-a:rollback-a",
       }),
     ).toBe("wait")
 
     expect(
       rollbackDialogAction({
         rollbackKey: "session-a:rollback-b",
-        presentedKey: "session-a:rollback-a",
-        dismissedKey: "session-a:rollback-a",
+        seenKey: "session-a:rollback-a",
       }),
     ).toBe("show")
+  })
+
+  test("keeps a presented rollback closed after the session page is recreated", () => {
+    const rollbackKey = "session-a:rollback-a"
+
+    expect(
+      rollbackDialogAction({
+        rollbackKey,
+        seenKey: rollbackKey,
+      }),
+    ).toBe("wait")
   })
 
   test("closes an obsolete rollback dialog before presenting newer state", () => {
@@ -47,7 +50,7 @@ describe("rollback dialog presentation", () => {
         rollbackKey: undefined,
         activeDialogID: "rollback-dialog",
         rollbackDialogID: "rollback-dialog",
-        presentedKey: "session-a:rollback-a",
+        activeRollbackKey: "session-a:rollback-a",
       }),
     ).toBe("close")
 
@@ -56,7 +59,7 @@ describe("rollback dialog presentation", () => {
         rollbackKey: "session-b:rollback-b",
         activeDialogID: "rollback-dialog",
         rollbackDialogID: "rollback-dialog",
-        presentedKey: "session-a:rollback-a",
+        activeRollbackKey: "session-a:rollback-a",
       }),
     ).toBe("close")
   })

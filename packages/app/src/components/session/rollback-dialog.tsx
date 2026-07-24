@@ -7,6 +7,7 @@ import type { SessionRollbackSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { useSDK } from "@/context/sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
+import "./rollback-dialog.css"
 
 interface RollbackDialogProps {
   sessionID: string
@@ -79,13 +80,15 @@ export function RollbackDialog(props: RollbackDialogProps) {
 
   return (
     <Dialog
-      title={i18n._({
+      title={_(S.rollbackComplete)}
+      description={i18n._({
         ...S.rollbackSummary,
         values: { messages: numMessages(), turns: numTurns() },
       })}
       size="compact"
+      class="rollback-dialog"
     >
-      <div data-slot="dialog-actions">
+      <div data-slot="dialog-actions" class="rollback-dialog-actions">
         <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
           {_(S.rollbackDismiss)}
         </Button>
