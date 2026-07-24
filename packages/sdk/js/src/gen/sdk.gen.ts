@@ -104,6 +104,7 @@ import type {
   ChannelAppSessionResponses,
   ChannelDisconnectResponses,
   ChannelDownloadDiagnosticsResponses,
+  ChannelRefreshProjectsErrors,
   ChannelRefreshProjectsResponses,
   ChannelStartOneResponses,
   ChannelStartResponses,
@@ -10744,7 +10745,7 @@ export class Channel extends HeyApiClient {
   /**
    * Refresh channel account projects
    *
-   * Trigger project discovery and sync for a specific channel account. Returns immediately with accepted confirmation.
+   * Discover and reconcile projects for one channel account, then return when this refresh completes.
    */
   public refreshProjects<ThrowOnError extends boolean = false>(
     parameters: {
@@ -10768,7 +10769,11 @@ export class Channel extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<ChannelRefreshProjectsResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<
+      ChannelRefreshProjectsResponses,
+      ChannelRefreshProjectsErrors,
+      ThrowOnError
+    >({
       url: "/channel/{channelType}/{accountId}/projects/refresh",
       ...options,
       ...params,

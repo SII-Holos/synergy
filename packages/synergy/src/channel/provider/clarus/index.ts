@@ -13,6 +13,8 @@ import { ClarusResultOutbox, type ClarusResultPayload, type ClarusResultSend } f
 import { ClarusExtensionOutbox, type ClarusExtendPayload, type ClarusExtensionSend } from "./extension-outbox"
 import { createClarusAgentTunnelAdapter } from "./tunnel-adapter"
 import { createClarusCliRunner } from "./cli-runner"
+const PROJECT_REFRESH_TIMEOUT_MS = 60_000
+const PROJECT_SUBSCRIBE_TIMEOUT_MS = 15_000
 
 type ClarusHolosDependencies = {
   auth: Pick<typeof HolosAuth, "getCredentialOrThrow" | "getStoredCredential">
@@ -264,7 +266,8 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
   async refreshProjects(input: { accountId: string; signal: AbortSignal; host: ChannelHost.Instance }): Promise<void> {
     const connection = this.connections.get(input.accountId)
     if (!connection || connection.signal.aborted) throw new Error("Clarus channel is not connected")
-    await this.syncProjects(connection)
+    const signal = AbortSignal.any([connection.signal, input.signal, AbortSignal.timeout(PROJECT_REFRESH_TIMEOUT_MS)])
+    await this.syncProjects(connection, signal)
   }
 
   private requireConnection(accountId: string, requestID: string): AccountConnection {
@@ -278,7 +281,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     }
   }
 
-  private async syncProjects(connection: AccountConnection): Promise<void> {
+  private async syncProjects(connection: AccountConnection, signal: AbortSignal = connection.signal): Promise<void> {
     const accountHash = hash(connection.accountId)
     const apiUrl =
       connection.config.apiUrl ??
@@ -291,7 +294,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
         if (!credential) return undefined
         return { agentID: credential.agentId, agentSecret: credential.agentSecret }
       },
-      connection.signal,
+      signal,
     )
     const projects: ChannelHost.ExternalProjectRef[] = []
     let cursor: string | undefined
@@ -303,9 +306,9 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
         connection.projects.set(project.projectID, name)
       }
       cursor = page.nextCursor
-    } while (cursor && !connection.signal.aborted)
+    } while (cursor && !signal.aborted)
 
-    await connection.host.projects.reconcile({ projects, complete: !connection.signal.aborted })
+    await connection.host.projects.reconcile({ projects, complete: !signal.aborted })
     for (const project of projects) {
       if (!project.isActive) continue
       const requestID = crypto.randomUUID()
@@ -314,7 +317,8 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
         await connection.tunnel.subscribeProject({
           projectID: project.externalProjectId,
           requestID,
-          signal: connection.signal,
+          timeoutMs: PROJECT_SUBSCRIBE_TIMEOUT_MS,
+          signal,
         }).response
       } finally {
         connection.outboundRequests.delete(requestID)
@@ -322,11 +326,11 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     }
     await ClarusResultOutbox.recover({
       accountHash,
-      send: (input) => this.sendTaskResult(connection, input),
+      send: (input) => this.sendTaskResult(connection, input, signal),
     })
     const recoveredExtensions = await ClarusExtensionOutbox.recover({
       accountHash,
-      send: (input) => this.sendTaskExtension(connection, input),
+      send: (input) => this.sendTaskExtension(connection, input, signal),
     })
     for (const sessionID of recoveredExtensions) {
       const located = await ClarusAssignmentStore.findBySessionID(sessionID)

@@ -142,7 +142,7 @@ Remote Project pause does not invalidate work that was already accepted: the run
 
 Channel diagnostics are durable per-account bounded records. Secret-like values are redacted, oversized records are truncated with metadata, retention is capped by age and count, and records remain downloadable while the account is disconnected or after restart.
 
-`channel.refreshProjects` starts a coalesced background refresh and returns accepted without waiting for remote discovery. Concurrent refresh requests share one provider sync. A failed or partial refresh reports status without archiving Projects that were merely absent from an incomplete snapshot.
+`channel.refreshProjects` is a one-shot operation that resolves only after remote discovery, local Project reconciliation, active-Project subscription, and outbound recovery finish. Concurrent requests for one account and connection share the same in-flight Promise. Clarus bounds the complete manual refresh to 60 seconds and each Project subscription acknowledgement to 15 seconds, so the Settings action leaves `syncing` in a bounded time. Success reaches `connected`, provider failure reaches `failed`, and disconnect or reconnect preserves the newer connection lifecycle instead of allowing stale refresh completion to overwrite it. A failed or partial refresh reports the terminal error without destructive negative reconciliation.
 
 The Sidebar groups managed Projects under Channel account rows. Account state distinguishes disabled, waiting for borrowed transport, disconnected, syncing, connected, failed sync, and degraded operation. Provider capabilities determine whether refresh and diagnostic download actions are visible.
 

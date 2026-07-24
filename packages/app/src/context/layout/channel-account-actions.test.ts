@@ -17,9 +17,9 @@ import { describe, expect, test } from "bun:test"
 
 /**
  * Response from POST /channel/:channelType/:accountId/projects/refresh.
- * The server acknowledges the refresh was accepted (or is already in-flight).
+ * The request settles only after this one-shot refresh reaches a terminal state.
  */
-type RefreshProjectsResponse = { accepted: boolean }
+type RefreshProjectsResponse = { completed: boolean }
 
 /**
  * Parameters for the diagnostics download call.
@@ -36,7 +36,7 @@ interface DownloadDiagnosticsParams {
  *
  * - Shape matches the existing `startOne` / `stopOne` / `disconnect` pattern:
  *   POST /channel/{channelType}/{accountId}/projects/refresh
- * - Returns `{ accepted: boolean }` so the caller knows the server received the request.
+ * - Returns `{ completed: boolean }` after the one-shot refresh finishes.
  */
 type RefreshProjectsFn = (params: { channelType: string; accountId: string }) => Promise<RefreshProjectsResponse>
 
@@ -80,12 +80,9 @@ describe("refreshProjects action", () => {
     expect(method).toBe("POST") // contract assertion
   })
 
-  test("refresh accepts a single account and returns { accepted: boolean }", () => {
-    // The response is the simplest possible acknowledgement.
-    // Complex refresh status is communicated separately via the
-    // account status projection (syncing / connected / sync_failed).
-    const successResponse: RefreshProjectsResponse = { accepted: true }
-    expect(successResponse.accepted).toBe(true)
+  test("refresh accepts a single account and returns { completed: boolean }", () => {
+    const successResponse: RefreshProjectsResponse = { completed: true }
+    expect(successResponse.completed).toBe(true)
   })
 })
 
@@ -116,7 +113,7 @@ describe("refreshProjects coalescing and guard", () => {
     let callCount = 0
     const fakeRefresh: RefreshProjectsFn = async () => {
       callCount++
-      return { accepted: true }
+      return { completed: true }
     }
 
     const p1 = coalescingRefresh(fakeRefresh, { channelType: "clarus", accountId: "a" })
@@ -155,7 +152,7 @@ describe("refreshProjects coalescing and guard", () => {
     let callCount = 0
     const fakeRefresh: RefreshProjectsFn = async () => {
       callCount++
-      return { accepted: true }
+      return { completed: true }
     }
 
     const pA = coalescingRefresh(fakeRefresh, { channelType: "clarus", accountId: "a" })
@@ -198,10 +195,9 @@ describe("refreshProjects coalescing and guard", () => {
   })
 
   test("refresh never reconnects the Holos transport", () => {
-    // Per Blueprint Section 11 and Section 6:
-    // Manual Refresh Projects is an account-level one-shot background operation,
-    // coalesces concurrent requests into one in-flight run,
-    // **never reconnects Holos**.
+    // Manual Refresh Projects is a one-shot account action. Concurrent calls
+    // share one in-flight run, and the request settles when that run finishes.
+    // It never reconnects Holos.
     //
     // This is a behavioral contract: the implementation must NOT call
     // any Holos reconnect/start path during refresh.

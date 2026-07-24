@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import * as ChannelTypes from "../channel/types"
+import { Channel } from "../channel"
 import { Config } from "../config/config"
 import { registerProviders } from "../channel/provider"
 import { Session } from "../session"
@@ -187,15 +188,22 @@ export const ChannelRoute = new Hono()
     "/:channelType/:accountId/projects/refresh",
     describeRoute({
       summary: "Refresh channel account projects",
-      description:
-        "Trigger project discovery and sync for a specific channel account. Returns immediately with accepted confirmation.",
+      description: "Discover and reconcile projects for one channel account, then return when this refresh completes.",
       operationId: "channel.refreshProjects",
       responses: {
         200: {
-          description: "Refresh accepted",
+          description: "Refresh completed",
           content: {
             "application/json": {
-              schema: resolver(z.object({ accepted: z.literal(true) })),
+              schema: resolver(z.object({ completed: z.literal(true) })),
+            },
+          },
+        },
+        500: {
+          description: "Refresh failed",
+          content: {
+            "application/json": {
+              schema: resolver(Channel.RefreshError.Schema),
             },
           },
         },
@@ -204,9 +212,8 @@ export const ChannelRoute = new Hono()
     channelKeyParam,
     async (c) => {
       const { channelType, accountId } = c.req.valid("param")
-      const { Channel } = await import("../channel")
       await Channel.refreshProjects(channelType, accountId)
-      return c.json({ accepted: true as const })
+      return c.json({ completed: true as const })
     },
   )
   .get(

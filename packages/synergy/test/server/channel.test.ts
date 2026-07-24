@@ -26,7 +26,11 @@ function streaming(): StreamingSession {
   }
 }
 
-function diagnosticProvider(input: { type: string; lifecycle: "borrowed_transport" }) {
+function diagnosticProvider(input: {
+  type: string
+  lifecycle: "borrowed_transport"
+  refreshProjects?: Provider["refreshProjects"]
+}) {
   return {
     value: {
       type: input.type,
@@ -42,6 +46,7 @@ function diagnosticProvider(input: { type: string; lifecycle: "borrowed_transpor
         return { messageId: "reply" }
       },
       createStreamingSession: streaming,
+      refreshProjects: input.refreshProjects,
     } satisfies Provider,
   }
 }
@@ -71,6 +76,67 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+describe("Channel project refresh route", () => {
+  test("returns only after the one-shot refresh completes", async () => {
+    const type = `refresh-route-${crypto.randomUUID()}`
+    let resolveRefresh: () => void
+    const deferred = new Promise<void>((resolve) => {
+      resolveRefresh = resolve
+    })
+    const fake = diagnosticProvider({
+      type,
+      lifecycle: "borrowed_transport",
+      async refreshProjects() {
+        await deferred
+      },
+    })
+    Channel.registerProvider(fake.value)
+    await configureChannel(type)
+    await inHome(() => Channel.start(type, "account"))
+
+    const response = Promise.resolve(
+      Server.App().request(`/channel/${type}/account/projects/refresh`, { method: "POST" }),
+    )
+    expect(
+      await Promise.race([
+        response.then(() => "settled"),
+        new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 10)),
+      ]),
+    ).toBe("pending")
+
+    resolveRefresh!()
+    const result = await response
+    expect(result.status).toBe(200)
+    expect(await result.json()).toEqual({ completed: true })
+  })
+
+  test("returns a structured error when the one-shot refresh fails", async () => {
+    const type = `refresh-route-fail-${crypto.randomUUID()}`
+    const fake = diagnosticProvider({
+      type,
+      lifecycle: "borrowed_transport",
+      async refreshProjects() {
+        throw new Error("provider sync failure")
+      },
+    })
+    Channel.registerProvider(fake.value)
+    await configureChannel(type)
+    await inHome(() => Channel.start(type, "account"))
+
+    const result = await Server.App().request(`/channel/${type}/account/projects/refresh`, { method: "POST" })
+
+    expect(result.status).toBe(500)
+    expect(await result.json()).toEqual({
+      name: "ChannelRefreshError",
+      data: {
+        message: "provider sync failure",
+        channelType: type,
+        accountId: "account",
+      },
+    })
+  })
+})
+
 describe("Channel diagnostics NDJSON route", () => {
   test("emits one valid JSON record per line from active connections", async () => {
     const type = `ndjson-valid-${crypto.randomUUID()}`

@@ -84,35 +84,43 @@ afterEach(async () => {
 // Tests
 // ---------------------------------------------------------------------------
 describe.serial("Channel project refresh coalescing", () => {
-  test("concurrent refresh calls coalesce to one provider sync", async () => {
+  test("concurrent refresh calls share one provider sync and settle together", async () => {
     const type = `refresh-coalesce-${crypto.randomUUID()}`
     let callCount = 0
+    let resolveRefresh: () => void
+    const refreshDeferred = new Promise<void>((resolve) => {
+      resolveRefresh = resolve
+    })
 
     const fake = refreshProvider({
       type,
       lifecycle: "borrowed_transport",
       async refreshProjects() {
         callCount += 1
+        await refreshDeferred
       },
     })
     Channel.registerProvider(fake.value)
     await configureChannel(type)
 
-    // Issue two concurrent refresh calls. With coalescing, the provider
-    // should be invoked only once regardless of concurrency.
-    await Promise.all([
-      inHome(() => Channel.refreshProjects(type, "account")),
-      inHome(() => Channel.refreshProjects(type, "account")),
-    ])
+    const first = inHome(() => Channel.refreshProjects(type, "account"))
+    const second = inHome(() => Channel.refreshProjects(type, "account"))
+    await new Promise((resolve) => setTimeout(resolve, 5))
 
-    // RED: concurrent calls should coalesce, but each call creates its
-    // own host and calls provider.refreshProjects independently.
     expect(callCount).toBe(1)
+    expect(
+      await Promise.race([
+        Promise.all([first, second]).then(() => "settled"),
+        new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 10)),
+      ]),
+    ).toBe("pending")
+
+    resolveRefresh!()
+    await Promise.all([first, second])
   })
 
-  test("refresh returns accepted without waiting for provider sync completion", async () => {
-    const type = `refresh-async-${crypto.randomUUID()}`
-    let providerCompleted = false
+  test("refresh resolves only after provider sync reaches connected", async () => {
+    const type = `refresh-await-${crypto.randomUUID()}`
     let resolveRefresh: () => void
     const refreshDeferred = new Promise<void>((resolve) => {
       resolveRefresh = resolve
@@ -123,30 +131,25 @@ describe.serial("Channel project refresh coalescing", () => {
       lifecycle: "borrowed_transport",
       async refreshProjects() {
         await refreshDeferred
-        providerCompleted = true
       },
     })
     Channel.registerProvider(fake.value)
     await configureChannel(type)
 
-    // Start refresh
     const refreshPromise = inHome(() => Channel.refreshProjects(type, "account"))
-
-    // Give the event loop a tick
     await new Promise((resolve) => setTimeout(resolve, 5))
 
-    // RED: Channel.refreshProjects should return early ("accepted").
-    // Currently it awaits the provider's refreshProjects before returning.
-    const result = await Promise.race([
-      refreshPromise.then(() => "channel_returned"),
-      new Promise<string>((resolve) => setTimeout(() => resolve("channel_blocked"), 10)),
-    ])
+    expect((await inHome(() => Channel.status()))[`${type}:account`]?.status).toBe("syncing")
+    expect(
+      await Promise.race([
+        refreshPromise.then(() => "settled"),
+        new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 10)),
+      ]),
+    ).toBe("pending")
 
-    // RED: currently "channel_blocked" because Channel.refreshProjects awaits internally
-    expect(result).toBe("channel_returned")
-    // Cleanup
     resolveRefresh!()
-    await refreshPromise.catch(() => {})
+    await refreshPromise
+    expect((await inHome(() => Channel.status()))[`${type}:account`]?.status).toBe("connected")
   })
 })
 
@@ -162,29 +165,20 @@ describe.serial("Channel refresh status lifecycle", () => {
       type,
       lifecycle: "borrowed_transport",
       async refreshProjects() {
-        // Check status while refresh is in progress
-        const status = await inHome(() => Channel.status())
-        const key = `${type}:account`
-        // RED: during refresh, status should show syncing activity.
-        // Currently stays "connected" because nothing updates it.
-        expect(status[key]?.status).not.toBe("connected")
+        expect((await inHome(() => Channel.status()))[`${type}:account`]?.status).toBe("syncing")
         await refreshDeferred
       },
     })
     Channel.registerProvider(fake.value)
     await configureChannel(type)
 
-    // Before refresh: status should be "connected"
     const beforeStatus = await inHome(() => Channel.status())
     const key = `${type}:account`
     expect(beforeStatus[key]?.status).toBe("connected")
 
-    // Start refresh
     const refreshPromise = inHome(() => Channel.refreshProjects(type, "account"))
-    // Wait for provider to start
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    // Cleanup
     resolveRefresh!()
     await refreshPromise.catch(() => {})
   })
@@ -202,17 +196,73 @@ describe.serial("Channel refresh status lifecycle", () => {
     Channel.registerProvider(fake.value)
     await configureChannel(type)
 
-    // Attempt refresh (will throw)
-    await inHome(() => Channel.refreshProjects(type, "account")).catch(() => {})
+    await expect(inHome(() => Channel.refreshProjects(type, "account"))).rejects.toThrow("provider sync failure")
 
-    // RED: after a failed refresh, status should indicate failure.
-    // Currently stays "connected" because refreshProjects doesn't update statuses.
-    const status = await inHome(() => Channel.status())
-    const key = `${type}:account`
-    expect(status[key]?.status).not.toBe("connected")
-    // In the desired state, should be "failed" with an error message
-    if (status[key]?.status === "failed") {
-      expect(status[key]).toHaveProperty("error")
+    expect((await inHome(() => Channel.status()))[`${type}:account`]).toEqual({
+      status: "failed",
+      error: "provider sync failure",
+    })
+  })
+  test("disconnect during refresh preserves disconnected status", async () => {
+    const type = `refresh-disconnect-${crypto.randomUUID()}`
+    let resolveRefresh: () => void
+    const refreshDeferred = new Promise<void>((resolve) => {
+      resolveRefresh = resolve
+    })
+
+    const fake = refreshProvider({
+      type,
+      lifecycle: "borrowed_transport",
+      async refreshProjects() {
+        await refreshDeferred
+      },
+    })
+    Channel.registerProvider(fake.value)
+    await configureChannel(type)
+
+    const refresh = inHome(() => Channel.refreshProjects(type, "account"))
+    await Bun.sleep(5)
+    await inHome(() => Channel.disconnect(type, "account"))
+    resolveRefresh!()
+
+    await expect(refresh).rejects.toThrow("disconnected during project refresh")
+    expect((await inHome(() => Channel.status()))[`${type}:account`]?.status).toBe("disconnected")
+  })
+
+  test("reconnect starts a new refresh without stale status overwrite", async () => {
+    const type = `refresh-reconnect-${crypto.randomUUID()}`
+    const resolvers: Array<() => void> = []
+    let callCount = 0
+
+    const fake = refreshProvider({
+      type,
+      lifecycle: "borrowed_transport",
+      async refreshProjects() {
+        callCount += 1
+        await new Promise<void>((resolve) => resolvers.push(resolve))
+      },
+    })
+    Channel.registerProvider(fake.value)
+    await configureChannel(type)
+
+    const first = inHome(() => Channel.refreshProjects(type, "account"))
+    await Bun.sleep(5)
+    await inHome(() => Channel.start(type, "account"))
+    const second = inHome(() => Channel.refreshProjects(type, "account"))
+    await Bun.sleep(5)
+
+    try {
+      expect(callCount).toBe(2)
+      resolvers[0]!()
+      await expect(first).rejects.toThrow("disconnected during project refresh")
+      expect((await inHome(() => Channel.status()))[`${type}:account`]?.status).toBe("syncing")
+
+      resolvers[1]!()
+      await second
+      expect((await inHome(() => Channel.status()))[`${type}:account`]?.status).toBe("connected")
+    } finally {
+      for (const resolve of resolvers) resolve()
+      await Promise.allSettled([first, second])
     }
   })
 })
@@ -225,11 +275,8 @@ describe.serial("Channel refresh provider isolation", () => {
     const fake = refreshProvider({
       type,
       lifecycle: "borrowed_transport",
-      async refreshProjects() {
-        // The refresh creates a bare ChannelHost.create(...) with no callbacks
-      },
+      async refreshProjects() {},
     })
-    // Wrap connect to track calls
     const originalConnect = fake.value.connect.bind(fake.value)
     ;(fake.value as { connect: typeof originalConnect }).connect = async function (
       ...args: Parameters<typeof originalConnect>
@@ -241,17 +288,14 @@ describe.serial("Channel refresh provider isolation", () => {
     Channel.registerProvider(fake.value)
     await configureChannel(type)
 
-    // Initial connection via init
     expect(connectCount).toBe(1)
 
-    // Trigger refresh
     await inHome(() => Channel.refreshProjects(type, "account"))
 
-    // RED: refresh should NOT reconnect a borrowed-transport provider.
     expect(connectCount).toBe(1)
   })
 
-  test("refresh host is bare and discards diagnostic and status callbacks", async () => {
+  test("refresh host records diagnostics for the account", async () => {
     const type = `refresh-bare-${crypto.randomUUID()}`
     let refreshHostChannelType: string | undefined
     let refreshHostAccountId: string | undefined
@@ -260,10 +304,8 @@ describe.serial("Channel refresh provider isolation", () => {
       type,
       lifecycle: "borrowed_transport",
       async refreshProjects(input) {
-        // Inspect the host that Channel.refreshProjects creates
         refreshHostChannelType = input.host.channelType
         refreshHostAccountId = input.host.accountId
-        // Attempt to record a diagnostic through the refresh host
         await input.host.diagnostics.record({
           level: "warn",
           message: "refresh started",
@@ -274,12 +316,9 @@ describe.serial("Channel refresh provider isolation", () => {
     await configureChannel(type)
 
     await inHome(() => Channel.refreshProjects(type, "account"))
-    // Wait for the fire-and-forget refresh to complete and persist diagnostics
-    await new Promise((resolve) => setTimeout(resolve, 50))
 
-    // RED: diagnostics recorded through the refresh host should be
-    // captured. Currently the refresh host is created with no
-    // onDiagnostic callback, so diagnostics are silently lost.
+    expect(refreshHostChannelType).toBe(type)
+    expect(refreshHostAccountId).toBe("account")
     const records = await inHome(() => Channel.getDiagnostics(type, "account"))
     const hasRefreshDiagnostic = records.some((r) => r.message === "refresh started")
     expect(hasRefreshDiagnostic).toBe(true)
@@ -287,34 +326,28 @@ describe.serial("Channel refresh provider isolation", () => {
 })
 
 describe.serial("Channel partial/failed refresh does not negatively reconcile", () => {
-  test("failed refresh at Channel level does not archive existing connections", async () => {
+  test("failed refresh retains the connection for retry", async () => {
     const type = `refresh-partial-${crypto.randomUUID()}`
+    let callCount = 0
 
     const fake = refreshProvider({
       type,
       lifecycle: "borrowed_transport",
       async refreshProjects() {
+        callCount += 1
         throw new Error("partial refresh failure")
       },
     })
     Channel.registerProvider(fake.value)
     await configureChannel(type)
 
-    // Check status before the failed refresh
-    const beforeStatus = await inHome(() => Channel.status())
-    const key = `${type}:account`
-    expect(beforeStatus[key]?.status).toBe("connected")
+    await expect(inHome(() => Channel.refreshProjects(type, "account"))).rejects.toThrow("partial refresh failure")
+    await expect(inHome(() => Channel.refreshProjects(type, "account"))).rejects.toThrow("partial refresh failure")
 
-    // Attempt and catch the failed refresh
-    await inHome(() => Channel.refreshProjects(type, "account")).catch(() => {})
-
-    // RED: after a failed refresh, the connection should still exist.
-    // The Blueprint requires that a failed refresh never performs
-    // destructive negative reconciliation against projects.
-    // At minimum, the connection itself should not be torn down.
-    const afterStatus = await inHome(() => Channel.status())
-    // Currently, the connection remains "connected" after a thrown refresh
-    // (which is correct), but the status should reflect the failure.
-    expect(afterStatus[key]).toBeDefined()
+    expect(callCount).toBe(2)
+    expect((await inHome(() => Channel.status()))[`${type}:account`]).toEqual({
+      status: "failed",
+      error: "partial refresh failure",
+    })
   })
 })
