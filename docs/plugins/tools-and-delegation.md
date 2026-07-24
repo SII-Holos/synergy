@@ -85,7 +85,7 @@ A handler may return a string or `ToolResult` with title, output, metadata, and 
 
 An MCP contribution contains one strict local or remote server declaration. Local commands are argv arrays. Remote URLs must be parseable `http` or `https` URLs and may declare OAuth, retry, startup, timeout, filter, cache, and idle-shutdown policy. Plugin server identity is `${pluginId}::${contributionId}`; exact global config names shadow plugin names, while qualified plugin names remain stable. Plugin activation and reload replace the complete server set atomically after every candidate validates.
 
-`cliCommand()` contributes a flat executable command below `synergy <pluginId> <command>`. Its handler receives parsed options and the normal invocation context. Commands that execute processes declare `shell.execute` and call `context.shell.run({ command: [program, ...args] })`; plugins never pass shell source strings.
+`cliCommand()` contributes a flat executable command below `synergy <pluginId> <command>`. Command discovery and help are metadata-only and do not register the launch directory as a project; the host resolves the persistent Scope when a declared command actually executes. Its handler receives parsed options and the normal invocation context. Commands that execute processes declare `shell.execute` and call `context.shell.run({ command: [program, ...args] })`; plugins never pass shell source strings.
 
 Tools that produce files declare `asset.write`, call `context.asset.create()`, and return the host-owned attachment directly in `attachments`. This keeps asset URLs, Session/message identity, and presentation metadata under host ownership.
 
