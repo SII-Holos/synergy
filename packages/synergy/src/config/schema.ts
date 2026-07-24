@@ -1375,6 +1375,28 @@ export const Info = z
           .max(131_072)
           .optional()
           .describe("Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)"),
+        agentWorkerIdleBaselineRecycle: z
+          .boolean()
+          .optional()
+          .describe(
+            "Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)",
+          ),
+        agentWorkerIdleBaselineRssGrowthMb: z
+          .number()
+          .int()
+          .positive()
+          .max(131_072)
+          .optional()
+          .describe("Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)"),
+        agentWorkerIdleBaselineExternalGrowthMb: z
+          .number()
+          .int()
+          .positive()
+          .max(131_072)
+          .optional()
+          .describe(
+            "Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)",
+          ),
         agentCancelGraceMs: z
           .number()
           .int()

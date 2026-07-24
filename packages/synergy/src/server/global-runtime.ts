@@ -50,6 +50,15 @@ export namespace GlobalRuntime {
               config.execution?.agentWorkerMaxHeapMb === undefined
                 ? undefined
                 : config.execution.agentWorkerMaxHeapMb * 1024 * 1024,
+            idleBaselineRecycle: config.execution?.agentWorkerIdleBaselineRecycle,
+            idleBaselineRssGrowthBytes:
+              config.execution?.agentWorkerIdleBaselineRssGrowthMb === undefined
+                ? undefined
+                : config.execution.agentWorkerIdleBaselineRssGrowthMb * 1024 * 1024,
+            idleBaselineExternalGrowthBytes:
+              config.execution?.agentWorkerIdleBaselineExternalGrowthMb === undefined
+                ? undefined
+                : config.execution.agentWorkerIdleBaselineExternalGrowthMb * 1024 * 1024,
             cancelGraceMs: config.execution?.agentCancelGraceMs,
             heartbeatTimeoutMs: config.execution?.agentHeartbeatTimeoutMs,
           })
