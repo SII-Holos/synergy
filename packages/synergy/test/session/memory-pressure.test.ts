@@ -68,6 +68,7 @@ describe("SessionMemoryPressure", () => {
     const calls: boolean[] = []
     const signal = {
       phase: "test.history.complete",
+      platform: "darwin" as const,
       now: () => 12_000,
       snapshot: () => healthySnapshot,
       collect: (synchronous: boolean) => {
