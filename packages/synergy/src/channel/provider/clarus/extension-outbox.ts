@@ -38,7 +38,7 @@ const ExtensionPayload = z.record(z.string(), z.unknown()).superRefine((value, c
 })
 
 export const ClarusExtendPayload = z.object({
-  extend_seconds: z.number().int().min(60).max(86_400),
+  extend_seconds: z.number().int().min(60).max(3_600),
   progress: z.string().max(500).optional(),
   payload: ExtensionPayload.optional(),
 })

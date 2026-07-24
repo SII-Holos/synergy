@@ -385,6 +385,29 @@ describe("Clarus tunnel adapter event observation", () => {
     })
   })
 
+  test("runtimeTaskAssigned accepts null retry lineage", () => {
+    fake.emitEvent("clarus.runtime.task.assigned", {
+      run_id: "run-null-retry",
+      project_id: "proj-test",
+      task_id: "task-null-retry",
+      phase: "implementation",
+      subtask_id: "subtask-null-retry",
+      attempt: 1,
+      deadline_at: null,
+      attempt_mode: "initial",
+      retry_of_task_id: null,
+    })
+
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({
+      kind: "known",
+      type: "runtimeTaskAssigned",
+      taskID: "task-null-retry",
+      attemptMode: "initial",
+    })
+    expect((received[0] as { retryOfTaskID?: string }).retryOfTaskID).toBeUndefined()
+  })
+
   test("legacy project conversation events are classified as unknown", () => {
     const legacyTypes = [
       "clarus.project.message.created",

@@ -89,13 +89,14 @@ Providers receive an account-bound `ChannelHost` rather than direct Scope or Ses
 - it requires active owned Project state;
 - it resolves the managed Project Scope;
 - it keys one endpoint Session by provider, account, external Project, and external Task;
+- when provider state already binds the Task to a Session, it validates and reuses that bound Session under the endpoint creation lock, so concurrent replay cannot create a replacement;
 - it runs provider preparation before Session creation or inbox delivery, so a failed precondition leaves no empty Task Session;
 - it creates that Session with `autonomous` control and unattended interaction;
 - it delivers the assignment as a visible `task` inbox item;
 - it may deliver separate hidden system-origin participation guidance as a deduplicated `steer` item;
 - it persists provider assignment state before waking the Session loop.
 
-Exact assignment replay reuses the Session and delivery key. A new run for the same external Task reuses the Task Session with a new delivery. A retry represented by a new external Task ID creates a new Session and retains retry lineage.
+Exact assignment replay reuses the Session and delivery key. Clarus assignment delivery identity includes account, Project, Task, run, subtask, and attempt: a new run, subtask, or attempt for the same external Task creates a new delivery in the same Task Session, while an exact replay remains deduplicated. A new attempt resets result and extension state so a previously completed assignment becomes running again. A retry represented by a new external Task ID creates a new Session and retains retry lineage.
 
 `host.tasks.update` sends a deduplicated visible `steer` item only when the owned Project and Task Session still exist. Archived remote Projects never receive dispatch or update delivery.
 
@@ -110,9 +111,11 @@ On connect or manual refresh, Clarus:
 3. subscribes to each active Project and waits for its correlated subscription acknowledgement;
 4. recovers eligible result and extension outbox records.
 
-The provider accepts only subscription state and runtime Task events. Legacy Project message, file, system, and notary events are not Channel behaviors and are classified as unknown by the task-only adapter.
+The provider accepts only subscription state and runtime Task events. Assignment payloads normalize nullable retry lineage and attempt mode to absent semantic fields instead of rejecting the event. Legacy Project message, file, system, and notary events are not Channel behaviors and are classified as unknown by the task-only adapter.
 
-`clarus.runtime.task.assigned` resolves declared `input_refs` before dispatch. The provider uses the version-locked Holos CLI as a REST companion to read runtime context and phase state, map artifact names to inline bodies or file references, and preview or download files into the managed Project workspace. Hydration is bounded, path-safe, cached per run, and fail-closed: unresolved declared inputs prevent Session creation, assignment persistence, inbox delivery, and model wake. Assignments without `input_refs` make no additional CLI or network call.
+`clarus.runtime.task.assigned` rejects an already-expired deadline before REST preflight, Session creation, assignment persistence, inbox delivery, or model wake, then records a bounded informational diagnostic. A previously bound assignment whose owning Session is archived is blocked under the Session endpoint lock, retains its original binding, creates no replacement Session, and records a bounded warning diagnostic.
+
+Eligible assignments resolve declared `input_refs` before dispatch. The provider uses the version-locked Holos CLI as a REST companion to read runtime context and phase state, map artifact names to inline bodies or file references, and preview or download files into the managed Project workspace. Hydration is bounded, path-safe, cached per run, and fail-closed: unresolved declared inputs prevent Session creation, assignment persistence, inbox delivery, and model wake. Assignments without `input_refs` do not run this REST preflight.
 
 After successful preparation, Clarus dispatches the Task Session through `ChannelHost`. The visible assignment prompt contains supplied task identity, goal, instructions, input, context, attempt mode, retry lineage, and resolved artifact paths in deterministic order. Separate hidden guidance explains participation rules without pretending to be user-authored text.
 
@@ -124,7 +127,7 @@ Each running assignment may have one deterministic deadline Agenda item. The ite
 
 ## Results and Extensions
 
-`clarus_submit_task_result` and `clarus_extend_task` are available only inside a running Clarus assignment Session. Both validate bounded payloads and persist an outbox record before dispatch.
+`clarus_submit_task_result` and `clarus_extend_task` are available only inside a running Clarus assignment Session. Both validate bounded payloads and persist an outbox record before dispatch. Extensions add an integer from 60 through 3600 seconds, matching the upstream contract. Definitive extension rejection errors expose only a bounded, control-character-free, secret-redacted upstream code and message so the agent can correct the request without leaking untrusted content.
 
 Result and extension state machines are independent. Each request records its request ID and settles as `acknowledged`, `not_dispatched`, `rejected`, or `ambiguous`:
 
@@ -140,7 +143,7 @@ Remote Project pause does not invalidate work that was already accepted: the run
 
 ## Diagnostics, Refresh, and Product Projection
 
-Channel diagnostics are durable per-account bounded records. Secret-like values are redacted, oversized records are truncated with metadata, retention is capped by age and count, and records remain downloadable while the account is disconnected or after restart.
+Channel diagnostics are durable per-account bounded records. Secret-like values are redacted, oversized records are truncated with metadata, retention is capped by age and count, and records remain downloadable while the account is disconnected or after restart. Invalid Clarus event schemas produce structured warning diagnostics containing only bounded event type, issue path, and issue message fields; the raw event payload is never recorded. Expired assignment skips and archived-Session blocks record only hashed remote identities plus the deadline or local Session identifier needed to diagnose the disposition.
 
 `channel.refreshProjects` is a one-shot operation that resolves only after remote discovery, local Project reconciliation, active-Project subscription, and outbound recovery finish. Concurrent requests for one account and connection share the same in-flight Promise. Clarus bounds the complete manual refresh to 60 seconds and each Project subscription acknowledgement to 15 seconds, so the Settings action leaves `syncing` in a bounded time. Success reaches `connected`, provider failure reaches `failed`, and disconnect or reconnect preserves the newer connection lifecycle instead of allowing stale refresh completion to overwrite it. A failed or partial refresh reports the terminal error without destructive negative reconciliation.
 
@@ -155,5 +158,6 @@ The Sidebar groups managed Projects under Channel account rows. Account state di
 - Borrowed providers never create a second transport or reconnect loop.
 - Durable outbound state is written before send, and ambiguous dispatch is never retried automatically.
 - Remote archive preserves local Scope data but blocks new Task delivery.
+- An expired assignment creates no Session or assignment binding; an archived owning Session blocks replay without replacement.
 - Deadline guidance is hidden Session context, not a visible user prompt.
 - Navigation and account actions derive from canonical Channel, Scope, Session, and API state rather than a provider-specific frontend store.

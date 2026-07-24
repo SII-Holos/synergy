@@ -21,8 +21,9 @@ const FAKE_AGENT_SECRET = "test-secret"
 // ---------------------------------------------------------------------------
 // Fake tunnel + provider setup
 // ---------------------------------------------------------------------------
-import { FakeNativeTunnelPort, nativeMessageTaskAssigned } from "./clarus-fixture"
+import { FakeNativeTunnelPort, nativeMessageTaskAssigned, taskAssignedEvent } from "./clarus-fixture"
 import { ClarusProvider } from "../../src/channel/provider/clarus"
+import { ClarusAssignmentStore } from "../../src/channel/provider/clarus/assignment-store"
 import type { Config } from "../../src/config/config"
 import { tmpdir } from "../fixture/fixture"
 
@@ -87,6 +88,180 @@ describe("ClarusProvider routing integration", () => {
 
   test("provider declares borrowed_transport lifecycle (no reconnect loop)", () => {
     expect(provider.lifecycle).toBe("borrowed_transport")
+  })
+
+  test("invalid assignment events record bounded structured diagnostics without raw payload", async () => {
+    const diagnostics: ChannelHost.DiagnosticRecordInput[] = []
+    const host = ChannelHost.create({
+      channelType: "clarus",
+      accountId: FAKE_AGENT_ID,
+      onDiagnostic: (record) => {
+        diagnostics.push(record)
+      },
+    })
+    const handleEvent = provider as unknown as {
+      handleEvent(
+        connection: {
+          accountId: string
+          signal: AbortSignal
+          host: ChannelHost.Instance
+          outboundRequests: Set<string>
+        },
+        event: {
+          kind: "invalid"
+          sourceType: string
+          agentID: string
+          requestID: string | null
+          epoch: number
+          generation: number
+          issues: readonly { path: PropertyKey[]; message: string }[]
+        },
+      ): Promise<void>
+    }
+    const rawSecret = "secret=assignment-payload-must-not-appear"
+
+    await handleEvent.handleEvent(
+      {
+        accountId: FAKE_AGENT_ID,
+        signal: new AbortController().signal,
+        host,
+        outboundRequests: new Set(),
+      },
+      {
+        kind: "invalid",
+        sourceType: "clarus.runtime.task.assigned",
+        agentID: FAKE_AGENT_ID,
+        requestID: null,
+        epoch: 1,
+        generation: 1,
+        issues: [
+          {
+            path: ["retry_of_task_id"],
+            message: `Invalid input: expected string, received null ${"x".repeat(1_000)}`,
+          },
+        ],
+      },
+    )
+
+    const issueMessage = (diagnostics[0]?.data?.issues as Array<{ message: string }>)[0]!.message
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]).toMatchObject({
+      level: "warn",
+      message: "Invalid Clarus event",
+      data: {
+        eventType: "clarus.runtime.task.assigned",
+        issues: [
+          {
+            path: "retry_of_task_id",
+            message: expect.stringContaining("Invalid input: expected string, received null"),
+          },
+        ],
+      },
+    })
+    const serialized = JSON.stringify(diagnostics[0])
+    expect(serialized).not.toContain(rawSecret)
+    expect(issueMessage.length).toBeLessThanOrEqual(500)
+  })
+  test("expired and archived assignments resolve through structured diagnostics", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const diagnostics: ChannelHost.DiagnosticRecordInput[] = []
+        const host = ChannelHost.create({
+          channelType: "clarus",
+          accountId: FAKE_AGENT_ID,
+          onDiagnostic: (record) => {
+            diagnostics.push(record)
+          },
+        })
+        const projectID = "diagnostic-project"
+        await host.projects.ensure({ externalProjectId: projectID, name: "Diagnostic project", isActive: true })
+        const handleEvent = provider as unknown as {
+          handleEvent(
+            connection: {
+              accountId: string
+              config: Config.ChannelClarusAccount
+              signal: AbortSignal
+              host: ChannelHost.Instance
+              projects: Map<string, string>
+              outboundRequests: Set<string>
+            },
+            event: ReturnType<typeof taskAssignedEvent>,
+          ): Promise<void>
+        }
+        const connection = {
+          accountId: FAKE_AGENT_ID,
+          config: accountConfig(),
+          signal: new AbortController().signal,
+          host,
+          projects: new Map([[projectID, "Diagnostic project"]]),
+          outboundRequests: new Set<string>(),
+        }
+
+        await handleEvent.handleEvent(
+          connection,
+          taskAssignedEvent({
+            agentID: FAKE_AGENT_ID,
+            projectID,
+            taskID: "expired-diagnostic-task",
+            runID: "expired-diagnostic-run",
+            deadlineAt: new Date(Date.now() - 1_000).toISOString(),
+          }),
+        )
+        expect(diagnostics).toContainEqual(
+          expect.objectContaining({
+            level: "info",
+            message: "Skipped expired Clarus assignment",
+            data: expect.objectContaining({ deadlineAt: expect.any(String) }),
+          }),
+        )
+        expect((await Session.list()).total).toBe(0)
+
+        const liveEvent = taskAssignedEvent({
+          agentID: FAKE_AGENT_ID,
+          projectID,
+          taskID: "archived-diagnostic-task",
+          runID: "archived-diagnostic-run-1",
+          deadlineAt: null,
+        })
+        await handleEvent.handleEvent(connection, liveEvent)
+        const located = await ClarusAssignmentStore.findByIdentity({
+          accountId: FAKE_AGENT_ID,
+          projectID,
+          taskID: liveEvent.taskID,
+        })
+        expect(located).toBeDefined()
+        const session = await Session.get(located!.assignment.sessionID)
+        if (!session.endpoint) throw new Error("Expected Clarus assignment endpoint")
+        const scope = await Scope.fromID(session.scope.id)
+        if (!scope || scope.type !== "project") throw new Error("Expected managed Project Scope")
+        await Session.archiveForEndpoint(session.endpoint, { scope })
+
+        await handleEvent.handleEvent(connection, {
+          ...liveEvent,
+          requestID: crypto.randomUUID(),
+          runID: "archived-diagnostic-run-2",
+        })
+        expect(diagnostics).toContainEqual(
+          expect.objectContaining({
+            level: "warn",
+            message: "Clarus assignment blocked by archived Session",
+            data: expect.objectContaining({ sessionID: session.id }),
+          }),
+        )
+        expect((await Session.list()).total).toBe(0)
+        expect(
+          (
+            await ClarusAssignmentStore.findByIdentity({
+              accountId: FAKE_AGENT_ID,
+              projectID,
+              taskID: liveEvent.taskID,
+            })
+          )?.assignment.sessionID,
+        ).toBe(session.id)
+      },
+    })
   })
 
   test("project discovery does not create a conversation Session at project-chat endpoint", async () => {

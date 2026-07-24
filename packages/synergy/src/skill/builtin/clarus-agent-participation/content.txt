@@ -22,7 +22,7 @@ Use this workflow only inside the Synergy Session that received a native Clarus 
 
 Call `clarus_extend_task` before the current deadline only when additional time is genuinely required.
 
-- `extend_seconds` must be between 60 and 86400.
+- `extend_seconds` must be between 60 and 3600.
 - Keep `progress` concise and factual; it is limited to 500 characters.
 - Use the optional bounded `payload` only for small structured progress metadata.
 - Acknowledged means the deadline was extended.

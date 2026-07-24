@@ -130,6 +130,32 @@ describe("Clarus assignment identity and Session lifecycle", () => {
       },
     })
   })
+  test("concurrent exact replay converges on one Session and one delivery", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const scope = await setupProjectScope("concurrent-replay-account", "concurrent-replay-project")
+        const event = assignmentFixture({
+          agentID: "concurrent-replay-account",
+          projectID: "concurrent-replay-project",
+          taskID: "task-concurrent-replay-1",
+          runID: "run-concurrent-replay-1",
+          subtaskID: "subtask-concurrent-replay-1",
+        })
+
+        const results = await Promise.all([
+          dispatchAssignment("concurrent-replay-account", event),
+          dispatchAssignment("concurrent-replay-account", event),
+        ])
+
+        expect(new Set(results.map((result) => result.assignment.sessionID)).size).toBe(1)
+        expect(results.filter((result) => result.created)).toHaveLength(1)
+        expect(await ScopeContext.provide({ scope, fn: () => Session.list().then((list) => list.total) })).toBe(1)
+        expect(await SessionInbox.list(results[0]!.assignment.sessionID)).toHaveLength(2)
+      },
+    })
+  })
 
   test("new run/attempt reuses Session with a new deterministic delivery", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -164,6 +190,150 @@ describe("Clarus assignment identity and Session lifecycle", () => {
         expect(inbox).toHaveLength(4)
         const deliveryKeys = inbox.map((i) => i.deliveryKey).filter(Boolean)
         expect(new Set(deliveryKeys).size).toBe(4)
+      },
+    })
+  })
+
+  test("new attempt in the same run reuses the Session with a new delivery", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await setupProjectScope("attempt-account", "attempt-project")
+        const firstEvent = assignmentFixture({
+          agentID: "attempt-account",
+          projectID: "attempt-project",
+          taskID: "task-attempt-1",
+          runID: "run-attempt-1",
+          subtaskID: "subtask-attempt-1",
+          attempt: 1,
+        })
+        const secondEvent = {
+          ...firstEvent,
+          requestID: crypto.randomUUID(),
+          attempt: 2,
+        }
+
+        const first = await dispatchAssignment("attempt-account", firstEvent)
+        const second = await dispatchAssignment("attempt-account", secondEvent)
+
+        expect(first.created).toBe(true)
+        expect(second.created).toBe(true)
+        expect(second.assignment.sessionID).toBe(first.assignment.sessionID)
+        expect(await SessionInbox.list(first.assignment.sessionID)).toHaveLength(4)
+      },
+    })
+  })
+  test("new attempt after acknowledged result resets the assignment to running", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await setupProjectScope("completed-attempt-account", "completed-attempt-project")
+        const firstEvent = assignmentFixture({
+          agentID: "completed-attempt-account",
+          projectID: "completed-attempt-project",
+          taskID: "task-completed-attempt-1",
+          runID: "run-completed-attempt-1",
+          subtaskID: "subtask-completed-attempt-1",
+          attempt: 1,
+        })
+        const first = await dispatchAssignment("completed-attempt-account", firstEvent)
+        await ClarusResultOutbox.submit({
+          sessionID: first.assignment.sessionID,
+          payload: resultPayload(),
+          send: async () => {},
+        })
+        expect((await ClarusAssignmentStore.findBySessionID(first.assignment.sessionID))?.assignment).toMatchObject({
+          status: "completed",
+          resultState: "acknowledged",
+        })
+
+        const second = await dispatchAssignment("completed-attempt-account", {
+          ...firstEvent,
+          requestID: crypto.randomUUID(),
+          attempt: 2,
+        })
+
+        expect(second.created).toBe(true)
+        expect(second.assignment).toMatchObject({
+          sessionID: first.assignment.sessionID,
+          attempt: 2,
+          status: "running",
+          resultState: "none",
+          extensionState: "none",
+        })
+        expect(second.assignment.resultRequestID).toBeUndefined()
+        expect(await SessionInbox.list(first.assignment.sessionID)).toHaveLength(4)
+      },
+    })
+  })
+
+  test("expired delayed assignment is skipped before Session creation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await setupProjectScope("expired-account", "expired-project")
+        const event = assignmentFixture({
+          agentID: "expired-account",
+          projectID: "expired-project",
+          taskID: "task-expired-1",
+          runID: "run-expired-1",
+          deadlineAt: new Date(Date.now() - 1_000).toISOString(),
+        })
+
+        await expect(dispatchAssignment("expired-account", event)).rejects.toMatchObject({
+          name: "ClarusAssignmentExpiredError",
+        })
+        expect((await Session.list()).total).toBe(0)
+        expect(
+          await ClarusAssignmentStore.findByIdentity({
+            accountId: "expired-account",
+            projectID: "expired-project",
+            taskID: "task-expired-1",
+          }),
+        ).toBeUndefined()
+      },
+    })
+  })
+
+  test("archived assignment Session blocks replay without creating a replacement", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const scope = await setupProjectScope("archived-account", "archived-project")
+        const event = assignmentFixture({
+          agentID: "archived-account",
+          projectID: "archived-project",
+          taskID: "task-archived-1",
+          runID: "run-archived-1",
+        })
+        const first = await dispatchAssignment("archived-account", event)
+        const session = await Session.get(first.assignment.sessionID)
+        if (!session.endpoint) throw new Error("Expected Clarus assignment endpoint")
+        await Session.archiveForEndpoint(session.endpoint, { scope })
+
+        await expect(
+          dispatchAssignment("archived-account", {
+            ...event,
+            requestID: crypto.randomUUID(),
+            runID: "run-archived-2",
+          }),
+        ).rejects.toMatchObject({
+          name: "ClarusAssignmentSessionArchivedError",
+          data: { sessionID: first.assignment.sessionID },
+        })
+
+        expect((await Session.list()).total).toBe(0)
+        const binding = await ClarusAssignmentStore.findByIdentity({
+          accountId: "archived-account",
+          projectID: "archived-project",
+          taskID: "task-archived-1",
+        })
+        expect(binding?.assignment.sessionID).toBe(first.assignment.sessionID)
+        expect(binding?.assignment.status).toBe("running")
       },
     })
   })
