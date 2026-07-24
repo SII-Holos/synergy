@@ -91,6 +91,37 @@ export const AP = {
   errorRetryable: { id: "app.error.retryable", message: "Retryable: {value}" },
   errorResponseBody: { id: "app.error.responseBody", message: "Response body:" },
 
+  // ── pages/fatal-error.tsx ───────────────────────────────────────────
+  fatalErrorTitle: {
+    renderer: { id: "app.fatalError.renderer.title", message: "The interface encountered a problem" },
+    connection: { id: "app.fatalError.connection.title", message: "Could not reach the server" },
+    initialization: { id: "app.fatalError.initialization.title", message: "Synergy could not finish starting" },
+    scope: { id: "app.fatalError.scope.title", message: "Could not load this project" },
+  },
+  fatalErrorDescription: {
+    renderer: {
+      id: "app.fatalError.renderer.description",
+      message: "Reloading this page will not stop any tasks already running on the server.",
+    },
+    connection: {
+      id: "app.fatalError.connection.description",
+      message: "The Synergy server is not responding right now. The state of running tasks is unknown.",
+    },
+    initialization: {
+      id: "app.fatalError.initialization.description",
+      message: "A configuration, provider, or setup error prevented Synergy from starting.",
+    },
+    scope: {
+      id: "app.fatalError.scope.description",
+      message: "The workspace could not be loaded. This may be temporary or due to a configuration issue.",
+    },
+  },
+  fatalErrorSummaryLabel: { id: "app.fatalError.summaryLabel", message: "Summary" },
+  fatalErrorAction: {
+    "reload-interface": { id: "app.fatalError.action.reloadInterface", message: "Reload interface" },
+    "try-again": { id: "app.fatalError.action.tryAgain", message: "Try again" },
+    "change-server": { id: "app.fatalError.action.changeServer", message: "Change server" },
+  },
   // ── pages/server-connection-error.tsx ───────────────────────────────
   serverErrorTitle: { id: "app.serverError.title", message: "Can’t reach the server" },
   serverErrorDesc: {
