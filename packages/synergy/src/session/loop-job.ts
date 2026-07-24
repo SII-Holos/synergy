@@ -1,6 +1,7 @@
 import { MessageV2 } from "./message-v2"
 import type { Info } from "./types"
 import { Log } from "../util/log"
+import { ObservabilityMetrics } from "@/observability/metrics"
 
 export namespace LoopJob {
   const log = Log.create({ service: "session.loop-job" })
@@ -30,14 +31,27 @@ export namespace LoopJob {
     [key: string]: unknown
   }
 
-  export interface Job {
+  interface JobBase {
     type: string
     phase: "pre" | "post"
-    blocking: boolean
     signals?: string[]
     collect(ctx: Context): JobInstance[]
-    execute(ctx: Context): Promise<FlowResult>
   }
+
+  export interface BlockingJob extends JobBase {
+    blocking: true
+    execute(ctx: Context, instance: JobInstance): Promise<FlowResult>
+  }
+
+  export interface BackgroundJob<Payload extends JobInstance = JobInstance> extends JobBase {
+    blocking: false
+    capture(ctx: Context, instance: JobInstance): Payload
+    key?(payload: Payload): string
+    timeoutMs?: number
+    execute(payload: Payload, signal: AbortSignal): Promise<FlowResult>
+  }
+
+  export type Job<Payload extends JobInstance = JobInstance> = BlockingJob | BackgroundJob<Payload>
 
   // --- Signal system ---
 
@@ -46,11 +60,32 @@ export namespace LoopJob {
     detect(ctx: Context): Promise<boolean> | boolean
   }
 
-  const registry = new Map<string, Job>()
-  const signals = new Map<string, Signal>()
+  type RegisteredBackgroundJob = BackgroundJob<JobInstance>
+  type RegisteredJob = BlockingJob | RegisteredBackgroundJob
 
-  export function register(job: Job) {
-    registry.set(job.type, job)
+  interface BackgroundRun {
+    job: RegisteredBackgroundJob
+    payload: JobInstance
+    payloadBytes: number
+    sessionID?: string
+  }
+
+  interface BackgroundState {
+    type: string
+    key: string
+    startedAt: number
+    current: BackgroundRun
+    pending?: BackgroundRun
+  }
+
+  const registry = new Map<string, RegisteredJob>()
+  const signals = new Map<string, Signal>()
+  const background = new Map<string, BackgroundState>()
+  let backgroundSequence = 0
+  const DEFAULT_BACKGROUND_TIMEOUT_MS = 180_000
+
+  export function register<Payload extends JobInstance>(job: Job<Payload>) {
+    registry.set(job.type, job as RegisteredJob)
   }
 
   export function defineSignal(signal: Signal) {
@@ -84,8 +119,8 @@ export namespace LoopJob {
   }
 
   export async function execute(instances: JobInstance[], ctx: Context): Promise<FlowResult> {
-    const nonBlocking: { instance: JobInstance; job: Job }[] = []
-    const blocking: { instance: JobInstance; job: Job }[] = []
+    const nonBlocking: { instance: JobInstance; job: RegisteredBackgroundJob }[] = []
+    const blocking: { instance: JobInstance; job: BlockingJob }[] = []
     for (const instance of instances) {
       const job = registry.get(instance.type)
       if (!job) {
@@ -96,16 +131,199 @@ export namespace LoopJob {
       else nonBlocking.push({ instance, job })
     }
     for (const { instance, job } of nonBlocking) {
-      job.execute(ctx).catch((e) => {
-        log.error("job failed", { type: instance.type, error: e })
-      })
+      let payload: JobInstance
+      try {
+        payload = job.capture(ctx, instance)
+      } catch (error) {
+        log.error("failed to capture background job", { type: instance.type, error })
+        continue
+      }
+      scheduleBackground(job, payload, ctx.sessionID)
     }
     let flow: FlowResult = "pass"
     for (const { instance, job } of blocking) {
-      const result = await job.execute(ctx)
+      const result = await job.execute(ctx, instance)
       if (result === "stop") return "stop"
       if (result === "continue") flow = "continue"
     }
     return flow
+  }
+
+  export function backgroundStats() {
+    return {
+      active: background.size,
+      jobs: [...background.values()].map((state) => ({
+        type: state.type,
+        key: state.key,
+        ageMs: Math.max(0, Date.now() - state.startedAt),
+        payloadBytes: state.current.payloadBytes,
+        pending: state.pending !== undefined,
+        pendingPayloadBytes: state.pending?.payloadBytes,
+        sessionID: state.current.sessionID,
+      })),
+    }
+  }
+
+  function scheduleBackground(job: RegisteredBackgroundJob, payload: JobInstance, fallbackSessionID: string) {
+    const sessionID = typeof payload.sessionID === "string" ? payload.sessionID : fallbackSessionID
+    const coalescingKey = job.key?.(payload)
+    const key = coalescingKey === undefined ? `${job.type}:run:${++backgroundSequence}` : `${job.type}:${coalescingKey}`
+    const run = {
+      job,
+      payload,
+      payloadBytes: estimatePayloadBytes(payload),
+      sessionID,
+    }
+    const current = background.get(key)
+    if (current) {
+      current.pending = run
+      recordMetric("session.loop_job.background.coalesced", 1, "count", job.type, sessionID)
+      recordMetric("session.loop_job.background.payload_bytes", run.payloadBytes, "bytes", job.type, sessionID, {
+        state: "pending",
+      })
+      return
+    }
+
+    const state: BackgroundState = {
+      type: job.type,
+      key,
+      startedAt: Date.now(),
+      current: run,
+    }
+    background.set(key, state)
+    recordMetric("session.loop_job.background.active", activeCount(job.type), "count", job.type, sessionID)
+    void runBackground(state)
+  }
+
+  async function runBackground(state: BackgroundState) {
+    let run: BackgroundRun | undefined = state.current
+    while (run) {
+      state.current = run
+      state.startedAt = Date.now()
+      recordMetric("session.loop_job.background.payload_bytes", run.payloadBytes, "bytes", state.type, run.sessionID, {
+        state: "active",
+      })
+      let outcome = "success"
+      try {
+        await executeWithTimeout(run)
+      } catch (error) {
+        outcome = error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "error"
+        log.error("job failed", { type: state.type, outcome, error })
+      } finally {
+        recordMetric(
+          "session.loop_job.background.duration",
+          Math.max(0, Date.now() - state.startedAt),
+          "ms",
+          state.type,
+          run.sessionID,
+          { outcome },
+        )
+      }
+      run = state.pending
+      state.pending = undefined
+    }
+    if (background.get(state.key) === state) background.delete(state.key)
+    recordMetric(
+      "session.loop_job.background.active",
+      activeCount(state.type),
+      "count",
+      state.type,
+      state.current.sessionID,
+    )
+  }
+
+  async function executeWithTimeout(run: BackgroundRun) {
+    const controller = new AbortController()
+    const timeoutMs = backgroundTimeoutMs(run.job)
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException(`Background job timed out after ${timeoutMs}ms.`, "TimeoutError")),
+      timeoutMs,
+    )
+    timeout.unref()
+    let onAbort: (() => void) | undefined
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(controller.signal.reason)
+      controller.signal.addEventListener("abort", onAbort, { once: true })
+    })
+    try {
+      return await Promise.race([run.job.execute(run.payload, controller.signal), aborted])
+    } finally {
+      clearTimeout(timeout)
+      if (onAbort) controller.signal.removeEventListener("abort", onAbort)
+    }
+  }
+
+  function backgroundTimeoutMs(job: RegisteredBackgroundJob) {
+    const timeoutMs = job.timeoutMs
+    return typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? timeoutMs
+      : DEFAULT_BACKGROUND_TIMEOUT_MS
+  }
+
+  function activeCount(jobType: string) {
+    let count = 0
+    for (const state of background.values()) {
+      if (state.type === jobType) count++
+    }
+    return count
+  }
+
+  function recordMetric(
+    name: string,
+    value: number,
+    unit: "bytes" | "count" | "ms",
+    jobType: string,
+    sessionID?: string,
+    labels: Record<string, unknown> = {},
+  ) {
+    ObservabilityMetrics.record({
+      name,
+      value,
+      unit,
+      module: "session",
+      sessionID,
+      labels: { jobType, ...labels },
+    })
+  }
+
+  function estimatePayloadBytes(value: unknown) {
+    const limit = 4 * 1024 * 1024
+    const seen = new Set<object>()
+    const stack = [value]
+    let total = 0
+    while (stack.length > 0 && total < limit) {
+      const item = stack.pop()
+      if (item === null || item === undefined) continue
+      if (typeof item === "string") {
+        total += item.length * 2
+        continue
+      }
+      if (typeof item === "number" || typeof item === "bigint") {
+        total += 8
+        continue
+      }
+      if (typeof item === "boolean") {
+        total += 4
+        continue
+      }
+      if (typeof item !== "object" || seen.has(item)) continue
+      seen.add(item)
+      if (Array.isArray(item)) {
+        total += item.length * 8
+        stack.push(...item)
+        continue
+      }
+      if (Object.getPrototypeOf(item) !== Object.prototype) {
+        total += 64
+        continue
+      }
+      const entries = Object.entries(item)
+      total += entries.length * 16
+      for (const [key, child] of entries) {
+        total += key.length * 2
+        stack.push(child)
+      }
+    }
+    return Math.min(total, limit)
   }
 }

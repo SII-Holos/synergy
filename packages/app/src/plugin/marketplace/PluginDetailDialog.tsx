@@ -16,6 +16,7 @@ import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import { PluginConsentDialog, type PluginConsentIntent } from "../consent/PluginConsentDialog"
 import { checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
+import { loadRegistryResource } from "./registry-resource"
 import type { ApprovalReview, RegistryPluginSummary, RegistryPluginVersion } from "@ericsanchezok/synergy-sdk/client"
 import type { InstalledPlugin, PluginDetail } from "./types"
 import {
@@ -107,26 +108,27 @@ export function PluginDetailDialog(props: {
   const [action, setAction] = createSignal<"install" | "update" | "uninstall" | "review" | null>(null)
   const [error, setError] = createSignal<string | null>(null)
 
-  const [summary] = createResource(
+  const [summary, { refetch: refetchSummary }] = createResource(
     () => (props.source ? { id: props.pluginId, source: props.source } : undefined),
-    async ({ id, source }) => {
-      const res = await globalSDK.client.registry.plugins.search({ q: id, limit: 8, source })
-      const plugins = ((res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []).map(registryPluginSummary)
-      return plugins.find((plugin) => plugin.id === id || plugin.name === id) ?? null
-    },
+    ({ id, source }) =>
+      loadRegistryResource(async () => {
+        const res = await globalSDK.client.registry.plugins.search({ q: id, limit: 8, source })
+        const plugins = ((res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []).map(registryPluginSummary)
+        return plugins.find((plugin) => plugin.id === id || plugin.name === id) ?? null
+      }, null),
   )
 
-  const [versions] = createResource(
+  const [versions, { refetch: refetchVersions }] = createResource(
     () => (props.source ? { id: props.pluginId, source: props.source } : undefined),
-    async ({ id, source }) => {
-      try {
-        const res = await globalSDK.client.registry.plugins.versions({ id, source })
-        return (res.data as RegistryPluginVersion[]) ?? []
-      } catch (err) {
-        if (isRegistryPluginNotFoundError(err, id)) return []
-        throw err
-      }
-    },
+    ({ id, source }) =>
+      loadRegistryResource(
+        async () => {
+          const res = await globalSDK.client.registry.plugins.versions({ id, source })
+          return (res.data as RegistryPluginVersion[]) ?? []
+        },
+        [],
+        { isMissing: (error) => isRegistryPluginNotFoundError(error, id) },
+      ),
   )
 
   const [installedPlugins, { refetch: refetchInstalledPlugins }] = createResource(
@@ -167,10 +169,11 @@ export function PluginDetailDialog(props: {
   )
 
   const plugin = createMemo(
-    () => summary() ?? fallbackPluginSummary({ installed: installedInfo(), detail: installedDetail() }),
+    () => summary()?.data ?? fallbackPluginSummary({ installed: installedInfo(), detail: installedDetail() }),
   )
+  const registryUnavailable = createMemo(() => Boolean(summary()?.unavailable || versions()?.unavailable))
   const latestVersion = createMemo(() => {
-    const list = versions()
+    const list = versions()?.data
     if (!list?.length) return null
     return [...list].toSorted((a, b) => toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt))[0]
   })
@@ -189,7 +192,7 @@ export function PluginDetailDialog(props: {
   const pluginOperationsCount = createMemo(() => installedInfo()?.operations.length ?? 0)
   const pluginUiCount = createMemo(() => installedInfo()?.uiContributions ?? plugin()?.uiSurfaces.length ?? 0)
   const permissions = createMemo(() => {
-    const registryPermissions = collectAllPermissions(versions() ?? [])
+    const registryPermissions = collectAllPermissions(versions()?.data ?? [])
     if (registryPermissions.length > 0) return registryPermissions
     return (installedDetail()?.capabilities ?? installedInfo()?.capabilities ?? []).map((key) => ({
       key,
@@ -223,6 +226,9 @@ export function PluginDetailDialog(props: {
     })
   })
 
+  async function retryRegistry() {
+    await Promise.all([refetchSummary(), refetchVersions()])
+  }
   async function refreshAfterMutation() {
     await refetchInstalledPlugins()
     await pluginHost.reload()
@@ -348,19 +354,33 @@ export function PluginDetailDialog(props: {
           <Show
             when={plugin()}
             fallback={
-              <div class="plugin-detail-empty">
-                <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak-base" />
-                <span class="plugin-detail-empty-title">
-                  {_({ id: "app.plugin.detail.notFound", message: "Plugin not found" })}
-                </span>
-                <span class="plugin-detail-empty-text">
-                  {_({
-                    id: "app.plugin.detail.notFoundInRegistry",
-                    message: "{pluginId} does not exist in this registry.",
-                    values: { pluginId: props.pluginId },
-                  })}
-                </span>
-              </div>
+              <Show
+                when={registryUnavailable()}
+                fallback={
+                  <div class="plugin-detail-empty">
+                    <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak-base" />
+                    <span class="plugin-detail-empty-title">
+                      {_({ id: "app.plugin.detail.notFound", message: "Plugin not found" })}
+                    </span>
+                    <span class="plugin-detail-empty-text">
+                      {_({
+                        id: "app.plugin.detail.notFoundInRegistry",
+                        message: "{pluginId} does not exist in this registry.",
+                        values: { pluginId: props.pluginId },
+                      })}
+                    </span>
+                  </div>
+                }
+              >
+                <div class="plugin-detail-empty">
+                  <Icon name={getSemanticIcon("state.warning")} size="large" class="text-icon-weak-base" />
+                  <span class="plugin-detail-empty-title">{_(pluginMarketplace.registryUnavailableTitle)}</span>
+                  <span class="plugin-detail-empty-text">{_(pluginMarketplace.registryUnavailableDescription)}</span>
+                  <button type="button" class="plugin-marketplace-retry" onClick={() => void retryRegistry()}>
+                    {_(pluginMarketplace.retry)}
+                  </button>
+                </div>
+              </Show>
             }
           >
             {(current) => (
@@ -470,6 +490,16 @@ export function PluginDetailDialog(props: {
                       values: { action: action() ?? "" },
                     })}
                   />
+                </Show>
+
+                <Show when={registryUnavailable()}>
+                  <div class="plugin-detail-registry-warning">
+                    <Icon name={getSemanticIcon("state.warning")} size="small" />
+                    <span>{_(pluginMarketplace.registryUnavailableDescription)}</span>
+                    <button type="button" class="plugin-marketplace-retry" onClick={() => void retryRegistry()}>
+                      {_(pluginMarketplace.retry)}
+                    </button>
+                  </div>
                 </Show>
 
                 <Show when={error()}>
@@ -649,13 +679,13 @@ export function PluginDetailDialog(props: {
                       {_({
                         id: "app.plugin.detail.section.versionsCount",
                         message: "{count} published",
-                        values: { count: versions()?.length ?? 0 },
+                        values: { count: versions()?.data.length ?? 0 },
                       })}
                     </span>
                   </div>
                   <div class="plugin-detail-version-list">
                     <Show
-                      when={(versions()?.length ?? 0) > 0}
+                      when={(versions()?.data.length ?? 0) > 0}
                       fallback={
                         <Show
                           when={installedVersion()}
@@ -688,7 +718,7 @@ export function PluginDetailDialog(props: {
                       }
                     >
                       <For
-                        each={[...(versions() ?? [])]
+                        each={[...(versions()?.data ?? [])]
                           .toSorted((a, b) => toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt))
                           .slice(0, 4)}
                       >

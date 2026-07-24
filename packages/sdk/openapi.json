@@ -8484,7 +8484,7 @@
           }
         ],
         "summary": "Get Cortex concurrency status",
-        "description": "Get Cortex admission limits and advisory memory-pressure concurrency guidance.",
+        "description": "Get configured Cortex concurrency and the effective memory-pressure admission limit.",
         "responses": {
           "200": {
             "description": "Cortex concurrency status",
@@ -15679,6 +15679,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -15775,6 +15785,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -15813,6 +15833,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HolosSendResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
                 }
               }
             }
@@ -16970,6 +17000,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -18114,6 +18154,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -18178,6 +18228,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
                 }
               }
             }
@@ -18248,6 +18308,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
                 }
               }
             }
@@ -18323,6 +18393,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
                 }
               }
             }
@@ -21975,9 +22055,268 @@
                     "type": "integer",
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
+                  },
+                  "executionPhases": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "enum": [
+                        "queued_agent",
+                        "running_agent",
+                        "authorizing_tools",
+                        "queued_tools",
+                        "running_tools",
+                        "waiting_background",
+                        "stopping"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
                   }
                 },
                 "required": ["totalCount", "runningCount", "idleCount", "childCount", "userCount", "waiterCount"]
+              },
+              "execution": {
+                "type": "object",
+                "properties": {
+                  "agentWorkers": {
+                    "type": "object",
+                    "properties": {
+                      "configured": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "minIdle": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "idleTimeoutMs": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "ready": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "rssBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "heapUsedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "heapTotalBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "externalBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "arrayBuffersBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "configured",
+                      "minIdle",
+                      "idleTimeoutMs",
+                      "maxQueued",
+                      "maxQueuedBytes",
+                      "workers",
+                      "ready",
+                      "active",
+                      "queued",
+                      "queuedBytes",
+                      "rssBytes",
+                      "heapUsedBytes",
+                      "heapTotalBytes",
+                      "externalBytes",
+                      "arrayBuffersBytes"
+                    ]
+                  },
+                  "policyWorkers": {
+                    "type": "object",
+                    "properties": {
+                      "configured": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "ready": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "rssBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "heapUsedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "configured",
+                      "maxQueued",
+                      "maxQueuedBytes",
+                      "workers",
+                      "ready",
+                      "active",
+                      "queued",
+                      "queuedBytes",
+                      "rssBytes",
+                      "heapUsedBytes"
+                    ]
+                  },
+                  "toolTasks": {
+                    "type": "object",
+                    "properties": {
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "tracked": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxConcurrent": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "byExecutor": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                        },
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "active": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "queued": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": ["active", "queued", "limit"]
+                        }
+                      }
+                    },
+                    "required": ["active", "queued", "tracked", "queuedBytes", "maxConcurrent", "maxQueued"]
+                  }
+                },
+                "required": ["agentWorkers", "policyWorkers", "toolTasks"]
               },
               "messageCache": {
                 "type": "object",
@@ -27134,6 +27473,10 @@
             "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
             "type": "string"
           },
+          "variant": {
+            "description": "Model variant to use with this account model (e.g. low, high, max)",
+            "type": "string"
+          },
           "resolveSenderNames": {
             "description": "Resolve sender display names via Feishu contact API",
             "default": true,
@@ -27718,6 +28061,180 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          },
+          "execution": {
+            "description": "Process isolation, worker recycling, and bounded execution scheduling",
+            "type": "object",
+            "properties": {
+              "agentWorkers": {
+                "description": "Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 64
+              },
+              "agentWorkerMinIdle": {
+                "description": "Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 64
+              },
+              "agentWorkerIdleTimeoutMs": {
+                "description": "Time an excess idle Agent worker remains warm before retirement (default: 60000)",
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 3600000
+              },
+              "agentQueueMax": {
+                "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "agentQueueMaxMb": {
+                "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "agentWorkerMaxTurns": {
+                "description": "Turns completed before an Agent worker is recycled (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
+              "agentWorkerMaxRssMb": {
+                "description": "RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerMaxHeapMb": {
+                "description": "Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerIdleBaselineRecycle": {
+                "description": "Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)",
+                "type": "boolean"
+              },
+              "agentWorkerIdleBaselineRssGrowthMb": {
+                "description": "Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerIdleBaselineExternalGrowthMb": {
+                "description": "Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentCancelGraceMs": {
+                "description": "Grace period before terminating an Agent worker that ignores cancellation (default: 5000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "agentHeartbeatTimeoutMs": {
+                "description": "Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)",
+                "type": "integer",
+                "minimum": 30000,
+                "maximum": 300000
+              },
+              "policyWorkers": {
+                "description": "Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16
+              },
+              "policyQueueMax": {
+                "description": "Maximum queued Policy classifications waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "policyQueueMaxMb": {
+                "description": "Maximum aggregate queued Policy-classification payload size in MiB (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1024
+              },
+              "policyTimeoutMs": {
+                "description": "Maximum total time for a Policy classification before conservative fallback (default: 1000)",
+                "type": "integer",
+                "minimum": 50,
+                "maximum": 10000
+              },
+              "policyWorkerMaxRequests": {
+                "description": "Classifications completed before a Policy worker is recycled (default: 512)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000
+              },
+              "policyWorkerMaxRssMb": {
+                "description": "RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16384
+              },
+              "policyWorkerMaxHeapMb": {
+                "description": "Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16384
+              },
+              "policyCancelGraceMs": {
+                "description": "Shutdown grace period before terminating a Policy worker (default: 25)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "policyHeartbeatTimeoutMs": {
+                "description": "Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)",
+                "type": "integer",
+                "minimum": 10000,
+                "maximum": 120000
+              },
+              "toolConcurrency": {
+                "description": "Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 512
+              },
+              "toolQueueMax": {
+                "description": "Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65536
+              },
+              "toolQueueMaxMb": {
+                "description": "Maximum aggregate queued ToolTask input size in MiB (default: 128)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "toolCancelGraceMs": {
+                "description": "Grace period for active ToolTasks during runtime shutdown (default: 3000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "toolExecutorConcurrency": {
+                "description": "Optional concurrency limits for each Tool Executor class",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 512
+                }
               }
             },
             "additionalProperties": false
@@ -33773,7 +34290,7 @@
             "maximum": 9007199254740991
           },
           "memoryPressureLimit": {
-            "description": "Advisory limit suggested by current memory pressure; never used for task admission",
+            "description": "Memory-pressure ceiling applied to new task admission",
             "anyOf": [
               {
                 "type": "integer",
@@ -33786,7 +34303,7 @@
             ]
           },
           "memoryPressureReason": {
-            "description": "Reason for the advisory memory-pressure limit",
+            "description": "Reason for the memory-pressure admission ceiling",
             "type": "string",
             "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
           },
@@ -37392,6 +37909,15 @@
           "type": "string"
         }
       },
+      "ServiceUnavailableError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"]
+      },
       "HolosSendResponse": {
         "type": "object",
         "properties": {
@@ -40369,40 +40895,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.runtime.reloaded": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "runtime.reloaded"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "executed": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "cascaded": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["executed", "cascaded", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.session.inbox.updated": {
         "type": "object",
         "properties": {
@@ -40888,6 +41380,40 @@
               }
             },
             "required": ["file"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.runtime.reloaded": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "runtime.reloaded"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "executed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "cascaded": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -41717,9 +42243,6 @@
             "$ref": "#/components/schemas/Event.session.idle"
           },
           {
-            "$ref": "#/components/schemas/Event.runtime.reloaded"
-          },
-          {
             "$ref": "#/components/schemas/Event.session.inbox.updated"
           },
           {
@@ -41784,6 +42307,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"

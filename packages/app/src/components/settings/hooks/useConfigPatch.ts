@@ -239,6 +239,11 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     patch.cortex = { maxConcurrentTasks: cortexConcurrency }
   }
 
+  const agentWorkers = boundedInteger(runtime.agentWorkers, 1, 64)
+  if (agentWorkers !== undefined && agentWorkers !== cfg.execution?.agentWorkers) {
+    patch.execution = { ...(cfg.execution ?? {}), agentWorkers }
+  }
+
   const timeout = buildTimeoutPatch(cfg, runtime)
   if (timeout.changed) patch.timeout = timeout.value
 
@@ -357,7 +362,8 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
       const account = newChannel.feishu.accounts[entry.key]
       if (!account) continue
       account.enabled = entry.enabled
-      ;(account as Record<string, unknown>).model = entry.model || undefined
+      account.model = entry.model || undefined
+      account.variant = entry.model ? entry.variant || undefined : undefined
     }
   }
   if (JSON.stringify(newChannel) !== JSON.stringify(currentChannel)) patch.channel = newChannel
@@ -484,6 +490,11 @@ function boundedNumber(value: string, min: number, max: number): number | undefi
 
 function positiveInteger(value: string): number | undefined {
   const parsed = positiveNumber(value)
+  return parsed !== undefined && Number.isInteger(parsed) ? parsed : undefined
+}
+
+function boundedInteger(value: string, min: number, max: number): number | undefined {
+  const parsed = boundedNumber(value, min, max)
   return parsed !== undefined && Number.isInteger(parsed) ? parsed : undefined
 }
 

@@ -67,6 +67,47 @@ describe("settings form Cortex concurrency", () => {
   })
 })
 
+describe("settings form agent worker pool", () => {
+  test("hydrates the configured pool size", () => {
+    expect(initializedRuntime({ execution: { agentWorkers: 6 } }).agentWorkers).toBe("6")
+  })
+
+  test("keeps automatic pool sizing blank when no size is configured", () => {
+    expect(initializedRuntime({}).agentWorkers).toBe("")
+  })
+})
+
+describe("settings form channel model variants", () => {
+  test("hydrates the configured account model variant", () => {
+    expect(
+      initializedChannels({
+        channel: {
+          feishu: {
+            type: "feishu",
+            accounts: {
+              default: {
+                appId: "app",
+                appSecret: "secret",
+                model: "openai-codex/gpt-5.6-sol",
+                variant: "high",
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      feishuAccounts: [
+        {
+          key: "default",
+          enabled: true,
+          model: "openai-codex/gpt-5.6-sol",
+          variant: "high",
+        },
+      ],
+    })
+  })
+})
+
 function initializedRuntime(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
@@ -83,6 +124,24 @@ function initializedRuntime(config: Record<string, unknown>) {
   })
 
   return settings.runtime
+}
+
+function initializedChannels(config: Record<string, unknown>) {
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+  ensureInit({
+    cfg: config as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    setSettings,
+    setInitialized: () => undefined,
+    originalMcpsRef: { current: {} },
+  })
+
+  return settings.channels
 }
 
 function storageWithModel(value: unknown): Storage {

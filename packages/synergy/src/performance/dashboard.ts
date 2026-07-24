@@ -9,6 +9,9 @@ import { LLMTurnMemory } from "@/session/llm-memory"
 import { parseJson } from "@/util/json-parse"
 import { PerformanceProjection } from "./projection"
 import { PerformanceSchema } from "./schema"
+import { AgentTurn } from "@/session/agent-turn"
+import { ToolScheduler } from "@/session/tool-scheduler"
+import { PolicyWorker } from "@/enforcement/policy-worker"
 
 export namespace PerformanceDashboard {
   type MetricRow = ObservabilityStore.StoredMetric & { labels: Record<string, unknown> }
@@ -40,6 +43,9 @@ export namespace PerformanceDashboard {
     }).map(PerformanceProjection.issue)
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
     const runtimeStats = SessionManager.runtimeStats()
+    const agentWorkers = AgentTurn.stats()
+    const policyWorkers = PolicyWorker.stats()
+    const toolTasks = ToolScheduler.stats()
     const messageCacheStats = SessionMessageCache.stats()
     const llmTurnStats = LLMTurnMemory.stats()
     const activeLLMTurns = LLMTurnMemory.activeSnapshot(20)
@@ -176,6 +182,11 @@ export namespace PerformanceDashboard {
         recentErrors: diagnostics?.traces.recentErrors.length ?? 0,
         pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
         sessionRuntimes: runtimeStats,
+        execution: {
+          agentWorkers,
+          policyWorkers,
+          toolTasks,
+        },
         messageCache: {
           totalBytes: messageCacheStats.totalBytes,
           activeCount: messageCacheStats.activeCount,

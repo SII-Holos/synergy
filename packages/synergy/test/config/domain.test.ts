@@ -47,6 +47,37 @@ test("cortex task concurrency is owned by the runtime domain", () => {
   })
 })
 
+test("execution isolation settings are owned by the runtime domain", () => {
+  expect(ConfigDomain.domainForKey("execution")?.id).toBe("runtime")
+  expect(ConfigDomain.extract({ execution: { agentWorkers: 3, toolConcurrency: 12 } }, "runtime")).toEqual({
+    execution: { agentWorkers: 3, toolConcurrency: 12 },
+  })
+})
+
+test("execution isolation settings reject unsafe process and concurrency limits", () => {
+  expect(
+    Config.Info.safeParse({
+      execution: {
+        agentWorkers: 64,
+        agentWorkerMinIdle: 0,
+        agentWorkerIdleTimeoutMs: 1_000,
+        agentHeartbeatTimeoutMs: 30_000,
+        policyWorkers: 16,
+        policyTimeoutMs: 1_000,
+        policyHeartbeatTimeoutMs: 15_000,
+      },
+    }).success,
+  ).toBe(true)
+  expect(Config.Info.safeParse({ execution: { agentWorkers: 65 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { agentWorkerMinIdle: -1 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { agentWorkerIdleTimeoutMs: 999 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { agentHeartbeatTimeoutMs: 29_999 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { policyWorkers: 17 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { policyTimeoutMs: 49 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { policyHeartbeatTimeoutMs: 9_999 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { toolConcurrency: 513 } }).success).toBe(false)
+})
+
 test("GitHub integration has its own canonical config domain", () => {
   const github = Config.GitHubIntegrationConfig.parse({ enabled: true, polling: { enabled: false } })
   expect(ConfigDomain.domainForKey("github")?.id).toBe("github")

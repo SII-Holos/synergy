@@ -738,6 +738,70 @@ msgstr ""
 msgid "app.agentVisual.external"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr ""
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr ""
@@ -2064,6 +2128,62 @@ msgstr ""
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.versionLabel"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr ""
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
@@ -4477,6 +4597,10 @@ msgid "app.notification.session.error"
 msgstr ""
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr ""
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr ""
 
@@ -5636,6 +5760,18 @@ msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.pluginApi.label"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.description"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.retry"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -7785,6 +7921,14 @@ msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.mobileHeader.close"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
 msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
@@ -11928,7 +12072,7 @@ msgstr ""
 msgid "session.rollback.bannerText"
 msgstr ""
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr ""
 
@@ -11945,6 +12089,11 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -11982,7 +12131,8 @@ msgstr ""
 msgid "session.rollback.redoSuccessDesc"
 msgstr ""
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr ""
 
@@ -13299,6 +13449,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15822,6 +15976,22 @@ msgid "settings.runtime.agents.agent.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
 msgstr ""
 
@@ -15834,11 +16004,11 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryAdvisory"
+msgid "settings.runtime.agents.concurrency.memoryLimit"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
+msgid "settings.runtime.agents.concurrency.memoryLimitManaged"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17727,6 +17897,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
 msgstr ""
 
 #. js-lingui-explicit-id

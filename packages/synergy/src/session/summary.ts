@@ -18,10 +18,11 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Bus } from "@/bus"
 
-import { LLM } from "./llm"
+import { AgentTurn } from "./agent-turn"
 import { Agent } from "@/agent/agent"
 import { LoopJob } from "./loop-job"
 import { SessionProgress } from "./progress"
+import { SessionHistory } from "./history"
 
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
@@ -31,6 +32,7 @@ export namespace SessionSummary {
     messageID: string
     revisionID?: string
     messages?: MessageV2.WithParts[]
+    signal?: AbortSignal
   }
   type QueuedSummaryInput = SummaryInput & { historyRevision: number }
   type ActiveSummary = { promise: Promise<void>; pending: QueuedSummaryInput[] }
@@ -105,6 +107,7 @@ export namespace SessionSummary {
       messageID: z.string(),
       revisionID: z.string().optional(),
       messages: z.custom<MessageV2.WithParts[]>().optional(),
+      signal: z.instanceof(AbortSignal).optional(),
     }),
     async (input) => {
       const historyRevision = SessionManager.historyRevision(input.sessionID)
@@ -118,6 +121,7 @@ export namespace SessionSummary {
             messageID: input.messageID,
             revisionID: input.revisionID,
             messages: input.messages ? compactQueuedMessages(input.messages, input.messageID) : undefined,
+            signal: input.signal,
             historyRevision,
           })
         }
@@ -142,10 +146,14 @@ export namespace SessionSummary {
           () => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
           summaryRunTimeoutMs(),
         )
+        timeout.unref()
+        const abort = current.signal ? AbortSignal.any([controller.signal, current.signal]) : controller.signal
         try {
-          await summarizeNow(current, controller.signal)
+          await summarizeNow(current, abort)
         } catch (error) {
-          if (controller.signal.aborted) await markPendingSummaryTimedOut(current)
+          if (abort.aborted && abort.reason instanceof DOMException && abort.reason.name === "TimeoutError") {
+            await markPendingSummaryTimedOut(current)
+          }
           log.error("summarize failed", { sessionID, error })
         } finally {
           clearTimeout(timeout)
@@ -159,7 +167,8 @@ export namespace SessionSummary {
 
   async function summarizeNow(input: QueuedSummaryInput, abort: AbortSignal) {
     const completeHistory = input.messages === undefined
-    const all = input.messages ?? (await Session.messages({ sessionID: input.sessionID }))
+    const all =
+      input.messages ?? (await SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal: abort }))
     abort.throwIfAborted()
     const diffCache = new Map<string, Promise<SnapshotSchema.FileDiff[]>>()
     const pendingWritten = Promise.withResolvers<void>()
@@ -425,10 +434,10 @@ export namespace SessionSummary {
         if (!needsTitle || !textPart) return undefined
         const agent = await Agent.get("title")
         const agentModel = await Agent.getAvailableModel(agent)
-        const stream = await LLM.stream({
+        const stream = await AgentTurn.stream({
           agent,
           user: llmUser,
-          tools: {},
+          toolDefinitions: [],
           model: agentModel ? await Provider.getModel(agentModel.providerID, agentModel.modelID) : fallbackModel,
           small: true,
           messages: [
@@ -442,7 +451,7 @@ export namespace SessionSummary {
           system: [],
           retries: 3,
         })
-        const result = await LLM.collectText(stream).catch((error) => {
+        const result = await AgentTurn.collectText(stream).catch((error) => {
           if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary title", { error })
           return undefined
@@ -463,10 +472,10 @@ export namespace SessionSummary {
         }
         const summaryAgent = await Agent.get("summary")
         const summaryAgentModel = await Agent.getAvailableModel(summaryAgent)
-        const stream = await LLM.stream({
+        const stream = await AgentTurn.stream({
           agent: summaryAgent,
           user: llmUser,
-          tools: {},
+          toolDefinitions: [],
           model: summaryAgentModel
             ? await Provider.getModel(summaryAgentModel.providerID, summaryAgentModel.modelID)
             : fallbackModel,
@@ -483,7 +492,7 @@ export namespace SessionSummary {
           system: [],
           retries: 3,
         })
-        return LLM.collectText(stream).catch((error) => {
+        return AgentTurn.collectText(stream).catch((error) => {
           if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary body", { error })
           return undefined
@@ -586,12 +595,21 @@ LoopJob.register({
     if (!ctx.lastAssistant || !SessionProgress.isTerminalAssistant(ctx.lastAssistant)) return []
     return [{ type: "summarize" }]
   },
-  async execute(ctx) {
-    await SessionSummary.summarize({
+  capture(ctx) {
+    return {
+      type: "summarize",
       sessionID: ctx.sessionID,
       messageID: ctx.lastUser.id,
       revisionID: ctx.lastAssistant?.id,
-      messages: ctx.messages.slice(),
+    }
+  },
+  timeoutMs: 180_000,
+  async execute(input, signal) {
+    await SessionSummary.summarize({
+      sessionID: input.sessionID,
+      messageID: input.messageID,
+      revisionID: input.revisionID,
+      signal,
     })
     return "pass"
   },

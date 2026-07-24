@@ -8,6 +8,7 @@ import { Session } from "../../src/session"
 import { LoopJob } from "../../src/session/loop-job"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionSummary } from "../../src/session/summary"
+import { SessionHistory } from "../../src/session/history"
 import { Snapshot } from "../../src/session/snapshot"
 import { SnapshotSchema } from "../../src/session/snapshot-schema"
 import { tmpdir } from "../fixture/fixture"
@@ -17,6 +18,7 @@ import { StoragePath } from "../../src/storage/path"
 const originalDiffSummary = Snapshot.diffSummary
 const originalGetModel = Provider.getModel
 const originalSessionMessages = Session.messages
+const originalDetachedModelMessages = SessionHistory.detachedModelMessages
 
 function summarizeFromLoop(input: { sessionID: string; messageID: string; messages: MessageV2.WithParts[] }) {
   return SessionSummary.summarize(input)
@@ -26,6 +28,7 @@ afterEach(() => {
   ;(Snapshot.diffSummary as any) = originalDiffSummary
   ;(Provider.getModel as any) = originalGetModel
   ;(Session.messages as any) = originalSessionMessages
+  ;(SessionHistory.detachedModelMessages as any) = originalDetachedModelMessages
 })
 
 function testModel(providerID: string, modelID: string) {
@@ -231,7 +234,7 @@ describe("SessionSummary", () => {
     ).toEqual([{ type: "summarize" }])
   })
 
-  test("post job summarizes from its message snapshot without rereading or mutating it", async () => {
+  test("post job reloads history from a detached payload without mutating the caller snapshot", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -316,9 +319,13 @@ describe("SessionSummary", () => {
           api: { npm: "@ai-sdk/openai", id: modelID },
           options: {},
         }))
-        ;(Session.messages as any) = mock(async () => {
-          throw new Error("post job unexpectedly reread session history")
-        })
+        let historyReads = 0
+        ;(SessionHistory.detachedModelMessages as any) = mock(
+          async (input: Parameters<typeof SessionHistory.detachedModelMessages>[0]) => {
+            historyReads++
+            return originalDetachedModelMessages(input)
+          },
+        )
 
         await LoopJob.execute([{ type: "summarize" }], {
           session,
@@ -342,6 +349,7 @@ describe("SessionSummary", () => {
         }
         expect(storedUser?.summary?.diffs).toEqual([diff])
         expect(messages).toEqual(before)
+        expect(historyReads).toBeGreaterThan(0)
 
         await Session.remove(session.id)
       },

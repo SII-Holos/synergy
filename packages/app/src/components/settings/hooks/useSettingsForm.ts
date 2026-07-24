@@ -118,6 +118,8 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       cfg.cortex?.maxConcurrentTasks !== undefined
         ? String(cfg.cortex.maxConcurrentTasks)
         : UI_DEFAULTS.cortexConcurrency,
+    agentWorkers:
+      cfg.execution?.agentWorkers !== undefined ? String(cfg.execution.agentWorkers) : UI_DEFAULTS.agentWorkers,
     invokeTimeout: cfg.timeout?.invoke_sec !== undefined ? String(cfg.timeout.invoke_sec) : UI_DEFAULTS.invokeTimeout,
     providerTtfbTimeout:
       cfg.timeout?.provider?.ttfb_sec !== undefined
@@ -162,7 +164,8 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       ? Object.entries(cfg.channel.feishu.accounts).map(([key, account]) => ({
           key,
           enabled: account.enabled !== false,
-          model: ((account as Record<string, unknown>).model as string) ?? "",
+          model: account.model ?? "",
+          variant: account.variant ?? "",
         }))
       : [],
   })

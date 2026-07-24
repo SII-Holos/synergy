@@ -77,6 +77,7 @@ import { type ToolDefinition, type ToolDisplay } from "@ericsanchezok/synergy-pl
 import z from "zod"
 import Ajv2020 from "ajv/dist/2020"
 import { Plugin } from "../plugin"
+import { getPluginConfig, matchesPluginSettingCondition } from "../plugin/config-store"
 import { PluginToolId } from "../plugin/ids.js"
 import { ensureRuntime, type LoadedPlugin } from "../plugin/loader"
 import { pluginRuntimeManager } from "../plugin/runtime"
@@ -210,21 +211,15 @@ export namespace ToolRegistry {
     return result
   }
 
-  export function matchesSettingCondition(
-    condition: { setting: string; equals: string | number | boolean },
-    values: Record<string, unknown>,
-  ): boolean {
-    return values[condition.setting] === condition.equals
-  }
+  export const matchesSettingCondition = matchesPluginSettingCondition
 
   async function conditionEnabled(
     pluginId: string,
     condition: { setting: string; equals: string | number | boolean },
   ): Promise<boolean> {
-    const domain = await Config.domainGet("plugins")
-    const values = domain.pluginConfig?.[pluginId]
-    if (!values || typeof values !== "object" || Array.isArray(values)) return false
-    return matchesSettingCondition(condition, values as Record<string, unknown>)
+    const manifest = await Plugin.manifest(pluginId)
+    const values = await getPluginConfig(pluginId, { manifest })
+    return matchesSettingCondition(condition, values)
   }
 
   async function enabled(tool: Tool.Info): Promise<boolean> {
@@ -477,7 +472,6 @@ export namespace ToolRegistry {
     // Use allSettled to avoid one tool's init failure blocking all tools
     const initResults = await Promise.allSettled(
       tools.map(async (t) => {
-        using _ = log.time(t.id)
         const def = await t.init({ agent })
         return {
           id: t.id,

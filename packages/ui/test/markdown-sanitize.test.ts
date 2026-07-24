@@ -37,6 +37,18 @@ describe("Markdown sanitizeHtml (#350 D5)", () => {
     expect(out).toContain(">x</a>")
   })
 
+  test("removes global style blocks while preserving inline styles", () => {
+    const out = sanitizeHtml(
+      'before<style>body { display: none !important; }</style><span style="color:#abcdef">visible</span>',
+    )
+
+    expect(out).not.toContain("<style")
+    expect(out).not.toContain("body { display: none")
+    expect(out).toContain("before")
+    expect(out).toContain('style="color:#abcdef"')
+    expect(out).toContain("visible")
+  })
+
   test("preserves shiki code blocks (class + inline style + text)", () => {
     const out = sanitizeHtml('<pre class="shiki"><code><span style="color:#abcdef">const</span></code></pre>')
     expect(out).toContain('class="shiki"')

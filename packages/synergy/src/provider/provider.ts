@@ -1,11 +1,10 @@
 import z from "zod"
 import fuzzysort from "fuzzysort"
-import { Config } from "../config/config"
+import type { Config } from "../config/config"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Log } from "../util/log"
 import { BunProc } from "../util/bun"
-import { Plugin } from "../plugin"
 import { ModelsDev } from "./models"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "./api-key"
@@ -13,65 +12,21 @@ import { Env } from "../util/env"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { SYNERGY_REFERER } from "../holos/constants" // DISABLED — inlined below
-import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
 import net from "node:net"
 import tls from "node:tls"
 import { MODEL_ROLE_FALLBACK_FIELDS, ModelRole as ModelRoleSchema, type ModelRole as ModelRoleType } from "./model-role"
-
-// Direct imports for bundled providers
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock"
-import { createAnthropic } from "@ai-sdk/anthropic"
-import { createAzure } from "@ai-sdk/azure"
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { createVertex } from "@ai-sdk/google-vertex"
-import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic"
-import { createOpenAI } from "@ai-sdk/openai"
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
-import { createOpenRouter, type LanguageModelV2 } from "@openrouter/ai-sdk-provider"
-import { createXai } from "@ai-sdk/xai"
-import { createMistral } from "@ai-sdk/mistral"
-import { createGroq } from "@ai-sdk/groq"
-import { createDeepInfra } from "@ai-sdk/deepinfra"
-import { createCerebras } from "@ai-sdk/cerebras"
-import { createCohere } from "@ai-sdk/cohere"
-import { createGateway } from "@ai-sdk/gateway"
-import { createTogetherAI } from "@ai-sdk/togetherai"
-import { createPerplexity } from "@ai-sdk/perplexity"
-import { createVercel } from "@ai-sdk/vercel"
+import type { LanguageModelV2 } from "@openrouter/ai-sdk-provider"
 import { ProviderTransform } from "./transform"
-import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
 import { ProviderAuthRecovery } from "./auth-recovery"
-import { authHook as pluginAuthHook } from "@/plugin/auth-provider"
 import { normalizeImageMediaTypes } from "./image-capability"
 import { ProviderStream } from "./stream"
 import { ProviderModelUnavailableError } from "./model-unavailable-error"
+import { loadBundledProvider, loadBundledProviderSync } from "./sdk-registry"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
-
-  const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
-    "@ai-sdk/amazon-bedrock": createAmazonBedrock,
-    "@ai-sdk/anthropic": createAnthropic,
-    "@ai-sdk/azure": createAzure,
-    "@ai-sdk/google": createGoogleGenerativeAI,
-    "@ai-sdk/google-vertex": createVertex,
-    "@ai-sdk/google-vertex/anthropic": createVertexAnthropic,
-    "@ai-sdk/openai": createOpenAI,
-    "@ai-sdk/openai-compatible": createOpenAICompatible,
-    "@openrouter/ai-sdk-provider": createOpenRouter,
-    "@ai-sdk/xai": createXai,
-    "@ai-sdk/mistral": createMistral,
-    "@ai-sdk/groq": createGroq,
-    "@ai-sdk/deepinfra": createDeepInfra,
-    "@ai-sdk/cerebras": createCerebras,
-    "@ai-sdk/cohere": createCohere,
-    "@ai-sdk/gateway": createGateway,
-    "@ai-sdk/togetherai": createTogetherAI,
-    "@ai-sdk/perplexity": createPerplexity,
-    "@ai-sdk/vercel": createVercel,
-  }
 
   function createChunkedBodyDecoder(controller: ReadableStreamDefaultController<Uint8Array>) {
     let buffer = new Uint8Array()
@@ -366,6 +321,47 @@ export namespace Provider {
     })
   export type Info = z.infer<typeof Info>
 
+  export interface WorkerPlan {
+    key?: string
+    options: Record<string, unknown>
+    timeouts: {
+      ttfbMs: number
+      idleMs: number | false
+      wallMs: number | false
+    }
+  }
+
+  export function workerPlan(provider: Info | undefined, timeouts: WorkerPlan["timeouts"]): WorkerPlan {
+    return {
+      key: provider?.key,
+      options: serializableProviderOptions(provider?.options ?? {}),
+      timeouts,
+    }
+  }
+
+  function serializableProviderOptions(options: Record<string, unknown>): Record<string, unknown> {
+    const seen = new WeakSet<object>()
+    const visit = (value: unknown): unknown => {
+      if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return value
+      }
+      if (typeof value === "bigint") return value.toString()
+      if (typeof value !== "object") return undefined
+      if (seen.has(value)) return undefined
+      seen.add(value)
+      if (Array.isArray(value)) return value.map(visit).filter((item) => item !== undefined)
+      if (value instanceof Uint8Array) return value
+      if (value instanceof Date) return value.toISOString()
+      if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return undefined
+      return Object.fromEntries(
+        Object.entries(value)
+          .map(([key, item]) => [key, visit(item)] as const)
+          .filter((entry): entry is readonly [string, unknown] => entry[1] !== undefined),
+      )
+    }
+    return visit(options) as Record<string, unknown>
+  }
+
   function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model): Model {
     const m: Model = {
       id: model.id,
@@ -425,8 +421,64 @@ export namespace Provider {
     }
   }
 
+  const workerState = {
+    models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
+    providers: {} as Record<string, Info>,
+    sdk: new Map<number, { instance: SDK; createdAt: number }>(),
+    modelLoaders: {} as Record<string, CustomModelLoader>,
+    timeouts: {} as Record<string, WorkerPlan["timeouts"]>,
+  }
+
+  function credentialFingerprint(key: string | undefined): string | undefined {
+    if (key === undefined) return undefined
+    return new Bun.CryptoHasher("sha256").update(key).digest("hex")
+  }
+
+  export async function configureWorkerProvider(model: Model, plan: WorkerPlan): Promise<void> {
+    if (process.env.SYNERGY_AGENT_WORKER !== "1") {
+      throw new Error("Worker provider plans can only be installed inside an Agent worker")
+    }
+    const { registerBuiltinProviderProfiles } = await import("./builtin")
+    registerBuiltinProviderProfiles()
+    const profile = ProviderProfile.get(model.providerID)
+    const storedAuth = await Auth.get(model.providerID)
+    const profileInput = {
+      providerID: model.providerID,
+      auth: storedAuth,
+      provider: undefined,
+    }
+    const auth = (await profile?.resolveAuth?.(profileInput)) ?? storedAuth
+    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth })) ?? {}
+    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+    const options = mergeDeep(mergeDeep(plan.options, modelOptions), runtimeOptions)
+    workerState.providers[model.providerID] = {
+      id: model.providerID,
+      name: model.providerID,
+      source: plan.key ? "api" : "custom",
+      env: [],
+      key: plan.key,
+      options,
+      models: { [model.id]: model },
+    }
+    workerState.timeouts[model.providerID] = plan.timeouts
+    if (profile?.getModel || profile?.modelFactory) {
+      workerState.modelLoaders[model.providerID] = async (sdk, modelID, providerOptions) => {
+        if (profile.getModel) return profile.getModel({ sdk, modelID, options: providerOptions })
+        return ProviderProfile.defaultModelFactory(profile.modelFactory, {
+          sdk,
+          modelID,
+          options: providerOptions,
+        })
+      }
+    } else {
+      delete workerState.modelLoaders[model.providerID]
+    }
+  }
+
   const state = ScopedState.create(async () => {
+    if (process.env.SYNERGY_AGENT_WORKER === "1") return workerState
     using _ = log.time("state")
+    const [{ Config }, { ProviderCatalog }] = await Promise.all([import("../config/config"), import("./catalog")])
     const config = await Config.current()
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : null
@@ -551,8 +603,12 @@ export namespace Provider {
       }
     }
 
-    for (const entry of await Plugin.authProviderEntries()) {
-      const plugin = pluginAuthHook(entry.plugin, entry.contribution)
+    const [{ getAuthProviderEntries }, { authHook }] = await Promise.all([
+      import("@/plugin/loader"),
+      import("@/plugin/auth-provider"),
+    ])
+    for (const entry of await getAuthProviderEntries()) {
+      const plugin = authHook(entry.plugin, entry.contribution)
       const providerID = plugin.provider
       if (disabled.has(providerID)) continue
 
@@ -715,7 +771,7 @@ export namespace Provider {
 
     const bundledKey =
       model.providerID === "google-vertex-anthropic" ? "@ai-sdk/google-vertex/anthropic" : model.api.npm
-    const bundledFn = BUNDLED_PROVIDERS[bundledKey]
+    const bundledFn = loadBundledProviderSync(bundledKey)
     if (!bundledFn) {
       throw new Error(`Unsupported provider SDK "${model.api.npm}" for "${model.providerID}"`)
     }
@@ -787,7 +843,14 @@ export namespace Provider {
       const noProxy = options["noProxy"] === true
       delete options["proxy"]
       delete options["noProxy"]
-      const timeoutCfg = await TimeoutConfig.resolve()
+      const timeoutCfg =
+        process.env.SYNERGY_AGENT_WORKER === "1"
+          ? {
+              providerTtfbMs: workerState.timeouts[model.providerID].ttfbMs,
+              providerIdleMs: workerState.timeouts[model.providerID].idleMs,
+              providerWallMs: workerState.timeouts[model.providerID].wallMs,
+            }
+          : await import("@/util/timeout-config").then(({ TimeoutConfig }) => TimeoutConfig.resolve())
       const DEFAULT_TIMEOUT_MS = 900_000
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
@@ -929,7 +992,7 @@ export namespace Provider {
       // Special case: google-vertex-anthropic uses a subpath import
       const bundledKey =
         model.providerID === "google-vertex-anthropic" ? "@ai-sdk/google-vertex/anthropic" : model.api.npm
-      const bundledFn = BUNDLED_PROVIDERS[bundledKey]
+      const bundledFn = await loadBundledProvider(bundledKey)
       if (bundledFn) {
         log.info("using bundled provider", { providerID: model.providerID, pkg: bundledKey })
         const loaded = bundledFn({
@@ -997,6 +1060,7 @@ export namespace Provider {
           modelID: model.id,
           npm: model.api.npm,
           options,
+          credential: credentialFingerprint(provider.key),
         }),
       )
       .toString()
@@ -1046,6 +1110,7 @@ export namespace Provider {
   }
 
   export async function defaultModel() {
+    const { Config } = await import("../config/config")
     const cfg = await Config.current()
     if (cfg.model) {
       const configured = parseModel(cfg.model)
@@ -1108,6 +1173,7 @@ export namespace Provider {
   const ROLE_FALLBACK_CHAINS = MODEL_ROLE_FALLBACK_FIELDS as Record<ModelRole, ReadonlyArray<keyof Config.Info>>
 
   export async function resolveRoleModel(role: ModelRole): Promise<ModelRef | undefined> {
+    const { Config } = await import("../config/config")
     const cfg = await Config.current()
     const chain = ROLE_FALLBACK_CHAINS[role]
     for (const field of chain) {

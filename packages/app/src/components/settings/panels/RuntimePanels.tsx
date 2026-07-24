@@ -9,6 +9,7 @@ import { SettingRow } from "../components/SettingRow"
 import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsFieldGrid, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
+import { concurrencyPressureState } from "./runtime-concurrency-model"
 
 const managedByEnvLabel = { id: "settings.runtime.managedByEnv", message: "Managed by environment" }
 
@@ -80,7 +81,7 @@ const maxImageOpts = [
 const agentsPageTitle = { id: "settings.runtime.agents.page.title", message: "Agents" }
 const agentsPageDesc = {
   id: "settings.runtime.agents.page.desc",
-  message: "Agent prompt behavior, provider timeouts, and tool timeout controls.",
+  message: "Agent capacity, prompt behavior, provider timeouts, and tool timeout controls.",
 }
 const agentSectionTitle = { id: "settings.runtime.agents.agent.title", message: "Agent" }
 const coauthorRowTitle = { id: "settings.runtime.agents.coauthor.title", message: "Co-author Reminder" }
@@ -93,6 +94,20 @@ const defaultAgentRowDesc = {
   id: "settings.runtime.agents.defaultAgent.desc",
   message: "Primary agent for new conversations. Hidden and subagent definitions are excluded.",
 }
+const agentWorkersRowTitle = { id: "settings.runtime.agents.agentWorkers.title", message: "Agent Worker Pool" }
+const agentWorkersRowDesc = {
+  id: "settings.runtime.agents.agentWorkers.desc",
+  message:
+    "Maximum model turns that can run in parallel. When reduced, active turns finish before excess workers retire.",
+}
+const agentWorkersAutomatic = {
+  id: "settings.runtime.agents.agentWorkers.automatic",
+  message: "Automatic",
+}
+const agentWorkersPlaceholder = {
+  id: "settings.runtime.agents.agentWorkers.placeholder",
+  message: "Auto",
+}
 const invokeRowTitle = { id: "settings.runtime.agents.invoke.title", message: "Invoke Timeout" }
 const invokeRowDesc = {
   id: "settings.runtime.agents.invoke.desc",
@@ -101,7 +116,7 @@ const invokeRowDesc = {
 const concurrencyRowTitle = { id: "settings.runtime.agents.concurrency.title", message: "Max Concurrent Subagents" }
 const concurrencyRowDesc = {
   id: "settings.runtime.agents.concurrency.desc",
-  message: "Maximum Cortex subagent tasks running at once. Memory guidance never overrides this setting.",
+  message: "Maximum Cortex subagent tasks running at once. Memory pressure can temporarily queue new tasks sooner.",
 }
 const providerSectionTitle = { id: "settings.runtime.agents.provider.title", message: "Provider" }
 const ttfbRowTitle = { id: "settings.runtime.agents.ttfb.title", message: "TTFB Timeout" }
@@ -239,6 +254,7 @@ export function TimeoutsPanel(props: {
   defaultAgent: string
   onDefaultAgentChange: (agent: string) => void
   concurrencyStatus?: CortexConcurrencyStatus
+  configuredAgentWorkers?: number
 }) {
   const { _ } = useLingui()
   const environmentConcurrency = () => props.concurrencyStatus?.environment
@@ -246,25 +262,19 @@ export function TimeoutsPanel(props: {
   const displayedConcurrency = () =>
     managedByEnvironment() ? String(environmentConcurrency()) : props.runtime.cortexConcurrency
   const concurrencyStateLabel = () => {
-    const memoryPressureLimit = props.concurrencyStatus?.memoryPressureLimit
-    const effective = props.concurrencyStatus?.effective
-    if (
-      memoryPressureLimit !== null &&
-      memoryPressureLimit !== undefined &&
-      effective !== undefined &&
-      memoryPressureLimit < effective
-    ) {
-      if (managedByEnvironment()) {
-        return _({
-          id: "settings.runtime.agents.concurrency.memoryAdvisoryManaged",
-          message: "Managed by environment · Memory recommendation: {value}",
-          values: { value: String(memoryPressureLimit) },
-        })
-      }
+    const pressure = concurrencyPressureState(props.concurrencyStatus)
+    if (pressure?.managed) {
       return _({
-        id: "settings.runtime.agents.concurrency.memoryAdvisory",
-        message: "Memory recommendation: {value}. Your setting remains active.",
-        values: { value: String(memoryPressureLimit) },
+        id: "settings.runtime.agents.concurrency.memoryLimitManaged",
+        message: "Managed by environment · Memory safety limit active: {value}",
+        values: { value: pressure.value },
+      })
+    }
+    if (pressure) {
+      return _({
+        id: "settings.runtime.agents.concurrency.memoryLimit",
+        message: "Memory safety limit active: {value}. New tasks will queue until pressure drops.",
+        values: { value: pressure.value },
       })
     }
     if (managedByEnvironment()) return _(managedByEnvLabel)
@@ -277,6 +287,14 @@ export function TimeoutsPanel(props: {
     props.onRuntimeChange(
       "cortexConcurrency",
       String(props.concurrencyStatus?.configured ?? props.concurrencyStatus?.effective ?? 8),
+    )
+  }
+  const resetInvalidAgentWorkers = () => {
+    const parsed = Number(props.runtime.agentWorkers)
+    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 64) return
+    props.onRuntimeChange(
+      "agentWorkers",
+      props.configuredAgentWorkers === undefined ? "" : String(props.configuredAgentWorkers),
     )
   }
 
@@ -304,6 +322,24 @@ export function TimeoutsPanel(props: {
             >
               <For each={props.availableAgents}>{(agent) => <option value={agent.name}>{agent.name}</option>}</For>
             </select>
+          }
+        />
+        <SettingRow
+          title={_(agentWorkersRowTitle)}
+          description={_(agentWorkersRowDesc)}
+          stateLabel={props.runtime.agentWorkers ? undefined : _(agentWorkersAutomatic)}
+          trailing={
+            <TextField
+              type="number"
+              min="1"
+              max="64"
+              step="1"
+              value={props.runtime.agentWorkers}
+              placeholder={_(agentWorkersPlaceholder)}
+              class="settings-row-control-text"
+              onBlur={resetInvalidAgentWorkers}
+              onChange={(value) => props.onRuntimeChange("agentWorkers", value)}
+            />
           }
         />
         <SettingRow

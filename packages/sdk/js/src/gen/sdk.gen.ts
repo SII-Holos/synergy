@@ -182,6 +182,7 @@ import type {
   HolosAgentProfileInput,
   HolosAgentsGetErrors,
   HolosAgentsGetResponses,
+  HolosAgentsListErrors,
   HolosAgentsListResponses,
   HolosCallbackResponses,
   HolosContactAddErrors,
@@ -206,6 +207,7 @@ import type {
   HolosProfileUpdateResponses,
   HolosReconnectErrors,
   HolosReconnectResponses,
+  HolosSendErrors,
   HolosSendResponses,
   HolosSendRetryErrors,
   HolosSendRetryResponses,
@@ -4013,7 +4015,7 @@ export class Agents extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosAgentsListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosAgentsListResponses, HolosAgentsListErrors, ThrowOnError>({
       url: "/holos/agents",
       ...options,
       ...params,
@@ -4443,7 +4445,7 @@ export class Holos extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<HolosSendResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<HolosSendResponses, HolosSendErrors, ThrowOnError>({
       url: "/holos/send",
       ...options,
       ...params,
@@ -6473,7 +6475,7 @@ export class Cortex extends HeyApiClient {
   /**
    * Get Cortex concurrency status
    *
-   * Get Cortex admission limits and advisory memory-pressure concurrency guidance.
+   * Get configured Cortex concurrency and the effective memory-pressure admission limit.
    */
   public concurrency<ThrowOnError extends boolean = false>(
     parameters?: {

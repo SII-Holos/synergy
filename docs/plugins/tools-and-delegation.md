@@ -85,7 +85,7 @@ A handler may return a string or `ToolResult` with title, output, metadata, and 
 
 An MCP contribution contains one strict local or remote server declaration. Local commands are argv arrays. Remote URLs must be parseable `http` or `https` URLs and may declare OAuth, retry, startup, timeout, filter, cache, and idle-shutdown policy. Plugin server identity is `${pluginId}::${contributionId}`; exact global config names shadow plugin names, while qualified plugin names remain stable. Plugin activation and reload replace the complete server set atomically after every candidate validates.
 
-`cliCommand()` contributes a flat executable command below `synergy <pluginId> <command>`. Its handler receives parsed options and the normal invocation context. Commands that execute processes declare `shell.execute` and call `context.shell.run({ command: [program, ...args] })`; plugins never pass shell source strings.
+`cliCommand()` contributes a flat executable command below `synergy <pluginId> <command>`. Command discovery and help resolve the launch directory through a transient Scope without registering it as a project, writing its Git identity cache, archiving stale Scope records, or emitting Scope events; the host resolves the persistent Scope when a declared command actually executes. Its handler receives parsed options and the normal invocation context. Commands that execute processes declare `shell.execute` and call `context.shell.run({ command: [program, ...args] })`; plugins never pass shell source strings.
 
 Tools that produce files declare `asset.write`, call `context.asset.create()`, and return the host-owned attachment directly in `attachments`. This keeps asset URLs, Session/message identity, and presentation metadata under host ownership.
 
@@ -167,7 +167,7 @@ const cancelled = await context.lightloop.cancel(loop.sessionID)
 
 Tool maps are visibility toggles, not capability grants. They do not override agent or Session permissions, and unspecified tools keep their normal visibility unless the caller uses explicit wildcard semantics.
 
-`get()` returns the current snapshot with the dedicated `sessionID`, status, instructions, and any terminal error. `cancel()` terminalizes a non-terminal LightLoop and returns its final snapshot.
+`get()` returns the current snapshot with the dedicated `sessionID`, status, instructions, and any terminal error. Terminal snapshots remain queryable after Synergy clears the interactive workflow. `cancel()` terminalizes a non-terminal LightLoop and is idempotent when the same plugin generation repeats it after terminalization.
 
 ### LightLoop After Hook
 
@@ -195,7 +195,7 @@ export default definePlugin({
 })
 ```
 
-The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin generation that started the LightLoop. Terminal delivery is acknowledged only after at least one matching `lightloop.after` handler completes successfully and no matching handler fails. A generation mismatch, missing handler, or handler failure leaves the terminal delivery pending with a durable error; terminal reconciliation retries it, while an acknowledged delivery is not invoked again. Handlers must therefore be idempotent across retries that follow an interrupted or failed attempt.
+The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin generation that started the LightLoop. Before delivery, Synergy writes a separate terminal record and clears the interactive workflow slot. Terminal delivery is acknowledged only after at least one matching `lightloop.after` handler completes successfully and no matching handler fails. A generation mismatch, missing handler, or handler failure leaves the terminal delivery pending with a durable error; terminal reconciliation retries it, while an acknowledged delivery is not invoked again. Handlers must therefore be idempotent.
 
 ## Session Control
 

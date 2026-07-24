@@ -59,6 +59,13 @@ import {
   type PlanBlueprintOfferState,
 } from "./plan-blueprint-offer"
 import {
+  emptyRollbackDialogPresentationState,
+  isEmptyRollbackDialogPresentationState,
+  reduceRollbackDialogPresentationState,
+  type RollbackDialogPresentationEvent,
+  type RollbackDialogPresentationState,
+} from "./rollback-dialog"
+import {
   createSessionContextProjectionRevision,
   invalidateLatestSessionContextUsageMessage,
   reduceLatestSessionContextUsageMessage,
@@ -67,7 +74,9 @@ import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { useGlobalSDK } from "./global-sdk"
-import { ErrorPage, type InitError } from "../pages/error"
+import { FatalErrorPage } from "../pages/fatal-error"
+import { DialogSelectServer } from "@/components/dialog/dialog-select-server"
+import { recoverGlobalSyncFailure, type GlobalSyncFailure } from "./global-sync-recovery"
 import { AP } from "@/app-i18n"
 import { useLingui } from "@lingui/solid"
 import {
@@ -83,6 +92,7 @@ import {
   Match,
 } from "solid-js"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { recordTokenApply } from "@/components/performance/browser-metrics"
@@ -134,6 +144,9 @@ type State = {
   }
   planBlueprintOffer: {
     [sessionID: string]: PlanBlueprintOfferState
+  }
+  rollbackDialogPresentation: {
+    [sessionID: string]: RollbackDialogPresentationState
   }
   inbox: {
     [sessionID: string]: SessionInboxItem[]
@@ -188,6 +201,36 @@ export function updatePlanBlueprintOfferState(
   setPlanBlueprintOfferState(store, setStore, sessionID, reducePlanBlueprintOfferState(current, event))
 }
 
+function setRollbackDialogPresentationState(
+  store: State,
+  setStore: SetStoreFunction<State>,
+  sessionID: string,
+  state: RollbackDialogPresentationState,
+) {
+  if (isEmptyRollbackDialogPresentationState(state)) {
+    if (!store.rollbackDialogPresentation[sessionID]) return
+    setStore(
+      "rollbackDialogPresentation",
+      produce((draft) => {
+        delete draft[sessionID]
+      }),
+    )
+    return
+  }
+
+  setStore("rollbackDialogPresentation", sessionID, reconcile(state))
+}
+
+export function updateRollbackDialogPresentationState(
+  store: State,
+  setStore: SetStoreFunction<State>,
+  sessionID: string,
+  event: RollbackDialogPresentationEvent,
+) {
+  const current = store.rollbackDialogPresentation[sessionID] ?? emptyRollbackDialogPresentationState
+  setRollbackDialogPresentationState(store, setStore, sessionID, reduceRollbackDialogPresentationState(current, event))
+}
+
 function capturePlanBlueprintOfferFromPart(store: State, setStore: SetStoreFunction<State>, part: Part) {
   const session = findSessionByID(store.session, part.sessionID)
   const offer = createPlanBlueprintOfferFromPart({
@@ -226,9 +269,9 @@ export function refreshPlanBlueprintOfferFromLoadedParts(
 function createGlobalSync() {
   const contextProjectionRevision = createSessionContextProjectionRevision()
   const globalSDK = useGlobalSDK()
+  const [failure, setFailure] = createSignal<GlobalSyncFailure>()
   const [globalStore, setGlobalStore] = createStore<{
     ready: boolean
-    error?: InitError
     paths: GlobalPaths
     config: Config
     scope: Scope[]
@@ -373,7 +416,9 @@ function createGlobalSync() {
       if (!children[scopeKey]) continue
       bootstrapActive.add(scopeKey)
       void bootstrapInstance(scopeKey)
-        .catch((e) => setGlobalStore("error", e))
+        .catch((error) => {
+          setFailure({ source: "scope", scopeKey, error })
+        })
         .finally(() => {
           bootstrapActive.delete(scopeKey)
           pumpBootstrapQueue()
@@ -414,6 +459,7 @@ function createGlobalSync() {
         permission: {},
         question: {},
         planBlueprintOffer: {},
+        rollbackDialogPresentation: {},
         inbox: {},
         mcp: {},
         lsp: [],
@@ -903,8 +949,8 @@ function createGlobalSync() {
     ])
   }
 
-  async function bootstrapInstance(scopeKey: string) {
-    if (!scopeKey) return
+  async function bootstrapInstance(scopeKey: string): Promise<boolean> {
+    if (!scopeKey) return false
     const [store, setStore] = ensureScopeState(scopeKey)
     const sdk = createScopedClient(scopeKey)
     const snapshotRequest = retry(() => sdk.scope.bootstrap(scopeRequest(scopeKey))).then((result) => {
@@ -925,8 +971,10 @@ function createGlobalSync() {
       if (store.status !== "complete") setStore("status", "partial")
       await Promise.all(remainingRequests)
       setStore("status", "complete")
+      return true
     } catch (error) {
-      setGlobalStore("error", error as Error)
+      setFailure({ source: "scope", scopeKey, error })
+      return false
     }
   }
 
@@ -1192,6 +1240,7 @@ function createGlobalSync() {
             setStore("sessionTotal", Math.max(0, store.sessionTotal - 1))
           }
           updatePlanBlueprintOfferState(store, setStore, info.id, { type: "session_removed" })
+          updateRollbackDialogPresentationState(store, setStore, info.id, { type: "session_removed" })
           break
         }
         if (index !== -1) {
@@ -1781,22 +1830,33 @@ function createGlobalSync() {
     )
     const [health, configResult] = await Promise.all([healthRequest, configRequest])
     if (!health?.healthy) {
-      setGlobalStore(
-        "error",
-        new Error(`Could not connect to server. Is there a server running at \`${globalSDK.url}\`?`),
-      )
-      return
+      setFailure({
+        source: "connection",
+        error: new Error(`Could not connect to server. Is there a server running at \`${globalSDK.url}\`?`),
+      })
+      return false
     }
     if (!configResult.ok) {
-      setGlobalStore("error", configResult.error as Error)
-      return
+      setFailure({ source: "initialization", error: configResult.error })
+      return false
     }
     setGlobalStore("ready", true)
     loadGlobalAgenda()
+    return true
+  }
+
+  async function recover() {
+    const current = failure()
+    if (!current) return true
+    return recoverGlobalSyncFailure(current, {
+      retryGlobal: bootstrap,
+      retryScope: bootstrapInstance,
+      clear: (recovered) => setFailure((active) => (active === recovered ? undefined : active)),
+    })
   }
 
   onMount(() => {
-    bootstrap()
+    void bootstrap()
   })
 
   return {
@@ -1804,8 +1864,8 @@ function createGlobalSync() {
     get ready() {
       return globalStore.ready
     },
-    get error() {
-      return globalStore.error
+    get failure() {
+      return failure()
     },
     peekScopeState,
     ensureScopeState,
@@ -1814,7 +1874,7 @@ function createGlobalSync() {
     touchMessageBucket,
     beginContextProjection: contextProjectionRevision.begin,
     setLatestContextMessage,
-    bootstrap,
+    recover,
     reconnectVersion,
     captureResourceRequest,
     applyResourceResponse,
@@ -1839,6 +1899,7 @@ const GlobalSyncContext = createContext<ReturnType<typeof createGlobalSync>>()
 
 export function GlobalSyncProvider(props: ParentProps) {
   const value = createGlobalSync()
+  const dialog = useDialog()
   const { _ } = useLingui()
   return (
     <Switch
@@ -1848,8 +1909,15 @@ export function GlobalSyncProvider(props: ParentProps) {
         </div>
       }
     >
-      <Match when={value.error}>
-        <ErrorPage error={value.error} />
+      <Match when={value.failure}>
+        {(failure) => (
+          <FatalErrorPage
+            error={failure().error}
+            source={failure().source}
+            onRecover={() => void value.recover()}
+            onSecondaryAction={() => dialog.show(() => <DialogSelectServer />)}
+          />
+        )}
       </Match>
       <Match when={value.ready}>
         <GlobalSyncContext.Provider value={value}>

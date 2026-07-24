@@ -8,6 +8,9 @@ const latticeSession = {
   workflow: { kind: "lattice" as const, runID: "r1", mode: "auto" as const },
 }
 const lightloopSession = { workflow: { kind: "lightloop" as const, instructions: "test" } }
+const terminalLightloopSession = {
+  workflow: { kind: "lightloop" as const, instructions: "done", status: "completed" as const },
+}
 const normalSession = {}
 
 function userMessage(id: string, text: string, metadata?: Record<string, any>): MessageV2.WithParts {
@@ -40,6 +43,7 @@ describe("WorkflowUserWrapper metadata", () => {
     expect(WorkflowUserWrapper.activeMode(planSession)).toBe("plan")
     expect(WorkflowUserWrapper.activeMode(latticeSession)).toBe("lattice")
     expect(WorkflowUserWrapper.activeMode(lightloopSession)).toBe("lightloop")
+    expect(WorkflowUserWrapper.activeMode(terminalLightloopSession)).toBeUndefined()
     expect(WorkflowUserWrapper.activeMode(normalSession)).toBeUndefined()
   })
 

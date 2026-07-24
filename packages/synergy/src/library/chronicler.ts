@@ -5,12 +5,13 @@ import { LoopJob } from "../session/loop-job"
 export namespace Chronicler {
   const log = Log.create({ service: "library.chronicler" })
 
-  async function run(ctx: Pick<LoopJob.Context, "sessionID" | "messages" | "abort">): Promise<void> {
+  async function run(ctx: Pick<LoopJob.Context, "sessionID" | "abort">): Promise<void> {
     const { Config } = await import("@/config/config")
     const { Agent } = await import("@/agent/agent")
     const { Provider } = await import("@/provider/provider")
     const { MessageV2 } = await import("../session/message-v2")
     const { Session } = await import("../session")
+    const { SessionHistory } = await import("../session/history")
     const { SessionInvoke } = await import("../session/invoke")
     const { Identifier } = await import("../id/id")
 
@@ -28,9 +29,10 @@ export namespace Chronicler {
     }
     const model = await Provider.getModel(agentModel.providerID, agentModel.modelID)
 
-    if (ctx.messages.length === 0) return
+    const messages = await SessionHistory.detachedModelMessages({ sessionID: ctx.sessionID, signal: ctx.abort })
+    if (messages.length === 0) return
 
-    const modelMessages = MessageV2.toModelMessage(ctx.messages)
+    const modelMessages = MessageV2.toModelMessage(messages)
     const conversationText = modelMessages
       .map((msg) => {
         const role = msg.role
@@ -56,21 +58,26 @@ export namespace Chronicler {
     })
     const childSessionID = childSession.id
 
-    ctx.abort.addEventListener("abort", () => SessionInvoke.cancel(childSessionID))
-
-    await SessionInvoke.invokeInternal({
-      messageID: Identifier.ascending("message"),
-      sessionID: childSessionID,
-      model: { providerID: model.providerID, modelID: model.id },
-      agent: "chronicler",
-      origin: { type: "system" },
-      parts: [
-        {
-          type: "text",
-          text: `<conversation>\n${conversationText}\n</conversation>\n\nReview the conversation above and persist any durable knowledge worth preserving to long-term memory. Search existing memories first to avoid duplicates.`,
-        },
-      ],
-    })
+    const cancel = () => SessionInvoke.cancel(childSessionID)
+    ctx.abort.addEventListener("abort", cancel, { once: true })
+    try {
+      ctx.abort.throwIfAborted()
+      await SessionInvoke.invokeInternal({
+        messageID: Identifier.ascending("message"),
+        sessionID: childSessionID,
+        model: { providerID: model.providerID, modelID: model.id },
+        agent: "chronicler",
+        origin: { type: "system" },
+        parts: [
+          {
+            type: "text",
+            text: `<conversation>\n${conversationText}\n</conversation>\n\nReview the conversation above and persist any durable knowledge worth preserving to long-term memory. Search existing memories first to avoid duplicates.`,
+          },
+        ],
+      })
+    } finally {
+      ctx.abort.removeEventListener("abort", cancel)
+    }
   }
 
   LoopJob.register({
@@ -81,9 +88,16 @@ export namespace Chronicler {
     collect() {
       return []
     },
-    async execute(ctx) {
-      await run(ctx)
-      return "continue"
+    capture(ctx) {
+      return { type: "chronicle", sessionID: ctx.sessionID, abort: ctx.abort }
+    },
+    key(input) {
+      return input.sessionID
+    },
+    timeoutMs: 180_000,
+    async execute(input, signal) {
+      await run({ sessionID: input.sessionID, abort: AbortSignal.any([input.abort, signal]) })
+      return "pass"
     },
   })
 }

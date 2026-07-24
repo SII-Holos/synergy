@@ -1,7 +1,7 @@
 import type { ModelMessage } from "ai"
 import { Agent } from "./agent"
 import { Provider } from "../provider/provider"
-import { LLM } from "../session/llm"
+import { AgentTurn } from "../session/agent-turn"
 import type { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
 
@@ -109,10 +109,10 @@ export namespace AgentCall {
 
     try {
       const stream = await wait(
-        LLM.stream({
+        AgentTurn.stream({
           agent,
           user,
-          tools: {},
+          toolDefinitions: [],
           model,
           small: true,
           messages: input.messages,
@@ -122,12 +122,13 @@ export namespace AgentCall {
           retries: input.retries,
         }),
       )
-      const owned = LLM.takeTextStream(stream)
       try {
         let value = ""
         await wait(
           (async () => {
-            for await (const chunk of owned.stream) {
+            for await (const part of stream.fullStream) {
+              if (part.type !== "text-delta") continue
+              const chunk = part.text
               if (!chunk) continue
               value += chunk
               if (value.length <= input.maxOutputChars) continue
@@ -141,7 +142,7 @@ export namespace AgentCall {
         )
         return { text: value }
       } finally {
-        await owned.dispose()
+        await stream.dispose()
       }
     } catch (error) {
       if (error instanceof Error) throw error

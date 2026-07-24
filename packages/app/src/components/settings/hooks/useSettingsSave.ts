@@ -7,6 +7,7 @@ import type { ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { discardSettingsConfirm } from "@/components/dialog/confirm-copy"
 import { groupPatchByDomain, strategyForPatch } from "../domain-routing"
 import { requestErrorMessage } from "@/utils/error"
+import { createSettingsSaveQueue } from "./settings-save-queue"
 
 const copy = {
   autoSaveFailed: { id: "settings.save.auto.failed", message: "Auto-save failed" },
@@ -45,9 +46,12 @@ export function useSettingsSave(ctx: SaveContext) {
   let bgDebounce: ReturnType<typeof setTimeout> | undefined
   let autoResetTimer: ReturnType<typeof setTimeout> | undefined
   let bgResetTimer: ReturnType<typeof setTimeout> | undefined
-  let saveGen = 0
+  const saveQueue = createSettingsSaveQueue()
 
-  onCleanup(() => cancelDebounces())
+  onCleanup(() => {
+    cancelDebounces()
+    saveQueue.supersede()
+  })
 
   function patchStrategies(patch: Record<string, unknown>) {
     return strategyForPatch(patch)
@@ -77,61 +81,64 @@ export function useSettingsSave(ctx: SaveContext) {
     )
   }
 
-  async function doAutoSave(patch: Record<string, unknown>) {
+  function doAutoSave(patch: Record<string, unknown>, generation: number) {
     if (Object.keys(patch).length === 0) return
-    const gen = ++saveGen
-    setAutoStatus("saving")
-    try {
-      await saveServerPatch(patch)
-      await ctx.refreshAfterConfigChange()
-      if (saveGen !== gen) return
-      setAutoStatus("saved")
-      if (autoResetTimer) clearTimeout(autoResetTimer)
-      autoResetTimer = setTimeout(() => {
-        if (saveGen === gen) setAutoStatus("idle")
-      }, 2000)
-    } catch (error) {
-      await ctx.onPatchFailed(patch)
-      if (saveGen !== gen) return
-      setAutoStatus("error")
-      showToast({
-        type: "error",
-        title: _(copy.autoSaveFailed),
-        description: requestErrorMessage(error, _(copy.requestFailed)),
-      })
-    }
+    return saveQueue.enqueue(generation, {
+      write: async () => {
+        setAutoStatus("saving")
+        await saveServerPatch(patch)
+      },
+      reconcile: ctx.refreshAfterConfigChange,
+      onSuccess: () => {
+        setAutoStatus("saved")
+        if (autoResetTimer) clearTimeout(autoResetTimer)
+        autoResetTimer = setTimeout(() => {
+          if (saveQueue.isCurrent(generation)) setAutoStatus("idle")
+        }, 2000)
+      },
+      onError: async (error) => {
+        await ctx.onPatchFailed(patch)
+        setAutoStatus("error")
+        showToast({
+          type: "error",
+          title: _(copy.autoSaveFailed),
+          description: requestErrorMessage(error, _(copy.requestFailed)),
+        })
+      },
+    })
   }
 
-  async function doBgSave(patch: Record<string, unknown>) {
+  function doBgSave(patch: Record<string, unknown>, generation: number) {
     if (Object.keys(patch).length === 0) return
-    const gen = ++saveGen
-    setBgStatus("saving")
-    try {
-      await saveServerPatch(patch)
-      await ctx.refreshAfterConfigChange()
-      if (saveGen !== gen) return
-      setBgStatus("saved")
-      if (bgResetTimer) clearTimeout(bgResetTimer)
-      bgResetTimer = setTimeout(() => {
-        if (saveGen === gen) setBgStatus("idle")
-      }, 2000)
-      if (!getToastConfig()?.muted?.includes("success")) {
+    return saveQueue.enqueue(generation, {
+      write: async () => {
+        setBgStatus("saving")
+        await saveServerPatch(patch)
+      },
+      reconcile: ctx.refreshAfterConfigChange,
+      onSuccess: () => {
+        setBgStatus("saved")
+        if (bgResetTimer) clearTimeout(bgResetTimer)
+        bgResetTimer = setTimeout(() => {
+          if (saveQueue.isCurrent(generation)) setBgStatus("idle")
+        }, 2000)
+        if (getToastConfig()?.muted?.includes("success")) return
         showToast({
           type: "success",
           title: _({ ...copy.saved, values: { label: ctx.editingLabel() } }),
           description: _({ ...copy.updated, values: { fields: Object.keys(patch).join(", ") } }),
         })
-      }
-    } catch (error) {
-      await ctx.onPatchFailed(patch)
-      if (saveGen !== gen) return
-      setBgStatus("error")
-      showToast({
-        type: "error",
-        title: _(copy.backgroundSaveFailed),
-        description: requestErrorMessage(error, _(copy.requestFailed)),
-      })
-    }
+      },
+      onError: async (error) => {
+        await ctx.onPatchFailed(patch)
+        setBgStatus("error")
+        showToast({
+          type: "error",
+          title: _(copy.backgroundSaveFailed),
+          description: requestErrorMessage(error, _(copy.requestFailed)),
+        })
+      },
+    })
   }
 
   function cancelDebounces() {
@@ -147,23 +154,24 @@ export function useSettingsSave(ctx: SaveContext) {
 
   createEffect(() => {
     const patch = ctx.serverPatch()
+    cancelDebounces()
     if (Object.keys(patch).length === 0) {
       setExplicitDirty(false)
       return
     }
 
+    const generation = saveQueue.supersede()
     if (hasExplicit(patch)) {
       setExplicitDirty(true)
       return
     }
 
     setExplicitDirty(false)
-    cancelDebounces()
 
     if (isAutoOnly(patch)) {
-      autoDebounce = setTimeout(() => void doAutoSave(patch), 300)
+      autoDebounce = setTimeout(() => void doAutoSave(patch, generation), 300)
     } else if (hasBackground(patch)) {
-      bgDebounce = setTimeout(() => void doBgSave(patch), 500)
+      bgDebounce = setTimeout(() => void doBgSave(patch, generation), 500)
     }
   })
 
