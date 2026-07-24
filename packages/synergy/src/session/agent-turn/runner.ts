@@ -4,7 +4,9 @@ import { LLM } from "../llm"
 import { ToolCatalog } from "../tool-catalog"
 import { watchManagedParent } from "@/server/managed-parent"
 import { AgentTurnProtocol } from "./protocol"
-import type { AgentTurnWorkerInput, AgentTurnStreamPart } from "./worker-pool"
+import type { AgentTurnWorkerInput } from "./worker-pool"
+
+type AgentSDKStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<infer Part> ? Part : never
 
 interface ActiveTurn {
   requestId: string
@@ -39,7 +41,7 @@ function memory() {
   }
 }
 
-async function sendEvents(turn: ActiveTurn, events: AgentTurnStreamPart[]): Promise<void> {
+async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promise<void> {
   if (events.length === 0) return
   const frame = {
     type: "events" as const,
@@ -66,7 +68,7 @@ async function sendEvents(turn: ActiveTurn, events: AgentTurnStreamPart[]): Prom
   })
 }
 
-function isTextDelta(value: AgentTurnStreamPart): value is AgentTurnStreamPart & {
+function isTextDelta(value: AgentSDKStreamPart): value is AgentSDKStreamPart & {
   type: "text-delta" | "reasoning-delta"
   id: string
   text: string
@@ -75,8 +77,8 @@ function isTextDelta(value: AgentTurnStreamPart): value is AgentTurnStreamPart &
   return value.type === "text-delta" || value.type === "reasoning-delta"
 }
 
-async function streamEvents(turn: ActiveTurn, stream: AsyncIterable<AgentTurnStreamPart>): Promise<void> {
-  let pending: AgentTurnStreamPart | undefined
+async function streamEvents(turn: ActiveTurn, stream: AsyncIterable<AgentSDKStreamPart>): Promise<void> {
+  let pending: AgentSDKStreamPart | undefined
   let pendingAt = 0
 
   const flush = async () => {

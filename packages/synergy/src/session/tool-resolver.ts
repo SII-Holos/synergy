@@ -52,6 +52,7 @@ import { BlueprintLoopStore } from "@/blueprint"
 import type { ToolCatalog } from "./tool-catalog"
 import { ToolExecutor } from "./tool-executor"
 import type { ToolExecutorKind } from "./tool-scheduler"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -1164,7 +1165,7 @@ export namespace ToolResolver {
         }
       }
 
-      if (def.id === "loop_stop" && input.session?.workflow?.kind !== "lightloop") {
+      if (def.id === "loop_stop" && !isActiveLightLoopWorkflow(input.session?.workflow)) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
@@ -1500,7 +1501,7 @@ export namespace ToolResolver {
                   workspaceType: workspaceInfo?.type ?? "scope",
                 })
 
-                const envelope = gate.evaluate(item.id, args as Record<string, any>)
+                const envelope = await gate.evaluateIsolated(item.id, args as Record<string, any>, ctx.abort)
                 const modeDiagnostic = SessionModePolicy.evaluateCall({
                   toolName: item.id,
                   args: args as Record<string, any>,
@@ -1752,7 +1753,7 @@ export namespace ToolResolver {
                     workspace,
                     workspaceType: workspaceInfo?.type ?? "scope",
                   })
-                  const envelope = gate.evaluate(key, args as Record<string, any>)
+                  const envelope = await gate.evaluateIsolated(key, args as Record<string, any>, ctx.abort)
                   const modeDiagnostic = SessionModePolicy.evaluateCall({
                     toolName: key,
                     args: args as Record<string, any>,

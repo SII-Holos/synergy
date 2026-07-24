@@ -158,6 +158,18 @@ describe.serial("LibraryDB", () => {
       expect(content!.raw).toBe("hello")
     })
 
+    test("persists canonical user input with experience content", () => {
+      makeExperience("exp-user-input", {
+        content: {
+          userInput: "Preserve this exact request",
+          script: "print('hello')",
+          raw: "### User\nPreserve this exact request\n\n### Response\nDone.",
+        },
+      })
+
+      expect(LibraryDB.Experience.getContent("exp-user-input")?.user_input).toBe("Preserve this exact request")
+    })
+
     test("getContent for non-existent returns null", () => {
       expect(LibraryDB.Experience.getContent("no-such-id")).toBeNull()
     })
@@ -642,7 +654,7 @@ describe.serial("LibraryDB", () => {
         makeExperience("exp-old", {
           scopeID: "scope-supersede",
           intent: "Old intent",
-          content: { script: "old script", raw: "old raw" },
+          content: { userInput: "old request", script: "old script", raw: "old raw" },
         })
 
         LibraryDB.Experience.applyReward("exp-old", {
@@ -667,7 +679,7 @@ describe.serial("LibraryDB", () => {
           sourceModelID: "model-new",
           intentEmbedding: fakeEmbedding(),
           scriptEmbedding: undefined,
-          content: { script: "new script", raw: "new raw" },
+          content: { userInput: "new request", script: "new script", raw: "new raw" },
           metadata: { changes: { files: [], additions: 0, deletions: 0 }, channel: undefined },
           retrievedExperienceIDs: [],
         })
@@ -686,6 +698,7 @@ describe.serial("LibraryDB", () => {
         const content = LibraryDB.Experience.getContent("exp-old")
         expect(content?.script).toBe("new script")
         expect(content?.raw).toBe("new raw")
+        expect(content?.user_input).toBe("new request")
       })
 
       test("returns false for non-existent experience", () => {

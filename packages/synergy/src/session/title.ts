@@ -8,6 +8,7 @@ import { AgentTurn } from "./agent-turn"
 import { iife } from "../util/iife"
 import { LoopJob } from "./loop-job"
 import { Turn } from "./turn"
+import { SessionHistory } from "./history"
 
 const log = Log.create({ service: "session.title" })
 
@@ -32,12 +33,30 @@ LoopJob.register({
     if (ctx.step !== 1) return []
     return [{ type: "ensure-title" }]
   },
-  async execute(ctx) {
-    await ensureTitle({
-      session: ctx.session,
+  capture(ctx) {
+    return {
+      type: "ensure-title",
+      sessionID: ctx.sessionID,
       modelID: ctx.lastUser.model.modelID,
       providerID: ctx.lastUser.model.providerID,
-      history: ctx.messages,
+    }
+  },
+  key(input) {
+    return input.sessionID
+  },
+  timeoutMs: 120_000,
+  async execute(input, signal) {
+    const { Session } = await import(".")
+    const [session, history] = await Promise.all([
+      Session.get(input.sessionID),
+      SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal }),
+    ])
+    await ensureTitle({
+      session,
+      modelID: input.modelID,
+      providerID: input.providerID,
+      history,
+      abort: signal,
     })
     return "pass"
   },
@@ -48,6 +67,7 @@ export async function ensureTitle(input: {
   history: MessageV2.WithParts[]
   providerID: string
   modelID: string
+  abort: AbortSignal
 }) {
   if (input.session.parentID) return
   if (!isDefaultTitle(input.session.title)) return
@@ -75,7 +95,7 @@ export async function ensureTitle(input: {
       if (agentModel) return await Provider.getModel(agentModel.providerID, agentModel.modelID)
       return await Provider.getModel(input.providerID, input.modelID)
     }),
-    abort: new AbortController().signal,
+    abort: input.abort,
     sessionID: input.session.id,
     retries: 2,
     messages: [

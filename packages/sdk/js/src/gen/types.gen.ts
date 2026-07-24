@@ -599,6 +599,18 @@ export type PerfDashboardSummary = {
         rssBytes: number
         heapUsedBytes: number
       }
+      policyWorkers: {
+        configured: number
+        maxQueued: number
+        maxQueuedBytes: number
+        workers: number
+        ready: number
+        active: number
+        queued: number
+        queuedBytes: number
+        rssBytes: number
+        heapUsedBytes: number
+      }
       toolTasks: {
         active: number
         queued: number
@@ -3389,6 +3401,42 @@ export type Config = {
      * Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)
      */
     agentHeartbeatTimeoutMs?: number
+    /**
+     * Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)
+     */
+    policyWorkers?: number
+    /**
+     * Maximum queued Policy classifications waiting for a worker (default: 256)
+     */
+    policyQueueMax?: number
+    /**
+     * Maximum aggregate queued Policy-classification payload size in MiB (default: 64)
+     */
+    policyQueueMaxMb?: number
+    /**
+     * Maximum total time for a Policy classification before conservative fallback (default: 1000)
+     */
+    policyTimeoutMs?: number
+    /**
+     * Classifications completed before a Policy worker is recycled (default: 512)
+     */
+    policyWorkerMaxRequests?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)
+     */
+    policyWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)
+     */
+    policyWorkerMaxHeapMb?: number
+    /**
+     * Shutdown grace period before terminating a Policy worker (default: 25)
+     */
+    policyCancelGraceMs?: number
+    /**
+     * Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)
+     */
+    policyHeartbeatTimeoutMs?: number
     /**
      * Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)
      */

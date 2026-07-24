@@ -48,6 +48,113 @@ describe("AgentTurnProtocol", () => {
     ).toThrow("Agent turn event frame exceeded")
   })
 
+  test("projects start-step events before enforcing the worker frame bound", () => {
+    const [event] = AgentTurnProtocol.encodeEvents([
+      {
+        type: "start-step",
+        request: {
+          body: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+        },
+        warnings: [{ type: "other", message: "provider diagnostic" }],
+      },
+    ])
+    const frame = {
+      type: "events" as const,
+      requestId: "turn_test",
+      sequence: 1,
+      events: [event],
+    }
+
+    expect(event).toEqual({ type: "start-step" })
+    expect(() => AgentTurnProtocol.assertEventFrameBound(frame)).not.toThrow()
+  })
+
+  test("projects finish-step events to fields consumed by the Control Plane", () => {
+    const usage = {
+      inputTokens: 12,
+      outputTokens: 3,
+      totalTokens: 15,
+    }
+    const providerMetadata = {
+      codex: {
+        cachedInputTokens: 4,
+      },
+    }
+    const [event] = AgentTurnProtocol.encodeEvents([
+      {
+        type: "finish-step",
+        finishReason: "stop",
+        usage,
+        providerMetadata,
+        request: {
+          body: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+        },
+        response: {
+          body: "unused provider response",
+        },
+        warnings: [{ type: "other", message: "provider diagnostic" }],
+      },
+    ])
+    const frame = {
+      type: "events" as const,
+      requestId: "turn_test",
+      sequence: 1,
+      events: [event],
+    }
+
+    expect(event).toEqual({
+      type: "finish-step",
+      finishReason: "stop",
+      usage,
+      providerMetadata,
+    })
+    expect(() => AgentTurnProtocol.assertEventFrameBound(frame)).not.toThrow()
+  })
+
+  test("uses protocol-owned fields for other SDK events and drops unsupported diagnostics", () => {
+    const events = AgentTurnProtocol.encodeEvents([
+      {
+        type: "tool-result",
+        toolCallId: "call_1",
+        toolName: "read",
+        input: { filePath: "README.md" },
+        output: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+      },
+      {
+        type: "text-delta",
+        id: "text_1",
+        text: "ok",
+        providerMetadata: { codex: { itemId: "item_1" } },
+        diagnostic: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+      },
+      {
+        type: "raw",
+        rawValue: "x".repeat(AgentTurnProtocol.EVENT_MAX_BYTES),
+      },
+    ])
+    const frame = {
+      type: "events" as const,
+      requestId: "turn_test",
+      sequence: 1,
+      events,
+    }
+
+    expect(events).toEqual([
+      {
+        type: "tool-result",
+        toolCallId: "call_1",
+      },
+      {
+        type: "text-delta",
+        id: "text_1",
+        text: "ok",
+        providerMetadata: { codex: { itemId: "item_1" } },
+      },
+    ])
+    expect(AgentTurnProtocol.parseWorkerToHost(frame)).toEqual(frame)
+    expect(() => AgentTurnProtocol.assertEventFrameBound(frame)).not.toThrow()
+  })
+
   test("counts binary payload bytes instead of only typed-array metadata", () => {
     expect(AgentTurnProtocol.byteLength({ payload: new Uint8Array(1024) })).toBeGreaterThan(1024)
   })

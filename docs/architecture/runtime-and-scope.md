@@ -30,9 +30,9 @@ The same runtime can be launched through several ownership surfaces:
 - plugin marketplace registry prefetch
 - pending session invocation recovery
 - Agenda and its built-in bootstrap items
-- the bounded Agent worker pool and ToolTask scheduler
+- the bounded Agent and Policy worker pools plus the ToolTask scheduler
 
-Stopping the global runtime first stops Agent and tool admission, cancels or drains their owned work, and then stops Agenda, Channels, MCP, project Scope runtimes, and other process-owned resources.
+Stopping the global runtime first stops Agent, Policy, and tool admission, cancels or drains their owned work, and then stops Agenda, Channels, MCP, project Scope runtimes, and other process-owned resources.
 
 Global services may still perform scoped work. They must enter the relevant `ScopeContext` before reading scoped configuration, storage, files, or session state.
 
@@ -46,6 +46,8 @@ flowchart LR
   CP <--> Pool["Agent worker supervisor"]
   Pool --> A1["Agent worker process"]
   Pool --> A2["Agent worker process"]
+  CP <--> PolicyPool["Policy worker supervisor"]
+  PolicyPool --> Policy["Policy worker processes"]
   CP --> Scheduler["ToolTask scheduler"]
   Scheduler --> Local["Local process / file executors"]
   Scheduler --> Plugin["Plugin process runtime"]
@@ -57,9 +59,11 @@ Every product LLM turn, including sessionless title, summary, classification, an
 
 The Agent protocol is versioned and schema-validated. A turn snapshot is limited to 64 MiB, transferred in at most 1 MiB chunks, and advanced by per-chunk acknowledgements. Stream events are limited to 2 MiB frames; text and reasoning deltas are coalesced, and the next frame is acknowledged only after the Control Plane consumer has drained the current frame. Queue item counts and aggregate queued bytes are bounded independently. Cancellation has a grace deadline, heartbeats detect stuck workers, and workers terminate or recycle after a configured turn count, RSS threshold, or heap-used threshold.
 
+Capability classification runs in a separate prewarmed Policy worker pool. Global-runtime startup begins prewarming without making HTTP/WebSocket availability depend on a child-process handshake. A classification that reaches a cold pool waits at most ten seconds for the first ready worker, so startup is bounded but not charged to the shorter request deadline. The Control Plane sends only a schema-validated, byte-bounded snapshot of the tool name, arguments, and classification context; the worker returns a capability envelope and never owns profile decisions, permission state, canonical writes, or tool execution. Once the pool is ready, each request has one total queue/transfer/classification deadline. A startup timeout, request timeout, process crash, invalid protocol message, or memory/heartbeat violation produces a finite opaque `protected_op` result and an immediate transient denial without entering approval, including under `guarded` and `full_access`. Workers recycle after bounded request counts or memory watermarks. Pre-ready failures use bounded exponential backoff and a startup circuit so a broken worker executable cannot create a Control Plane respawn storm.
+
 `ToolScheduler` is the asynchronous boundary between proposed model tool calls and execution. It applies process-wide and per-executor-class admission limits, byte-bounded queues, generation-aware idempotency, cancellation, and terminal accounting. The executor classes are local process, file, plugin, MCP, Browser, Link, and narrow Control Plane operations. Physical isolation follows the capability: Bash and command-based search own child processes and bounded pipes, plugins reuse the plugin process runtime, and MCP, Browser, and Link retain their canonical transports/runtimes. File and canonical-state operations remain scheduled in the Control Plane when their implementation depends on its single-writer state; executor classification does not weaken permission, sandbox, Scope, or ownership rules.
 
-The Control Plane is the only canonical observability writer. Agent workers send bounded execution data back through the turn protocol and do not initialize the performance store. Provider credential file updates use a process-safe lock so concurrent worker refreshes cannot lose writes.
+The Control Plane is the only canonical observability writer. Agent and Policy workers send bounded execution data back through their protocols and do not initialize the performance store. Provider credential file updates use a process-safe lock so concurrent worker refreshes cannot lose writes.
 
 ## Scope
 
@@ -179,6 +183,7 @@ The exact domain files and precedence are defined in the [configuration referenc
 - Global services enter a Scope before accessing scoped state.
 - The Control Plane is the single writer for Session, Message, event ordering, permission state, and performance storage.
 - Production provider streams run only in Agent worker processes; workers never receive executable tools or retain capacity while tools wait.
-- Every Agent IPC frame and Agent/Tool queue has an explicit byte and item bound.
+- Production capability classification runs only in Policy worker processes; timeout, crash, and malformed-output paths return a finite conservative classification.
+- Every Agent or Policy IPC frame and Agent/Policy/Tool queue has an explicit byte and item bound.
 - Project runtimes start lazily, once per Scope ID, and are disposable.
 - Runtime ownership follows the launch surface; one client must not stop or replace a runtime owned by another surface.

@@ -271,4 +271,65 @@ describe.serial("library migrations", () => {
       expect(progressLog.at(-1)).toEqual([1, 1])
     })
   })
+
+  describe("experience user input migration", () => {
+    test("adds the column and backfills only canonical rendered digests idempotently", async () => {
+      const conn = LibraryDB.connection()
+      const now = Date.now()
+      conn.exec(`
+        ALTER TABLE experience_content RENAME TO experience_content_current;
+        CREATE TABLE experience_content (
+          id         TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          scope_id   TEXT NOT NULL,
+          script     TEXT,
+          raw        TEXT,
+          metadata   TEXT NOT NULL DEFAULT '{}',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        DROP TABLE experience_content_current;
+      `)
+      conn
+        .prepare(
+          `INSERT INTO experience_content (id, session_id, scope_id, script, raw, metadata, created_at, updated_at)
+           VALUES (?1, ?2, ?3, NULL, ?4, '{}', ?5, ?5)`,
+        )
+        .run(
+          "exp-user-input-migration",
+          "sess-1",
+          "scope-1",
+          "### User\nRecover this exact request\n\n### Response\nThe request was completed.",
+          now,
+        )
+      conn
+        .prepare(
+          `INSERT INTO experience_content (id, session_id, scope_id, script, raw, metadata, created_at, updated_at)
+           VALUES (?1, ?2, ?3, NULL, ?4, '{}', ?5, ?5)`,
+        )
+        .run(
+          "exp-ambiguous-user-input",
+          "sess-1",
+          "scope-1",
+          "### User\nKeep this literal:\n\n### Response\ninside my request\n\n### Response\nDone.",
+          now,
+        )
+      const migration = migrations.find((item) => item.id === "20260724-library-experience-user-input")
+      expect(migration).toBeDefined()
+      expect(hasColumn(conn, "experience_content", "user_input")).toBe(false)
+
+      await migration!.up(() => {})
+      await migration!.up(() => {})
+
+      const rows = conn.prepare("SELECT id, user_input FROM experience_content ORDER BY id").all() as {
+        id: string
+        user_input: string | null
+      }[]
+      expect(hasColumn(conn, "experience_content", "user_input")).toBe(true)
+      expect(rows).toEqual([
+        { id: "exp-ambiguous-user-input", user_input: null },
+        { id: "exp-user-input-migration", user_input: "Recover this exact request" },
+      ])
+    })
+  })
 })

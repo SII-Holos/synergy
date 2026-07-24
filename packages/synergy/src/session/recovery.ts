@@ -14,6 +14,7 @@ import { BlueprintLoopStore, isActiveLoopStatus } from "../blueprint/loop-store"
 import type { Info as BlueprintLoopInfo } from "../blueprint/types"
 import { NoteStore } from "../note"
 import { ScopeContext } from "../scope/context"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 export namespace SessionRecovery {
   export interface Location {
@@ -66,7 +67,7 @@ export namespace SessionRecovery {
   }
 
   function isWorkflowRecoveryCandidate(session: Info) {
-    return session.workflow?.kind === "lightloop" || session.workflow?.kind === "lattice"
+    return isActiveLightLoopWorkflow(session.workflow) || session.workflow?.kind === "lattice"
   }
 
   function isSessionRecoveryCandidate(session: Info) {
@@ -358,7 +359,7 @@ export namespace SessionRecovery {
       const pending = new Map<string, Info>()
 
       for (const session of sessions) {
-        if (!session.time || session.time.archived || session.workflow?.kind !== "lightloop") continue
+        if (!session.time || session.time.archived || !isActiveLightLoopWorkflow(session.workflow)) continue
         const stopRequest = session.workflow.stopRequest
         if (!stopRequest) continue
         if (stopRequest.reviewSessionID) {

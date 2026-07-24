@@ -167,7 +167,7 @@ const cancelled = await context.lightloop.cancel(loop.sessionID)
 
 Tool maps are visibility toggles, not capability grants. They do not override agent or Session permissions, and unspecified tools keep their normal visibility unless the caller uses explicit wildcard semantics.
 
-`get()` returns the current snapshot with the dedicated `sessionID`, status, instructions, and any terminal error. `cancel()` terminalizes a non-terminal LightLoop and returns its final snapshot.
+`get()` returns the current snapshot with the dedicated `sessionID`, status, instructions, and any terminal error. Terminal snapshots remain queryable after Synergy clears the interactive workflow. `cancel()` terminalizes a non-terminal LightLoop and is idempotent when the same plugin generation repeats it after terminalization.
 
 ### LightLoop After Hook
 
@@ -195,7 +195,7 @@ export default definePlugin({
 })
 ```
 
-The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin generation that started the LightLoop. Terminal delivery is acknowledged only after at least one matching `lightloop.after` handler completes successfully and no matching handler fails. A generation mismatch, missing handler, or handler failure leaves the terminal delivery pending with a durable error; terminal reconciliation retries it, while an acknowledged delivery is not invoked again. Handlers must therefore be idempotent across retries that follow an interrupted or failed attempt.
+The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin generation that started the LightLoop. Before delivery, Synergy writes a separate terminal record and clears the interactive workflow slot. Terminal delivery is acknowledged only after at least one matching `lightloop.after` handler completes successfully and no matching handler fails. A generation mismatch, missing handler, or handler failure leaves the terminal delivery pending with a durable error; terminal reconciliation retries it, while an acknowledged delivery is not invoked again. Handlers must therefore be idempotent.
 
 ## Session Control
 

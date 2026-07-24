@@ -58,6 +58,15 @@ The optional `execution` object in `120-runtime.jsonc` controls bounded Agent an
     "agentWorkerMaxHeapMb": 1024,
     "agentCancelGraceMs": 5000,
     "agentHeartbeatTimeoutMs": 45000,
+    "policyWorkers": 2,
+    "policyQueueMax": 256,
+    "policyQueueMaxMb": 64,
+    "policyTimeoutMs": 1000,
+    "policyWorkerMaxRequests": 512,
+    "policyWorkerMaxRssMb": 512,
+    "policyWorkerMaxHeapMb": 256,
+    "policyCancelGraceMs": 25,
+    "policyHeartbeatTimeoutMs": 15000,
     "toolConcurrency": 16,
     "toolQueueMax": 512,
     "toolQueueMaxMb": 128,
@@ -75,7 +84,11 @@ The optional `execution` object in `120-runtime.jsonc` controls bounded Agent an
 }
 ```
 
-`agentWorkers` defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. Agent request and event-frame protocol bounds are fixed safety invariants rather than configuration. RSS and heap-used watermarks are enforced from worker heartbeats as well as normal turn completion; the heartbeat timeout is constrained to 30-300 seconds so it cannot undercut the worker heartbeat cadence. Global and per-executor tool concurrency are capped at 512. Tool executor limits are additional ceilings below `toolConcurrency`; omitted executor limits retain their defaults. Runtime shutdown stops new Agent turns and ToolTasks first, aborts active work, and bounds ToolTask drain time with `toolCancelGraceMs`. These settings are read at global-runtime startup and require a runtime restart.
+`agentWorkers` defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. Agent request and event-frame protocol bounds are fixed safety invariants rather than configuration. RSS and heap-used watermarks are enforced from worker heartbeats as well as normal turn completion; the heartbeat timeout is constrained to 30-300 seconds so it cannot undercut the worker heartbeat cadence.
+
+`policyWorkers` defaults to the smaller of two or available CPUs minus one, with a minimum of one and a maximum of 16. Global-runtime startup begins prewarming without making server availability depend on the worker handshake. A cold classification waits at most ten seconds for readiness; after readiness, `policyTimeoutMs` covers queueing, transfer, and classification. Policy requests are limited to 16 MiB and transferred in 1 MiB acknowledged chunks; those protocol limits are fixed. Expiry terminates the owning worker and makes the enforcement gate return an immediate conservative denial rather than an approval prompt. The queue, aggregate bytes, request-count recycling, RSS/heap watermarks, heartbeat timeout, and shutdown grace are independently configurable.
+
+Global and per-executor tool concurrency are capped at 512. Tool executor limits are additional ceilings below `toolConcurrency`; omitted executor limits retain their defaults. Runtime shutdown stops new Agent turns, Policy classifications, and ToolTasks first, aborts active work, and bounds ToolTask drain time with `toolCancelGraceMs`. These settings are read at global-runtime startup and require a runtime restart.
 
 ## Precedence
 

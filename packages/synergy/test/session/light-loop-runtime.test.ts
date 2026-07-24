@@ -3,6 +3,7 @@ import { Plugin } from "../../src/plugin"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { LightLoopRuntime } from "../../src/session/light-loop-runtime"
+import { LightLoopTerminalStore } from "../../src/session/light-loop-terminal-hook"
 import { tmpdir } from "../fixture/fixture"
 
 const originalDeliverHookForPlugin = (Plugin as any).deliverHookForPlugin
@@ -33,7 +34,32 @@ async function createPluginLightLoop(input?: { status?: "completed"; deliveredAt
 }
 
 describe("LightLoop terminal hook delivery", () => {
-  test("acknowledges one successful matching delivery and does not redeliver", async () => {
+  test("clears ordinary LightLoop state instead of persisting a terminal workflow", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Finish the ordinary task",
+            status: "running",
+          }
+        })
+        const delivery = mock(async () => ({ status: "delivered", handlerCount: 1 }))
+        ;(Plugin as any).deliverHookForPlugin = delivery
+
+        await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect(await LightLoopTerminalStore.get(session)).toBeUndefined()
+        expect(delivery).not.toHaveBeenCalled()
+      },
+    })
+  })
+
+  test("unequips before acknowledging one successful matching delivery", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -42,15 +68,18 @@ describe("LightLoop terminal hook delivery", () => {
         const calls: unknown[][] = []
         ;(Plugin as any).deliverHookForPlugin = mock(async (...args: unknown[]) => {
           calls.push(args)
+          expect((await Session.get(session.id)).workflow).toBeUndefined()
           return { status: "delivered", handlerCount: 1 }
         })
 
         await LightLoopRuntime.setTerminalStatus(session.id, "completed")
-        const delivered = await Session.get(session.id)
-        expect(delivered.workflow?.kind).toBe("lightloop")
-        if (delivered.workflow?.kind !== "lightloop") return
-        expect(delivered.workflow.terminalHookDeliveredAt).toBeNumber()
-        expect(delivered.workflow.terminalHookError).toBeUndefined()
+
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+          status: "completed",
+          instructions: "Finish the plugin-owned task",
+          hookDeliveredAt: expect.any(Number),
+        })
         expect(calls).toEqual([
           [
             "test-plugin",
@@ -72,46 +101,39 @@ describe("LightLoop terminal hook delivery", () => {
     })
   })
 
-  test("does not acknowledge when the target plugin has no handler", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await createPluginLightLoop()
-        ;(Plugin as any).deliverHookForPlugin = mock(async () => ({
-          status: "no_handler",
-          handlerCount: 0,
-          error: "Plugin test-plugin has no handler for lightloop.after",
-        }))
-
-        await LightLoopRuntime.setTerminalStatus(session.id, "completed")
-        const updated = await Session.get(session.id)
-        expect(updated.workflow?.kind).toBe("lightloop")
-        if (updated.workflow?.kind !== "lightloop") return
-        expect(updated.workflow.terminalHookDeliveredAt).toBeUndefined()
-        expect(updated.workflow.terminalHookError).toBe("Plugin test-plugin has no handler for lightloop.after")
+  test.each([
+    {
+      name: "no handler",
+      delivery: {
+        status: "no_handler" as const,
+        handlerCount: 0,
+        error: "Plugin test-plugin has no handler for lightloop.after",
       },
-    })
-  })
-
-  test("does not acknowledge a plugin generation mismatch", async () => {
+    },
+    {
+      name: "plugin generation mismatch",
+      delivery: {
+        status: "plugin_mismatch" as const,
+        handlerCount: 0,
+        error: "Plugin test-plugin generation generation-one is not active",
+      },
+    },
+  ])("unequips and preserves an unacknowledged result for $name", async ({ delivery }) => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await createPluginLightLoop()
-        ;(Plugin as any).deliverHookForPlugin = mock(async () => ({
-          status: "plugin_mismatch",
-          handlerCount: 0,
-          error: "Plugin test-plugin generation generation-one is not active",
-        }))
+        ;(Plugin as any).deliverHookForPlugin = mock(async () => delivery)
 
         await LightLoopRuntime.setTerminalStatus(session.id, "completed")
-        const updated = await Session.get(session.id)
-        expect(updated.workflow?.kind).toBe("lightloop")
-        if (updated.workflow?.kind !== "lightloop") return
-        expect(updated.workflow.terminalHookDeliveredAt).toBeUndefined()
-        expect(updated.workflow.terminalHookError).toBe("Plugin test-plugin generation generation-one is not active")
+
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+          status: "completed",
+          hookError: delivery.error,
+        })
+        expect((await LightLoopTerminalStore.get(session))?.hookDeliveredAt).toBeUndefined()
       },
     })
   })
@@ -127,27 +149,22 @@ describe("LightLoop terminal hook delivery", () => {
           attempt++
           if (attempt === 1) {
             return {
-              status: "failed",
+              status: "failed" as const,
               handlerCount: 1,
               error: "Hook lightloop.after handler on-finish failed: plugin state write failed",
             }
           }
-          return { status: "delivered", handlerCount: 1 }
+          return { status: "delivered" as const, handlerCount: 1 }
         })
 
         await LightLoopRuntime.setTerminalStatus(session.id, "completed")
-        const failed = await Session.get(session.id)
-        expect(failed.workflow?.kind).toBe("lightloop")
-        if (failed.workflow?.kind !== "lightloop") return
-        expect(failed.workflow.terminalHookDeliveredAt).toBeUndefined()
-        expect(failed.workflow.terminalHookError).toContain("plugin state write failed")
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect((await LightLoopTerminalStore.get(session))?.hookError).toContain("plugin state write failed")
 
         await LightLoopRuntime.setTerminalStatus(session.id, "completed")
-        const retried = await Session.get(session.id)
-        expect(retried.workflow?.kind).toBe("lightloop")
-        if (retried.workflow?.kind !== "lightloop") return
-        expect(retried.workflow.terminalHookDeliveredAt).toBeNumber()
-        expect(retried.workflow.terminalHookError).toBeUndefined()
+        const terminal = await LightLoopTerminalStore.get(session)
+        expect(terminal?.hookDeliveredAt).toBeNumber()
+        expect(terminal?.hookError).toBeUndefined()
         expect(attempt).toBe(2)
       },
     })
@@ -161,7 +178,7 @@ describe("LightLoop terminal hook delivery", () => {
         const session = await createPluginLightLoop()
         const delivery = mock(async () => {
           await Bun.sleep(10)
-          return { status: "delivered", handlerCount: 1 }
+          return { status: "delivered" as const, handlerCount: 1 }
         })
         ;(Plugin as any).deliverHookForPlugin = delivery
 
@@ -171,30 +188,62 @@ describe("LightLoop terminal hook delivery", () => {
         ])
 
         expect(delivery).toHaveBeenCalledTimes(1)
-        const updated = await Session.get(session.id)
-        expect(updated.workflow?.kind).toBe("lightloop")
-        if (updated.workflow?.kind !== "lightloop") return
-        expect(updated.workflow.terminalHookDeliveredAt).toBeNumber()
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect((await LightLoopTerminalStore.get(session))?.hookDeliveredAt).toBeNumber()
       },
     })
   })
 
-  test("terminal reconciliation retries an unacknowledged plugin hook", async () => {
+  test("terminal reconciliation migrates a retained plugin workflow and retries its hook", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await createPluginLightLoop({ status: "completed" })
-        const delivery = mock(async () => ({ status: "delivered", handlerCount: 1 }))
+        const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
         ;(Plugin as any).deliverHookForPlugin = delivery
 
         await LightLoopRuntime.reattachPluginTimers()
 
         expect(delivery).toHaveBeenCalledTimes(1)
-        const updated = await Session.get(session.id)
-        expect(updated.workflow?.kind).toBe("lightloop")
-        if (updated.workflow?.kind !== "lightloop") return
-        expect(updated.workflow.terminalHookDeliveredAt).toBeNumber()
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect((await LightLoopTerminalStore.get(session))?.hookDeliveredAt).toBeNumber()
+      },
+    })
+  })
+
+  test("terminal retry does not clear a later ordinary workflow", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await createPluginLightLoop()
+        await LightLoopTerminalStore.put(session, {
+          sessionID: session.id,
+          status: "completed",
+          instructions: "Finish the plugin-owned task",
+          pluginOwner: {
+            pluginId: "test-plugin",
+            pluginGeneration: "generation-one",
+            scopeId: session.scope.id,
+            correlationId: "correlation-one",
+          },
+          createdAt: Date.now(),
+        })
+        await Session.update(session.id, (draft) => {
+          draft.workflow = { kind: "lightloop", instructions: "Start a later ordinary task", status: "running" }
+        })
+        const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
+        ;(Plugin as any).deliverHookForPlugin = delivery
+
+        await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+
+        expect(delivery).toHaveBeenCalledTimes(1)
+        expect((await Session.get(session.id)).workflow).toEqual({
+          kind: "lightloop",
+          instructions: "Start a later ordinary task",
+          status: "running",
+        })
       },
     })
   })
