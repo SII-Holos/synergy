@@ -133,7 +133,7 @@ export function ImagePreview(props: ImagePreviewProps) {
 
   function openSource() {
     const sourcePath = current()?.sourcePath
-    if (!sourcePath || !resourceOpen?.openWorkspaceSource(sourcePath)) return
+    if (!sourcePath || !resourceOpen?.openWorkspaceSource?.(sourcePath)) return
     dialog.close()
   }
 
@@ -295,7 +295,7 @@ export function ImagePreview(props: ImagePreviewProps) {
                     >
                       <Icon name="download" size="small" />
                     </a>
-                    <Show when={current()?.sourcePath}>
+                    <Show when={resourceOpen?.openWorkspaceSource ? current()?.sourcePath : undefined}>
                       <button
                         type="button"
                         data-component="icon-button"

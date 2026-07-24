@@ -56,7 +56,7 @@ export function AttachmentCard(props: {
     if (preview) {
       const images = preview.images.map((image) => ({
         ...image,
-        sourcePath: resourceOpen?.resolveWorkspacePath(image.sourcePath),
+        sourcePath: resourceOpen?.resolveWorkspacePath?.(image.sourcePath),
       }))
       dialog.show(() => <ImagePreview images={images} initialIndex={preview.index} />)
       return

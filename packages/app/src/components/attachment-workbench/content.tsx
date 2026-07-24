@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, Match, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, Match, onCleanup, Show, Switch } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { AttachmentPart, Part } from "@ericsanchezok/synergy-sdk"
 import {
@@ -24,7 +24,7 @@ import {
   AttachmentTooLargeError,
   attachmentResourceState,
   classifyAttachmentPreview,
-  fetchAttachmentBytes,
+  createAttachmentPreviewReader,
   findAttachmentByLocator,
 } from "./model"
 import { AttachmentPdfPreview } from "./pdf-preview"
@@ -89,13 +89,19 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
     }
     return { href, maxBytes: preview.maxBytes, tooLarge: false as const }
   })
+  const previewReader = createAttachmentPreviewReader(platform.fetch ?? fetch)
   const [payload] = createResource(
     () => {
       const request = previewRequest()
       return request && !request.tooLarge ? request : undefined
     },
-    async (request) => fetchAttachmentBytes(platform.fetch ?? fetch, request.href, request.maxBytes),
+    async (request) => previewReader.read(request.href, request.maxBytes),
   )
+  createEffect(() => {
+    const request = previewRequest()
+    if (!request || request.tooLarge) previewReader.cancel()
+  })
+  onCleanup(() => previewReader.cancel())
   const text = createMemo(() => {
     const bytes = payload()
     return bytes ? new TextDecoder().decode(bytes) : undefined

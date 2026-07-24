@@ -3,9 +3,11 @@ import type { AttachmentPart, Part } from "@ericsanchezok/synergy-sdk"
 import {
   ATTACHMENT_PDF_MAX_BYTES,
   ATTACHMENT_TEXT_MAX_BYTES,
+  attachmentWorkbenchPanelInit,
   attachmentResourceId,
   attachmentResourceState,
   classifyAttachmentPreview,
+  createAttachmentPreviewReader,
   fetchAttachmentBytes,
   findAttachmentByLocator,
 } from "../../../src/components/attachment-workbench/model"
@@ -35,6 +37,11 @@ describe("attachment workspace identity", () => {
     expect(attachmentResourceState({ version: 1, sessionID: "s", messageID: "m" })).toBeUndefined()
     expect(attachmentResourceState(null)).toBeUndefined()
   })
+
+  test("leaves filename-less panel titles to the localized workbench fallback", () => {
+    expect(attachmentWorkbenchPanelInit(attachment({ filename: undefined }))?.title).toBeUndefined()
+    expect(attachmentWorkbenchPanelInit(attachment({ filename: "report.pdf" }))?.title).toBe("report.pdf")
+  })
 })
 
 describe("bounded attachment reads", () => {
@@ -63,6 +70,54 @@ describe("bounded attachment reads", () => {
       4,
     )
     expect([...bytes]).toEqual([1, 2, 3])
+  })
+
+  test("aborts the active preview read when the reader is disposed", async () => {
+    let aborted = false
+    const reader = createAttachmentPreviewReader((_input, init) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            aborted = true
+            reject(new DOMException("Aborted", "AbortError"))
+          },
+          { once: true },
+        )
+      })
+    })
+
+    const pending = reader.read("https://example.com/report.pdf", ATTACHMENT_PDF_MAX_BYTES)
+    reader.cancel()
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+    expect(aborted).toBe(true)
+  })
+
+  test("replaces an in-flight preview read instead of stacking it", async () => {
+    let calls = 0
+    let aborted = 0
+    const reader = createAttachmentPreviewReader((_input, init) => {
+      calls++
+      if (calls === 2) return Promise.resolve(new Response(new Uint8Array([2])))
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            aborted++
+            reject(new DOMException("Aborted", "AbortError"))
+          },
+          { once: true },
+        )
+      })
+    })
+
+    const first = reader.read("https://example.com/first.pdf", ATTACHMENT_PDF_MAX_BYTES)
+    const second = reader.read("https://example.com/second.pdf", ATTACHMENT_PDF_MAX_BYTES)
+
+    await expect(first).rejects.toMatchObject({ name: "AbortError" })
+    await expect(second).resolves.toEqual(new Uint8Array([2]))
+    expect(aborted).toBe(1)
   })
 })
 

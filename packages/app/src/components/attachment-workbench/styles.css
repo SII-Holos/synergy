@@ -5,6 +5,7 @@
   flex-direction: column;
   background: var(--workbench-canvas-bg);
   color: var(--text-base);
+  container-type: inline-size;
 }
 
 .attachment-workbench-toolbar {
@@ -216,7 +217,11 @@
   box-shadow: 0 1px 8px color-mix(in srgb, var(--border-strong-base) 40%, transparent);
 }
 
-@media (max-width: 640px) {
+.attachment-pdf-stage canvas[data-hidden="true"] {
+  display: none;
+}
+
+@container (max-width: 520px) {
   .attachment-workbench-toolbar {
     align-items: flex-start;
     flex-direction: column;

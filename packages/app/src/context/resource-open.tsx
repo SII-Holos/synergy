@@ -17,7 +17,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useFile } from "@/context/file"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { attachmentResourceId, type AttachmentResourceState } from "@/components/attachment-workbench/model"
+import { attachmentWorkbenchPanelInit } from "@/components/attachment-workbench/model"
 
 function stripQueryAndHash(input: string) {
   const hashIndex = input.indexOf("#")
@@ -122,20 +122,10 @@ export function ResourceOpenProvider(props: ParentProps) {
       return true
     }
 
-    if (target === "attachment-workspace" && attachment.id && attachment.sessionID && attachment.messageID) {
-      const state: AttachmentResourceState = {
-        version: 1,
-        sessionID: attachment.sessionID,
-        messageID: attachment.messageID,
-        attachmentID: attachment.id,
-      }
+    const attachmentPanelInit = attachmentWorkbenchPanelInit(attachment)
+    if (target === "attachment-workspace" && attachmentPanelInit) {
       void workbench.openPanel("attachment", {
-        init: {
-          resourceId: attachmentResourceId(state),
-          title: attachment.filename ?? "Attachment",
-          source: "conversation",
-          state,
-        },
+        init: attachmentPanelInit,
       })
       return true
     }

@@ -27,8 +27,8 @@ export interface ResourceOpenOptions {
 export interface ResourceOpenController {
   open(resource: OpenableResource, options?: ResourceOpenOptions): boolean
   openAttachment(file: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }): boolean
-  resolveWorkspacePath(path: string | undefined): string | undefined
-  openWorkspaceSource(path: string): boolean
+  resolveWorkspacePath?(path: string | undefined): string | undefined
+  openWorkspaceSource?(path: string): boolean
 }
 
 const ResourceOpenContext = createContext<ResourceOpenController>()

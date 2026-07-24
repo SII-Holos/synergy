@@ -10,6 +10,13 @@ export interface AttachmentResourceState {
   attachmentID: string
 }
 
+export interface AttachmentWorkbenchPanelInit {
+  resourceId: string
+  title?: string
+  source: "conversation"
+  state: AttachmentResourceState
+}
+
 export type AttachmentPreviewKind = "pdf" | "markdown" | "html" | "source" | "video" | "audio" | "unsupported"
 
 export interface AttachmentPreviewCapability {
@@ -46,6 +53,27 @@ export function attachmentResourceState(value: unknown): AttachmentResourceState
 
 export function attachmentResourceId(state: AttachmentResourceState): string {
   return [state.sessionID, state.messageID, state.attachmentID].map(encodeURIComponent).join("/")
+}
+
+export function attachmentWorkbenchPanelInit(attachment: {
+  id?: string
+  sessionID?: string
+  messageID?: string
+  filename?: string
+}): AttachmentWorkbenchPanelInit | undefined {
+  if (!attachment.id || !attachment.sessionID || !attachment.messageID) return undefined
+  const state: AttachmentResourceState = {
+    version: 1,
+    sessionID: attachment.sessionID,
+    messageID: attachment.messageID,
+    attachmentID: attachment.id,
+  }
+  return {
+    resourceId: attachmentResourceId(state),
+    title: attachment.filename,
+    source: "conversation",
+    state,
+  }
 }
 
 function completedToolAttachments(part: Part): AttachmentPart[] {
@@ -150,4 +178,27 @@ export async function fetchAttachmentBytes(
     offset += chunk.byteLength
   }
   return bytes
+}
+
+export function createAttachmentPreviewReader(
+  fetcher: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+) {
+  let active: AbortController | undefined
+
+  return {
+    async read(url: string, maxBytes: number) {
+      active?.abort()
+      const controller = new AbortController()
+      active = controller
+      try {
+        return await fetchAttachmentBytes(fetcher, url, maxBytes, controller.signal)
+      } finally {
+        if (active === controller) active = undefined
+      }
+    },
+    cancel() {
+      active?.abort()
+      active = undefined
+    },
+  }
 }
