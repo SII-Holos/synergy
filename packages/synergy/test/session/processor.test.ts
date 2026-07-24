@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { APICallError } from "ai"
 import { TimeoutConfig } from "../../src/util/timeout-config"
 import { Config } from "../../src/config/config"
 import { ExperienceEncoder } from "../../src/library/experience-encoder"
@@ -369,7 +370,7 @@ describe("SessionProcessor execution layering", () => {
     expect(keys).not.toContain("memoryTurn")
   })
 
-  test("releases model request collections after the Agent layer takes ownership", async () => {
+  test("releases model request collections after the Agent turn settles", async () => {
     let system: unknown[] | undefined
     let messages: unknown[] | undefined
     let toolDefinitions: unknown[] | undefined
@@ -393,6 +394,52 @@ describe("SessionProcessor execution layering", () => {
     expect(system).toEqual([])
     expect(messages).toEqual([])
     expect(toolDefinitions).toEqual([])
+  })
+
+  test("preserves model request collections for a retryable Agent failure", async () => {
+    const attempts: Array<{
+      system: unknown[]
+      lateSystem: unknown[]
+      messages: unknown[]
+      toolDefinitions: unknown[]
+      activeToolIDs: unknown[]
+    }> = []
+    const agentInput = {
+      system: ["system"],
+      lateSystem: ["runtime"],
+      messages: [{ role: "user", content: "message" }],
+      toolDefinitions: [{ id: "probe", description: "probe", inputSchema: { type: "object" } }],
+      activeToolIDs: ["probe"],
+    }
+    const expected = structuredClone(agentInput)
+
+    await runSettlementScenario({
+      messageID: "msg_layer_retry",
+      async *stream() {
+        if (attempts.length === 1) {
+          throw new APICallError({
+            message: "The operation timed out.",
+            url: "https://provider.invalid",
+            requestBodyValues: {},
+            isRetryable: true,
+            responseHeaders: { "retry-after-ms": "1" },
+          })
+        }
+        yield { type: "finish" }
+      },
+      inspectAgentInput(input) {
+        attempts.push({
+          system: [...(input.system as unknown[])],
+          lateSystem: [...(input.lateSystem as unknown[])],
+          messages: [...(input.messages as unknown[])],
+          toolDefinitions: [...(input.toolDefinitions as unknown[])],
+          activeToolIDs: [...(input.activeToolIDs as unknown[])],
+        })
+      },
+      agentInput,
+    })
+
+    expect(attempts).toEqual([expected, expected])
   })
 })
 
