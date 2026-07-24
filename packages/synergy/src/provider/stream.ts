@@ -24,20 +24,11 @@ export namespace ProviderStream {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     let readerReleased = false
     let settled = false
-    let rejectAbort!: (reason: unknown) => void
-    const aborted = new Promise<never>((_, reject) => {
-      rejectAbort = reject
-    })
-    const onAbort = () => rejectAbort(input.signal.reason ?? new DOMException("Aborted", "AbortError"))
-    if (input.signal.aborted) onAbort()
-    else input.signal.addEventListener("abort", onAbort, { once: true })
-    aborted.catch(() => {})
 
     const cleanup = () => {
       if (settled) return
       settled = true
       if (idleTimer) clearTimeout(idleTimer)
-      input.signal.removeEventListener("abort", onAbort)
     }
     const releaseReader = () => {
       if (!reader || readerReleased) return
@@ -54,6 +45,19 @@ export namespace ProviderStream {
         )
       }, input.timeoutMs).unref()
     }
+    const readWithAbort = async (ownedReader: ReadableStreamDefaultReader<Uint8Array>) => {
+      input.signal.throwIfAborted()
+      let onAbort!: () => void
+      const aborted = new Promise<never>((_, reject) => {
+        onAbort = () => reject(input.signal.reason ?? new DOMException("Aborted", "AbortError"))
+        input.signal.addEventListener("abort", onAbort, { once: true })
+      })
+      try {
+        return await Promise.race([ownedReader.read(), aborted])
+      } finally {
+        input.signal.removeEventListener("abort", onAbort)
+      }
+    }
 
     // Keep provider reads pull-based so downstream demand bounds queued bytes,
     // and release the owned reader on every terminal path.
@@ -61,7 +65,7 @@ export namespace ProviderStream {
       async pull(controller) {
         reader ??= stream.getReader()
         try {
-          const { done, value } = await Promise.race([reader.read(), aborted])
+          const { done, value } = await readWithAbort(reader)
           if (done) {
             cleanup()
             releaseReader()
