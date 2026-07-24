@@ -143,4 +143,27 @@ describe("migrateWorkbenchLayout", () => {
     expect(migrated.sidebar).toEqual({ opened: true, width: 320 })
     expect(migrated.obsoletePanelState).toBeUndefined()
   })
+
+  test("marks existing layouts as already presented without changing the saved sidebar state", () => {
+    const migrated = migrateWorkbenchLayout({
+      sidebar: { opened: false, width: 280 },
+    }) as {
+      sidebar: { opened: boolean; width: number }
+      discovery: { initialSurfacesPresented: boolean }
+    }
+
+    expect(migrated.sidebar).toEqual({ opened: false, width: 280 })
+    expect(migrated.discovery.initialSurfacesPresented).toBe(true)
+  })
+
+  test("preserves an unfinished first-run presentation across reloads", () => {
+    const migrated = migrateWorkbenchLayout({
+      sidebar: { opened: true, width: 280 },
+      discovery: { initialSurfacesPresented: false },
+    }) as {
+      discovery: { initialSurfacesPresented: boolean }
+    }
+
+    expect(migrated.discovery.initialSurfacesPresented).toBe(false)
+  })
 })

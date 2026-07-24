@@ -28,6 +28,7 @@ import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { planMessagePageApply } from "../session-message-page"
 import { findSessionIndex } from "../session-collection"
+import { createInitialLayoutPreferences, shouldPresentInitialSideWorkspace } from "./defaults"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -122,13 +123,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSync = useGlobalSync()
     const server = useServer()
     const platform = usePlatform()
+    const initialPreferences = createInitialLayoutPreferences()
     const [store, setStore, _, ready] = persisted(
       { ...Persist.global("layout", ["layout.v8", "layout.v9"]), migrate: migrateWorkbenchLayout },
       createStore({
-        sidebar: {
-          opened: false,
-          width: 280,
-        },
+        ...initialPreferences,
         review: {
           diffStyle: "split" as ReviewDiffStyle,
         },
@@ -1227,6 +1226,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         width: createMemo(() => store.sidebar.width),
         resize(width: number) {
           setStore("sidebar", "width", width)
+        },
+      },
+      discovery: {
+        claimInitialSideWorkspace() {
+          const shouldPresent = shouldPresentInitialSideWorkspace({
+            ready: ready(),
+            desktop: isDesktop(),
+            presented: store.discovery.initialSurfacesPresented,
+          })
+          if (!shouldPresent) return false
+          setStore("discovery", "initialSurfacesPresented", true)
+          return true
         },
       },
       review: {
