@@ -21694,6 +21694,16 @@
                         "exclusiveMinimum": 0,
                         "maximum": 9007199254740991
                       },
+                      "minIdle": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "idleTimeoutMs": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
                       "maxQueued": {
                         "type": "integer",
                         "minimum": 0,
@@ -21738,10 +21748,27 @@
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 9007199254740991
+                      },
+                      "heapTotalBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "externalBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "arrayBuffersBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
                       }
                     },
                     "required": [
                       "configured",
+                      "minIdle",
+                      "idleTimeoutMs",
                       "maxQueued",
                       "maxQueuedBytes",
                       "workers",
@@ -21750,7 +21777,10 @@
                       "queued",
                       "queuedBytes",
                       "rssBytes",
-                      "heapUsedBytes"
+                      "heapUsedBytes",
+                      "heapTotalBytes",
+                      "externalBytes",
+                      "arrayBuffersBytes"
                     ]
                   },
                   "policyWorkers": {
@@ -27644,10 +27674,22 @@
             "type": "object",
             "properties": {
               "agentWorkers": {
-                "description": "Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+                "description": "Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 64
+              },
+              "agentWorkerMinIdle": {
+                "description": "Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 64
+              },
+              "agentWorkerIdleTimeoutMs": {
+                "description": "Time an excess idle Agent worker remains warm before retirement (default: 60000)",
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 3600000
               },
               "agentQueueMax": {
                 "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
@@ -27675,6 +27717,22 @@
               },
               "agentWorkerMaxHeapMb": {
                 "description": "Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerIdleBaselineRecycle": {
+                "description": "Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)",
+                "type": "boolean"
+              },
+              "agentWorkerIdleBaselineRssGrowthMb": {
+                "description": "Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerIdleBaselineExternalGrowthMb": {
+                "description": "Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 131072
@@ -40257,40 +40315,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.runtime.reloaded": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "runtime.reloaded"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "executed": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "cascaded": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["executed", "cascaded", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.session.inbox.updated": {
         "type": "object",
         "properties": {
@@ -40773,6 +40797,40 @@
               }
             },
             "required": ["file"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.runtime.reloaded": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "runtime.reloaded"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "executed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "cascaded": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -41602,9 +41660,6 @@
             "$ref": "#/components/schemas/Event.session.idle"
           },
           {
-            "$ref": "#/components/schemas/Event.runtime.reloaded"
-          },
-          {
             "$ref": "#/components/schemas/Event.session.inbox.updated"
           },
           {
@@ -41669,6 +41724,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
