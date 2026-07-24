@@ -72,6 +72,7 @@ export namespace MCP {
     serverName: string
     toolName: string
     tool: Tool
+    inputSchema: JSONSchema7
   }
 
   async function resolveMcpTimeout(serverName?: string): Promise<number> {
@@ -80,32 +81,39 @@ export namespace MCP {
     return (await Config.current()).experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
   }
 
-  async function convertMcpTool(mcpTool: MCPToolDef, client: Client, callTimeout: number | undefined): Promise<Tool> {
-    const inputSchema = mcpTool.inputSchema
-    const schema: JSONSchema7 = {
-      ...(inputSchema as JSONSchema7),
+  async function convertMcpTool(
+    mcpTool: MCPToolDef,
+    client: Client,
+    callTimeout: number | undefined,
+  ): Promise<Pick<ToolEntry, "inputSchema" | "tool">> {
+    const source = mcpTool.inputSchema
+    const inputSchema: JSONSchema7 = {
+      ...(source as JSONSchema7),
       type: "object",
-      properties: (inputSchema.properties ?? {}) as JSONSchema7["properties"],
+      properties: (source.properties ?? {}) as JSONSchema7["properties"],
       additionalProperties: false,
     }
 
-    return dynamicTool({
-      description: mcpTool.description ?? "",
-      inputSchema: jsonSchema(schema),
-      execute: async (args: unknown) => {
-        return client.callTool(
-          {
-            name: mcpTool.name,
-            arguments: args as Record<string, unknown>,
-          },
-          CallToolResultSchema,
-          {
-            resetTimeoutOnProgress: true,
-            timeout: callTimeout,
-          },
-        )
-      },
-    })
+    return {
+      inputSchema,
+      tool: dynamicTool({
+        description: mcpTool.description ?? "",
+        inputSchema: jsonSchema(inputSchema),
+        execute: async (args: unknown) => {
+          return client.callTool(
+            {
+              name: mcpTool.name,
+              arguments: args as Record<string, unknown>,
+            },
+            CallToolResultSchema,
+            {
+              resetTimeoutOnProgress: true,
+              timeout: callTimeout,
+            },
+          )
+        },
+      }),
+    }
   }
 
   export function ensureStarted(): void {
@@ -284,11 +292,12 @@ export namespace MCP {
         const toolName = ToolExposure.mcpToolID(handle.name, mcpTool.name)
         const effectiveCallTimeout = handle.config.callTimeout ?? callTimeout
         toolCallTimeouts.set(toolName, effectiveCallTimeout)
+        const converted = await convertMcpTool(mcpTool, handle.client, effectiveCallTimeout)
         result.push({
           id: toolName,
           serverName: handle.name,
           toolName: mcpTool.name,
-          tool: await convertMcpTool(mcpTool, handle.client, effectiveCallTimeout),
+          ...converted,
         })
       }
     }

@@ -72,7 +72,7 @@ describe.serial("declarative plugin OAuth MCP integration", () => {
     )
     await Bun.write(
       path.join(pluginDir, "src", "index.ts"),
-      `import { definePlugin, mcp } from "@ericsanchezok/synergy-plugin"
+      `import { definePlugin, mcp, settings } from "@ericsanchezok/synergy-plugin"
 
 export default definePlugin({
   id: "${PLUGIN_ID}",
@@ -82,11 +82,22 @@ export default definePlugin({
   contributions: [
     mcp({
       id: "figma",
+      enabledWhen: { setting: "figmaEnabled", equals: true },
       server: {
         type: "remote",
         url: ${JSON.stringify(fixture.url)},
         oauth: { scope: ${JSON.stringify(fixture.scope)} },
         startup: "eager",
+      },
+    }),
+    settings({
+      id: "settings",
+      label: "Figma",
+      group: "plugins",
+      formSchema: {
+        type: "object",
+        properties: { figmaEnabled: { type: "boolean", default: true } },
+        additionalProperties: false,
       },
     }),
   ],
@@ -227,6 +238,17 @@ export default definePlugin({
             ],
           })
 
+          await Plugin.updateConfig(plugin, { figmaEnabled: false })
+          expect(McpSupervisor.get(SERVER_NAME)).toBeUndefined()
+          expect(await MCP.resolveServer(SERVER_NAME)).toBeUndefined()
+
+          await Plugin.updateConfig(plugin, { figmaEnabled: true })
+          const restored = McpSupervisor.get(SERVER_NAME)
+          expect(restored).toBeDefined()
+          expect(restored?.config.startup).toBe("eager")
+          await restored?.startPromise
+          expect((await MCP.status())[SERVER_NAME]).toEqual({ status: "connected" })
+
           const removeAuth = await route(`/${encodeURIComponent(SERVER_NAME)}/auth`, { method: "DELETE" })
           expect(removeAuth.status).toBe(200)
           expect(await McpAuth.get(SERVER_NAME)).toBeUndefined()
@@ -234,7 +256,7 @@ export default definePlugin({
           expect(secondStart.status).toBe(200)
           const secondAuthorizationUrl = ((await secondStart.json()) as { authorizationUrl: string }).authorizationUrl
           expect(secondAuthorizationUrl).not.toBe("")
-          expect(PendingOAuth.get(SERVER_NAME)?.identity).toBe(handle!.identity)
+          expect(PendingOAuth.get(SERVER_NAME)?.identity).toBe(restored!.identity)
           expect((await McpAuth.get(SERVER_NAME))?.codeVerifier).toBeDefined()
           expect((await McpAuth.get(SERVER_NAME))?.oauthState).toBeDefined()
 

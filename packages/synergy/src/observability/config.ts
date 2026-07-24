@@ -145,7 +145,10 @@ export namespace ObservabilityConfig {
   }): Info {
     const observability = input?.observability
     const raw = observability?.performance as Raw | undefined
-    const enabled = raw?.enabled ?? observability?.enabled !== false
+    const enabled =
+      process.env.SYNERGY_AGENT_WORKER !== "1" &&
+      process.env.SYNERGY_POLICY_WORKER !== "1" &&
+      (raw?.enabled ?? observability?.enabled !== false)
     return Schema.parse({
       ...defaults,
       ...raw,

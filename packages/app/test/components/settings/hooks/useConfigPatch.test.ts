@@ -4,6 +4,42 @@ import { buildPatch } from "../../../../src/components/settings/hooks/useConfigP
 import { defaultSettingsState } from "../../../../src/components/settings/types"
 
 describe("settings config patch", () => {
+  test("persists a Feishu account model variant", () => {
+    const state = defaultSettingsState("enter")
+    state.channels.feishuAccounts = [
+      {
+        key: "default",
+        enabled: true,
+        model: "openai-codex/gpt-5.6-sol",
+        variant: "high",
+      },
+    ]
+
+    const patch = buildPatch({
+      cfg: {
+        channel: {
+          feishu: {
+            type: "feishu",
+            accounts: {
+              default: {
+                appId: "app",
+                appSecret: "secret",
+                model: "openai-codex/gpt-5.6-sol",
+              },
+            },
+          },
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect((patch.channel as Config["channel"])?.feishu?.accounts.default).toMatchObject({
+      model: "openai-codex/gpt-5.6-sol",
+      variant: "high",
+    })
+  })
+
   test("model role drafts only materialize as server patch fields", () => {
     const state = defaultSettingsState("enter")
     state.models.model = "openai/gpt-5.5"

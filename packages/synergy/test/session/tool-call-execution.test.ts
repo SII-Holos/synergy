@@ -62,7 +62,7 @@ for (const scenario of [
           const result = streamText({
             model: replayingModel,
             prompt: "Run the counter",
-            tools: resolved.tools,
+            tools: resolved.executionTools,
           })
           const events: string[] = []
           for await (const event of result.fullStream) events.push(event.type)
@@ -132,7 +132,7 @@ test("rejects oversized tool input before the handler executes", async () => {
         })
 
         await expect(
-          (resolved.tools.bounded_execution as any).execute(
+          (resolved.executionTools.bounded_execution as any).execute(
             { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
             { toolCallId: "call_oversized" },
           ),
