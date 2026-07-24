@@ -22,6 +22,7 @@ import { BashVirtualFile } from "./virtual-file"
 import type { BashSandboxPrepare } from "./shared"
 import { ObservabilityRedaction } from "@/observability/redaction"
 import { ChildProcessClose } from "@/process/child-process-close"
+import { WindowsProcessJob } from "@/process/windows-process-job"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -328,10 +329,13 @@ export const LocalBashBackend = {
     const executionCommand = withLinuxChildOomPreference(materialized.command)
     const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
+    let windowsProcessJob: WindowsProcessJob.Prepared | undefined
+    let windowsProcessOwner: WindowsProcessJob.Owner | undefined
     let artifactsCleaned = false
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
       artifactsCleaned = true
+      windowsProcessJob?.cleanup()
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
@@ -435,13 +439,20 @@ export const LocalBashBackend = {
             fallback: sandboxFallback,
           })
         }
-        child = spawn(executionCommand, {
-          shell,
-          cwd,
-          env: sandboxEnv,
-          stdio: ["pipe", "pipe", "pipe"],
-          detached: process.platform !== "win32",
-        })
+        windowsProcessJob = WindowsProcessJob.prepareShell({ shell, command: executionCommand, env: sandboxEnv })
+        child = windowsProcessJob
+          ? spawn(windowsProcessJob.command, windowsProcessJob.args, {
+              cwd,
+              env: windowsProcessJob.env,
+              stdio: ["pipe", "pipe", "pipe"],
+            })
+          : spawn(executionCommand, {
+              shell,
+              cwd,
+              env: sandboxEnv,
+              stdio: ["pipe", "pipe", "pipe"],
+              detached: process.platform !== "win32",
+            })
       }
     } catch (e: unknown) {
       ProcessRegistry.remove(regProc.id)
@@ -454,6 +465,23 @@ export const LocalBashBackend = {
         "error",
       )
       throw e
+    }
+    if (windowsProcessJob) {
+      let spawnError: Error | undefined
+      const onSpawnError = (error: Error) => {
+        spawnError = error
+      }
+      child.once("error", onSpawnError)
+      try {
+        windowsProcessOwner = await windowsProcessJob.activate(child)
+        if (spawnError) throw spawnError
+      } catch (error) {
+        ProcessRegistry.remove(regProc.id)
+        cleanupExecutionArtifacts()
+        throw error
+      } finally {
+        child.off("error", onSpawnError)
+      }
     }
 
     let aborted = false
@@ -476,7 +504,7 @@ export const LocalBashBackend = {
       scheduleMetadata()
     }
 
-    const kill = () => Shell.killTree(child, { exited: () => exited })
+    const kill = () => ProcessRegistry.terminate(regProc)
 
     let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
     let commandTimeoutTimer: ReturnType<typeof setTimeout> | undefined
@@ -514,6 +542,9 @@ export const LocalBashBackend = {
     const releaseChildReferences = () => {
       child.stdout?.off("data", append)
       child.stderr?.off("data", append)
+      ProcessRegistry.setTerminator(regProc, undefined)
+      windowsProcessOwner?.release()
+      windowsProcessOwner = undefined
       regProc.child = undefined
       regProc.stdin = undefined
     }
@@ -522,6 +553,7 @@ export const LocalBashBackend = {
       if (finalized) return
       finalized = true
       childError = error
+      windowsProcessOwner?.terminate()
       exited = true
       cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
@@ -541,6 +573,10 @@ export const LocalBashBackend = {
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
 
+    if (windowsProcessOwner) {
+      const owner = windowsProcessOwner
+      ProcessRegistry.setTerminator(regProc, () => owner.terminate())
+    }
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
 
@@ -583,7 +619,7 @@ export const LocalBashBackend = {
       },
       onDrainTimeout() {
         if (regProc.backgrounded || allowsDetachedDaemons(ctx)) return
-        return Shell.killTree(child)
+        return ProcessRegistry.terminate(regProc)
       },
     }).then(
       (result) => finishClose(result.code, result.signal, result.drainTimedOut),
