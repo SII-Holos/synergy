@@ -1263,6 +1263,15 @@ export const pluginMarketplace = {
   statusNeedsApproval: { id: "app.plugin.marketplace.status.needsApproval", message: "Needs approval" },
   statusDisabled: { id: "app.plugin.marketplace.status.disabled", message: "Disabled" },
   statusActive: { id: "app.plugin.marketplace.status.active", message: "Active" },
+  registryUnavailableTitle: {
+    id: "app.plugin.marketplace.registryUnavailable.title",
+    message: "Plugin registry unavailable",
+  },
+  registryUnavailableDescription: {
+    id: "app.plugin.marketplace.registryUnavailable.description",
+    message: "Synergy couldn't reach this plugin registry. Check your connection and try again.",
+  },
+  retry: { id: "app.plugin.marketplace.registryUnavailable.retry", message: "Retry" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin permission groups ──────────────────────────────────────────────────

@@ -7,7 +7,11 @@ import { fileURLToPath } from "url"
 import { errors } from "./error"
 import { checkPathContainment } from "../util/path-contain"
 import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
+import { Log } from "../util/log"
 import { localRegistryPath, localRegistryStoreDir } from "../plugin/local-registry-store"
+
+const log = Log.create({ service: "plugin.registry.route" })
+const OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE = "Official plugin registry temporarily unavailable"
 
 // ── Types ──
 
@@ -318,7 +322,7 @@ export const RegistryRoute = new Hono()
             },
           },
         },
-        ...errors(400),
+        ...errors(400, 503),
       },
     }),
     validator(
@@ -339,10 +343,10 @@ export const RegistryRoute = new Hono()
       if (source !== "local") {
         try {
           official = (await PluginMarketplaceRegistry.searchOfficial({ q, offset: 0, limit: 1000 })).plugins
-        } catch (err) {
+        } catch (error) {
+          log.warn("official plugin registry search failed", { error })
           if (source === "official") {
-            const message = err instanceof Error ? err.message : String(err)
-            return c.json({ message }, 500)
+            return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
           }
         }
       }
@@ -372,7 +376,7 @@ export const RegistryRoute = new Hono()
             "application/json": { schema: resolver(RegistryPluginEntry) },
           },
         },
-        ...errors(404),
+        ...errors(404, 503),
       },
     }),
     validator(
@@ -387,11 +391,15 @@ export const RegistryRoute = new Hono()
       const config = await PluginMarketplaceRegistry.currentConfig()
 
       if (source !== "local") {
-        const official = await PluginMarketplaceRegistry.getOfficialEntry(id).catch((err) => {
-          if (source === "official") throw err
-          return null
-        })
-        if (official) return c.json(official)
+        try {
+          const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
+          if (official) return c.json(official)
+        } catch (error) {
+          log.warn("official plugin registry detail failed", { error, pluginId: id })
+          if (source === "official") {
+            return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+          }
+        }
       }
 
       if (source !== "official" && config.includeLocalRegistry) {
@@ -418,7 +426,7 @@ export const RegistryRoute = new Hono()
             "application/json": { schema: resolver(z.array(RegistryPluginVersion)) },
           },
         },
-        ...errors(404),
+        ...errors(404, 503),
       },
     }),
     validator(
@@ -433,11 +441,15 @@ export const RegistryRoute = new Hono()
       const config = await PluginMarketplaceRegistry.currentConfig()
 
       if (source !== "local") {
-        const official = await PluginMarketplaceRegistry.getOfficialEntry(id).catch((err) => {
-          if (source === "official") throw err
-          return null
-        })
-        if (official) return c.json(official.versions)
+        try {
+          const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
+          if (official) return c.json(official.versions)
+        } catch (error) {
+          log.warn("official plugin registry versions failed", { error, pluginId: id })
+          if (source === "official") {
+            return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+          }
+        }
       }
 
       if (source !== "official" && config.includeLocalRegistry) {
@@ -464,7 +476,7 @@ export const RegistryRoute = new Hono()
             "application/json": { schema: resolver(RegistryPluginVersion) },
           },
         },
-        ...errors(404),
+        ...errors(404, 503),
       },
     }),
     validator(
@@ -480,12 +492,16 @@ export const RegistryRoute = new Hono()
       const config = await PluginMarketplaceRegistry.currentConfig()
 
       if (source !== "local") {
-        const official = await PluginMarketplaceRegistry.getOfficialEntry(id).catch((err) => {
-          if (source === "official") throw err
-          return null
-        })
-        const ver = official?.versions.find((v) => v.version === version)
-        if (ver) return c.json(ver)
+        try {
+          const official = await PluginMarketplaceRegistry.getOfficialEntry(id)
+          const ver = official?.versions.find((item) => item.version === version)
+          if (ver) return c.json(ver)
+        } catch (error) {
+          log.warn("official plugin registry version failed", { error, pluginId: id, version })
+          if (source === "official") {
+            return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+          }
+        }
       }
 
       if (source !== "official" && config.includeLocalRegistry) {

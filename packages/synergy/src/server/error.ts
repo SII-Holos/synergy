@@ -11,6 +11,12 @@ export const BadRequestError = z
   })
   .meta({ ref: "BadRequestError" })
 
+export const ServiceUnavailableError = z
+  .object({
+    message: z.string(),
+  })
+  .meta({ ref: "ServiceUnavailableError" })
+
 export const ERRORS = {
   400: {
     description: "Bad request",
@@ -33,6 +39,14 @@ export const ERRORS = {
     content: {
       "application/json": {
         schema: resolver(NoteError.Conflict.Schema),
+      },
+    },
+  },
+  503: {
+    description: "Service unavailable",
+    content: {
+      "application/json": {
+        schema: resolver(ServiceUnavailableError),
       },
     },
   },

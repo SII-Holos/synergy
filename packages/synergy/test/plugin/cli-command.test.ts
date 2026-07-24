@@ -44,6 +44,7 @@ describe("plugin CLI command domain", () => {
   test("registers commands below the plugin ID namespace", async () => {
     const calls: unknown[] = []
     const output: string[] = []
+    let scopeResolutions = 0
     const plugin = {
       id: "frontend-kit",
       name: "Frontend Kit",
@@ -60,7 +61,10 @@ describe("plugin CLI command domain", () => {
         .command(
           createPluginCliCommandModule({
             plugin: plugin as never,
-            scope: { id: "scope-one", directory: "/workspace" } as never,
+            resolveScope: async () => {
+              scopeResolutions++
+              return { id: "scope-one", directory: "/workspace" } as never
+            },
             invoke: async (input) => {
               calls.push(input)
               return { stdout: "configured\n", exitCode: 0 }
@@ -83,6 +87,7 @@ describe("plugin CLI command domain", () => {
       },
     ])
     expect(output).toEqual(["configured\n"])
+    expect(scopeResolutions).toBe(1)
   })
 
   test("invokes the active process generation with a CLI actor and preserves process output", async () => {

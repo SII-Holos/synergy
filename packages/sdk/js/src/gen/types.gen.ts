@@ -6880,6 +6880,10 @@ export type HolosPresenceMap = {
   [key: string]: string
 }
 
+export type ServiceUnavailableError = {
+  message: string
+}
+
 export type HolosSendResponse = {
   messageId: string
   sent: boolean
@@ -15553,6 +15557,15 @@ export type HolosAgentsListData = {
   url: "/holos/agents"
 }
 
+export type HolosAgentsListErrors = {
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
+}
+
+export type HolosAgentsListError = HolosAgentsListErrors[keyof HolosAgentsListErrors]
+
 export type HolosAgentsListResponses = {
   /**
    * Agent list
@@ -15595,6 +15608,10 @@ export type HolosAgentsGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
 }
 
 export type HolosAgentsGetError = HolosAgentsGetErrors[keyof HolosAgentsGetErrors]
@@ -15640,6 +15657,15 @@ export type HolosSendData = {
   }
   url: "/holos/send"
 }
+
+export type HolosSendErrors = {
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
+}
+
+export type HolosSendError = HolosSendErrors[keyof HolosSendErrors]
 
 export type HolosSendResponses = {
   /**
@@ -16038,6 +16064,10 @@ export type PluginInvokeOperationErrors = {
    * Conflict
    */
   409: NoteConflictError
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
 }
 
 export type PluginInvokeOperationError = PluginInvokeOperationErrors[keyof PluginInvokeOperationErrors]
@@ -16559,6 +16589,10 @@ export type RegistryPluginsSearchErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
 }
 
 export type RegistryPluginsSearchError = RegistryPluginsSearchErrors[keyof RegistryPluginsSearchErrors]
@@ -16595,6 +16629,10 @@ export type RegistryPluginsGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
 }
 
 export type RegistryPluginsGetError = RegistryPluginsGetErrors[keyof RegistryPluginsGetErrors]
@@ -16626,6 +16664,10 @@ export type RegistryPluginsVersionsErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
 }
 
 export type RegistryPluginsVersionsError = RegistryPluginsVersionsErrors[keyof RegistryPluginsVersionsErrors]
@@ -16658,6 +16700,10 @@ export type RegistryPluginsVersionErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
 }
 
 export type RegistryPluginsVersionError = RegistryPluginsVersionErrors[keyof RegistryPluginsVersionErrors]
