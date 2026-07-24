@@ -7,6 +7,7 @@ import { ConfigRoute } from "../../src/server/config-route"
 const originalRuntimeReload = RuntimeReload.reload
 let originalGeneralConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 let originalModelsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
+let originalChannelsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 
 function app() {
   return new Hono().route("/config", ConfigRoute)
@@ -28,6 +29,14 @@ function patchModels(config: unknown, mode?: "merge" | "replace-domain" | "appen
   })
 }
 
+function patchChannels(config: unknown) {
+  return app().request("/config/domains/channels", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ config }),
+  })
+}
+
 afterEach(async () => {
   RuntimeReload.reload = originalRuntimeReload
   if (originalGeneralConfig) {
@@ -37,6 +46,10 @@ afterEach(async () => {
   if (originalModelsConfig) {
     await Config.domainUpdate("models", originalModelsConfig, { mode: "replace-domain" })
     originalModelsConfig = undefined
+  }
+  if (originalChannelsConfig) {
+    await Config.domainUpdate("channels", originalChannelsConfig, { mode: "replace-domain" })
+    originalChannelsConfig = undefined
   }
 })
 
@@ -160,5 +173,53 @@ describe.serial("global Models config route model roles", () => {
       }),
     })
     expect(capturedChange?.config.thinking_model).toBeUndefined()
+  })
+})
+
+describe.serial("global Channels config route runtime reload", () => {
+  test("preserves the Channel change after persisting a Channels domain update", async () => {
+    originalChannelsConfig = await Config.domainGet("channels")
+    const reload = mock(async () => ({
+      success: true,
+      requested: ["config"] as RuntimeReload.Target[],
+      executed: ["config", "channel"] as RuntimeReload.Target[],
+      cascaded: ["channel"] as RuntimeReload.Target[],
+      changedFields: ["channel"],
+      restartRequired: [],
+      liveApplied: [],
+      warnings: [],
+      failed: [] as RuntimeReload.Target[],
+      failures: [],
+      diagnostics: [],
+    }))
+    RuntimeReload.reload = reload as typeof RuntimeReload.reload
+
+    const response = await patchChannels({
+      channel: {
+        clarus: {
+          type: "clarus",
+          accounts: { agent: { enabled: true } },
+        },
+      },
+    })
+
+    expect(response.status).toBe(200)
+    expect(reload).toHaveBeenCalledWith(
+      {
+        targets: ["config"],
+        scope: "global",
+        reason: "config.domain.update:channels",
+      },
+      {
+        configChange: expect.objectContaining({
+          changedFields: ["channel"],
+          config: expect.objectContaining({
+            channel: expect.objectContaining({
+              clarus: expect.objectContaining({ type: "clarus" }),
+            }),
+          }),
+        }),
+      },
+    )
   })
 })
