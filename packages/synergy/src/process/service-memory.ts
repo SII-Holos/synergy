@@ -16,6 +16,12 @@ export namespace ServiceMemory {
       fileBytes?: number
       kernelBytes?: number
       slabBytes?: number
+      activeFileBytes?: number
+      inactiveFileBytes?: number
+      slabReclaimableBytes?: number
+      slabUnreclaimableBytes?: number
+      reclaimableBytes?: number
+      workingSetBytes?: number
     }
     events?: {
       low?: number
@@ -23,7 +29,19 @@ export namespace ServiceMemory {
       max?: number
       oom?: number
       oomKill?: number
+      oomGroupKill?: number
     }
+    pressure?: {
+      some?: Pressure
+      full?: Pressure
+    }
+  }
+
+  export type Pressure = {
+    avg10?: number
+    avg60?: number
+    avg300?: number
+    totalMicros?: number
   }
 
   export type Measurement = {
@@ -48,6 +66,13 @@ export namespace ServiceMemory {
     if (currentBytes === undefined) return undefined
     const stat = readKeyValues(path.join(directory, "memory.stat"))
     const events = readKeyValues(path.join(directory, "memory.events"))
+    const pressure = readPressure(path.join(directory, "memory.pressure"))
+    const inactiveFileBytes = stat?.inactive_file
+    const slabReclaimableBytes = stat?.slab_reclaimable
+    const reclaimableBytes =
+      inactiveFileBytes === undefined && slabReclaimableBytes === undefined
+        ? undefined
+        : (inactiveFileBytes ?? 0) + (slabReclaimableBytes ?? 0)
     return {
       currentBytes,
       ...optional("highBytes", readNumber(path.join(directory, "memory.high"))),
@@ -61,6 +86,15 @@ export namespace ServiceMemory {
               ...optional("fileBytes", stat.file),
               ...optional("kernelBytes", stat.kernel),
               ...optional("slabBytes", stat.slab),
+              ...optional("activeFileBytes", stat.active_file),
+              ...optional("inactiveFileBytes", inactiveFileBytes),
+              ...optional("slabReclaimableBytes", slabReclaimableBytes),
+              ...optional("slabUnreclaimableBytes", stat.slab_unreclaimable),
+              ...optional("reclaimableBytes", reclaimableBytes),
+              ...optional(
+                "workingSetBytes",
+                reclaimableBytes === undefined ? undefined : Math.max(0, currentBytes - reclaimableBytes),
+              ),
             },
           }
         : {}),
@@ -72,9 +106,11 @@ export namespace ServiceMemory {
               ...optional("max", events.max),
               ...optional("oom", events.oom),
               ...optional("oomKill", events.oom_kill),
+              ...optional("oomGroupKill", events.oom_group_kill),
             },
           }
         : {}),
+      ...(pressure ? { pressure } : {}),
     }
   }
 
@@ -157,6 +193,31 @@ export namespace ServiceMemory {
         if (key && Number.isFinite(value) && value >= 0) result[key] = value
       }
       return Object.keys(result).length ? result : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  function readPressure(file: string): CgroupV2["pressure"] | undefined {
+    try {
+      const result: NonNullable<CgroupV2["pressure"]> = {}
+      for (const line of readFileSync(file, "utf8").split("\n")) {
+        const [kind, ...fields] = line.trim().split(/\s+/)
+        if (kind !== "some" && kind !== "full") continue
+        const values: Record<string, number> = {}
+        for (const field of fields) {
+          const [key, raw] = field.split("=", 2)
+          const value = Number(raw)
+          if (key && Number.isFinite(value) && value >= 0) values[key] = value
+        }
+        result[kind] = {
+          ...optional("avg10", values.avg10),
+          ...optional("avg60", values.avg60),
+          ...optional("avg300", values.avg300),
+          ...optional("totalMicros", values.total),
+        }
+      }
+      return result.some || result.full ? result : undefined
     } catch {
       return undefined
     }

@@ -11,6 +11,7 @@ import { SessionManager } from "./manager"
 import { Shell } from "../util/shell"
 import { lastModel } from "./input"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
+import { ChildProcessClose } from "../process/child-process-close"
 
 function deriveShellAbortReason(reason: unknown): string {
   if (reason instanceof DOMException) {
@@ -186,7 +187,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
 
   let output = ""
 
-  proc.stdout?.on("data", (chunk) => {
+  const appendOutput = (chunk: Buffer) => {
     output += chunk.toString()
     if (part.state.status === "running") {
       part.state.metadata = {
@@ -196,22 +197,18 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
       }
       Session.updatePart(part)
     }
-  })
+  }
 
-  proc.stderr?.on("data", (chunk) => {
-    output += chunk.toString()
-    if (part.state.status === "running") {
-      part.state.metadata = {
-        ...part.state.metadata,
-        output: output,
-        description: "",
-      }
-      Session.updatePart(part)
-    }
-  })
+  proc.stdout?.on("data", appendOutput)
+  proc.stderr?.on("data", appendOutput)
 
   let aborted = false
   let exited = false
+  const closed = ChildProcessClose.wait(proc, {
+    onExit() {
+      exited = true
+    },
+  })
 
   const kill = () => Shell.killTree(proc, { exited: () => exited })
 
@@ -227,13 +224,13 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
 
   abort.addEventListener("abort", abortHandler, { once: true })
 
-  await new Promise<void>((resolve) => {
-    proc.on("close", () => {
-      exited = true
-      abort.removeEventListener("abort", abortHandler)
-      resolve()
-    })
-  })
+  try {
+    await closed
+  } finally {
+    abort.removeEventListener("abort", abortHandler)
+    proc.stdout?.off("data", appendOutput)
+    proc.stderr?.off("data", appendOutput)
+  }
 
   if (aborted) {
     output += "\n\n" + ["<metadata>", deriveShellAbortReason(abort.reason), "</metadata>"].join("\n")

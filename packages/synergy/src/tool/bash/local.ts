@@ -21,6 +21,7 @@ import { GitHubProvider } from "@/provider/github"
 import { BashVirtualFile } from "./virtual-file"
 import type { BashSandboxPrepare } from "./shared"
 import { ObservabilityRedaction } from "@/observability/redaction"
+import { ChildProcessClose } from "@/process/child-process-close"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -460,7 +461,9 @@ export const LocalBashBackend = {
     let timeoutMarkerAdded = false
     let hardCeilingReached = false
     let exited = false
+    let finalized = false
     let childError: Error | undefined
+    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
     let resolveChildFinished: (result: "exited" | "error") => void = () => {}
     const childFinished = new Promise<"exited" | "error">((resolve) => {
       resolveChildFinished = resolve
@@ -508,11 +511,21 @@ export const LocalBashBackend = {
         ? "The command was interrupted: bash hard ceiling timed out."
         : `The command was interrupted: command timed out after ${params.timeoutSeconds}s.`
 
-    child.once("error", (error) => {
+    const releaseChildReferences = () => {
+      child.stdout?.off("data", append)
+      child.stderr?.off("data", append)
+      regProc.child = undefined
+      regProc.stdin = undefined
+    }
+
+    const finishError = (error: Error) => {
+      if (finalized) return
+      finalized = true
       childError = error
       exited = true
       cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
+      releaseChildReferences()
       cleanupExecutionArtifacts()
       void trace(
         "bash.child.error",
@@ -522,7 +535,7 @@ export const LocalBashBackend = {
         "error",
       )
       resolveChildFinished("error")
-    })
+    }
 
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
@@ -531,7 +544,9 @@ export const LocalBashBackend = {
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
 
-    child.once("exit", (code, signal) => {
+    const finishClose = (code: number | null, signal: NodeJS.Signals | null, drainTimedOut: boolean) => {
+      if (finalized) return
+      finalized = true
       exited = true
       cleanupAllTimers()
       if (metadataDirty) flushMetadata()
@@ -545,16 +560,31 @@ export const LocalBashBackend = {
       } else {
         ProcessRegistry.remove(regProc.id)
       }
+      releaseChildReferences()
       cleanupExecutionArtifacts()
-      void trace("bash.child.exit", {
+      void trace("bash.child.close", {
         exitCode: code,
         exitSignal: signal,
         outputChars: ProcessRegistry.outputChars(regProc),
+        drainTimedOut,
       })
       resolveChildFinished("exited")
-    })
+    }
 
-    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
+    void ChildProcessClose.wait(child, {
+      onExit(code, signal) {
+        exited = true
+        cleanupAllTimers()
+        void trace("bash.child.exit", {
+          exitCode: code,
+          exitSignal: signal,
+          outputChars: ProcessRegistry.outputChars(regProc),
+        })
+      },
+    }).then(
+      (result) => finishClose(result.code, result.signal, result.drainTimedOut),
+      (error) => finishError(error instanceof Error ? error : new Error(String(error))),
+    )
 
     await trace("process.spawn", {
       processId: regProc.id,

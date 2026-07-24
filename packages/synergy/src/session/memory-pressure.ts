@@ -1,4 +1,5 @@
 import { Log } from "@/util/log"
+import { ServiceMemory } from "@/process/service-memory"
 import { RetentionProbe } from "./retention-probe"
 
 export namespace SessionMemoryPressure {
@@ -13,15 +14,18 @@ export namespace SessionMemoryPressure {
     externalBytes: number
     arrayBuffersBytes: number
     cgroupCurrentBytes?: number
+    cgroupWorkingSetBytes?: number
     cgroupHighBytes?: number
     cgroupMaxBytes?: number
   }
 
   export type Thresholds = {
     minIntervalMs: number
+    fullMinIntervalMs: number
     heapUsedSoftBytes: number
     externalSoftBytes: number
     arrayBuffersSoftBytes: number
+    cgroupSoftBytes: number
     rssCriticalBytes: number
     heapUsedCriticalBytes: number
     externalCriticalBytes: number
@@ -31,11 +35,17 @@ export namespace SessionMemoryPressure {
 
   export type Decision =
     | { action: "unavailable"; reason: "gc_unavailable"; critical: boolean }
-    | { action: "skip"; reason: "interval"; critical: boolean; nextEligibleAt: number }
+    | {
+        action: "skip"
+        reason: "interval" | "no_process_pressure" | "service_pressure_external"
+        critical: boolean
+        nextEligibleAt?: number
+      }
     | { action: "normal"; reason: "interval_elapsed"; critical: false }
     | { action: "critical"; reason: "critical_pressure"; critical: true }
+    | { action: "linux_release_full"; reason: "linux_release_pressure"; critical: boolean }
 
-  type PressureLevel = "normal" | "soft" | "critical"
+  export type PressureLevel = "normal" | "soft" | "critical"
 
   type CollectionInput = {
     sessionID?: string
@@ -45,6 +55,9 @@ export namespace SessionMemoryPressure {
     snapshot?: () => Snapshot | Promise<Snapshot>
     collect?: (synchronous: boolean) => void | Promise<void>
     env?: NodeJS.ProcessEnv
+    platform?: NodeJS.Platform
+    releaseBoundary?: boolean
+    linuxOnly?: boolean
   }
 
   type CollectionResult = {
@@ -53,13 +66,16 @@ export namespace SessionMemoryPressure {
     after?: Snapshot
     thresholds: Thresholds
     pressure: PressureLevel
+    processPressure: PressureLevel
+    servicePressure: PressureLevel
   }
 
   type ReleaseResult = CollectionResult & { releaseCount: number }
 
   let lastGCAt = 0
+  let lastFullGCAt = 0
+  let activeStreamCount = 0
   let collectionInFlight: Promise<CollectionResult> | undefined
-  let cachedCgroupDir: string | undefined | null
   let pendingRelease: { count: number; input: CollectionInput } | undefined
   let releaseTimer: ReturnType<typeof setTimeout> | undefined
   let releaseFlushInFlight: Promise<ReleaseResult | undefined> | undefined
@@ -75,10 +91,14 @@ export namespace SessionMemoryPressure {
     }
   }
 
-  export async function currentSnapshotWithCgroup(): Promise<Snapshot> {
+  export function currentSnapshotWithCgroup(): Snapshot {
+    const cgroup = ServiceMemory.currentCgroupV2()
     return {
       ...currentSnapshot(),
-      ...(await cgroupMemory()),
+      ...(cgroup?.currentBytes === undefined ? {} : { cgroupCurrentBytes: cgroup.currentBytes }),
+      ...(cgroup?.stat?.workingSetBytes === undefined ? {} : { cgroupWorkingSetBytes: cgroup.stat.workingSetBytes }),
+      ...(cgroup?.highBytes === undefined ? {} : { cgroupHighBytes: cgroup.highBytes }),
+      ...(cgroup?.maxBytes === undefined ? {} : { cgroupMaxBytes: cgroup.maxBytes }),
     }
   }
 
@@ -87,12 +107,16 @@ export namespace SessionMemoryPressure {
       finitePositive(snapshot?.cgroupHighBytes) ??
       (finitePositive(snapshot?.cgroupMaxBytes) ? Math.floor(snapshot!.cgroupMaxBytes! * 0.9) : undefined) ??
       Math.floor(10.5 * GIB)
+    const cgroupSoftDefault =
+      finitePositive(snapshot?.cgroupHighBytes) ?? finitePositive(snapshot?.cgroupMaxBytes) ?? Math.floor(11 * GIB)
 
     return {
       minIntervalMs: envNumber(env.SYNERGY_SESSION_GC_MIN_INTERVAL_MS) ?? 10_000,
+      fullMinIntervalMs: envNumber(env.SYNERGY_SESSION_GC_FULL_MIN_INTERVAL_MS) ?? 30_000,
       heapUsedSoftBytes: envNumber(env.SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES) ?? Math.floor(1.25 * GIB),
       externalSoftBytes: envNumber(env.SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES) ?? Math.floor(1 * GIB),
       arrayBuffersSoftBytes: envNumber(env.SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES) ?? Math.floor(1 * GIB),
+      cgroupSoftBytes: envNumber(env.SYNERGY_SESSION_GC_CGROUP_SOFT_BYTES) ?? Math.floor(cgroupSoftDefault * 0.6),
       rssCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES) ?? Math.floor(9.5 * GIB),
       heapUsedCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES) ?? Math.floor(1.75 * GIB),
       externalCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES) ?? Math.floor(1.5 * GIB),
@@ -108,7 +132,7 @@ export namespace SessionMemoryPressure {
     lastGCAt: number
     gcAvailable: boolean
   }): Decision {
-    const critical = pressureLevel(input.snapshot, input.thresholds) === "critical"
+    const critical = processPressureLevel(input.snapshot, input.thresholds) === "critical"
 
     if (!input.gcAvailable) return { action: "unavailable", reason: "gc_unavailable", critical }
 
@@ -122,12 +146,15 @@ export namespace SessionMemoryPressure {
   }
 
   export function pressureLevel(snapshot: Snapshot, thresholds: Thresholds): PressureLevel {
+    return maxPressure(processPressureLevel(snapshot, thresholds), servicePressureLevel(snapshot, thresholds))
+  }
+
+  export function processPressureLevel(snapshot: Snapshot, thresholds: Thresholds): PressureLevel {
     if (
       snapshot.rssBytes >= thresholds.rssCriticalBytes ||
       snapshot.heapUsedBytes >= thresholds.heapUsedCriticalBytes ||
       snapshot.externalBytes >= thresholds.externalCriticalBytes ||
-      snapshot.arrayBuffersBytes >= thresholds.arrayBuffersCriticalBytes ||
-      (snapshot.cgroupCurrentBytes ?? 0) >= thresholds.cgroupCriticalBytes
+      snapshot.arrayBuffersBytes >= thresholds.arrayBuffersCriticalBytes
     )
       return "critical"
     if (
@@ -136,6 +163,12 @@ export namespace SessionMemoryPressure {
       snapshot.arrayBuffersBytes >= thresholds.arrayBuffersSoftBytes
     )
       return "soft"
+    return "normal"
+  }
+
+  export function servicePressureLevel(snapshot: Snapshot, thresholds: Thresholds): PressureLevel {
+    if ((snapshot.cgroupCurrentBytes ?? 0) >= thresholds.cgroupCriticalBytes) return "critical"
+    if ((snapshot.cgroupWorkingSetBytes ?? 0) >= thresholds.cgroupSoftBytes) return "soft"
     return "normal"
   }
 
@@ -153,17 +186,42 @@ export namespace SessionMemoryPressure {
 
   async function collectOnce(input: CollectionInput): Promise<CollectionResult> {
     const now = input.now?.() ?? Date.now()
-    const before = input.snapshot ? await input.snapshot() : await currentSnapshotWithCgroup()
+    const before = input.snapshot ? await input.snapshot() : currentSnapshotWithCgroup()
     const thresholds = resolveThresholds(input.env, before)
-    const pressure = pressureLevel(before, thresholds)
+    const processPressure = processPressureLevel(before, thresholds)
+    const servicePressure = servicePressureLevel(before, thresholds)
+    const pressure = maxPressure(processPressure, servicePressure)
     const collect = input.collect ?? defaultCollect
-    const decision = decide({
+    let decision = decide({
       snapshot: before,
       thresholds,
       now,
       lastGCAt,
       gcAvailable: input.collect !== undefined || typeof Bun.gc === "function",
     })
+    const platform = input.platform ?? process.platform
+    const fullEligibleAt = lastFullGCAt + thresholds.fullMinIntervalMs
+    const linuxRelease = platform === "linux" && input.releaseBoundary === true
+    if (linuxRelease && processPressure === "normal" && decision.action !== "unavailable") {
+      decision = {
+        action: "skip",
+        reason: servicePressure === "normal" ? "no_process_pressure" : "service_pressure_external",
+        critical: false,
+      }
+    }
+    const linuxReleaseFull =
+      platform === "linux" &&
+      input.releaseBoundary === true &&
+      activeStreamCount === 0 &&
+      processPressure === "critical" &&
+      (lastFullGCAt === 0 || now >= fullEligibleAt)
+    if (linuxReleaseFull && decision.action !== "unavailable" && decision.action !== "skip") {
+      decision = {
+        action: "linux_release_full",
+        reason: "linux_release_pressure",
+        critical: true,
+      }
+    }
 
     if (decision.action === "skip" || decision.action === "unavailable") {
       log.debug("gc skipped", {
@@ -174,11 +232,13 @@ export namespace SessionMemoryPressure {
         memory: before,
         thresholds,
       })
-      return { decision, before, thresholds, pressure }
+      return { decision, before, thresholds, pressure, processPressure, servicePressure }
     }
 
-    await collect(false)
+    const synchronous = decision.action === "linux_release_full"
+    await collect(synchronous)
     lastGCAt = now
+    if (synchronous) lastFullGCAt = now
     const after = input.snapshot ? await input.snapshot() : currentSnapshot()
     RetentionProbe.checkReleased({ phase: input.phase, afterGC: true })
     log.info("gc completed", {
@@ -189,11 +249,14 @@ export namespace SessionMemoryPressure {
       before,
       after,
       thresholds,
+      collection: synchronous ? "full" : "normal",
     })
-    return { decision, before, after, thresholds, pressure }
+    return { decision, before, after, thresholds, pressure, processPressure, servicePressure }
   }
 
   export function signalRelease(input: CollectionInput) {
+    if (input.linuxOnly && (input.platform ?? process.platform) !== "linux") return
+    input = { ...input, releaseBoundary: true }
     if (pendingRelease) {
       pendingRelease.count++
       pendingRelease.input = input
@@ -255,66 +318,27 @@ export namespace SessionMemoryPressure {
     })
   }
 
-  export function resetForTest(lastRunAt = 0) {
+  export function streamStarted() {
+    activeStreamCount++
+  }
+
+  export function streamDisposed() {
+    activeStreamCount = Math.max(0, activeStreamCount - 1)
+  }
+
+  export function resetForTest(lastRunAt = 0, lastFullRunAt = 0) {
     if (releaseTimer) clearTimeout(releaseTimer)
     lastGCAt = lastRunAt
+    lastFullGCAt = lastFullRunAt
+    activeStreamCount = 0
     collectionInFlight = undefined
-    cachedCgroupDir = undefined
     pendingRelease = undefined
     releaseTimer = undefined
     releaseFlushInFlight = undefined
   }
 
-  async function defaultCollect() {
-    Bun.gc(false)
-  }
-
-  async function cgroupMemory() {
-    const dir = await cgroupDir()
-    if (!dir) return {}
-    const [current, high, max] = await Promise.all([
-      readNumberFile(`${dir}/memory.current`),
-      readNumberFile(`${dir}/memory.high`),
-      readNumberFile(`${dir}/memory.max`),
-    ])
-    return {
-      ...(current !== undefined ? { cgroupCurrentBytes: current } : {}),
-      ...(high !== undefined ? { cgroupHighBytes: high } : {}),
-      ...(max !== undefined ? { cgroupMaxBytes: max } : {}),
-    }
-  }
-
-  async function cgroupDir() {
-    if (cachedCgroupDir !== undefined) return cachedCgroupDir
-    if (process.platform !== "linux") {
-      cachedCgroupDir = null
-      return cachedCgroupDir
-    }
-    try {
-      const text = await Bun.file("/proc/self/cgroup").text()
-      const unified = text
-        .split("\n")
-        .map((line) => line.trim())
-        .find((line) => line.startsWith("0::"))
-      const relative = unified?.slice("0::".length).replace(/^\/+/, "")
-      cachedCgroupDir = relative ? `/sys/fs/cgroup/${relative}` : "/sys/fs/cgroup"
-    } catch {
-      cachedCgroupDir = null
-    }
-    return cachedCgroupDir
-  }
-
-  async function readNumberFile(path: string) {
-    try {
-      const file = Bun.file(path)
-      if (!(await file.exists())) return undefined
-      const text = (await file.text()).trim()
-      if (!text || text === "max") return undefined
-      const value = Number(text)
-      return Number.isFinite(value) && value > 0 ? value : undefined
-    } catch {
-      return undefined
-    }
+  async function defaultCollect(synchronous: boolean) {
+    Bun.gc(synchronous)
   }
 
   function envNumber(value: string | undefined) {
@@ -325,5 +349,10 @@ export namespace SessionMemoryPressure {
 
   function finitePositive(value: number | undefined) {
     return value !== undefined && Number.isFinite(value) && value > 0 ? value : undefined
+  }
+
+  function maxPressure(left: PressureLevel, right: PressureLevel) {
+    const rank: Record<PressureLevel, number> = { normal: 0, soft: 1, critical: 2 }
+    return rank[left] >= rank[right] ? left : right
   }
 }

@@ -48,6 +48,70 @@ The configured SQLite limit applies to the combined database, WAL, and shared-me
 
 High-frequency count signals such as LLM stream output, child-process output, and storage-operation counts are aggregated by attribution key before SQLite flush. Stream chunk-gap and throughput signals are summarized once per stream and output kind rather than written for every chunk. LLM memory checkpoints run at lifecycle boundaries and at a five-second periodic interval rather than for every provider chunk. This keeps writer queue depth bounded without removing trace, Scope, session, message, provider, tool, or process attribution.
 
+## Cross-platform session memory benchmark
+
+Use the isolated session-memory harness to compare the same bounded fixtures on Linux, macOS, and Windows without contacting a model provider or modifying Synergy state:
+
+```bash
+bun run perf:memory --preset smoke
+bun run perf:memory --preset standard
+```
+
+Each scenario runs in a fresh Bun child process and reports `baseline`, `peak`, and `afterGC` values for RSS, JavaScript heap, external memory, ArrayBuffers, and runtime footprint. Footprint is `null` when the active Bun build does not expose `Bun.unsafe.memoryFootprint()`. `history-projection` exercises Synergy's message-to-model projection with deterministic tool output. `tool-stream` exercises chunked `Uint8Array` decoding, JSON tool-input parsing, and release. Keep the preset, Bun version, and architecture identical when comparing platforms. The harness is a bounded regression baseline, not a concurrency or stress test.
+
+Use the runtime harness for a complete server and Session lifecycle benchmark:
+
+```bash
+bun run perf:memory:runtime --preset smoke
+bun run perf:memory:runtime --preset standard
+bun run perf:memory:runtime:matrix --preset smoke
+```
+
+Every run creates a fresh temporary Synergy home, workspace, loopback server, and deterministic local mock provider. It does not copy user configuration, credentials, Sessions, state, logs, or caches, and it makes no external model request.
+
+The runtime harness exposes three scenarios:
+
+- `--scenario trajectory` keeps the original one-primary trajectory with four parallel background subagents.
+- `--scenario parallel` runs five primary Sessions concurrently in the same Synergy process. Each standard replica replays the real trajectory's 10-round heavy primary turn with its original 45 tool calls and byte sizes. Because the source turn ended at a step limit, the harness adds one fixed minimal terminal response so every standalone replica reaches a comparable completed state; that response is part of the workload contract and fingerprint. Historical `task` calls are mapped to the payload tool in this scenario so primary concurrency is measured independently from subagent fan-out. The Agent worker pool is fixed at five workers instead of using a machine-dependent CPU-derived default.
+- `--scenario sequential` runs and deletes five copies of the same heavy primary turn in one Synergy process and records a memory checkpoint after each deletion.
+
+`--scenario all` runs all three scenarios in separate temporary Synergy processes so one scenario cannot contaminate the next. It is the default matrix for cross-platform comparison. `trajectory` remains the default when no scenario is provided, preserving the original command and output behavior. The smoke preset uses two primary replicas, a two-worker concurrency ceiling, and the first lightweight completed exchange for both new scenarios, providing a fast harness validation rather than a load result. The trajectory and sequential standard scenarios use a four-worker ceiling.
+
+The benchmark pins the complete elastic Agent worker lifecycle instead of treating `agentWorkers` as an eagerly resident pool size. Every profile uses `agentWorkerMinIdle: 0`, a 60-second idle retirement timeout, a 64-turn recycle limit, and deterministic post-GC baseline-recycle thresholds. The 5/30/120-second release samples therefore cover both warm-idle retention and post-retirement memory. These settings are present in the result and workload fingerprint; changing any of them creates a different workload contract.
+
+The standard workload is derived from one anonymized completed Synergy trajectory rather than hand-picked turn counts. Its checked-in structural fixture contains one root Session, four parallel background subagents, 97 source messages, 220 tool calls, 576 stored parts, and about 2.6 MB of stored message data. Roles, ordering, parentage, relative timing, terminal status, tool type/status, and payload sizes come from the source trajectory. Prompts, outputs, paths, IDs, provider/model names, and all credentials are excluded and replaced with deterministic byte-preserving data.
+
+The replay keeps `task`, `task_output`, Cortex completion notifications, Session inbox handling, persistence, and deletion on their native runtime paths. Historical tools that could read, write, or execute local data are mapped to a loopback-only payload tool that reproduces their call count, input/output byte size, and error status without replaying the original operation. Persisted history does not retain provider chunk boundaries, so the mock transport uses deterministic SSE framing and does not claim to reproduce the original network chunk cadence. `smoke` replays only the first completed source exchange to validate the harness. `standard` is the comparable cross-platform result.
+
+Messages generated by the current runtime but absent from the source trajectory are reported separately. For example, the current dev build persists an empty assistant boundary when the root Agent reaches its step limit; it is validated as a runtime boundary artifact and is not counted as a source trajectory message.
+
+A periodic sampler records server RSS, JavaScript heap, external memory, ArrayBuffers, child-process RSS, the complete server process-tree RSS, and available service-memory telemetry by phase. Process-tree discovery uses procfs on Linux, `ps` on macOS, and PowerShell process metadata on Windows. Resource fields are required; the benchmark fails instead of emitting a successful result with missing memory values. After all replay Sessions are deleted, it records the 5, 30, and 120 second release trajectory before stopping the temporary server and removing all temporary data.
+
+Keep the runtime JSON separate from the process-level microbenchmark table. Compare process RSS, process-tree RSS, heap, external memory, and ArrayBuffers across platforms. Process-tree RSS is a sum and can count shared pages more than once; use it to attribute descendant growth, not as physical working set. Linux service-memory/cgroup values are additional evidence only because an ad hoc test process may share a cgroup with its benchmark parent rather than owning a production-style service cgroup.
+
+### Cross-version comparison
+
+Each runtime result records the source Git revision, dirty-worktree state, fixed execution settings, workload contract version, and workload fingerprint. The fingerprint is derived from workload semantics rather than implementation files: fixture identity, scenario, preset, replica count, aggregate messages/tools/bytes, the complete Agent worker lifecycle settings, timing, and adapter behavior. Internal refactors do not change it unless the benchmark load itself changes.
+
+Run the same scenario and preset from clean baseline and candidate worktrees on the same machine and Bun version:
+
+```bash
+git -C /path/to/baseline checkout <baseline-revision>
+git -C /path/to/candidate checkout <candidate-revision>
+
+cd /path/to/baseline
+bun install
+bun run perf:memory:runtime --preset standard --scenario parallel > baseline.json
+
+cd /path/to/candidate
+bun install
+bun run perf:memory:runtime --preset standard --scenario parallel > candidate.json
+```
+
+Only compare results whose workload contract version and workload fingerprint are identical. The stable JSON paths include workload-phase peaks, sequential deletion checkpoints, and 5/30/120-second absolute and idle-relative retained memory for server RSS, process-tree RSS, descendant RSS, heap, external memory, and ArrayBuffers. Candidate minus baseline is the memory-load delta: positive values are regressions and negative values are improvements.
+
+For release decisions, use at least three runs per revision and compare medians rather than one favorable run. Keep the raw JSON artifacts with the tested revision. The harness remains valid across structural changes as long as the main LLM, Session, tool, and subagent interaction contract represented by the workload descriptor is unchanged.
+
 ## Runtime config
 
 Performance settings extend the existing runtime observability domain in `120-runtime.jsonc`:
@@ -81,21 +145,29 @@ On Bun, heap-used divided by heap-total is not treated as a pressure ratio becau
 
 ## Session memory pressure
 
-After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples process memory and may request Bun GC. Collection is coordinated process-wide: concurrent session requests share one in-flight collection, every pressure level observes `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`), and GC is scheduled asynchronously so a large heap cannot turn a periodic checkpoint into a stop-the-world server stall. Soft pressure is tracked separately from critical pressure so the runtime can start converging before critical thresholds:
+Memory policy follows process ownership. The Control Plane can collect only its own Bun heap; Agent workers and tool processes own their own recycle, termination, or close lifecycle. Linux cgroup memory describes the complete service and is used for attribution, diagnostics, and admission control, but service-only pressure never triggers Control Plane GC.
+
+After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples Control Plane memory. Concurrent requests share one in-flight collection and every collection observes `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Linux turn/tool release signals are coalesced outside the settlement path. Soft process pressure requests asynchronous GC:
 
 - `SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES` (default `1.25 GiB`)
 - `SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES` (default `1 GiB`)
 - `SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES` (default `1 GiB`)
 
-Critical pressure is reported when RSS, JavaScript heap, external allocations, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds. It remains subject to the process-wide collection interval:
+Critical Control Plane pressure is reported when its RSS, JavaScript heap, external allocations, or ArrayBuffers cross the configured thresholds. At a Linux release boundary with no active provider stream, critical process pressure may request synchronous full GC; this path has an independent `SYNERGY_SESSION_GC_FULL_MIN_INTERVAL_MS` cooldown (default `30000`). During an active stream, on non-Linux systems, or while the full-GC cooldown is active, collection remains asynchronous.
 
 - `SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES` (default `9.5 GiB`)
 - `SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES` (default `1.75 GiB`)
 - `SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES` (default `1.5 GiB`)
 - `SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES` (default `8 GiB`)
-- `SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES` (default cgroup `memory.high`, then 90% of `memory.max`, then `10.5 GiB`)
+
+Service pressure is classified independently from cgroup working set and current charge:
+
+- `SYNERGY_SESSION_GC_CGROUP_SOFT_BYTES` (default 60% of `memory.high`, then `memory.max`, then `11 GiB`)
+- `SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES` (default `memory.high`, then 90% of `memory.max`, then `10.5 GiB`)
 
 Soft pressure is evidence for GC and turn-size telemetry only. Automatic heap snapshots are not taken on the soft path because snapshot generation itself allocates and can worsen allocation failures. Use ordinary resource samples, MessageCache counters, and LLM turn size metrics for diagnosis.
+
+On Linux, service samples expose cgroup current, peak, high, max, swap, anonymous/file/kernel/slab breakdowns, reclaimable bytes, working set, `memory.events` totals and deltas, and PSI `some`/`full` pressure. JSC and allocator gauges plus the twelve largest and fastest-growing object types are sampled at most once per `SYNERGY_LINUX_HEAP_STATS_INTERVAL_MS` (default `60000`). These bounded diagnostics explain which boundary retained memory; they do not authorize cross-process GC.
 
 Cortex also uses the shared soft and critical classifications to constrain new child-task admission to four or two tasks, respectively. Its earlier 1 GiB and 2 GiB ArrayBuffer thresholds remain in place. This admission control leaves running tasks alone and lets queued tasks resume after pressure falls.
 
