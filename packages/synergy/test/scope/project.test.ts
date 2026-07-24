@@ -40,6 +40,16 @@ describe("Scope.fromDirectory", () => {
     const fileExists = await Bun.file(synergyFile).exists()
     expect(fileExists).toBe(true)
   })
+
+  test("resolves a transient project scope without registering it", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const { scope } = await Scope.fromDirectory(tmp.path, { persist: false })
+
+    expect(scope.type).toBe("project")
+    expect((await Scope.list()).some((item) => item.id === scope.id)).toBe(false)
+    expect(await Bun.file(path.join(tmp.path, ".git", "synergy")).exists()).toBe(false)
+  })
 })
 
 describe("Scope.fromDirectory with worktrees", () => {

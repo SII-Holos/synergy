@@ -5366,6 +5366,18 @@ msgstr ""
 msgid "app.plugin.marketplace.pluginApi.label"
 msgstr ""
 
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.description"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.retry"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.title"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.installed"
 msgstr ""

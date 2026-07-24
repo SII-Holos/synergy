@@ -175,7 +175,7 @@ type YargsCommandMetadata = {
 
 async function registerPluginCliCommands() {
   const directory = Flag.SYNERGY_CWD || process.cwd()
-  const scope = (await Scope.fromDirectory(directory)).scope
+  const scope = (await Scope.fromDirectory(directory, { persist: false })).scope
   await ScopeContext.provide({
     scope,
     async fn() {
@@ -186,7 +186,12 @@ async function registerPluginCliCommands() {
         if (contributions(plugin, "cli.command").length === 0) continue
         if (registered.has(plugin.id)) throw new Error(`Plugin CLI namespace ${plugin.id} conflicts with Synergy`)
         registered.add(plugin.id)
-        cli.command(createPluginCliCommandModule({ plugin, scope }))
+        cli.command(
+          createPluginCliCommandModule({
+            plugin,
+            resolveScope: async () => (await Scope.fromDirectory(directory)).scope,
+          }),
+        )
       }
     },
   })

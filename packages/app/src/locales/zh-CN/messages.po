@@ -5366,6 +5366,18 @@ msgstr "插件"
 msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
 
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.description"
+msgstr "Synergy 无法连接到此插件注册表。请检查网络连接后重试。"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.retry"
+msgstr "重试"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.title"
+msgstr "插件注册表不可用"
+
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.installed"
 msgstr "已安装"

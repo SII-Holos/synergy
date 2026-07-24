@@ -86,6 +86,7 @@ The Control Plane is the only canonical observability writer. Agent and Policy w
 - A Git-backed Scope uses a stable repository identity when available and tracks additional worktree/sandbox paths under the same project record.
 - A non-Git directory uses a stable hash of its resolved path.
 - A missing directory resolves to home and causes a matching stale project record to be archived.
+- Discovery-only Scope resolution may use a transient Scope without registering the directory, writing Git identity cache files, archiving stale records, or emitting Scope events.
 
 The user therefore chooses the project boundary. Code must not reintroduce implicit upward repository discovery.
 

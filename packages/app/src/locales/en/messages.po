@@ -5366,6 +5366,18 @@ msgstr "plugin"
 msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
 
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.description"
+msgstr "Synergy couldn't reach this plugin registry. Check your connection and try again."
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.retry"
+msgstr "Retry"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.title"
+msgstr "Plugin registry unavailable"
+
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.installed"
 msgstr "Installed"

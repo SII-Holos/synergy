@@ -89,15 +89,21 @@ export namespace Scope {
     return undefined
   }
 
-  export async function fromDirectory(input: string): Promise<{ scope: Scope; sandbox: string }> {
+  export async function fromDirectory(
+    input: string,
+    options?: { persist?: boolean },
+  ): Promise<{ scope: Scope; sandbox: string }> {
     const directory = Filesystem.sanitizePath(input)
+    const persist = options?.persist ?? true
     log.info("fromDirectory", { directory })
 
     if (!existsSync(directory)) {
-      const existing = await readPersisted(dirHash(directory))
-      if (existing && !existing.time?.archived) {
-        await remove(existing.id)
-        log.info("archived scope for missing directory", { directory, scopeID: existing.id })
+      if (persist) {
+        const existing = await readPersisted(dirHash(directory))
+        if (existing && !existing.time?.archived) {
+          await remove(existing.id)
+          log.info("archived scope for missing directory", { directory, scopeID: existing.id })
+        }
       }
       return { scope: home(), sandbox: Global.Path.home }
     }
@@ -176,7 +182,7 @@ export namespace Scope {
             .catch(() => undefined)
 
           id = roots?.[0]
-          if (id) {
+          if (id && persist) {
             void Bun.file(path.join(gitDir, "synergy"))
               .write(id)
               .catch(() => undefined)
@@ -267,7 +273,7 @@ export namespace Scope {
         })
         // Cache the stable scope ID in .git/synergy so future lookups are instant
         const gitDir = path.join(worktree, ".git")
-        if (existsSync(gitDir)) {
+        if (persist && existsSync(gitDir)) {
           void Bun.file(path.join(gitDir, "synergy"))
             .write(existing.id)
             .catch(() => undefined)
@@ -308,7 +314,7 @@ export namespace Scope {
 
     if (!existing.sandboxes) existing.sandboxes = []
 
-    const persisted: z.infer<typeof Info> = {
+    const project: z.infer<typeof Info> = {
       ...existing,
       type: "project" as const,
       directory: worktree,
@@ -316,29 +322,31 @@ export namespace Scope {
       vcs: vcs as Scope.Project["vcs"],
       time: { ...existing.time },
     }
-    if (sandbox !== persisted.worktree && !persisted.sandboxes.includes(sandbox)) persisted.sandboxes.push(sandbox)
-    persisted.sandboxes = persisted.sandboxes.filter((x) => existsSync(x))
-    await writePersisted(persisted)
+    if (sandbox !== project.worktree && !project.sandboxes.includes(sandbox)) project.sandboxes.push(sandbox)
+    project.sandboxes = project.sandboxes.filter((x) => existsSync(x))
+    if (persist) await writePersisted(project)
 
     const scope: Scope.Project = {
       type: "project",
-      id: persisted.id,
+      id: project.id,
       directory: sandbox,
-      worktree: persisted.worktree,
-      vcs: persisted.vcs,
-      name: persisted.name,
-      icon: persisted.icon,
-      pinned: persisted.pinned,
-      sandboxes: persisted.sandboxes,
-      time: persisted.time,
+      worktree: project.worktree,
+      vcs: project.vcs,
+      name: project.name,
+      icon: project.icon,
+      pinned: project.pinned,
+      sandboxes: project.sandboxes,
+      time: project.time,
     }
 
-    GlobalBus.emit("event", {
-      payload: {
-        type: Event.Updated.type,
-        properties: persisted,
-      },
-    })
+    if (persist) {
+      GlobalBus.emit("event", {
+        payload: {
+          type: Event.Updated.type,
+          properties: project,
+        },
+      })
+    }
 
     return { scope, sandbox }
   }
