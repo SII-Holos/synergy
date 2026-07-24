@@ -5,7 +5,7 @@ import { Runtime as ScopeRuntime } from "@/scope/types"
 import { Workspace } from "../workspace-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 3
+  export const VERSION = 4
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -179,6 +179,7 @@ export namespace AgentTurnProtocol {
     | { type: "run-commit"; requestId: string }
     | { type: "cancel"; requestId: string; reason?: string }
     | { type: "ack"; requestId: string; sequence: number }
+    | { type: "collect-memory"; requestId: string }
     | { type: "shutdown" }
     | { type: "ping" }
 
@@ -214,6 +215,7 @@ export namespace AgentTurnProtocol {
         type: "heartbeat"
         requestId?: string
         turns: number
+        collection: "full" | "none"
         memory: WorkerMemory
       }
     | { type: "pong" }
@@ -251,6 +253,7 @@ export namespace AgentTurnProtocol {
       })
       .strict(),
     z.object({ type: z.literal("ack"), requestId: z.string(), sequence: z.number().int().nonnegative() }).strict(),
+    z.object({ type: z.literal("collect-memory"), requestId: z.string() }).strict(),
     z.object({ type: z.literal("shutdown") }).strict(),
     z.object({ type: z.literal("ping") }).strict(),
   ])
@@ -314,6 +317,7 @@ export namespace AgentTurnProtocol {
         type: z.literal("heartbeat"),
         requestId: z.string().optional(),
         turns: z.number().int().nonnegative(),
+        collection: z.enum(["full", "none"]),
         memory: WorkerMemory,
       })
       .strict(),

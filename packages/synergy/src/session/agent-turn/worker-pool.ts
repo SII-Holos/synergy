@@ -102,6 +102,7 @@ interface PoolWorker {
   idleBaselineRssBytes?: number
   idleBaselineExternalBytes?: number
   idleSince?: number
+  activeHeapPressureRequestId?: string
   lastEventSequence: number
   lastHeartbeatAt: number
 }
@@ -454,13 +455,32 @@ export class AgentWorkerPool {
         this.terminateForProtocol(worker, "heartbeat referenced an unowned turn")
         return
       }
-      this.recordWorkerMemory(worker, message.memory, "heartbeat")
+      this.recordWorkerMemory(
+        worker,
+        message.memory,
+        message.collection === "full" ? "heartbeat.post_collection" : "heartbeat",
+      )
       worker.lastHeartbeatAt = Date.now()
-      if (
-        message.memory.rssBytes >= this.options.maxRssBytes ||
-        message.memory.heapUsedBytes >= this.options.maxHeapBytes
-      ) {
+      if (message.memory.rssBytes >= this.options.maxRssBytes) {
         this.terminateForMemory(worker, message.memory)
+        return
+      }
+      if (message.memory.heapUsedBytes < this.options.maxHeapBytes) {
+        worker.activeHeapPressureRequestId = undefined
+        return
+      }
+      const task = worker.task
+      if (!task) {
+        this.terminateForMemory(worker, message.memory)
+        return
+      }
+      if (message.collection === "full" && worker.activeHeapPressureRequestId === task.requestId) {
+        this.terminateForMemory(worker, message.memory)
+        return
+      }
+      if (worker.activeHeapPressureRequestId !== task.requestId) {
+        worker.activeHeapPressureRequestId = task.requestId
+        this.send(worker, { type: "collect-memory", requestId: task.requestId })
       }
       return
     }
@@ -700,6 +720,7 @@ export class AgentWorkerPool {
     if (worker.task === task) {
       worker.task = undefined
       worker.idleSince = Date.now()
+      worker.activeHeapPressureRequestId = undefined
     }
     if (task.startedAt !== undefined) {
       ObservabilityMetrics.record({
@@ -721,7 +742,13 @@ export class AgentWorkerPool {
   private recordWorkerMemory(
     worker: PoolWorker,
     memory: AgentTurnProtocol.WorkerMemory,
-    phase: "ready" | "heartbeat" | "turn.before_dispose" | "turn.after_dispose" | "turn.released",
+    phase:
+      | "ready"
+      | "heartbeat"
+      | "heartbeat.post_collection"
+      | "turn.before_dispose"
+      | "turn.after_dispose"
+      | "turn.released",
     task?: PoolTask,
   ): void {
     worker.rssBytes = memory.rssBytes
@@ -812,6 +839,7 @@ export class AgentWorkerPool {
       }
       worker.task = task
       worker.idleSince = undefined
+      worker.activeHeapPressureRequestId = undefined
       task.worker = worker
       this.send(worker, {
         type: "run-start",
