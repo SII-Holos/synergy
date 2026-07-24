@@ -38,10 +38,13 @@ function isPluginDefinition(value: unknown): value is PluginDefinition {
   )
 }
 
-function resolveDefinitionLoaderPath() {
-  const compiled = fileURLToPath(new URL("./definition-loader-child.js", import.meta.url))
-  if (fs.existsSync(compiled)) return compiled
-  return fileURLToPath(new URL("./definition-loader-child.ts", import.meta.url))
+export function resolveDefinitionLoaderPath(
+  baseUrl: string | URL = import.meta.url,
+  exists: (candidate: string) => boolean = fs.existsSync,
+) {
+  const compiled = fileURLToPath(new URL("./definition-loader-child.js", baseUrl))
+  if (exists(compiled)) return compiled
+  return fileURLToPath(new URL("./definition-loader-child.ts", baseUrl))
 }
 
 const loaderPath = resolveDefinitionLoaderPath()
