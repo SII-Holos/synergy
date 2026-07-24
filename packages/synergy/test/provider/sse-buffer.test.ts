@@ -61,6 +61,36 @@ describe("ProviderStream.withIdleTimeout", () => {
     expect(input.locked).toBe(false)
   })
 
+  test("does not retain completed read chunks through abort waiters", async () => {
+    const refs: WeakRef<Uint8Array>[] = []
+    let sent = 0
+    const input = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ >= 64) {
+          controller.close()
+          return
+        }
+        const chunk = new Uint8Array(64 * 1024)
+        refs.push(new WeakRef(chunk))
+        controller.enqueue(chunk)
+      },
+    })
+    const idle = new AbortController()
+    const reader = ProviderStream.withIdleTimeout(input, {
+      controller: idle,
+      signal: idle.signal,
+      timeoutMs: 100,
+    }).getReader()
+
+    while (!(await reader.read()).done) {}
+    await Bun.sleep(0)
+    Bun.gc(true)
+    await Bun.sleep(0)
+    Bun.gc(true)
+
+    expect(refs.filter((ref) => ref.deref() !== undefined)).toHaveLength(0)
+  })
+
   test("cancels and releases the upstream reader after downstream cancellation", async () => {
     let cancelled: unknown
     const input = new ReadableStream<Uint8Array>({
