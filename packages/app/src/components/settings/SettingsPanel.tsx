@@ -544,8 +544,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <ChannelsPanel
         channels={settings.channels}
         providers={providerGroups()}
+        popoverLayer={settingsPopoverLayer()}
         onChannelToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
         onChannelModelChange={(index, model) => setSettings("channels", "feishuAccounts", index, "model", model)}
+        onChannelVariantChange={(index, variant) =>
+          setSettings("channels", "feishuAccounts", index, "variant", variant)
+        }
       />
     ),
     email: () => (

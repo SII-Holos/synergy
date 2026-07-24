@@ -2,7 +2,7 @@ import { Config } from "../config/config"
 import z from "zod"
 import { Provider } from "../provider/provider"
 import { Identifier } from "../id/id"
-import { LLM } from "../session/llm"
+import { AgentTurn } from "../session/agent-turn"
 import type { MessageV2 } from "../session/message-v2"
 import { ScopedState } from "../scope/scoped-state"
 import { Truncate } from "../tool/truncation"
@@ -547,10 +547,10 @@ export namespace Agent {
       model: { providerID: model.providerID, modelID: model.id },
     }
     const existing = await list()
-    const result = await LLM.stream({
+    const result = await AgentTurn.stream({
       agent,
       user,
-      tools: {},
+      toolDefinitions: [],
       model,
       small: true,
       messages: [
@@ -564,7 +564,7 @@ export namespace Agent {
       system: [],
       retries: 1,
     })
-    const text = (await LLM.collectText(result).catch(() => "")) ?? ""
+    const text = (await AgentTurn.collectText(result).catch(() => "")) ?? ""
     const match = text.match(/\{[\s\S]*\}/)
     if (!match) throw new Error("agent generator did not return JSON")
     return z

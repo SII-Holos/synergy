@@ -1,3 +1,5 @@
+import { lexCompoundCommands } from "./shell-command"
+
 const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "jq", "true"])
 
 const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
@@ -734,10 +736,7 @@ export namespace ShellSafety {
     const normalized = stripAllowedRedirects(padded)
     if (UNSAFE_SHELL_TOKENS.some((token) => normalized.includes(token))) return false
 
-    const segments = normalized
-      .trim()
-      .split(/\s*(?:&&|\|\||[;|])\s*/)
-      .filter(Boolean)
+    const segments = lexCompoundCommands(normalized.trim()).segments
 
     if (segments.length === 0) return true
     return segments.every(isSafeSimpleCommand)
@@ -800,59 +799,27 @@ export namespace ShellSafety {
     return RISK_ORDER[a] >= RISK_ORDER[b] ? a : b
   }
 
-  const COMPOUND_OPERATOR_SOURCE = String.raw`&&|\|\||\|&|;(?!;)|(?<![>&])\|(?![&|])`
-  const COMPOUND_OPERATOR_RE = new RegExp(COMPOUND_OPERATOR_SOURCE)
-  const COMPOUND_SPLIT_RE = new RegExp(`\\s*(?:${COMPOUND_OPERATOR_SOURCE})\\s*`)
-
-  function hasCompoundOperators(command: string): boolean {
-    return COMPOUND_OPERATOR_RE.test(command)
-  }
-
-  function splitCompound(command: string): string[] {
-    return command
-      .split(COMPOUND_SPLIT_RE)
-      .map((s) => s.trim())
-      .filter(Boolean)
-  }
-
   const MAX_COMPOUND_DEPTH = 5
+  const CLASSIFICATION_BUDGET_MS = 200
+
+  interface ClassificationState {
+    deadline: number
+    activeInputs: Set<string>
+  }
+
+  function newClassificationState(): ClassificationState {
+    return {
+      deadline: Date.now() + CLASSIFICATION_BUDGET_MS,
+      activeInputs: new Set(),
+    }
+  }
+
+  function conservativeRisk(): BashRisk {
+    return "shell"
+  }
 
   export function classifyCompoundRisk(command: string): BashRisk {
-    const start = Date.now()
-    const visited = new Set<string>()
-
-    function recurse(cmd: string, depth: number): BashRisk {
-      if (Date.now() - start > 200) return "shell"
-
-      if (ShellSafety.isHardline(cmd)) return "shell_hardline"
-      if (ShellSafety.hasPipeToShell(cmd)) return "shell_destructive"
-      if (ShellSafety.hasArgumentInjection(cmd)) return "shell_destructive"
-      if (ShellSafety.hasDownloadExecuteChain(cmd)) return "shell_destructive"
-
-      if (!hasCompoundOperators(cmd)) {
-        return ShellSafety.classifyBashRisk(cmd)
-      }
-
-      if (depth >= MAX_COMPOUND_DEPTH || visited.has(cmd)) return "shell"
-      visited.add(cmd)
-
-      const segments = splitCompound(cmd)
-      if (segments.length <= 1) {
-        const segment = segments[0]
-        if (!segment || segment === cmd) return "shell"
-        return recurse(segment, depth + 1)
-      }
-
-      let highest: BashRisk = "shell_read"
-      for (const seg of segments) {
-        const risk = recurse(seg, depth + 1)
-        highest = maxRisk(highest, risk)
-        if (highest === "shell_hardline") break
-      }
-      return highest
-    }
-
-    return recurse(command, 0)
+    return classifyRisk(command, newClassificationState(), 0)
   }
 
   // ── heredoc scanning ─────────────────────────────────────────────────
@@ -863,11 +830,12 @@ export namespace ShellSafety {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   }
 
-  function scanHeredocBody(command: string): BashRisk | null {
+  function scanHeredocBody(command: string, state: ClassificationState, depth: number): BashRisk | null {
     const HEREDOC_RE = /(python3?|python2|ruby|perl|node|bash|sh|zsh|ksh|dash)\s+<<\s*(\w+)\b/gi
 
     let match: RegExpExecArray | null
     while ((match = HEREDOC_RE.exec(command)) !== null) {
+      if (Date.now() > state.deadline) return conservativeRisk()
       const interpreter = match[1].toLowerCase()
       const delim = match[2]
 
@@ -881,8 +849,7 @@ export namespace ShellSafety {
       if (!bodyEndMatch) continue
 
       const body = remaining.slice(0, bodyEndMatch.index)
-      const normalizedBody = normalizeCommand(body)
-      const bodyRisk = ShellSafety.classifyBashRisk(normalizedBody)
+      const bodyRisk = depth >= MAX_COMPOUND_DEPTH ? conservativeRisk() : classifyRisk(body, state, depth + 1)
 
       if (bodyRisk !== "shell_read") {
         return bodyRisk === "shell_hardline" ? "shell_hardline" : "shell_destructive"
@@ -892,11 +859,13 @@ export namespace ShellSafety {
   }
 
   export function hasHeredocBody(command: string, _maxCheck?: number): { hasShellPayload: boolean } {
-    const risk = scanHeredocBody(command)
+    const risk = scanHeredocBody(command, newClassificationState(), 0)
     return { hasShellPayload: risk !== null }
   }
 
-  export function classifyBashRisk(command: string): BashRisk {
+  function classifyRisk(command: string, state: ClassificationState, depth: number): BashRisk {
+    if (Date.now() > state.deadline) return conservativeRisk()
+
     const normalized = normalizeCommand(command)
 
     if (checkHardline(normalized)) return "shell_hardline"
@@ -905,22 +874,48 @@ export namespace ShellSafety {
     if (hasArgumentInjection(normalized)) return "shell_destructive"
     if (hasDownloadExecuteChain(normalized)) return "shell_destructive"
 
-    if (hasCompoundOperators(normalized)) {
-      return classifyCompoundRisk(normalized)
+    if (state.activeInputs.has(normalized)) return conservativeRisk()
+    state.activeInputs.add(normalized)
+
+    try {
+      const compound = lexCompoundCommands(command)
+      if (compound.operators.length > 0) {
+        if (
+          depth >= MAX_COMPOUND_DEPTH ||
+          compound.segments.length <= 1 ||
+          compound.segments.some((segment) => normalizeCommand(segment) === normalized)
+        ) {
+          return conservativeRisk()
+        }
+
+        let highest: BashRisk = "shell_read"
+        for (const segment of compound.segments) {
+          if (Date.now() > state.deadline) return conservativeRisk()
+          highest = maxRisk(highest, classifyRisk(segment, state, depth + 1))
+          if (highest === "shell_hardline") break
+        }
+        return highest
+      }
+
+      const heredocRisk = scanHeredocBody(command, state, depth)
+      if (heredocRisk !== null) return heredocRisk
+
+      const words = shellWords(normalized)
+      const gitRisk = classifyGitCommand(words)
+      if (gitRisk !== null) return gitRisk
+
+      const ghRisk = classifyGitHubCommand(words)
+      if (ghRisk !== null) return ghRisk
+
+      if (isReadOnly(command)) return "shell_read"
+      return "shell"
+    } finally {
+      state.activeInputs.delete(normalized)
     }
+  }
 
-    const heredocRisk = scanHeredocBody(command)
-    if (heredocRisk !== null) return heredocRisk
-
-    const words = shellWords(normalized)
-    const gitRisk = classifyGitCommand(words)
-    if (gitRisk !== null) return gitRisk
-
-    const ghRisk = classifyGitHubCommand(words)
-    if (ghRisk !== null) return ghRisk
-
-    if (isReadOnly(command)) return "shell_read"
-    return "shell"
+  export function classifyBashRisk(command: string): BashRisk {
+    return classifyRisk(command, newClassificationState(), 0)
   }
 
   const PIPE_TO_SHELL_PATTERNS: RegExp[] = [

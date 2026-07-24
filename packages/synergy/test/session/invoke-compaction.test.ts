@@ -320,7 +320,12 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ;(Agent.get as any) = mock(async () => primaryAgent())
       ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
       ;(ToolResolver.definitions as any) = mock(async () => [])
-      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+        definitions: [],
+        executionTools: {},
+        executorKinds: {},
+        activeToolIDs: [],
+      }))
       ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
         system: ["stub system"],
         messages: [{ role: "user", content: "stub message" }],
@@ -444,7 +449,12 @@ describe.serial("SessionInvoke preflight compaction", () => {
         definitionToolStates.push(input.session?.toolState)
         return []
       })
-      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+        definitions: [],
+        executionTools: {},
+        executorKinds: {},
+        activeToolIDs: [],
+      }))
       ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
         system: ["stub system"],
         messages: [{ role: "user", content: "stub message" }],
@@ -549,7 +559,12 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ;(Agent.get as any) = mock(async () => primaryAgent())
       ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
       ;(ToolResolver.definitions as any) = mock(async () => [])
-      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+        definitions: [],
+        executionTools: {},
+        executorKinds: {},
+        activeToolIDs: [],
+      }))
       ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
         system: ["stub system"],
         messages: [{ role: "user", content: "stub message" }],

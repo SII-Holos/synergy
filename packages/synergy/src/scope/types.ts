@@ -21,6 +21,33 @@ export interface Project {
 }
 
 export type Scope = Home | Project
+const RuntimeBase = z.object({
+  id: z.string(),
+  directory: z.string(),
+  worktree: z.string(),
+})
+
+export const Runtime = z.discriminatedUnion("type", [
+  RuntimeBase.extend({
+    type: z.literal("home"),
+    id: z.literal("home"),
+  }).strict(),
+  RuntimeBase.extend({
+    type: z.literal("project"),
+    vcs: z.literal("git").optional(),
+    name: z.string().optional(),
+    icon: z.object({ url: z.string().optional(), color: z.string().optional() }).optional(),
+    sandboxes: z.array(z.string()),
+    pinned: z.number().optional(),
+    time: z.object({
+      created: z.number(),
+      updated: z.number(),
+      initialized: z.number().optional(),
+      archived: z.number().optional(),
+    }),
+  }).strict(),
+])
+export type Runtime = z.infer<typeof Runtime>
 
 export const Info = z
   .object({

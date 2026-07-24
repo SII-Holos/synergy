@@ -479,7 +479,9 @@ export namespace SessionCompaction {
         agent,
         abort: input.abort,
         sessionID: input.sessionID,
-        tools: {},
+        toolDefinitions: [],
+        executionTools: {},
+        executorKinds: {},
         system: [],
         messages: [
           ...safeMessages,

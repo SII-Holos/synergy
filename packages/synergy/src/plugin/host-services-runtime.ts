@@ -460,7 +460,11 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     trustedRoots,
     synergyRoot: Global.Path.root,
   })
-  const envelope = gate.evaluate("bash", { command: renderShellCommand(command), workdir: input.invocation.directory })
+  const envelope = await gate.evaluateIsolated(
+    "bash",
+    { command: renderShellCommand(command), workdir: input.invocation.directory },
+    input.signal,
+  )
   if (envelope.decision !== "allow") {
     const reason =
       envelope.refusal?.reason ??

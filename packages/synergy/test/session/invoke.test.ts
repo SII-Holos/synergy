@@ -131,7 +131,9 @@ function installBasicLoopMocks(options?: {
   }))
   ;(ToolResolver.definitions as any) = mock(async () => options?.toolDefinitions ?? [])
   ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
-    tools: {},
+    definitions: [],
+    executionTools: {},
+    executorKinds: {},
     activeToolIDs: options?.activeToolIDs ?? [],
   }))
   ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
@@ -667,7 +669,12 @@ describe("SessionInvoke system prompt assembly", () => {
         library: { memory: { enabled: false }, experience: { retrieve: false } },
       }))
       ;(ToolResolver.definitions as any) = mock(async () => [])
-      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+        definitions: [],
+        executionTools: {},
+        executorKinds: {},
+        activeToolIDs: [],
+      }))
       ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
         capturedSystem = [...input.system]
         capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
@@ -1540,7 +1547,7 @@ describe("SessionInvoke turn lifecycle", () => {
         retainedMessages = input.messages
         retainedSystem = input.system
         retainedToolIDs = input.activeToolIDs
-        retainedTools = input.tools
+        retainedTools = input.executionTools
       },
     })
 

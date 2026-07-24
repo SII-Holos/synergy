@@ -1102,6 +1102,15 @@ describe("ShellSafety compound command recursion", () => {
     expect(ShellSafety.classifyCompoundRisk("ls -la | grep foo")).toBe("shell_read")
   })
 
+  test("|& uses the same lexical split as destructive analysis", () => {
+    expect(ShellSafety.classifyBashRisk("ls |& cat")).toBe("shell_read")
+  })
+
+  test("compound operators without classification progress return a conservative finite risk", () => {
+    expect(ShellSafety.classifyBashRisk("ls |& |&")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("|||")).toBe("shell")
+  })
+
   test("nested compound: (ls && pwd) && rm -rf /tmp", () => {
     // The recursion splits on &&: ["ls", "pwd", "rm -rf /tmp"]
     // ls → shell_read, pwd → shell_read, rm → shell → shell
@@ -1121,8 +1130,8 @@ describe("ShellSafety compound command recursion", () => {
     expect(typeof ShellSafety.classifyCompoundRisk("ls && ls && ls")).toBe("string")
   })
 
-  test("trailing separators make progress instead of re-entering the classifier", () => {
-    expect(ShellSafety.classifyBashRisk("ls;")).toBe("shell_read")
+  test("trailing separators return a conservative finite risk", () => {
+    expect(ShellSafety.classifyBashRisk("ls;")).toBe("shell")
     expect(ShellSafety.classifyBashRisk(`printf '%s\\n' "$line";`)).toBe("shell")
     expect(ShellSafety.classifyBashRisk(";")).toBe("shell")
   })
@@ -1132,7 +1141,7 @@ describe("ShellSafety compound command recursion", () => {
     expect(ShellSafety.classifyBashRisk("gh pr merge 123 --squash |& cat")).toBe("shell_destructive")
     expect(ShellSafety.classifyBashRisk("git switch dev |& cat")).toBe("shell_branch_mutation")
   })
-  test("pipe-shaped redirections do not lower command risk", () => {
+  test("clobber redirects do not lower command risk", () => {
     expect(ShellSafety.classifyBashRisk("git push origin main >| output.log")).toBe("shell_remote_write")
     expect(ShellSafety.classifyBashRisk("gh pr edit 123 --title updated >| output.log")).toBe("shell_remote_write")
   })
@@ -1146,6 +1155,13 @@ describe("ShellSafety compound command recursion", () => {
     const deep = Array(10).fill("ls").join(" && ")
     const result = ShellSafety.classifyCompoundRisk(deep)
     expect(["shell_read", "shell", "shell_destructive", "shell_hardline"]).toContain(result)
+  })
+
+  test("deep heredoc classification stops at the shared depth budget", () => {
+    const delimiters = Array.from({ length: 12 }, (_, index) => `EOF_${index}`)
+    const deep = [...delimiters.map((delimiter) => `bash <<${delimiter}`), "ls", ...delimiters.toReversed()].join("\n")
+
+    expect(ShellSafety.classifyBashRisk(deep)).toBe("shell_destructive")
   })
 })
 
