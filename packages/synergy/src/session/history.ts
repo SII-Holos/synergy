@@ -338,18 +338,34 @@ export namespace SessionHistory {
     if (useCache) SessionMessageCache.set(input.sessionID, messages)
     return messages
   }
+  export async function detachedModelMessages(input: {
+    sessionID: string
+    onLoadParts?: (messageID: string) => void
+    signal?: AbortSignal
+  }) {
+    return loadModelMessages(input)
+  }
 
-  async function loadModelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
+  async function loadModelMessages(input: {
+    sessionID: string
+    onLoadParts?: (messageID: string) => void
+    signal?: AbortSignal
+  }) {
+    input.signal?.throwIfAborted()
     const [infos, events] = await Promise.all([readMessageInfo(input.sessionID), readEvents(input.sessionID)])
+    input.signal?.throwIfAborted()
     const loadedParts = new Map<string, MessageV2.Part[]>()
     const loadParts = async (messageID: string) => {
+      input.signal?.throwIfAborted()
       const cachedParts = loadedParts.get(messageID)
       if (cachedParts) return cachedParts
       input.onLoadParts?.(messageID)
       const parts = await MessageV2.parts({ sessionID: input.sessionID, messageID })
+      input.signal?.throwIfAborted()
       loadedParts.set(messageID, parts)
       return parts
     }
+    input.signal?.throwIfAborted()
     const canonicalInfos = await deriveRollbackSemantics(infos, events, loadParts)
     const effective = applyEventsToInfo(canonicalInfos, events)
     if (effective.length === 0) return []
@@ -368,12 +384,14 @@ export namespace SessionHistory {
       }
     }
 
+    input.signal?.throwIfAborted()
     const messages = await Promise.all(
       selected.map(async (info) => ({
         info,
         parts: await loadParts(info.id),
       })),
     )
+    input.signal?.throwIfAborted()
     return MessageV2.deriveSemantics(messages)
   }
 

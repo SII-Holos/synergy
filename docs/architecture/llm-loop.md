@@ -170,7 +170,7 @@ Current loop-level behavior includes:
 - repeated same-class tool-error stopping
 - tool-category failure analysis and escalation
 
-A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs cannot hold the critical execution path.
+A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs capture detached payloads and cannot hold the critical execution path. By default every captured payload runs independently; a job opts into latest-pending coalescing only by defining a stable `key()`. Each background execution receives an abort signal and a finite timeout, so consumers must propagate cancellation through history reads, model calls, child-session work, and other long-running operations.
 
 ### Turn diff settlement
 
@@ -183,7 +183,7 @@ The `summarize` post-step job computes file diffs and derives title/body for eac
 
 Concurrent summarizations for the same session use a FIFO queue keyed by terminal assistant revision, allowing later continuations of one root turn while coalescing duplicate triggers. Cancellation propagates through snapshot and LLM work, and a worker settles before the queue advances so late writes cannot overwrite a newer revision. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary. The frontend renders that server-owned state without comparing `deadlineAt` to its local clock. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
 
-The post-job gives the first worker the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving summaries. Later queued revisions retain only their bounded root-turn snapshot rather than another full working set; session aggregation extends the discardable persisted summary cursor, while direct callers without a snapshot read authoritative durable history. If an existing session aggregation has no cursor, one bounded call rebuilds it from complete history before incremental updates resume.
+The post-job captures only session, root-message, and terminal-revision identifiers, then independently reloads the compaction-aware model working set without retaining or populating the loop-scoped message cache. Once `SessionSummary` accepts a run, later queued revisions retain only their bounded root-turn snapshot rather than another full working set; session aggregation extends the discardable persisted summary cursor, while direct callers without a snapshot use the same detached working-set read. If an existing session aggregation has no cursor, bounded direct callers may read authoritative durable history once to initialize it.
 
 ## Prompt Budget
 
@@ -259,7 +259,7 @@ Separately, asynchronous pruning clears large outputs from older completed tool 
 - accumulated protected and prunable token thresholds are exceeded.
 
 Pruning is configurable and records a compaction timestamp on the tool state.
-It operates on the loop's existing immutable working-set snapshot, and its `Session.updatePart()` writes maintain the loop-scoped cache incrementally. Running a prune job does not invalidate or reread the complete session history.
+Pruning uses an independent compaction-aware working-set read so it cannot retain or populate the active loop's cache. Its `Session.updatePart()` writes still maintain the loop-scoped cache incrementally when that cache exists.
 
 ## Streaming and Persistence
 

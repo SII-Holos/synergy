@@ -740,14 +740,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             )
           }
         }
+        const historyBeforeBytes = LLMTurnMemory.estimateBytes(sessionMessages)
         using memoryTurn = LLMTurnMemory.begin({
           sessionID,
           messageID: processor.message.id,
           providerID: model.providerID,
           modelID: model.id,
-          historyBeforeBytes: LLMTurnMemory.estimateBytes(sessionMessages),
+          historyBeforeBytes,
           baseline: SessionMemoryPressure.currentSnapshot(),
         })
+        memoryTurn.trackOwner("history.session_messages", sessionMessages, historyBeforeBytes)
         await memoryTurn.stabilizeBeforeProjection()
         let modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
@@ -757,7 +759,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
           maxHistoryImages: jobCtx.compactionMaxHistoryImages,
         })
-        memoryTurn.projected({ historyAfterBytes: LLMTurnMemory.estimateBytes(modelProjection.messages) })
+        const projectedHistoryBytes = LLMTurnMemory.estimateBytes(modelProjection.messages)
+        memoryTurn.trackOwner("history.model_projection", modelProjection.messages, projectedHistoryBytes)
+        memoryTurn.projected({ historyAfterBytes: projectedHistoryBytes })
         let preparedMessages = [
           ...modelProjection.messages,
           ...(isLastStep
@@ -862,19 +866,24 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           toolDefinitions: activeToolDefinitions,
         })
         const toolSchemaBytes = LLMTurnMemory.estimateBytes(activeToolDefinitions)
+        const promptMessagesBytes = LLMTurnMemory.estimateBytes(promptPlan.messages)
+        const requestBytes = LLMTurnMemory.estimateBytes({
+          system: promptPlan.system,
+          lateSystem: promptPlan.lateSystem,
+          messages: promptPlan.messages,
+          tools: activeToolDefinitions,
+        })
         memoryTurn.prepared({
           toolSchemaBytes,
-          requestBytes: LLMTurnMemory.estimateBytes({
-            system: promptPlan.system,
-            lateSystem: promptPlan.lateSystem,
-            messages: promptPlan.messages,
-            tools: activeToolDefinitions,
-          }),
+          requestBytes,
         })
+        memoryTurn.trackOwner("prompt.messages", promptPlan.messages, promptMessagesBytes)
+        memoryTurn.trackOwner("prompt.tools", activeToolDefinitions, toolSchemaBytes)
 
         let streamInput: SessionProcessor.ProcessInput | undefined
         function releaseTurnReferences(mutateStreamInput: boolean) {
           if (mutateStreamInput) {
+            sessionMessages.length = 0
             toolDefinitions.length = 0
             systemParts.length = 0
             lateSystemParts.length = 0
@@ -895,6 +904,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
               for (const id of Object.keys(resolvedTools.executorKinds)) delete resolvedTools.executorKinds[id]
             }
             activeToolIDs.clear()
+            activeToolDefinitions.length = 0
             for (const provenance of [plannedHistoryProvenance, contextUsageProvenance]) {
               for (const contributions of Object.values(provenance.categories)) contributions.length = 0
             }
@@ -974,6 +984,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           maxOutputTokens: maxOutputTokensByMessage.get(R.id),
           memoryTurn,
         }
+        memoryTurn.trackOwner("stream.input", streamInput, requestBytes)
         try {
           const currentStreamInput = streamInput
           const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
