@@ -1,7 +1,9 @@
+import z from "zod"
 import type { Info } from "./types"
 
 export type LightLoopWorkflow = Extract<NonNullable<Info["workflow"]>, { kind: "lightloop" }>
-export type LightLoopTerminalStatus = "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+export const LightLoopTerminalStatus = z.enum(["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"])
+export type LightLoopTerminalStatus = z.infer<typeof LightLoopTerminalStatus>
 
 export function isLightLoopTerminalStatus(status: LightLoopWorkflow["status"]): status is LightLoopTerminalStatus {
   return (

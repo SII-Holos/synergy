@@ -6,6 +6,7 @@ import { SessionManager } from "../../src/session/manager"
 import { Plugin } from "../../src/plugin"
 import { LightLoopApproveTool } from "../../src/tool/light-loop-approve"
 import { LightLoopRejectTool } from "../../src/tool/light-loop-reject"
+import { LightLoopTerminalStore } from "../../src/session/light-loop-terminal-hook"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 
@@ -52,6 +53,7 @@ function lightLoopSession(
 ): Session.Info {
   return {
     id: "ses_exec",
+    scope: ScopeContext.current.scope,
     workflow: {
       kind: "lightloop" as const,
       instructions: opts.instructions ?? "Build the thing",
@@ -159,12 +161,9 @@ describe("light_loop_approve", () => {
           reviewAgent: "lightloop-reviewer",
         })
 
-        let terminalStatusSet = false
         mockSessions(session)
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           fn(session)
-          if (session.workflow?.kind === "lightloop" && (session.workflow as any).status === "completed")
-            terminalStatusSet = true
         })
         const hookDeliveries: unknown[][] = []
         ;(Plugin as any).deliverHookForPlugin = mock(async (...args: unknown[]) => {
@@ -183,8 +182,8 @@ describe("light_loop_approve", () => {
         )
 
         expect(result.metadata.loopApproved).toBe(true)
-        expect(terminalStatusSet).toBe(true)
-        expect((session.workflow as any).terminalHookDeliveredAt).toBeNumber()
+        expect(session.workflow).toBeUndefined()
+        expect((await LightLoopTerminalStore.get(session))?.hookDeliveredAt).toBeNumber()
         expect(hookDeliveries).toEqual([
           [
             "review-plugin",

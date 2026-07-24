@@ -372,7 +372,7 @@ async function migrateLightloopInstructionsField(progress: (current: number, tot
   log.info("Light Loop instructions field migration complete", { total: tasks.length, changed })
 }
 
-async function clearTerminalOrdinaryLightloops(progress: (current: number, total: number) => void) {
+async function migrateTerminalLightloops(progress: (current: number, total: number) => void) {
   const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
   const tasks: Array<{ scopeID: string; sessionID: string }> = []
 
@@ -385,17 +385,49 @@ async function clearTerminalOrdinaryLightloops(progress: (current: number, total
   let done = 0
   let changed = 0
   for (const { scopeID, sessionID } of tasks) {
-    const path = StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID))
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const path = StoragePath.sessionInfo(scope, sid)
     const info = await Storage.read<Record<string, unknown>>(path).catch(() => undefined)
     const workflow = asRecord(info?.workflow)
+    const status = workflow?.status
     const terminal =
-      workflow?.status === "completed" ||
-      workflow?.status === "failed" ||
-      workflow?.status === "cancelled" ||
-      workflow?.status === "timed_out" ||
-      workflow?.status === "iteration_exhausted"
+      status === "completed" ||
+      status === "failed" ||
+      status === "cancelled" ||
+      status === "timed_out" ||
+      status === "iteration_exhausted"
 
-    if (info && workflow?.kind === "lightloop" && terminal && !asRecord(workflow.pluginOwner)) {
+    if (info && workflow?.kind === "lightloop" && terminal) {
+      const pluginOwner = asRecord(workflow.pluginOwner)
+      const pluginId = asString(pluginOwner?.pluginId)
+      const pluginGeneration = asString(pluginOwner?.pluginGeneration)
+      const ownerScopeID = asString(pluginOwner?.scopeId)
+      if (pluginOwner && pluginId && pluginGeneration && ownerScopeID) {
+        const time = asRecord(info.time)
+        await Storage.write(StoragePath.sessionLightLoopTerminal(scope, sid), {
+          sessionID,
+          status,
+          instructions: asString(workflow.instructions) ?? "",
+          pluginOwner: {
+            pluginId,
+            pluginGeneration,
+            scopeId: ownerScopeID,
+            ...(asString(pluginOwner.correlationId) ? { correlationId: asString(pluginOwner.correlationId) } : {}),
+          },
+          ...(asString(workflow.terminalError) ? { error: asString(workflow.terminalError) } : {}),
+          ...(typeof workflow.terminalHookDeliveredAt === "number"
+            ? { hookDeliveredAt: workflow.terminalHookDeliveredAt }
+            : {}),
+          ...(asString(workflow.terminalHookError) ? { hookError: asString(workflow.terminalHookError) } : {}),
+          createdAt: typeof time?.updated === "number" ? time.updated : 0,
+        })
+      } else if (pluginOwner) {
+        done++
+        progress(done, tasks.length)
+        continue
+      }
+
       delete info.workflow
       await Storage.write(path, info)
       changed++
@@ -405,7 +437,7 @@ async function clearTerminalOrdinaryLightloops(progress: (current: number, total
     progress(done, tasks.length)
   }
 
-  log.info("terminal ordinary Light Loop migration complete", { total: tasks.length, changed })
+  log.info("terminal Light Loop migration complete", { total: tasks.length, changed })
 }
 
 function migrateWorkflowMessageMetadata(metadata: Record<string, unknown>): {
@@ -2388,10 +2420,10 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "20260723-clear-terminal-ordinary-lightloops",
-    description: "Clear terminal ordinary Light Loop workflows while preserving plugin lifecycle records",
+    id: "20260723-migrate-terminal-lightloops",
+    description: "Move terminal plugin Light Loop results out of the interactive workflow slot",
     async up(progress) {
-      await clearTerminalOrdinaryLightloops(progress)
+      await migrateTerminalLightloops(progress)
     },
   },
 ]

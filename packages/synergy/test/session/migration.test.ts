@@ -1005,7 +1005,7 @@ describe("session migrations", () => {
       },
     })
   })
-  test("clears terminal ordinary Light Loops while preserving plugin lifecycle records", async () => {
+  test("moves terminal plugin Light Loops out of the interactive workflow slot", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()
 
@@ -1021,6 +1021,7 @@ describe("session migrations", () => {
         const exhaustedKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(exhausted.id))
         const activeKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(active.id))
         const pluginKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(plugin.id))
+        const terminalKey = StoragePath.sessionLightLoopTerminal(scope, Identifier.asSessionID(plugin.id))
 
         await Storage.write(completedKey, {
           ...completed,
@@ -1044,11 +1045,13 @@ describe("session migrations", () => {
               pluginId: "test-plugin",
               pluginGeneration: "generation-one",
               scopeId: tmpScope.id,
+              correlationId: "correlation-one",
             },
+            terminalHookError: "handler unavailable",
           },
         })
 
-        const migration = migrations.find((entry) => entry.id === "20260723-clear-terminal-ordinary-lightloops")
+        const migration = migrations.find((entry) => entry.id === "20260723-migrate-terminal-lightloops")
         expect(migration).toBeDefined()
         await migration!.up(() => {})
 
@@ -1059,18 +1062,27 @@ describe("session migrations", () => {
           instructions: "Keep going",
           status: "running",
         })
-        expect((await Storage.read<any>(pluginKey)).workflow).toMatchObject({
-          kind: "lightloop",
+        expect((await Storage.read<any>(pluginKey)).workflow).toBeUndefined()
+        expect(await Storage.read<any>(terminalKey)).toEqual({
+          sessionID: plugin.id,
           status: "completed",
-          pluginOwner: { pluginId: "test-plugin" },
+          instructions: "Notify the plugin",
+          pluginOwner: {
+            pluginId: "test-plugin",
+            pluginGeneration: "generation-one",
+            scopeId: tmpScope.id,
+            correlationId: "correlation-one",
+          },
+          hookError: "handler unavailable",
+          createdAt: plugin.time.updated,
         })
 
         const first = await Promise.all(
-          [completedKey, exhaustedKey, activeKey, pluginKey].map((key) => Storage.read<any>(key)),
+          [completedKey, exhaustedKey, activeKey, pluginKey, terminalKey].map((key) => Storage.read<any>(key)),
         )
         await migration!.up(() => {})
         const second = await Promise.all(
-          [completedKey, exhaustedKey, activeKey, pluginKey].map((key) => Storage.read<any>(key)),
+          [completedKey, exhaustedKey, activeKey, pluginKey, terminalKey].map((key) => Storage.read<any>(key)),
         )
         expect(second).toEqual(first)
       },
