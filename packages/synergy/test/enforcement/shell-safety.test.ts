@@ -1102,6 +1102,15 @@ describe("ShellSafety compound command recursion", () => {
     expect(ShellSafety.classifyCompoundRisk("ls -la | grep foo")).toBe("shell_read")
   })
 
+  test("|& uses the same lexical split as destructive analysis", () => {
+    expect(ShellSafety.classifyBashRisk("ls |& cat")).toBe("shell_read")
+  })
+
+  test("compound operators without classification progress return a conservative finite risk", () => {
+    expect(ShellSafety.classifyBashRisk("ls |& |&")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("|||")).toBe("shell")
+  })
+
   test("nested compound: (ls && pwd) && rm -rf /tmp", () => {
     // The recursion splits on &&: ["ls", "pwd", "rm -rf /tmp"]
     // ls → shell_read, pwd → shell_read, rm → shell → shell
@@ -1125,6 +1134,13 @@ describe("ShellSafety compound command recursion", () => {
     const deep = Array(10).fill("ls").join(" && ")
     const result = ShellSafety.classifyCompoundRisk(deep)
     expect(["shell_read", "shell", "shell_destructive", "shell_hardline"]).toContain(result)
+  })
+
+  test("deep heredoc classification stops at the shared depth budget", () => {
+    const delimiters = Array.from({ length: 12 }, (_, index) => `EOF_${index}`)
+    const deep = [...delimiters.map((delimiter) => `bash <<${delimiter}`), "ls", ...delimiters.toReversed()].join("\n")
+
+    expect(ShellSafety.classifyBashRisk(deep)).toBe("shell_destructive")
   })
 })
 

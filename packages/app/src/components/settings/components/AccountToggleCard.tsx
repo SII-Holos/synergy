@@ -4,7 +4,9 @@ import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
+import { channelAccountVariantKeys } from "../channel-account-model"
 import type { AccountToggle, ProviderGroup } from "../types"
+import { ModelVariantPicker } from "./ModelVariantPicker"
 import { SettingRow } from "./SettingRow"
 
 const useDefaultLabel = { id: "settings.accountToggle.useDefault", message: "Use default" }
@@ -28,6 +30,7 @@ type ModelPickOption = {
   label: string
   description: string
   value: string
+  variantKeys: string[]
 }
 
 export function AccountToggleCard(props: {
@@ -36,8 +39,10 @@ export function AccountToggleCard(props: {
   accounts: AccountToggle[]
   emptyLabel: string
   providers: ProviderGroup[]
+  popoverLayer?: HTMLElement
   onToggle: (index: number, value: boolean) => void
   onModelChange: (index: number, model: string) => void
+  onVariantChange: (index: number, variant: string) => void
 }) {
   const { _ } = useLingui()
   const modelOptions = createMemo<ModelPickOption[]>(() => [
@@ -48,6 +53,7 @@ export function AccountToggleCard(props: {
       label: _(useDefaultLabel),
       description: _(inheritDesc),
       value: "",
+      variantKeys: [],
     },
     ...props.providers.flatMap((provider) =>
       provider.models.map((model) => ({
@@ -57,6 +63,7 @@ export function AccountToggleCard(props: {
         label: model.name,
         description: provider.providerName,
         value: `${provider.providerId}/${model.id}`,
+        variantKeys: model.variantKeys,
       })),
     ),
   ])
@@ -83,6 +90,7 @@ export function AccountToggleCard(props: {
             const displayText = createMemo(() =>
               account.model ? (selectedLabel().get(account.model) ?? account.model) : _(useDefaultLabel),
             )
+            const availableVariants = createMemo(() => channelAccountVariantKeys(account.model, props.providers))
 
             return (
               <div class="ds-setting-subsection">
@@ -98,44 +106,55 @@ export function AccountToggleCard(props: {
                     </div>
                     <span class="settings-model-description">{_(modelOverrideDesc)}</span>
                   </div>
-                  <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
-                    <KobaltePopover.Trigger
-                      type="button"
-                      class="settings-model-trigger"
-                      aria-label={_(selectModelAria(account.key))}
-                    >
-                      <span class="settings-model-trigger-text">
-                        <span class="settings-model-trigger-title">{displayText()}</span>
-                      </span>
-                      <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
-                    </KobaltePopover.Trigger>
-                    <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                      <KobaltePopover.Title class="sr-only">{_(selectModelAria(account.key))}</KobaltePopover.Title>
-                      <List<ModelPickOption>
-                        class="settings-model-picker-list"
-                        search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
-                        emptyMessage={_(noModelResults)}
-                        key={(option) => option.key}
-                        items={modelOptions}
-                        current={currentOption()}
-                        filterKeys={["label", "description", "value"]}
-                        groupBy={(option) => option.group}
-                        sortGroupsBy={sortModelGroups}
-                        onSelect={(option) => {
-                          if (!option) return
-                          props.onModelChange(index(), option.value)
-                          setPickerOpen(false)
-                        }}
+                  <div class="settings-model-selector">
+                    <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
+                      <KobaltePopover.Trigger
+                        type="button"
+                        class="settings-model-trigger"
+                        aria-label={_(selectModelAria(account.key))}
                       >
-                        {(option) => (
-                          <div class="settings-model-option">
-                            <span class="settings-model-option-title">{option.label}</span>
-                            <span class="settings-model-option-detail">{option.description}</span>
-                          </div>
-                        )}
-                      </List>
-                    </KobaltePopover.Content>
-                  </KobaltePopover>
+                        <span class="settings-model-trigger-text">
+                          <span class="settings-model-trigger-title">{displayText()}</span>
+                        </span>
+                        <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
+                      </KobaltePopover.Trigger>
+                      <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
+                        <KobaltePopover.Title class="sr-only">{_(selectModelAria(account.key))}</KobaltePopover.Title>
+                        <List<ModelPickOption>
+                          class="settings-model-picker-list"
+                          search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
+                          emptyMessage={_(noModelResults)}
+                          key={(option) => option.key}
+                          items={modelOptions}
+                          current={currentOption()}
+                          filterKeys={["label", "description", "value"]}
+                          groupBy={(option) => option.group}
+                          sortGroupsBy={sortModelGroups}
+                          onSelect={(option) => {
+                            if (!option) return
+                            props.onModelChange(index(), option.value)
+                            if (!option.variantKeys.includes(account.variant)) {
+                              props.onVariantChange(index(), "")
+                            }
+                            setPickerOpen(false)
+                          }}
+                        >
+                          {(option) => (
+                            <div class="settings-model-option">
+                              <span class="settings-model-option-title">{option.label}</span>
+                              <span class="settings-model-option-detail">{option.description}</span>
+                            </div>
+                          )}
+                        </List>
+                      </KobaltePopover.Content>
+                    </KobaltePopover>
+                    <ModelVariantPicker
+                      value={account.variant}
+                      availableVariants={availableVariants()}
+                      popoverLayer={props.popoverLayer}
+                      onChange={(variant) => props.onVariantChange(index(), variant)}
+                    />
+                  </div>
                 </div>
               </div>
             )

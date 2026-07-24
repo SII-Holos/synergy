@@ -164,6 +164,446 @@
       },
       "additionalProperties": false
     },
+    "execution": {
+      "description": "Process isolation, worker recycling, and bounded execution scheduling",
+      "type": "object",
+      "properties": {
+        "agentWorkers": {
+          "description": "Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "agentQueueMax": {
+          "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32768
+        },
+        "agentQueueMaxMb": {
+          "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 4096
+        },
+        "agentWorkerMaxTurns": {
+          "description": "Turns completed before an Agent worker is recycled (default: 64)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 10000
+        },
+        "agentWorkerMaxRssMb": {
+          "description": "RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 131072
+        },
+        "agentWorkerMaxHeapMb": {
+          "description": "Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 131072
+        },
+        "agentCancelGraceMs": {
+          "description": "Grace period before terminating an Agent worker that ignores cancellation (default: 5000)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "agentHeartbeatTimeoutMs": {
+          "description": "Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)",
+          "type": "integer",
+          "minimum": 30000,
+          "maximum": 300000
+        },
+        "policyWorkers": {
+          "description": "Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 16
+        },
+        "policyQueueMax": {
+          "description": "Maximum queued Policy classifications waiting for a worker (default: 256)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32768
+        },
+        "policyQueueMaxMb": {
+          "description": "Maximum aggregate queued Policy-classification payload size in MiB (default: 64)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 1024
+        },
+        "policyTimeoutMs": {
+          "description": "Maximum total time for a Policy classification before conservative fallback (default: 1000)",
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 10000
+        },
+        "policyWorkerMaxRequests": {
+          "description": "Classifications completed before a Policy worker is recycled (default: 512)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 100000
+        },
+        "policyWorkerMaxRssMb": {
+          "description": "RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 16384
+        },
+        "policyWorkerMaxHeapMb": {
+          "description": "Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 16384
+        },
+        "policyCancelGraceMs": {
+          "description": "Shutdown grace period before terminating a Policy worker (default: 25)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "policyHeartbeatTimeoutMs": {
+          "description": "Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)",
+          "type": "integer",
+          "minimum": 10000,
+          "maximum": 120000
+        },
+        "toolConcurrency": {
+          "description": "Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 512
+        },
+        "toolQueueMax": {
+          "description": "Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "toolQueueMaxMb": {
+          "description": "Maximum aggregate queued ToolTask input size in MiB (default: 128)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 4096
+        },
+        "toolCancelGraceMs": {
+          "description": "Grace period for active ToolTasks during runtime shutdown (default: 3000)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "toolExecutorConcurrency": {
+          "description": "Optional concurrency limits for each Tool Executor class",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 512
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "github": {
+      "description": "Outbound GitHub App polling and automation configuration",
+      "ref": "GitHubIntegrationConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "watchedRepositories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "eventTypes": {
+          "default": ["issues.opened", "workflow_run.completed"],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "ciFailureThreshold": {
+          "default": 3,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "ciFailureWindowHours": {
+          "default": 24,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "modelBudgetNano": {
+          "default": {
+            "maxTokens": 256,
+            "maxCost": 0.001
+          },
+          "type": "object",
+          "properties": {
+            "maxTokens": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxCost": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": ["maxTokens", "maxCost"],
+          "additionalProperties": false
+        },
+        "modelBudgetProposal": {
+          "default": {
+            "maxTokens": 2048,
+            "maxCost": 0.02
+          },
+          "type": "object",
+          "properties": {
+            "maxTokens": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxCost": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": ["maxTokens", "maxCost"],
+          "additionalProperties": false
+        },
+        "classifierEnabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "proposalEnabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "polling": {
+          "default": {
+            "enabled": true,
+            "intervalMs": 60000,
+            "overlapWindowMs": 300000,
+            "pageSize": 100,
+            "maxPages": 30
+          },
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": true,
+              "type": "boolean"
+            },
+            "intervalMs": {
+              "default": 60000,
+              "type": "integer",
+              "minimum": 15000,
+              "maximum": 300000
+            },
+            "overlapWindowMs": {
+              "default": 300000,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 600000
+            },
+            "pageSize": {
+              "default": 100,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "maxPages": {
+              "default": 30,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": ["enabled", "intervalMs", "overlapWindowMs", "pageSize", "maxPages"],
+          "additionalProperties": false
+        },
+        "fixWorkflow": {
+          "default": {
+            "enabled": false,
+            "repositoryMapping": {},
+            "maxRetries": 3,
+            "timeoutMs": 900000,
+            "locatorAgent": "github-issue-locator",
+            "agent": "github-fix-coder",
+            "pushBranchPrefix": "synergy/fix/"
+          },
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": false,
+              "type": "boolean"
+            },
+            "repositoryMapping": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "maxRetries": {
+              "default": 3,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "timeoutMs": {
+              "default": 900000,
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "locatorAgent": {
+              "default": "github-issue-locator",
+              "type": "string",
+              "minLength": 1
+            },
+            "agent": {
+              "default": "github-fix-coder",
+              "type": "string",
+              "minLength": 1
+            },
+            "pushBranchPrefix": {
+              "default": "synergy/fix/",
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "enabled",
+            "repositoryMapping",
+            "maxRetries",
+            "timeoutMs",
+            "locatorAgent",
+            "agent",
+            "pushBranchPrefix"
+          ],
+          "additionalProperties": false
+        },
+        "reviewWorkflow": {
+          "default": {
+            "enabled": false,
+            "repositoryMapping": {},
+            "eventTypes": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
+            "reviewCommands": ["bun test", "bun run typecheck"],
+            "maxRetries": 3,
+            "timeoutMs": 900000,
+            "agent": "github-review-agent",
+            "publishReviewComment": true,
+            "publishCheckRun": true
+          },
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": false,
+              "type": "boolean"
+            },
+            "repositoryMapping": {
+              "default": {},
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "eventTypes": {
+              "default": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "reviewCommands": {
+              "default": ["bun test", "bun run typecheck"],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "maxRetries": {
+              "default": 3,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "timeoutMs": {
+              "default": 900000,
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "agent": {
+              "default": "github-review-agent",
+              "type": "string",
+              "minLength": 1
+            },
+            "publishReviewComment": {
+              "default": true,
+              "type": "boolean"
+            },
+            "publishCheckRun": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled",
+            "repositoryMapping",
+            "eventTypes",
+            "reviewCommands",
+            "maxRetries",
+            "timeoutMs",
+            "agent",
+            "publishReviewComment",
+            "publishCheckRun"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "enabled",
+        "eventTypes",
+        "ciFailureThreshold",
+        "ciFailureWindowHours",
+        "modelBudgetNano",
+        "modelBudgetProposal",
+        "classifierEnabled",
+        "proposalEnabled",
+        "polling",
+        "fixWorkflow",
+        "reviewWorkflow"
+      ],
+      "additionalProperties": false
+    },
     "watcher": {
       "type": "object",
       "properties": {
@@ -767,6 +1207,10 @@
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
                 },
+                "catalog_state": {
+                  "type": "string",
+                  "enum": ["active", "retained"]
+                },
                 "options": {
                   "type": "object",
                   "propertyNames": {
@@ -882,6 +1326,24 @@
         "model": {
           "description": "Embedding model name",
           "type": "string"
+        },
+        "local": {
+          "description": "Bundled local embedding model download settings",
+          "ref": "LocalEmbeddingConfig",
+          "type": "object",
+          "properties": {
+            "source": {
+              "description": "Download source for the bundled local embedding model (default: huggingface)",
+              "type": "string",
+              "enum": ["huggingface", "hf-mirror", "custom"]
+            },
+            "remoteHost": {
+              "description": "Public HTTPS origin used when source is custom",
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -1212,9 +1674,11 @@
                   },
                   "command": {
                     "description": "Command and arguments to run the MCP server",
+                    "minItems": 1,
                     "type": "array",
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "minLength": 1
                     }
                   },
                   "cwd": {
@@ -1230,10 +1694,6 @@
                     "additionalProperties": {
                       "type": "string"
                     }
-                  },
-                  "enabled": {
-                    "description": "Enable or disable the MCP server on startup",
-                    "type": "boolean"
                   },
                   "timeout": {
                     "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
@@ -1364,6 +1824,10 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "enabled": {
+                    "description": "Enable or disable the MCP server on startup",
+                    "type": "boolean"
                   }
                 },
                 "required": ["type", "command"],
@@ -1380,11 +1844,8 @@
                   },
                   "url": {
                     "description": "URL of the remote MCP server",
-                    "type": "string"
-                  },
-                  "enabled": {
-                    "description": "Enable or disable the MCP server on startup",
-                    "type": "boolean"
+                    "type": "string",
+                    "format": "uri"
                   },
                   "headers": {
                     "description": "Headers to send with the request",
@@ -1553,6 +2014,10 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "enabled": {
+                    "description": "Enable or disable the MCP server on startup",
+                    "type": "boolean"
                   }
                 },
                 "required": ["type", "url"],
@@ -1793,6 +2258,10 @@
                     },
                     "model": {
                       "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+                      "type": "string"
+                    },
+                    "variant": {
+                      "description": "Model variant to use with this account model (e.g. low, high, max)",
                       "type": "string"
                     },
                     "resolveSenderNames": {

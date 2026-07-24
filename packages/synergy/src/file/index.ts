@@ -8,10 +8,8 @@ import fs from "fs"
 import ignore from "ignore"
 import { Log } from "../util/log"
 import { ScopeContext } from "../scope/context"
-import { ScopedState } from "../scope/scoped-state"
-import { Ripgrep } from "./ripgrep"
 import fuzzysort from "fuzzysort"
-import { Global } from "../global"
+import { WorkspaceFileIndexer } from "../workspace-file/indexer"
 
 export namespace File {
   const log = Log.create({ service: "file" })
@@ -119,100 +117,50 @@ export namespace File {
     ),
   }
 
-  const state = ScopedState.create(async () => {
-    type Entry = { files: string[]; dirs: string[] }
-    let cache: Entry = { files: [], dirs: [] }
-    let fetching = false
+  async function homeSearchEntries() {
+    const dirs = new Set<string>()
+    const ignored = new Set<string>()
 
-    const isHome = ScopeContext.current.scope.type === "home"
+    if (process.platform === "darwin") ignored.add("Library")
+    if (process.platform === "win32") ignored.add("AppData")
 
-    const fn = async (result: Entry) => {
-      // Disable scanning if in root of file system
-      if (ScopeContext.current.directory === path.parse(ScopeContext.current.directory).root) return
-      fetching = true
+    const ignoreNested = new Set(["node_modules", "dist", "build", "target", "vendor"])
+    const shouldIgnore = (name: string) => name.startsWith(".") || ignored.has(name)
+    const shouldIgnoreNested = (name: string) => name.startsWith(".") || ignoreNested.has(name)
+    const top = await fs.promises
+      .readdir(ScopeContext.current.directory, { withFileTypes: true })
+      .catch(() => [] as fs.Dirent[])
 
-      if (isHome) {
-        const dirs = new Set<string>()
-        const ignore = new Set<string>()
+    for (const entry of top) {
+      if (!entry.isDirectory() || shouldIgnore(entry.name)) continue
+      dirs.add(entry.name + "/")
 
-        if (process.platform === "darwin") ignore.add("Library")
-        if (process.platform === "win32") ignore.add("AppData")
+      const base = path.join(ScopeContext.current.directory, entry.name)
+      const children = await fs.promises.readdir(base, { withFileTypes: true }).catch(() => [] as fs.Dirent[])
+      for (const child of children) {
+        if (!child.isDirectory() || shouldIgnoreNested(child.name)) continue
+        dirs.add(entry.name + "/" + child.name + "/")
 
-        const ignoreNested = new Set(["node_modules", "dist", "build", "target", "vendor"])
-        const shouldIgnore = (name: string) => name.startsWith(".") || ignore.has(name)
-        const shouldIgnoreNested = (name: string) => name.startsWith(".") || ignoreNested.has(name)
-
-        const top = await fs.promises
-          .readdir(ScopeContext.current.directory, { withFileTypes: true })
+        const childBase = path.join(base, child.name)
+        const grandchildren = await fs.promises
+          .readdir(childBase, { withFileTypes: true })
           .catch(() => [] as fs.Dirent[])
-
-        for (const entry of top) {
-          if (!entry.isDirectory()) continue
-          if (shouldIgnore(entry.name)) continue
-          dirs.add(entry.name + "/")
-
-          const base = path.join(ScopeContext.current.directory, entry.name)
-          const children = await fs.promises.readdir(base, { withFileTypes: true }).catch(() => [] as fs.Dirent[])
-          for (const child of children) {
-            if (!child.isDirectory()) continue
-            if (shouldIgnoreNested(child.name)) continue
-            dirs.add(entry.name + "/" + child.name + "/")
-
-            const childBase = path.join(base, child.name)
-            const grandchildren = await fs.promises
-              .readdir(childBase, { withFileTypes: true })
-              .catch(() => [] as fs.Dirent[])
-            for (const grandchild of grandchildren) {
-              if (!grandchild.isDirectory()) continue
-              if (shouldIgnoreNested(grandchild.name)) continue
-              dirs.add(entry.name + "/" + child.name + "/" + grandchild.name + "/")
-            }
-          }
-        }
-
-        result.dirs = Array.from(dirs).toSorted()
-        cache = result
-        fetching = false
-        return
-      }
-
-      const INDEX_TIMEOUT_MS = 30_000
-      const timeoutSignal = AbortSignal.timeout(INDEX_TIMEOUT_MS)
-      const set = new Set<string>()
-      for await (const file of Ripgrep.files({ cwd: ScopeContext.current.directory, signal: timeoutSignal })) {
-        if (timeoutSignal.aborted) break
-        result.files.push(file)
-        let current = file
-        while (true) {
-          const dir = path.dirname(current)
-          if (dir === ".") break
-          if (dir === current) break
-          current = dir
-          if (set.has(dir)) continue
-          set.add(dir)
-          result.dirs.push(dir + "/")
+        for (const grandchild of grandchildren) {
+          if (!grandchild.isDirectory() || shouldIgnoreNested(grandchild.name)) continue
+          dirs.add(entry.name + "/" + child.name + "/" + grandchild.name + "/")
         }
       }
-      cache = result
-      fetching = false
     }
-    fn(cache)
 
-    return {
-      async files() {
-        if (!fetching) {
-          fn({
-            files: [],
-            dirs: [],
-          })
-        }
-        return cache
-      },
-    }
-  })
+    return { files: [] as string[], dirs: Array.from(dirs).toSorted() }
+  }
 
-  export function init() {
-    state()
+  async function searchEntries() {
+    const directory = ScopeContext.current.directory
+    if (directory === path.parse(directory).root) return { files: [] as string[], dirs: [] as string[] }
+    if (ScopeContext.current.scope.type === "home") return homeSearchEntries()
+    const snapshot = await WorkspaceFileIndexer.snapshot()
+    return { files: snapshot.files, dirs: snapshot.dirs }
   }
 
   export async function status() {
@@ -575,7 +523,7 @@ export namespace File {
     const kind = input.type ?? (input.dirs === false ? "file" : "all")
     log.info("search", { query, kind })
 
-    const result = await state().then((x) => x.files())
+    const result = await searchEntries()
 
     const hidden = (item: string) => {
       const normalized = item.replaceAll("\\", "/").replace(/\/+$/, "")

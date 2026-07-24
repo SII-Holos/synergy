@@ -74,6 +74,7 @@ Library settings should explain learning, memory recall, and experience reuse as
 Library settings should always identify the effective embedding model. A user-configured remote model takes precedence and should be labeled as configured; the bundled local model is the visible default fallback only when no remote embedding API key is configured. Keep local download-source and file-status controls subordinate to that effective-model row, and do not expose API keys or private connection details in the summary.
 
 Model settings should keep role routing and quick-switcher visibility together in one Models page. Specialist model roles are the first section; connected models and their quick-switch toggles are the second section. Avoid reopening a separate Manage Models modal from inside Settings.
+Channel account model overrides should pair the model and variant selectors in one row. Variant choices come from the selected model's current catalog entry, and changing to a model that does not expose the saved variant clears that stale choice.
 
 Provider settings should behave like a connection workspace, not a config editor. Keep provider discovery, selected-provider detail, and login flows together in the Providers page; provider quota, billing, and account-health details belong in Usage. The provider list should scroll inside its own column so the selected detail remains anchored. Do not expose raw provider allow/deny text lists in the primary settings UI.
 

@@ -53,6 +53,10 @@ Child sessions inherit the parent workspace and interaction context by default. 
 
 `SessionManager.acquire()` synchronously grants one caller a generation-tagged loop lease before asynchronous session or workspace setup begins. The runtime keeps that lease as its owner through `starting`, `running`, and `stopping`; `signalAbort()` signals the owner controller and sets the phase to `stopping` but does not publish idle events or repair persisted state. Only `release()` with the exact current lease clears ownership and publishes the lifecycle idle event (`SessionEvent.Idle`), so stale cleanup cannot terminate a replacement loop. A second caller waits on the existing runtime instead of creating a competing writer.
 
+The owner also records an internal execution phase: `queued_agent`, `running_agent`, `authorizing_tools`, `queued_tools`, `running_tools`, `waiting_background`, or `stopping`. These phases drive aggregate runtime diagnostics and do not create a second public session-status contract. The generation is part of Agent-turn ownership and ToolTask identity, so a stale completion cannot release or duplicate work owned by a newer loop.
+
+Agent workers are read/compute-only with respect to canonical session state. `SessionProcessor` in the Control Plane commits streamed parts and ordered events, releases the Agent worker, then schedules proposed tools. Control Plane-owned execution applies authorization before physical execution, and tool results return to the same processor for exactly-once terminal settlement. The persisted assistant/tool parts remain the recovery truth; in-memory Agent and ToolTask queues do not become a second message store.
+
 This single-writer rule supports:
 
 - ordered task execution
@@ -375,6 +379,8 @@ This separation exists because `SessionEvent.Idle` has side-effect consumers —
 
 - A session belongs to one Scope and has one current workspace.
 - At most one active loop lease owns a session, including while it is starting or stopping.
+- Agent workers never own Session/Message persistence or canonical event sequencing.
+- Internal execution phases refine an owned loop without replacing the public busy/retry/idle status contract.
 - One root user message owns each task and all assistant messages in that task.
 - `rootID`, `visible`, `includeInContext`, and `origin` remain orthogonal.
 - `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()` are the canonical legacy boundaries.

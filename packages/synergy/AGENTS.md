@@ -22,7 +22,7 @@ Start from [Architecture](../../docs/architecture/README.md), then read the docu
 Keep ownership separate:
 
 - `control-profile/` resolves user-facing profiles
-- `enforcement/` classifies capabilities and makes boundary decisions
+- `enforcement/` classifies capabilities and makes boundary decisions; production classification runs in its bounded Policy worker pool while final authorization stays in the Control Plane
 - `permission/` stores/evaluates permission rules and SmartAllow
 - `sandbox/` wraps OS process execution
 - `session/tool-resolver.ts` assembles and executes the active tool pipeline
