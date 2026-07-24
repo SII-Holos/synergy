@@ -57,7 +57,14 @@ function basename(value: string) {
   return value.split("/").at(-1) ?? value
 }
 
-const currentLayoutKeys = ["sidebar", "review", "mobileSidebar", "rightSidebar", "sessionView"] as const
+const currentLayoutKeys = [
+  "sidebar",
+  "review",
+  "mobileSidebar",
+  "rightSidebar",
+  "sideWorkspaceDiscovered",
+  "sessionView",
+] as const
 
 export function migrateWorkbenchLayout(value: unknown): unknown {
   if (!isRecord(value)) return value
@@ -66,6 +73,8 @@ export function migrateWorkbenchLayout(value: unknown): unknown {
   for (const key of currentLayoutKeys) {
     if (key in value) next[key] = value[key]
   }
+  if (!("sidebar" in value)) next.sidebar = { opened: false }
+  if (!("sideWorkspaceDiscovered" in value)) next.sideWorkspaceDiscovered = true
   const oldTerminal = isRecord(value.terminal) ? value.terminal : undefined
   const oldWorkspaceSessions = isRecord(value.workspaceSessions) ? value.workspaceSessions : undefined
   const existingSurfaces = isRecord(value.workbenchSurfaces) ? { ...value.workbenchSurfaces } : {}
