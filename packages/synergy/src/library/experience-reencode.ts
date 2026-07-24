@@ -186,11 +186,7 @@ export namespace ExperienceReencode {
 
   function isCritical(snapshot: SessionMemoryPressure.Snapshot) {
     const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
-    return (
-      snapshot.rssBytes >= thresholds.rssCriticalBytes ||
-      snapshot.arrayBuffersBytes >= thresholds.arrayBuffersCriticalBytes ||
-      (snapshot.cgroupCurrentBytes ?? 0) >= thresholds.cgroupCriticalBytes
-    )
+    return SessionMemoryPressure.pressureLevel(snapshot, thresholds) === "critical"
   }
 
   type PressureGate = () => Promise<boolean>
@@ -200,22 +196,16 @@ export namespace ExperienceReencode {
     return async () => {
       const snapshot = await SessionMemoryPressure.currentSnapshotWithCgroup()
       const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
-      const decision = SessionMemoryPressure.decide({
-        snapshot,
-        thresholds,
-        now: Date.now(),
-        lastGCAt: 0,
-        gcAvailable: typeof Bun.gc === "function",
-      })
-      if (paused !== decision.critical) {
-        paused = decision.critical
+      const critical = SessionMemoryPressure.pressureLevel(snapshot, thresholds) === "critical"
+      if (paused !== critical) {
+        paused = critical
         log.info(paused ? "reencode paused for memory pressure" : "reencode resumed after memory pressure", {
           jobID,
           memory: snapshot,
           thresholds,
         })
       }
-      return decision.critical
+      return critical
     }
   }
 

@@ -67,7 +67,7 @@ bun run perf:memory:runtime --preset standard
 bun run perf:memory:runtime:matrix --preset smoke
 ```
 
-Every run creates a fresh temporary Synergy home, workspace, loopback server, and deterministic local mock provider. It does not copy user configuration, credentials, Sessions, state, logs, or caches, and it makes no external model request.
+Every run creates a fresh temporary Synergy home, workspace, loopback server, and deterministic local mock provider. It does not copy user configuration, credentials, Sessions, state, logs, or caches, and it makes no external model request. Child processes inherit only an explicit allowlist of process-launch, temporary-directory, locale, and time-zone variables; provider credentials, proxy settings, runtime injection options, and ambient Synergy tuning are excluded.
 
 The runtime harness exposes three scenarios:
 
@@ -167,13 +167,13 @@ Service pressure is classified independently from cgroup working set and current
 
 Soft pressure is evidence for GC and turn-size telemetry only. Automatic heap snapshots are not taken on the soft path because snapshot generation itself allocates and can worsen allocation failures. Use ordinary resource samples, MessageCache counters, and LLM turn size metrics for diagnosis.
 
-On Linux, service samples expose cgroup current, peak, high, max, swap, anonymous/file/kernel/slab breakdowns, reclaimable bytes, working set, `memory.events` totals and deltas, and PSI `some`/`full` pressure. JSC and allocator gauges plus the twelve largest and fastest-growing object types are sampled at most once per `SYNERGY_LINUX_HEAP_STATS_INTERVAL_MS` (default `60000`). These bounded diagnostics explain which boundary retained memory; they do not authorize cross-process GC.
+On Linux, service samples expose cgroup current, peak, high, max, swap, anonymous/file/kernel/slab breakdowns, reclaimable bytes, working set, `memory.events` totals and deltas, and PSI `some`/`full` pressure. JSC and allocator gauges plus the twelve largest and fastest-growing object types are sampled at most once per `SYNERGY_LINUX_HEAP_STATS_INTERVAL_MS` (default `60000`). The first object-type sample establishes the growth baseline and reports zero deltas. These bounded diagnostics explain which boundary retained memory; they do not authorize cross-process GC.
 
 Cortex also uses the shared soft and critical classifications to constrain new child-task admission to four or two tasks, respectively. Its earlier 1 GiB and 2 GiB ArrayBuffer thresholds remain in place. This admission control leaves running tasks alone and lets queued tasks resume after pressure falls.
 
 When the runtime reports an allocation failure (`Out of memory`, `Array buffer allocation failed`, heap-limit errors, or `ENOMEM`/cannot-allocate variants, including nested causes), the processor emits one deduplicated, bounded incident before persisting the ordinary turn error. Capture stays light: it samples current process memory, recent server resource rows, running spans from the last five minutes, MessageCache counters and entry sizes, and active/recent turn-size summaries without running GC or generating heap snapshots. It caps each collection, omits prompt/tool/response content and runtime identifiers from nested data, and raises `PERF_PROCESS_OUT_OF_MEMORY`.
 
-Experience re-encode jobs use the same critical thresholds to pause new item claims and resume automatically after pressure subsides. `SYNERGY_REENCODE_PRESSURE_POLL_MS` controls the pause polling interval (default `30000`).
+Experience re-encode jobs use the combined process and service critical thresholds to pause new item claims and resume automatically after pressure subsides. Process pressure may request Control Plane GC before the wait; cgroup-only pressure enters the wait without collecting the Control Plane. `SYNERGY_REENCODE_PRESSURE_POLL_MS` controls the pause polling interval (default `30000`).
 
 ## Performance and diagnostics APIs
 

@@ -151,6 +151,32 @@ describe("SessionMemoryPressure", () => {
     expect(calls).toEqual([])
   })
 
+  test("does not collect the control process for service-only cgroup pressure outside a release boundary", async () => {
+    const calls: boolean[] = []
+    const result = await SessionMemoryPressure.maybeCollect({
+      phase: "library.reencode.after_session",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => ({
+        ...healthySnapshot,
+        cgroupCurrentBytes: 2_000,
+        cgroupWorkingSetBytes: 2_000,
+      }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    expect(result.decision).toMatchObject({
+      action: "skip",
+      reason: "service_pressure_external",
+    })
+    expect(result.processPressure).toBe("normal")
+    expect(result.servicePressure).toBe("critical")
+    expect(calls).toEqual([])
+  })
+
   test("does not change non-Linux release collection", async () => {
     const calls: boolean[] = []
     SessionMemoryPressure.signalRelease({

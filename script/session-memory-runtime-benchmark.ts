@@ -6,6 +6,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import {
   SESSION_MEMORY_WORKLOAD_CONTRACT_VERSION,
+  sessionMemoryRuntimeEnvironment,
   sessionMemoryWorkerPoolSettings,
 } from "./session-memory-runtime-settings"
 
@@ -565,28 +566,12 @@ function benchmarkConfig(mockUrl: string, mcpPath: string) {
 }
 
 function isolatedEnvironment(config: ReturnType<typeof benchmarkConfig>) {
-  const env = { ...process.env }
-  for (const key of [
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
-    "ALL_PROXY",
-    "http_proxy",
-    "https_proxy",
-    "all_proxy",
-    "SYNERGY_CONFIG",
-    "SYNERGY_CONFIG_DIR",
-  ]) {
-    delete env[key]
-  }
-  return {
-    ...env,
-    SYNERGY_HOME: temporaryRoot,
-    SYNERGY_CWD: workspace,
-    SYNERGY_CONFIG_CONTENT: JSON.stringify(config),
-    SYNERGY_BENCHMARK_API_KEY: "local-benchmark-key",
-    SYNERGY_DISABLE_LSP_DOWNLOAD: "1",
-    NO_PROXY: "localhost,127.0.0.1,::1",
-  }
+  return sessionMemoryRuntimeEnvironment({
+    source: process.env,
+    home: temporaryRoot,
+    cwd: workspace,
+    configContent: JSON.stringify(config),
+  })
 }
 
 function createMockProvider() {

@@ -581,6 +581,10 @@ export const LocalBashBackend = {
           outputChars: ProcessRegistry.outputChars(regProc),
         })
       },
+      onDrainTimeout() {
+        if (regProc.backgrounded || allowsDetachedDaemons(ctx)) return
+        return Shell.killTree(child)
+      },
     }).then(
       (result) => finishClose(result.code, result.signal, result.drainTimedOut),
       (error) => finishError(error instanceof Error ? error : new Error(String(error))),

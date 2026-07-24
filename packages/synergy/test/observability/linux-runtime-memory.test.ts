@@ -53,7 +53,9 @@ describe("LinuxRuntimeMemory", () => {
       jscExtraMemoryBytes: 300,
       allocatorCommittedBytes: 3_000,
       allocatorReservedBytes: 5_000,
+      growingObjectTypes: [],
     })
+    expect(first?.topObjectTypes.every((item) => item.delta === 0)).toBe(true)
     expect(second?.growingObjectTypes).toContainEqual({ type: "Array", count: 13, delta: 3 })
     expect(second?.growingObjectTypes.some((item) => item.type === "String")).toBe(false)
   })

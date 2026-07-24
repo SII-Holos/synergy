@@ -14,25 +14,34 @@ export namespace Shell {
     if (process.platform === "win32") {
       await new Promise<void>((resolve) => {
         const killer = spawn("taskkill", ["/pid", String(pid), "/f", "/t"], { stdio: "ignore" })
-        killer.once("exit", () => resolve())
-        killer.once("error", () => resolve())
+        const timer = setTimeout(() => {
+          killer.kill()
+          resolve()
+        }, SIGKILL_TIMEOUT_MS)
+        const finish = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+        killer.once("exit", finish)
+        killer.once("error", finish)
       })
       return
     }
 
     try {
       process.kill(-pid, "SIGTERM")
-      await Bun.sleep(SIGKILL_TIMEOUT_MS)
-      if (!opts?.exited?.()) {
-        process.kill(-pid, "SIGKILL")
-      }
     } catch (_e) {
       proc.kill("SIGTERM")
       await Bun.sleep(SIGKILL_TIMEOUT_MS)
-      if (!opts?.exited?.()) {
-        proc.kill("SIGKILL")
-      }
+      if (!opts?.exited?.()) proc.kill("SIGKILL")
+      return
     }
+
+    await Bun.sleep(SIGKILL_TIMEOUT_MS)
+    try {
+      process.kill(-pid, 0)
+      process.kill(-pid, "SIGKILL")
+    } catch {}
   }
   const BLACKLIST = new Set(["fish", "nu"])
 

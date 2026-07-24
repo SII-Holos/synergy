@@ -14,12 +14,14 @@ export namespace ChildProcessClose {
     options: {
       drainGraceMs?: number
       onExit?: (code: number | null, signal: NodeJS.Signals | null) => void
+      onDrainTimeout?: () => void | Promise<void>
     } = {},
   ): Promise<Result> {
     const drainGraceMs = options.drainGraceMs ?? DEFAULT_DRAIN_GRACE_MS
     return new Promise<Result>((resolve, reject) => {
       let settled = false
       let drainTimer: ReturnType<typeof setTimeout> | undefined
+      let drainTimeoutRunning = false
       let exit: Pick<Result, "code" | "signal"> | undefined
 
       const cleanup = () => {
@@ -51,12 +53,23 @@ export namespace ChildProcessClose {
           return
         }
         drainTimer = setTimeout(() => {
-          child.stdout?.destroy()
-          child.stderr?.destroy()
-          finish({ ...exit!, drainTimedOut: true })
+          drainTimeoutRunning = true
+          void (async () => {
+            try {
+              await options.onDrainTimeout?.()
+            } catch (error) {
+              onError(error instanceof Error ? error : new Error(String(error)))
+              return
+            }
+            if (settled) return
+            child.stdout?.destroy()
+            child.stderr?.destroy()
+            finish({ ...exit!, drainTimedOut: true })
+          })()
         }, drainGraceMs)
       }
       const onClose = (code: number | null, signal: NodeJS.Signals | null) => {
+        if (drainTimeoutRunning) return
         finish({
           code: code ?? exit?.code ?? null,
           signal: signal ?? exit?.signal ?? null,

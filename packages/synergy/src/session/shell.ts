@@ -208,6 +208,9 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     onExit() {
       exited = true
     },
+    onDrainTimeout() {
+      return Shell.killTree(proc)
+    },
   })
 
   const kill = () => Shell.killTree(proc, { exited: () => exited })

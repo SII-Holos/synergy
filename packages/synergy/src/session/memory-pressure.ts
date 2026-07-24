@@ -202,10 +202,17 @@ export namespace SessionMemoryPressure {
     const platform = input.platform ?? process.platform
     const fullEligibleAt = lastFullGCAt + thresholds.fullMinIntervalMs
     const linuxRelease = platform === "linux" && input.releaseBoundary === true
-    if (linuxRelease && processPressure === "normal" && decision.action !== "unavailable") {
+    const linuxServiceOnly = platform === "linux" && processPressure === "normal" && servicePressure !== "normal"
+    if (linuxServiceOnly && decision.action !== "unavailable") {
       decision = {
         action: "skip",
-        reason: servicePressure === "normal" ? "no_process_pressure" : "service_pressure_external",
+        reason: "service_pressure_external",
+        critical: false,
+      }
+    } else if (linuxRelease && processPressure === "normal" && decision.action !== "unavailable") {
+      decision = {
+        action: "skip",
+        reason: "no_process_pressure",
         critical: false,
       }
     }

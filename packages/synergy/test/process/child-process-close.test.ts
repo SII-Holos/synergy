@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { ChildProcessClose } from "../../src/process/child-process-close"
+import { Shell } from "../../src/util/shell"
+
+function processGroupExists(pid: number) {
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
 
 describe("ChildProcessClose", () => {
   test.skipIf(process.platform === "win32")("bounds drainage when a descendant inherits stdout", async () => {
@@ -30,4 +40,27 @@ describe("ChildProcessClose", () => {
     expect(result.drainTimedOut).toBe(false)
     expect(output).toContain("late-tail")
   })
+
+  test.skipIf(process.platform === "win32")(
+    "settles drain-timeout cleanup before releasing an untracked child",
+    async () => {
+      const child = spawn("/bin/sh", ["-c", "(sleep 5) &"], {
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      const pid = child.pid!
+
+      try {
+        const result = await ChildProcessClose.wait(child, {
+          drainGraceMs: 20,
+          onDrainTimeout: () => Shell.killTree(child),
+        })
+
+        expect(result.drainTimedOut).toBe(true)
+        expect(processGroupExists(pid)).toBe(false)
+      } finally {
+        if (processGroupExists(pid)) process.kill(-pid, "SIGKILL")
+      }
+    },
+  )
 })

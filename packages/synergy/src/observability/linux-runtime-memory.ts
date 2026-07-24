@@ -5,7 +5,7 @@ export namespace LinuxRuntimeMemory {
   const TOP_TYPE_LIMIT = 12
   let lastSampleAt = 0
   let last: Snapshot | undefined
-  let previousTypeCounts = new Map<string, number>()
+  let previousTypeCounts: Map<string, number> | undefined
 
   export interface ObjectTypeCount {
     type: string
@@ -61,10 +61,13 @@ export namespace LinuxRuntimeMemory {
       const stats = input.readStats?.() ?? (heapStats() as HeapStatsSnapshot)
       const counts = new Map(Object.entries(stats.objectTypeCounts).map(([type, count]) => [type, finite(count)]))
       const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      const growth = ranked
-        .map(([type, count]) => ({ type, count, delta: count - (previousTypeCounts.get(type) ?? 0) }))
-        .filter((item) => item.delta > 0)
-        .sort((a, b) => b.delta - a.delta || b.count - a.count || a.type.localeCompare(b.type))
+      const baselineTypeCounts = previousTypeCounts
+      const growth = baselineTypeCounts
+        ? ranked
+            .map(([type, count]) => ({ type, count, delta: count - (baselineTypeCounts.get(type) ?? 0) }))
+            .filter((item) => item.delta > 0)
+            .sort((a, b) => b.delta - a.delta || b.count - a.count || a.type.localeCompare(b.type))
+        : []
       const mimalloc = stats.mimalloc
       last = {
         sampledAt: now,
@@ -80,7 +83,7 @@ export namespace LinuxRuntimeMemory {
         topObjectTypes: ranked.slice(0, TOP_TYPE_LIMIT).map(([type, count]) => ({
           type,
           count,
-          delta: count - (previousTypeCounts.get(type) ?? 0),
+          delta: baselineTypeCounts ? count - (baselineTypeCounts.get(type) ?? 0) : 0,
         })),
         growingObjectTypes: growth.slice(0, TOP_TYPE_LIMIT),
       }
@@ -95,7 +98,7 @@ export namespace LinuxRuntimeMemory {
   export function resetForTest() {
     lastSampleAt = 0
     last = undefined
-    previousTypeCounts = new Map()
+    previousTypeCounts = undefined
   }
 
   function envNumber(value: string | undefined) {
