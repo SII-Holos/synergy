@@ -372,6 +372,74 @@ async function migrateLightloopInstructionsField(progress: (current: number, tot
   log.info("Light Loop instructions field migration complete", { total: tasks.length, changed })
 }
 
+async function migrateTerminalLightloops(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) tasks.push({ scopeID, sessionID })
+  }
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const path = StoragePath.sessionInfo(scope, sid)
+    const info = await Storage.read<Record<string, unknown>>(path).catch(() => undefined)
+    const workflow = asRecord(info?.workflow)
+    const status = workflow?.status
+    const terminal =
+      status === "completed" ||
+      status === "failed" ||
+      status === "cancelled" ||
+      status === "timed_out" ||
+      status === "iteration_exhausted"
+
+    if (info && workflow?.kind === "lightloop" && terminal) {
+      const pluginOwner = asRecord(workflow.pluginOwner)
+      const pluginId = asString(pluginOwner?.pluginId)
+      const pluginGeneration = asString(pluginOwner?.pluginGeneration)
+      const ownerScopeID = asString(pluginOwner?.scopeId)
+      if (pluginOwner && pluginId && pluginGeneration && ownerScopeID) {
+        const time = asRecord(info.time)
+        await Storage.write(StoragePath.sessionLightLoopTerminal(scope, sid), {
+          sessionID,
+          status,
+          instructions: asString(workflow.instructions) ?? "",
+          pluginOwner: {
+            pluginId,
+            pluginGeneration,
+            scopeId: ownerScopeID,
+            ...(asString(pluginOwner.correlationId) ? { correlationId: asString(pluginOwner.correlationId) } : {}),
+          },
+          ...(asString(workflow.terminalError) ? { error: asString(workflow.terminalError) } : {}),
+          ...(typeof workflow.terminalHookDeliveredAt === "number"
+            ? { hookDeliveredAt: workflow.terminalHookDeliveredAt }
+            : {}),
+          ...(asString(workflow.terminalHookError) ? { hookError: asString(workflow.terminalHookError) } : {}),
+          createdAt: typeof time?.updated === "number" ? time.updated : 0,
+        })
+      } else if (pluginOwner) {
+        done++
+        progress(done, tasks.length)
+        continue
+      }
+
+      delete info.workflow
+      await Storage.write(path, info)
+      changed++
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("terminal Light Loop migration complete", { total: tasks.length, changed })
+}
+
 function migrateWorkflowMessageMetadata(metadata: Record<string, unknown>): {
   metadata: Record<string, unknown> | undefined
   changed: boolean
@@ -2349,6 +2417,13 @@ export const migrations: Migration[] = [
     description: "Migrate Light Loop task descriptions to canonical instructions",
     async up(progress) {
       await migrateLightloopInstructionsField(progress)
+    },
+  },
+  {
+    id: "20260723-migrate-terminal-lightloops",
+    description: "Move terminal plugin Light Loop results out of the interactive workflow slot",
+    async up(progress) {
+      await migrateTerminalLightloops(progress)
     },
   },
 ]

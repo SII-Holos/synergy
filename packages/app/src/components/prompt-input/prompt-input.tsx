@@ -95,6 +95,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
 import { LightLoopSubmitControl } from "./light-loop-submit-control"
+import { isActiveLightLoopWorkflow } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
@@ -205,18 +206,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   } | null>(null)
   const [pendingLightLoop, setPendingLightLoop] = createSignal(false)
   const storedLightLoop = createMemo(() =>
-    params.id ? activeWorkflow()?.kind === "lightloop" || pendingLightLoop() : pendingLightLoop(),
+    params.id ? isActiveLightLoopWorkflow(activeWorkflow()) || pendingLightLoop() : pendingLightLoop(),
   )
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
   const lightLoopInstructions = createMemo(() => {
     const workflow = activeWorkflow()
-    return params.id && workflow?.kind === "lightloop" ? workflow.instructions : undefined
+    return params.id && isActiveLightLoopWorkflow(workflow) ? workflow.instructions : undefined
   })
-  const persistedLightLoopActive = createMemo(() => activeWorkflow()?.kind === "lightloop")
+  const persistedLightLoopActive = createMemo(() => isActiveLightLoopWorkflow(activeWorkflow()))
   const lightLoopReviewPending = createMemo(() => {
     const workflow = activeWorkflow()
-    return workflow?.kind === "lightloop" && !!workflow.stopRequest
+    return isActiveLightLoopWorkflow(workflow) && !!workflow.stopRequest
   })
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
@@ -712,7 +713,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const setLightLoop = async (active: boolean) => {
-    const activeBackendLightLoop = activeWorkflow()?.kind === "lightloop"
+    const activeBackendLightLoop = isActiveLightLoopWorkflow(activeWorkflow())
     if (!params.id || !activeBackendLightLoop) {
       setPendingLightLoop(active)
       if (active) {
