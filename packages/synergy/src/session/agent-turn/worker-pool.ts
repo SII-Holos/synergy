@@ -71,6 +71,8 @@ interface PoolTask {
   reject(error: unknown): void
   resolveUsage(usage: Awaited<LLM.StreamOutput["usage"]> | undefined): void
   started: boolean
+  terminal: boolean
+  terminalReason?: "complete" | "error"
   completed: boolean
   transferCommitted: boolean
   worker?: PoolWorker
@@ -242,6 +244,7 @@ export class AgentWorkerPool {
         reject,
         resolveUsage,
         started: false,
+        terminal: false,
         completed: false,
         transferCommitted: false,
         removeAbortListener: () => signal.removeEventListener("abort", onAbort),
@@ -456,6 +459,12 @@ export class AgentWorkerPool {
       return
     }
     if (message.type === "error") {
+      if (task.terminal) {
+        this.terminateForProtocol(worker, "duplicate turn terminal")
+        return
+      }
+      task.terminal = true
+      task.terminalReason = "error"
       const error = AgentTurnProtocol.deserializeError(message.error)
       if (message.memoryBeforeDispose) {
         this.recordWorkerMemory(worker, message.memoryBeforeDispose, "turn.before_dispose", task)
@@ -464,7 +473,7 @@ export class AgentWorkerPool {
       task.resolveUsage(undefined)
       if (task.started) task.stream.fail(error)
       else task.reject(error)
-      this.finishTask(worker, task, message.type)
+      task.removeAbortListener()
       return
     }
     if (message.type === "complete") {
@@ -472,25 +481,41 @@ export class AgentWorkerPool {
         this.terminateForProtocol(worker, "turn completed before start")
         return
       }
+      if (task.terminal) {
+        this.terminateForProtocol(worker, "duplicate turn terminal")
+        return
+      }
+      task.terminal = true
+      task.terminalReason = "complete"
       worker.turns = message.turns
       this.recordWorkerMemory(worker, message.memoryBeforeDispose, "turn.before_dispose", task)
       this.recordWorkerMemory(worker, message.memory, "turn.after_dispose", task)
       task.resolveUsage(message.usage as Awaited<LLM.StreamOutput["usage"]> | undefined)
       task.stream.complete()
+      task.removeAbortListener()
+      return
+    }
+    if (message.type === "released") {
+      if (!task.terminal) {
+        this.terminateForProtocol(worker, "turn released before terminal result")
+        return
+      }
+      worker.turns = message.turns
+      this.recordWorkerMemory(worker, message.memory, "turn.released", task)
       const recycle =
         message.turns >= this.options.maxTurns ||
         message.memory.rssBytes >= this.options.maxRssBytes ||
         message.memory.heapUsedBytes >= this.options.maxHeapBytes
-      this.finishTask(worker, task, message.type, !recycle)
-      if (recycle) {
-        const reason =
-          message.turns >= this.options.maxTurns
-            ? "max_turns"
-            : message.memory.rssBytes >= this.options.maxRssBytes
-              ? "rss"
-              : "heap"
-        this.recycle(worker, reason)
-      }
+      this.finishTask(worker, task, task.terminalReason ?? "released", !recycle)
+      if (!recycle) return
+      const reason =
+        message.turns >= this.options.maxTurns
+          ? "max_turns"
+          : message.memory.rssBytes >= this.options.maxRssBytes
+            ? "rss"
+            : "heap"
+      this.recycle(worker, reason)
+      return
     }
   }
 
@@ -500,10 +525,12 @@ export class AgentWorkerPool {
     const startupFailure = worker.startupFailureEligible
     const task = worker.task
     if (task && !task.completed) {
-      if (task.started) task.stream.fail(error)
-      else task.reject(error)
+      if (!task.terminal) {
+        if (task.started) task.stream.fail(error)
+        else task.reject(error)
+        task.resolveUsage(undefined)
+      }
       task.completed = true
-      task.resolveUsage(undefined)
       task.removeAbortListener()
     }
     if (!this.stopping && !worker.stopping) {
@@ -605,7 +632,7 @@ export class AgentWorkerPool {
   private recordWorkerMemory(
     worker: PoolWorker,
     memory: AgentTurnProtocol.WorkerMemory,
-    phase: "ready" | "heartbeat" | "turn.before_dispose" | "turn.after_dispose",
+    phase: "ready" | "heartbeat" | "turn.before_dispose" | "turn.after_dispose" | "turn.released",
     task?: PoolTask,
   ): void {
     worker.rssBytes = memory.rssBytes
@@ -734,7 +761,9 @@ export class AgentWorkerPool {
   }
 
   private async disposeTask(task: PoolTask): Promise<void> {
-    if (!task.completed) this.cancel(task.requestId, new DOMException("Agent turn consumer disposed", "AbortError"))
+    if (!task.terminal && !task.completed) {
+      this.cancel(task.requestId, new DOMException("Agent turn consumer disposed", "AbortError"))
+    }
   }
 
   private sweepHealth(now = Date.now()): void {

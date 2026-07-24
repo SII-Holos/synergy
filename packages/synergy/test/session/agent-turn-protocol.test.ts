@@ -29,6 +29,15 @@ describe("AgentTurnProtocol", () => {
         memory: { rssBytes: 100, heapUsedBytes: 80 },
       }),
     ).toThrow()
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "released",
+        requestId: "turn",
+        turns: 1,
+        collection: "full",
+        memory,
+      }),
+    ).toMatchObject({ type: "released", collection: "full" })
   })
 
   test("accepts a request at the configured byte boundary and rejects a larger request", () => {
