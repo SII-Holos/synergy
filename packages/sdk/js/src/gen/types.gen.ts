@@ -1256,7 +1256,21 @@ export type AgendaScope = {
 export type ChannelInfo = {
   type: string
   accountId?: string
-  chatId: string
+  chatId?: string
+  target?:
+    | {
+        kind: "chat"
+        chatId: string
+      }
+    | {
+        kind: "project"
+        externalProjectId: string
+      }
+    | {
+        kind: "task"
+        externalProjectId: string
+        externalTaskId: string
+      }
   chatType?: "dm" | "group"
   chatName?: string
   senderId?: string
@@ -1340,6 +1354,10 @@ export type AgendaItem = {
    */
   prompt: string
   /**
+   * Internal delivery mode that injects hidden system guidance into the origin Session
+   */
+  deliveryMode?: "session_guidance"
+  /**
    * Agent to use, defaults to configured default
    */
   agent?: string
@@ -1398,6 +1416,22 @@ export type SessionNavEntry = {
   chatId?: string
   chatName?: string
   chatType?: "dm" | "group"
+  channelType?: string
+  channelAccountId?: string
+  channelTarget?:
+    | {
+        kind: "chat"
+        chatId: string
+      }
+    | {
+        kind: "project"
+        externalProjectId: string
+      }
+    | {
+        kind: "task"
+        externalProjectId: string
+        externalTaskId: string
+      }
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -1466,6 +1500,20 @@ export type ScopeNavEntry = {
   icon?: {
     url?: string
     color?: string
+  }
+  managedProject?: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+    remoteState: "active" | "paused" | "stale" | "archived"
+  }
+}
+
+export type ManagedProjectArchiveError = {
+  name: "ManagedProjectArchiveError"
+  data: {
+    scopeID: string
+    remoteState: "active" | "paused"
   }
 }
 
@@ -3050,6 +3098,25 @@ export type ChannelFeishuConfig = {
   streaming?: boolean
 }
 
+export type ChannelClarusAccountConfig = {
+  enabled?: boolean
+  /**
+   * Clarus REST API origin override; defaults to the configured Holos API origin
+   */
+  apiUrl?: string
+  /**
+   * Primary Synergy agent for project and assignment Sessions
+   */
+  agent?: string
+}
+
+export type ChannelClarusConfig = {
+  type: "clarus"
+  accounts: {
+    [key: string]: ChannelClarusAccountConfig
+  }
+}
+
 /**
  * Sandbox configuration for workspace boundary enforcement
  */
@@ -3660,7 +3727,7 @@ export type Config = {
    * Channel configurations for messaging platform integrations
    */
   channel?: {
-    [key: string]: ChannelFeishuConfig
+    [key: string]: ChannelFeishuConfig | ChannelClarusConfig
   }
   sandbox?: SandboxConfig
   observability?: ObservabilityConfig
@@ -7637,9 +7704,21 @@ export type ChannelStatus =
       status: "disabled"
     }
   | {
+      status: "syncing"
+    }
+  | {
       status: "failed"
       error: string
     }
+
+export type ChannelRefreshError = {
+  name: "ChannelRefreshError"
+  data: {
+    message: string
+    channelType: string
+    accountId: string
+  }
+}
 
 export type McpResource = {
   name: string
@@ -8133,49 +8212,14 @@ export type EventSynergyLinkTargetRemoved = {
   }
 }
 
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
-  properties: {
-    tasks: Array<CortexTask>
-  }
-}
-
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
-  }
-}
-
-export type EventCommandExecuted = {
-  type: "command.executed"
+export type EventChannelCommandExecuted = {
+  type: "channel.command.executed"
   properties: {
     name: string
-    sessionID: string
-    arguments: string
-    messageID: string
+    channelType: string
+    accountId: string
+    chatId: string
+    userId?: string
   }
 }
 
@@ -8197,46 +8241,6 @@ export type EventVcsBranchUpdated = {
   type: "vcs.branch.updated"
   properties: {
     branch?: string
-  }
-}
-
-export type EventPtyCreated = {
-  type: "pty.created"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyUpdated = {
-  type: "pty.updated"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyExited = {
-  type: "pty.exited"
-  properties: {
-    id: string
-    exitCode: number
-  }
-}
-
-export type EventPtyDeleted = {
-  type: "pty.deleted"
-  properties: {
-    id: string
-  }
-}
-
-export type EventChannelCommandExecuted = {
-  type: "channel.command.executed"
-  properties: {
-    name: string
-    channelType: string
-    accountId: string
-    chatId: string
-    userId?: string
   }
 }
 
@@ -8308,6 +8312,81 @@ export type EventHolosPresence = {
   properties: {
     peerId: string
     status: "online" | "offline"
+  }
+}
+
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
+  properties: {
+    tasks: Array<CortexTask>
+  }
+}
+
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
+  }
+}
+
+export type EventCommandExecuted = {
+  type: "command.executed"
+  properties: {
+    name: string
+    sessionID: string
+    arguments: string
+    messageID: string
+  }
+}
+
+export type EventPtyCreated = {
+  type: "pty.created"
+  properties: {
+    info: Pty
+  }
+}
+
+export type EventPtyUpdated = {
+  type: "pty.updated"
+  properties: {
+    info: Pty
+  }
+}
+
+export type EventPtyExited = {
+  type: "pty.exited"
+  properties: {
+    id: string
+    exitCode: number
+  }
+}
+
+export type EventPtyDeleted = {
+  type: "pty.deleted"
+  properties: {
+    id: string
   }
 }
 
@@ -8384,18 +8463,9 @@ export type Event =
   | EventSynergyLinkTargetCreated
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
-  | EventCortexTaskCreated
-  | EventCortexTaskCompleted
-  | EventCortexTasksUpdated
-  | EventPluginEvent
-  | EventCommandExecuted
+  | EventChannelCommandExecuted
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
-  | EventPtyCreated
-  | EventPtyUpdated
-  | EventPtyExited
-  | EventPtyDeleted
-  | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
   | EventChannelMessageReceived
@@ -8405,6 +8475,15 @@ export type Event =
   | EventHolosConnected
   | EventHolosConnectionStatusChanged
   | EventHolosPresence
+  | EventCortexTaskCreated
+  | EventCortexTaskCompleted
+  | EventCortexTasksUpdated
+  | EventPluginEvent
+  | EventCommandExecuted
+  | EventPtyCreated
+  | EventPtyUpdated
+  | EventPtyExited
+  | EventPtyDeleted
   | EventServerConnected
   | EventGlobalDisposed
 
@@ -9603,6 +9682,15 @@ export type ScopeRemoveData = {
   url: "/scope/{scopeID}"
 }
 
+export type ScopeRemoveErrors = {
+  /**
+   * Managed project archive conflict
+   */
+  409: ManagedProjectArchiveError
+}
+
+export type ScopeRemoveError = ScopeRemoveErrors[keyof ScopeRemoveErrors]
+
 export type ScopeRemoveResponses = {
   /**
    * Scope removed
@@ -9643,6 +9731,10 @@ export type ScopeUpdateErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Managed project archive conflict
+   */
+  409: ManagedProjectArchiveError
 }
 
 export type ScopeUpdateError = ScopeUpdateErrors[keyof ScopeUpdateErrors]
@@ -17736,6 +17828,69 @@ export type ChannelAppResetResponses = {
 }
 
 export type ChannelAppResetResponse = ChannelAppResetResponses[keyof ChannelAppResetResponses]
+
+export type ChannelRefreshProjectsData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/projects/refresh"
+}
+
+export type ChannelRefreshProjectsErrors = {
+  /**
+   * Refresh failed
+   */
+  500: ChannelRefreshError
+}
+
+export type ChannelRefreshProjectsError = ChannelRefreshProjectsErrors[keyof ChannelRefreshProjectsErrors]
+
+export type ChannelRefreshProjectsResponses = {
+  /**
+   * Refresh completed
+   */
+  200: {
+    completed: true
+  }
+}
+
+export type ChannelRefreshProjectsResponse = ChannelRefreshProjectsResponses[keyof ChannelRefreshProjectsResponses]
+
+export type ChannelDownloadDiagnosticsData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/diagnostics.ndjson"
+}
+
+export type ChannelDownloadDiagnosticsResponses = {
+  /**
+   * NDJSON diagnostic stream
+   */
+  200: Array<{
+    timestamp: number
+    level: string
+    message: string
+    data?: {
+      [key: string]: unknown
+    }
+  }>
+}
+
+export type ChannelDownloadDiagnosticsResponse =
+  ChannelDownloadDiagnosticsResponses[keyof ChannelDownloadDiagnosticsResponses]
 
 export type ExperimentalResourceListData = {
   body?: never

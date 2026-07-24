@@ -344,6 +344,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       refetchModelRoleSummaries(),
       refetchAgents(),
       refetchCortexConcurrencyStatus(),
+      refetchChannelStatuses(),
     ])
     setRefreshing(false)
     doEnsureInit()

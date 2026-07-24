@@ -11,8 +11,7 @@ import {
   managedProjectRouteTarget,
   filterGenericScopeWorktrees,
   selectVisibleProjectEntries,
-  type ChannelAccountActionState,
-} from "./channel-account-model"
+} from "@/components/sidebar/channel-account-model"
 
 // ── Locale descriptors (exists — sidebar messages include channel account strings) ──
 import { sidebar } from "@/locales/messages"

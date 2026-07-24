@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import type { ScopeNavEntry } from "./index"
-import { partitionScopeNavigation, deriveChannelAccountActions, type ChannelAccount } from "./nav"
+import type { ScopeNavEntry } from "@/context/layout"
+import { partitionScopeNavigation, deriveChannelAccountActions, type ChannelAccount } from "@/context/layout/nav"
 
 /**
  * Dummy describe blocks describe the intended production contract for
