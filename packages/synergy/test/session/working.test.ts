@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { Bus } from "../../src/bus"
@@ -18,6 +18,48 @@ Log.init({ print: false })
 
 function assertExists<T>(value: T | undefined): asserts value is T {
   if (value === undefined) throw new Error("expected defined value")
+}
+
+async function createTerminalLightLoopSession() {
+  const parent = await Session.create({})
+  const rootID = Identifier.ascending("message")
+  const user = await Session.updateMessage({
+    id: rootID,
+    sessionID: parent.id,
+    role: "user",
+    agent: "test",
+    model: { providerID: "test-provider", modelID: "test-model" },
+    time: { created: Date.now() },
+    isRoot: true,
+    rootID,
+  })
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    sessionID: parent.id,
+    messageID: user.id,
+    type: "text",
+    text: "Finish the task",
+  })
+  const terminal = await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    sessionID: parent.id,
+    role: "assistant",
+    parentID: user.id,
+    rootID: user.id,
+    time: { created: Date.now(), completed: Date.now() },
+    modelID: "test-model",
+    providerID: "test-provider",
+    path: { cwd: projectRoot, root: projectRoot },
+    mode: "test",
+    agent: "test",
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    finish: "stop",
+  })
+  await Session.update(parent.id, (draft) => {
+    draft.workflow = { kind: "lightloop", instructions: "Finish the task" }
+  })
+  return { parent, terminalMessageID: terminal.id }
 }
 
 describe("SessionWorking", () => {
@@ -663,6 +705,114 @@ describe("SessionWorking", () => {
           assertExists(assistant)
           expect(assistant.time.completed).toBeNumber()
           expect(assistant.finish).toBe("error")
+        },
+      })
+    })
+
+    test("resumePending re-drives Light Loop after interrupting its last silent Cortex task", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { parent, terminalMessageID: parentMessageID } = await createTerminalLightLoopSession()
+          const child = await Session.create({
+            parentID: parent.id,
+            cortex: {
+              taskID: "cortex-interrupted-silent-light-loop-task",
+              parentSessionID: parent.id,
+              parentMessageID,
+              description: "Silent delegated work",
+              agent: "developer",
+              visibility: "hidden",
+              notifyParentOnComplete: false,
+              startedAt: Date.now(),
+              status: "running",
+            },
+          })
+          const originalLoop = SessionInvoke.loop
+          const parentWoke = Promise.withResolvers<void>()
+          ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+            if (sessionID === parent.id) parentWoke.resolve()
+          })
+
+          try {
+            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+
+            expect((await Session.get(child.id)).cortex?.status).toBe("interrupted")
+            const items = await SessionInbox.list(parent.id)
+            expect(items.some((item) => item.message?.metadata?.source === "light_loop_continuation")).toBe(true)
+            expect(items.some((item) => item.source.type === "cortex")).toBe(false)
+            await Promise.race([
+              parentWoke.promise,
+              Bun.sleep(1_000).then(() => {
+                throw new Error("Parent session was not woken after silent Cortex recovery")
+              }),
+            ])
+          } finally {
+            ;(SessionInvoke.loop as any) = originalLoop
+            SessionManager.unregisterRuntime(parent.id)
+          }
+        },
+      })
+    })
+
+    test("resumePending re-drives Light Loop when its last silent Cortex task was already terminal", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { parent, terminalMessageID: parentMessageID } = await createTerminalLightLoopSession()
+          const completedAt = Date.now()
+          const child = await Session.create({
+            parentID: parent.id,
+            cortex: {
+              taskID: "cortex-terminal-silent-light-loop-task",
+              parentSessionID: parent.id,
+              parentMessageID,
+              description: "Terminal silent delegated work",
+              agent: "developer",
+              visibility: "hidden",
+              notifyParentOnComplete: false,
+              startedAt: completedAt - 1_000,
+              completedAt,
+              status: "completed",
+            },
+          })
+          Cortex.reset()
+          const originalLoop = SessionInvoke.loop
+          const parentWoke = Promise.withResolvers<void>()
+          ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
+            if (sessionID === parent.id) parentWoke.resolve()
+          })
+
+          try {
+            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+
+            const firstItems = await SessionInbox.list(parent.id)
+            expect(
+              firstItems.filter((item) => item.message?.metadata?.source === "light_loop_continuation"),
+            ).toHaveLength(1)
+            expect(firstItems.some((item) => item.source.type === "cortex")).toBe(false)
+            const deliveredAt = (await Session.get(child.id)).cortex?.deliveryNotifiedAt
+            expect(deliveredAt).toBeNumber()
+            await Promise.race([
+              parentWoke.promise,
+              Bun.sleep(1_000).then(() => {
+                throw new Error("Parent session was not woken after terminal silent Cortex recovery")
+              }),
+            ])
+
+            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+
+            const secondItems = await SessionInbox.list(parent.id)
+            expect(
+              secondItems.filter((item) => item.message?.metadata?.source === "light_loop_continuation"),
+            ).toHaveLength(1)
+            expect((await Session.get(child.id)).cortex?.deliveryNotifiedAt).toBe(deliveredAt)
+          } finally {
+            ;(SessionInvoke.loop as any) = originalLoop
+            SessionManager.unregisterRuntime(parent.id)
+          }
         },
       })
     })

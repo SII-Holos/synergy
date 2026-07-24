@@ -639,7 +639,7 @@ export namespace SessionManager {
     return Array.from(sessionIDs)
   }
 
-  export async function listCortexDelegationsForParentDelivery(scopeID?: string): Promise<string[]> {
+  export async function listTerminalCortexDelegations(scopeID?: string): Promise<string[]> {
     const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"])
     const sessionIDs = new Set<string>()
 
@@ -658,7 +658,6 @@ export namespace SessionManager {
         ) {
           continue
         }
-        if (info.cortex.notifyParentOnComplete !== true || info.cortex.visibility === "hidden") continue
         sessionIDs.add(info.id)
       }
     }

@@ -719,7 +719,11 @@ export namespace Cortex {
           })
         })
       } else {
-        await SessionDrive.request(terminalTask.parentSessionID, "cortex-completion").catch((error) => {
+        await requestSilentParentDrive({
+          parentSessionID: terminalTask.parentSessionID,
+          tasks: [{ sessionID: terminalTask.sessionID, taskID: terminalTask.id }],
+          reason: "cortex-completion",
+        }).catch((error) => {
           log.error("failed to drive parent session after task completion", {
             taskID,
             parentSessionID: terminalTask.parentSessionID,
@@ -848,12 +852,37 @@ export namespace Cortex {
   }
 
   export async function reconcileParentNotifications(scopeID?: string): Promise<void> {
-    const sessionIDs = await SessionManager.listCortexDelegationsForParentDelivery(scopeID)
+    const sessionIDs = await SessionManager.listTerminalCortexDelegations(scopeID)
+    const silentTasksByParent = new Map<
+      string,
+      Array<{
+        sessionID: string
+        taskID: string
+        parentMessageID: string
+        deliveryNotifiedAt?: number
+        parent: Session.Info
+      }>
+    >()
+
     for (const sessionID of sessionIDs) {
       const session = await Session.get(sessionID).catch(() => undefined)
       const delegation = session?.cortex
       if (!session || !delegation || !isTerminal(delegation.status)) continue
-      if (delegation.notifyParentOnComplete !== true || delegation.visibility === "hidden") continue
+
+      if (delegation.notifyParentOnComplete !== true || delegation.visibility === "hidden") {
+        const parent = await Session.get(delegation.parentSessionID).catch(() => undefined)
+        if (!parent || !hasContinuationWorkflow(parent)) continue
+        const candidates = silentTasksByParent.get(parent.id) ?? []
+        candidates.push({
+          sessionID: session.id,
+          taskID: delegation.taskID,
+          parentMessageID: delegation.parentMessageID,
+          deliveryNotifiedAt: delegation.deliveryNotifiedAt,
+          parent,
+        })
+        silentTasksByParent.set(parent.id, candidates)
+        continue
+      }
 
       if (delegation.deliveryNotifiedAt) {
         const deliveryKey = parentNotificationKey(delegation.taskID)
@@ -881,6 +910,74 @@ export namespace Cortex {
         })
       })
     }
+
+    const { ContinuationKernel } = await import("../session/continuation-kernel")
+    for (const candidates of silentTasksByParent.values()) {
+      const parent = candidates[0]?.parent
+      if (!parent) continue
+      const gate = await ScopeContext.provide({
+        scope: parent.scope,
+        fn: () => ContinuationKernel.passesSharedGate(parent.id),
+      })
+      if (!gate) continue
+      const current = candidates.filter((candidate) => candidate.parentMessageID === gate.terminalMessageID)
+      if (current.length === 0) continue
+      const undelivered = current
+        .filter((candidate) => candidate.deliveryNotifiedAt === undefined)
+        .map(({ sessionID, taskID }) => ({ sessionID, taskID }))
+
+      await ScopeContext.provide({
+        scope: parent.scope,
+        fn: async () => {
+          if (undelivered.length > 0) {
+            await requestSilentParentDrive({
+              parentSessionID: parent.id,
+              tasks: undelivered,
+              reason: "cortex-completion-recovery",
+            })
+            return
+          }
+          if (await SessionInbox.hasRunnableItem(parent.id)) {
+            await SessionDrive.request(parent.id, "cortex-completion-recovery")
+          }
+        },
+      }).catch((error) => {
+        log.error("failed to drive parent session after silent task recovery", {
+          parentSessionID: parent.id,
+          error,
+        })
+      })
+    }
+  }
+
+  function hasContinuationWorkflow(session: Session.Info): boolean {
+    if (session.blueprint?.loopID) return true
+    if (session.workflow?.kind === "lattice") return true
+    if (session.workflow?.kind !== "lightloop") return false
+    return (
+      session.workflow.status === undefined ||
+      session.workflow.status === "running" ||
+      session.workflow.status === "reviewing"
+    )
+  }
+
+  async function requestSilentParentDrive(input: {
+    parentSessionID: string
+    tasks: Array<{ sessionID: string; taskID: string }>
+    reason: string
+  }): Promise<boolean> {
+    const handled = await SessionDrive.request(input.parentSessionID, input.reason)
+    if (!handled) return false
+    const deliveredAt = Date.now()
+    await Promise.all(
+      input.tasks.map(({ sessionID, taskID }) =>
+        Session.update(sessionID, (draft) => {
+          if (!draft.cortex || draft.cortex.taskID !== taskID) return
+          draft.cortex.deliveryNotifiedAt ??= deliveredAt
+        }),
+      ),
+    )
+    return true
   }
 
   async function notifyParentSession(task: {
