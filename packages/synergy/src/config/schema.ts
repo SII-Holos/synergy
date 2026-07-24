@@ -1388,14 +1388,18 @@ export const Info = z
           .positive()
           .max(131_072)
           .optional()
-          .describe("RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)"),
+          .describe(
+            "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+          ),
         agentWorkerMaxHeapMb: z
           .number()
           .int()
           .positive()
           .max(131_072)
           .optional()
-          .describe("Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)"),
+          .describe(
+            "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+          ),
         agentWorkerIdleBaselineRecycle: z
           .boolean()
           .optional()

@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
-import { AgentWorkerPool, type AgentWorkerPoolOptions } from "../../src/session/agent-turn/worker-pool"
+import {
+  AgentWorkerPool,
+  DEFAULT_AGENT_WORKER_POOL_OPTIONS,
+  type AgentWorkerPoolOptions,
+} from "../../src/session/agent-turn/worker-pool"
 import type { AgentWorkerProcess, SpawnAgentWorkerProcessOptions } from "../../src/session/agent-turn/process-host"
 
 interface FakeWorker {
@@ -141,6 +145,11 @@ async function inScope<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("AgentWorkerPool", () => {
+  test("keeps default hard watermarks at twice the soft recycle watermarks", () => {
+    expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxRssBytes).toBe(3 * 1024 * 1024 * 1024)
+    expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxHeapBytes).toBe(2 * 1024 * 1024 * 1024)
+  })
+
   test("rejects an idle reserve larger than the worker concurrency limit", () => {
     expect(() => new AgentWorkerPool({ ...options, size: 1, minIdle: 2 }, fakeWorkers().spawn)).toThrow("minIdle")
   })
@@ -893,9 +902,9 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("collects memory and keeps an active worker when post-GC heap recovers", async () => {
+  test("collects memory and keeps an active worker when post-GC heap recovers below the soft watermark", async () => {
     const fake = fakeWorkers()
-    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 64 }, fake.spawn)
+    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 128 }, fake.spawn)
     const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
     fake.workers[0].ready()
     const run = startTurn(fake.workers[0])
@@ -933,9 +942,9 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("terminates an active worker only when post-GC heap remains over its watermark", async () => {
+  test("recycles after release when post-GC heap remains above soft but below hard", async () => {
     const fake = fakeWorkers()
-    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 64 }, fake.spawn)
+    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 128 }, fake.spawn)
     const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
     fake.workers[0].ready()
     const run = startTurn(fake.workers[0])
@@ -966,8 +975,107 @@ describe("AgentWorkerPool", () => {
       memory: workerMemory(32, 65),
     })
 
+    expect(pool.stats()).toMatchObject({ workers: 1, active: 1 })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(32, 65),
+      memory: workerMemory(32, 65),
+    })
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers[0].stops).toBe(0)
+    releaseTurn(fake.workers[0], run.requestId, 1, workerMemory(32, 65))
+    expect(fake.workers[0].stops).toBe(1)
+    await pool.stop()
+  })
+
+  test("recycles after release when post-GC RSS remains above soft but below hard", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxRssBytes: 128, maxHeapBytes: 1_000 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "none",
+      memory: workerMemory(65, 32),
+    })
+
+    expect(fake.workers[0].sent).toContainEqual({ type: "collect-memory", requestId: run.requestId })
+    expect(pool.stats()).toMatchObject({ workers: 1, active: 1 })
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "full",
+      memory: workerMemory(65, 32),
+    })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(65, 32),
+      memory: workerMemory(65, 32),
+    })
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers[0].stops).toBe(0)
+    releaseTurn(fake.workers[0], run.requestId, 1, workerMemory(65, 32))
+    expect(fake.workers[0].stops).toBe(1)
+    await pool.stop()
+  })
+
+  test("terminates an active worker at the hard RSS watermark", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxRssBytes: 128, maxHeapBytes: 1_000 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "none",
+      memory: workerMemory(128, 32),
+    })
+
     await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
-    expect(fake.workers).toHaveLength(1)
+    await pool.stop()
+  })
+
+  test("terminates an active worker only when post-GC heap reaches the hard watermark", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 128 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "none",
+      memory: workerMemory(32, 65),
+    })
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "full",
+      memory: workerMemory(32, 128),
+    })
+
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
     await pool.stop()
   })
 })

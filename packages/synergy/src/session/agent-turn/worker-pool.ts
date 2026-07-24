@@ -103,10 +103,23 @@ interface PoolWorker {
   idleBaselineRssBytes?: number
   idleBaselineExternalBytes?: number
   idleSince?: number
-  activeHeapPressureRequestId?: string
+  activeMemoryPressureRequestId?: string
+  memoryRetireReason?: MemoryRecycleReason
   lastEventSequence: number
   lastHeartbeatAt: number
 }
+
+type MemoryRecycleReason = "rss_soft" | "heap_soft"
+
+type RecycleReason =
+  | "max_turns"
+  | MemoryRecycleReason
+  | "idle_rss_growth"
+  | "idle_external_growth"
+  | "idle_timeout"
+  | "pool_resize"
+
+type HardMemoryReason = "rss_hard" | "heap_hard"
 
 interface Frame {
   sequence: number
@@ -481,30 +494,33 @@ export class AgentWorkerPool {
         message.collection === "full" ? "heartbeat.post_collection" : "heartbeat",
       )
       worker.lastHeartbeatAt = Date.now()
-      if (message.memory.rssBytes >= this.options.maxRssBytes) {
-        this.terminateForMemory(worker, message.memory)
+      const hardReason = this.hardMemoryReason(message.memory)
+      if (hardReason === "rss_hard" || (hardReason === "heap_hard" && message.collection === "full")) {
+        this.terminateForMemory(worker, message.memory, hardReason)
         return
       }
+      const softReason = this.softMemoryReason(message.memory)
       if (!worker.task) {
+        if (softReason) {
+          this.recycle(worker, softReason)
+          return
+        }
         const baselineReason = this.baselineRecycleReason(worker, message.memory)
         if (baselineReason) this.recycle(worker, baselineReason)
         return
       }
-      if (message.memory.heapUsedBytes < this.options.maxHeapBytes) {
-        worker.activeHeapPressureRequestId = undefined
+      if (!softReason) {
+        worker.activeMemoryPressureRequestId = undefined
+        worker.memoryRetireReason = undefined
         return
       }
       const task = worker.task
-      if (!task) {
-        this.terminateForMemory(worker, message.memory)
+      if (message.collection === "full") {
+        worker.memoryRetireReason = softReason
         return
       }
-      if (message.collection === "full" && worker.activeHeapPressureRequestId === task.requestId) {
-        this.terminateForMemory(worker, message.memory)
-        return
-      }
-      if (worker.activeHeapPressureRequestId !== task.requestId) {
-        worker.activeHeapPressureRequestId = task.requestId
+      if (worker.activeMemoryPressureRequestId !== task.requestId) {
+        worker.activeMemoryPressureRequestId = task.requestId
         this.send(worker, { type: "collect-memory", requestId: task.requestId })
       }
       return
@@ -629,21 +645,13 @@ export class AgentWorkerPool {
       }
       worker.turns = message.turns
       this.recordWorkerMemory(worker, message.memory, "turn.released", task)
-      const recycle =
-        message.turns >= this.options.maxTurns ||
-        message.memory.rssBytes >= this.options.maxRssBytes ||
-        message.memory.heapUsedBytes >= this.options.maxHeapBytes ||
-        worker.retireAfterTask
-      this.finishTask(worker, task, task.terminalReason ?? "released", !recycle)
-      if (!recycle) return
-      const reason =
+      const memoryReason = worker.memoryRetireReason ?? this.softMemoryReason(message.memory)
+      const reason: RecycleReason | undefined =
         message.turns >= this.options.maxTurns
           ? "max_turns"
-          : message.memory.rssBytes >= this.options.maxRssBytes
-            ? "rss"
-            : message.memory.heapUsedBytes >= this.options.maxHeapBytes
-              ? "heap"
-              : "pool_resize"
+          : (memoryReason ?? (worker.retireAfterTask ? "pool_resize" : undefined))
+      this.finishTask(worker, task, task.terminalReason ?? "released", reason === undefined)
+      if (!reason) return
       this.recycle(worker, reason)
       return
     }
@@ -743,7 +751,8 @@ export class AgentWorkerPool {
     if (worker.task === task) {
       worker.task = undefined
       worker.idleSince = Date.now()
-      worker.activeHeapPressureRequestId = undefined
+      worker.activeMemoryPressureRequestId = undefined
+      worker.memoryRetireReason = undefined
     }
     if (task.startedAt !== undefined) {
       ObservabilityMetrics.record({
@@ -818,10 +827,17 @@ export class AgentWorkerPool {
     }
   }
 
-  private recycle(
-    worker: PoolWorker,
-    reason: "max_turns" | "rss" | "heap" | "idle_rss_growth" | "idle_external_growth" | "idle_timeout" | "pool_resize",
-  ): void {
+  private softMemoryReason(memory: AgentTurnProtocol.WorkerMemory): MemoryRecycleReason | undefined {
+    if (memory.rssBytes >= this.options.maxRssBytes / 2) return "rss_soft"
+    if (memory.heapUsedBytes >= this.options.maxHeapBytes / 2) return "heap_soft"
+  }
+
+  private hardMemoryReason(memory: AgentTurnProtocol.WorkerMemory): HardMemoryReason | undefined {
+    if (memory.rssBytes >= this.options.maxRssBytes) return "rss_hard"
+    if (memory.heapUsedBytes >= this.options.maxHeapBytes) return "heap_hard"
+  }
+
+  private recycle(worker: PoolWorker, reason: RecycleReason): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
     worker.ready = false
@@ -876,7 +892,8 @@ export class AgentWorkerPool {
       }
       worker.task = task
       worker.idleSince = undefined
-      worker.activeHeapPressureRequestId = undefined
+      worker.activeMemoryPressureRequestId = undefined
+      worker.memoryRetireReason = undefined
       task.worker = worker
       this.send(worker, {
         type: "run-start",
@@ -981,10 +998,13 @@ export class AgentWorkerPool {
     }
   }
 
-  private terminateForMemory(worker: PoolWorker, memory: AgentTurnProtocol.WorkerMemory): void {
+  private terminateForMemory(
+    worker: PoolWorker,
+    memory: AgentTurnProtocol.WorkerMemory,
+    reason: HardMemoryReason,
+  ): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
-    const reason = memory.rssBytes >= this.options.maxRssBytes ? "rss" : "heap"
     this.log.warn("agent worker memory watermark exceeded", {
       workerID: worker.id,
       pid: worker.pid,
@@ -1042,8 +1062,8 @@ export const DEFAULT_AGENT_WORKER_POOL_OPTIONS: AgentWorkerPoolOptions = {
   maxQueued: 256,
   maxQueuedBytes: 256 * 1024 * 1024,
   maxTurns: 64,
-  maxRssBytes: 1536 * 1024 * 1024,
-  maxHeapBytes: 1024 * 1024 * 1024,
+  maxRssBytes: 3072 * 1024 * 1024,
+  maxHeapBytes: 2048 * 1024 * 1024,
   idleBaselineRecycle: process.platform === "linux",
   idleBaselineRssGrowthBytes: 256 * 1024 * 1024,
   idleBaselineExternalGrowthBytes: 128 * 1024 * 1024,

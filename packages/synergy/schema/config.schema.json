@@ -205,13 +205,13 @@
           "maximum": 10000
         },
         "agentWorkerMaxRssMb": {
-          "description": "RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)",
+          "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 131072
         },
         "agentWorkerMaxHeapMb": {
-          "description": "Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)",
+          "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 131072
