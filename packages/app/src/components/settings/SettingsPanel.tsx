@@ -39,6 +39,7 @@ import { getSettingsSections, type SettingsSection as RegisteredSettingsSection 
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
 import { AppPanel } from "@/components/app-panel"
 import { translateDescriptor } from "@/locales/translate"
+import { requestErrorMessage } from "@/utils/error"
 import "./settings-panel.css"
 import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderGroup, ProviderModel, SettingsState } from "./types"
 import { defaultSettingsState, emptyMcp, groupByProvider } from "./types"
@@ -483,14 +484,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
   const refreshClarusProjects = async (accountID: string) => {
     try {
-      await globalSDK.client.channel.refreshProjects({ channelType: "clarus", accountId: accountID })
-      await refetchChannelStatuses()
+      await globalSDK.client.channel.refreshProjects(
+        { channelType: "clarus", accountId: accountID },
+        { throwOnError: true },
+      )
     } catch (error) {
       showToast({
         type: "error",
         title: _(copy.clarusRefreshFailed),
-        description: error instanceof Error ? error.message : _(copy.clarusRefreshFailed),
+        description: requestErrorMessage(error, _(copy.clarusRefreshFailed)),
       })
+    } finally {
+      await Promise.resolve(refetchChannelStatuses()).catch(() => undefined)
     }
   }
 

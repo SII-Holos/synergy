@@ -161,12 +161,17 @@ export namespace Channel {
     abort: AbortController
     status: Status
   }
+  type ProjectRefresh = {
+    connection: Connection
+    promise: Promise<void>
+  }
 
   type State = {
     connections: Map<string, Connection>
     statuses: Map<string, Status>
     reconnects: Map<string, ReturnType<typeof setTimeout>>
     attempts: Map<string, AbortController>
+    projectRefreshes: Map<string, ProjectRefresh>
   }
 
   type ConnectContext = {
@@ -206,6 +211,7 @@ export namespace Channel {
       const statuses = new Map<string, Status>()
       const reconnects = new Map<string, ReturnType<typeof setTimeout>>()
       const attempts = new Map<string, AbortController>()
+      const projectRefreshes = new Map<string, ProjectRefresh>()
 
       for (const [channelType, channelConfig] of Object.entries(channels)) {
         const provider = providers.get(channelType)
@@ -241,7 +247,7 @@ export namespace Channel {
         }
       }
 
-      return { connections, statuses, reconnects, attempts }
+      return { connections, statuses, reconnects, attempts, projectRefreshes }
     },
     async (s) => {
       for (const timer of s.reconnects.values()) clearTimeout(timer)
@@ -864,9 +870,7 @@ export namespace Channel {
     await connectAccount(context)
   }
 
-  const refreshInFlight = new Map<string, boolean>()
-
-  const RefreshError = NamedError.create(
+  export const RefreshError = NamedError.create(
     "ChannelRefreshError",
     z.object({
       message: z.string(),
@@ -893,34 +897,56 @@ export namespace Channel {
         accountId,
       })
     }
-    // Coalesce concurrent refresh calls — only one provider sync at a time
-    if (refreshInFlight.has(key)) return
-    refreshInFlight.set(key, true)
+    const existing = s.projectRefreshes.get(key)
+    if (existing?.connection === conn) return existing.promise
 
-    // Fire-and-forget: return immediately ("accepted") and update status
-    // asynchronously so callers don't block on provider discovery
-    void (async () => {
-      try {
-        s.statuses.set(key, { status: "syncing" })
-        await conn.provider.refreshProjects!({
-          accountId,
-          signal: conn.abort.signal,
-          host: ChannelHost.create({
+    const promise = Promise.resolve()
+      .then(async () => {
+        const isCurrentConnection = () => s.connections.get(key) === conn && !conn.abort.signal.aborted
+        if (!isCurrentConnection()) {
+          throw new RefreshError({
+            message: "Channel disconnected during project refresh",
             channelType,
             accountId,
-            onDiagnostic: async (record) => {
-              await recordDiagnostic(channelType, accountId, record)
-            },
-          }),
-        })
-        s.statuses.set(key, { status: "connected" })
-      } catch (err) {
-        const error = err instanceof Error ? err.message : String(err)
-        s.statuses.set(key, { status: "failed", error })
-      } finally {
-        refreshInFlight.delete(key)
-      }
-    })()
+          })
+        }
+        s.statuses.set(key, { status: "syncing" })
+        try {
+          await conn.provider.refreshProjects!({
+            accountId,
+            signal: conn.abort.signal,
+            host: ChannelHost.create({
+              channelType,
+              accountId,
+              onDiagnostic: async (record) => {
+                await recordDiagnostic(channelType, accountId, record)
+              },
+            }),
+          })
+          if (!isCurrentConnection()) {
+            throw new RefreshError({
+              message: "Channel disconnected during project refresh",
+              channelType,
+              accountId,
+            })
+          }
+          s.statuses.set(key, { status: "connected" })
+        } catch (err) {
+          const current = isCurrentConnection()
+          const message = current
+            ? err instanceof Error
+              ? err.message
+              : String(err)
+            : "Channel disconnected during project refresh"
+          if (current) s.statuses.set(key, { status: "failed", error: message })
+          throw new RefreshError({ message, channelType, accountId })
+        }
+      })
+      .finally(() => {
+        if (s.projectRefreshes.get(key)?.promise === promise) s.projectRefreshes.delete(key)
+      })
+    s.projectRefreshes.set(key, { connection: conn, promise })
+    return promise
   }
 
   export async function getDiagnostics(channelType: string, accountId: string): Promise<DiagnosticRecord[]> {
