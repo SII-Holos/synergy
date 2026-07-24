@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, type 
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
 import { useLocale } from "@/context/locale"
-import { formatProgressIslandLabel, type ProgressIslandSnapshot, type ProgressMode } from "./session-progress-summary"
+import type { ProgressIslandSnapshot, ProgressMode } from "./session-progress-summary"
 import "./session-progress-island.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { S, describeProgress, progressExpandCollapse, formatProgressLabel } from "./session-i18n"
@@ -26,6 +26,8 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
 
   const [panelRef, setPanelRef] = createSignal<HTMLDivElement | undefined>(undefined)
   const [bodyRef, setBodyRef] = createSignal<HTMLDivElement | undefined>(undefined)
+  const [measureRef, setMeasureRef] = createSignal<HTMLDivElement | undefined>(undefined)
+  const [collapsedWidth, setCollapsedWidth] = createSignal<number | undefined>(undefined)
   const [panelHeight, setPanelHeight] = createSignal<number | undefined>(undefined)
 
   const label = createMemo(() => formatProgressLabel(props.snapshot, props.activeLabel, i18n))
@@ -39,6 +41,17 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
   }
 
   onMount(() => {
+    const measureCollapsedWidth = () => {
+      const measure = measureRef()
+      if (!measure) return
+      const width = Math.ceil(measure.getBoundingClientRect().width)
+      if (width > 0) setCollapsedWidth(width)
+    }
+    const measureElement = measureRef()
+    const measureFrame = requestAnimationFrame(measureCollapsedWidth)
+    const resizeObserver = measureElement ? new ResizeObserver(measureCollapsedWidth) : undefined
+    if (measureElement) resizeObserver?.observe(measureElement)
+
     const keyHandler = (event: KeyboardEvent) => {
       if (event.key === "Escape" && props.expanded) setExpanded(false)
     }
@@ -51,6 +64,8 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
     document.addEventListener("keydown", keyHandler)
     document.addEventListener("click", clickHandler)
     onCleanup(() => {
+      cancelAnimationFrame(measureFrame)
+      resizeObserver?.disconnect()
       document.removeEventListener("keydown", keyHandler)
       document.removeEventListener("click", clickHandler)
     })
@@ -107,11 +122,17 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
       }}
       class={`session-progress-island ${props.class ?? ""}`}
       data-expanded={props.expanded ? "true" : "false"}
+      data-collapsed-width={collapsedWidth() == null ? "pending" : "measured"}
       data-status={props.snapshot.status}
       data-tone={props.snapshot.tone}
       data-exiting={props.exiting ? "true" : "false"}
     >
-      <div class="session-progress-island-surface statusbar-glass">
+      <div
+        class="session-progress-island-surface statusbar-glass"
+        style={
+          collapsedWidth() == null ? undefined : `--session-progress-island-collapsed-width: ${collapsedWidth()}px`
+        }
+      >
         <button
           type="button"
           class="session-progress-island-header"
@@ -175,6 +196,21 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
             </div>
           </div>
         </div>
+      </div>
+      {/* Mirrors the compact header's intrinsic width so the shell can morph from a numeric size.
+          Keep its content structure aligned with the header above. */}
+      <div
+        class="session-progress-island-measure"
+        aria-hidden="true"
+        ref={(el) => {
+          setMeasureRef(el)
+        }}
+      >
+        <span class="session-progress-island-indicator">
+          <ProgressCircle percentage={percentage()} size={18} strokeWidth={2.5} />
+        </span>
+        <span class="session-progress-island-title">{label()}</span>
+        <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
       </div>
     </div>
   )
