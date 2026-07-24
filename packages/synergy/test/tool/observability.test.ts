@@ -38,10 +38,16 @@ describe("ToolResolver observability", () => {
         })
 
         await expect(
-          (tools.tools.ephemeral_fail as any).execute({ password: "plain-secret" }, { toolCallId: "call_fail_a" }),
+          (tools.executionTools.ephemeral_fail as any).execute(
+            { password: "plain-secret" },
+            { toolCallId: "call_fail_a" },
+          ),
         ).rejects.toThrow("provider token")
         await expect(
-          (tools.tools.ephemeral_fail as any).execute({ password: "plain-secret" }, { toolCallId: "call_fail_b" }),
+          (tools.executionTools.ephemeral_fail as any).execute(
+            { password: "plain-secret" },
+            { toolCallId: "call_fail_b" },
+          ),
         ).rejects.toThrow("provider token")
 
         await executions.get("call_fail_a")
@@ -94,7 +100,7 @@ describe("ToolResolver observability", () => {
         })
 
         await expect(
-          (tools.tools.ephemeral_hidden as any).execute({}, { toolCallId: "call_diagnostic_hidden" }),
+          (tools.executionTools.ephemeral_hidden as any).execute({}, { toolCallId: "call_diagnostic_hidden" }),
         ).rejects.toThrow("not currently visible")
         await executions.get("call_diagnostic_hidden")
         ObservabilityStore.flush()
@@ -155,7 +161,7 @@ describe("ToolResolver observability", () => {
               userTools: { [id]: true },
               includeMCP: false,
             })
-            const execution = (tools.tools[id] as any).execute({}, { toolCallId: `call_${id}` })
+            const execution = (tools.executionTools[id] as any).execute({}, { toolCallId: `call_${id}` })
             await Bun.sleep(10)
             return { execution, scopeID: scope.id }
           }),

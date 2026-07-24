@@ -97,6 +97,8 @@ Critical pressure is reported when RSS, JavaScript heap, external allocations, A
 
 Soft pressure is evidence for GC and turn-size telemetry only. Automatic heap snapshots are not taken on the soft path because snapshot generation itself allocates and can worsen allocation failures. Use ordinary resource samples, MessageCache counters, and LLM turn size metrics for diagnosis.
 
+Cortex also uses the shared soft and critical classifications to constrain new child-task admission to four or two tasks, respectively. Its earlier 1 GiB and 2 GiB ArrayBuffer thresholds remain in place. This admission control leaves running tasks alone and lets queued tasks resume after pressure falls.
+
 When the runtime reports an allocation failure (`Out of memory`, `Array buffer allocation failed`, heap-limit errors, or `ENOMEM`/cannot-allocate variants, including nested causes), the processor emits one deduplicated, bounded incident before persisting the ordinary turn error. Capture stays light: it samples current process memory, recent server resource rows, running spans from the last five minutes, MessageCache counters and entry sizes, and active/recent turn-size summaries without running GC or generating heap snapshots. It caps each collection, omits prompt/tool/response content and runtime identifiers from nested data, and raises `PERF_PROCESS_OUT_OF_MEMORY`.
 
 Experience re-encode jobs use the same critical thresholds to pause new item claims and resume automatically after pressure subsides. `SYNERGY_REENCODE_PRESSURE_POLL_MS` controls the pause polling interval (default `30000`).
@@ -104,6 +106,8 @@ Experience re-encode jobs use the same critical thresholds to pause new item cla
 ## Performance and diagnostics APIs
 
 The server exposes local-first endpoints under `/global/performance`:
+
+The performance summary reports Agent worker and Policy worker pool capacity, readiness, active/queued work, queued bytes, RSS, and heap-used bytes alongside ToolTask scheduler state. Policy timeout, crash, recycle, startup-circuit, queue-wait, and conservative-fallback metrics are written only by the Control Plane; Policy processes do not initialize an observability store.
 
 - `GET /global/performance/summary`
 - `GET /global/performance/inflight`

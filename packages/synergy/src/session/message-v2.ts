@@ -3,6 +3,7 @@ import path from "path"
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
+import { ProviderModelUnavailableError } from "@/provider/model-unavailable-error"
 import { Identifier } from "../id/id"
 import { LSPSchema } from "../lsp/schema"
 import { SnapshotSchema } from "@/session/snapshot-schema"
@@ -612,6 +613,7 @@ export namespace MessageV2 {
         OutputLengthError.Schema,
         AbortedError.Schema,
         APIError.Schema,
+        ProviderModelUnavailableError.Schema,
       ])
       .optional(),
     parentID: z.string(),
@@ -1596,7 +1598,7 @@ export namespace MessageV2 {
     return assistant.parentID === parentID && assistant.summary === true && !!assistant.finish
   }
 
-  export function fromError(e: unknown, ctx: { providerID: string }) {
+  export function fromError(e: unknown, ctx: { providerID: string; modelID?: string }) {
     switch (true) {
       case e instanceof DOMException && e.name === "AbortError":
         return new MessageV2.AbortedError(
@@ -1615,6 +1617,8 @@ export namespace MessageV2 {
         ).toObject()
       case MessageV2.OutputLengthError.isInstance(e):
         return e
+      case ProviderModelUnavailableError.isInstance(e):
+        return e
       case LoadAPIKeyError.isInstance(e):
         return new MessageV2.AuthError(
           {
@@ -1630,6 +1634,20 @@ export namespace MessageV2 {
             message: e.data.message,
             failureCode: e.data.failureCode,
             actionRequired: e.data.actionRequired,
+          },
+          { cause: e },
+        ).toObject()
+      case APICallError.isInstance(e) &&
+        ctx.modelID !== undefined &&
+        (e.statusCode === 400 || e.statusCode === 404) &&
+        /model.{0,80}(not found|does not exist|unsupported|unavailable)|unknown model/i.test(
+          `${e.message}\n${e.responseBody ?? ""}`,
+        ):
+        return new ProviderModelUnavailableError(
+          {
+            providerID: ctx.providerID,
+            modelID: ctx.modelID,
+            reason: "rejected_by_provider",
           },
           { cause: e },
         ).toObject()

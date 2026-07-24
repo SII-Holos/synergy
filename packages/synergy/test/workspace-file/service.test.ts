@@ -358,6 +358,40 @@ describe("WorkspaceFileSearch", () => {
     )
   })
 
+  test("deduplicates paths and stops the producer at the index record limit", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "partial.ts"), "export const partial = true")
+      },
+      async () => {
+        const originalFiles = Ripgrep.files
+        const mutableRipgrep = Ripgrep as { files: typeof Ripgrep.files }
+        let finalized = false
+        let yielded = 0
+        mutableRipgrep.files = async function* () {
+          try {
+            while (true) {
+              yielded++
+              yield "duplicate.ts"
+            }
+          } finally {
+            finalized = true
+          }
+        }
+
+        try {
+          const snapshot = await WorkspaceFileIndexer.snapshot({ force: true })
+          expect(snapshot.files).toEqual(["duplicate.ts"])
+          expect(yielded).toBe(50_001)
+          expect(snapshot.truncated).toBe(true)
+          expect(finalized).toBe(true)
+        } finally {
+          mutableRipgrep.files = originalFiles
+        }
+      },
+    )
+  })
+
   test("parses ripgrep content matches with line and submatch columns", async () => {
     await withWorkspace(
       async (dir) => {

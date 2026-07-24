@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import path from "path"
+import fs from "fs/promises"
+import { Global } from "../../src/global"
 import { Auth } from "../../src/provider/api-key"
 import { ProviderAuth } from "../../src/provider/auth"
 import { CodexProvider } from "../../src/provider/codex"
@@ -53,6 +55,8 @@ async function resetCodexState() {
   }
   delete process.env.SYNERGY_CODEX_BASE_URL
   await Auth.remove(CodexProvider.PROVIDER_ID)
+  await fs.rm(Global.Path.providerModelCatalogCache, { force: true })
+  ProviderCatalog.reset()
   await Provider.reload()
 }
 
@@ -494,6 +498,9 @@ test("logged-in Codex provider applies fallback context when live metadata omits
     }),
   )
 
+  await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
+
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
     includeLive: true,
@@ -524,6 +531,9 @@ test("provider catalog caches static and live Codex models independently", async
     })
   })
   const config = { providerCatalog: { enabled: false, offlineCache: false } }
+
+  await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
 
   const staticCatalog = await ProviderCatalog.resolve({ config, includeLive: false })
   const liveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
@@ -603,6 +613,8 @@ test("logged-in Codex provider loads account-visible models and respects provide
       models: [{ slug: "gpt-5.4-mini", priority: 1, context_window: 272_000 }],
     }),
   )
+  await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
 
   await using allowed = await tmpdir()
   await ScopeContext.provide({
@@ -649,6 +661,9 @@ test("live discovery preserves image modalities from upstream OpenAI source", as
     }),
   )
 
+  await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
+
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
     includeLive: true,
@@ -669,7 +684,7 @@ test("live discovery preserves image modalities from upstream OpenAI source", as
   expect(spark.modalities?.input ?? []).toEqual(["text"])
 })
 
-test("live catalog keeps the last verified Codex models during a transient refresh failure", async () => {
+test("Codex GPT-5.6 remains available after restart and an immediate timeout", async () => {
   const token = accessToken({ accountID: "acct_lkg" })
   await Auth.set(CodexProvider.PROVIDER_ID, {
     type: "oauth",
@@ -680,19 +695,48 @@ test("live catalog keeps the last verified Codex models during a transient refre
   const config = { providerCatalog: { enabled: false, offlineCache: false } }
   globalThis.fetch = asFetch(async () =>
     jsonResponse({
-      models: [{ slug: "gpt-5.6-lkg", priority: 1 }],
+      models: [{ slug: "gpt-5.6-sol", priority: 1 }],
     }),
   )
 
+  await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
   const verified = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
-  expect(Object.keys(verified[CodexProvider.PROVIDER_ID].models)).toEqual(["gpt-5.6-lkg"])
+  expect(verified[CodexProvider.PROVIDER_ID].models["gpt-5.6-sol"].catalog_state).toBe("active")
 
   globalThis.fetch = asFetch(async () => {
-    throw new TypeError("temporary network failure")
+    throw new DOMException("timed out", "TimeoutError")
   })
-  const stale = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
+  const state = await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  expect(state.failure).toBe("timeout")
 
-  expect(Object.keys(stale[CodexProvider.PROVIDER_ID].models)).toEqual(["gpt-5.6-lkg"])
+  ProviderCatalog.reset()
+  const stale = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
+  expect(stale[CodexProvider.PROVIDER_ID].models["gpt-5.6-sol"].catalog_state).toBe("active")
+})
+
+test("quota remains available when the model catalog refresh times out", async () => {
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken({ accountID: "acct_quota" }),
+    refresh: "refresh-quota",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () => {
+    throw new DOMException("timed out", "TimeoutError")
+  })
+
+  const catalog = await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  const usage = await CodexProvider.fetchUsage(async () =>
+    jsonResponse({
+      plan_type: "pro",
+      rate_limit: { primary_window: { used_percent: 25, reset_at: nowSeconds() + 3600 } },
+    }),
+  )
+
+  expect(catalog.failure).toBe("timeout")
+  expect(usage).toMatchObject({ providerID: CodexProvider.PROVIDER_ID, status: "available", plan: "pro" })
+  expect(await Auth.get(CodexProvider.PROVIDER_ID)).toBeDefined()
 })
 
 test("live catalog cache isolates Codex accounts without exposing credential secrets", async () => {
@@ -702,7 +746,7 @@ test("live catalog cache isolates Codex accounts without exposing credential sec
     discoveryCalls++
     const accountID = new Headers(init?.headers).get("chatgpt-account-id")
     return jsonResponse({
-      models: [{ slug: `model-for-${accountID}`, priority: 1 }],
+      models: [{ slug: accountID === "acct_a" ? "model-a" : "model-b", priority: 1 }],
     })
   })
 
@@ -712,6 +756,8 @@ test("live catalog cache isolates Codex accounts without exposing credential sec
     refresh: "refresh-a",
     expires: nowSeconds() + 60 * 60,
   })
+  await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
   const accountA = await ProviderCatalog.resolve({ config, includeLive: true })
 
   await Auth.set(CodexProvider.PROVIDER_ID, {
@@ -720,81 +766,16 @@ test("live catalog cache isolates Codex accounts without exposing credential sec
     refresh: "refresh-b",
     expires: nowSeconds() + 60 * 60,
   })
+  await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
   const accountB = await ProviderCatalog.resolve({ config, includeLive: true })
 
-  expect(Object.keys(accountA[CodexProvider.PROVIDER_ID].models)).toEqual(["model-for-acct_a"])
-  expect(Object.keys(accountB[CodexProvider.PROVIDER_ID].models)).toEqual(["model-for-acct_b"])
+  expect(Object.keys(accountA[CodexProvider.PROVIDER_ID].models)).toEqual(["model-a"])
+  expect(Object.keys(accountB[CodexProvider.PROVIDER_ID].models)).toEqual(["model-b"])
   expect(discoveryCalls).toBe(2)
-})
-
-test("live catalog bounds account-isolated last-known-good entries", async () => {
-  const config = { providerCatalog: { enabled: false, offlineCache: false } }
-  globalThis.fetch = asFetch(async (_input, init) => {
-    const accountID = new Headers(init?.headers).get("chatgpt-account-id")
-    return jsonResponse({ models: [{ slug: `model-for-${accountID}`, priority: 1 }] })
-  })
-
-  for (let index = 0; index <= ProviderCatalog.MAX_LAST_KNOWN_GOOD_ENTRIES; index++) {
-    const accountID = `acct_lkg_${index}`
-    await Auth.set(CodexProvider.PROVIDER_ID, {
-      type: "oauth",
-      access: accessToken({ accountID }),
-      refresh: `refresh-${index}`,
-      expires: nowSeconds() + 60 * 60,
-    })
-    const catalog = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
-    expect(catalog[CodexProvider.PROVIDER_ID].models[`model-for-${accountID}`]).toBeDefined()
-  }
-
-  await Auth.set(CodexProvider.PROVIDER_ID, {
-    type: "oauth",
-    access: accessToken({ accountID: "acct_lkg_0" }),
-    refresh: "refresh-oldest",
-    expires: nowSeconds() + 60 * 60,
-  })
-  globalThis.fetch = asFetch(async () => {
-    throw new TypeError("temporary network failure")
-  })
-
-  const fallback = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
-  expect(fallback[CodexProvider.PROVIDER_ID].models["model-for-acct_lkg_0"]).toBeUndefined()
-  expect(fallback[CodexProvider.PROVIDER_ID].models["gpt-5.5"]).toBeDefined()
-})
-
-test("cold-start live discovery fallback retries after the short failure TTL", async () => {
-  await Auth.set(CodexProvider.PROVIDER_ID, {
-    type: "oauth",
-    access: accessToken({ accountID: "acct_retry" }),
-    refresh: "refresh-retry",
-    expires: nowSeconds() + 60 * 60,
-  })
-  const config = { providerCatalog: { enabled: false, offlineCache: false } }
-  let currentTime = 1_000_000
-  const originalNow = Date.now
-  Date.now = () => currentTime
-  let discoveryCalls = 0
-  let available = false
-  globalThis.fetch = asFetch(async () => {
-    discoveryCalls++
-    if (!available) throw new TypeError("temporary network failure")
-    return jsonResponse({ models: [{ slug: "gpt-5.6-recovered", priority: 1 }] })
-  })
-
-  try {
-    const fallback = await ProviderCatalog.resolve({ config, includeLive: true })
-    expect(fallback[CodexProvider.PROVIDER_ID].models["gpt-5.5"]).toBeDefined()
-
-    available = true
-    currentTime += ProviderCatalog.FALLBACK_CACHE_TTL_MS - 1
-    const cachedFallback = await ProviderCatalog.resolve({ config, includeLive: true })
-    expect(cachedFallback[CodexProvider.PROVIDER_ID].models["gpt-5.5"]).toBeDefined()
-    expect(discoveryCalls).toBe(1)
-
-    currentTime += 2
-    const recovered = await ProviderCatalog.resolve({ config, includeLive: true })
-    expect(Object.keys(recovered[CodexProvider.PROVIDER_ID].models)).toEqual(["gpt-5.6-recovered"])
-    expect(discoveryCalls).toBe(2)
-  } finally {
-    Date.now = originalNow
-  }
+  const persisted = await Bun.file(Global.Path.providerModelCatalogCache).text()
+  expect(persisted).not.toContain("acct_a")
+  expect(persisted).not.toContain("acct_b")
+  expect(persisted).not.toContain("refresh-a")
+  expect(persisted).not.toContain("refresh-b")
 })

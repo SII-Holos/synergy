@@ -249,6 +249,7 @@ function createGlobalSync() {
       profiles: {},
       authHealth: {},
       runtimeAvailability: {},
+      modelCatalog: {},
     },
     provider_auth: {},
     agenda: [],
@@ -398,6 +399,7 @@ function createGlobalSync() {
           profiles: {},
           authHealth: {},
           runtimeAvailability: {},
+          modelCatalog: {},
         },
         config: {},
         path: { state: "", config: "", worktree: "", directory: "", home: "" },
@@ -510,15 +512,7 @@ function createGlobalSync() {
     return Promise.all([
       globalSDK.client.provider.list().then((x) => {
         const data = x.data!
-        setGlobalStore("provider", {
-          ...data,
-          all: data.all.map((provider) => ({
-            ...provider,
-            models: Object.fromEntries(
-              Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
-            ),
-          })),
-        })
+        setGlobalStore("provider", data)
       }),
       globalSDK.client.provider.auth().then((x) => {
         setGlobalStore("provider_auth", x.data ?? {})
@@ -533,15 +527,7 @@ function createGlobalSync() {
     return Promise.all([
       sdk.provider.list().then((x) => {
         const data = x.data!
-        setStore("provider", {
-          ...data,
-          all: data.all.map((provider) => ({
-            ...provider,
-            models: Object.fromEntries(
-              Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
-            ),
-          })),
-        })
+        setStore("provider", data)
       }),
       sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
       sdk.config.get().then((x) => setStore("config", x.data!)),
@@ -551,48 +537,76 @@ function createGlobalSync() {
 
   let refreshAllConfigsTimer: ReturnType<typeof setTimeout> | undefined
   let refreshAllConfigsPromise: Promise<void> | undefined
+  let resolveRefreshAllConfigs: (() => void) | undefined
+  let refreshAllConfigsRunning = false
+  let refreshAllConfigsQueued = false
+
+  async function runRefreshAllConfigs() {
+    refreshAllConfigsTimer = undefined
+    refreshAllConfigsRunning = true
+    refreshAllConfigsQueued = false
+    const scopeKeys = Object.keys(children)
+    await Promise.all([
+      loadGlobalProviders(),
+      runInstanceRequests(scopeKeys, (scopeKey) => refreshConfig(scopeKey)),
+    ]).catch(() => undefined)
+    refreshAllConfigsRunning = false
+    if (refreshAllConfigsQueued) {
+      refreshAllConfigsTimer = setTimeout(() => void runRefreshAllConfigs(), 200)
+      return
+    }
+    resolveRefreshAllConfigs?.()
+    resolveRefreshAllConfigs = undefined
+    refreshAllConfigsPromise = undefined
+  }
 
   function refreshAllConfigs() {
-    if (refreshAllConfigsTimer) clearTimeout(refreshAllConfigsTimer)
     if (!refreshAllConfigsPromise) {
       refreshAllConfigsPromise = new Promise<void>((resolve) => {
-        refreshAllConfigsTimer = setTimeout(() => {
-          refreshAllConfigsTimer = undefined
-          const scopeKeys = Object.keys(children)
-          Promise.all([loadGlobalProviders(), runInstanceRequests(scopeKeys, (scopeKey) => refreshConfig(scopeKey))])
-            .then(() => resolve())
-            .catch(() => resolve())
-            .finally(() => {
-              refreshAllConfigsPromise = undefined
-            })
-        }, 200)
+        resolveRefreshAllConfigs = resolve
       })
     }
+    if (refreshAllConfigsRunning) {
+      refreshAllConfigsQueued = true
+      return refreshAllConfigsPromise
+    }
+    if (refreshAllConfigsTimer) clearTimeout(refreshAllConfigsTimer)
+    refreshAllConfigsTimer = setTimeout(() => void runRefreshAllConfigs(), 200)
     return refreshAllConfigsPromise
   }
 
   let refreshTargetedTimer: ReturnType<typeof setTimeout> | undefined
   let refreshTargetedPromise: Promise<void> | undefined
+  let resolveRefreshTargeted: (() => void) | undefined
   let pendingTargets = new Set<string>()
+  let refreshTargetedRunning = false
+
+  async function runRefreshTargeted() {
+    refreshTargetedTimer = undefined
+    refreshTargetedRunning = true
+    const targets = new Set(pendingTargets)
+    pendingTargets = new Set()
+    await doRefreshTargeted(targets).catch(() => undefined)
+    refreshTargetedRunning = false
+    if (pendingTargets.size > 0) {
+      refreshTargetedTimer = setTimeout(() => void runRefreshTargeted(), 200)
+      return
+    }
+    resolveRefreshTargeted?.()
+    resolveRefreshTargeted = undefined
+    refreshTargetedPromise = undefined
+  }
 
   function refreshTargeted(executed: string[]) {
     for (const t of executed) pendingTargets.add(t)
-    if (refreshTargetedTimer) clearTimeout(refreshTargetedTimer)
     if (!refreshTargetedPromise) {
       refreshTargetedPromise = new Promise<void>((resolve) => {
-        refreshTargetedTimer = setTimeout(() => {
-          refreshTargetedTimer = undefined
-          const targets = new Set(pendingTargets)
-          pendingTargets = new Set()
-          doRefreshTargeted(targets)
-            .then(() => resolve())
-            .catch(() => resolve())
-            .finally(() => {
-              refreshTargetedPromise = undefined
-            })
-        }, 200)
+        resolveRefreshTargeted = resolve
       })
     }
+    if (refreshTargetedRunning) return refreshTargetedPromise
+    if (refreshTargetedTimer) clearTimeout(refreshTargetedTimer)
+    refreshTargetedTimer = setTimeout(() => void runRefreshTargeted(), 200)
     return refreshTargetedPromise
   }
 
@@ -618,15 +632,7 @@ function createGlobalSync() {
         scopePromises.push(
           sdk.provider.list().then((x) => {
             const data = x.data!
-            setStore("provider", {
-              ...data,
-              all: data.all.map((provider) => ({
-                ...provider,
-                models: Object.fromEntries(
-                  Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
-                ),
-              })),
-            })
+            setStore("provider", data)
           }),
         )
       }
@@ -792,15 +798,7 @@ function createGlobalSync() {
     const sessions = data.sessions?.data.filter((session) => !!session?.id && !session.time?.archived)
     batch(() => {
       setStore("scopeID", data.scopeID)
-      setStore("provider", {
-        ...data.provider,
-        all: data.provider.all.map((provider) => ({
-          ...provider,
-          models: Object.fromEntries(
-            Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
-          ),
-        })),
-      })
+      setStore("provider", data.provider)
       setStore("agent", reconcile(data.agent, { key: "name" }))
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
@@ -1769,15 +1767,7 @@ function createGlobalSync() {
       retry(() =>
         globalSDK.client.provider.list().then((result) => {
           const data = result.data!
-          setGlobalStore("provider", {
-            ...data,
-            all: data.all.map((provider) => ({
-              ...provider,
-              models: Object.fromEntries(
-                Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
-              ),
-            })),
-          })
+          setGlobalStore("provider", data)
         }),
       ),
       retry(() =>

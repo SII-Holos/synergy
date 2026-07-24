@@ -582,6 +582,51 @@ export type PerfDashboardSummary = {
       childCount: number
       userCount: number
       waiterCount: number
+      executionPhases?: {
+        [key: string]: number
+      }
+    }
+    execution?: {
+      agentWorkers: {
+        configured: number
+        maxQueued: number
+        maxQueuedBytes: number
+        workers: number
+        ready: number
+        active: number
+        queued: number
+        queuedBytes: number
+        rssBytes: number
+        heapUsedBytes: number
+      }
+      policyWorkers: {
+        configured: number
+        maxQueued: number
+        maxQueuedBytes: number
+        workers: number
+        ready: number
+        active: number
+        queued: number
+        queuedBytes: number
+        rssBytes: number
+        heapUsedBytes: number
+      }
+      toolTasks: {
+        active: number
+        queued: number
+        tracked: number
+        queuedBytes: number
+        maxConcurrent: number
+        maxQueued: number
+        maxQueuedBytes?: number
+        byExecutor?: {
+          [key: string]: {
+            active: number
+            queued: number
+            limit: number
+          }
+        }
+      }
     }
     messageCache?: {
       totalBytes: number
@@ -1426,6 +1471,7 @@ export type Model = {
     output: number
   }
   status: "alpha" | "beta" | "deprecated" | "active"
+  catalogState?: "active" | "retained"
   options: {
     [key: string]: unknown
   }
@@ -1493,16 +1539,17 @@ export type ProviderAuthHealth = {
 export type ProviderRuntimeAvailability = {
   providerID: string
   available: boolean
-  reason?:
-    | "connected"
-    | "not_connected"
-    | "disabled"
-    | "no_models"
-    | "authentication_required"
-    | "exhausted"
-    | "fallback_unverified"
+  reason?: "connected" | "not_connected" | "disabled" | "no_models" | "authentication_required" | "exhausted"
   healthCheck?: "models" | "none"
   modelCount: number
+}
+
+export type ProviderModelCatalogState = {
+  source: "live" | "cached" | "bundled"
+  refreshing: boolean
+  modelCount: number
+  lastVerifiedAt?: number
+  failure?: "timeout" | "network" | "rate_limited" | "upstream" | "invalid_response"
 }
 
 export type ProviderListResponse = {
@@ -1521,6 +1568,9 @@ export type ProviderListResponse = {
   }
   runtimeAvailability: {
     [key: string]: ProviderRuntimeAvailability
+  }
+  modelCatalog: {
+    [key: string]: ProviderModelCatalogState
   }
 }
 
@@ -2337,6 +2387,7 @@ export type ProviderConfig = {
       }
       supported_image_media_types?: Array<string>
       status?: "alpha" | "beta" | "deprecated"
+      catalog_state?: "active" | "retained"
       options?: {
         [key: string]: unknown
       }
@@ -2707,10 +2758,6 @@ export type McpLocalConfig = {
     [key: string]: string
   }
   /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-  /**
    * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
    */
   timeout?: number
@@ -2742,6 +2789,10 @@ export type McpLocalConfig = {
   toolFilter?: McpToolFilterConfig
   tools?: McpToolsConfig
   toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
 }
 
 export type McpOAuthConfig = {
@@ -2768,10 +2819,6 @@ export type McpRemoteConfig = {
    * URL of the remote MCP server
    */
   url: string
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
   /**
    * Headers to send with the request
    */
@@ -2814,6 +2861,10 @@ export type McpRemoteConfig = {
   toolFilter?: McpToolFilterConfig
   tools?: McpToolsConfig
   toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
 }
 
 /**
@@ -2900,6 +2951,10 @@ export type ChannelFeishuAccountConfig = {
    * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
    */
   model?: string
+  /**
+   * Model variant to use with this account model (e.g. low, high, max)
+   */
+  variant?: string
   /**
    * Resolve sender display names via Feishu contact API
    */
@@ -3309,6 +3364,101 @@ export type Config = {
      * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
      */
     maxConcurrentTasks?: number
+  }
+  /**
+   * Process isolation, worker recycling, and bounded execution scheduling
+   */
+  execution?: {
+    /**
+     * Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     */
+    agentWorkers?: number
+    /**
+     * Maximum queued Agent turns waiting for a worker (default: 256)
+     */
+    agentQueueMax?: number
+    /**
+     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     */
+    agentQueueMaxMb?: number
+    /**
+     * Turns completed before an Agent worker is recycled (default: 64)
+     */
+    agentWorkerMaxTurns?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)
+     */
+    agentWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)
+     */
+    agentWorkerMaxHeapMb?: number
+    /**
+     * Grace period before terminating an Agent worker that ignores cancellation (default: 5000)
+     */
+    agentCancelGraceMs?: number
+    /**
+     * Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)
+     */
+    agentHeartbeatTimeoutMs?: number
+    /**
+     * Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)
+     */
+    policyWorkers?: number
+    /**
+     * Maximum queued Policy classifications waiting for a worker (default: 256)
+     */
+    policyQueueMax?: number
+    /**
+     * Maximum aggregate queued Policy-classification payload size in MiB (default: 64)
+     */
+    policyQueueMaxMb?: number
+    /**
+     * Maximum total time for a Policy classification before conservative fallback (default: 1000)
+     */
+    policyTimeoutMs?: number
+    /**
+     * Classifications completed before a Policy worker is recycled (default: 512)
+     */
+    policyWorkerMaxRequests?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)
+     */
+    policyWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)
+     */
+    policyWorkerMaxHeapMb?: number
+    /**
+     * Shutdown grace period before terminating a Policy worker (default: 25)
+     */
+    policyCancelGraceMs?: number
+    /**
+     * Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)
+     */
+    policyHeartbeatTimeoutMs?: number
+    /**
+     * Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)
+     */
+    toolConcurrency?: number
+    /**
+     * Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)
+     */
+    toolQueueMax?: number
+    /**
+     * Maximum aggregate queued ToolTask input size in MiB (default: 128)
+     */
+    toolQueueMaxMb?: number
+    /**
+     * Grace period for active ToolTasks during runtime shutdown (default: 3000)
+     */
+    toolCancelGraceMs?: number
+    /**
+     * Optional concurrency limits for each Tool Executor class
+     */
+    toolExecutorConcurrency?: {
+      [key: string]: number
+    }
   }
   github?: GitHubIntegrationConfig
   watcher?: {
@@ -4922,6 +5072,15 @@ export type ApiError = {
   }
 }
 
+export type ProviderModelUnavailableError = {
+  name: "ProviderModelUnavailableError"
+  data: {
+    providerID: string
+    modelID: string
+    reason: "not_in_catalog" | "rejected_by_provider"
+  }
+}
+
 export type AssistantMessage = {
   id: string
   sessionID: string
@@ -4933,7 +5092,13 @@ export type AssistantMessage = {
     created: number
     completed?: number
   }
-  error?: ProviderAuthError | UnknownError | MessageOutputLengthError | MessageAbortedError | ApiError
+  error?:
+    | ProviderAuthError
+    | UnknownError
+    | MessageOutputLengthError
+    | MessageAbortedError
+    | ApiError
+    | ProviderModelUnavailableError
   parentID: string
   modelID: string
   providerID: string
@@ -5466,11 +5631,11 @@ export type CortexConcurrencyStatus = {
    */
   effective: number
   /**
-   * Advisory limit suggested by current memory pressure; never used for task admission
+   * Memory-pressure ceiling applied to new task admission
    */
   memoryPressureLimit: number | null
   /**
-   * Reason for the advisory memory-pressure limit
+   * Reason for the memory-pressure admission ceiling
    */
   memoryPressureReason: "normal" | "memory_pressure" | "critical_memory_pressure"
   /**
@@ -7771,27 +7936,6 @@ export type EventAgendaItemDeleted = {
   }
 }
 
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
-  properties: {
-    tasks: Array<CortexTask>
-  }
-}
-
 export type EventSynergyLinkTargetCreated = {
   type: "synergy_link.target.created"
   properties: {
@@ -7810,6 +7954,27 @@ export type EventSynergyLinkTargetRemoved = {
   type: "synergy_link.target.removed"
   properties: {
     id: string
+  }
+}
+
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
+  properties: {
+    tasks: Array<CortexTask>
   }
 }
 
@@ -8040,12 +8205,12 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
-  | EventCortexTaskCreated
-  | EventCortexTaskCompleted
-  | EventCortexTasksUpdated
   | EventSynergyLinkTargetCreated
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
+  | EventCortexTaskCreated
+  | EventCortexTaskCompleted
+  | EventCortexTasksUpdated
   | EventPluginEvent
   | EventCommandExecuted
   | EventFileWatcherUpdated
@@ -12135,6 +12300,39 @@ export type ProviderListResponses = {
 }
 
 export type ProviderListResponse2 = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderModelsRefreshData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/models/refresh"
+}
+
+export type ProviderModelsRefreshErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderModelsRefreshError = ProviderModelsRefreshErrors[keyof ProviderModelsRefreshErrors]
+
+export type ProviderModelsRefreshResponses = {
+  /**
+   * Provider model catalog state
+   */
+  200: ProviderModelCatalogState
+}
+
+export type ProviderModelsRefreshResponse = ProviderModelsRefreshResponses[keyof ProviderModelsRefreshResponses]
 
 export type ProviderUsageListData = {
   body?: never

@@ -5590,6 +5590,10 @@ msgstr "Submit"
 msgid "app.provider.state.failed"
 msgstr "Authorization failed: {error}"
 
+#. ── Provider Connection Flow ─────────────────────────────────────────────────
+msgid "app.provider.state.importing"
+msgstr "Importing credentials..."
+
 #. States
 msgid "app.provider.state.pending"
 msgstr "Authorization in progress..."
@@ -5604,7 +5608,7 @@ msgstr "connected"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.modelsAvailable"
-msgstr "{provider} models are now available to use."
+msgstr "{provider} is connected. Models sync in the background."
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.reconnected"
@@ -7298,6 +7302,10 @@ msgstr "Model is locked for this external agent after the session starts"
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.lockedLabel"
 msgstr "Model locked"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.model.retained"
+msgstr "This model is no longer in the latest provider list."
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.select"
@@ -9901,10 +9909,6 @@ msgid "provider.status.connected"
 msgstr "Connected"
 
 #. js-lingui-explicit-id
-msgid "provider.status.fallbackCatalog"
-msgstr "Fallback catalog"
-
-#. js-lingui-explicit-id
 msgid "provider.status.notConnected"
 msgstr "Not connected"
 
@@ -10259,6 +10263,10 @@ msgstr "Unable to copy the message."
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
 msgstr "Copy Markdown"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-unavailable"
+msgstr "Model {modelID} is unavailable from {providerID}. Choose another model to continue."
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
@@ -15338,6 +15346,26 @@ msgid "settings.providers.accountConnected"
 msgstr "Credentials are connected. Use Usage for quota and billing details."
 
 #. js-lingui-explicit-id
+msgid "settings.providers.catalog.bundled"
+msgstr "Showing default models"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.cached"
+msgstr "Showing the last synced model list"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.pending"
+msgstr "Model list needs refresh"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refresh"
+msgstr "Refresh models"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refreshing"
+msgstr "Refreshing model list"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.connect"
 msgstr "Connect"
 
@@ -15407,15 +15435,15 @@ msgstr "Co-author Reminder"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "Maximum Cortex subagent tasks running at once. Memory guidance never overrides this setting."
+msgstr "Maximum Cortex subagent tasks running at once. Memory pressure can temporarily queue new tasks sooner."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryAdvisory"
-msgstr "Memory recommendation: {value}. Your setting remains active."
+msgid "settings.runtime.agents.concurrency.memoryLimit"
+msgstr "Memory safety limit active: {value}. New tasks will queue until pressure drops."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
-msgstr "Managed by environment · Memory recommendation: {value}"
+msgid "settings.runtime.agents.concurrency.memoryLimitManaged"
+msgstr "Managed by environment · Memory safety limit active: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"

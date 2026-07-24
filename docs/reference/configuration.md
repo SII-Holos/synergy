@@ -36,12 +36,59 @@ Use `synergy config path` to print the active global roots.
 | `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                                      |
 | `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                                               |
 | `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                                             |
-| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings                                    |
+| `120-runtime.jsonc`    | Runtime     | server, timeout, Agent/Tool execution isolation, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings    |
 | `130-github.jsonc`     | GitHub      | GitHub App outbound polling integration (master enable, watched repos, polling, event types, CI thresholds, classifier/proposal, fix workflow, review workflow) |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
+
+### Execution isolation
+
+The optional `execution` object in `120-runtime.jsonc` controls bounded Agent and tool scheduling:
+
+```jsonc
+{
+  "execution": {
+    "agentWorkers": 4,
+    "agentQueueMax": 256,
+    "agentQueueMaxMb": 256,
+    "agentWorkerMaxTurns": 64,
+    "agentWorkerMaxRssMb": 1536,
+    "agentWorkerMaxHeapMb": 1024,
+    "agentCancelGraceMs": 5000,
+    "agentHeartbeatTimeoutMs": 45000,
+    "policyWorkers": 2,
+    "policyQueueMax": 256,
+    "policyQueueMaxMb": 64,
+    "policyTimeoutMs": 1000,
+    "policyWorkerMaxRequests": 512,
+    "policyWorkerMaxRssMb": 512,
+    "policyWorkerMaxHeapMb": 256,
+    "policyCancelGraceMs": 25,
+    "policyHeartbeatTimeoutMs": 15000,
+    "toolConcurrency": 16,
+    "toolQueueMax": 512,
+    "toolQueueMaxMb": 128,
+    "toolCancelGraceMs": 3000,
+    "toolExecutorConcurrency": {
+      "local_process": 8,
+      "file": 16,
+      "plugin": 8,
+      "mcp": 16,
+      "browser": 8,
+      "link": 8,
+      "control_plane": 16,
+    },
+  },
+}
+```
+
+`agentWorkers` defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. Agent request and event-frame protocol bounds are fixed safety invariants rather than configuration. RSS and heap-used watermarks are enforced from worker heartbeats as well as normal turn completion; the heartbeat timeout is constrained to 30-300 seconds so it cannot undercut the worker heartbeat cadence.
+
+`policyWorkers` defaults to the smaller of two or available CPUs minus one, with a minimum of one and a maximum of 16. Global-runtime startup begins prewarming without making server availability depend on the worker handshake. A cold classification waits at most ten seconds for readiness; after readiness, `policyTimeoutMs` covers queueing, transfer, and classification. Policy requests are limited to 16 MiB and transferred in 1 MiB acknowledged chunks; those protocol limits are fixed. Expiry terminates the owning worker and makes the enforcement gate return an immediate conservative denial rather than an approval prompt. The queue, aggregate bytes, request-count recycling, RSS/heap watermarks, heartbeat timeout, and shutdown grace are independently configurable.
+
+Global and per-executor tool concurrency are capped at 512. Tool executor limits are additional ceilings below `toolConcurrency`; omitted executor limits retain their defaults. Runtime shutdown stops new Agent turns, Policy classifications, and ToolTasks first, aborts active work, and bounds ToolTask drain time with `toolCancelGraceMs`. These settings are read at global-runtime startup and require a runtime restart.
 
 ## Precedence
 
@@ -134,13 +181,11 @@ Do not copy credentials or billing assumptions between them. Use `synergy auth` 
 
 ### Live provider model discovery
 
-Providers that support live model catalog discovery (e.g. `openai-codex`, `github-copilot`) fetch account-visible model slugs at resolution time. Each provider profile may supply a `modelCatalogIdentity()` function that derives a non-secret account identity — for Codex, the runtime base URL plus the ChatGPT account ID — from the authenticated credential. This identity, rather than the raw credential, is used as the cache key for live results.
+Providers that support live model discovery use one versioned `ProviderCatalog` snapshot per opaque account-identity hash. Snapshots are stored atomically under `cache/`, never contain credentials or raw account identifiers, and retain at most 100 provider/identity entries while protecting the current identity from eviction.
 
-The bounded in-memory `lastKnownGood` map stores the most recent successful live entry set per `(providerID, identity)` key, retaining at most 100 entries total across all unique provider/identity pairs and evicting the least recently written entry when full. On a successful live fetch the result is stored as the new LKG and the provider is marked `verified`. If a live fetch fails, the provider is marked `fallback` and the previous LKG entries are used if available. The overall resolution cache uses a normal 1-hour TTL when all live fetches succeed and a short 60-second retry TTL when any provider degraded.
+Startup reads the snapshot immediately and refreshes it asynchronously. A successful non-empty response becomes the active catalog; models missing from that response are retained only so existing sessions can continue to resolve their selected model. New sessions, defaults, role selectors, recommendations, and quick switching use active, non-deprecated models only. A timeout, network error, rate limit, upstream error, empty response, or corrupt cache never replaces the last verified model set.
 
-LKG is purely in-memory: restart or `ProviderCatalog.reset()` discards all entries. Degraded results automatically retry on the next resolution cycle. The `liveDiscoveryStatus(providerID)` function exposes the current `"verified"` or `"fallback"` state per provider.
-
-Static provider catalogs and live account-backed model discovery use separate cache entries. Authentication health is driven by real provider requests rather than startup or periodic probes.
+Authentication, account usage, and model-catalog health are independent states. `POST /provider/{providerID}/models/refresh` runs the same single-flight refresh path used by background discovery. Missing models and explicit upstream model rejection produce `ProviderModelUnavailableError`; session execution does not silently switch to another model.
 
 ### Model variants and role variants
 
@@ -149,6 +194,8 @@ Automatic reasoning variants are derived from model identity (`model.id`, API mo
 `ProviderTransform.variants()` applies transport-specific rules for third-party services on Anthropic and OpenAI-compatible wiring. Kimi K3 models on direct Anthropic transport expose catalog-declared `low`, `high`, and `max` variants. `low` and `high` map to Anthropic `effort`; `max` omits `effort` because Kimi's service default is already `max` and the locked Anthropic SDK accepts only `low`, `medium`, or `high`. Selecting no variant likewise uses Kimi's server-side `max` default. Kimi K2.x models remain provider-managed and receive no automatic Anthropic thinking variants. MiniMax M2.x models on direct Anthropic transport likewise produce no variants because reasoning is always on. MiniMax M3 on direct Anthropic transport exposes only a `max` variant mapped to `thinking: { type: "adaptive" }`; without it, reasoning defaults to off. MiniMax models on direct OpenAI-compatible Chat transport receive no `reasoningEffort` variants because that endpoint does not support `reasoning_effort`.
 
 `role_variant` selects a variant name for a model role only when the resolved model exposes that same variant. If a provider-managed reasoning model exposes no automatic variants, `role_variant: { "thinking": "max" }` does not synthesize provider options; the request uses the provider's default reasoning behavior. Explicit model `variants` configured under a provider model are merged after automatic defaults, so they can add or override named variants for that model.
+
+Feishu/Lark account configuration may pair an explicit `model` with `variant`. The Settings Channel model selector lists the same model variants used by model roles, and the selected variant is sent only while that account model is effective. A conversation-level `/model` override takes precedence and does not reuse the account model's variant.
 
 ## Control Profiles and Sandbox
 
@@ -248,7 +295,7 @@ The global Runtime domain controls the process-wide Cortex subagent maximum:
 
 `cortex.maxConcurrentTasks` must be a positive integer and defaults to `8`. Changes made through global Settings or the global configuration API apply without restarting the runtime. Lowering the value leaves running tasks untouched and queues new work until capacity is available; raising it releases eligible queued work. Project configuration does not control this process-global scheduler.
 
-The configured value is the effective scheduler maximum. Memory pressure produces an advisory recommendation of four tasks, or two under critical pressure, without changing task admission. ArrayBuffer pressure enters those advisory states at 1 GiB and 2 GiB respectively. Settings and the Cortex concurrency status API report the recommendation separately so the user can decide whether to lower the configured value. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed value instead of editing it.
+The configured value is the scheduler maximum. Memory pressure temporarily lowers new-task admission to four tasks, or two under critical pressure; running tasks are not cancelled. The scheduler uses the shared session memory classification, with earlier ArrayBuffer pressure thresholds at 1 GiB and 2 GiB. Settings and the Cortex concurrency status API report both the configured maximum and the effective pressure-capped limit. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed maximum instead of editing it.
 
 ## GitHub Integration
 

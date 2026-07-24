@@ -21,6 +21,7 @@ describe("OpenAPI spec generation", () => {
     expect(JSON.stringify(providerSchema)).toContain("#/components/schemas/Model")
     expect(JSON.stringify(modelSchema)).toContain("reasoningEfforts")
     expect(JSON.stringify(modelSchema)).not.toContain("reasoning_options")
+    expect(spec.paths["/provider/{providerID}/models/refresh"]?.post?.operationId).toBe("provider.models.refresh")
   })
 
   test("includes /session/index route with operationId session.index", async () => {

@@ -366,6 +366,8 @@ import type {
   ProviderCredentialsImportCredentialsErrors,
   ProviderCredentialsImportCredentialsResponses,
   ProviderListResponses,
+  ProviderModelsRefreshErrors,
+  ProviderModelsRefreshResponses,
   ProviderOauthAuthorizeErrors,
   ProviderOauthAuthorizeResponses,
   ProviderOauthCallbackErrors,
@@ -6467,7 +6469,7 @@ export class Cortex extends HeyApiClient {
   /**
    * Get Cortex concurrency status
    *
-   * Get Cortex admission limits and advisory memory-pressure concurrency guidance.
+   * Get configured Cortex concurrency and the effective memory-pressure admission limit.
    */
   public concurrency<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -6617,6 +6619,44 @@ export class Command extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<CommandListResponses, unknown, ThrowOnError>({
       url: "/command",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Models extends HeyApiClient {
+  /**
+   * Refresh provider models
+   *
+   * Refresh the account-visible model catalog for a provider without discarding the last verified list.
+   */
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderModelsRefreshResponses,
+      ProviderModelsRefreshErrors,
+      ThrowOnError
+    >({
+      url: "/provider/{providerID}/models/refresh",
       ...options,
       ...params,
     })
@@ -7079,6 +7119,8 @@ export class Provider extends HeyApiClient {
       ...params,
     })
   }
+
+  models = new Models({ client: this.client })
 
   usage = new Usage({ client: this.client })
 

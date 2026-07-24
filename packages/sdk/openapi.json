@@ -8484,7 +8484,7 @@
           }
         ],
         "summary": "Get Cortex concurrency status",
-        "description": "Get Cortex admission limits and advisory memory-pressure concurrency guidance.",
+        "description": "Get configured Cortex concurrency and the effective memory-pressure admission limit.",
         "responses": {
           "200": {
             "description": "Cortex concurrency status",
@@ -8850,6 +8850,66 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/models/refresh": {
+      "post": {
+        "operationId": "provider.models.refresh",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Refresh provider models",
+        "description": "Refresh the account-visible model catalog for a provider without discarding the last verified list.",
+        "responses": {
+          "200": {
+            "description": "Provider model catalog state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderModelCatalogState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.models.refresh({\n  ...\n})"
           }
         ]
       }
@@ -21599,9 +21659,238 @@
                     "type": "integer",
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
+                  },
+                  "executionPhases": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "enum": [
+                        "queued_agent",
+                        "running_agent",
+                        "authorizing_tools",
+                        "queued_tools",
+                        "running_tools",
+                        "waiting_background",
+                        "stopping"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
                   }
                 },
                 "required": ["totalCount", "runningCount", "idleCount", "childCount", "userCount", "waiterCount"]
+              },
+              "execution": {
+                "type": "object",
+                "properties": {
+                  "agentWorkers": {
+                    "type": "object",
+                    "properties": {
+                      "configured": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "ready": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "rssBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "heapUsedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "configured",
+                      "maxQueued",
+                      "maxQueuedBytes",
+                      "workers",
+                      "ready",
+                      "active",
+                      "queued",
+                      "queuedBytes",
+                      "rssBytes",
+                      "heapUsedBytes"
+                    ]
+                  },
+                  "policyWorkers": {
+                    "type": "object",
+                    "properties": {
+                      "configured": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "ready": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "rssBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "heapUsedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "configured",
+                      "maxQueued",
+                      "maxQueuedBytes",
+                      "workers",
+                      "ready",
+                      "active",
+                      "queued",
+                      "queuedBytes",
+                      "rssBytes",
+                      "heapUsedBytes"
+                    ]
+                  },
+                  "toolTasks": {
+                    "type": "object",
+                    "properties": {
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "tracked": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxConcurrent": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "byExecutor": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                        },
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "active": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "queued": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": ["active", "queued", "limit"]
+                        }
+                      }
+                    },
+                    "required": ["active", "queued", "tracked", "queuedBytes", "maxConcurrent", "maxQueued"]
+                  }
+                },
+                "required": ["agentWorkers", "policyWorkers", "toolTasks"]
               },
               "messageCache": {
                 "type": "object",
@@ -24057,6 +24346,10 @@
             "type": "string",
             "enum": ["alpha", "beta", "deprecated", "active"]
           },
+          "catalogState": {
+            "type": "string",
+            "enum": ["active", "retained"]
+          },
           "options": {
             "type": "object",
             "propertyNames": {
@@ -24267,15 +24560,7 @@
           },
           "reason": {
             "type": "string",
-            "enum": [
-              "connected",
-              "not_connected",
-              "disabled",
-              "no_models",
-              "authentication_required",
-              "exhausted",
-              "fallback_unverified"
-            ]
+            "enum": ["connected", "not_connected", "disabled", "no_models", "authentication_required", "exhausted"]
           },
           "healthCheck": {
             "type": "string",
@@ -24286,6 +24571,29 @@
           }
         },
         "required": ["providerID", "available", "modelCount"]
+      },
+      "ProviderModelCatalogState": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["live", "cached", "bundled"]
+          },
+          "refreshing": {
+            "type": "boolean"
+          },
+          "modelCount": {
+            "type": "number"
+          },
+          "lastVerifiedAt": {
+            "type": "number"
+          },
+          "failure": {
+            "type": "string",
+            "enum": ["timeout", "network", "rate_limited", "upstream", "invalid_response"]
+          }
+        },
+        "required": ["source", "refreshing", "modelCount"]
       },
       "ProviderListResponse": {
         "type": "object",
@@ -24349,6 +24657,15 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/ProviderRuntimeAvailability"
             }
+          },
+          "modelCatalog": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProviderModelCatalogState"
+            }
           }
         },
         "required": [
@@ -24359,7 +24676,8 @@
           "catalogProviders",
           "profiles",
           "authHealth",
-          "runtimeAvailability"
+          "runtimeAvailability",
+          "modelCatalog"
         ]
       },
       "PermissionAction": {
@@ -25870,6 +26188,10 @@
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
                 },
+                "catalog_state": {
+                  "type": "string",
+                  "enum": ["active", "retained"]
+                },
                 "options": {
                   "type": "object",
                   "propertyNames": {
@@ -26413,9 +26735,11 @@
           },
           "command": {
             "description": "Command and arguments to run the MCP server",
+            "minItems": 1,
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             }
           },
           "cwd": {
@@ -26431,10 +26755,6 @@
             "additionalProperties": {
               "type": "string"
             }
-          },
-          "enabled": {
-            "description": "Enable or disable the MCP server on startup",
-            "type": "boolean"
           },
           "timeout": {
             "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
@@ -26486,6 +26806,10 @@
           },
           "toolCache": {
             "$ref": "#/components/schemas/McpToolCacheConfig"
+          },
+          "enabled": {
+            "description": "Enable or disable the MCP server on startup",
+            "type": "boolean"
           }
         },
         "required": ["type", "command"],
@@ -26519,11 +26843,8 @@
           },
           "url": {
             "description": "URL of the remote MCP server",
-            "type": "string"
-          },
-          "enabled": {
-            "description": "Enable or disable the MCP server on startup",
-            "type": "boolean"
+            "type": "string",
+            "format": "uri"
           },
           "headers": {
             "description": "Headers to send with the request",
@@ -26597,6 +26918,10 @@
           },
           "toolCache": {
             "$ref": "#/components/schemas/McpToolCacheConfig"
+          },
+          "enabled": {
+            "description": "Enable or disable the MCP server on startup",
+            "type": "boolean"
           }
         },
         "required": ["type", "url"],
@@ -26720,6 +27045,10 @@
           },
           "model": {
             "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+            "type": "string"
+          },
+          "variant": {
+            "description": "Model variant to use with this account model (e.g. low, high, max)",
             "type": "string"
           },
           "resolveSenderNames": {
@@ -27306,6 +27635,152 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          },
+          "execution": {
+            "description": "Process isolation, worker recycling, and bounded execution scheduling",
+            "type": "object",
+            "properties": {
+              "agentWorkers": {
+                "description": "Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 64
+              },
+              "agentQueueMax": {
+                "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "agentQueueMaxMb": {
+                "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "agentWorkerMaxTurns": {
+                "description": "Turns completed before an Agent worker is recycled (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
+              "agentWorkerMaxRssMb": {
+                "description": "RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerMaxHeapMb": {
+                "description": "Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentCancelGraceMs": {
+                "description": "Grace period before terminating an Agent worker that ignores cancellation (default: 5000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "agentHeartbeatTimeoutMs": {
+                "description": "Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)",
+                "type": "integer",
+                "minimum": 30000,
+                "maximum": 300000
+              },
+              "policyWorkers": {
+                "description": "Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16
+              },
+              "policyQueueMax": {
+                "description": "Maximum queued Policy classifications waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "policyQueueMaxMb": {
+                "description": "Maximum aggregate queued Policy-classification payload size in MiB (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1024
+              },
+              "policyTimeoutMs": {
+                "description": "Maximum total time for a Policy classification before conservative fallback (default: 1000)",
+                "type": "integer",
+                "minimum": 50,
+                "maximum": 10000
+              },
+              "policyWorkerMaxRequests": {
+                "description": "Classifications completed before a Policy worker is recycled (default: 512)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000
+              },
+              "policyWorkerMaxRssMb": {
+                "description": "RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16384
+              },
+              "policyWorkerMaxHeapMb": {
+                "description": "Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16384
+              },
+              "policyCancelGraceMs": {
+                "description": "Shutdown grace period before terminating a Policy worker (default: 25)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "policyHeartbeatTimeoutMs": {
+                "description": "Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)",
+                "type": "integer",
+                "minimum": 10000,
+                "maximum": 120000
+              },
+              "toolConcurrency": {
+                "description": "Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 512
+              },
+              "toolQueueMax": {
+                "description": "Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65536
+              },
+              "toolQueueMaxMb": {
+                "description": "Maximum aggregate queued ToolTask input size in MiB (default: 128)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "toolCancelGraceMs": {
+                "description": "Grace period for active ToolTasks during runtime shutdown (default: 3000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "toolExecutorConcurrency": {
+                "description": "Optional concurrency limits for each Tool Executor class",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 512
+                }
               }
             },
             "additionalProperties": false
@@ -31685,6 +32160,32 @@
         },
         "required": ["name", "data"]
       },
+      "ProviderModelUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProviderModelUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "enum": ["not_in_catalog", "rejected_by_provider"]
+              }
+            },
+            "required": ["providerID", "modelID", "reason"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "AssistantMessage": {
         "type": "object",
         "properties": {
@@ -31735,6 +32236,9 @@
               },
               {
                 "$ref": "#/components/schemas/APIError"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderModelUnavailableError"
               }
             ]
           },
@@ -33335,7 +33839,7 @@
             "maximum": 9007199254740991
           },
           "memoryPressureLimit": {
-            "description": "Advisory limit suggested by current memory pressure; never used for task admission",
+            "description": "Memory-pressure ceiling applied to new task admission",
             "anyOf": [
               {
                 "type": "integer",
@@ -33348,7 +33852,7 @@
             ]
           },
           "memoryPressureReason": {
-            "description": "Reason for the advisory memory-pressure limit",
+            "description": "Reason for the memory-pressure admission ceiling",
             "type": "string",
             "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
           },
@@ -40425,6 +40929,64 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.synergy_link.target.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^target_[0-9a-f-]{36}$"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.cortex.task.created": {
         "type": "object",
         "properties": {
@@ -40481,64 +41043,6 @@
               }
             },
             "required": ["tasks"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^target_[0-9a-f-]{36}$"
-              }
-            },
-            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -41188,15 +41692,6 @@
             "$ref": "#/components/schemas/Event.agenda.item.deleted"
           },
           {
-            "$ref": "#/components/schemas/Event.cortex.task.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.cortex.task.completed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.synergy_link.target.created"
           },
           {
@@ -41204,6 +41699,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.synergy_link.target.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
           },
           {
             "$ref": "#/components/schemas/Event.plugin.event"

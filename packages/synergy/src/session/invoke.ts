@@ -382,17 +382,15 @@ export namespace SessionInvoke {
 
         const agent = await Agent.get(agentName)
 
-        const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch(async () => {
-          log.warn("model not found, falling back to agent model", {
-            agent: agentName,
-            requested: `${userModel.providerID}/${userModel.modelID}`,
-          })
-          const agentModel = agent?.model
-          if (agentModel) {
-            return Provider.getModel(agentModel.providerID, agentModel.modelID)
-          }
-          throw new Error(
-            `Model ${userModel.providerID}/${userModel.modelID} not found and no agent fallback available`,
+        const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch((error) => {
+          if (!Provider.ModelNotFoundError.isInstance(error)) throw error
+          throw new Provider.ModelUnavailableError(
+            {
+              providerID: userModel.providerID,
+              modelID: userModel.modelID,
+              reason: "not_in_catalog",
+            },
+            { cause: error },
           )
         })
 
@@ -506,6 +504,7 @@ export namespace SessionInvoke {
           sessionID: sessionID,
           model,
           abort,
+          generation: lease.generation,
           toolDisplay: (toolName) => toolDisplayByName.get(toolName),
         })
 
@@ -879,9 +878,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           requestBytes,
         })
         memoryTurn.trackOwner("prompt.messages", promptPlan.messages, promptMessagesBytes)
-        memoryTurn.trackOwner("prompt.tools", resolvedTools.tools, toolSchemaBytes)
+        memoryTurn.trackOwner("prompt.tools", activeToolDefinitions, toolSchemaBytes)
 
-        let streamInput: LLM.StreamInput | undefined
+        let streamInput: SessionProcessor.ProcessInput | undefined
         function releaseTurnReferences(mutateStreamInput: boolean) {
           if (mutateStreamInput) {
             sessionMessages.length = 0
@@ -900,7 +899,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             promptPlan?.toolDefinitions.splice(0)
             resolvedTools?.activeToolIDs.splice(0)
             if (resolvedTools) {
-              for (const id of Object.keys(resolvedTools.tools)) delete resolvedTools.tools[id]
+              resolvedTools.definitions.splice(0)
+              for (const id of Object.keys(resolvedTools.executionTools)) delete resolvedTools.executionTools[id]
+              for (const id of Object.keys(resolvedTools.executorKinds)) delete resolvedTools.executorKinds[id]
             }
             activeToolIDs.clear()
             activeToolDefinitions.length = 0
@@ -911,7 +912,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
               streamInput.system.splice(0)
               streamInput.lateSystem?.splice(0)
               streamInput.messages.splice(0)
-              for (const id of Object.keys(streamInput.tools)) delete streamInput.tools[id]
+              streamInput.toolDefinitions.splice(0)
+              for (const id of Object.keys(streamInput.executionTools)) delete streamInput.executionTools[id]
+              for (const id of Object.keys(streamInput.executorKinds)) delete streamInput.executorKinds[id]
               streamInput.activeToolIDs?.splice(0)
             }
           }
@@ -972,7 +975,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           lateSystem: promptPlan.lateSystem,
           messages: promptPlan.messages,
-          tools: resolvedTools.tools,
+          toolDefinitions: resolvedTools.definitions,
+          executionTools: resolvedTools.executionTools,
+          executorKinds: resolvedTools.executorKinds,
           activeToolIDs: resolvedTools.activeToolIDs,
           model,
           contextUsageProvenance,
@@ -1007,7 +1012,10 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             result = "stop"
           } else {
             log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
-            processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
+            processor.message.error = MessageV2.fromError(deadlineError, {
+              providerID: model.providerID,
+              modelID: model.id,
+            })
             processor.message.finish = "error"
             processor.message.time.completed = Date.now()
             await Session.updateMessage(processor.message)
@@ -1236,7 +1244,10 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       })
     }
 
-    message.error = MessageV2.fromError(input.error, { providerID: input.model.providerID })
+    message.error = MessageV2.fromError(input.error, {
+      providerID: input.model.providerID,
+      modelID: input.model.id,
+    })
     message.finish = "error"
     message.time.completed = Date.now()
     await Session.updateMessage(message)
@@ -1291,7 +1302,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         completed: Date.now(),
       },
       finish: "error",
-      error: MessageV2.fromError(error, { providerID: user.model.providerID }),
+      error: MessageV2.fromError(error, { providerID: user.model.providerID, modelID: user.model.modelID }),
       sessionID,
     })) as MessageV2.Assistant
 

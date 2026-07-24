@@ -122,9 +122,14 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
       ? (settings.formSchema.properties as Record<string, unknown>)
       : {}
   for (const contribution of input.contributions) {
-    if (contribution.kind === "tool" && contribution.enabledWhen && !(contribution.enabledWhen.setting in properties)) {
+    if (
+      (contribution.kind === "tool" || contribution.kind === "mcp") &&
+      contribution.enabledWhen &&
+      !(contribution.enabledWhen.setting in properties)
+    ) {
+      const label = contribution.kind === "tool" ? "Tool" : "MCP"
       throw new Error(
-        `Tool contribution "${contribution.id}" references undeclared setting "${contribution.enabledWhen.setting}"`,
+        `${label} contribution "${contribution.id}" references undeclared setting "${contribution.enabledWhen.setting}"`,
       )
     }
   }
@@ -177,6 +182,14 @@ function compileContribution(
         ...(contribution.display ? { display: contribution.display as unknown as Record<string, unknown> } : {}),
         ...(contribution.enabledWhen ? { enabledWhen: contribution.enabledWhen } : {}),
       }
+    case "cli.command":
+      return {
+        ...base,
+        kind: "cli.command",
+        description: contribution.description,
+        options: contribution.options,
+        ...(contribution.timeoutMs ? { timeoutMs: contribution.timeoutMs } : {}),
+      }
     case "hook":
       return { ...base, kind: "hook", point: contribution.point, priority: contribution.priority }
     case "agent":
@@ -184,7 +197,12 @@ function compileContribution(
     case "skill":
       return { ...base, kind: "skill", skill: contribution.skill as unknown as Record<string, unknown> }
     case "mcp":
-      return { ...base, kind: "mcp", server: contribution.server }
+      return {
+        ...base,
+        kind: "mcp",
+        server: contribution.server,
+        ...(contribution.enabledWhen ? { enabledWhen: contribution.enabledWhen } : {}),
+      }
     case "authProvider": {
       return {
         ...base,

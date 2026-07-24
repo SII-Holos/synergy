@@ -136,6 +136,7 @@ export namespace ProviderAuthHealth {
 
   async function publishIfChanged(previous: Info | undefined, next: Info) {
     if (previous && JSON.stringify(comparable(previous)) === JSON.stringify(comparable(next))) return
+    if (process.env.SYNERGY_AGENT_WORKER === "1") return
     if (!ScopeContext.tryScope()) return
     await Bus.publish(Event.Updated, { health: next })
   }
