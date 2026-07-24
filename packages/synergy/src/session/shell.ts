@@ -186,7 +186,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
 
   let output = ""
 
-  proc.stdout?.on("data", (chunk) => {
+  const appendOutput = (chunk: Buffer) => {
     output += chunk.toString()
     if (part.state.status === "running") {
       part.state.metadata = {
@@ -196,19 +196,10 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
       }
       Session.updatePart(part)
     }
-  })
+  }
 
-  proc.stderr?.on("data", (chunk) => {
-    output += chunk.toString()
-    if (part.state.status === "running") {
-      part.state.metadata = {
-        ...part.state.metadata,
-        output: output,
-        description: "",
-      }
-      Session.updatePart(part)
-    }
-  })
+  proc.stdout?.on("data", appendOutput)
+  proc.stderr?.on("data", appendOutput)
 
   let aborted = false
   let exited = false
@@ -228,9 +219,11 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
   abort.addEventListener("abort", abortHandler, { once: true })
 
   await new Promise<void>((resolve) => {
-    proc.on("close", () => {
+    proc.once("close", () => {
       exited = true
       abort.removeEventListener("abort", abortHandler)
+      proc.stdout?.off("data", appendOutput)
+      proc.stderr?.off("data", appendOutput)
       resolve()
     })
   })

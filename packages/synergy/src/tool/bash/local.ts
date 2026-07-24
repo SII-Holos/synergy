@@ -460,6 +460,7 @@ export const LocalBashBackend = {
     let timeoutMarkerAdded = false
     let hardCeilingReached = false
     let exited = false
+    let finalized = false
     let childError: Error | undefined
     let resolveChildFinished: (result: "exited" | "error") => void = () => {}
     const childFinished = new Promise<"exited" | "error">((resolve) => {
@@ -508,11 +509,21 @@ export const LocalBashBackend = {
         ? "The command was interrupted: bash hard ceiling timed out."
         : `The command was interrupted: command timed out after ${params.timeoutSeconds}s.`
 
+    const releaseChildReferences = () => {
+      child.stdout?.off("data", append)
+      child.stderr?.off("data", append)
+      regProc.child = undefined
+      regProc.stdin = undefined
+    }
+
     child.once("error", (error) => {
+      if (finalized) return
+      finalized = true
       childError = error
       exited = true
       cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
+      releaseChildReferences()
       cleanupExecutionArtifacts()
       void trace(
         "bash.child.error",
@@ -534,6 +545,18 @@ export const LocalBashBackend = {
     child.once("exit", (code, signal) => {
       exited = true
       cleanupAllTimers()
+      void trace("bash.child.exit", {
+        exitCode: code,
+        exitSignal: signal,
+        outputChars: ProcessRegistry.outputChars(regProc),
+      })
+    })
+
+    child.once("close", (code, signal) => {
+      if (finalized) return
+      finalized = true
+      exited = true
+      cleanupAllTimers()
       if (metadataDirty) flushMetadata()
       const exitSignal = timedOut ? "SIGTERM" : signal
       if (regProc.backgrounded) {
@@ -545,8 +568,9 @@ export const LocalBashBackend = {
       } else {
         ProcessRegistry.remove(regProc.id)
       }
+      releaseChildReferences()
       cleanupExecutionArtifacts()
-      void trace("bash.child.exit", {
+      void trace("bash.child.close", {
         exitCode: code,
         exitSignal: signal,
         outputChars: ProcessRegistry.outputChars(regProc),
