@@ -1,0 +1,504 @@
+import { describe, expect, test } from "bun:test"
+import { Scope } from "../../src/scope"
+import { ScopeContext } from "../../src/scope/context"
+import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
+import { AgentWorkerPool, type AgentWorkerPoolOptions } from "../../src/session/agent-turn/worker-pool"
+import type { AgentWorkerProcess, SpawnAgentWorkerProcessOptions } from "../../src/session/agent-turn/process-host"
+
+interface FakeWorker {
+  options: SpawnAgentWorkerProcessOptions
+  sent: AgentTurnProtocol.HostToWorker[]
+  host: AgentWorkerProcess
+  ready(): void
+  receive(message: AgentTurnProtocol.WorkerToHost): void
+  exit(code?: number | null, signal?: string | null): void
+}
+
+function fakeWorkers() {
+  const workers: FakeWorker[] = []
+  const spawn = (options: SpawnAgentWorkerProcessOptions): AgentWorkerProcess => {
+    const sent: AgentTurnProtocol.HostToWorker[] = []
+    const host = {
+      process: {
+        exitCode: null,
+        kill() {
+          options.onExit(null, "SIGTERM")
+        },
+      } as unknown as Bun.Subprocess,
+      send(message: AgentTurnProtocol.HostToWorker) {
+        sent.push(message)
+      },
+      async stop() {
+        options.onExit(0, null)
+      },
+    }
+    const worker: FakeWorker = {
+      options,
+      sent,
+      host,
+      ready() {
+        options.onMessage({ type: "ready", protocolVersion: 1, pid: 1000 + workers.indexOf(worker) })
+      },
+      receive(message) {
+        options.onMessage(message)
+      },
+      exit(code = 1, signal = null) {
+        options.onExit(code, signal)
+      },
+    }
+    workers.push(worker)
+    return host
+  }
+  return { workers, spawn }
+}
+
+function startTurn(worker: FakeWorker) {
+  const start = worker.sent.find(
+    (message): message is Extract<AgentTurnProtocol.HostToWorker, { type: "run-start" }> =>
+      message.type === "run-start",
+  )!
+  worker.receive({ type: "run-ready", requestId: start.requestId })
+  for (let index = 0; index < start.chunkCount; index++) {
+    expect(
+      worker.sent.some(
+        (message) => message.type === "run-chunk" && message.requestId === start.requestId && message.index === index,
+      ),
+    ).toBe(true)
+    worker.receive({ type: "chunk-ack", requestId: start.requestId, index })
+  }
+  expect(worker.sent).toContainEqual({ type: "run-commit", requestId: start.requestId })
+  return start
+}
+
+const options: AgentWorkerPoolOptions = {
+  size: 1,
+  maxQueued: 8,
+  maxQueuedBytes: 8 * 1024 * 1024,
+  maxTurns: 64,
+  maxRssBytes: 1024 * 1024 * 1024,
+  maxHeapBytes: 768 * 1024 * 1024,
+  cancelGraceMs: 10,
+  heartbeatTimeoutMs: 60_000,
+}
+
+function input(abort: AbortSignal) {
+  return {
+    abort,
+    sessionID: "ses_test",
+    user: { id: "msg_user" },
+    model: { id: "model", providerID: "provider" },
+    agent: { name: "synergy" },
+    toolDefinitions: [],
+    messages: [],
+    system: [],
+    prepared: {
+      system: [],
+      baseSystemLength: 0,
+      provider: { options: {} },
+      params: { options: {} },
+    },
+  } as any
+}
+
+async function inScope<T>(fn: () => Promise<T>): Promise<T> {
+  return ScopeContext.provide({ scope: Scope.home(), fn })
+}
+
+describe("AgentWorkerPool", () => {
+  test("acknowledges a frame only after its final event has been consumed", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    fake.workers[0].receive({
+      type: "events",
+      requestId: run.requestId,
+      sequence: 1,
+      events: [
+        { type: "text-delta", id: "text", text: "a" },
+        { type: "text-delta", id: "text", text: "b" },
+      ],
+    })
+
+    const iterator = stream.fullStream[Symbol.asyncIterator]()
+    expect((await iterator.next()).value).toMatchObject({ text: "a" })
+    expect(fake.workers[0].sent.some((message) => message.type === "ack")).toBe(false)
+    expect((await iterator.next()).value).toMatchObject({ text: "b" })
+    expect(fake.workers[0].sent.some((message) => message.type === "ack")).toBe(false)
+
+    const done = iterator.next()
+    await Bun.sleep(0)
+    expect(fake.workers[0].sent).toContainEqual({
+      type: "ack",
+      requestId: run.requestId,
+      sequence: 1,
+    })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    expect((await done).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("serializes only the worker-owned user, Agent, and prompt fields", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() =>
+      pool.run({
+        ...input(new AbortController().signal),
+        user: { id: "msg_user", system: "control-plane-only" },
+        agent: { name: "synergy", prompt: "control-plane-only", permission: [] },
+        system: ["already folded into prepared.system"],
+        prepared: {
+          system: ["prepared"],
+          baseSystemLength: 1,
+          provider: { options: {} },
+          params: { options: {} },
+        },
+      } as any),
+    )
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    const chunks = fake.workers[0].sent
+      .filter(
+        (message): message is Extract<AgentTurnProtocol.HostToWorker, { type: "run-chunk" }> =>
+          message.type === "run-chunk" && message.requestId === run.requestId,
+      )
+      .map((message) => message.data)
+    const envelope = AgentTurnProtocol.deserializeTurn(Buffer.concat(chunks))
+
+    expect(envelope.input.user).toEqual({ id: "msg_user" })
+    expect(envelope.input.agent).toEqual({ name: "synergy" })
+    expect(envelope.input.system).toEqual([])
+    expect(envelope.input.prepared.system).toEqual(["prepared"])
+
+    fake.workers[0].receive({
+      type: "error",
+      requestId: run.requestId,
+      error: { name: "Error", message: "stop" },
+    })
+    await expect(streamPromise).rejects.toThrow("stop")
+    await pool.stop()
+  })
+
+  test("fails only the owned turn and replaces a crashed worker", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+    fake.workers[0].exit(9)
+
+    const iterator = first.fullStream[Symbol.asyncIterator]()
+    await expect(iterator.next()).rejects.toThrow("Agent worker exited")
+    expect(fake.workers).toHaveLength(2)
+
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[1].ready()
+    const secondRun = startTurn(fake.workers[1])
+    fake.workers[1].receive({ type: "started", requestId: secondRun.requestId })
+    fake.workers[1].receive({
+      type: "complete",
+      requestId: secondRun.requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    const second = await secondPromise
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("backs off repeated startup failures and opens the circuit after the sixth attempt", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    const pool = new AgentWorkerPool(options, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      startupBackoffMaxMs: 1_600,
+      maxConsecutiveStartupFailures: 5,
+      sleep(ms) {
+        delays.push(ms)
+        return Promise.resolve()
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        fake.workers[attempt].exit(1)
+        await Bun.sleep(0)
+      }
+
+      expect(delays).toEqual([100, 200, 400, 800, 1_600])
+      expect(await turn).toMatchObject({
+        message: "Agent worker failed to start after 6 consecutive attempts",
+      })
+      const spawned = fake.workers.length
+      await expect(inScope(() => pool.run(input(new AbortController().signal)))).rejects.toThrow(
+        "Agent worker failed to start after 6 consecutive attempts",
+      )
+      expect(fake.workers).toHaveLength(spawned)
+    } finally {
+      await pool.stop()
+    }
+  })
+
+  test("reschedules startup backoff from the latest concurrent failure", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    const retries: Array<() => void> = []
+    const pool = new AgentWorkerPool({ ...options, size: 3 }, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      startupBackoffMaxMs: 1_600,
+      maxConsecutiveStartupFailures: 5,
+      sleep(ms) {
+        delays.push(ms)
+        return new Promise<void>((resolve) => retries.push(resolve))
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      fake.workers.slice(0, 3).forEach((worker) => worker.exit(1))
+      expect(delays).toEqual([100, 200, 400])
+
+      retries[0]()
+      await Bun.sleep(0)
+      expect(fake.workers).toHaveLength(3)
+      retries[1]()
+      await Bun.sleep(0)
+      expect(fake.workers).toHaveLength(3)
+      retries[2]()
+      await Bun.sleep(0)
+      expect(fake.workers).toHaveLength(6)
+
+      fake.workers.slice(3, 6).forEach((worker) => worker.exit(1))
+      expect(delays).toEqual([100, 200, 400, 800, 1_600])
+      expect(await turn).toMatchObject({
+        message: "Agent worker failed to start after 6 consecutive attempts",
+      })
+    } finally {
+      await pool.stop()
+    }
+  })
+
+  test("replaces a startup protocol violation without counting it as a startup failure", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    const pool = new AgentWorkerPool(options, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      sleep(ms) {
+        delays.push(ms)
+        return Promise.resolve()
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal)))
+
+    try {
+      fake.workers[0].receive({ type: "ready", protocolVersion: 0, pid: 1000 })
+      expect(delays).toEqual([])
+      expect(fake.workers).toHaveLength(2)
+
+      fake.workers[1].ready()
+      const run = startTurn(fake.workers[1])
+      fake.workers[1].receive({
+        type: "error",
+        requestId: run.requestId,
+        error: { name: "Error", message: "stop" },
+      })
+      await expect(turn).rejects.toThrow("stop")
+    } finally {
+      await pool.stop()
+      await turn.catch(() => undefined)
+    }
+  })
+
+  test("recovers an open startup circuit when an existing worker completes its handshake", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 2 }, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      startupBackoffMaxMs: 1_600,
+      maxConsecutiveStartupFailures: 5,
+      sleep() {
+        return Promise.resolve()
+      },
+    })
+    const failedTurn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        fake.workers[attempt].exit(1)
+        await Bun.sleep(0)
+      }
+      expect(await failedTurn).toMatchObject({
+        message: "Agent worker failed to start after 6 consecutive attempts",
+      })
+
+      fake.workers[0].ready()
+      const recoveredTurn = inScope(() => pool.run(input(new AbortController().signal)))
+      const run = startTurn(fake.workers[0])
+      fake.workers[0].receive({ type: "started", requestId: run.requestId })
+      fake.workers[0].receive({
+        type: "complete",
+        requestId: run.requestId,
+        turns: 1,
+        memory: { rssBytes: 1, heapUsedBytes: 1 },
+      })
+      const stream = await recoveredTurn
+      expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    } finally {
+      await pool.stop()
+    }
+  })
+
+  test("contains an event-frame backpressure protocol violation to one worker", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    fake.workers[0].receive({
+      type: "events",
+      requestId: run.requestId,
+      sequence: 1,
+      events: [{ type: "text-delta", id: "text", text: "first" }],
+    })
+    fake.workers[0].receive({
+      type: "events",
+      requestId: run.requestId,
+      sequence: 2,
+      events: [{ type: "text-delta", id: "text", text: "second" }],
+    })
+
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow()
+    expect(fake.workers).toHaveLength(2)
+    await pool.stop()
+  })
+
+  test("contains a message for an unowned request to one worker", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "events",
+      requestId: "unowned",
+      sequence: 1,
+      events: [],
+    })
+
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
+    expect(fake.workers).toHaveLength(2)
+    await pool.stop()
+  })
+
+  test("recycles a completed worker before assigning the next queued turn", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxTurns: 1 }, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: firstRun.requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers).toHaveLength(2)
+    expect(fake.workers[0].sent.filter((message) => message.type === "run-start")).toHaveLength(1)
+
+    fake.workers[1].ready()
+    const secondRun = startTurn(fake.workers[1])
+    fake.workers[1].receive({ type: "started", requestId: secondRun.requestId })
+    fake.workers[1].receive({
+      type: "complete",
+      requestId: secondRun.requestId,
+      turns: 1,
+      memory: { rssBytes: 1, heapUsedBytes: 1 },
+    })
+    const second = await secondPromise
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("removes an aborted queued turn without terminating the busy worker", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    await firstPromise
+
+    const queuedAbort = new AbortController()
+    const queued = inScope(() => pool.run(input(queuedAbort.signal)))
+    queuedAbort.abort()
+    await expect(queued).rejects.toBeDefined()
+    expect(fake.workers[0].sent.some((message) => message.type === "cancel")).toBe(false)
+    await pool.stop()
+  })
+
+  test("bounds aggregate waiting-turn bytes independently from active work", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxQueuedBytes: 2_048 }, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    await firstPromise
+
+    await expect(
+      inScope(() =>
+        pool.run({
+          ...input(new AbortController().signal),
+          prepared: {
+            system: ["x".repeat(4_096)],
+            baseSystemLength: 1,
+            provider: { options: {} },
+            params: { options: {} },
+          },
+        }),
+      ),
+    ).rejects.toThrow("queue exceeded")
+    await pool.stop()
+  })
+
+  test("terminates and replaces a worker that crosses its heap watermark", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 64 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      memory: { rssBytes: 32, heapUsedBytes: 65 },
+    })
+
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
+    expect(fake.workers).toHaveLength(2)
+    await pool.stop()
+  })
+})

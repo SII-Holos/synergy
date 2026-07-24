@@ -17,6 +17,8 @@ import { Log } from "@/util/log"
 import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
 import { Embedding } from "@/vector/embedding"
+import { AgentTurn } from "@/session/agent-turn"
+import { ToolScheduler } from "@/session/tool-scheduler"
 
 export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
@@ -31,6 +33,35 @@ export namespace GlobalRuntime {
           await Plugin.init()
           const config = await Config.globalResolved()
           CortexConcurrency.configure(config.cortex?.maxConcurrentTasks)
+          AgentTurn.configure({
+            size: config.execution?.agentWorkers,
+            maxQueued: config.execution?.agentQueueMax,
+            maxQueuedBytes:
+              config.execution?.agentQueueMaxMb === undefined
+                ? undefined
+                : config.execution.agentQueueMaxMb * 1024 * 1024,
+            maxTurns: config.execution?.agentWorkerMaxTurns,
+            maxRssBytes:
+              config.execution?.agentWorkerMaxRssMb === undefined
+                ? undefined
+                : config.execution.agentWorkerMaxRssMb * 1024 * 1024,
+            maxHeapBytes:
+              config.execution?.agentWorkerMaxHeapMb === undefined
+                ? undefined
+                : config.execution.agentWorkerMaxHeapMb * 1024 * 1024,
+            cancelGraceMs: config.execution?.agentCancelGraceMs,
+            heartbeatTimeoutMs: config.execution?.agentHeartbeatTimeoutMs,
+          })
+          ToolScheduler.configure({
+            maxConcurrent: config.execution?.toolConcurrency,
+            maxQueued: config.execution?.toolQueueMax,
+            maxQueuedBytes:
+              config.execution?.toolQueueMaxMb === undefined
+                ? undefined
+                : config.execution.toolQueueMaxMb * 1024 * 1024,
+            shutdownGraceMs: config.execution?.toolCancelGraceMs,
+            executorConcurrency: config.execution?.toolExecutorConcurrency,
+          })
           await SessionRecovery.reconcileRuntimeState({ scopeID: Scope.home().id, apply: true }).catch((error) => {
             log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
           })
@@ -52,9 +83,11 @@ export namespace GlobalRuntime {
   }
 
   export async function stop() {
+    const executionStop = Promise.all([AgentTurn.stop(), ToolScheduler.stop()])
     await GitHubPollRuntime.stop()
     await GitHubRuntime.stop()
     Agenda.stop()
+    await executionStop
     await Promise.all([
       ScopeContext.provide({
         scope: Scope.home(),

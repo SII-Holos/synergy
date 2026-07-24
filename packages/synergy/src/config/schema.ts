@@ -1331,6 +1331,103 @@ export const Info = z
       .strict()
       .optional()
       .describe("Cortex task scheduling configuration"),
+    execution: z
+      .object({
+        agentWorkers: z
+          .number()
+          .int()
+          .positive()
+          .max(64)
+          .optional()
+          .describe("Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)"),
+        agentQueueMax: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(32_768)
+          .optional()
+          .describe("Maximum queued Agent turns waiting for a worker (default: 256)"),
+        agentQueueMaxMb: z
+          .number()
+          .int()
+          .positive()
+          .max(4_096)
+          .optional()
+          .describe("Maximum aggregate queued Agent-turn payload size in MiB (default: 256)"),
+        agentWorkerMaxTurns: z
+          .number()
+          .int()
+          .positive()
+          .max(10_000)
+          .optional()
+          .describe("Turns completed before an Agent worker is recycled (default: 64)"),
+        agentWorkerMaxRssMb: z
+          .number()
+          .int()
+          .positive()
+          .max(131_072)
+          .optional()
+          .describe("RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)"),
+        agentWorkerMaxHeapMb: z
+          .number()
+          .int()
+          .positive()
+          .max(131_072)
+          .optional()
+          .describe("Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)"),
+        agentCancelGraceMs: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(60_000)
+          .optional()
+          .describe("Grace period before terminating an Agent worker that ignores cancellation (default: 5000)"),
+        agentHeartbeatTimeoutMs: z
+          .number()
+          .int()
+          .min(30_000)
+          .max(300_000)
+          .optional()
+          .describe("Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)"),
+        toolConcurrency: z
+          .number()
+          .int()
+          .positive()
+          .max(512)
+          .optional()
+          .describe("Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)"),
+        toolQueueMax: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(65_536)
+          .optional()
+          .describe("Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)"),
+        toolQueueMaxMb: z
+          .number()
+          .int()
+          .positive()
+          .max(4_096)
+          .optional()
+          .describe("Maximum aggregate queued ToolTask input size in MiB (default: 128)"),
+        toolCancelGraceMs: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(60_000)
+          .optional()
+          .describe("Grace period for active ToolTasks during runtime shutdown (default: 3000)"),
+        toolExecutorConcurrency: z
+          .partialRecord(
+            z.enum(["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]),
+            z.number().int().positive().max(512),
+          )
+          .optional()
+          .describe("Optional concurrency limits for each Tool Executor class"),
+      })
+      .strict()
+      .optional()
+      .describe("Process isolation, worker recycling, and bounded execution scheduling"),
     github: GitHubIntegrationConfig.optional().describe("Outbound GitHub App polling and automation configuration"),
     watcher: z
       .object({

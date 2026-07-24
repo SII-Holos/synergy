@@ -582,6 +582,39 @@ export type PerfDashboardSummary = {
       childCount: number
       userCount: number
       waiterCount: number
+      executionPhases?: {
+        [key: string]: number
+      }
+    }
+    execution?: {
+      agentWorkers: {
+        configured: number
+        maxQueued: number
+        maxQueuedBytes: number
+        workers: number
+        ready: number
+        active: number
+        queued: number
+        queuedBytes: number
+        rssBytes: number
+        heapUsedBytes: number
+      }
+      toolTasks: {
+        active: number
+        queued: number
+        tracked: number
+        queuedBytes: number
+        maxConcurrent: number
+        maxQueued: number
+        maxQueuedBytes?: number
+        byExecutor?: {
+          [key: string]: {
+            active: number
+            queued: number
+            limit: number
+          }
+        }
+      }
     }
     messageCache?: {
       totalBytes: number
@@ -3319,6 +3352,65 @@ export type Config = {
      * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
      */
     maxConcurrentTasks?: number
+  }
+  /**
+   * Process isolation, worker recycling, and bounded execution scheduling
+   */
+  execution?: {
+    /**
+     * Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     */
+    agentWorkers?: number
+    /**
+     * Maximum queued Agent turns waiting for a worker (default: 256)
+     */
+    agentQueueMax?: number
+    /**
+     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     */
+    agentQueueMaxMb?: number
+    /**
+     * Turns completed before an Agent worker is recycled (default: 64)
+     */
+    agentWorkerMaxTurns?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)
+     */
+    agentWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)
+     */
+    agentWorkerMaxHeapMb?: number
+    /**
+     * Grace period before terminating an Agent worker that ignores cancellation (default: 5000)
+     */
+    agentCancelGraceMs?: number
+    /**
+     * Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)
+     */
+    agentHeartbeatTimeoutMs?: number
+    /**
+     * Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)
+     */
+    toolConcurrency?: number
+    /**
+     * Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)
+     */
+    toolQueueMax?: number
+    /**
+     * Maximum aggregate queued ToolTask input size in MiB (default: 128)
+     */
+    toolQueueMaxMb?: number
+    /**
+     * Grace period for active ToolTasks during runtime shutdown (default: 3000)
+     */
+    toolCancelGraceMs?: number
+    /**
+     * Optional concurrency limits for each Tool Executor class
+     */
+    toolExecutorConcurrency?: {
+      [key: string]: number
+    }
   }
   github?: GitHubIntegrationConfig
   watcher?: {

@@ -42,6 +42,7 @@ import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
 import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
+import { registerBuiltinProviderProfiles } from "./builtin"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import { authHook as pluginAuthHook } from "@/plugin/auth-provider"
 import { normalizeImageMediaTypes } from "./image-capability"
@@ -366,6 +367,41 @@ export namespace Provider {
     })
   export type Info = z.infer<typeof Info>
 
+  export interface WorkerPlan {
+    key?: string
+    options: Record<string, unknown>
+  }
+
+  export function workerPlan(provider: Info | undefined): WorkerPlan {
+    return {
+      key: provider?.key,
+      options: serializableProviderOptions(provider?.options ?? {}),
+    }
+  }
+
+  function serializableProviderOptions(options: Record<string, unknown>): Record<string, unknown> {
+    const seen = new WeakSet<object>()
+    const visit = (value: unknown): unknown => {
+      if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return value
+      }
+      if (typeof value === "bigint") return value.toString()
+      if (typeof value !== "object") return undefined
+      if (seen.has(value)) return undefined
+      seen.add(value)
+      if (Array.isArray(value)) return value.map(visit).filter((item) => item !== undefined)
+      if (value instanceof Uint8Array) return value
+      if (value instanceof Date) return value.toISOString()
+      if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return undefined
+      return Object.fromEntries(
+        Object.entries(value)
+          .map(([key, item]) => [key, visit(item)] as const)
+          .filter((entry): entry is readonly [string, unknown] => entry[1] !== undefined),
+      )
+    }
+    return visit(options) as Record<string, unknown>
+  }
+
   function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model): Model {
     const m: Model = {
       id: model.id,
@@ -425,7 +461,59 @@ export namespace Provider {
     }
   }
 
+  const workerState = {
+    models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
+    providers: {} as Record<string, Info>,
+    sdk: new Map<number, { instance: SDK; createdAt: number }>(),
+    modelLoaders: {} as Record<string, CustomModelLoader>,
+  }
+
+  function credentialFingerprint(key: string | undefined): string | undefined {
+    if (key === undefined) return undefined
+    return new Bun.CryptoHasher("sha256").update(key).digest("hex")
+  }
+
+  export async function configureWorkerProvider(model: Model, plan: WorkerPlan): Promise<void> {
+    if (process.env.SYNERGY_AGENT_WORKER !== "1") {
+      throw new Error("Worker provider plans can only be installed inside an Agent worker")
+    }
+    registerBuiltinProviderProfiles()
+    const profile = ProviderProfile.get(model.providerID)
+    const storedAuth = await Auth.get(model.providerID)
+    const profileInput = {
+      providerID: model.providerID,
+      auth: storedAuth,
+      provider: undefined,
+    }
+    const auth = (await profile?.resolveAuth?.(profileInput)) ?? storedAuth
+    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth })) ?? {}
+    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+    const options = mergeDeep(mergeDeep(plan.options, modelOptions), runtimeOptions)
+    workerState.providers[model.providerID] = {
+      id: model.providerID,
+      name: model.providerID,
+      source: plan.key ? "api" : "custom",
+      env: [],
+      key: plan.key,
+      options,
+      models: { [model.id]: model },
+    }
+    if (profile?.getModel || profile?.modelFactory) {
+      workerState.modelLoaders[model.providerID] = async (sdk, modelID, providerOptions) => {
+        if (profile.getModel) return profile.getModel({ sdk, modelID, options: providerOptions })
+        return ProviderProfile.defaultModelFactory(profile.modelFactory, {
+          sdk,
+          modelID,
+          options: providerOptions,
+        })
+      }
+    } else {
+      delete workerState.modelLoaders[model.providerID]
+    }
+  }
+
   const state = ScopedState.create(async () => {
+    if (process.env.SYNERGY_AGENT_WORKER === "1") return workerState
     using _ = log.time("state")
     const config = await Config.current()
     const disabled = new Set(config.disabled_providers ?? [])
@@ -997,6 +1085,7 @@ export namespace Provider {
           modelID: model.id,
           npm: model.api.npm,
           options,
+          credential: credentialFingerprint(provider.key),
         }),
       )
       .toString()
