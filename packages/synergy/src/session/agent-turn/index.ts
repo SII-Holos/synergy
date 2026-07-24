@@ -28,6 +28,14 @@ export namespace AgentTurn {
     }
   }
 
+  export function resize(size = DEFAULT_AGENT_WORKER_POOL_OPTIONS.size): void {
+    if (!Number.isInteger(size) || size <= 0) {
+      throw new Error("Agent worker pool size must be a positive integer")
+    }
+    options = { ...options, size }
+    pool?.resize(size)
+  }
+
   export async function stream(input: Input): Promise<Stream> {
     if (!accepting || stopPromise) throw new Error("Agent worker pool is stopping")
     if (process.env.SYNERGY_TEST_HOME) {
@@ -96,6 +104,8 @@ export namespace AgentTurn {
     return (
       pool?.stats() ?? {
         configured: options.size,
+        minIdle: options.minIdle,
+        idleTimeoutMs: options.idleTimeoutMs,
         maxQueued: options.maxQueued,
         maxQueuedBytes: options.maxQueuedBytes,
         workers: 0,
@@ -105,6 +115,9 @@ export namespace AgentTurn {
         queuedBytes: 0,
         rssBytes: 0,
         heapUsedBytes: 0,
+        heapTotalBytes: 0,
+        externalBytes: 0,
+        arrayBuffersBytes: 0,
       }
     )
   }

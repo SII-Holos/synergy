@@ -470,7 +470,6 @@ export namespace ToolRegistry {
     // Use allSettled to avoid one tool's init failure blocking all tools
     const initResults = await Promise.allSettled(
       tools.map(async (t) => {
-        using _ = log.time(t.id)
         const def = await t.init({ agent })
         return {
           id: t.id,

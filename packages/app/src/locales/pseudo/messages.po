@@ -11532,7 +11532,7 @@ msgstr ""
 msgid "session.rollback.bannerText"
 msgstr ""
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr ""
 
@@ -11549,6 +11549,11 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -11586,7 +11591,8 @@ msgstr ""
 msgid "session.rollback.redoSuccessDesc"
 msgstr ""
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr ""
 
@@ -12903,6 +12909,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15423,6 +15433,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agent.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -17,7 +17,11 @@ test("Agent worker provider plans retain data options without executable callbac
     },
   } as unknown as Provider.Info
 
-  const plan = Provider.workerPlan(provider)
+  const plan = Provider.workerPlan(provider, {
+    ttfbMs: 10,
+    idleMs: 20,
+    wallMs: false as const,
+  })
 
   expect(plan).toEqual({
     key: "private-key",
@@ -26,6 +30,11 @@ test("Agent worker provider plans retain data options without executable callbac
       nested: {
         headers: { "x-provider": "test" },
       },
+    },
+    timeouts: {
+      ttfbMs: 10,
+      idleMs: 20,
+      wallMs: false as const,
     },
   })
   expect(provider.options.fetch).toBe(fetch)
@@ -65,9 +74,17 @@ test("Agent worker model caches follow provider credential changes", async () =>
     await ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
-        await Provider.configureWorkerProvider(model, { key: "first-key", options: {} })
+        await Provider.configureWorkerProvider(model, {
+          key: "first-key",
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+        })
         const first = await Provider.getLanguage(model)
-        await Provider.configureWorkerProvider(model, { key: "second-key", options: {} })
+        await Provider.configureWorkerProvider(model, {
+          key: "second-key",
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+        })
         const second = await Provider.getLanguage(model)
 
         expect(second).not.toBe(first)

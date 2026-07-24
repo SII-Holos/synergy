@@ -59,6 +59,8 @@ test("execution isolation settings reject unsafe process and concurrency limits"
     Config.Info.safeParse({
       execution: {
         agentWorkers: 64,
+        agentWorkerMinIdle: 0,
+        agentWorkerIdleTimeoutMs: 1_000,
         agentHeartbeatTimeoutMs: 30_000,
         policyWorkers: 16,
         policyTimeoutMs: 1_000,
@@ -67,6 +69,8 @@ test("execution isolation settings reject unsafe process and concurrency limits"
     }).success,
   ).toBe(true)
   expect(Config.Info.safeParse({ execution: { agentWorkers: 65 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { agentWorkerMinIdle: -1 } }).success).toBe(false)
+  expect(Config.Info.safeParse({ execution: { agentWorkerIdleTimeoutMs: 999 } }).success).toBe(false)
   expect(Config.Info.safeParse({ execution: { agentHeartbeatTimeoutMs: 29_999 } }).success).toBe(false)
   expect(Config.Info.safeParse({ execution: { policyWorkers: 17 } }).success).toBe(false)
   expect(Config.Info.safeParse({ execution: { policyTimeoutMs: 49 } }).success).toBe(false)

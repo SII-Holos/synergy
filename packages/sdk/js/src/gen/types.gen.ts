@@ -589,6 +589,8 @@ export type PerfDashboardSummary = {
     execution?: {
       agentWorkers: {
         configured: number
+        minIdle: number
+        idleTimeoutMs: number
         maxQueued: number
         maxQueuedBytes: number
         workers: number
@@ -598,6 +600,9 @@ export type PerfDashboardSummary = {
         queuedBytes: number
         rssBytes: number
         heapUsedBytes: number
+        heapTotalBytes: number
+        externalBytes: number
+        arrayBuffersBytes: number
       }
       policyWorkers: {
         configured: number
@@ -3370,9 +3375,17 @@ export type Config = {
    */
   execution?: {
     /**
-     * Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     * Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
      */
     agentWorkers?: number
+    /**
+     * Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)
+     */
+    agentWorkerMinIdle?: number
+    /**
+     * Time an excess idle Agent worker remains warm before retirement (default: 60000)
+     */
+    agentWorkerIdleTimeoutMs?: number
     /**
      * Maximum queued Agent turns waiting for a worker (default: 256)
      */
@@ -3393,6 +3406,18 @@ export type Config = {
      * Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)
      */
     agentWorkerMaxHeapMb?: number
+    /**
+     * Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)
+     */
+    agentWorkerIdleBaselineRecycle?: boolean
+    /**
+     * Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)
+     */
+    agentWorkerIdleBaselineRssGrowthMb?: number
+    /**
+     * Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)
+     */
+    agentWorkerIdleBaselineExternalGrowthMb?: number
     /**
      * Grace period before terminating an Agent worker that ignores cancellation (default: 5000)
      */
@@ -7704,15 +7729,6 @@ export type EventSessionIdle = {
   }
 }
 
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
 export type EventSessionInboxUpdated = {
   type: "session.inbox.updated"
   properties: {
@@ -7879,6 +7895,15 @@ export type EventFileEdited = {
   type: "file.edited"
   properties: {
     file: string
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -8175,7 +8200,6 @@ export type Event =
   | EventSessionStatus
   | EventSessionCompletion
   | EventSessionIdle
-  | EventRuntimeReloaded
   | EventSessionInboxUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
@@ -8198,6 +8222,7 @@ export type Event =
   | EventQuestionTimedOut
   | EventSessionCompacted
   | EventFileEdited
+  | EventRuntimeReloaded
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventDagUpdated

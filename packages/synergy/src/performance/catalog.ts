@@ -53,8 +53,32 @@ export namespace PerformanceCatalog {
     metric("agent.turn.duration", "Agent turn latency", "ms", "duration", "p95", "session", "backend", ["reason"]),
     metric("agent.ipc.request_bytes", "Agent IPC request bytes", "bytes", "size", "avg", "session", "backend", []),
     metric("agent.ipc.event_bytes", "Agent IPC event bytes", "bytes", "size", "avg", "session", "backend", []),
-    metric("agent.worker.rss", "Agent worker RSS", "bytes", "gauge", "latest", "session", "process", []),
-    metric("agent.worker.heap_used", "Agent worker heap used", "bytes", "gauge", "latest", "session", "process", []),
+    metric("agent.worker.rss", "Agent worker RSS", "bytes", "gauge", "latest", "session", "process", [
+      "phase",
+      "turns",
+    ]),
+    metric("agent.worker.heap_used", "Agent worker heap used", "bytes", "gauge", "latest", "session", "process", [
+      "phase",
+      "turns",
+    ]),
+    metric("agent.worker.heap_total", "Agent worker heap total", "bytes", "gauge", "latest", "session", "process", [
+      "phase",
+      "turns",
+    ]),
+    metric("agent.worker.external", "Agent worker external memory", "bytes", "gauge", "latest", "session", "process", [
+      "phase",
+      "turns",
+    ]),
+    metric(
+      "agent.worker.array_buffers",
+      "Agent worker ArrayBuffer memory",
+      "bytes",
+      "gauge",
+      "latest",
+      "session",
+      "process",
+      ["phase", "turns"],
+    ),
     metric("agent.worker.crash", "Agent worker crashes", "count", "counter", "sum", "session", "process", [
       "exitCode",
       "signal",

@@ -589,6 +589,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         defaultAgent={settings.agents.defaultAgent}
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
         concurrencyStatus={cortexConcurrencyStatus()}
+        configuredAgentWorkers={config()?.execution?.agentWorkers}
       />
     ),
     "code-checks": () => (

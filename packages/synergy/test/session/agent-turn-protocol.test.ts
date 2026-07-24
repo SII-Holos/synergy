@@ -3,6 +3,58 @@ import { APICallError } from "ai"
 import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
 
 describe("AgentTurnProtocol", () => {
+  test("requires complete worker memory snapshots at lifecycle boundaries", () => {
+    const memory: AgentTurnProtocol.WorkerMemory = {
+      rssBytes: 100,
+      heapUsedBytes: 80,
+      heapTotalBytes: 90,
+      externalBytes: 20,
+      arrayBuffersBytes: 10,
+    }
+
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "complete",
+        requestId: "turn",
+        turns: 1,
+        memoryBeforeDispose: { ...memory, externalBytes: 40 },
+        memory,
+      }),
+    ).toMatchObject({ type: "complete", memory: { arrayBuffersBytes: 10 } })
+    expect(() =>
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "complete",
+        requestId: "turn",
+        turns: 1,
+        memory: { rssBytes: 100, heapUsedBytes: 80 },
+      }),
+    ).toThrow()
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "released",
+        requestId: "turn",
+        turns: 1,
+        collection: "full",
+        memory,
+      }),
+    ).toMatchObject({ type: "released", collection: "full" })
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "heartbeat",
+        requestId: "turn",
+        turns: 1,
+        collection: "full",
+        memory,
+      }),
+    ).toMatchObject({ type: "heartbeat", collection: "full" })
+    expect(
+      AgentTurnProtocol.HostToWorkerSchema.parse({
+        type: "collect-memory",
+        requestId: "turn",
+      }),
+    ).toEqual({ type: "collect-memory", requestId: "turn" })
+  })
+
   test("accepts a request at the configured byte boundary and rejects a larger request", () => {
     const base = {
       type: "run" as const,
@@ -178,7 +230,10 @@ describe("AgentTurnProtocol", () => {
         prepared: {
           system: [],
           baseSystemLength: 0,
-          provider: { options: {} },
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
           params: { options: {} },
         },
       },
@@ -219,7 +274,10 @@ describe("AgentTurnProtocol", () => {
       prepared: {
         system: [],
         baseSystemLength: 0,
-        provider: { options: {} },
+        provider: {
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+        },
         params: { options: {} },
       },
     }
@@ -377,7 +435,10 @@ describe("AgentTurnProtocol", () => {
         prepared: {
           system: [],
           baseSystemLength: 0,
-          provider: { options: {} },
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
           params: { options: {} },
         },
       }).success,
