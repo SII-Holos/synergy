@@ -61,6 +61,43 @@ describe("ProviderStream.withIdleTimeout", () => {
     expect(input.locked).toBe(false)
   })
 
+  test("does not retain completed read chunks linearly through abort waiters", async () => {
+    const consume = async () => {
+      const refs: WeakRef<Uint8Array>[] = []
+      let sent = 0
+      const input = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent++ >= 64) {
+            controller.close()
+            return
+          }
+          const chunk = new Uint8Array(64 * 1024)
+          refs.push(new WeakRef(chunk))
+          controller.enqueue(chunk)
+        },
+      })
+      const idle = new AbortController()
+      const reader = ProviderStream.withIdleTimeout(input, {
+        controller: idle,
+        signal: idle.signal,
+        timeoutMs: 100,
+      }).getReader()
+
+      while (!(await reader.read()).done) {}
+      return { reader, refs }
+    }
+
+    const state = await consume()
+    await Bun.sleep(0)
+    Bun.gc(true)
+    await Bun.sleep(0)
+    Bun.gc(true)
+
+    const retained = state.refs.filter((ref) => ref.deref() !== undefined).length
+    expect(retained).toBeLessThan(state.refs.length / 4)
+    await expect(state.reader.closed).resolves.toBeUndefined()
+  })
+
   test("cancels and releases the upstream reader after downstream cancellation", async () => {
     let cancelled: unknown
     const input = new ReadableStream<Uint8Array>({
