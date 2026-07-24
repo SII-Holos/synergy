@@ -1,5 +1,6 @@
 import type { Info as SessionInfo } from "./types"
 import { MessageV2 } from "./message-v2"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 /**
  * WorkflowUserWrapper stamps and projects user messages for Plan, Lattice, and
@@ -49,7 +50,9 @@ export namespace WorkflowUserWrapper {
   }
 
   export function activeMode(session?: Pick<SessionInfo, "workflow">): Mode | undefined {
-    return session?.workflow?.kind
+    const workflow = session?.workflow
+    if (workflow?.kind === "lightloop" && !isActiveLightLoopWorkflow(workflow)) return undefined
+    return workflow?.kind
   }
 
   export function isRequestMetadata(metadata: Record<string, any> | undefined): boolean {

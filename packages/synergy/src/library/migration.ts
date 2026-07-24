@@ -4,6 +4,7 @@ import path from "path"
 import type { Migration } from "../migration"
 import { LibraryDB } from "./database"
 import { Intent } from "./intent"
+import { TurnDigest } from "./turn-digest"
 import { Log } from "../util/log"
 import { Global } from "../global"
 import { Storage } from "../storage/storage"
@@ -325,6 +326,33 @@ export const migrations: Migration[] = [
       progress(0, 1)
       LibraryDB.ReencodeJob.ensureSchema()
       progress(1, 1)
+    },
+  },
+  {
+    id: "20260724-library-experience-user-input",
+    description: "Persist canonical user input for experience reencoding",
+    async up(progress) {
+      const conn = LibraryDB.connection()
+      progress(0, 2)
+      if (!hasColumn(conn, "experience_content", "user_input")) {
+        conn.exec("ALTER TABLE experience_content ADD COLUMN user_input TEXT")
+        log.info("added column", { table: "experience_content", column: "user_input" })
+      }
+
+      progress(1, 2)
+      const rows = conn
+        .prepare("SELECT id, raw FROM experience_content WHERE user_input IS NULL AND raw IS NOT NULL")
+        .all() as { id: string; raw: string }[]
+      const update = conn.prepare("UPDATE experience_content SET user_input = ?1 WHERE id = ?2 AND user_input IS NULL")
+      let recovered = 0
+      for (const row of rows) {
+        const userInput = TurnDigest.userTextFromRendered(row.raw)
+        if (!userInput) continue
+        update.run(userInput, row.id)
+        recovered++
+      }
+      progress(2, 2)
+      if (recovered > 0) log.info("recovered experience user input", { recovered })
     },
   },
 ]

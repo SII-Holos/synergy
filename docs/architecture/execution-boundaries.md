@@ -1,14 +1,19 @@
 # Execution Boundaries
 
-Synergy evaluates every tool call at a centralized execution boundary. Tool availability, capability classification, approval, sandboxing, plugins, and the tool implementation are distinct stages; no individual tool is allowed to invent a parallel permission model.
+Synergy evaluates every tool call at a centralized Control Plane execution boundary. Tool availability, model presentation, capability classification, approval, scheduling, sandboxing, physical execution, and result settlement are distinct stages; no individual tool is allowed to invent a parallel permission model.
 
 ## Execution Pipeline
 
-For each model turn, the session tool resolver collects ephemeral tools, built-in and plugin tools, and MCP tools. It filters that set by agent visibility and session exposure before wrapping each callable tool with the same runtime pipeline:
+For each model turn, the session tool resolver collects ephemeral tools, built-in and plugin tools, and MCP tools. It filters that set by agent visibility and session exposure, then emits two separate products:
+
+- `ToolCatalog` definitions containing only serializable IDs, descriptions, and JSON Schemas for the Agent worker and model;
+- Control Plane execution callbacks plus an executor-class mapping for `ToolScheduler`.
+
+The Agent worker never receives an `execute()` callback. It emits proposed calls and completes its provider turn. After the worker stream is disposed, the Control Plane applies the runtime pipeline:
 
 1. verify that the current execution context permits the tool
 2. resolve the effective control profile
-3. classify the requested operation into a capability envelope
+3. send a bounded classification request to the Policy worker pool and receive a capability envelope
 4. apply workflow and session-mode restrictions
 5. combine profile policy, saved permissions, session permissions, and eligible SmartAllow decisions
 6. deny, ask, or authorize the operation
@@ -19,6 +24,22 @@ For each model turn, the session tool resolver collects ephemeral tools, built-i
 11. validate returned attachments and normalize the result
 12. run plugin `after` hooks and settle the tool output
 
+`ToolScheduler` keys a dispatch by session, session generation, message, call, executor class, and attempt. It deduplicates the same dispatch, bounds queued item count and serialized input bytes, applies global and per-executor concurrency, propagates cancellation, and never retries a running side-effecting call automatically. Executor classes are `local_process`, `file`, `plugin`, `mcp`, `browser`, `link`, and `control_plane`.
+
+The scheduler is one logical execution layer, not one universal sandbox process. Local commands and command-backed search remain child processes with bounded output; installed plugin implementations reuse the plugin process runtime; MCP, Browser, and Link use their existing isolated transports or canonical runtimes. File operations and narrow operations that mutate canonical session/workflow state run asynchronously under scheduled Control Plane ownership. Classification changes admission and fault accounting, not authorization semantics.
+
+The process boundary follows three ownership layers:
+
+- the Control Plane owns HTTP/WebSocket service, sessions, durable state, authorization, scheduling, Browser session ownership, and plugin coordination;
+- the elastic Agent worker pool owns provider inference and emits only projected model events and proposed tool calls;
+- tool runtimes own physical execution through their existing process, child-process, MCP, Browser, Link, or Control Plane transports.
+
+This split is a dependency boundary as well as an IPC boundary. The compiled executable first enters a dependency-free dynamic bootstrap, so worker subcommands do not evaluate the main CLI/server graph. The Agent worker runner's static import graph excludes Browser, Tool, Plugin, and Plugin Runtime implementations. Tool names, descriptions, and JSON Schemas cross into a worker; callbacks, Playwright/Chromium state, plugin processes, MCP clients, approval promises, and session writers do not. A model turn reaches its terminal provider result, disposes and releases the Agent worker, and only then can the Control Plane authorize and dispatch its proposed tools.
+
+Policy workers isolate capability analysis from the HTTP/WebSocket event loop. Their protocol carries only the tool name, JSON-like arguments, and immutable workspace/plugin classification context. It bounds request size, queue depth, aggregate queued bytes, per-request time, IPC frames, request count, RSS, and heap use. Global-runtime startup begins prewarming without making HTTP/WebSocket availability depend on the child process; the first classification waits up to the fixed ten-second handshake deadline before the shorter per-request queue/transfer/classification deadline begins. Repeated pre-ready exits use exponential backoff and open a finite startup circuit instead of entering a respawn loop. The Control Plane remains the sole owner of profile compilation results, approval state, audit state, sandbox accumulation, and the final allow/ask/deny decision.
+
+Classification failure never re-enters the in-process top-level classifier. Worker startup timeout, request timeout, crash, protocol failure, queue rejection, or malformed input returns one opaque, non-bypassable `protected_op` capability and an immediate transient denial. Infrastructure failure cannot enter the approval system because the user cannot safely authorize an operation whose capabilities are unknown; this also keeps `guarded` and `full_access` from turning an ordinary runtime failure into execution. Cancellation remains cancellation rather than being converted into a policy result.
+
 The enforcement gate owns the security decision. A tool implementation can still reject malformed input or fail for ordinary runtime reasons after authorization.
 
 Tool exposure is a context-budget decision, not an authorization decision. `search_tools` and `expand_tools` let an eligible agent discover or activate deferred tools, but the resolver still removes every tool denied by agent, session, user-tool, or workflow policy.
@@ -27,7 +48,7 @@ Tool exposure is a context-budget decision, not an authorization decision. `sear
 
 Classification describes what an operation can do, independently of which tool requested it. Capabilities cover file access, shell behavior, network access, browser control, session state, secrets, identity and messaging actions, plugin/platform operations, and other protected boundaries.
 
-Risk is not inferred from a tool name alone. Shell commands are split and classified by their effective operations; file paths are resolved against the current workspace and checked for external, protected, credential, VCS, and secret-like regions. Plugin tools declare capability envelopes in their manifests, and MCP calls pass through the same gate.
+Risk is not inferred from a tool name alone. Shell commands are split and classified by their effective operations; one quote- and escape-aware longest-match lexer owns the compound operators `&&`, `||`, `|&`, `|`, `;;&`, `;;`, `;&`, `;`, and `&`. Redirect joins such as `2>&1` are not compound operators. Classification uses one shared time/depth/active-input budget, and no-progress, repeated, or over-depth analysis returns finite `shell` risk without restarting the top-level classifier. File paths are resolved against the current workspace and checked for external, protected, credential, VCS, and secret-like regions. Plugin tools declare capability envelopes in their manifests, and MCP calls pass through the same gate.
 
 This separation lets one profile make consistent decisions across built-in tools, plugins, MCP servers, and future execution surfaces.
 
@@ -115,6 +136,14 @@ These restrictions are evaluated before the tool implementation. A permissive co
 ## Invariants
 
 - Every executable tool path passes through the centralized enforcement gate.
+- Model-facing tool definitions never contain executable callbacks.
+- Agent worker static imports never reach Browser, Tool, Plugin, or Plugin Runtime implementations.
+- The executable bootstrap has no static application imports and dynamically selects exactly one runtime entrypoint.
+- Permission decisions remain in the Control Plane and occur only after the Agent worker has released its turn.
+- Capability analysis runs in bounded Policy workers; those workers never decide authorization or execute tools.
+- Policy worker failure produces a finite conservative denial, never opens an approval wait, and cannot block HTTP/WebSocket service.
+- ToolTask queues are bounded globally and per executor class; duplicate dispatch identity cannot execute twice.
+- Executor classification never bypasses capability classification, approval, sandboxing, or canonical runtime ownership.
 - Availability, authorization, and sandboxing remain separate decisions.
 - Expanding a deferred group never grants a tool whose effective permission is denied.
 - `autonomous` never prompts the user.

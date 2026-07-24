@@ -66,6 +66,7 @@ export function migrateWorkbenchLayout(value: unknown): unknown {
   for (const key of currentLayoutKeys) {
     if (key in value) next[key] = value[key]
   }
+  if (!("sidebar" in value)) next.sidebar = { opened: false }
   const oldTerminal = isRecord(value.terminal) ? value.terminal : undefined
   const oldWorkspaceSessions = isRecord(value.workspaceSessions) ? value.workspaceSessions : undefined
   const existingSurfaces = isRecord(value.workbenchSurfaces) ? { ...value.workbenchSurfaces } : {}

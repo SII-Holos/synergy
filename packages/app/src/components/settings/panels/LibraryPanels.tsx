@@ -16,12 +16,7 @@ import { SettingRow } from "../components/SettingRow"
 import { useGlobalSDK } from "@/context/global-sdk"
 import type { ExperienceDetectResult, ExperienceDetectGroup, ReencodeJobState } from "@ericsanchezok/synergy-sdk/client"
 import type { LibrarySettingsStore } from "../types"
-import {
-  isReencodeJobNotFound,
-  pollReencodeJob,
-  reencodeConflictJob,
-  reencodeJobSummary,
-} from "./library-reencode-model"
+import { currentReencodeJob, pollReencodeJob, reencodeJobSummary, startedReencodeJob } from "./library-reencode-model"
 import { LibraryReencodeProgress } from "./library-reencode-progress"
 import type { MessageDescriptor } from "@lingui/core"
 import { LibraryEmbeddingSection } from "./library-embedding-section"
@@ -485,9 +480,9 @@ function EncodingHealthSection() {
   }
 
   async function loadCurrentJob() {
-    const response = await globalSDK.client.library.experience.getReencodeJob()
-    if (response.error) throw response.error
-    return response.data
+    const job = await currentReencodeJob(() => globalSDK.client.library.experience.getReencodeJob())
+    if (!job) throw new Error(_(jobLoadFallback))
+    return job
   }
 
   async function observeJob(job: ReencodeJobState) {
@@ -517,14 +512,11 @@ function EncodingHealthSection() {
   onMount(() => {
     void (async () => {
       try {
-        const response = await globalSDK.client.library.experience.getReencodeJob()
-        if (response.error) {
-          if (isReencodeJobNotFound(response.error)) return
-          throw response.error
-        }
+        const job = await currentReencodeJob(() => globalSDK.client.library.experience.getReencodeJob())
+        if (!job) return
         if (disposed) return
-        if (response.data.status === "running") void observeJob(response.data)
-        else applyJob(response.data)
+        if (job.status === "running") void observeJob(job)
+        else applyJob(job)
       } catch (error) {
         if (disposed) return
         showToast({
@@ -570,9 +562,9 @@ function EncodingHealthSection() {
   async function startReencode(kind: "intent" | "script", reason?: string) {
     setReencodeDone(null)
     try {
-      const response = await globalSDK.client.library.experience.startReencodeJob({ type: kind, reason })
-      const job = response.error ? reencodeConflictJob(response.error) : response.data
-      if (!job) throw response.error
+      const job = await startedReencodeJob(() =>
+        globalSDK.client.library.experience.startReencodeJob({ type: kind, reason }),
+      )
       if (job.status === "running") void observeJob(job)
       else applyJob(job)
     } catch (error) {

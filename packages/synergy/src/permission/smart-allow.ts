@@ -1,7 +1,7 @@
 import { Agent } from "@/agent/agent"
 import { Identifier } from "@/id/id"
 import { Provider } from "@/provider/provider"
-import { LLM } from "@/session/llm"
+import { AgentTurn } from "@/session/agent-turn"
 import type { MessageV2 } from "@/session/message-v2"
 import type { Capability } from "@/enforcement/gate"
 import { Log } from "@/util/log"
@@ -235,10 +235,10 @@ export namespace SmartAllow {
       model: { providerID: model.providerID, modelID: model.id },
     }
 
-    const stream = await LLM.stream({
+    const stream = await AgentTurn.stream({
       agent,
       user,
-      tools: {},
+      toolDefinitions: [],
       model,
       messages: [{ role: "user", content: buildPrompt(input) }],
       abort: AbortSignal.timeout(10_000),
@@ -247,7 +247,7 @@ export namespace SmartAllow {
       retries: 0,
     })
 
-    const text = (await LLM.collectText(stream).catch(() => "")) ?? ""
+    const text = (await AgentTurn.collectText(stream).catch(() => "")) ?? ""
     return parseClassification(text)
   }
 

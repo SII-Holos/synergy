@@ -14,6 +14,8 @@ export type AppMessageDescriptor = MessageDescriptor
 
 export const workspace = {
   panelUnavailable: { id: "app.workspace.panel.unavailable", message: "Panel unavailable" },
+  panelRetry: { id: "app.workspace.panel.retry", message: "Retry" },
+  panelReload: { id: "app.workspace.panel.reload", message: "Reload app" },
   closeTab: { id: "app.workspace.tab.close", message: "Close {title}" },
   noSidePanels: { id: "app.workspace.launcher.noSidePanels", message: "No side panels available" },
   noBottomPanels: { id: "app.workspace.launcher.noBottomPanels", message: "No bottom panels available" },

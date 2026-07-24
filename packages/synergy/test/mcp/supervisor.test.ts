@@ -273,7 +273,10 @@ describe.serial("McpSupervisor", () => {
 
         expect((await MCP.status())["demo-plugin::layout"].status).toBe("connected")
         const entries = await MCP.toolEntries()
-        expect(entries.map((entry) => entry.id)).toContain("mcp__demo-plugin__layout__demo_tool")
+        const entry = entries.find((item) => item.id === "mcp__demo-plugin__layout__demo_tool")
+        expect(entry).toBeDefined()
+        expect(Object.getOwnPropertySymbols(entry!.inputSchema)).toEqual([])
+        expect(Object.getOwnPropertySymbols(entry!.tool.inputSchema)).not.toEqual([])
         expect(MCP.toolCallTimeout("mcp__demo-plugin__layout__demo_tool")).toBe(2468)
       },
     })

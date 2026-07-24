@@ -1,7 +1,20 @@
 import { describe, expect, test } from "bun:test"
-import { resolveLightLoopControlState } from "../../../src/components/prompt-input/light-loop-control"
+import {
+  isActiveLightLoopWorkflow,
+  resolveLightLoopControlState,
+} from "../../../src/components/prompt-input/light-loop-control"
 
 describe("Light Loop submit control", () => {
+  test("treats retained terminal workflow records as inactive", () => {
+    for (const status of ["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]) {
+      expect(isActiveLightLoopWorkflow({ kind: "lightloop", status })).toBe(false)
+    }
+    expect(isActiveLightLoopWorkflow({ kind: "lightloop", status: "running" })).toBe(true)
+    expect(isActiveLightLoopWorkflow({ kind: "lightloop" })).toBe(true)
+    expect(isActiveLightLoopWorkflow({ kind: "plan" })).toBe(false)
+    expect(isActiveLightLoopWorkflow(undefined)).toBe(false)
+  })
+
   test("allows task editing while the session is idle", () => {
     expect(resolveLightLoopControlState({ active: true, working: false, reviewPending: false })).toEqual({
       mode: "editable",

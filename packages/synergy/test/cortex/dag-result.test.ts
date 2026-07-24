@@ -100,7 +100,12 @@ function installDagLoopMocks(options?: {
     library: { memory: { enabled: false }, experience: { retrieve: false } },
   }))
   ;(ToolResolver.definitions as any) = mock(async () => [])
-  ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+  ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+    definitions: [],
+    executionTools: {},
+    executorKinds: {},
+    activeToolIDs: [],
+  }))
   ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
     options?.onBuildPlan?.(input)
     return {

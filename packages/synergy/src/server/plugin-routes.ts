@@ -4,7 +4,7 @@ import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import { Plugin } from "../plugin"
-import { getPluginConfig, replacePluginConfig } from "../plugin/config-store"
+import { getPluginConfig } from "../plugin/config-store"
 import { PluginApprovalRequiredError } from "../plugin/install"
 import { invokePluginOperation, PluginOperationError } from "../plugin/operation"
 import { reloadDevelopmentGeneration, getLoadedPlugins } from "../plugin/loader"
@@ -12,7 +12,6 @@ import { PluginStatusSchema } from "../plugin/status"
 import { isPathContained } from "../util/path-contain"
 import { errors } from "./error"
 import { ScopeContext } from "../scope/context"
-import { ToolRegistry } from "../tool/registry"
 import {
   buildApprovalReview,
   approve as approvePlugin,
@@ -170,8 +169,9 @@ export const PluginRoute = new Hono()
       responses: { 200: { description: "Plugin settings" }, ...errors(404) },
     }),
     async (context) => {
-      if (!(await Plugin.get(context.req.param("pluginId")))) return context.json({ message: "Plugin not found" }, 404)
-      return context.json(await getPluginConfig(context.req.param("pluginId")))
+      const plugin = await Plugin.get(context.req.param("pluginId"))
+      if (!plugin) return context.json({ message: "Plugin not found" }, 404)
+      return context.json(await getPluginConfig(plugin.id, { manifest: plugin.manifest }))
     },
   )
   .patch(
@@ -184,9 +184,7 @@ export const PluginRoute = new Hono()
     async (context) => {
       const plugin = await Plugin.get(context.req.param("pluginId"))
       if (!plugin) return context.json({ message: "Plugin not found" }, 404)
-      const values = await replacePluginConfig(plugin.id, context.req.valid("json"), { manifest: plugin.manifest })
-      await ToolRegistry.reload()
-      return context.json(values)
+      return context.json(await Plugin.updateConfig(plugin, context.req.valid("json")))
     },
   )
   .get(

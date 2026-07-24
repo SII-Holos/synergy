@@ -18,12 +18,12 @@ Do not choose by convenience. If users or parent agents must inspect, resume, ca
 
 ## Sessionless Internal-Agent Calls
 
-Text-only sessionless callers use `AgentCall.text()` without creating a durable session or persisting the inference exchange. Experience intent/script/reward encoding already uses this boundary. Title/turn summary, SmartAllow classification, agent generation, and GitHub classification remain direct `LLM.stream()` callers that must be migrated with domain-specific behavior tests rather than copied as templates.
+Text-only sessionless callers use `AgentCall.text()` without creating a durable session or persisting the inference exchange. Title/turn summary, SmartAllow classification, agent generation, GitHub classification, and Experience encoding all use the external `AgentTurn` worker boundary. Product code must not add a direct `LLM.stream()` caller outside `session/agent-turn/runner.ts`; setup/provider bootstrap probes are the only narrow direct AI SDK exception.
 
 For every sessionless call:
 
 1. Define or reuse a hidden internal agent with the correct model role, prompt, temperature, and no unnecessary tools.
-2. Call `AgentCall.text()` with the Agent name, messages, explicit retry/timeout/input/output bounds, caller signal, and only a domain-owned fallback model when required. It owns Agent/model resolution, `tools: {}`, bounded collection, combined cancellation, and stream disposal.
+2. Call `AgentCall.text()` with the Agent name, messages, explicit retry/timeout/input/output bounds, caller signal, and only a domain-owned fallback model when required. It owns Agent/model resolution, an empty serializable tool catalog, bounded collection, combined cancellation, Agent worker admission, and stream disposal.
 3. Keep prompt construction, fallback choice, retry count, structured parsing, persistence, and error mapping in the owning domain.
 4. Do not access AI SDK stream/text getters directly because each getter retains a tee branch until explicitly cancelled.
 5. Use a Session or Cortex instead when tools, durable history, resumability, progress, or completion delivery are part of the contract.
@@ -61,6 +61,14 @@ Automatic reasoning variants are derived from model identity (`model.id`, API mo
 
 ## Streaming Bounds
 
+Production product inference enters `AgentTurn`: the Control Plane resolves final prompt and parameter plugin hooks plus serializable provider options into a request plan, request snapshots are schema-validated and capped, and the plan is sent as acknowledged chunks; event frames are bounded and acknowledged after consumption. The worker protocol owns its event projection: do not expose raw AI SDK stream objects as IPC types, and strip provider request bodies, response diagnostics, warnings, or other fields the Control Plane does not consume before checking the frame bound. Agent workers reconstruct built-in provider runtime functions without provider-plugin discovery. Keep executable callbacks, plugin runtimes and Host Services, session writers, permission promises, and other Control Plane handles out of the worker input. Model-facing tools are `ToolCatalog.Definition[]` only.
+
+When changing Agent worker capacity, a higher ceiling must admit queued demand immediately without eagerly filling unused capacity. Shrink by releasing idle workers first and retiring excess active workers only after their owned turns terminate. A capacity change must never abort an active turn merely to reach the new target. Test higher-ceiling demand plus idle and fully active shrink paths.
+
+Coalesce adjacent streamed tool-input deltas by call ID before IPC, cap each coalesced delta, and preserve cross-call event order. Do not forward one IPC frame per provider token fragment: streamed tool arguments are progress data, while the final AI SDK `tool-call` input remains canonical. Treat one active-turn Bun `heapUsed` heartbeat as a pressure signal rather than proof of retained memory; request a full collection in that worker and require the corresponding post-collection sample to remain over the watermark before terminating the turn.
+
+The executable bootstrap and Agent worker runner static value-import graphs are also product boundaries. Keep `src/index.ts` free of static application imports so compiled worker subcommands do not evaluate the main CLI/server graph. Keep Browser, Tool, Plugin, Plugin Runtime, `packages/browser`, and provider SDK implementations out of the Agent runner graph. Resolve Control Plane preparation dependencies before transfer, and load only the selected built-in provider SDK lazily inside the worker. Update and run `test/session/agent-worker-runtime-boundary.test.ts` whenever the executable entrypoint, runner, LLM, provider, schema, or shared utility import graph changes.
+
 Provider SSE protection is a per-event parser bound, not a total response, transport chunk, or process-memory limit. Keep code identifiers, error names, tests, and architecture documentation explicit about `SSE event parser bound` semantics. Test LF and CRLF event delimiters across chunk boundaries, including consecutive events exactly at the bound.
 
 Any provider stream wrapper that calls `getReader()` owns that reader lock. Keep reads pull-based, cancel the reader when the wrapper fails or is cancelled, and release the lock after normal completion, failure, timeout, and downstream cancellation. Test the lifecycle against a real `ReadableStream` by asserting that the upstream stream is unlocked after every terminal path.
@@ -72,7 +80,7 @@ Treat streamed tool argument deltas as transport/progress data, not canonical to
 ## Verify and Document
 
 1. Test the chosen lifecycle boundary as a behavior: no session for sessionless work; explicit child lineage and output for Cortex work.
-2. Run focused agent/provider/session/Cortex/permission tests, then typecheck and `quality:quick`.
+2. Run focused Agent protocol/worker, provider, session, Cortex, and permission tests, then typecheck and `quality:quick`.
 3. Update [LLM loop and compaction](../../../docs/architecture/llm-loop.md) when the shared call pipeline or path-selection contract changes.
 4. Update `add-agent` when a new internal-agent registration pattern or model-role rule emerges.
 

@@ -2,7 +2,7 @@ import { Agent } from "@/agent/agent"
 import { Identifier } from "@/id/id"
 import { Provider } from "@/provider/provider"
 import { Session } from "@/session"
-import { LLM } from "@/session/llm"
+import { AgentTurn } from "@/session/agent-turn"
 import type { MessageV2 } from "@/session/message-v2"
 import { Log } from "@/util/log"
 import {
@@ -44,10 +44,10 @@ export async function classifyGitHubObservation(
       model: { providerID: model.providerID, modelID: model.id },
       metadata: { source: "integration:github" },
     }
-    const result = await LLM.stream({
+    const result = await AgentTurn.stream({
       agent,
       user,
-      tools: {},
+      toolDefinitions: [],
       model,
       messages: [
         {
@@ -66,10 +66,7 @@ export async function classifyGitHubObservation(
       retries: 0,
       maxOutputTokens: budget.maxTokens,
     })
-    const [text, usage] = await Promise.all([
-      LLM.collectText(result).catch(() => ""),
-      result.usage.catch(() => undefined),
-    ])
+    const [text, usage] = await Promise.all([AgentTurn.collectText(result).catch(() => ""), result.usage])
     if (!usage) return { skippedReason: "usage_unavailable" }
     const measured = Session.getUsage({ model, usage })
     if (measured.tokens.output > budget.maxTokens || measured.cost > budget.maxCost) {

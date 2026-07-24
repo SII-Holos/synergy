@@ -16,12 +16,8 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { ProviderTransform } from "@/provider/transform"
 import { PromptCachePolicy } from "@/provider/prompt-cache-policy"
-import { Config } from "@/config/config"
 import type { Agent } from "@/agent/agent"
-import { withPreambleSection } from "@/agent/prompt/preamble"
 import type { MessageV2 } from "./message-v2"
-import { Plugin } from "@/plugin"
-import { SystemPrompt } from "./system"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ContextUsage } from "./context-usage"
 import type { LLMTurnMemory } from "./llm-memory"
@@ -161,6 +157,19 @@ export namespace LLM {
     }
   }
 
+  export type PreparedTurn = {
+    system: string[]
+    baseSystemLength: number
+    provider: Provider.WorkerPlan
+    params: {
+      temperature?: number
+      topP?: number
+      topK?: number
+      options: Record<string, any>
+    }
+    telemetryEnabled?: boolean
+  }
+
   export type StreamInput = {
     user: MessageV2.User
     sessionID: string
@@ -178,6 +187,13 @@ export namespace LLM {
     contextUsageProvenance?: ContextUsage.Provenance
     maxOutputTokens?: number
     memoryTurn?: LLMTurnMemory.Handle
+    prepared?: PreparedTurn
+  }
+
+  export type PreparedStreamInput = Omit<StreamInput, "user" | "agent" | "prepared"> & {
+    user: Pick<MessageV2.User, "id">
+    agent: Pick<Agent.Info, "name">
+    prepared: PreparedTurn
   }
 
   export interface PromptLayoutInput {
@@ -252,7 +268,14 @@ export namespace LLM {
     contextUsageDraft?: ContextUsage.Draft
   }
 
-  export async function stream(input: StreamInput): Promise<StreamOutput> {
+  export async function prepare(input: StreamInput): Promise<PreparedTurn> {
+    const [{ Config }, { withPreambleSection }, { SystemPrompt }, { trigger }, { TimeoutConfig }] = await Promise.all([
+      import("@/config/config"),
+      import("@/agent/prompt/preamble"),
+      import("./system"),
+      import("@/plugin/lifecycle"),
+      import("@/util/timeout-config"),
+    ])
     const l = log
       .clone()
       .tag("providerID", input.model.providerID)
@@ -260,14 +283,6 @@ export namespace LLM {
       .tag("sessionID", input.sessionID)
       .tag("small", (input.small ?? false).toString())
       .tag("agent", input.agent.name)
-    l.info("stream", {
-      modelID: input.model.id,
-      providerID: input.model.providerID,
-    })
-    const langTimer = l.time("provider.getLanguage")
-    const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.current()])
-    langTimer.stop()
-
     const systemTimer = l.time("system.assembly")
 
     let system: string[] = []
@@ -287,7 +302,7 @@ export namespace LLM {
     if (input.user.system) system.push(input.user.system)
 
     const original = clone(system)
-    const transformed = await Plugin.trigger(
+    const transformed = await trigger(
       "experimental.chat.system.transform",
       {
         phase: "final",
@@ -325,7 +340,11 @@ export namespace LLM {
     systemTimer.stop()
 
     const optionsTimer = l.time("options.assembly")
-    const provider = await Provider.getProvider(input.model.providerID)
+    const [provider, cfg, timeout] = await Promise.all([
+      Provider.getProvider(input.model.providerID),
+      Config.current(),
+      TimeoutConfig.resolve(),
+    ])
     const effectiveVariant =
       input.user.variant ?? input.agent.defaultVariant ?? cfg.role_variant?.[input.agent.modelRole || "default"]
     let variant: Record<string, any> = {}
@@ -343,19 +362,19 @@ export namespace LLM {
     }
     const base = input.small
       ? ProviderTransform.smallOptions(input.model)
-      : ProviderTransform.options(input.model, input.sessionID, provider.options)
+      : ProviderTransform.options(input.model, input.sessionID, provider?.options)
     const options = pipe(base, mergeDeep(input.model.options), mergeDeep(input.agent.options), mergeDeep(variant))
 
     const isAnthropicThinking =
       input.model.api.npm === "@ai-sdk/anthropic" && options["thinking"]?.["type"] === "enabled"
 
-    const params = await Plugin.trigger(
+    const params = await trigger(
       "chat.params",
       {
         sessionID: input.sessionID,
         agent: input.agent,
         model: input.model,
-        provider: Provider.getProvider(input.model.providerID),
+        provider,
         message: input.user,
       },
       {
@@ -372,6 +391,57 @@ export namespace LLM {
       params,
     })
     optionsTimer.stop()
+    return {
+      system,
+      baseSystemLength,
+      provider: Provider.workerPlan(provider, {
+        ttfbMs: timeout.providerTtfbMs,
+        idleMs: timeout.providerIdleMs,
+        wallMs: timeout.providerWallMs,
+      }),
+      params,
+      telemetryEnabled: cfg.experimental?.openTelemetry,
+    }
+  }
+
+  export function stream(input: StreamInput): Promise<StreamOutput>
+  export function stream(input: PreparedStreamInput): Promise<StreamOutput>
+  export async function stream(input: StreamInput | PreparedStreamInput): Promise<StreamOutput> {
+    if (process.env.SYNERGY_AGENT_WORKER && !input.prepared) {
+      throw new Error("Agent worker requires a Control Plane-prepared provider request")
+    }
+    const l = log
+      .clone()
+      .tag("providerID", input.model.providerID)
+      .tag("modelID", input.model.id)
+      .tag("sessionID", input.sessionID)
+      .tag("small", (input.small ?? false).toString())
+      .tag("agent", input.agent.name)
+    l.info("stream", {
+      modelID: input.model.id,
+      providerID: input.model.providerID,
+    })
+    const langTimer = l.time("provider.getLanguage")
+    const prepared = input.prepared ?? (await prepare(input as StreamInput))
+    if (process.env.SYNERGY_AGENT_WORKER === "1") {
+      await Provider.configureWorkerProvider(input.model, prepared.provider)
+    }
+    const language = await Provider.getLanguage(input.model)
+    langTimer.stop()
+    const { system, baseSystemLength, params } = prepared
+    l.debug("prompt layout", {
+      ...promptLayoutMetadata({
+        model: input.model,
+        system,
+        lateSystem: input.lateSystem,
+        messages: input.messages,
+        systemCacheBreakpoint:
+          input.systemCacheBreakpoint === undefined ? undefined : baseSystemLength + input.systemCacheBreakpoint,
+      }),
+    })
+    l.info("params", {
+      params,
+    })
 
     const providerMaxOutputTokens = ProviderTransform.maxOutputTokens(
       input.model.api.npm,
@@ -473,7 +543,7 @@ export namespace LLM {
             extractReasoningMiddleware({ tagName: "think", startWithReasoning: false }),
           ],
         }),
-        experimental_telemetry: { isEnabled: cfg.experimental?.openTelemetry },
+        experimental_telemetry: { isEnabled: prepared.telemetryEnabled },
       })
       streamTextTimer.stop()
       ObservabilitySpans.end(llmSpan, { attributes: { provider: input.model.providerID, model: input.model.id } })

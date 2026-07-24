@@ -2130,6 +2130,62 @@ msgstr "未知错误"
 msgid "app.error.versionLabel"
 msgstr "版本：{version}"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr "更换服务器"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr "重新加载界面"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr "重试"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr "Synergy 服务器当前无响应，无法确认正在运行的任务状态。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr "无法连接到服务器"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr "配置、Provider 或设置错误导致 Synergy 无法完成启动。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr "Synergy 启动失败"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr "重新加载此页面不会停止服务器上已在运行的任务。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr "界面遇到了问题"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr "工作区无法加载，可能是临时故障或配置问题。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr "无法加载此项目"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr "摘要"
+
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
 msgstr "关闭"
@@ -7460,6 +7516,14 @@ msgid "app.workspace.mobileHeader.close"
 msgstr "关闭工作区"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr "重新加载应用"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
+msgstr "重试"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
 msgstr "面板不可用"
 
@@ -11530,7 +11594,7 @@ msgstr "同时恢复文件更改"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.alsoRestore.hint"
-msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从横幅恢复文件。"
+msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从回退对话框恢复文件。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11600,7 +11664,7 @@ msgstr "回退到此处"
 msgid "session.rollback.bannerText"
 msgstr "已回退 {messages, plural, one {# 条消息} other {# 条消息}}（{turns, plural, one {# 个回合} other {# 个回合}}）"
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr "无法重做"
 
@@ -11618,6 +11682,11 @@ msgstr "已添加新消息。此回滚无法再重做。"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
 msgstr "已添加新消息；无法重做此回滚"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "回退完成"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11654,7 +11723,8 @@ msgstr "重做失败"
 msgid "session.rollback.redoSuccessDesc"
 msgstr "已恢复 {count, plural, one {# 条消息} other {# 条消息}}"
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr "请求失败"
 
@@ -12967,11 +13037,15 @@ msgstr "synergy link | 远程主机 | 目标 | agent | link id | 密钥"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
-msgstr "设置智能体响应、子智能体并发和各类操作超时。"
+msgstr "设置智能体 Worker 容量、子智能体并发和各类操作超时。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
 msgstr "智能体"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
+msgstr "智能体 Worker 池"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
@@ -12979,7 +13053,7 @@ msgstr "最大并发子智能体数"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
-msgstr "智能体 | 子智能体 | 并发 | 超时 | 提供商 | 工具 | 共同作者 | 提交 | git | 提示"
+msgstr "智能体 | worker | 池 | 并行 | 子智能体 | 并发 | 超时 | 提供商 | 工具 | 共同作者 | 提交 | git | 提示"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.description"
@@ -15494,6 +15568,22 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "智能体"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr "可并行运行的模型 Turn 上限。调小后，活跃 Turn 会先正常结束，多余的 Worker 随后退出。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
+msgstr "智能体 Worker 池"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
 msgstr "提醒智能体创建 Git 提交时包含 Synergy 协作者署名。"
 
@@ -15503,15 +15593,15 @@ msgstr "协作者署名"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力建议不会覆盖此值。"
+msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力较高时，新任务可能会提前进入队列。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryAdvisory"
-msgstr "内存建议值：{value}。当前设置仍然生效。"
+msgid "settings.runtime.agents.concurrency.memoryLimit"
+msgstr "内存安全限额已生效：{value}。新任务将排队，直到内存压力下降。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
-msgstr "由环境变量管理 · 内存建议值：{value}"
+msgid "settings.runtime.agents.concurrency.memoryLimitManaged"
+msgstr "由环境变量管理 · 内存安全限额已生效：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
@@ -15551,7 +15641,7 @@ msgstr "工具覆盖"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.page.desc"
-msgstr "设置智能体指令、提供商超时和工具执行超时。"
+msgstr "设置智能体容量、指令、提供商超时和工具执行超时。"
 
 #. Agents
 msgid "settings.runtime.agents.page.title"

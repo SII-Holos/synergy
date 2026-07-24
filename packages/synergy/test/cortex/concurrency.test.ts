@@ -9,12 +9,12 @@ async function flushMicrotasks(times = 1): Promise<void> {
   }
 }
 
-function memorySnapshot(rssGiB: number, arrayBuffersGiB = 0) {
+function memorySnapshot(rssGiB: number, arrayBuffersGiB = 0, externalGiB = 0) {
   return {
     rssBytes: rssGiB * 1024 ** 3,
     heapUsedBytes: 1,
     heapTotalBytes: 1,
-    externalBytes: 1,
+    externalBytes: externalGiB * 1024 ** 3,
     arrayBuffersBytes: arrayBuffersGiB * 1024 ** 3,
   }
 }
@@ -88,7 +88,7 @@ describe("CortexConcurrency", () => {
       expect(status["agent-b"].running).toBe(8)
     })
 
-    test("keeps the configured global limit under critical memory pressure", async () => {
+    test("caps new task admission under critical memory pressure", async () => {
       CortexConcurrency.configure(3)
       CortexConcurrency.setMemoryProbeForTest(() => memorySnapshot(10, 9))
 
@@ -100,39 +100,50 @@ describe("CortexConcurrency", () => {
       )
       await flushMicrotasks(4)
 
-      expect(resolved).toEqual([true, true, true])
+      expect(resolved).toEqual([true, true, false])
       expect(CortexConcurrency.globalStatus()).toMatchObject({
         configured: 3,
-        running: 3,
-        effective: 3,
+        running: 2,
+        queued: 1,
+        effective: 2,
         memoryPressureLimit: 2,
         source: "config",
       })
 
+      CortexConcurrency.setMemoryProbeForTest(() => memorySnapshot(1))
+      await Bun.sleep(1_100)
+      expect(resolved).toEqual([true, true, true])
       await Promise.all(acquisitions)
+      CortexConcurrency.release("agent-a")
+      CortexConcurrency.release("agent-a")
+      CortexConcurrency.release("agent-a")
     })
 
-    test("keeps the environment maximum under memory pressure", () => {
+    test("caps the environment maximum under memory pressure", () => {
       CortexConcurrency.configure(6)
       process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY = "4"
       const critical = memorySnapshot(10, 9)
+      CortexConcurrency.setMemoryProbeForTest(() => critical)
 
-      expect(CortexConcurrency.getGlobalLimit()).toBe(4)
+      expect(CortexConcurrency.getGlobalLimit()).toBe(2)
       expect(CortexConcurrency.getMemoryPressureLimit(critical)).toBe(2)
       expect(CortexConcurrency.globalStatus(critical)).toMatchObject({
         configured: 6,
         environment: 4,
-        effective: 4,
+        effective: 2,
         memoryPressureLimit: 2,
         source: "environment",
       })
     })
 
-    test("reports memory pressure recommendations without changing the default limit", () => {
+    test("applies memory pressure limits to the default maximum", () => {
       expect(CortexConcurrency.getGlobalLimit()).toBe(8)
       expect(CortexConcurrency.getMemoryPressureLimit(memorySnapshot(1))).toBeUndefined()
       expect(CortexConcurrency.getMemoryPressureLimit(memorySnapshot(1, 1.1))).toBe(4)
       expect(CortexConcurrency.getMemoryPressureLimit(memorySnapshot(1, 2.1))).toBe(2)
+
+      CortexConcurrency.setMemoryProbeForTest(() => memorySnapshot(1, 1.1))
+      expect(CortexConcurrency.getGlobalLimit()).toBe(4)
     })
 
     test("raising the configured limit wakes queued tasks", async () => {
@@ -261,6 +272,14 @@ describe("CortexConcurrency", () => {
   describe("memory pressure limit", () => {
     test("reports normal, soft, and critical memory limits", () => {
       expect(CortexConcurrency.getMemoryPressure(memorySnapshot(1))).toEqual({ limit: null, reason: "normal" })
+      expect(CortexConcurrency.getMemoryPressure(memorySnapshot(1, 0, 1.1))).toEqual({
+        limit: 4,
+        reason: "memory_pressure",
+      })
+      expect(CortexConcurrency.getMemoryPressure(memorySnapshot(1, 0, 1.6))).toEqual({
+        limit: 2,
+        reason: "critical_memory_pressure",
+      })
       expect(CortexConcurrency.getMemoryPressure(memorySnapshot(1, 1.1))).toEqual({
         limit: 4,
         reason: "memory_pressure",

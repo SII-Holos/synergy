@@ -170,6 +170,28 @@ export namespace TurnDigest {
     return parts.join("\n\n")
   }
 
+  export function userTextFromRendered(raw: string): string | undefined {
+    const marker = "### User\n"
+    if (!raw.startsWith(marker)) return
+
+    const sectionPattern = /\n\n### (Response|Changes|Summary)\n/g
+    const sections = [...raw.matchAll(sectionPattern)]
+    if (sections.length === 0 || sections[0][1] !== "Response") return
+
+    const order = { Response: 0, Changes: 1, Summary: 2 } as const
+    let previous = -1
+    for (const section of sections) {
+      const current = order[section[1] as keyof typeof order]
+      if (current <= previous) return
+      previous = current
+    }
+
+    const end = sections[0].index
+    if (end === undefined) return
+    const userText = raw.slice(marker.length, end).trim()
+    return userText || undefined
+  }
+
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------

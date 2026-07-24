@@ -31,6 +31,9 @@ import { LLMTurnMemory } from "./llm-memory"
 import { SessionBounds } from "./bounds"
 import { ContextUsage } from "./context-usage"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import type { Tool as AITool } from "ai"
+import { AgentTurn } from "./agent-turn"
+import { ToolScheduler } from "./tool-scheduler"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -109,6 +112,11 @@ export namespace SessionProcessor {
 
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
+  export type ProcessInput = AgentTurn.Input & {
+    executionTools: Record<string, AITool>
+    executorKinds: Record<string, import("./tool-scheduler").ToolExecutorKind>
+    memoryTurn?: LLMTurnMemory.Handle
+  }
 
   export function shouldAskDoomLoop(parts: MessageV2.Part[], toolName: string, input: unknown) {
     const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
@@ -181,6 +189,7 @@ export namespace SessionProcessor {
     sessionID: string
     model: Provider.Model
     abort: AbortSignal
+    generation?: number
     toolDisplay?: (toolName: string) => ToolDisplay | undefined
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
@@ -792,7 +801,7 @@ export namespace SessionProcessor {
       updateToolCallState,
       executeOnce,
       dispose,
-      async process(streamInput: LLM.StreamInput) {
+      async process(streamInput: ProcessInput) {
         log.info("process")
         const turnTraceId = ObservabilityContext.current().traceId ?? Observability.traceId("turn")
         const turnStartedAt = Date.now()
@@ -815,11 +824,25 @@ export namespace SessionProcessor {
               input.abort.throwIfAborted()
               let currentText: MessageV2.TextPart | undefined
               let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
+              const deferredToolCalls: Array<{
+                callID: string
+                toolName: string
+                input: Record<string, unknown>
+              }> = []
               SessionMemoryPressure.probe("processor.before_llm_stream", {
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
               })
-              const stream = await LLM.stream(streamInput)
+              SessionManager.setExecutionPhase(input.sessionID, "queued_agent")
+              const {
+                executionTools: _executionTools,
+                executorKinds: _executorKinds,
+                memoryTurn: _memoryTurn,
+                ...agentTurnInput
+              } = streamInput
+              const stream = await AgentTurn.stream(agentTurnInput)
+              streamInput.memoryTurn?.trackOwner("agent_turn.stream", stream)
+              SessionManager.setExecutionPhase(input.sessionID, "running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
                 sessionID: input.sessionID,
@@ -883,9 +906,9 @@ export namespace SessionProcessor {
                 }
               }
 
-              const ownedStream = LLM.takeFullStream(stream)
               try {
-                for await (const value of ownedStream.stream) {
+                streamInput.memoryTurn?.trackOwner("agent_turn.full_stream", stream.fullStream)
+                for await (const value of stream.fullStream) {
                   input.abort.throwIfAborted()
                   switch (value.type) {
                     case "start":
@@ -1074,6 +1097,8 @@ export namespace SessionProcessor {
                       const streamedRaw = generatingAccum[value.toolCallId]
                       const toolInput = SessionToolInput.normalize(value.input)
                       const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
+                      streamInput.memoryTurn?.trackOwner("provider.tool_call_event", value, toolInputBytes)
+                      streamInput.memoryTurn?.trackOwner("tool.parsed_input", toolInput, toolInputBytes)
                       log.info("tool.stream.tool_call.input_ready", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1164,22 +1189,11 @@ export namespace SessionProcessor {
                         snapshot: toolSettlementSnapshot(value.toolCallId),
                       })
 
-                      if (shouldAskDoomLoop(Object.values(toolcalls), value.toolName, toolInput)) {
-                        const agent = await Agent.get(input.assistantMessage.agent)
-                        const session = await Session.get(input.assistantMessage.sessionID)
-                        await PermissionNext.ask({
-                          permission: "doom_loop",
-                          patterns: [value.toolName],
-                          sessionID: input.assistantMessage.sessionID,
-                          metadata: {
-                            tool: value.toolName,
-                            input: toolInput,
-                          },
-                          ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
-                          signal: input.abort,
-                        })
-                      }
-                      await settleTrackedExecution(value.toolCallId)
+                      deferredToolCalls.push({
+                        callID: value.toolCallId,
+                        toolName: value.toolName,
+                        input: toolInput,
+                      })
                       break
                     }
                     case "tool-result": {
@@ -1406,12 +1420,6 @@ export namespace SessionProcessor {
                     case "abort":
                       streamAborted = true
                       break
-
-                    default:
-                      log.info("unhandled", {
-                        ...value,
-                      })
-                      continue
                   }
                 }
                 ObservabilitySpans.end(llmSpan, {
@@ -1421,7 +1429,7 @@ export namespace SessionProcessor {
                 ObservabilitySpans.end(llmSpan, { status: "error", error })
                 throw error
               } finally {
-                await ownedStream.dispose()
+                await stream.dispose()
                 streamInput.memoryTurn?.streamDisposed()
                 flushChunkMetrics()
                 currentText = undefined
@@ -1431,6 +1439,62 @@ export namespace SessionProcessor {
                   messageID: input.assistantMessage.id,
                 })
               }
+              agentTurnInput.system?.splice(0)
+              agentTurnInput.lateSystem?.splice(0)
+              agentTurnInput.messages?.splice(0)
+              agentTurnInput.toolDefinitions?.splice(0)
+              agentTurnInput.activeToolIDs?.splice(0)
+              if (deferredToolCalls.length > 0) {
+                SessionManager.setExecutionPhase(input.sessionID, "authorizing_tools")
+              }
+              for (const call of deferredToolCalls) {
+                if (!shouldAskDoomLoop(Object.values(toolcalls), call.toolName, call.input)) continue
+                const agent = await Agent.get(input.assistantMessage.agent)
+                const session = await Session.get(input.assistantMessage.sessionID)
+                await PermissionNext.ask({
+                  permission: "doom_loop",
+                  patterns: [call.toolName],
+                  sessionID: input.assistantMessage.sessionID,
+                  metadata: {
+                    tool: call.toolName,
+                    input: call.input,
+                  },
+                  ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
+                  signal: input.abort,
+                })
+              }
+              if (deferredToolCalls.length > 0) {
+                SessionManager.setExecutionPhase(input.sessionID, "queued_tools")
+              }
+              await Promise.all(
+                deferredToolCalls.map(async (call) => {
+                  if (!streamInput.executionTools) return
+                  const task = await ToolScheduler.dispatch({
+                    sessionID: input.sessionID,
+                    generation: input.generation ?? 0,
+                    messageID: input.assistantMessage.id,
+                    callID: call.callID,
+                    toolName: call.toolName,
+                    input: call.input,
+                    tool: streamInput.executionTools[call.toolName],
+                    executor: streamInput.executorKinds[call.toolName],
+                    processor: result,
+                    signal: input.abort,
+                    onState(state) {
+                      if (state === "running") SessionManager.setExecutionPhase(input.sessionID, "running_tools")
+                    },
+                  })
+                  await settleTrackedExecution(call.callID)
+                  if (
+                    shouldBreak &&
+                    (task.errorName === PermissionNext.RejectedError.name ||
+                      task.errorName === Question.RejectedError.name)
+                  ) {
+                    blocked = true
+                  }
+                }),
+              )
+              SessionManager.setExecutionPhase(input.sessionID, "waiting_background")
             } catch (e: any) {
               fastAbort = isFastAbort(input.abort, e)
               if (SessionMemoryIncident.isOutOfMemory(e)) {

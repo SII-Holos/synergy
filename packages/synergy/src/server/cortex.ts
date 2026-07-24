@@ -47,7 +47,7 @@ export const CortexRoute = new Hono()
     "/concurrency",
     describeRoute({
       summary: "Get Cortex concurrency status",
-      description: "Get Cortex admission limits and advisory memory-pressure concurrency guidance.",
+      description: "Get configured Cortex concurrency and the effective memory-pressure admission limit.",
       operationId: "cortex.concurrency",
       responses: {
         200: {
