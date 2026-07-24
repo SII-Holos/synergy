@@ -810,62 +810,64 @@ export function LatticePanel(props: {
                   </div>
                 </div>
 
-                <footer class="shrink-0 border-t border-border-weak-base bg-surface-base px-4 py-3">
-                  <div class="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-end gap-2">
-                    <Show
-                      when={
-                        currentRun().status === "completed" ||
-                        currentRun().status === "failed" ||
-                        currentRun().status === "cancelled"
-                      }
-                    >
-                      <Button variant="primary" onClick={() => props.onConfigure?.({ confirmRestart: true })}>
-                        {_({ id: "app.lattice.panel.startNew", message: "Start new run" })}
-                      </Button>
-                    </Show>
-                    <Show when={controls().pause}>
-                      <Button
-                        variant="secondary"
-                        onClick={() => void invoke("pause", (input) => props.sdk.client.lattice.run.pause(input))}
-                        disabled={!!busyAction()}
+                <footer class="shrink-0 px-5 pb-4 pt-2">
+                  <div class="mx-auto flex w-full max-w-3xl justify-end">
+                    <div class="flex max-w-full flex-wrap items-center justify-end gap-1 rounded-lg bg-surface-raised-base p-1 shadow-sm">
+                      <Show
+                        when={
+                          currentRun().status === "completed" ||
+                          currentRun().status === "failed" ||
+                          currentRun().status === "cancelled"
+                        }
                       >
-                        {busyAction() === "pause"
-                          ? _({ id: "app.lattice.panel.pausing", message: "Pausing…" })
-                          : _({ id: "app.lattice.panel.pause", message: "Pause" })}
-                      </Button>
-                    </Show>
-                    <Show when={controls().resume}>
-                      <Button
-                        variant="primary"
-                        onClick={() => void invoke("resume", (input) => props.sdk.client.lattice.run.resume(input))}
-                        disabled={!!busyAction()}
-                      >
-                        {busyAction() === "resume"
-                          ? _({ id: "app.lattice.panel.resuming", message: "Resuming…" })
-                          : _({ id: "app.lattice.panel.resume", message: "Resume" })}
-                      </Button>
-                    </Show>
-                    <Show when={controls().approve}>
-                      <Button
-                        variant="primary"
-                        onClick={() => void invoke("approve", (input) => props.sdk.client.lattice.run.approve(input))}
-                        disabled={!!busyAction() || approvalQueued()}
-                      >
-                        {busyAction() === "approve" || approvalQueued()
-                          ? _({ id: "app.lattice.panel.continuing", message: "Continuing…" })
-                          : _({ id: "app.lattice.panel.continue", message: "Continue" })}
-                      </Button>
-                    </Show>
-                    <Show when={controls().cancel}>
-                      <Button
-                        variant="ghost"
-                        class="text-text-on-critical-base"
-                        onClick={confirmCancel}
-                        disabled={!!busyAction()}
-                      >
-                        {_({ id: "app.lattice.panel.cancel", message: "Cancel run" })}
-                      </Button>
-                    </Show>
+                        <Button variant="primary" onClick={() => props.onConfigure?.({ confirmRestart: true })}>
+                          {_({ id: "app.lattice.panel.startNew", message: "Start new run" })}
+                        </Button>
+                      </Show>
+                      <Show when={controls().pause}>
+                        <Button
+                          variant="ghost"
+                          onClick={() => void invoke("pause", (input) => props.sdk.client.lattice.run.pause(input))}
+                          disabled={!!busyAction()}
+                        >
+                          {busyAction() === "pause"
+                            ? _({ id: "app.lattice.panel.pausing", message: "Pausing…" })
+                            : _({ id: "app.lattice.panel.pause", message: "Pause" })}
+                        </Button>
+                      </Show>
+                      <Show when={controls().resume}>
+                        <Button
+                          variant="primary"
+                          onClick={() => void invoke("resume", (input) => props.sdk.client.lattice.run.resume(input))}
+                          disabled={!!busyAction()}
+                        >
+                          {busyAction() === "resume"
+                            ? _({ id: "app.lattice.panel.resuming", message: "Resuming…" })
+                            : _({ id: "app.lattice.panel.resume", message: "Resume" })}
+                        </Button>
+                      </Show>
+                      <Show when={controls().approve}>
+                        <Button
+                          variant="primary"
+                          onClick={() => void invoke("approve", (input) => props.sdk.client.lattice.run.approve(input))}
+                          disabled={!!busyAction() || approvalQueued()}
+                        >
+                          {busyAction() === "approve" || approvalQueued()
+                            ? _({ id: "app.lattice.panel.continuing", message: "Continuing…" })
+                            : _({ id: "app.lattice.panel.continue", message: "Continue" })}
+                        </Button>
+                      </Show>
+                      <Show when={controls().cancel}>
+                        <Button
+                          variant="ghost"
+                          class="text-text-on-critical-base"
+                          onClick={confirmCancel}
+                          disabled={!!busyAction()}
+                        >
+                          {_({ id: "app.lattice.panel.cancel", message: "Cancel run" })}
+                        </Button>
+                      </Show>
+                    </div>
                   </div>
                 </footer>
               </>
