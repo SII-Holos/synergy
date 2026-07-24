@@ -3,9 +3,11 @@ import { SessionMemoryPressure } from "../../src/session/memory-pressure"
 
 const env = {
   SYNERGY_SESSION_GC_MIN_INTERVAL_MS: "10000",
+  SYNERGY_SESSION_GC_FULL_MIN_INTERVAL_MS: "30000",
   SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES: "500",
   SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES: "500",
   SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES: "500",
+  SYNERGY_SESSION_GC_CGROUP_SOFT_BYTES: "500",
   SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES: "1000",
   SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES: "1000",
   SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES: "1000",
@@ -66,6 +68,7 @@ describe("SessionMemoryPressure", () => {
     const calls: boolean[] = []
     const signal = {
       phase: "test.history.complete",
+      platform: "darwin" as const,
       now: () => 12_000,
       snapshot: () => healthySnapshot,
       collect: (synchronous: boolean) => {
@@ -82,6 +85,171 @@ describe("SessionMemoryPressure", () => {
     expect(result?.releaseCount).toBe(2)
     expect(result?.decision.action).toBe("normal")
     expect(calls).toEqual([false])
+  })
+
+  test("uses asynchronous GC for soft process pressure at a Linux release boundary", async () => {
+    const calls: boolean[] = []
+    SessionMemoryPressure.signalRelease({
+      phase: "session.turn.complete",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 700 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    expect(result?.decision.action).toBe("normal")
+    expect(calls).toEqual([false])
+  })
+
+  test("uses full GC only for critical pressure attributed to the control process", async () => {
+    const calls: boolean[] = []
+    SessionMemoryPressure.signalRelease({
+      phase: "session.turn.complete",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    expect(result?.decision.action).toBe("linux_release_full")
+    expect(result?.processPressure).toBe("critical")
+    expect(calls).toEqual([true])
+  })
+
+  test("does not collect the control process for service-only cgroup pressure", async () => {
+    const calls: boolean[] = []
+    SessionMemoryPressure.signalRelease({
+      phase: "tool.execution.complete",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => ({
+        ...healthySnapshot,
+        cgroupCurrentBytes: 2_000,
+        cgroupWorkingSetBytes: 2_000,
+      }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    expect(result?.decision).toMatchObject({
+      action: "skip",
+      reason: "service_pressure_external",
+    })
+    expect(result?.processPressure).toBe("normal")
+    expect(result?.servicePressure).toBe("critical")
+    expect(calls).toEqual([])
+  })
+
+  test("does not collect the control process for service-only cgroup pressure outside a release boundary", async () => {
+    const calls: boolean[] = []
+    const result = await SessionMemoryPressure.maybeCollect({
+      phase: "library.reencode.after_session",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => ({
+        ...healthySnapshot,
+        cgroupCurrentBytes: 2_000,
+        cgroupWorkingSetBytes: 2_000,
+      }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    expect(result.decision).toMatchObject({
+      action: "skip",
+      reason: "service_pressure_external",
+    })
+    expect(result.processPressure).toBe("normal")
+    expect(result.servicePressure).toBe("critical")
+    expect(calls).toEqual([])
+  })
+
+  test("does not change non-Linux release collection", async () => {
+    const calls: boolean[] = []
+    SessionMemoryPressure.signalRelease({
+      phase: "session.turn.complete",
+      platform: "darwin",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 700 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    expect(result?.decision.action).toBe("normal")
+    expect(calls).toEqual([false])
+  })
+
+  test("does not run full GC while a provider stream is active", async () => {
+    const calls: boolean[] = []
+    SessionMemoryPressure.streamStarted()
+    SessionMemoryPressure.signalRelease({
+      phase: "tool.execution.complete",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    SessionMemoryPressure.streamDisposed()
+    expect(result?.decision.action).toBe("critical")
+    expect(calls).toEqual([false])
+  })
+
+  test("keeps Linux full GC behind its independent cooldown", async () => {
+    const calls: boolean[] = []
+    const signal = (now: number) => ({
+      phase: "session.turn.complete",
+      platform: "linux" as const,
+      now: () => now,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous: boolean) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    SessionMemoryPressure.signalRelease(signal(12_000))
+    await SessionMemoryPressure.flushReleaseSignalsForTest()
+    SessionMemoryPressure.signalRelease(signal(22_001))
+    const second = await SessionMemoryPressure.flushReleaseSignalsForTest()
+
+    expect(second?.decision.action).toBe("critical")
+    expect(calls).toEqual([true, false])
+  })
+
+  test("ignores Linux-only release signals on other platforms", async () => {
+    SessionMemoryPressure.signalRelease({
+      phase: "tool.execution.complete",
+      platform: "darwin",
+      linuxOnly: true,
+      snapshot: () => healthySnapshot,
+      collect: () => {
+        throw new Error("must not collect")
+      },
+      env,
+    })
+
+    expect(await SessionMemoryPressure.flushReleaseSignalsForTest()).toBeUndefined()
   })
 
   test("keeps released-history collection behind the minimum interval", async () => {
@@ -169,6 +337,185 @@ describe("SessionMemoryPressure", () => {
     expect(calls).toEqual([false])
   })
 
+  test("re-evaluates a critical Linux release after an in-flight normal collection", async () => {
+    const calls: boolean[] = []
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let finishFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const normal = SessionMemoryPressure.maybeCollect({
+      phase: "test.normal",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: async (synchronous) => {
+        calls.push(synchronous)
+        releaseFirst()
+        await firstGate
+      },
+      env,
+    })
+    await firstStarted
+
+    const release = {
+      phase: "test.release",
+      platform: "linux" as const,
+      now: () => 22_001,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous: boolean) => {
+        calls.push(synchronous)
+      },
+      env,
+    }
+    SessionMemoryPressure.signalRelease(release)
+    SessionMemoryPressure.signalRelease(release)
+    const flushing = SessionMemoryPressure.flushReleaseSignalsForTest()
+    finishFirst()
+
+    const [, released] = await Promise.all([normal, flushing])
+    expect(released?.releaseCount).toBe(2)
+    expect(released?.decision.action).toBe("linux_release_full")
+    expect(released?.processPressure).toBe("critical")
+    expect(calls).toEqual([false, true])
+  })
+
+  test("rechecks active streams before a queued full collection", async () => {
+    const calls: boolean[] = []
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let finishFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const normal = SessionMemoryPressure.maybeCollect({
+      phase: "test.normal",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: async (synchronous) => {
+        calls.push(synchronous)
+        releaseFirst()
+        await firstGate
+      },
+      env,
+    })
+    await firstStarted
+
+    SessionMemoryPressure.signalRelease({
+      phase: "test.release",
+      platform: "linux",
+      now: () => 22_001,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+    const flushing = SessionMemoryPressure.flushReleaseSignalsForTest()
+    SessionMemoryPressure.streamStarted()
+    finishFirst()
+
+    const [, released] = await Promise.all([normal, flushing])
+    SessionMemoryPressure.streamDisposed()
+    expect(released?.decision.action).toBe("critical")
+    expect(calls).toEqual([false, false])
+  })
+  test("keeps a queued release redecision behind the minimum interval", async () => {
+    const calls: boolean[] = []
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let finishFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const normal = SessionMemoryPressure.maybeCollect({
+      phase: "test.normal",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: async (synchronous) => {
+        calls.push(synchronous)
+        releaseFirst()
+        await firstGate
+      },
+      env,
+    })
+    await firstStarted
+
+    SessionMemoryPressure.signalRelease({
+      phase: "test.release",
+      platform: "linux",
+      now: () => 15_000,
+      snapshot: () => ({ ...healthySnapshot, externalBytes: 2_000 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+    const flushing = SessionMemoryPressure.flushReleaseSignalsForTest()
+    finishFirst()
+
+    const [, released] = await Promise.all([normal, flushing])
+    expect(released?.decision).toMatchObject({ action: "skip", reason: "interval", critical: true })
+    expect(calls).toEqual([false])
+  })
+
+  test("rechecks process ownership before a queued release collection", async () => {
+    const calls: boolean[] = []
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let finishFirst!: () => void
+    const firstGate = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const normal = SessionMemoryPressure.maybeCollect({
+      phase: "test.normal",
+      platform: "linux",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: async (synchronous) => {
+        calls.push(synchronous)
+        releaseFirst()
+        await firstGate
+      },
+      env,
+    })
+    await firstStarted
+
+    SessionMemoryPressure.signalRelease({
+      phase: "test.release",
+      platform: "linux",
+      now: () => 22_001,
+      snapshot: () => ({
+        ...healthySnapshot,
+        cgroupCurrentBytes: 2_000,
+        cgroupWorkingSetBytes: 2_000,
+      }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+    const flushing = SessionMemoryPressure.flushReleaseSignalsForTest()
+    finishFirst()
+
+    const [, released] = await Promise.all([normal, flushing])
+    expect(released?.decision).toMatchObject({ action: "skip", reason: "service_pressure_external" })
+    expect(released?.processPressure).toBe("normal")
+    expect(released?.servicePressure).toBe("critical")
+    expect(calls).toEqual([false])
+  })
+
   test("treats JavaScript heap and external allocations as critical pressure", () => {
     const thresholds = SessionMemoryPressure.resolveThresholds(env, healthySnapshot)
 
@@ -195,6 +542,9 @@ describe("SessionMemoryPressure", () => {
   test("classifies soft pressure before the critical boundary", () => {
     const thresholds = SessionMemoryPressure.resolveThresholds(env, healthySnapshot)
     expect(SessionMemoryPressure.pressureLevel({ ...healthySnapshot, heapUsedBytes: 700 }, thresholds)).toBe("soft")
+    expect(SessionMemoryPressure.pressureLevel({ ...healthySnapshot, cgroupWorkingSetBytes: 700 }, thresholds)).toBe(
+      "soft",
+    )
     expect(SessionMemoryPressure.pressureLevel(healthySnapshot, thresholds)).toBe("normal")
   })
 

@@ -11,6 +11,8 @@ import { SessionManager } from "./manager"
 import { Shell } from "../util/shell"
 import { lastModel } from "./input"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
+import { ChildProcessClose } from "../process/child-process-close"
+import { WindowsProcessJob } from "../process/windows-process-job"
 
 function deriveShellAbortReason(reason: unknown): string {
   if (reason instanceof DOMException) {
@@ -174,19 +176,29 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
   const matchingInvocation = invocations[shellName] ?? invocations[""]
   const args = matchingInvocation?.args
 
-  const proc = spawn(sh, args, {
-    cwd: ScopeContext.current.directory,
-    detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      TERM: "dumb",
-    },
-  })
+  const processEnv = {
+    ...process.env,
+    TERM: "dumb",
+  }
+  const windowsProcessJob = WindowsProcessJob.prepare({ command: sh, args, env: processEnv })
+  let proc: ReturnType<typeof spawn>
+  let windowsProcessOwner: WindowsProcessJob.Owner | undefined
+  try {
+    proc = spawn(windowsProcessJob?.command ?? sh, windowsProcessJob?.args ?? args, {
+      cwd: ScopeContext.current.directory,
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: windowsProcessJob?.env ?? processEnv,
+    })
+    if (windowsProcessJob) windowsProcessOwner = await windowsProcessJob.activate(proc)
+  } catch (error) {
+    windowsProcessJob?.cleanup()
+    throw error
+  }
 
   let output = ""
 
-  proc.stdout?.on("data", (chunk) => {
+  const appendOutput = (chunk: Buffer) => {
     output += chunk.toString()
     if (part.state.status === "running") {
       part.state.metadata = {
@@ -196,24 +208,31 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
       }
       Session.updatePart(part)
     }
-  })
+  }
 
-  proc.stderr?.on("data", (chunk) => {
-    output += chunk.toString()
-    if (part.state.status === "running") {
-      part.state.metadata = {
-        ...part.state.metadata,
-        output: output,
-        description: "",
-      }
-      Session.updatePart(part)
-    }
-  })
+  proc.stdout?.on("data", appendOutput)
+  proc.stderr?.on("data", appendOutput)
 
   let aborted = false
+  const terminate = async () => {
+    if (windowsProcessOwner) {
+      windowsProcessOwner.terminate()
+      windowsProcessOwner = undefined
+      return
+    }
+    await Shell.killTree(proc, { exited: () => exited })
+  }
   let exited = false
+  const closed = ChildProcessClose.wait(proc, {
+    onExit() {
+      exited = true
+    },
+    onDrainTimeout() {
+      return terminate()
+    },
+  })
 
-  const kill = () => Shell.killTree(proc, { exited: () => exited })
+  const kill = () => terminate()
 
   if (abort.aborted) {
     aborted = true
@@ -227,13 +246,16 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
 
   abort.addEventListener("abort", abortHandler, { once: true })
 
-  await new Promise<void>((resolve) => {
-    proc.on("close", () => {
-      exited = true
-      abort.removeEventListener("abort", abortHandler)
-      resolve()
-    })
-  })
+  try {
+    await closed
+  } finally {
+    abort.removeEventListener("abort", abortHandler)
+    proc.stdout?.off("data", appendOutput)
+    proc.stderr?.off("data", appendOutput)
+    windowsProcessOwner?.release()
+    windowsProcessOwner = undefined
+    windowsProcessJob?.cleanup()
+  }
 
   if (aborted) {
     output += "\n\n" + ["<metadata>", deriveShellAbortReason(abort.reason), "</metadata>"].join("\n")

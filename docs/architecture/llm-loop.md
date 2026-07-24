@@ -66,6 +66,8 @@ One model step performs the following work:
 
 The assistant created for the step keeps `parentID = R.id` and `rootID = R.id`, even when the step follows a steer, context injection, tool result, or compaction boundary.
 
+Release-triggered memory work never blocks the Linux turn settlement path. Turn and tool releases enqueue one coalesced signal; the Control Plane classifies its process memory separately from service-wide cgroup pressure. Service-only pressure never requests Control Plane GC. Only critical memory attributed to the Control Plane can request synchronous full GC, and only after the provider stream is disposed and the full-GC cooldown has elapsed. Agent and tool-process memory is recovered by those process owners rather than by collecting the HTTP/WebSocket process.
+
 ## Agent and Model Resolution
 
 Root messages persist the resolved agent and model used to start their task. Session-level explicit overrides can become defaults for later roots, while lower-priority fallback resolution does not write back into a user's draft selection.

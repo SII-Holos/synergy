@@ -195,6 +195,7 @@ export namespace ProcessRegistry {
   const running = new Map<string, Process>()
   const finished = new Map<string, FinishedProcess>()
   const outputBuffers = new WeakMap<Process, BoundedTextBuffer>()
+  const terminators = new WeakMap<Process, () => void | Promise<void>>()
   let sweeper: Timer | null = null
   let ttlMs = DEFAULT_TTL_MS
   let processInspector: ProcessInspector = defaultProcessInspector
@@ -252,6 +253,21 @@ export namespace ProcessRegistry {
     return finished.get(id)
   }
 
+  export function setTerminator(proc: Process, terminate: (() => void | Promise<void>) | undefined) {
+    if (terminate) terminators.set(proc, terminate)
+    else terminators.delete(proc)
+  }
+
+  export async function terminate(proc: Process) {
+    const terminate = terminators.get(proc)
+    if (terminate) {
+      await terminate()
+      return
+    }
+    if (!proc.child) return
+    const { Shell } = await import("../util/shell")
+    await Shell.killTree(proc.child, { exited: () => proc.exited })
+  }
   export function appendOutput(proc: Process, chunk: string) {
     const outputBuffer = outputBuffers.get(proc)
     if (!outputBuffer) throw new Error(`Process output buffer is unavailable: ${proc.id}`)
@@ -286,6 +302,7 @@ export namespace ProcessRegistry {
     proc.exited = true
     proc.exitCode = exitCode
     proc.exitSignal = exitSignal
+    terminators.delete(proc)
 
     const status: Status =
       exitSignal === "SIGKILL" || exitSignal === "SIGTERM" ? "killed" : exitCode === 0 ? "completed" : "failed"
@@ -338,6 +355,7 @@ export namespace ProcessRegistry {
   export function remove(id: string) {
     const proc = running.get(id)
     running.delete(id)
+    if (proc) terminators.delete(proc)
     finished.delete(id)
     if (proc) {
       void Observability.emit("process.removed", {
@@ -452,7 +470,7 @@ export namespace ProcessRegistry {
   }
 
   export async function killAllRunning() {
-    const procs = Array.from(running.values()).filter((p) => !p.exited && p.child)
+    const procs = Array.from(running.values()).filter((proc) => !proc.exited && (proc.child || terminators.has(proc)))
     if (procs.length === 0) return
     log.info("killing all running processes", { count: procs.length })
     void Observability.emit("process.kill_all.start", {
@@ -463,9 +481,7 @@ export namespace ProcessRegistry {
     })
     await Promise.all(
       procs.map(async (proc) => {
-        if (!proc.child) return
         try {
-          const { Shell } = await import("../util/shell")
           await Observability.emit("process.kill", {
             processId: proc.id,
             pid: proc.pid,
@@ -474,7 +490,7 @@ export namespace ProcessRegistry {
               command: ObservabilityRedaction.commandSummary(proc.command),
             },
           })
-          await Shell.killTree(proc.child, { exited: () => proc.exited })
+          await terminate(proc)
         } catch (err) {
           log.error("failed to kill process", { id: proc.id, error: err })
           void Observability.emit("process.kill.error", {

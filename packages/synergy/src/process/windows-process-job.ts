@@ -1,0 +1,184 @@
+import { randomBytes } from "node:crypto"
+import { existsSync, unlinkSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import type { ChildProcess } from "node:child_process"
+import type { Pointer } from "bun:ffi"
+
+export namespace WindowsProcessJob {
+  const PROCESS_TERMINATE = 0x0001
+  const PROCESS_SET_QUOTA = 0x0100
+
+  const BOOTSTRAP = [
+    "$gate = $env:SYNERGY_WINDOWS_JOB_GATE",
+    "while (-not [System.IO.File]::Exists($gate)) { Start-Sleep -Milliseconds 5 }",
+    "$configPath = $env:SYNERGY_WINDOWS_JOB_CONFIG",
+    "$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json",
+    "Remove-Item -LiteralPath $gate,$configPath -Force -ErrorAction SilentlyContinue",
+    "Remove-Item Env:SYNERGY_WINDOWS_JOB_GATE -ErrorAction SilentlyContinue",
+    "Remove-Item Env:SYNERGY_WINDOWS_JOB_CONFIG -ErrorAction SilentlyContinue",
+    "$target = [string]$config.command",
+    "$arguments = @($config.args)",
+    "& $target @arguments",
+    "exit $LASTEXITCODE",
+  ].join("; ")
+
+  type Handle = number | Pointer
+
+  export interface Owner {
+    terminate(): void
+    release(): void
+  }
+
+  export interface Prepared {
+    command: string
+    args: string[]
+    env: Record<string, string>
+    activate(child: ChildProcess): Promise<Owner>
+    cleanup(): void
+  }
+
+  export interface RuntimeForTest {
+    createJob(): Handle | null
+    openProcess(pid: number): Handle | null
+    assignProcess(job: Handle, process: Handle): boolean
+    terminateJob(job: Handle): boolean
+    closeHandle(handle: Handle): boolean
+    lastError(): number
+  }
+
+  let runtimePromise: Promise<RuntimeForTest> | undefined
+
+  export function prepare(input: {
+    command: string
+    args: string[]
+    env: Record<string, string>
+  }): Prepared | undefined {
+    if (process.platform !== "win32") return
+    const token = `${process.pid}-${randomBytes(8).toString("hex")}`
+    const gatePath = path.join(tmpdir(), `synergy-process-job-${token}.gate`)
+    const configPath = path.join(tmpdir(), `synergy-process-job-${token}.json`)
+    writeFileSync(configPath, JSON.stringify({ command: input.command, args: input.args }), {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    })
+    const cleanup = () => {
+      for (const target of [gatePath, configPath]) {
+        if (!existsSync(target)) continue
+        try {
+          unlinkSync(target)
+        } catch {}
+      }
+    }
+    return {
+      command: "powershell.exe",
+      args: ["-NoProfile", "-NonInteractive", "-Command", BOOTSTRAP],
+      env: {
+        ...input.env,
+        SYNERGY_WINDOWS_JOB_GATE: gatePath,
+        SYNERGY_WINDOWS_JOB_CONFIG: configPath,
+      },
+      async activate(child) {
+        if (!child.pid) {
+          cleanup()
+          throw new Error("Windows process job child did not receive a PID")
+        }
+        let owner: Owner
+        try {
+          owner = attach(child.pid, await runtime())
+        } catch (error) {
+          child.kill()
+          cleanup()
+          throw error
+        }
+        try {
+          await Bun.write(gatePath, "ready")
+          return owner
+        } catch (error) {
+          owner.terminate()
+          cleanup()
+          throw error
+        }
+      },
+      cleanup,
+    }
+  }
+
+  export function prepareShell(input: { shell: string; command: string; env: Record<string, string> }) {
+    const name = path.win32.basename(input.shell).toLowerCase()
+    const args =
+      name === "cmd" || name === "cmd.exe"
+        ? ["/d", "/s", "/c", input.command]
+        : name === "powershell" || name === "powershell.exe" || name === "pwsh" || name === "pwsh.exe"
+          ? ["-NoProfile", "-Command", input.command]
+          : ["-c", input.command]
+    return prepare({ command: input.shell, args, env: input.env })
+  }
+
+  export function attachForTest(pid: number, runtime: RuntimeForTest): Owner {
+    return attach(pid, runtime)
+  }
+
+  function attach(pid: number, runtime: RuntimeForTest): Owner {
+    const job = runtime.createJob()
+    if (job === null) throw new Error(`CreateJobObjectW failed: ${runtime.lastError()}`)
+
+    let processHandle: Handle | null = null
+    try {
+      processHandle = runtime.openProcess(pid)
+      if (processHandle === null) throw new Error(`OpenProcess failed: ${runtime.lastError()}`)
+      if (!runtime.assignProcess(job, processHandle)) {
+        throw new Error(`AssignProcessToJobObject failed: ${runtime.lastError()}`)
+      }
+    } catch (error) {
+      if (processHandle !== null) runtime.closeHandle(processHandle)
+      runtime.closeHandle(job)
+      throw error
+    }
+    runtime.closeHandle(processHandle)
+
+    let released = false
+    const release = () => {
+      if (released) return
+      released = true
+      runtime.closeHandle(job)
+    }
+    return {
+      terminate() {
+        if (released) return
+        runtime.terminateJob(job)
+        release()
+      },
+      release,
+    }
+  }
+
+  async function runtime(): Promise<RuntimeForTest> {
+    if (runtimePromise) return runtimePromise
+    runtimePromise = loadRuntime()
+    return runtimePromise
+  }
+
+  async function loadRuntime(): Promise<RuntimeForTest> {
+    const { dlopen, FFIType } = await import("bun:ffi")
+    const library = dlopen("kernel32.dll", {
+      CreateJobObjectW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+      OpenProcess: { args: [FFIType.u32, FFIType.bool, FFIType.u32], returns: FFIType.ptr },
+      AssignProcessToJobObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
+      TerminateJobObject: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.bool },
+      CloseHandle: { args: [FFIType.ptr], returns: FFIType.bool },
+      GetLastError: { args: [], returns: FFIType.u32 },
+    })
+    const symbols = library.symbols
+    return {
+      createJob: () => symbols.CreateJobObjectW(null, null),
+      openProcess: (pid) => symbols.OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, false, pid),
+      assignProcess: (job, processHandle) =>
+        Boolean(symbols.AssignProcessToJobObject(job as Pointer, processHandle as Pointer)),
+      terminateJob: (job) => Boolean(symbols.TerminateJobObject(job as Pointer, 1)),
+      closeHandle: (handle) => Boolean(symbols.CloseHandle(handle as Pointer)),
+      lastError: () => symbols.GetLastError(),
+    }
+  }
+}

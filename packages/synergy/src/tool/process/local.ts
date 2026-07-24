@@ -291,9 +291,7 @@ export namespace LocalProcessBackend {
           }
         }
 
-        if (proc.child) {
-          await Shell.killTree(proc.child, { exited: () => proc.exited })
-        }
+        await ProcessRegistry.terminate(proc)
         ProcessRegistry.markExited(proc, null, "SIGKILL")
 
         return {
@@ -329,9 +327,7 @@ export namespace LocalProcessBackend {
 
       case "remove": {
         if (proc) {
-          if (proc.backgrounded && proc.child) {
-            await Shell.killTree(proc.child, { exited: () => proc.exited })
-          }
+          if (proc.backgrounded) await ProcessRegistry.terminate(proc)
           ProcessRegistry.markExited(proc, null, "SIGKILL")
         }
         ProcessRegistry.remove(processId)

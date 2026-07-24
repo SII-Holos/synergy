@@ -137,6 +137,17 @@ describe("ProcessRegistry lifecycle", () => {
     const finished = ProcessRegistry.getFinished(proc.id)
     expect(finished!.status).toBe("killed")
   })
+  test("uses an owned process-tree terminator before the child fallback", async () => {
+    const proc = ProcessRegistry.create({ command: "owned child" })
+    let terminated = 0
+    ProcessRegistry.setTerminator(proc, () => {
+      terminated++
+    })
+
+    await ProcessRegistry.terminate(proc)
+
+    expect(terminated).toBe(1)
+  })
 
   test("resource snapshot reports inspected child process RSS", () => {
     const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 4096 }))

@@ -21,6 +21,8 @@ import { GitHubProvider } from "@/provider/github"
 import { BashVirtualFile } from "./virtual-file"
 import type { BashSandboxPrepare } from "./shared"
 import { ObservabilityRedaction } from "@/observability/redaction"
+import { ChildProcessClose } from "@/process/child-process-close"
+import { WindowsProcessJob } from "@/process/windows-process-job"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -327,10 +329,13 @@ export const LocalBashBackend = {
     const executionCommand = withLinuxChildOomPreference(materialized.command)
     const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
+    let windowsProcessJob: WindowsProcessJob.Prepared | undefined
+    let windowsProcessOwner: WindowsProcessJob.Owner | undefined
     let artifactsCleaned = false
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
       artifactsCleaned = true
+      windowsProcessJob?.cleanup()
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
@@ -434,13 +439,20 @@ export const LocalBashBackend = {
             fallback: sandboxFallback,
           })
         }
-        child = spawn(executionCommand, {
-          shell,
-          cwd,
-          env: sandboxEnv,
-          stdio: ["pipe", "pipe", "pipe"],
-          detached: process.platform !== "win32",
-        })
+        windowsProcessJob = WindowsProcessJob.prepareShell({ shell, command: executionCommand, env: sandboxEnv })
+        child = windowsProcessJob
+          ? spawn(windowsProcessJob.command, windowsProcessJob.args, {
+              cwd,
+              env: windowsProcessJob.env,
+              stdio: ["pipe", "pipe", "pipe"],
+            })
+          : spawn(executionCommand, {
+              shell,
+              cwd,
+              env: sandboxEnv,
+              stdio: ["pipe", "pipe", "pipe"],
+              detached: process.platform !== "win32",
+            })
       }
     } catch (e: unknown) {
       ProcessRegistry.remove(regProc.id)
@@ -454,13 +466,32 @@ export const LocalBashBackend = {
       )
       throw e
     }
+    if (windowsProcessJob) {
+      let spawnError: Error | undefined
+      const onSpawnError = (error: Error) => {
+        spawnError = error
+      }
+      child.once("error", onSpawnError)
+      try {
+        windowsProcessOwner = await windowsProcessJob.activate(child)
+        if (spawnError) throw spawnError
+      } catch (error) {
+        ProcessRegistry.remove(regProc.id)
+        cleanupExecutionArtifacts()
+        throw error
+      } finally {
+        child.off("error", onSpawnError)
+      }
+    }
 
     let aborted = false
     let timedOut = false
     let timeoutMarkerAdded = false
     let hardCeilingReached = false
     let exited = false
+    let finalized = false
     let childError: Error | undefined
+    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
     let resolveChildFinished: (result: "exited" | "error") => void = () => {}
     const childFinished = new Promise<"exited" | "error">((resolve) => {
       resolveChildFinished = resolve
@@ -473,7 +504,7 @@ export const LocalBashBackend = {
       scheduleMetadata()
     }
 
-    const kill = () => Shell.killTree(child, { exited: () => exited })
+    const kill = () => ProcessRegistry.terminate(regProc)
 
     let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
     let commandTimeoutTimer: ReturnType<typeof setTimeout> | undefined
@@ -508,11 +539,25 @@ export const LocalBashBackend = {
         ? "The command was interrupted: bash hard ceiling timed out."
         : `The command was interrupted: command timed out after ${params.timeoutSeconds}s.`
 
-    child.once("error", (error) => {
+    const releaseChildReferences = () => {
+      child.stdout?.off("data", append)
+      child.stderr?.off("data", append)
+      ProcessRegistry.setTerminator(regProc, undefined)
+      windowsProcessOwner?.release()
+      windowsProcessOwner = undefined
+      regProc.child = undefined
+      regProc.stdin = undefined
+    }
+
+    const finishError = (error: Error) => {
+      if (finalized) return
+      finalized = true
       childError = error
+      windowsProcessOwner?.terminate()
       exited = true
       cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
+      releaseChildReferences()
       cleanupExecutionArtifacts()
       void trace(
         "bash.child.error",
@@ -522,16 +567,22 @@ export const LocalBashBackend = {
         "error",
       )
       resolveChildFinished("error")
-    })
+    }
 
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
 
+    if (windowsProcessOwner) {
+      const owner = windowsProcessOwner
+      ProcessRegistry.setTerminator(regProc, () => owner.terminate())
+    }
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)
 
-    child.once("exit", (code, signal) => {
+    const finishClose = (code: number | null, signal: NodeJS.Signals | null, drainTimedOut: boolean) => {
+      if (finalized) return
+      finalized = true
       exited = true
       cleanupAllTimers()
       if (metadataDirty) flushMetadata()
@@ -545,16 +596,35 @@ export const LocalBashBackend = {
       } else {
         ProcessRegistry.remove(regProc.id)
       }
+      releaseChildReferences()
       cleanupExecutionArtifacts()
-      void trace("bash.child.exit", {
+      void trace("bash.child.close", {
         exitCode: code,
         exitSignal: signal,
         outputChars: ProcessRegistry.outputChars(regProc),
+        drainTimedOut,
       })
       resolveChildFinished("exited")
-    })
+    }
 
-    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
+    void ChildProcessClose.wait(child, {
+      onExit(code, signal) {
+        exited = true
+        cleanupAllTimers()
+        void trace("bash.child.exit", {
+          exitCode: code,
+          exitSignal: signal,
+          outputChars: ProcessRegistry.outputChars(regProc),
+        })
+      },
+      onDrainTimeout() {
+        if (regProc.backgrounded || allowsDetachedDaemons(ctx)) return
+        return ProcessRegistry.terminate(regProc)
+      },
+    }).then(
+      (result) => finishClose(result.code, result.signal, result.drainTimedOut),
+      (error) => finishError(error instanceof Error ? error : new Error(String(error))),
+    )
 
     await trace("process.spawn", {
       processId: regProc.id,
