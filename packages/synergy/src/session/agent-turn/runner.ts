@@ -4,6 +4,7 @@ import { LLM } from "../llm"
 import { ToolCatalog } from "../tool-catalog"
 import { watchManagedParent } from "@/server/managed-parent"
 import { AgentTurnProtocol } from "./protocol"
+import { AgentStreamEventCoalescer } from "./stream-event-coalescer"
 import type { AgentTurnWorkerInput } from "./worker-pool"
 
 type AgentSDKStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<infer Part> ? Part : never
@@ -100,49 +101,13 @@ async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promi
   })
 }
 
-function isTextDelta(value: AgentSDKStreamPart): value is AgentSDKStreamPart & {
-  type: "text-delta" | "reasoning-delta"
-  id: string
-  text: string
-} {
-  if (!value || typeof value !== "object" || !("type" in value)) return false
-  return value.type === "text-delta" || value.type === "reasoning-delta"
-}
-
 async function streamEvents(turn: ActiveTurn, stream: AsyncIterable<AgentSDKStreamPart>): Promise<void> {
-  let pending: AgentSDKStreamPart | undefined
-  let pendingAt = 0
-
-  const flush = async () => {
-    if (!pending) return
-    const value = pending
-    pending = undefined
-    await sendEvents(turn, [value])
-  }
-
+  const coalescer = new AgentStreamEventCoalescer<AgentSDKStreamPart>()
   for await (const value of stream) {
     turn.controller.signal.throwIfAborted()
-    if (!isTextDelta(value)) {
-      await flush()
-      await sendEvents(turn, [value])
-      continue
-    }
-    if (
-      pending &&
-      isTextDelta(pending) &&
-      pending.type === value.type &&
-      pending.id === value.id &&
-      Date.now() - pendingAt < 16 &&
-      pending.text.length + value.text.length <= 32 * 1024
-    ) {
-      pending = { ...pending, text: pending.text + value.text }
-      continue
-    }
-    await flush()
-    pending = value
-    pendingAt = Date.now()
+    await sendEvents(turn, coalescer.push(value))
   }
-  await flush()
+  await sendEvents(turn, coalescer.flush())
 }
 
 type Terminal =
@@ -318,6 +283,18 @@ process.on("message", (raw: unknown) => {
     }
     return
   }
+  if (message.type === "collect-memory") {
+    if (active?.requestId !== message.requestId && pending?.requestId !== message.requestId) return
+    Bun.gc(true)
+    send({
+      type: "heartbeat",
+      requestId: message.requestId,
+      turns,
+      collection: "full",
+      memory: memory(),
+    })
+    return
+  }
   if (message.type === "shutdown") {
     shuttingDown = true
     pending = undefined
@@ -333,6 +310,7 @@ const heartbeat = setInterval(() => {
     type: "heartbeat",
     requestId: active?.requestId,
     turns,
+    collection: "none",
     memory: memory(),
   })
 }, 15_000)
