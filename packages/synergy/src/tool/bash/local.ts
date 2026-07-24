@@ -151,6 +151,17 @@ function detachedDaemonBlockMessage(risk: DetachedDaemonRisk) {
     "Use the bash tool's background/yieldSeconds flow for tracked processes, or set SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1 only for an operator-managed runtime that intentionally permits detached daemons.",
   ].join("\n")
 }
+
+export function assertDetachedDaemonContainment(input: {
+  platform: NodeJS.Platform
+  detachedDaemonAllowed: boolean
+  sandboxed: boolean
+}) {
+  if (input.platform !== "win32" || !input.detachedDaemonAllowed || !input.sandboxed) return
+  throw new Error(
+    "Detached daemons are unavailable inside the Windows sandbox. Use full_access or a policy-approved sandbox bypass for an operator-managed runtime.",
+  )
+}
 const CHILD_OOM_SCORE_ADJ = 1000
 
 export function withLinuxChildOomPreference(command: string, platform = process.platform) {
@@ -332,6 +343,7 @@ export const LocalBashBackend = {
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
     let windowsProcessJob: WindowsProcessJob.Prepared | undefined
     let windowsProcessOwner: WindowsProcessJob.Owner | undefined
+    let ownsUnixProcessGroup = false
     let artifactsCleaned = false
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
@@ -350,6 +362,11 @@ export const LocalBashBackend = {
           extraReadRoots: materialized.extraReadRoots,
         })
       }
+      assertDetachedDaemonContainment({
+        platform: process.platform,
+        detachedDaemonAllowed,
+        sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
+      })
       sandboxWarning = sandboxWrapper?.skipReason
     } catch (error) {
       cleanupExecutionArtifacts()
@@ -424,7 +441,11 @@ export const LocalBashBackend = {
     let child: ReturnType<typeof spawn>
     try {
       if (sandboxWrapper && !sandboxWrapper.skipReason) {
-        child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
+        const invocation = detachedDaemonAllowed
+          ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
+          : Shell.prepareOwnedProcessGroup({ command: sandboxWrapper.command, args: sandboxWrapper.args })
+        ownsUnixProcessGroup = process.platform !== "win32" && !detachedDaemonAllowed
+        child = spawn(invocation.command, invocation.args, {
           cwd,
           env: sandboxEnv,
           stdio: ["pipe", "pipe", "pipe"],
@@ -443,19 +464,31 @@ export const LocalBashBackend = {
         windowsProcessJob = detachedDaemonAllowed
           ? undefined
           : WindowsProcessJob.prepareShell({ shell, command: executionCommand, env: sandboxEnv })
-        child = windowsProcessJob
-          ? spawn(windowsProcessJob.command, windowsProcessJob.args, {
-              cwd,
-              env: windowsProcessJob.env,
-              stdio: ["pipe", "pipe", "pipe"],
-            })
-          : spawn(executionCommand, {
-              shell,
-              cwd,
-              env: sandboxEnv,
-              stdio: ["pipe", "pipe", "pipe"],
-              detached: process.platform !== "win32",
-            })
+        if (windowsProcessJob) {
+          child = spawn(windowsProcessJob.command, windowsProcessJob.args, {
+            cwd,
+            env: windowsProcessJob.env,
+            stdio: ["pipe", "pipe", "pipe"],
+          })
+        } else if (process.platform === "win32") {
+          child = spawn(executionCommand, {
+            shell,
+            cwd,
+            env: sandboxEnv,
+            stdio: ["pipe", "pipe", "pipe"],
+          })
+        } else {
+          const invocation = detachedDaemonAllowed
+            ? { command: shell, args: ["-c", executionCommand] }
+            : Shell.prepareOwnedProcessGroup({ command: shell, args: ["-c", executionCommand] })
+          ownsUnixProcessGroup = !detachedDaemonAllowed
+          child = spawn(invocation.command, invocation.args, {
+            cwd,
+            env: sandboxEnv,
+            stdio: ["pipe", "pipe", "pipe"],
+            detached: true,
+          })
+        }
       }
     } catch (e: unknown) {
       ProcessRegistry.remove(regProc.id)
@@ -507,16 +540,13 @@ export const LocalBashBackend = {
       scheduleMetadata()
     }
 
-    const kill = async () => {
-      try {
-        await ProcessRegistry.terminate(regProc)
-      } catch (error) {
-        if (!windowsProcessOwner) throw error
-        windowsProcessOwner.release()
-        windowsProcessOwner = undefined
-        log.warn("Windows job termination failed; released kill-on-close owner", { error })
-      }
+    const terminateWindowsOwner = () => {
+      if (!windowsProcessOwner) return
+      windowsProcessOwner.terminateOrRelease()
+      windowsProcessOwner = undefined
     }
+
+    const kill = () => ProcessRegistry.terminate(regProc)
 
     let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
     let commandTimeoutTimer: ReturnType<typeof setTimeout> | undefined
@@ -555,8 +585,14 @@ export const LocalBashBackend = {
       child.stdout?.off("data", append)
       child.stderr?.off("data", append)
       ProcessRegistry.setTerminator(regProc, undefined)
-      windowsProcessOwner?.release()
-      windowsProcessOwner = undefined
+      if (ownsUnixProcessGroup) Shell.releaseOwnedProcessGroup(child)
+      if (windowsProcessOwner) {
+        try {
+          terminateWindowsOwner()
+        } catch (error) {
+          log.warn("Windows job owner cleanup failed", { error })
+        }
+      }
       regProc.child = undefined
       regProc.stdin = undefined
     }
@@ -567,9 +603,9 @@ export const LocalBashBackend = {
       childError = error
       if (windowsProcessOwner) {
         try {
-          windowsProcessOwner.terminate()
-        } catch {
-          windowsProcessOwner.release()
+          terminateWindowsOwner()
+        } catch (cleanupError) {
+          log.warn("Windows job owner cleanup failed after child error", { error: cleanupError })
         }
       }
       exited = true
@@ -592,8 +628,7 @@ export const LocalBashBackend = {
     regProc.pid = child.pid
 
     if (windowsProcessOwner) {
-      const owner = windowsProcessOwner
-      ProcessRegistry.setTerminator(regProc, () => owner.terminate())
+      ProcessRegistry.setTerminator(regProc, terminateWindowsOwner)
     }
     child.stdout?.on("data", append)
     child.stderr?.on("data", append)

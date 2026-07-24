@@ -157,7 +157,8 @@ describe("util.shell", () => {
     expect(directSignals).toEqual(["SIGKILL"])
     expect(alive).toBe(false)
   })
-  test("allows drain cleanup after the direct Windows parent exits", async () => {
+  test("does not target a reused Windows PID after the direct parent exits", async () => {
+    let taskkillCalls = 0
     const directSignals: Array<NodeJS.Signals | number | undefined> = []
     const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
     killer.kill = () => true
@@ -171,7 +172,7 @@ describe("util.shell", () => {
     const runtime: Shell.KillTreeRuntimeForTest = {
       platform: "win32",
       taskkill: () => {
-        queueMicrotask(() => killer.emit("exit", 1))
+        taskkillCalls++
         return killer
       },
       isPidAlive: () => true,
@@ -184,8 +185,66 @@ describe("util.shell", () => {
       runtime,
     })
 
-    expect(directSignals).toEqual(["SIGKILL"])
+    expect(taskkillCalls).toBe(0)
+    expect(directSignals).toEqual([])
   })
+  test("does not fall back to a reusable Unix parent PID after the owned group disappears", async () => {
+    const groupSignals: Array<NodeJS.Signals | number> = []
+    const directSignals: Array<NodeJS.Signals | number | undefined> = []
+    const child = {
+      pid: 987_654,
+      kill: (signal?: NodeJS.Signals | number) => {
+        directSignals.push(signal)
+        return true
+      },
+    } as ChildProcess
+    const runtime = {
+      platform: "darwin",
+      signalProcessGroup(_pid: number, signal: NodeJS.Signals | number) {
+        groupSignals.push(signal)
+        throw Object.assign(new Error("missing process group"), { code: "ESRCH" })
+      },
+      taskkill: () => {
+        throw new Error("unexpected taskkill")
+      },
+      isPidAlive: () => false,
+      taskkillTimeoutMs: 10,
+    } as Shell.KillTreeRuntimeForTest
+
+    await Shell.killTree(child, {
+      exited: () => true,
+      allowExitedParent: true,
+      runtime,
+    })
+
+    expect(groupSignals).toEqual(["SIGTERM"])
+    expect(directSignals).toEqual([])
+  })
+  test.skipIf(process.platform === "win32")("anchors an exited shell process group until release", async () => {
+    const invocation = Shell.prepareOwnedProcessGroup({ command: "/bin/sh", args: ["-c", "exit 7"] })
+    const child = Bun.spawn([invocation.command, ...invocation.args], {
+      detached: true,
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    })
+    const pid = child.pid
+
+    expect(await child.exited).toBe(7)
+    expect(() => process.kill(-pid, 0)).not.toThrow()
+
+    Shell.releaseOwnedProcessGroup({ pid } as ChildProcess)
+    for (let attempt = 0; attempt < 20; attempt++) {
+      try {
+        process.kill(-pid, 0)
+        await Bun.sleep(10)
+      } catch {
+        return
+      }
+    }
+    throw new Error("owned process-group anchor remained alive after release")
+  })
+
   test("does not reject when Windows fallback kill throws", async () => {
     const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
     killer.kill = () => true

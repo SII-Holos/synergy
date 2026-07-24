@@ -18,7 +18,36 @@ export namespace Shell {
     platform: NodeJS.Platform
     taskkill(pid: number): TaskkillProcess
     isPidAlive(pid: number): boolean
+    signalProcessGroup?(pid: number, signal: NodeJS.Signals | number): void
     taskkillTimeoutMs: number
+  }
+
+  export type ProcessInvocation = {
+    command: string
+    args: string[]
+  }
+
+  export function prepareOwnedProcessGroup(
+    invocation: ProcessInvocation,
+    platform: NodeJS.Platform = process.platform,
+  ): ProcessInvocation {
+    if (platform === "win32") return invocation
+    return {
+      command: "/bin/sh",
+      args: [
+        "-c",
+        '"$0" "$@"; status=$?; (sleep 5) </dev/null >/dev/null 2>&1 & exit "$status"',
+        invocation.command,
+        ...invocation.args,
+      ],
+    }
+  }
+
+  export function releaseOwnedProcessGroup(proc: ChildProcess): void {
+    if (process.platform === "win32" || !proc.pid) return
+    try {
+      process.kill(-proc.pid, "SIGTERM")
+    } catch {}
   }
 
   export async function killTree(
@@ -39,17 +68,20 @@ export namespace Shell {
     const runtime = opts?.runtime ?? killTreeRuntime
 
     if (runtime.platform === "win32") {
+      if (didExit(opts?.exited)) return
       const succeeded = await runTaskkill(runtime, pid)
-      if ((!opts?.allowExitedParent && didExit(opts?.exited)) || (succeeded && !isPidAlive(runtime, pid))) return
+      if (didExit(opts?.exited) || (succeeded && !isPidAlive(runtime, pid))) return
       try {
         proc.kill("SIGKILL")
       } catch {}
       return
     }
 
+    const signalProcessGroup = runtime.signalProcessGroup ?? ((target, signal) => process.kill(-target, signal))
     try {
-      process.kill(-pid, "SIGTERM")
+      signalProcessGroup(pid, "SIGTERM")
     } catch (_e) {
+      if (didExit(opts?.exited)) return
       try {
         proc.kill("SIGTERM")
       } catch {}
@@ -64,8 +96,8 @@ export namespace Shell {
 
     await Bun.sleep(SIGKILL_TIMEOUT_MS)
     try {
-      process.kill(-pid, 0)
-      process.kill(-pid, "SIGKILL")
+      signalProcessGroup(pid, 0)
+      signalProcessGroup(pid, "SIGKILL")
     } catch {}
   }
 

@@ -181,10 +181,11 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     TERM: "dumb",
   }
   const windowsProcessJob = WindowsProcessJob.prepare({ command: sh, args, env: processEnv })
+  const unixInvocation = Shell.prepareOwnedProcessGroup({ command: sh, args })
   let proc: ReturnType<typeof spawn>
   let windowsProcessOwner: WindowsProcessJob.Owner | undefined
   try {
-    proc = spawn(windowsProcessJob?.command ?? sh, windowsProcessJob?.args ?? args, {
+    proc = spawn(windowsProcessJob?.command ?? unixInvocation.command, windowsProcessJob?.args ?? unixInvocation.args, {
       cwd: ScopeContext.current.directory,
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
@@ -216,11 +217,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
   let aborted = false
   const terminate = async (allowExitedParent = false) => {
     if (windowsProcessOwner) {
-      try {
-        windowsProcessOwner.terminate()
-      } catch {
-        windowsProcessOwner.release()
-      }
+      windowsProcessOwner.terminateOrRelease()
       windowsProcessOwner = undefined
       return
     }
@@ -256,8 +253,13 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     abort.removeEventListener("abort", abortHandler)
     proc.stdout?.off("data", appendOutput)
     proc.stderr?.off("data", appendOutput)
-    windowsProcessOwner?.release()
-    windowsProcessOwner = undefined
+    Shell.releaseOwnedProcessGroup(proc)
+    if (windowsProcessOwner) {
+      try {
+        windowsProcessOwner.terminateOrRelease()
+        windowsProcessOwner = undefined
+      } catch {}
+    }
     windowsProcessJob?.cleanup()
   }
 

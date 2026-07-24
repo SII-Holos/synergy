@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { ChildProcess } from "node:child_process"
 import { WindowsProcessJob } from "../../src/process/windows-process-job"
 
 describe("WindowsProcessJob", () => {
@@ -129,5 +130,135 @@ describe("WindowsProcessJob", () => {
 
     owner.terminate()
     expect(calls).toEqual(["terminate:1", "terminate:2", "close:1"])
+  })
+
+  test("falls back to kill-on-close and retains ownership when both operations fail", () => {
+    const calls: string[] = []
+    let closeAttempts = 0
+    const runtime: WindowsProcessJob.RuntimeForTest = {
+      createJob: () => 1,
+      configureJob: () => true,
+      openProcess: () => 2,
+      assignProcess: () => true,
+      terminateJob() {
+        calls.push("terminate")
+        return false
+      },
+      closeHandle(handle) {
+        calls.push(`close:${handle}`)
+        if (handle === 2) return true
+        closeAttempts++
+        return closeAttempts > 1
+      },
+      lastError: () => 5,
+    }
+    const owner = WindowsProcessJob.attachForTest(42, runtime)
+    calls.length = 0
+
+    expect(() => owner.terminateOrRelease()).toThrow("CloseHandle failed after TerminateJobObject failed: 5")
+    expect(calls).toEqual(["terminate", "close:1"])
+
+    owner.terminateOrRelease()
+    expect(calls).toEqual(["terminate", "close:1", "terminate", "close:1"])
+  })
+  test("kills the gated child when the Windows runtime cannot load", async () => {
+    const calls: string[] = []
+    const child = {
+      pid: 42,
+      kill() {
+        calls.push("kill-child")
+        return true
+      },
+    } as ChildProcess
+
+    await expect(
+      WindowsProcessJob.activateForTest({
+        child,
+        jobRuntime: Promise.reject(new Error("runtime unavailable")),
+        openGate: async () => {
+          calls.push("open-gate")
+        },
+        cleanup: () => calls.push("cleanup"),
+      }),
+    ).rejects.toThrow("runtime unavailable")
+    expect(calls).toEqual(["kill-child", "cleanup"])
+  })
+
+  test("retries Job handle closure when gate activation fails", async () => {
+    const calls: string[] = []
+    let closeAttempts = 0
+    const runtime: WindowsProcessJob.RuntimeForTest = {
+      createJob: () => 1,
+      configureJob: () => true,
+      openProcess: () => 2,
+      assignProcess: () => true,
+      terminateJob() {
+        calls.push("terminate")
+        return false
+      },
+      closeHandle(handle) {
+        calls.push(`close:${handle}`)
+        if (handle === 2) return true
+        closeAttempts++
+        return closeAttempts > 1
+      },
+      lastError: () => 5,
+    }
+    const child = {
+      pid: 42,
+      kill() {
+        calls.push("kill-child")
+        return true
+      },
+    } as ChildProcess
+
+    await expect(
+      WindowsProcessJob.activateForTest({
+        child,
+        jobRuntime: runtime,
+        openGate: async () => {
+          throw new Error("gate unavailable")
+        },
+        cleanup: () => calls.push("cleanup"),
+      }),
+    ).rejects.toThrow("gate unavailable")
+    expect(calls).toEqual(["close:2", "kill-child", "terminate", "close:1", "close:1", "cleanup"])
+  })
+
+  test("reports persistent Job cleanup failure after gate activation fails", async () => {
+    const calls: string[] = []
+    const runtime: WindowsProcessJob.RuntimeForTest = {
+      createJob: () => 1,
+      configureJob: () => true,
+      openProcess: () => 2,
+      assignProcess: () => true,
+      terminateJob() {
+        calls.push("terminate")
+        return false
+      },
+      closeHandle(handle) {
+        calls.push(`close:${handle}`)
+        return handle === 2
+      },
+      lastError: () => 5,
+    }
+    const child = {
+      pid: 42,
+      kill() {
+        calls.push("kill-child")
+        return true
+      },
+    } as ChildProcess
+
+    const activation = WindowsProcessJob.activateForTest({
+      child,
+      jobRuntime: runtime,
+      openGate: async () => {
+        throw new Error("gate unavailable")
+      },
+      cleanup: () => calls.push("cleanup"),
+    })
+    await expect(activation).rejects.toThrow("Windows process job activation and cleanup failed")
+    expect(calls).toEqual(["close:2", "kill-child", "terminate", "close:1", "close:1", "cleanup"])
   })
 })

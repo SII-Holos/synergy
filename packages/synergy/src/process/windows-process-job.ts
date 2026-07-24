@@ -30,6 +30,7 @@ export namespace WindowsProcessJob {
 
   export interface Owner {
     terminate(): void
+    terminateOrRelease(): void
     release(): void
   }
 
@@ -83,33 +84,72 @@ export namespace WindowsProcessJob {
         SYNERGY_WINDOWS_JOB_GATE: gatePath,
         SYNERGY_WINDOWS_JOB_CONFIG: configPath,
       },
-      async activate(child) {
-        if (!child.pid) {
-          cleanup()
-          throw new Error("Windows process job child did not receive a PID")
-        }
-        let owner: Owner
-        try {
-          owner = attach(child.pid, await runtime())
-        } catch (error) {
-          child.kill()
-          cleanup()
-          throw error
-        }
-        try {
-          await Bun.write(gatePath, "ready")
-          return owner
-        } catch (error) {
-          try {
-            owner.terminate()
-          } catch {
-            owner.release()
-          }
-          cleanup()
-          throw error
-        }
+      activate(child) {
+        return activate({
+          child,
+          cleanup,
+          jobRuntime: runtime(),
+          openGate: () => Bun.write(gatePath, "ready"),
+        })
       },
       cleanup,
+    }
+  }
+
+  export function activateForTest(input: {
+    child: ChildProcess
+    jobRuntime: RuntimeForTest | Promise<RuntimeForTest>
+    openGate(): Promise<unknown>
+    cleanup?(): void
+  }): Promise<Owner> {
+    return activate({
+      ...input,
+      cleanup: input.cleanup ?? (() => {}),
+    })
+  }
+
+  async function activate(input: {
+    child: ChildProcess
+    cleanup(): void
+    jobRuntime: RuntimeForTest | Promise<RuntimeForTest>
+    openGate(): Promise<unknown>
+  }): Promise<Owner> {
+    if (!input.child.pid) {
+      input.cleanup()
+      throw new Error("Windows process job child did not receive a PID")
+    }
+    let owner: Owner
+    try {
+      owner = attach(input.child.pid, await input.jobRuntime)
+    } catch (error) {
+      try {
+        input.child.kill()
+      } catch {}
+      input.cleanup()
+      throw error
+    }
+    try {
+      await input.openGate()
+      return owner
+    } catch (activationError) {
+      try {
+        input.child.kill()
+      } catch {}
+      try {
+        owner.terminateOrRelease()
+      } catch (cleanupError) {
+        try {
+          owner.release()
+        } catch (releaseError) {
+          input.cleanup()
+          throw new AggregateError(
+            [activationError, cleanupError, releaseError],
+            "Windows process job activation and cleanup failed",
+          )
+        }
+      }
+      input.cleanup()
+      throw activationError
     }
   }
 
@@ -152,16 +192,31 @@ export namespace WindowsProcessJob {
     let released = false
     const release = () => {
       if (released) return
+      if (!runtime.closeHandle(job)) {
+        throw new Error(`CloseHandle failed: ${runtime.lastError()}`)
+      }
       released = true
-      runtime.closeHandle(job)
+    }
+    const terminate = () => {
+      if (released) return
+      if (!runtime.terminateJob(job)) {
+        throw new Error(`TerminateJobObject failed: ${runtime.lastError()}`)
+      }
+      release()
     }
     return {
-      terminate() {
+      terminate,
+      terminateOrRelease() {
         if (released) return
-        if (!runtime.terminateJob(job)) {
-          throw new Error(`TerminateJobObject failed: ${runtime.lastError()}`)
+        try {
+          terminate()
+        } catch (terminateError) {
+          try {
+            release()
+          } catch {
+            throw new Error(`CloseHandle failed after ${(terminateError as Error).message}`)
+          }
         }
-        release()
       },
       release,
     }
