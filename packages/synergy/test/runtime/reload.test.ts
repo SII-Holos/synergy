@@ -13,15 +13,18 @@ import { GitHubDelivery, GitHubIntegrationConfig } from "../../src/github/types"
 import { GitHubRuntime } from "../../src/github/runtime"
 import { GitHubStore } from "../../src/github/store"
 import { AgentTurn } from "../../src/session/agent-turn"
+import { Channel } from "../../src/channel"
 
 const originalConfigReload = Config.reload
 const originalNotifyConfigHooks = Plugin.notifyConfigHooks
 const originalAgentTurnResize = (AgentTurn as any).resize
+const originalChannelReload = Channel.reload
 
 afterEach(() => {
   Config.reload = originalConfigReload
   ;(Plugin as any).notifyConfigHooks = originalNotifyConfigHooks
   ;(AgentTurn as any).resize = originalAgentTurnResize
+  Channel.reload = originalChannelReload
   GlobalBus.removeAllListeners("event")
   CortexConcurrency.reset()
 })
@@ -160,6 +163,35 @@ describe("runtime.reload", () => {
         expect(result.changedFields).toContain("server")
         expect(result.liveApplied).toContain("model")
         expect(result.restartRequired).toContain("server")
+      },
+    })
+  })
+
+  test("preserves request-known fields when persistence already invalidated the config cache", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        Config.reload = mock(async () => ({
+          config: {},
+          changedFields: [],
+          oldConfig: {},
+        })) as typeof Config.reload
+        const channelReload = mock(async () => {})
+        Channel.reload = channelReload as typeof Channel.reload
+
+        const events: Array<{ payload?: { type?: string; properties?: { changedFields?: string[] } } }> = []
+        GlobalBus.on("event", (event) => events.push(event))
+        const result = await RuntimeReload.reload(
+          { targets: ["config"], scope: "global", reason: "known-fields" },
+          { knownChangedFields: ["channel"] },
+        )
+
+        expect(result.changedFields).toEqual(["channel"])
+        expect(result.cascaded).toContain("channel")
+        expect(channelReload).toHaveBeenCalledTimes(1)
+        const reloadedEvent = events.find((event) => event.payload?.type === RuntimeReload.Event.Reloaded.type)
+        expect(reloadedEvent?.payload?.properties?.changedFields).toEqual(["channel"])
       },
     })
   })
