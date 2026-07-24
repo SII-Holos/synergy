@@ -52,6 +52,7 @@ import { BlueprintLoopStore } from "@/blueprint"
 import type { ToolCatalog } from "./tool-catalog"
 import { ToolExecutor } from "./tool-executor"
 import type { ToolExecutorKind } from "./tool-scheduler"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -1164,7 +1165,7 @@ export namespace ToolResolver {
         }
       }
 
-      if (def.id === "loop_stop" && input.session?.workflow?.kind !== "lightloop") {
+      if (def.id === "loop_stop" && !isActiveLightLoopWorkflow(input.session?.workflow)) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({

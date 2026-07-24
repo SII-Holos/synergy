@@ -34,6 +34,30 @@ describe("SessionWorking", () => {
       })
     })
 
+    test("does not recover a terminal Light Loop retained for plugin lifecycle delivery", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.workflow = {
+              kind: "lightloop",
+              instructions: "Plugin-owned task",
+              status: "completed",
+              pluginOwner: {
+                pluginId: "test-plugin",
+                pluginGeneration: "generation-one",
+                scopeId: tmp.path,
+              },
+            }
+          })
+
+          expect(await SessionWorking.resolve(session.id)).toBeUndefined()
+        },
+      })
+    })
+
     test("returns busy when runtime is active", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({

@@ -4,11 +4,12 @@ import { capability, compilePluginManifest, definePlugin } from "@ericsanchezok/
 import type { LightLoopStartInput } from "@ericsanchezok/synergy-plugin"
 import { Agent } from "../../src/agent/agent"
 import { Cortex } from "../../src/cortex"
-import { startLightLoop } from "../../src/plugin/host-services"
+import { cancelLightLoop, getLightLoop, startLightLoop } from "../../src/plugin/host-services"
 import { createPluginInvocationContext } from "../../src/plugin-runtime/context-factory"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { LightLoopRuntime } from "../../src/session/light-loop-runtime"
+import { LightLoopTerminalStore } from "../../src/session/light-loop-terminal-hook"
 import { tmpdir } from "../fixture/fixture"
 
 const originalAgentGet = Agent.get
@@ -213,6 +214,55 @@ describe("plugin LightLoop Host Service", () => {
 
     await context.lightloop!.cancel("ses-exec-1")
     expect(calls[1]).toEqual({ method: "lightloop.cancel", params: { sessionID: "ses-exec-1" } })
+  })
+
+  test("returns terminal snapshots and makes repeated cancellation idempotent", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await LightLoopTerminalStore.put(session, {
+          sessionID: session.id,
+          status: "completed",
+          instructions: "Finish the implementation",
+          pluginOwner: {
+            pluginId: "test-plugin",
+            pluginGeneration: "generation-one",
+            scopeId: scope.id,
+          },
+          hookDeliveredAt: Date.now(),
+          createdAt: Date.now(),
+        })
+        const input = {
+          pluginId: "test-plugin",
+          pluginGeneration: "generation-one",
+          scopeId: scope.id,
+          sessionID: session.id,
+        }
+
+        expect(await getLightLoop(input)).toEqual({
+          sessionID: session.id,
+          status: "completed",
+          instructions: "Finish the implementation",
+        })
+        expect(
+          await cancelLightLoop({
+            ...input,
+            context: {
+              sessionID: session.id,
+              messageID: "msg_terminal_cancel",
+              agent: "synergy-max",
+            },
+          }),
+        ).toEqual({
+          sessionID: session.id,
+          status: "completed",
+          instructions: "Finish the implementation",
+        })
+      },
+    })
   })
 
   test("lightloop.delegate capability gates context.lightloop exposure", async () => {
