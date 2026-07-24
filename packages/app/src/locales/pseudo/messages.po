@@ -12968,6 +12968,10 @@ msgid "settings.catalog.timeouts.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
 msgstr ""
 
@@ -15485,6 +15489,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.agent.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
 msgstr ""
 
 #. js-lingui-explicit-id

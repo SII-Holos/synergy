@@ -67,6 +67,16 @@ describe("settings form Cortex concurrency", () => {
   })
 })
 
+describe("settings form agent worker pool", () => {
+  test("hydrates the configured pool size", () => {
+    expect(initializedRuntime({ execution: { agentWorkers: 6 } }).agentWorkers).toBe("6")
+  })
+
+  test("keeps automatic pool sizing blank when no size is configured", () => {
+    expect(initializedRuntime({}).agentWorkers).toBe("")
+  })
+})
+
 describe("settings form channel model variants", () => {
   test("hydrates the configured account model variant", () => {
     expect(

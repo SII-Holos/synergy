@@ -9,6 +9,7 @@ interface FakeWorker {
   options: SpawnAgentWorkerProcessOptions
   sent: AgentTurnProtocol.HostToWorker[]
   host: AgentWorkerProcess
+  stops: number
   ready(): void
   receive(message: AgentTurnProtocol.WorkerToHost): void
   exit(code?: number | null, signal?: string | null): void
@@ -39,6 +40,7 @@ function fakeWorkers() {
         sent.push(message)
       },
       async stop() {
+        worker.stops += 1
         options.onExit(0, null)
       },
     }
@@ -46,6 +48,7 @@ function fakeWorkers() {
       options,
       sent,
       host,
+      stops: 0,
       ready() {
         options.onMessage({
           type: "ready",
@@ -714,7 +717,168 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("terminates a worker that crosses its heap watermark", async () => {
+  test("admits queued demand immediately after raising the worker ceiling", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    expect(fake.workers).toHaveLength(1)
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    expect(fake.workers).toHaveLength(1)
+    expect(pool.stats()).toMatchObject({ configured: 1, workers: 1, active: 1, queued: 1 })
+
+    pool.resize(2)
+
+    expect(fake.workers).toHaveLength(2)
+    expect(pool.stats()).toMatchObject({
+      configured: 2,
+      workers: 2,
+      active: 1,
+      queued: 1,
+    })
+
+    fake.workers[1].ready()
+    const secondRun = startTurn(fake.workers[1])
+    fake.workers[1].receive({ type: "started", requestId: secondRun.requestId })
+    const second = await secondPromise
+
+    for (const [worker, run] of [
+      [fake.workers[0], firstRun],
+      [fake.workers[1], secondRun],
+    ] as const) {
+      worker.receive({
+        type: "complete",
+        requestId: run.requestId,
+        turns: 1,
+        memoryBeforeDispose: workerMemory(2, 2),
+        memory: workerMemory(),
+      })
+      releaseTurn(worker, run.requestId)
+    }
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("shrinks by releasing idle workers without stopping an active turn", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 3 }, fake.spawn)
+    const streamPromises = Array.from({ length: 3 }, () => inScope(() => pool.run(input(new AbortController().signal))))
+    expect(fake.workers).toHaveLength(3)
+    for (const worker of fake.workers) worker.ready()
+    const runs = fake.workers.map((worker) => startTurn(worker))
+    for (const [index, worker] of fake.workers.entries()) {
+      worker.receive({ type: "started", requestId: runs[index].requestId })
+    }
+    const streams = await Promise.all(streamPromises)
+    for (const index of [1, 2]) {
+      fake.workers[index].receive({
+        type: "complete",
+        requestId: runs[index].requestId,
+        turns: 1,
+        memoryBeforeDispose: workerMemory(2, 2),
+        memory: workerMemory(),
+      })
+      releaseTurn(fake.workers[index], runs[index].requestId)
+      expect((await streams[index].fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    }
+
+    pool.resize(1)
+
+    expect(fake.workers[0].stops).toBe(0)
+    expect(fake.workers[1].stops).toBe(1)
+    expect(fake.workers[2].stops).toBe(1)
+    expect(pool.stats()).toMatchObject({
+      configured: 1,
+      workers: 1,
+      active: 1,
+    })
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: runs[0].requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], runs[0].requestId)
+    expect((await streams[0].fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("retires excess active workers only after their turns are released", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 3 }, fake.spawn)
+    const streamPromises = Array.from({ length: 3 }, () => inScope(() => pool.run(input(new AbortController().signal))))
+    expect(fake.workers).toHaveLength(3)
+    for (const worker of fake.workers) worker.ready()
+    const runs = fake.workers.map((worker) => startTurn(worker))
+    for (const [index, worker] of fake.workers.entries()) {
+      worker.receive({ type: "started", requestId: runs[index].requestId })
+    }
+    const streams = await Promise.all(streamPromises)
+
+    pool.resize(1)
+
+    expect(fake.workers.map((worker) => worker.stops)).toEqual([0, 0, 0])
+    expect(pool.stats()).toMatchObject({
+      configured: 1,
+      workers: 3,
+      active: 3,
+    })
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: runs[0].requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    expect((await streams[0].fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers[0].stops).toBe(0)
+    releaseTurn(fake.workers[0], runs[0].requestId)
+    expect(fake.workers[0].stops).toBe(1)
+    expect(pool.stats()).toMatchObject({
+      configured: 1,
+      workers: 2,
+      active: 2,
+    })
+
+    fake.workers[1].receive({
+      type: "complete",
+      requestId: runs[1].requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    expect((await streams[1].fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers[1].stops).toBe(0)
+    releaseTurn(fake.workers[1], runs[1].requestId)
+    expect(fake.workers[1].stops).toBe(1)
+    expect(pool.stats()).toMatchObject({
+      configured: 1,
+      workers: 1,
+      active: 1,
+    })
+
+    fake.workers[2].receive({
+      type: "complete",
+      requestId: runs[2].requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    expect((await streams[2].fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    releaseTurn(fake.workers[2], runs[2].requestId)
+    expect(fake.workers[2].stops).toBe(0)
+    await pool.stop()
+  })
+
+  test("collects memory and keeps an active worker when post-GC heap recovers", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 64 }, fake.spawn)
     const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -727,6 +891,63 @@ describe("AgentWorkerPool", () => {
       type: "heartbeat",
       requestId: run.requestId,
       turns: 0,
+      collection: "none",
+      memory: workerMemory(32, 65),
+    })
+
+    expect(fake.workers[0].sent).toContainEqual({ type: "collect-memory", requestId: run.requestId })
+    expect(pool.stats()).toMatchObject({ workers: 1, active: 1 })
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "full",
+      memory: workerMemory(32, 63),
+    })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(32, 63),
+      memory: workerMemory(32, 63),
+    })
+    releaseTurn(fake.workers[0], run.requestId, 1, workerMemory(32, 63))
+
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("terminates an active worker only when post-GC heap remains over its watermark", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 64 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "none",
+      memory: workerMemory(32, 65),
+    })
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "none",
+      memory: workerMemory(32, 66),
+    })
+    expect(pool.stats()).toMatchObject({ workers: 1, active: 1 })
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "full",
       memory: workerMemory(32, 65),
     })
 

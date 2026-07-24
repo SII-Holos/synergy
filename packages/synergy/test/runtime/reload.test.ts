@@ -12,13 +12,16 @@ import { CortexConcurrency } from "../../src/cortex/concurrency"
 import { GitHubDelivery, GitHubIntegrationConfig } from "../../src/github/types"
 import { GitHubRuntime } from "../../src/github/runtime"
 import { GitHubStore } from "../../src/github/store"
+import { AgentTurn } from "../../src/session/agent-turn"
 
 const originalConfigReload = Config.reload
 const originalNotifyConfigHooks = Plugin.notifyConfigHooks
+const originalAgentTurnResize = (AgentTurn as any).resize
 
 afterEach(() => {
   Config.reload = originalConfigReload
   ;(Plugin as any).notifyConfigHooks = originalNotifyConfigHooks
+  ;(AgentTurn as any).resize = originalAgentTurnResize
   GlobalBus.removeAllListeners("event")
   CortexConcurrency.reset()
 })
@@ -177,6 +180,28 @@ describe("runtime.reload", () => {
         expect(result.liveApplied).toContain("cortex")
         expect(result.restartRequired).not.toContain("cortex")
         expect(CortexConcurrency.globalStatus()).toMatchObject({ configured: 3, effective: 3, source: "config" })
+      },
+    })
+  })
+
+  test("applies global agent worker pool changes without restarting active turns", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        Config.reload = mock(async () => ({
+          config: { execution: { agentWorkers: 2 } },
+          changedFields: ["execution"],
+          oldConfig: { execution: { agentWorkers: 4 } },
+        })) as typeof Config.reload
+        const resize = mock(() => {})
+        ;(AgentTurn as any).resize = resize
+
+        const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+        expect(resize).toHaveBeenCalledWith(2)
+        expect(result.liveApplied).toContain("execution.agentWorkers")
+        expect(result.restartRequired).not.toContain("execution.agentWorkers")
       },
     })
   })

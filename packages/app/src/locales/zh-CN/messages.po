@@ -12961,11 +12961,15 @@ msgstr "synergy link | 远程主机 | 目标 | agent | link id | 密钥"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
-msgstr "设置智能体响应、子智能体并发和各类操作超时。"
+msgstr "设置智能体 Worker 容量、子智能体并发和各类操作超时。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.label"
 msgstr "智能体"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.timeouts.row.agentWorkerPool"
+msgstr "智能体 Worker 池"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.row.maxConcurrentSubagents"
@@ -12973,7 +12977,7 @@ msgstr "最大并发子智能体数"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
-msgstr "智能体 | 子智能体 | 并发 | 超时 | 提供商 | 工具 | 共同作者 | 提交 | git | 提示"
+msgstr "智能体 | worker | 池 | 并行 | 子智能体 | 并发 | 超时 | 提供商 | 工具 | 共同作者 | 提交 | git | 提示"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.description"
@@ -15488,6 +15492,22 @@ msgid "settings.runtime.agents.agent.title"
 msgstr "智能体"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.automatic"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.desc"
+msgstr "可并行运行的模型 Turn 上限。调小后，活跃 Turn 会先正常结束，多余的 Worker 随后退出。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.placeholder"
+msgstr "自动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.agentWorkers.title"
+msgstr "智能体 Worker 池"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.coauthor.desc"
 msgstr "提醒智能体创建 Git 提交时包含 Synergy 协作者署名。"
 
@@ -15545,7 +15565,7 @@ msgstr "工具覆盖"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.page.desc"
-msgstr "设置智能体指令、提供商超时和工具执行超时。"
+msgstr "设置智能体容量、指令、提供商超时和工具执行超时。"
 
 #. Agents
 msgid "settings.runtime.agents.page.title"

@@ -5,6 +5,7 @@ import {
   groupPatchByDomain,
   strategyForPatch,
 } from "../../../../src/components/settings/domain-routing"
+import { createSettingsSaveQueue } from "../../../../src/components/settings/hooks/settings-save-queue"
 import { MODEL_ROLES } from "../../../../src/components/settings/types"
 
 const domains: ConfigDomainSummary[] = [
@@ -53,6 +54,47 @@ describe("settings save routing", () => {
   })
 })
 
+describe("settings background save queue", () => {
+  test("reconciles only the latest change when an older write is still in flight", async () => {
+    const firstWrite = deferred()
+    const writes: number[] = []
+    const reconciled: number[] = []
+    const queue = createSettingsSaveQueue()
+
+    const firstGeneration = queue.supersede()
+    const first = queue.enqueue(firstGeneration, {
+      write: async () => {
+        writes.push(4)
+        await firstWrite.promise
+      },
+      reconcile: async () => {
+        reconciled.push(4)
+      },
+      onSuccess: () => {},
+      onError: () => {},
+    })
+    await Promise.resolve()
+
+    const latestGeneration = queue.supersede()
+    const latest = queue.enqueue(latestGeneration, {
+      write: async () => {
+        writes.push(8)
+      },
+      reconcile: async () => {
+        reconciled.push(8)
+      },
+      onSuccess: () => {},
+      onError: () => {},
+    })
+
+    firstWrite.resolve()
+    await Promise.all([first, latest])
+
+    expect(writes).toEqual([4, 8])
+    expect(reconciled).toEqual([8])
+  })
+})
+
 function domain(id: ConfigDomainSummary["id"], ownedKeys: string[]): ConfigDomainSummary {
   return {
     id,
@@ -66,4 +108,12 @@ function domain(id: ConfigDomainSummary["id"], ownedKeys: string[]): ConfigDomai
     importable: true,
     config: {},
   }
+}
+
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
 }
