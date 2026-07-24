@@ -11462,7 +11462,7 @@ msgstr "同时恢复文件更改"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.alsoRestore.hint"
-msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从横幅恢复文件。"
+msgstr "回退此点之后对 {files} 做出的磁盘编辑。如果关闭此项，之后仍可从回退对话框恢复文件。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11532,7 +11532,7 @@ msgstr "回退到此处"
 msgid "session.rollback.bannerText"
 msgstr "已回退 {messages, plural, one {# 条消息} other {# 条消息}}（{turns, plural, one {# 个回合} other {# 个回合}}）"
 
-#. rollback-banner.tsx
+#. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
 msgstr "无法重做"
 
@@ -11550,6 +11550,11 @@ msgstr "已添加新消息。此回滚无法再重做。"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
 msgstr "已添加新消息；无法重做此回滚"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.complete"
+msgstr "回退完成"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11586,7 +11591,8 @@ msgstr "重做失败"
 msgid "session.rollback.redoSuccessDesc"
 msgstr "已恢复 {count, plural, one {# 条消息} other {# 条消息}}"
 
-#. rollback-banner.tsx — remaining hardcoded
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.requestFailed"
 msgstr "请求失败"
 

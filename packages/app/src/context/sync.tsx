@@ -6,7 +6,11 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
-import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
+import {
+  refreshPlanBlueprintOfferFromLoadedParts,
+  updatePlanBlueprintOfferState,
+  updateRollbackDialogPresentationState,
+} from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
 import {
@@ -343,6 +347,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
         refresh(sessionID: string) {
           refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+        },
+      },
+      rollbackDialog: {
+        markPresented(sessionID: string, key: string) {
+          updateRollbackDialogPresentationState(store, setStore, sessionID, { type: "presented", key })
         },
       },
       session: {
