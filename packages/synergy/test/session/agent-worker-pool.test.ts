@@ -14,6 +14,16 @@ interface FakeWorker {
   exit(code?: number | null, signal?: string | null): void
 }
 
+function workerMemory(rssBytes = 1, heapUsedBytes = 1): AgentTurnProtocol.WorkerMemory {
+  return {
+    rssBytes,
+    heapUsedBytes,
+    heapTotalBytes: heapUsedBytes + 1,
+    externalBytes: 1,
+    arrayBuffersBytes: 1,
+  }
+}
+
 function fakeWorkers() {
   const workers: FakeWorker[] = []
   const spawn = (options: SpawnAgentWorkerProcessOptions): AgentWorkerProcess => {
@@ -37,7 +47,12 @@ function fakeWorkers() {
       sent,
       host,
       ready() {
-        options.onMessage({ type: "ready", protocolVersion: 1, pid: 1000 + workers.indexOf(worker) })
+        options.onMessage({
+          type: "ready",
+          protocolVersion: AgentTurnProtocol.VERSION,
+          pid: 1000 + workers.indexOf(worker),
+          memory: workerMemory(),
+        })
       },
       receive(message) {
         options.onMessage(message)
@@ -143,7 +158,8 @@ describe("AgentWorkerPool", () => {
       type: "complete",
       requestId: run.requestId,
       turns: 1,
-      memory: { rssBytes: 1, heapUsedBytes: 1 },
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
     })
     expect((await done).done).toBe(true)
     await pool.stop()
@@ -215,7 +231,8 @@ describe("AgentWorkerPool", () => {
       type: "complete",
       requestId: secondRun.requestId,
       turns: 1,
-      memory: { rssBytes: 1, heapUsedBytes: 1 },
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
     })
     const second = await secondPromise
     expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
@@ -308,7 +325,7 @@ describe("AgentWorkerPool", () => {
     const turn = inScope(() => pool.run(input(new AbortController().signal)))
 
     try {
-      fake.workers[0].receive({ type: "ready", protocolVersion: 0, pid: 1000 })
+      fake.workers[0].receive({ type: "ready", protocolVersion: 0, pid: 1000, memory: workerMemory() })
       expect(delays).toEqual([])
       expect(fake.workers).toHaveLength(2)
 
@@ -355,7 +372,8 @@ describe("AgentWorkerPool", () => {
         type: "complete",
         requestId: run.requestId,
         turns: 1,
-        memory: { rssBytes: 1, heapUsedBytes: 1 },
+        memoryBeforeDispose: workerMemory(2, 2),
+        memory: workerMemory(),
       })
       const stream = await recoveredTurn
       expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
@@ -425,7 +443,8 @@ describe("AgentWorkerPool", () => {
       type: "complete",
       requestId: firstRun.requestId,
       turns: 1,
-      memory: { rssBytes: 1, heapUsedBytes: 1 },
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
     })
     expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
     expect(fake.workers).toHaveLength(2)
@@ -438,7 +457,8 @@ describe("AgentWorkerPool", () => {
       type: "complete",
       requestId: secondRun.requestId,
       turns: 1,
-      memory: { rssBytes: 1, heapUsedBytes: 1 },
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
     })
     const second = await secondPromise
     expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
@@ -503,7 +523,7 @@ describe("AgentWorkerPool", () => {
       type: "heartbeat",
       requestId: run.requestId,
       turns: 0,
-      memory: { rssBytes: 32, heapUsedBytes: 65 },
+      memory: workerMemory(32, 65),
     })
 
     await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")

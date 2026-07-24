@@ -5,7 +5,7 @@ import { Runtime as ScopeRuntime } from "@/scope/types"
 import { Workspace } from "../workspace-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 1
+  export const VERSION = 2
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -162,6 +162,17 @@ export namespace AgentTurnProtocol {
     .strict()
   export type TurnEnvelope = z.infer<typeof TurnEnvelopeSchema>
 
+  export const WorkerMemory = z
+    .object({
+      rssBytes: z.number().nonnegative(),
+      heapUsedBytes: z.number().nonnegative(),
+      heapTotalBytes: z.number().nonnegative(),
+      externalBytes: z.number().nonnegative(),
+      arrayBuffersBytes: z.number().nonnegative(),
+    })
+    .strict()
+  export type WorkerMemory = z.infer<typeof WorkerMemory>
+
   export type HostToWorker =
     | { type: "run-start"; requestId: string; totalBytes: number; chunkCount: number }
     | { type: "run-chunk"; requestId: string; index: number; data: Uint8Array }
@@ -172,7 +183,7 @@ export namespace AgentTurnProtocol {
     | { type: "ping" }
 
   export type WorkerToHost =
-    | { type: "ready"; protocolVersion: number; pid: number }
+    | { type: "ready"; protocolVersion: number; pid: number; memory: WorkerMemory }
     | { type: "run-ready"; requestId: string }
     | { type: "chunk-ack"; requestId: string; index: number }
     | { type: "started"; requestId: string; contextUsageDraft?: unknown }
@@ -181,15 +192,22 @@ export namespace AgentTurnProtocol {
         type: "complete"
         requestId: string
         turns: number
-        memory: { rssBytes: number; heapUsedBytes: number }
+        memoryBeforeDispose: WorkerMemory
+        memory: WorkerMemory
         usage?: unknown
       }
-    | { type: "error"; requestId: string; error: SerializedError }
+    | {
+        type: "error"
+        requestId: string
+        error: SerializedError
+        memoryBeforeDispose?: WorkerMemory
+        memory?: WorkerMemory
+      }
     | {
         type: "heartbeat"
         requestId?: string
         turns: number
-        memory: { rssBytes: number; heapUsedBytes: number }
+        memory: WorkerMemory
       }
     | { type: "pong" }
 
@@ -236,6 +254,7 @@ export namespace AgentTurnProtocol {
         type: z.literal("ready"),
         protocolVersion: z.number().int().positive(),
         pid: z.number().int().positive(),
+        memory: WorkerMemory,
       })
       .strict(),
     z.object({ type: z.literal("run-ready"), requestId: z.string() }).strict(),
@@ -260,17 +279,26 @@ export namespace AgentTurnProtocol {
         type: z.literal("complete"),
         requestId: z.string(),
         turns: z.number().int().nonnegative(),
-        memory: z.object({ rssBytes: z.number().nonnegative(), heapUsedBytes: z.number().nonnegative() }).strict(),
+        memoryBeforeDispose: WorkerMemory,
+        memory: WorkerMemory,
         usage: z.unknown().optional(),
       })
       .strict(),
-    z.object({ type: z.literal("error"), requestId: z.string(), error: SerializedError }).strict(),
+    z
+      .object({
+        type: z.literal("error"),
+        requestId: z.string(),
+        error: SerializedError,
+        memoryBeforeDispose: WorkerMemory.optional(),
+        memory: WorkerMemory.optional(),
+      })
+      .strict(),
     z
       .object({
         type: z.literal("heartbeat"),
         requestId: z.string().optional(),
         turns: z.number().int().nonnegative(),
-        memory: z.object({ rssBytes: z.number().nonnegative(), heapUsedBytes: z.number().nonnegative() }).strict(),
+        memory: WorkerMemory,
       })
       .strict(),
     z.object({ type: z.literal("pong") }).strict(),

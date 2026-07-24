@@ -88,6 +88,9 @@ interface PoolWorker {
   pid?: number
   rssBytes?: number
   heapUsedBytes?: number
+  heapTotalBytes?: number
+  externalBytes?: number
+  arrayBuffersBytes?: number
   lastEventSequence: number
   lastHeartbeatAt: number
 }
@@ -282,6 +285,9 @@ export class AgentWorkerPool {
       queuedBytes: this.queuedBytes,
       rssBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.rssBytes ?? 0), 0),
       heapUsedBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.heapUsedBytes ?? 0), 0),
+      heapTotalBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.heapTotalBytes ?? 0), 0),
+      externalBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.externalBytes ?? 0), 0),
+      arrayBuffersBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.arrayBuffersBytes ?? 0), 0),
     }
   }
 
@@ -351,6 +357,7 @@ export class AgentWorkerPool {
       worker.startupFailureEligible = false
       worker.pid = message.pid
       worker.lastHeartbeatAt = Date.now()
+      this.recordWorkerMemory(worker, message.memory, "ready")
       this.consecutiveStartupFailures = 0
       this.startupCircuitError = undefined
       this.ensureWorkers()
@@ -362,25 +369,8 @@ export class AgentWorkerPool {
         this.terminateForProtocol(worker, "heartbeat referenced an unowned turn")
         return
       }
-      worker.rssBytes = message.memory.rssBytes
-      worker.heapUsedBytes = message.memory.heapUsedBytes
+      this.recordWorkerMemory(worker, message.memory, "heartbeat")
       worker.lastHeartbeatAt = Date.now()
-      ObservabilityMetrics.record({
-        name: "agent.worker.rss",
-        value: message.memory.rssBytes,
-        unit: "bytes",
-        module: "session",
-        processId: worker.id,
-        pid: worker.pid,
-      })
-      ObservabilityMetrics.record({
-        name: "agent.worker.heap_used",
-        value: message.memory.heapUsedBytes,
-        unit: "bytes",
-        module: "session",
-        processId: worker.id,
-        pid: worker.pid,
-      })
       if (
         message.memory.rssBytes >= this.options.maxRssBytes ||
         message.memory.heapUsedBytes >= this.options.maxHeapBytes
@@ -467,6 +457,10 @@ export class AgentWorkerPool {
     }
     if (message.type === "error") {
       const error = AgentTurnProtocol.deserializeError(message.error)
+      if (message.memoryBeforeDispose) {
+        this.recordWorkerMemory(worker, message.memoryBeforeDispose, "turn.before_dispose", task)
+      }
+      if (message.memory) this.recordWorkerMemory(worker, message.memory, "turn.after_dispose", task)
       task.resolveUsage(undefined)
       if (task.started) task.stream.fail(error)
       else task.reject(error)
@@ -479,8 +473,8 @@ export class AgentWorkerPool {
         return
       }
       worker.turns = message.turns
-      worker.rssBytes = message.memory.rssBytes
-      worker.heapUsedBytes = message.memory.heapUsedBytes
+      this.recordWorkerMemory(worker, message.memoryBeforeDispose, "turn.before_dispose", task)
+      this.recordWorkerMemory(worker, message.memory, "turn.after_dispose", task)
       task.resolveUsage(message.usage as Awaited<LLM.StreamOutput["usage"]> | undefined)
       task.stream.complete()
       const recycle =
@@ -608,6 +602,38 @@ export class AgentWorkerPool {
     if (drain) this.drain()
   }
 
+  private recordWorkerMemory(
+    worker: PoolWorker,
+    memory: AgentTurnProtocol.WorkerMemory,
+    phase: "ready" | "heartbeat" | "turn.before_dispose" | "turn.after_dispose",
+    task?: PoolTask,
+  ): void {
+    worker.rssBytes = memory.rssBytes
+    worker.heapUsedBytes = memory.heapUsedBytes
+    worker.heapTotalBytes = memory.heapTotalBytes
+    worker.externalBytes = memory.externalBytes
+    worker.arrayBuffersBytes = memory.arrayBuffersBytes
+    for (const [name, value] of Object.entries({
+      "agent.worker.rss": memory.rssBytes,
+      "agent.worker.heap_used": memory.heapUsedBytes,
+      "agent.worker.heap_total": memory.heapTotalBytes,
+      "agent.worker.external": memory.externalBytes,
+      "agent.worker.array_buffers": memory.arrayBuffersBytes,
+    })) {
+      ObservabilityMetrics.record({
+        name,
+        value,
+        unit: "bytes",
+        module: "session",
+        sessionID: task?.sessionID,
+        messageID: task?.messageID,
+        processId: worker.id,
+        pid: worker.pid,
+        labels: { phase, turns: worker.turns },
+      })
+    }
+  }
+
   private recycle(worker: PoolWorker, reason: "max_turns" | "rss" | "heap"): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
@@ -733,7 +759,7 @@ export class AgentWorkerPool {
     }
   }
 
-  private terminateForMemory(worker: PoolWorker, memory: { rssBytes: number; heapUsedBytes: number }): void {
+  private terminateForMemory(worker: PoolWorker, memory: AgentTurnProtocol.WorkerMemory): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
     const reason = memory.rssBytes >= this.options.maxRssBytes ? "rss" : "heap"
