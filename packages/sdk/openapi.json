@@ -21674,9 +21674,171 @@
                     "type": "integer",
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
+                  },
+                  "executionPhases": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "enum": [
+                        "queued_agent",
+                        "running_agent",
+                        "authorizing_tools",
+                        "queued_tools",
+                        "running_tools",
+                        "waiting_background",
+                        "stopping"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
                   }
                 },
                 "required": ["totalCount", "runningCount", "idleCount", "childCount", "userCount", "waiterCount"]
+              },
+              "execution": {
+                "type": "object",
+                "properties": {
+                  "agentWorkers": {
+                    "type": "object",
+                    "properties": {
+                      "configured": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "ready": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "rssBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "heapUsedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "configured",
+                      "maxQueued",
+                      "maxQueuedBytes",
+                      "workers",
+                      "ready",
+                      "active",
+                      "queued",
+                      "queuedBytes",
+                      "rssBytes",
+                      "heapUsedBytes"
+                    ]
+                  },
+                  "toolTasks": {
+                    "type": "object",
+                    "properties": {
+                      "active": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "tracked": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "queuedBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxConcurrent": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueued": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "maxQueuedBytes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "byExecutor": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                        },
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "active": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "queued": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "limit": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": ["active", "queued", "limit"]
+                        }
+                      }
+                    },
+                    "required": ["active", "queued", "tracked", "queuedBytes", "maxConcurrent", "maxQueued"]
+                  }
+                },
+                "required": ["agentWorkers", "toolTasks"]
               },
               "messageCache": {
                 "type": "object",
@@ -27421,6 +27583,98 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          },
+          "execution": {
+            "description": "Process isolation, worker recycling, and bounded execution scheduling",
+            "type": "object",
+            "properties": {
+              "agentWorkers": {
+                "description": "Number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 64
+              },
+              "agentQueueMax": {
+                "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "agentQueueMaxMb": {
+                "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "agentWorkerMaxTurns": {
+                "description": "Turns completed before an Agent worker is recycled (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
+              "agentWorkerMaxRssMb": {
+                "description": "RSS threshold in MiB for terminating or recycling an Agent worker (default: 1536)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerMaxHeapMb": {
+                "description": "Heap-used threshold in MiB for terminating or recycling an Agent worker (default: 1024)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentCancelGraceMs": {
+                "description": "Grace period before terminating an Agent worker that ignores cancellation (default: 5000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "agentHeartbeatTimeoutMs": {
+                "description": "Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)",
+                "type": "integer",
+                "minimum": 30000,
+                "maximum": 300000
+              },
+              "toolConcurrency": {
+                "description": "Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 512
+              },
+              "toolQueueMax": {
+                "description": "Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65536
+              },
+              "toolQueueMaxMb": {
+                "description": "Maximum aggregate queued ToolTask input size in MiB (default: 128)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "toolCancelGraceMs": {
+                "description": "Grace period for active ToolTasks during runtime shutdown (default: 3000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "toolExecutorConcurrency": {
+                "description": "Optional concurrency limits for each Tool Executor class",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 512
+                }
               }
             },
             "additionalProperties": false

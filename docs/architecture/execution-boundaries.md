@@ -1,10 +1,15 @@
 # Execution Boundaries
 
-Synergy evaluates every tool call at a centralized execution boundary. Tool availability, capability classification, approval, sandboxing, plugins, and the tool implementation are distinct stages; no individual tool is allowed to invent a parallel permission model.
+Synergy evaluates every tool call at a centralized Control Plane execution boundary. Tool availability, model presentation, capability classification, approval, scheduling, sandboxing, physical execution, and result settlement are distinct stages; no individual tool is allowed to invent a parallel permission model.
 
 ## Execution Pipeline
 
-For each model turn, the session tool resolver collects ephemeral tools, built-in and plugin tools, and MCP tools. It filters that set by agent visibility and session exposure before wrapping each callable tool with the same runtime pipeline:
+For each model turn, the session tool resolver collects ephemeral tools, built-in and plugin tools, and MCP tools. It filters that set by agent visibility and session exposure, then emits two separate products:
+
+- `ToolCatalog` definitions containing only serializable IDs, descriptions, and JSON Schemas for the Agent worker and model;
+- Control Plane execution callbacks plus an executor-class mapping for `ToolScheduler`.
+
+The Agent worker never receives an `execute()` callback. It emits proposed calls and completes its provider turn. After the worker stream is disposed, the Control Plane applies the runtime pipeline:
 
 1. verify that the current execution context permits the tool
 2. resolve the effective control profile
@@ -18,6 +23,10 @@ For each model turn, the session tool resolver collects ephemeral tools, built-i
 10. execute the built-in, plugin, ephemeral, or MCP implementation
 11. validate returned attachments and normalize the result
 12. run plugin `after` hooks and settle the tool output
+
+`ToolScheduler` keys a dispatch by session, session generation, message, call, executor class, and attempt. It deduplicates the same dispatch, bounds queued item count and serialized input bytes, applies global and per-executor concurrency, propagates cancellation, and never retries a running side-effecting call automatically. Executor classes are `local_process`, `file`, `plugin`, `mcp`, `browser`, `link`, and `control_plane`.
+
+The scheduler is one logical execution layer, not one universal sandbox process. Local commands and command-backed search remain child processes with bounded output; installed plugin implementations reuse the plugin process runtime; MCP, Browser, and Link use their existing isolated transports or canonical runtimes. File operations and narrow operations that mutate canonical session/workflow state run asynchronously under scheduled Control Plane ownership. Classification changes admission and fault accounting, not authorization semantics.
 
 The enforcement gate owns the security decision. A tool implementation can still reject malformed input or fail for ordinary runtime reasons after authorization.
 
@@ -115,6 +124,10 @@ These restrictions are evaluated before the tool implementation. A permissive co
 ## Invariants
 
 - Every executable tool path passes through the centralized enforcement gate.
+- Model-facing tool definitions never contain executable callbacks.
+- Permission decisions remain in the Control Plane and occur only after the Agent worker has released its turn.
+- ToolTask queues are bounded globally and per executor class; duplicate dispatch identity cannot execute twice.
+- Executor classification never bypasses capability classification, approval, sandboxing, or canonical runtime ownership.
 - Availability, authorization, and sandboxing remain separate decisions.
 - Expanding a deferred group never grants a tool whose effective permission is denied.
 - `autonomous` never prompts the user.

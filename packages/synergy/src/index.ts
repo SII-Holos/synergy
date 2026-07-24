@@ -58,6 +58,11 @@ if (pluginRuntimeRunnerArgIndex >= 0) {
   await new Promise(() => {})
 }
 
+if (process.argv.includes("__agent-turn-runner")) {
+  await import("./session/agent-turn/runner.js")
+  await new Promise(() => {})
+}
+
 async function flushCliOutput() {
   await Bun.sleep(25)
 }

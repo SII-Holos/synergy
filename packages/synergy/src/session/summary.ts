@@ -18,7 +18,7 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Bus } from "@/bus"
 
-import { LLM } from "./llm"
+import { AgentTurn } from "./agent-turn"
 import { Agent } from "@/agent/agent"
 import { LoopJob } from "./loop-job"
 import { SessionProgress } from "./progress"
@@ -425,10 +425,10 @@ export namespace SessionSummary {
         if (!needsTitle || !textPart) return undefined
         const agent = await Agent.get("title")
         const agentModel = await Agent.getAvailableModel(agent)
-        const stream = await LLM.stream({
+        const stream = await AgentTurn.stream({
           agent,
           user: llmUser,
-          tools: {},
+          toolDefinitions: [],
           model: agentModel ? await Provider.getModel(agentModel.providerID, agentModel.modelID) : fallbackModel,
           small: true,
           messages: [
@@ -442,7 +442,7 @@ export namespace SessionSummary {
           system: [],
           retries: 3,
         })
-        const result = await LLM.collectText(stream).catch((error) => {
+        const result = await AgentTurn.collectText(stream).catch((error) => {
           if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary title", { error })
           return undefined
@@ -463,10 +463,10 @@ export namespace SessionSummary {
         }
         const summaryAgent = await Agent.get("summary")
         const summaryAgentModel = await Agent.getAvailableModel(summaryAgent)
-        const stream = await LLM.stream({
+        const stream = await AgentTurn.stream({
           agent: summaryAgent,
           user: llmUser,
-          tools: {},
+          toolDefinitions: [],
           model: summaryAgentModel
             ? await Provider.getModel(summaryAgentModel.providerID, summaryAgentModel.modelID)
             : fallbackModel,
@@ -483,7 +483,7 @@ export namespace SessionSummary {
           system: [],
           retries: 3,
         })
-        return LLM.collectText(stream).catch((error) => {
+        return AgentTurn.collectText(stream).catch((error) => {
           if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary body", { error })
           return undefined

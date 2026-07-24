@@ -36,12 +36,46 @@ Use `synergy config path` to print the active global roots.
 | `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                                      |
 | `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                                               |
 | `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                                             |
-| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings                                    |
+| `120-runtime.jsonc`    | Runtime     | server, timeout, Agent/Tool execution isolation, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings    |
 | `130-github.jsonc`     | GitHub      | GitHub App outbound polling integration (master enable, watched repos, polling, event types, CI thresholds, classifier/proposal, fix workflow, review workflow) |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
+
+### Execution isolation
+
+The optional `execution` object in `120-runtime.jsonc` controls bounded Agent and tool scheduling:
+
+```jsonc
+{
+  "execution": {
+    "agentWorkers": 4,
+    "agentQueueMax": 256,
+    "agentQueueMaxMb": 256,
+    "agentWorkerMaxTurns": 64,
+    "agentWorkerMaxRssMb": 1536,
+    "agentWorkerMaxHeapMb": 1024,
+    "agentCancelGraceMs": 5000,
+    "agentHeartbeatTimeoutMs": 45000,
+    "toolConcurrency": 16,
+    "toolQueueMax": 512,
+    "toolQueueMaxMb": 128,
+    "toolCancelGraceMs": 3000,
+    "toolExecutorConcurrency": {
+      "local_process": 8,
+      "file": 16,
+      "plugin": 8,
+      "mcp": 16,
+      "browser": 8,
+      "link": 8,
+      "control_plane": 16,
+    },
+  },
+}
+```
+
+`agentWorkers` defaults to the smaller of four or available CPUs minus one, with a minimum of one and a validated maximum of 64. Agent request and event-frame protocol bounds are fixed safety invariants rather than configuration. RSS and heap-used watermarks are enforced from worker heartbeats as well as normal turn completion; the heartbeat timeout is constrained to 30-300 seconds so it cannot undercut the worker heartbeat cadence. Global and per-executor tool concurrency are capped at 512. Tool executor limits are additional ceilings below `toolConcurrency`; omitted executor limits retain their defaults. Runtime shutdown stops new Agent turns and ToolTasks first, aborts active work, and bounds ToolTask drain time with `toolCancelGraceMs`. These settings are read at global-runtime startup and require a runtime restart.
 
 ## Precedence
 
