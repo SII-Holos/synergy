@@ -33,7 +33,7 @@ export type SessionTransitionActions = {
   dismiss?: () => void
 }
 
-export type SessionStartupStage = "workspace" | "message" | "complete"
+export type SessionStartupStage = "workspace" | "message" | "accepted" | "complete"
 
 export type SessionStartupWorkspaceStep = {
   label: MessageDescriptor
@@ -43,7 +43,7 @@ export type SessionStartupWorkspaceStep = {
 
 type SessionStartupStepsInput =
   | { stage: "workspace"; workspace: SessionStartupWorkspaceStep }
-  | { stage: "message" | "complete"; workspace?: SessionStartupWorkspaceStep }
+  | { stage: "message" | "accepted" | "complete"; workspace?: SessionStartupWorkspaceStep }
 
 const presentationByKind = {
   "new-session": { icon: "session.new", kicker: S.scopesNewSession },
@@ -68,7 +68,12 @@ export function isSessionTransitionBlocking(progress: SessionTransitionProgress 
 }
 
 export function createSessionStartupSteps(input: SessionStartupStepsInput): SessionTransitionStep[] {
-  const messageState = input.stage === "workspace" ? "pending" : input.stage === "message" ? "active" : "complete"
+  const messageState =
+    input.stage === "workspace"
+      ? "pending"
+      : input.stage === "message" || input.stage === "accepted"
+        ? "active"
+        : "complete"
   const steps: SessionTransitionStep[] = [
     {
       id: "session",
@@ -91,7 +96,10 @@ export function createSessionStartupSteps(input: SessionStartupStepsInput): Sess
   steps.push({
     id: "message",
     label: S.transitionStepSubmitMessage,
-    detail: messageState === "complete" ? S.transitionDetailMessageQueued : S.transitionDescSubmitting,
+    detail:
+      messageState === "complete" || input.stage === "accepted"
+        ? S.transitionDetailMessageQueued
+        : S.transitionDescSubmitting,
     state: messageState,
   })
   return steps
@@ -114,6 +122,16 @@ export function createNewSessionTransitionSuccessProgress(): SessionTransitionPr
     title: S.transitionTitleAccepted,
     description: S.transitionDescQueued,
     steps: createSessionStartupSteps({ stage: "complete" }),
+  }
+}
+
+export function createNewSessionTransitionAcceptedProgress(): SessionTransitionProgress {
+  return {
+    kind: "new-session",
+    phase: "loading",
+    title: S.transitionTitleAccepted,
+    description: S.transitionDescInitializing,
+    steps: createSessionStartupSteps({ stage: "accepted" }),
   }
 }
 

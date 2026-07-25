@@ -2140,7 +2140,7 @@ export class Session extends HeyApiClient {
   /**
    * Submit session input
    *
-   * Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.
+   * Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.
    */
   public input<ThrowOnError extends boolean = false>(
     parameters: {

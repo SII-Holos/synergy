@@ -1,5 +1,5 @@
 import { type Accessor, Setter } from "solid-js"
-import { produce, type SetStoreFunction } from "solid-js/store"
+import { produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
@@ -41,6 +41,7 @@ import { getPendingLightLoopSlashBlock, resolveSlashCommandIntent, type SlashUiC
 import { resolvePromptSubmitIntent, shouldRunComposerBeforeSubmit } from "./submit-intent"
 import { acquireNewSessionSubmitLock } from "./new-session-submit-lock"
 import {
+  createNewSessionWorkspaceAcceptedProgress,
   createNewSessionWorkspaceErrorProgress,
   createNewSessionWorkspaceProgress,
   createNewSessionWorkspaceSuccessProgress,
@@ -48,12 +49,15 @@ import {
   worktreeSetupFailureMessage,
 } from "@/components/session/worktree-session"
 import {
+  createNewSessionTransitionAcceptedProgress,
   createNewSessionTransitionErrorProgress,
   createNewSessionTransitionProgress,
   createNewSessionTransitionSuccessProgress,
   type SessionTransitionActions,
   type SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
+import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
+import { upsertSessionInboxItem } from "@/components/session/session-inbox-utils"
 import { createNewSessionRecoveryActions, type NewSessionRecovery } from "@/components/session/new-session-recovery"
 import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
@@ -368,8 +372,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       sessionID: string,
       progress: SessionTransitionProgress | null,
       actions?: SessionTransitionActions,
+      handoff?: SessionTransitionHandoff,
     ) => {
-      input.props.onNewSessionTransitionChange?.({ sessionID, progress, actions })
+      input.props.onNewSessionTransitionChange?.({ sessionID, progress, actions, handoff })
     }
     const updateNewSessionWorktreeProgress = (sessionID: string, stage: "workspace" | "message") => {
       if (!worktreeWorkspaceSelection) return
@@ -643,6 +648,20 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         : createNewSessionTransitionSuccessProgress()
       publishNewSessionTransition(activeSession.id, progress, {
         dismiss: () => publishNewSessionTransition(activeSession.id, null),
+      })
+    }
+
+    const handoffNewSessionMessage = (messageID: string) => {
+      if (!createdSessionForSubmit) return
+      const accepted = worktreeWorkspaceSelection
+        ? createNewSessionWorkspaceAcceptedProgress({ selection: worktreeWorkspaceSelection })
+        : createNewSessionTransitionAcceptedProgress()
+      const success = worktreeWorkspaceSelection
+        ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
+        : createNewSessionTransitionSuccessProgress()
+      publishNewSessionTransition(activeSession.id, accepted, undefined, {
+        messageID,
+        success,
       })
     }
 
@@ -1008,6 +1027,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
 
     const wsConnected = sdk.connected()
+    const inboxRequest = globalSync.captureResourceRequest(sessionScopeKey, activeSession.id, "inbox")
 
     client.session
       .input({
@@ -1020,13 +1040,32 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         metadata: { promptDraft: draftSnapshot },
       })
       .then((result) => {
-        finishNewSessionTransition()
-        releaseNewSessionSubmit()
+        const accepted = result.data
+        if (!accepted) throw new Error("Session input returned no acceptance result")
+        if (accepted.status === "queued") {
+          const item = accepted.item
+          globalSync.applyResourceMutationResponse(
+            sessionScopeKey,
+            activeSession.id,
+            "inbox",
+            inboxRequest,
+            result.response?.headers,
+            () => {
+              setSyncStore(
+                "inbox",
+                activeSession.id,
+                reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
+              )
+            },
+          )
+        }
         if (armedLightLoop) input.clearPendingLightLoop()
-        if (result.data?.status === "queued" && optimisticAdded) {
+        if (accepted.status === "queued" && optimisticAdded) {
           removeOptimisticMessage()
           optimisticAdded = false
         }
+        handoffNewSessionMessage(accepted.status === "queued" ? accepted.item.messageID : accepted.messageID)
+        releaseNewSessionSubmit()
         if (!wsConnected) {
           showToast({
             type: "warning",

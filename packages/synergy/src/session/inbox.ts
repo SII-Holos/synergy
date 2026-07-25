@@ -659,18 +659,9 @@ export namespace SessionInbox {
     return drainWhere(sessionID, (item) => item.mode === "context" && item.message?.role === "user")
   }
 
-  /**
-   * Drain the next task item from the inbox.
-   * Materialization is idempotent (pre-allocated messageID), so removing
-   * the inbox item before materialization is safe for crash recovery.
-   */
-  export async function nextTask(sessionID: string): Promise<StoredItem | undefined> {
+  export async function peekTask(sessionID: string): Promise<StoredItem | undefined> {
     const items = await listStored(sessionID)
-    const task = items.find((item) => item.mode === "task")
-    if (!task) return undefined
-    await removeItems(sessionID, [task.id])
-    log.info("drained next task", { sessionID, itemID: task.id })
-    return task
+    return items.find((item) => item.mode === "task")
   }
 
   export async function removeByMode(sessionID: string, modes: ItemMode[]): Promise<void> {

@@ -150,6 +150,10 @@ Session detail loading is split by concern:
 - parts are sorted and reconciled under their owning message;
 - inbox, todo, and DAG refresh together through `session.volatileBatch()`, while diff, permissions, and questions retain separate refresh paths.
 
+Ordinary new-session input uses the generated `session.input()` method. A queued response is a durable partial Inbox mutation rather than a complete Inbox snapshot: the client validates the response against the captured Inbox request token and response watermark, reconciles the returned item into the Scope store, then invalidates the resource version so the complete `session.inbox.updated` event at the same sequence remains eligible. This makes the accepted prompt visible even when the event connection is delayed or disconnected.
+
+The new-session transition records the accepted item's message ID and remains blocking after the HTTP response. It changes to success only after the corresponding visible canonical root message is present in the message window; the three-second success hold begins at that handoff. If the pending Inbox item disappears before the root is observed, the active session forces one messages-and-volatile refresh to converge cross-resource event ordering. Inbox items whose message IDs are already materialized are omitted from the pending timeline.
+
 `POST /session/batch/volatile` accepts at most 50 deduplicated session IDs and returns an in-band state or error for each requested session. Missing, archived, and cross-Scope sessions do not expose state. After reconnect resync, the client invalidates volatile freshness for every retained session, clears inactive cached inbox/todo/DAG buckets, and batch-refreshes only the actively viewed session. An inactive session reloads through its normal detail path when viewed instead of being eagerly fetched during reconnect.
 
 Frontend code should not introduce raw `fetch()` for ordinary Synergy routes. Add route OpenAPI metadata, regenerate the SDK, and use the generated client. Streams, browser-native file/blob flows, and external URLs remain valid raw transport cases.
@@ -242,6 +246,8 @@ Every snapshot request captures a `SyncResourceRequest` token:
 1. **Revision check.** If the resource revision changed while the request was in flight, an unversioned response is rejected. A versioned response may continue only when the resource has a known current version to compare against.
 
 1. **Snapshot version guard.** Responses that pass the request-token checks still go through the epoch and sequence checks below.
+
+Partial mutation responses use `acceptMutationResponse()`. They pass the same generation, revision, epoch, and sequence validation as snapshots, then invalidate the resource version after applying their targeted update. This prevents stale in-flight snapshots from overwriting the local mutation without suppressing a complete state event carrying the same sequence.
 
 ### Local invalidation
 

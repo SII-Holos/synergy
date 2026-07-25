@@ -17,6 +17,7 @@ import type { useSync } from "@/context/sync"
 import type { useSDK } from "@/context/sdk"
 import type { NewSessionWorkspaceSelection } from "./worktree-session"
 import type { SessionTransitionActions, SessionTransitionProgress } from "./session-transition-progress"
+import type { SessionTransitionHandoff } from "./session-transition-handoff"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { promptDockBackPath, promptDockBackToParentID, promptDockForkSourceID } from "./prompt-dock-model"
 import { PromptDockFloatLayer } from "./prompt-dock-float-layer"
@@ -49,6 +50,7 @@ export function PromptDock(props: {
     sessionID: string
     progress: SessionTransitionProgress | null
     actions?: SessionTransitionActions
+    handoff?: SessionTransitionHandoff
   }) => void
   sessionTransitionPending: Accessor<boolean>
   scopeName: Accessor<string>

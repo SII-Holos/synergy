@@ -4,6 +4,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { translateDescriptor } from "@/locales/translate"
 import { S } from "../../../src/components/session/session-i18n"
 import {
+  createNewSessionTransitionAcceptedProgress,
   createNewSessionTransitionErrorProgress,
   createNewSessionTransitionProgress,
   createNewSessionTransitionSuccessProgress,
@@ -46,6 +47,16 @@ describe("session transition progress model", () => {
       ["message", "Submit message", "active"],
     ])
 
+    const accepted = createNewSessionTransitionAcceptedProgress()
+    expect(accepted).toMatchObject({ kind: "new-session", phase: "loading" })
+    expect(translateSessionTransitionCopy(accepted.description, i18n)).toBe(
+      "Your first message is saved. Initializing the conversation.",
+    )
+    expect(accepted.steps.map((step) => [step.id, step.state])).toEqual([
+      ["session", "complete"],
+      ["message", "active"],
+    ])
+
     const success = createNewSessionTransitionSuccessProgress()
     expect(success).toMatchObject({ kind: "new-session", phase: "success" })
     expect(translateSessionTransitionCopy(success.title, i18n)).toBe("Session request accepted")
@@ -86,6 +97,11 @@ describe("session transition progress model", () => {
       ["message", "pending"],
     ])
     expect(createSessionStartupSteps({ stage: "message", workspace }).map((step) => [step.id, step.state])).toEqual([
+      ["session", "complete"],
+      ["workspace", "complete"],
+      ["message", "active"],
+    ])
+    expect(createSessionStartupSteps({ stage: "accepted", workspace }).map((step) => [step.id, step.state])).toEqual([
       ["session", "complete"],
       ["workspace", "complete"],
       ["message", "active"],

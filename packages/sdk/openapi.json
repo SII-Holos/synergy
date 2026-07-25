@@ -5978,7 +5978,7 @@
           }
         ],
         "summary": "Submit session input",
-        "description": "Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.",
+        "description": "Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.",
         "responses": {
           "200": {
             "description": "Input accepted",

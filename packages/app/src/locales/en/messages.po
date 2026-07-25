@@ -12454,6 +12454,11 @@ msgstr "Retry"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.initializing"
+msgstr "Your first message is saved. Initializing the conversation."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.queued"
 msgstr "Your first message is queued for processing."
 

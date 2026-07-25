@@ -7,6 +7,7 @@ import { Session } from "../session"
 import { Worktree } from "../project/worktree"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
+import { SessionDrive } from "../session/drive"
 import { SessionAbort } from "../session/abort"
 import { SessionInbox } from "../session/inbox"
 import { shell as invokeShell, ShellInput } from "../session/shell"
@@ -45,17 +46,24 @@ async function assertSessionWorkspaceAvailable(sessionID: string) {
 }
 
 async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
-  if (SessionManager.isRunning(input.sessionID)) {
-    const { messageID: _queuedMessageID, ...queuedInput } = input
-    const item = await SessionInbox.enqueueUser(queuedInput)
-    return { status: "queued", item }
+  if (input.noReply === true && !SessionManager.isRunning(input.sessionID)) {
+    const messageID = input.messageID ?? Identifier.ascending("message")
+    SessionInvoke.invoke({ ...input, messageID }).catch((error) => {
+      log.error("failed to execute async no-reply input", { sessionID: input.sessionID, messageID, error })
+    })
+    return { status: "started", messageID }
   }
-  const messageID = input.messageID ?? Identifier.ascending("message")
-  const next = { ...input, messageID }
-  SessionInvoke.invoke(next).catch((error) => {
-    log.error("failed to execute async input", { sessionID: input.sessionID, error })
+
+  const item = await SessionInbox.enqueueUser(input)
+  void SessionDrive.request(input.sessionID, "user-input").catch((error) => {
+    log.error("failed to schedule durable user input", {
+      sessionID: input.sessionID,
+      itemID: item.id,
+      messageID: item.messageID,
+      error,
+    })
   })
-  return { status: "started", messageID }
+  return { status: "queued", item }
 }
 
 export const SessionRoute = new Hono()
@@ -628,7 +636,7 @@ export const SessionRoute = new Hono()
     describeRoute({
       summary: "Submit session input",
       description:
-        "Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.",
+        "Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.",
       operationId: "session.input",
       responses: {
         200: {

@@ -39,6 +39,41 @@ describe("SessionInbox", () => {
     })
   })
 
+  test("keeps a task visible until its preallocated root is durable and materializes retries once", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const queued = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "persist across the handoff" }],
+        })
+        const stored = await SessionInbox.getStored(session.id, queued.id)
+
+        const first = await SessionInbox.materializeItem(stored)
+        const retry = await SessionInbox.materializeItem(stored)
+
+        expect(first?.info.id).toBe(queued.messageID)
+        expect(retry?.info.id).toBe(queued.messageID)
+        expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([queued.id])
+        expect((await Session.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
+          queued.messageID,
+        ])
+
+        await SessionInbox.commitReady(session.id, [queued.id])
+
+        expect(await SessionInbox.list(session.id)).toEqual([])
+        expect((await Session.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
+          queued.messageID,
+        ])
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
   test("deduplicates concurrent delivery by stable delivery key", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

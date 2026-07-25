@@ -62,6 +62,11 @@ import {
   type SessionTransitionActions,
   type SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
+import {
+  isSessionTransitionHandoffReady,
+  type SessionTransitionHandoff,
+} from "@/components/session/session-transition-handoff"
+import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
 import { RollbackDialog } from "@/components/session/rollback-dialog"
 import { rollbackDialogAction } from "@/components/session/rollback-dialog-model"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
@@ -300,12 +305,13 @@ function SessionPageContent() {
     sessionID: string
     progress: SessionTransitionProgress | null
     actions?: SessionTransitionActions
+    handoff?: SessionTransitionHandoff
   }) => {
     if (!input.progress) {
       clearSessionTransition(input.sessionID)
       return
     }
-    setSessionTransition(input.sessionID, input.progress, input.actions)
+    setSessionTransition(input.sessionID, input.progress, input.actions, input.handoff)
   }
   createEffect(() => {
     const summary = rollback()
@@ -474,6 +480,29 @@ function SessionPageContent() {
   const renderableUserMessages = visibleRoots
   const lastUserMessage = lastRoot
   const lastRenderableUserMessage = lastRoot
+  const handoffRefreshes = new Set<string>()
+  createEffect(() => {
+    const sessionID = params.id
+    const entry = visibleSessionTransitionEntry()
+    if (!sessionID || entry?.progress.phase !== "loading" || !entry.handoff) return
+    if (isSessionTransitionHandoffReady(entry.handoff.messageID, messages())) {
+      handoffRefreshes.delete(`${sessionID}:${entry.handoff.messageID}`)
+      setSessionTransition(sessionID, entry.handoff.success, {
+        dismiss: () => clearSessionTransition(sessionID),
+      })
+      return
+    }
+
+    const inbox = sync.data.inbox[sessionID]
+    if (inbox === undefined || inbox.some((item) => item.messageID === entry.handoff?.messageID)) return
+    const refreshKey = `${sessionID}:${entry.handoff.messageID}`
+    if (handoffRefreshes.has(refreshKey)) return
+    handoffRefreshes.add(refreshKey)
+    void sync.session
+      .refresh(sessionID)
+      .catch(() => undefined)
+      .finally(() => handoffRefreshes.delete(refreshKey))
+  })
   // Composer agent/model inheritance is handled inside local.model/local.agent as
   // a read-only "sessionDefault" derivation (server modelOverride, else the last
   // root message). The old effect that wrote lastRoot's agent/model back into the
@@ -514,12 +543,7 @@ function SessionPageContent() {
   const pendingTimeline = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return [] as SessionInboxItem[]
-    const inbox = sync.data.inbox[sessionID]
-    if (!inbox || inbox.length === 0) return []
-    return inbox
-      .filter((item) => item.mode === "task" || item.mode === "steer")
-      .filter((item) => item.message?.visible !== false)
-      .filter((item) => (item.message?.origin?.type ?? item.source?.type) === "user")
+    return selectPendingTimelineItems(sync.data.inbox[sessionID], messages())
   })
   const isNewSession = createMemo(() => {
     if (!params.id) return true
