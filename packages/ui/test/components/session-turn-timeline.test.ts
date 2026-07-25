@@ -344,7 +344,7 @@ describe("session turn assistant collection", () => {
     expect(collectMessagesForTurnDisplay(messages, firstUser.id)).toEqual([final])
   })
 
-  test("projects only the active hidden compaction attempt into the turn", () => {
+  test("projects active and failed compaction attempts into the turn", () => {
     const root = user("msg_root")
     const failed = compactionAssistant("msg_failed", root.id, {
       state: "failed",
@@ -371,15 +371,17 @@ describe("session turn assistant collection", () => {
       root.id,
     )
 
-    expect(display).toEqual([running])
+    expect(display).toEqual([failed, running])
     const timeline = collectSessionTurnTimelineItems(
       display.filter((message): message is AssistantMessage => message.role === "assistant"),
       { [running.id]: [textPart("raw-summary", running.id, "Raw compaction tokens")] },
       true,
     )
-    expect(timeline).toHaveLength(1)
-    expect(timeline[0]).toMatchObject({ kind: "compaction", message: running, part: undefined })
-    expect(timelineItemStableKey(timeline[0])).toBe(`compaction:${running.id}`)
+    expect(timeline).toHaveLength(2)
+    expect(timeline[0]).toMatchObject({ kind: "compaction", message: failed, part: undefined })
+    expect(timeline[1]).toMatchObject({ kind: "compaction", message: running, part: undefined })
+    expect(timelineItemStableKey(timeline[0])).toBe(`compaction:${failed.id}`)
+    expect(timelineItemStableKey(timeline[1])).toBe(`compaction:${running.id}`)
   })
 
   test("keeps the compaction card identity when the active attempt commits", () => {
@@ -408,6 +410,36 @@ describe("session turn assistant collection", () => {
     expect(runningItem).toMatchObject({ kind: "compaction", part: undefined })
     expect(committedItem).toMatchObject({ kind: "compaction", part: recovery })
     expect(timelineItemStableKey(runningItem)).toBe(timelineItemStableKey(committedItem))
+  })
+
+  test("keeps the compaction card identity when the active attempt fails", () => {
+    const root = user("msg_root")
+    const running = compactionAssistant("msg_compaction", root.id, {
+      state: "running",
+      visible: false,
+      summary: false,
+    })
+    const failed = compactionAssistant("msg_compaction", root.id, {
+      state: "failed",
+      visible: true,
+      completed: 2,
+      summary: false,
+    })
+
+    const runningItem = collectSessionTurnTimelineItems(
+      collectAssistantMessagesForTurn([root, running] as MessageType[], root.id),
+      {},
+      true,
+    )[0]
+    const failedItem = collectSessionTurnTimelineItems(
+      collectAssistantMessagesForTurn([root, failed] as MessageType[], root.id),
+      {},
+      false,
+    )[0]
+
+    expect(runningItem).toMatchObject({ kind: "compaction", message: running })
+    expect(failedItem).toMatchObject({ kind: "compaction", message: failed })
+    expect(timelineItemStableKey(runningItem)).toBe(timelineItemStableKey(failedItem))
   })
 
   test("collects only assistants belonging to this task's root", () => {
