@@ -242,6 +242,18 @@ export namespace SessionNav {
     return [...new Set(["home", ...projects.map((p) => p.id), ...sessionScopeIDs])]
   }
 
+  export async function listUnreadCompletionEntries(): Promise<SessionNavEntry[]> {
+    const unreadEntries: SessionNavEntry[] = []
+    for (const scopeID of await getAllScopeIDs()) {
+      const index = await readNavIndex(scopeID)
+      for (const entry of index.entries) {
+        if (entry.parentID || entry.archived || entry.completionNotice.unreadCount === 0) continue
+        unreadEntries.push(entry)
+      }
+    }
+    return unreadEntries
+  }
+
   export async function queryScope(
     scopeID: string,
     opts?: {

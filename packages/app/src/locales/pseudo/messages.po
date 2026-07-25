@@ -6896,6 +6896,22 @@ msgid "app.sidebar.loadSessions"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllRead"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadFailed"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadSuccess"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markingAllRead"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.menu.account"
 msgstr ""
 

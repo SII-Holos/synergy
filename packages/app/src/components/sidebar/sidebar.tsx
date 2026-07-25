@@ -11,6 +11,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { sidebar } from "@/locales/messages"
 import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -126,6 +127,30 @@ export function Sidebar(props: SidebarProps) {
   }
 
   const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
+  const [acknowledgingCompletions, setAcknowledgingCompletions] = createSignal(false)
+
+  const acknowledgeAllCompletions = async () => {
+    if (acknowledgingCompletions()) return
+    setAcknowledgingCompletions(true)
+    try {
+      const result = await layout.nav.acknowledgeAllCompletionNotices()
+      if ((result?.failedSessionCount ?? 0) > 0) {
+        showToast({ type: "error", title: _(sidebar.markAllReadFailed) })
+        return
+      }
+      if ((result?.acknowledgedCount ?? 0) > 0) {
+        showToast({ type: "info", title: _(sidebar.markAllReadSuccess) })
+      }
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: _(sidebar.markAllReadFailed),
+        description: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      setAcknowledgingCompletions(false)
+    }
+  }
   const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
   const [channelSectionOpen, setChannelSectionOpen] = createSignal(false)
   const [feishuGroupOpen, setFeishuGroupOpen] = createSignal(true)
@@ -425,18 +450,31 @@ export function Sidebar(props: SidebarProps) {
           >
             {/* Recent */}
             <div class="sb-root-section">
-              <div
-                class="sb-projects-header"
-                onClick={() => setRecentSectionOpen((v) => !v)}
-                role="button"
-                tabindex="0"
-              >
-                <span class="sb-section-title">{_(sidebar.recent)}</span>
-                <Icon
-                  name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
-                  size="small"
-                  class="sb-section-chevron"
-                />
+              <div class="sb-projects-header sb-recent-header">
+                <button
+                  type="button"
+                  class="sb-recent-toggle"
+                  aria-expanded={recentSectionOpen()}
+                  onClick={() => setRecentSectionOpen((v) => !v)}
+                >
+                  <span class="sb-section-title">{_(sidebar.recent)}</span>
+                  <Icon
+                    name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
+                    size="small"
+                    class="sb-section-chevron"
+                  />
+                </button>
+                <Show when={(layout.nav.unreadCompletionCount() ?? 0) > 0}>
+                  <button
+                    type="button"
+                    class="sb-mark-all-read"
+                    disabled={acknowledgingCompletions()}
+                    aria-busy={acknowledgingCompletions()}
+                    onClick={() => void acknowledgeAllCompletions()}
+                  >
+                    {_(acknowledgingCompletions() ? sidebar.markingAllRead : sidebar.markAllRead)}
+                  </button>
+                </Show>
               </div>
               <Show when={recentSectionOpen()}>
                 <Show

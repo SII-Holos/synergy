@@ -6896,6 +6896,22 @@ msgid "app.sidebar.loadSessions"
 msgstr "加载会话"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllRead"
+msgstr "全部标为已读"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadFailed"
+msgstr "全部标为已读失败"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadSuccess"
+msgstr "已将所有会话标为已读"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markingAllRead"
+msgstr "正在全部标为已读…"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.menu.account"
 msgstr "账号"
 
