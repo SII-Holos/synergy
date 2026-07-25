@@ -16,6 +16,10 @@ const ctx = {
 }
 
 describe("tool.process", () => {
+  test("rejects removed envID instead of falling back to local process control", async () => {
+    const process = await ProcessTool.init()
+    expect(process.parameters.safeParse({ action: "list", envID: "legacy" }).success).toBe(false)
+  })
   test("promotes finished process artifacts on poll", async () => {
     await using tmp = await tmpdir({ git: true })
     const filepath = path.join(tmp.path, "report.pdf")

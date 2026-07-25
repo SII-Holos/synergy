@@ -1,11 +1,16 @@
 #!/usr/bin/env bun
 import process from "node:process"
+import { log } from "@clack/prompts"
 import { SynergyLinkCLIBackend, type SynergyLinkTrustSubject } from "./cli-backend"
 import type { SynergyLinkApprovalMode } from "./state/store"
 import { SynergyLinkRuntime } from "./runtime"
 import { SynergyLinkService } from "./service"
 import { SynergyLinkHolosLogin } from "./holos/login"
-import { SynergyLinkDisplay } from "./display"
+import { SynergyLinkCLIFormat } from "./cli/format"
+
+declare const SYNERGY_LINK_VERSION: string
+
+const VERSION = typeof SYNERGY_LINK_VERSION === "string" ? SYNERGY_LINK_VERSION : "0.0.0-dev"
 
 interface CLIContext {
   json: boolean
@@ -16,6 +21,7 @@ interface CLIContext {
 
 interface GlobalFlags {
   help: boolean
+  version: boolean
   json: boolean
   printLogs: boolean
 }
@@ -60,6 +66,11 @@ async function main() {
     printLogs: parsed.flags.printLogs,
     invocationEntry: process.argv[1],
     launcherPath: process.execPath,
+  }
+
+  if (parsed.flags.version) {
+    console.log(VERSION)
+    return
   }
 
   if (parsed.flags.help || parsed.command.length === 0) {
@@ -341,9 +352,16 @@ async function reconnect(args: string[]): Promise<CommandResult> {
     return invalidUsage("Usage: synergy-link reconnect")
   }
   const result = await SynergyLinkCLIBackend.reconnect()
+  if (!result.requested || result.succeeded === false) {
+    return {
+      ok: false,
+      message: result.reason ?? "Synergy Link reconnect failed.",
+      data: result,
+    }
+  }
   return {
     ok: true,
-    message: "Reconnect requested.",
+    message: result.succeeded === true ? "Reconnected to Holos." : "Reconnect requested.",
     data: result,
   }
 }
@@ -576,17 +594,20 @@ function unknownCommand(command: string[]): CommandFailure {
 
 function parseArgv(
   argv: string[],
-):
-  | { ok: true; command: string[]; flags: { help: boolean; json: boolean; printLogs: boolean } }
-  | { ok: false; error: CommandFailure } {
+): { ok: true; command: string[]; flags: GlobalFlags } | { ok: false; error: CommandFailure } {
   const command: string[] = []
   let help = false
+  let version = false
   let json = false
   let printLogs = false
 
   for (const token of argv) {
     if (token === "--help" || token === "-h") {
       help = true
+      continue
+    }
+    if (token === "--version" || token === "-v") {
+      version = true
       continue
     }
     if (token === "--json") {
@@ -618,7 +639,7 @@ function parseArgv(
   return {
     ok: true,
     command,
-    flags: { help, json, printLogs },
+    flags: { help, version, json, printLogs },
   }
 }
 
@@ -636,18 +657,13 @@ function renderSuccess(result: CommandSuccess, context: CLIContext) {
     return
   }
 
-  const sections: string[] = []
-  const text = result.data === undefined ? "" : formatHuman(result.data)
+  const text = result.data === undefined ? "" : SynergyLinkCLIFormat.human(result.data)
   if (result.message) {
-    sections.push(result.message)
+    log.success(result.message)
   }
 
   if (text && text !== result.message) {
-    sections.push(text)
-  }
-
-  if (sections.length > 0) {
-    console.log(sections.join("\n\n"))
+    console.log(text)
   }
 }
 
@@ -670,7 +686,13 @@ function renderFailure(result: CommandFailure, context: CLIContext) {
     return
   }
 
-  console.error(result.message)
+  const text = result.data === undefined ? "" : SynergyLinkCLIFormat.human(result.data)
+  if (text) {
+    console.log(text)
+  }
+  if (!text || text !== result.message) {
+    log.error(result.message)
+  }
   if (result.usage && result.usage !== result.message) {
     console.error(result.usage)
   }
@@ -688,25 +710,34 @@ function printUsage(command: string[]) {
 }
 
 function rootUsage() {
-  return [
-    "Usage: synergy-link <command> [options]",
+  const sections = [
+    "Service:",
+    "  server [--print-logs]          Run the service in the foreground",
+    "  start | stop | restart         Manage the background service",
+    "  status                         Show host, auth, and session status",
+    "  logs [-f] [--tail N] [--since DURATION]",
     "",
-    "Commands:",
-    "  server [--print-logs]",
-    "  start | stop | restart | status | logs",
-    "  login [--agent-id ID --agent-secret SECRET] | logout | whoami | reconnect | doctor",
+    "Identity:",
+    "  login [--agent-id ID --agent-secret SECRET]",
+    "  logout | whoami | reconnect | doctor",
+    "",
+    "Collaboration:",
     "  mode <status|managed|standalone>",
     "  collaboration <enable|disable|status>",
-    "  requests <list|show|approve|deny>",
+    "  requests <list|show|approve|deny> [request-id]",
     "  session <status|kick|block>",
-    "  approval <get|set>",
-    "  trust <list|add|remove>",
-    "  label <get|set|clear>",
+    "  approval <get|set <auto|manual|trusted-only>>",
+    "  trust <list|add|remove> [agent|user] [value]",
+    "  label <get|set <label>|clear>",
     "",
     "Options:",
+    "  --version, -v Show version",
     "  --json        Emit machine-readable output where supported",
     "  --help, -h    Show help",
-  ].join("\n")
+  ]
+  const headings = new Set(["Service:", "Identity:", "Collaboration:", "Options:"])
+  const body = sections.map((line) => (headings.has(line) ? SynergyLinkCLIFormat.heading(line) : line)).join("\n")
+  return `Usage: synergy-link <command> [options]\n\n${body}`
 }
 
 function usageMap(): Record<string, string> {
@@ -732,248 +763,12 @@ function usageMap(): Record<string, string> {
   }
 }
 
-function formatHuman(value: unknown): string {
-  if (isStatusResult(value)) return formatStatus(value)
-  if (isWhoamiResult(value)) return formatWhoami(value)
-  if (isLogsResult(value)) return value.content
-  if (isRequestsResult(value)) return formatRequests(value.requests)
-  if (isRequestResult(value)) return formatRequest(value.request)
-  if (isTrustResult(value)) return formatTrust(value)
-  if (isApprovalResult(value)) return `Mode: ${value.mode}`
-  if (isLabelResult(value)) return `Label: ${value.label ?? "none"}`
-  if (isSessionStatusResult(value)) return formatSessionStatus(value)
-  if (isCollaborationStatusResult(value)) return formatCollaborationStatus(value)
-  if (isDoctorResult(value)) return formatDoctor(value)
-  return formatValue(value, 0)
-}
-
-function formatValue(value: unknown, depth: number): string {
-  if (value === null || value === undefined) return ""
-  if (typeof value === "string") return value
-  if (typeof value === "number" || typeof value === "boolean") return String(value)
-  if (Array.isArray(value)) {
-    if (value.length === 0) return ""
-    return value.map((item) => `${indent(depth)}- ${formatInline(item, depth + 1)}`).join("\n")
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value).filter(([, entry]) => entry !== undefined)
-    if (entries.length === 0) return ""
-    return entries
-      .map(([key, entry]) => {
-        if (entry === null) {
-          return `${indent(depth)}${toTitle(key)}: none`
-        }
-        if (typeof entry === "object") {
-          const nested = formatValue(entry, depth + 1)
-          if (!nested) return `${indent(depth)}${toTitle(key)}: none`
-          return `${indent(depth)}${toTitle(key)}:\n${nested}`
-        }
-        return `${indent(depth)}${toTitle(key)}: ${String(entry)}`
-      })
-      .join("\n")
-  }
-  return String(value)
-}
-
-function formatInline(value: unknown, depth: number): string {
-  if (value === null) return "none"
-  if (typeof value !== "object") return String(value)
-  const formatted = formatValue(value, depth)
-  return formatted.includes("\n") ? `\n${formatted}` : formatted
-}
-
-function indent(depth: number) {
-  return "  ".repeat(depth)
-}
-
-function toTitle(value: string) {
-  return value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replaceAll("_", " ")
-}
-
 function isApprovalMode(value: string | undefined): value is SynergyLinkApprovalMode {
   return value === "auto" || value === "manual" || value === "trusted-only"
 }
 
 function isTrustSubject(value: string | undefined): value is SynergyLinkTrustSubject {
   return value === "agent" || value === "user"
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
-function isStatusResult(value: unknown): value is {
-  auth: unknown
-  state: Record<string, unknown>
-  service: Record<string, unknown>
-} {
-  return isObject(value) && "auth" in value && "state" in value && "service" in value
-}
-
-function isWhoamiResult(value: unknown): value is {
-  auth: { loggedIn: boolean; agentID: string | null; source?: string | null }
-  mode?: string
-  ownership?: { local?: { activeOwnerID?: string | null; owned?: boolean } }
-  linkID?: string | null
-  label: string | null
-  service: { running: boolean }
-} {
-  return isObject(value) && "auth" in value && "service" in value && "label" in value
-}
-
-function isLogsResult(value: unknown): value is { content: string } {
-  return isObject(value) && typeof value.content === "string" && "logPath" in value
-}
-
-function isRequestsResult(value: unknown): value is { requests: Array<Record<string, unknown>> } {
-  return isObject(value) && Array.isArray(value.requests)
-}
-
-function isRequestResult(value: unknown): value is { request: Record<string, unknown> } {
-  return isObject(value) && isObject(value.request)
-}
-
-function isTrustResult(value: unknown): value is { agents: string[]; users: number[]; blockedAgents?: string[] } {
-  return isObject(value) && Array.isArray(value.agents) && Array.isArray(value.users)
-}
-
-function isApprovalResult(value: unknown): value is { mode: string } {
-  return isObject(value) && typeof value.mode === "string"
-}
-
-function isLabelResult(value: unknown): value is { label: string | null } {
-  return isObject(value) && "label" in value
-}
-
-function isSessionStatusResult(value: unknown): value is {
-  session: Record<string, unknown> | null
-  blockedAgentIDs: string[]
-  service: Record<string, unknown>
-} {
-  return isObject(value) && "session" in value && Array.isArray(value.blockedAgentIDs) && "service" in value
-}
-
-function isCollaborationStatusResult(value: unknown): value is {
-  enabled: boolean
-  session: Record<string, unknown> | null
-  approvalMode: string
-  pendingRequestCount: number
-} {
-  return isObject(value) && typeof value.enabled === "boolean" && typeof value.approvalMode === "string"
-}
-
-function isDoctorResult(value: unknown): value is {
-  ok: boolean
-  checks: Array<{ name: string; ok: boolean; detail: string }>
-} {
-  return isObject(value) && typeof value.ok === "boolean" && Array.isArray(value.checks)
-}
-
-function formatStatus(value: { auth: unknown; state: Record<string, unknown>; service: Record<string, unknown> }) {
-  const auth = isObject(value.auth) ? value.auth : {}
-  const state = value.state
-  const service = value.service
-  const currentSession = isObject(state.currentSession) ? state.currentSession : null
-  const ownerRegistry = isObject(state.ownerRegistry) ? state.ownerRegistry : undefined
-  const localOwnership = ownerRegistry && isObject(ownerRegistry.local) ? ownerRegistry.local : undefined
-  const sessionSummary = currentSession
-    ? `${SynergyLinkDisplay.maybeIdentifier(currentSession.remoteAgentID, { unknown: "unknown" })} (${SynergyLinkDisplay.maybeIdentifier(currentSession.sessionID, { unknown: "unknown", hiddenReason: "policy" })})`
-    : "idle"
-
-  return [
-    `Mode: ${typeof state.runtimeMode === "string" ? state.runtimeMode : typeof (value as { mode?: unknown }).mode === "string" ? String((value as { mode?: unknown }).mode) : "unknown"}`,
-    `Local owner: ${SynergyLinkDisplay.maybeIdentifier(localOwnership?.activeOwnerID, { hiddenReason: "policy" })}`,
-    `Logged in: ${auth.loggedIn === true ? "yes" : "no"}`,
-    `Agent ID: ${SynergyLinkDisplay.maybeIdentifier(auth.agentID)}`,
-    `Auth source: ${typeof auth.source === "string" ? auth.source : "none"}`,
-    `Env ID: ${SynergyLinkDisplay.maybeIdentifier(state.linkID, { hiddenReason: "policy" })}`,
-    `Label: ${typeof state.label === "string" ? state.label : "none"}`,
-    `Service: ${service.running === true ? "running" : "stopped"}`,
-    `PID: ${typeof service.pid === "number" ? String(service.pid) : "none"}`,
-    `Holos: ${typeof state.connectionStatus === "string" ? state.connectionStatus : "unknown"}`,
-    `Collaboration: ${state.collaborationEnabled === true ? "enabled" : "disabled"}`,
-    `Approval: ${typeof state.approvalMode === "string" ? state.approvalMode : "unknown"}`,
-    `Pending requests: ${Array.isArray(state.pendingRequests) ? state.pendingRequests.filter((request) => isObject(request) && request.status === "pending").length : 0}`,
-    `Session: ${sessionSummary}`,
-  ].join("\n")
-}
-
-function formatWhoami(value: {
-  auth: { loggedIn: boolean; agentID: string | null; source?: string | null }
-  mode?: string
-  ownership?: { local?: { activeOwnerID?: string | null } }
-  linkID?: string | null
-  label: string | null
-  service: { running: boolean }
-}) {
-  return [
-    `Mode: ${value.mode ?? "unknown"}`,
-    `Local owner: ${SynergyLinkDisplay.maybeIdentifier(value.ownership?.local?.activeOwnerID, { hiddenReason: "policy" })}`,
-    `Logged in: ${value.auth.loggedIn ? "yes" : "no"}`,
-    `Agent ID: ${SynergyLinkDisplay.maybeIdentifier(value.auth.agentID)}`,
-    `Env ID: ${SynergyLinkDisplay.maybeIdentifier(value.linkID)}`,
-    `Auth source: ${value.auth.source ?? "none"}`,
-    `Label: ${value.label ?? "none"}`,
-    `Service: ${value.service.running ? "running" : "stopped"}`,
-  ].join("\n")
-}
-
-function formatRequests(requests: Array<Record<string, unknown>>) {
-  if (requests.length === 0) return "No requests."
-  return requests.map((request) => formatRequest(request)).join("\n\n")
-}
-
-function formatRequest(request: Record<string, unknown>) {
-  return [
-    `Request ID: ${SynergyLinkDisplay.maybeIdentifier(request.id, { unknown: "unknown", hiddenReason: "policy" })}`,
-    `Caller: ${SynergyLinkDisplay.maybeIdentifier(request.callerAgentID, { unknown: "unknown", hiddenReason: "policy" })}`,
-    `Owner User: ${request.callerOwnerUserID == null ? "none" : String(request.callerOwnerUserID)}`,
-    `Label: ${typeof request.label === "string" ? request.label : "none"}`,
-    `Status: ${String(request.status ?? "unknown")}`,
-    `Count: ${String(request.requestCount ?? 1)}`,
-  ].join("\n")
-}
-
-function formatTrust(value: { agents: string[]; users: number[]; blockedAgents?: string[] }) {
-  return [
-    `Trusted agents: ${SynergyLinkDisplay.identifierList(value.agents, { hiddenReason: "policy" })}`,
-    `Trusted users: ${value.users.length > 0 ? value.users.join(", ") : "none"}`,
-    `Blocked agents: ${SynergyLinkDisplay.identifierList(value.blockedAgents, { hiddenReason: "policy" })}`,
-  ].join("\n")
-}
-
-function formatSessionStatus(value: {
-  session: Record<string, unknown> | null
-  blockedAgentIDs: string[]
-  service: Record<string, unknown>
-}) {
-  return [
-    `Session: ${value.session ? SynergyLinkDisplay.maybeIdentifier(value.session.sessionID, { unknown: "unknown", hiddenReason: "policy" }) : "idle"}`,
-    `Remote agent: ${value.session ? SynergyLinkDisplay.maybeIdentifier(value.session.remoteAgentID, { unknown: "unknown", hiddenReason: "policy" }) : "none"}`,
-    `Blocked agents: ${SynergyLinkDisplay.identifierList(value.blockedAgentIDs, { hiddenReason: "policy" })}`,
-    `Service: ${value.service.running === true ? "running" : "stopped"}`,
-  ].join("\n")
-}
-
-function formatCollaborationStatus(value: {
-  enabled: boolean
-  session: Record<string, unknown> | null
-  approvalMode: string
-  pendingRequestCount: number
-}) {
-  return [
-    `Enabled: ${value.enabled ? "yes" : "no"}`,
-    `Approval: ${value.approvalMode}`,
-    `Pending requests: ${value.pendingRequestCount}`,
-    `Session: ${value.session ? SynergyLinkDisplay.maybeIdentifier(value.session.remoteAgentID ?? value.session.sessionID, { unknown: "busy", hiddenReason: "policy" }) : "idle"}`,
-  ].join("\n")
-}
-
-function formatDoctor(value: { ok: boolean; checks: Array<{ name: string; ok: boolean; detail: string }> }) {
-  return [
-    `Overall: ${value.ok ? "ok" : "issues found"}`,
-    ...value.checks.map((check) => `${check.ok ? "PASS" : "FAIL"} ${check.name}: ${check.detail}`),
-  ].join("\n")
 }
 
 function loginUsage() {

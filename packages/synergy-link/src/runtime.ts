@@ -2,7 +2,6 @@ import process from "node:process"
 import { SynergyLinkControlClient } from "./control/client"
 import { SynergyLinkControlServer } from "./control/server"
 import type { SynergyLinkControlRequest } from "./control/schema"
-import { SynergyLinkDisplay } from "./display"
 import { SynergyLinkMigrationRunner } from "./migration"
 import { SynergyLinkHost } from "./host"
 import { SynergyLinkInboundHandler, type SessionOpenDecision } from "./inbound/handler"
@@ -62,7 +61,7 @@ export class SynergyLinkRuntime {
     const sessions = new SessionManager({
       blockedAgentIDs: state.blockedAgentIDs,
       timeoutMs: state.sessionIdleTimeoutMs,
-      onChange: ({ current, blockedAgentIDs }) => {
+      onChange: async ({ current, blockedAgentIDs }) => {
         if (!runtime?.state) return
         runtime.state.currentSession = current
           ? {
@@ -75,7 +74,7 @@ export class SynergyLinkRuntime {
             }
           : undefined
         runtime.state.blockedAgentIDs = blockedAgentIDs
-        void SynergyLinkStore.saveState(runtime.state)
+        await SynergyLinkStore.saveState(runtime.state)
       },
     })
     const inbound = new SynergyLinkInboundHandler(rpc, sessions, (input) => runtime.decideSessionOpen(input))
@@ -158,9 +157,7 @@ export class SynergyLinkRuntime {
         this.#scheduleReconnect("initial_connect_failed")
       }
 
-      console.log(
-        `Synergy Link running as ${SynergyLinkDisplay.identifier(nextAuth.agentID, { hiddenReason: "policy" })}`,
-      )
+      console.log(`Synergy Link running as ${nextAuth.agentID}`)
     } else {
       this.#clearReconnectTimer()
       this.#client = null
@@ -171,7 +168,7 @@ export class SynergyLinkRuntime {
     state.service.runtimeStatus = "running"
     await SynergyLinkStore.saveState(state)
 
-    console.log(`linkID: ${this.host.linkID}`)
+    console.log(`Link ID: ${this.host.linkID}`)
     console.log(`Mode: ${state.runtimeMode}`)
     console.log(`Holos: ${this.state?.connectionStatus ?? "disconnected"}`)
     console.log(`Status: ${this.sessions.current() ? "busy" : "idle"}`)
@@ -191,6 +188,7 @@ export class SynergyLinkRuntime {
     this.#clearReconnectTimer()
     await this.#releaseManagedOwner("service_stop")
     this.#stopLoops()
+    await this.rpc.processRegistry.reset()
     if (this.state) {
       this.state.connectionStatus = "disconnected"
       this.state.currentSession = undefined
@@ -227,7 +225,7 @@ export class SynergyLinkRuntime {
     const state = requireState(this)
     state.collaborationEnabled = enabled
     if (!enabled && this.sessions.current()) {
-      this.sessions.kickCurrent(false)
+      await this.sessions.kickCurrent(false)
     }
     await SynergyLinkStore.saveState(state)
     return {
@@ -249,7 +247,7 @@ export class SynergyLinkRuntime {
   }
 
   async kickCurrentSession(block = false) {
-    const kicked = this.sessions.kickCurrent(block)
+    const kicked = await this.sessions.kickCurrent(block)
     const state = requireState(this)
     state.blockedAgentIDs = this.sessions.blockedAgentIDs()
     await SynergyLinkStore.saveState(state)
@@ -344,7 +342,7 @@ export class SynergyLinkRuntime {
     this.#clearReconnectTimer()
     this.#reconnectAttempt = 0
     if (this.sessions.current()) {
-      this.sessions.kickCurrent(false)
+      await this.sessions.kickCurrent(false)
     }
     await this.#client?.disconnect().catch(() => undefined)
     this.#client = null
@@ -523,9 +521,7 @@ export class SynergyLinkRuntime {
     const state = requireState(this)
     const authInfo = await SynergyLinkHolosAuth.inspect()
     return {
-      auth: sanitizeAuth(authInfo.auth, authInfo.source, {
-        hiddenReason: state.runtimeMode === "managed" ? "managed" : null,
-      }),
+      auth: sanitizeAuth(authInfo.auth, authInfo.source),
       mode: state.runtimeMode,
       ownership: this.getOwnershipSnapshot(),
       state: sanitizeState(state),
@@ -558,10 +554,6 @@ export class SynergyLinkRuntime {
         return await this.getMode()
       case "runtime.enter_managed":
         return await this.enterManagedMode()
-      case "runtime.enter_managed_mode":
-        return await this.enterManagedMode({
-          ownerID: controlOwnerID(request),
-        })
       case "runtime.set_mode":
         if (request.mode === "managed") {
           return await this.enterManagedMode({
@@ -594,11 +586,6 @@ export class SynergyLinkRuntime {
         return await this.getSessionStatus()
       case "session.kick":
         return await this.kickCurrentSession(Boolean(request.block))
-      case "synergy_link.execute":
-        return await this.inbound.handle({
-          caller: request.caller,
-          body: request.body,
-        })
       case "approval.get":
         return await this.getApproval()
       case "approval.set":
@@ -631,12 +618,6 @@ export class SynergyLinkRuntime {
     label?: string
   }): Promise<SessionOpenDecision> {
     const state = requireState(this)
-    const disk = await SynergyLinkStore.loadState()
-    state.collaborationEnabled = disk.collaborationEnabled
-    state.approvalMode = disk.approvalMode
-    state.trusted = disk.trusted
-    state.pendingRequests = disk.pendingRequests
-    state.label = disk.label
     if (!state.collaborationEnabled) {
       return "deny"
     }
@@ -767,13 +748,18 @@ export class SynergyLinkRuntime {
   #startLoops() {
     this.#stopLoops()
     const idleTimer = setInterval(() => {
-      const expired = this.sessions.expireIdle()
-      if (expired) {
-        SynergyLinkLog.info("runtime.session.expired", {
-          sessionID: expired.sessionID,
-          remoteAgentID: expired.remoteAgentID,
+      void this.sessions
+        .expireIdle()
+        .then((expired) => {
+          if (!expired) return
+          SynergyLinkLog.info("runtime.session.expired", {
+            sessionID: expired.sessionID,
+            remoteAgentID: expired.remoteAgentID,
+          })
         })
-      }
+        .catch(() => {
+          SynergyLinkLog.error("runtime.session.expire_failed")
+        })
     }, 30_000)
     idleTimer.unref?.()
 
@@ -965,22 +951,17 @@ function controlLeaseExpiresAt(request: { leaseExpiresAt?: unknown }) {
 function sanitizeAuth(
   auth: { agentID: string; agentSecret: string } | undefined,
   source: SynergyLinkHolosAuthSource | null,
-  options?: { hiddenReason?: "managed" | "policy" | null },
 ) {
   return auth
     ? {
         loggedIn: true,
-        agentID: SynergyLinkDisplay.identifier(auth.agentID, {
-          hiddenReason: options?.hiddenReason,
-        }),
+        agentID: auth.agentID,
         source,
-        hiddenReason: options?.hiddenReason ?? null,
       }
     : {
         loggedIn: false,
         agentID: null,
         source: null,
-        hiddenReason: null,
       }
 }
 

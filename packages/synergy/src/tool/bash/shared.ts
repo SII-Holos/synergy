@@ -6,7 +6,6 @@ import type { SandboxExecutionWrapper } from "@/sandbox/backend"
 export type BashParams = SynergyLinkBash.ExecutePayload & {
   targetID?: string
   linkID?: string
-  envID?: string
   backgroundAfterSeconds?: number
   timeoutSeconds?: number
 }

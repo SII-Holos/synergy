@@ -1,10 +1,12 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
 import { SynergyLinkControlClient } from "../src/control/client"
 import { SynergyLinkRuntime } from "../src/runtime"
+import { SynergyLinkLog } from "../src/log"
+import { ControlRequestSchema } from "../src/control/schema"
 
 const originalHome = process.env.SYNERGY_LINK_HOME
 const tempRoots: string[] = []
@@ -16,6 +18,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await SynergyLinkLog.flush()
   if (originalHome === undefined) {
     delete process.env.SYNERGY_LINK_HOME
   } else {
@@ -27,11 +30,16 @@ afterAll(async () => {
 describe("synergy-link control socket", () => {
   test("exposes runtime control actions over the local socket", async () => {
     const runtime = await SynergyLinkRuntime.create()
-    const linkID = runtime.host.linkID
-    if (!linkID) throw new Error("Expected runtime linkID")
     await runtime.control.start()
     try {
       expect(await SynergyLinkControlClient.isAvailable()).toBe(true)
+      expect(ControlRequestSchema.safeParse({ action: "synergy_link.execute", caller: {}, body: {} }).success).toBe(
+        false,
+      )
+      if (process.platform !== "win32") {
+        expect((await stat(runtime.control.socketPath)).mode & 0o777).toBe(0o600)
+        expect((await stat(process.env.SYNERGY_LINK_HOME!)).mode & 0o777).toBe(0o700)
+      }
 
       const mode = await SynergyLinkControlClient.request<{
         mode: string
@@ -89,117 +97,21 @@ describe("synergy-link control socket", () => {
         value: "agent_test",
       })
       expect(trust.agents).toContain("agent_test")
-
-      const caller = {
-        type: "holos",
-        agentID: "agent_test",
-        ownerUserID: 42,
-        profile: { source: "control-socket-test" },
-      }
-
-      try {
-        await SynergyLinkControlClient.request({
-          action: "synergy_link.execute",
-          caller,
-          body: {
-            version: 2,
-            requestID: "req_open_mismatch",
-            linkID: "link_other",
-            tool: "session",
-            action: "open",
-            payload: {
-              action: "open",
-              label: "wrong link",
-            },
-          },
-        })
-        throw new Error("Expected mismatched session open to fail")
-      } catch (error) {
-        expect(error).toMatchObject({ code: "control_request_failed" })
-      }
-      expect(runtime.sessions.current()).toBeNull()
-
-      const opened = await SynergyLinkControlClient.request<{
-        version: 2
-        requestID: string
-        ok: true
-        tool: "session"
-        action: "open"
-        result: {
-          title: string
-          metadata: {
-            action: "open"
-            status: string
-            sessionID?: string
-            remoteAgentID?: string
-            remoteOwnerUserID?: number
-            label?: string
-            backend: "remote"
-          }
-          output: string
-        }
-      }>({
-        action: "synergy_link.execute",
-        caller,
-        body: {
-          version: 2,
-          requestID: "req_open",
-          linkID,
-          tool: "session",
-          action: "open",
-          payload: {
-            action: "open",
-            label: "local proxy test",
-          },
-        },
-      })
-      expect(opened.ok).toBe(true)
-      expect(opened.tool).toBe("session")
-      expect(opened.action).toBe("open")
-      expect(opened.result.metadata.status).toBe("opened")
-      expect(opened.result.metadata.remoteAgentID).toBe("agent_test")
-      expect(opened.result.metadata.remoteOwnerUserID).toBe(42)
-      expect(opened.result.metadata.label).toBe("local proxy test")
-      expect(opened.result.metadata.sessionID).toBeTruthy()
-
-      const listed = await SynergyLinkControlClient.request<{
-        version: 2
-        requestID: string
-        ok: true
-        tool: "process"
-        action: "list"
-        result: {
-          title: string
-          metadata: {
-            action: "list"
-            processes?: Array<{ processId: string }>
-            hostSessionID: string
-            linkID: string
-            backend: "remote"
-          }
-          output: string
-        }
-      }>({
-        action: "synergy_link.execute",
-        caller,
-        body: {
-          version: 2,
-          requestID: "req_list",
-          linkID,
-          tool: "process",
-          action: "list",
-          sessionID: opened.result.metadata.sessionID!,
-          payload: { action: "list" },
-        },
-      })
-      expect(listed.ok).toBe(true)
-      expect(listed.tool).toBe("process")
-      expect(listed.action).toBe("list")
-      expect(listed.result.metadata.action).toBe("list")
-      expect(listed.result.metadata.linkID).toBe(linkID)
-      expect(listed.result.metadata.backend).toBe("remote")
     } finally {
       await runtime.stopServerProcess()
     }
+  })
+
+  test("keeps control socket paths out of private runtime logs", async () => {
+    const runtime = await SynergyLinkRuntime.create()
+    await runtime.control.start()
+    await runtime.control.stop()
+    await SynergyLinkLog.flush()
+
+    const logPath = path.join(process.env.SYNERGY_LINK_HOME!, "logs", "runtime.log")
+    for (let attempt = 0; attempt < 50 && !(await Bun.file(logPath).exists()); attempt++) await Bun.sleep(10)
+    const log = await readFile(logPath, "utf8")
+    expect(log).not.toContain(path.join(process.env.SYNERGY_LINK_HOME!, "control.sock"))
+    expect((await stat(logPath)).mode & 0o777).toBe(0o600)
   })
 })

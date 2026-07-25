@@ -15,7 +15,7 @@ import { Presence } from "./presence"
 
 const log = Log.create({ service: "holos.runtime" })
 const HEARTBEAT_INTERVAL_MS = 30_000
-const WS_FAILED_TIMEOUT_MS = 1_500
+const WS_FAILURE_WINDOW_MS = 1_500
 const RECONNECT_DELAY_MS = 2_000
 const MAX_RECONNECT_DELAY_MS = 30_000
 const MAX_RECONNECT_ATTEMPTS = 50
@@ -310,7 +310,10 @@ export class HolosProvider {
         if (cleanedUp) return
         cleanedUp = true
         if (this.state.heartbeatTimer) clearInterval(this.state.heartbeatTimer)
-        for (const pending of this.state.pendingSends.values()) clearTimeout(pending.timer)
+        for (const pending of this.state.pendingSends.values()) {
+          clearTimeout(pending.timer)
+          pending.resolve({ sent: false, reason: "not_connected" })
+        }
         this.state.pendingSends.clear()
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close()
         this.state.ws = null
@@ -394,9 +397,9 @@ export class HolosProvider {
       const timer = setTimeout(() => {
         if (this.state.pendingSends.has(requestId)) {
           this.state.pendingSends.delete(requestId)
-          resolve({ sent: false, reason: "timeout" })
+          resolve({ sent: true })
         }
-      }, WS_FAILED_TIMEOUT_MS)
+      }, WS_FAILURE_WINDOW_MS)
       this.state.pendingSends.set(requestId, { timer, resolve, targetAgentId })
     })
   }

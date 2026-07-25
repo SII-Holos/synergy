@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises"
+import { chmod, readFile, writeFile } from "node:fs/promises"
 import { SynergyLinkStore } from "./state/store"
 
 export interface SynergyLinkLocalOwnerRegistryState {
@@ -120,7 +120,9 @@ export namespace SynergyLinkOwnerRegistry {
 
   export async function saveFile(registry: SynergyLinkOwnerRegistryState) {
     await SynergyLinkStore.ensureRoot()
-    await writeFile(SynergyLinkStore.ownerRegistryPath(), JSON.stringify(snapshot(registry), null, 2) + "\n")
+    const filepath = SynergyLinkStore.ownerRegistryPath()
+    await writeFile(filepath, JSON.stringify(snapshot(registry), null, 2) + "\n", { mode: 0o600 })
+    await chmod(filepath, 0o600)
   }
 }
 

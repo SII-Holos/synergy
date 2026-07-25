@@ -165,10 +165,8 @@ export class ProcessRegistry {
     }
   }
 
-  reset() {
-    for (const record of this.#running.values()) {
-      void Platform.killTree(record.child, () => record.exited)
-    }
+  async reset() {
+    await Promise.all([...this.#running.values()].map((record) => Platform.killTree(record.child, () => record.exited)))
     this.#running.clear()
     this.#finished.clear()
     this.#waiters.clear()

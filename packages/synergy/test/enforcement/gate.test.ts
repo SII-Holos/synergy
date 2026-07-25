@@ -423,7 +423,6 @@ describe("EnforcementGate Synergy Link classification", () => {
       { command: "echo remote", linkID: "link_test" },
       { command: "echo remote", targetID: "target_test" },
       { command: "echo remote", linkID: "malformed-but-still-remote-intent" },
-      { command: "echo remote", envID: "link_test" },
     ]) {
       const result = gate.classify("bash", args)
       const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
@@ -442,7 +441,6 @@ describe("EnforcementGate Synergy Link classification", () => {
       { action: "list", linkID: "link_test" },
       { action: "list", targetID: "target_test" },
       { action: "list", linkID: "malformed-but-still-remote-intent" },
-      { action: "list", envID: "link_test" },
     ]) {
       const result = gate.classify("process", args)
       const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
