@@ -18,6 +18,7 @@ type SessionInboxProps = {
   sync: ReturnType<typeof useSync>
   sdk: ReturnType<typeof useSDK>
   freezeHint?: boolean
+  hasCanonicalRoot?: boolean
 }
 
 function InboxDetail(props: { item: SessionInboxItem; i18n: ReturnType<typeof useLocale>["i18n"] }) {
@@ -176,7 +177,10 @@ export function SessionInbox(props: SessionInboxProps) {
   const view = createMemo(() => deriveSessionInboxView(props.sync.data.inbox[props.sessionID]))
   const items = createMemo(() => view().items)
   const count = createMemo(() => view().count)
-  const actionableItems = createMemo(() => items().filter(isInboxItemInteractive))
+  const firstTaskLocked = (item: SessionInboxItem) => item.mode === "task" && props.hasCanonicalRoot === false
+  const actionableItems = createMemo(() =>
+    items().filter((item) => isInboxItemInteractive(item) && !firstTaskLocked(item)),
+  )
 
   const titleDetail = createMemo(() => {
     if (view().status === "loading") return _(S.inboxDebug)
@@ -301,7 +305,13 @@ export function SessionInbox(props: SessionInboxProps) {
               </div>
               <For each={items()}>
                 {(item) => (
-                  <InboxRow item={item} disabled={props.freezeHint} onGuide={guide} onRemove={remove} i18n={i18n} />
+                  <InboxRow
+                    item={item}
+                    disabled={props.freezeHint || firstTaskLocked(item)}
+                    onGuide={guide}
+                    onRemove={remove}
+                    i18n={i18n}
+                  />
                 )}
               </For>
             </div>

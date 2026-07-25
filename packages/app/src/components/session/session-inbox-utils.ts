@@ -16,6 +16,13 @@ export function sortInboxItems(items: SessionInboxItem[]) {
   })
 }
 
+export function upsertSessionInboxItem(
+  items: readonly SessionInboxItem[] | undefined,
+  accepted: SessionInboxItem,
+): SessionInboxItem[] {
+  return sortInboxItems([...(items ?? []).filter((item) => item.id !== accepted.id), accepted])
+}
+
 export type SessionInboxView =
   | { status: "loading"; items: SessionInboxItem[]; count: 0 }
   | { status: "empty"; items: SessionInboxItem[]; count: 0 }

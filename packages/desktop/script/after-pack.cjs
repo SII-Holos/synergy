@@ -12,11 +12,28 @@ exports.default = async function afterPack(context) {
     throw new Error(`Synergy runtime is missing for desktop package: ${source}`)
   }
 
+  assertRuntimeAssets(source, context.electronPlatformName)
+
   const destination = path.join(resourcesPath(context), "synergy")
   fs.rmSync(destination, { recursive: true, force: true })
   copyDirectory(source, destination)
   writeDesktopPackageMetadata(destination, context)
 }
+
+function assertRuntimeAssets(runtimeDir, platform) {
+  const binary = platform === "win32" ? "bin/synergy.exe" : "bin/synergy"
+  const required = [binary, "app/index.html", "schema/config.schema.json"]
+  if (platform === "linux") required.push("sandbox/synergy-sandbox-linux")
+  if (platform === "win32") required.push("sandbox/synergy-sandbox-windows.exe")
+
+  for (const relative of required) {
+    if (!fs.existsSync(path.join(runtimeDir, relative))) {
+      throw new Error(`Synergy runtime is incomplete; missing ${relative}: ${runtimeDir}`)
+    }
+  }
+}
+
+exports.assertRuntimeAssets = assertRuntimeAssets
 
 function runtimePackageName(platform, arch) {
   const platformName = platform === "win32" ? "windows" : platform

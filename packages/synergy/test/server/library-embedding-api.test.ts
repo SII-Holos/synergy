@@ -87,6 +87,11 @@ describe("Library embedding API", () => {
 
     expect(first.status).toBe(202)
     expect(second.status).toBe(202)
+    expect(await first.json()).toMatchObject({
+      mode: "local",
+      asset: "missing",
+      runtime: "loading",
+    })
     expect(await second.json()).toMatchObject({
       mode: "local",
       asset: "downloading",

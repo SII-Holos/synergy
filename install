@@ -134,6 +134,174 @@ install_bundle_contents() {
     fi
 }
 
+print_message() {
+    local level=$1
+    local message=$2
+    local color=""
+
+    case $level in
+        info) color="${NC}" ;;
+        warning) color="${NC}" ;;
+        error) color="${RED}" ;;
+    esac
+
+    echo -e "${color}${message}${NC}"
+}
+
+is_linux_install() {
+    [[ "${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}" == Linux* ]]
+}
+
+has_bubblewrap() {
+    command -v bwrap >/dev/null 2>&1
+}
+
+detect_bubblewrap_package_manager() {
+    local manager
+    for manager in apt-get dnf pacman; do
+        if command -v "$manager" >/dev/null 2>&1; then
+            printf '%s\n' "$manager"
+            return 0
+        fi
+    done
+    return 1
+}
+
+bubblewrap_install_command() {
+    case "$1" in
+        apt-get) printf '%s\n' "apt-get install -y bubblewrap" ;;
+        dnf) printf '%s\n' "dnf install -y bubblewrap" ;;
+        pacman) printf '%s\n' "pacman -S --noconfirm bubblewrap" ;;
+        *) return 1 ;;
+    esac
+}
+
+is_root_user() {
+    [ "$(id -u)" -eq 0 ]
+}
+
+can_prompt_for_bubblewrap_install() {
+    [ -t 2 ] || return 1
+    { : </dev/tty >/dev/tty; } 2>/dev/null
+}
+
+confirm_bubblewrap_install() {
+    local response
+    printf 'Bubblewrap is required for the Linux sandbox. Install it now? [y/N] ' >/dev/tty
+    IFS= read -t 30 -r response </dev/tty || return 1
+    case "$response" in
+        y|Y|yes|YES|Yes) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+print_manual_bubblewrap_command() {
+    local command="$1"
+    if is_root_user; then
+        print_message warning "${ORANGE}Run this command manually: ${command}${NC}"
+    elif command -v sudo >/dev/null 2>&1; then
+        print_message warning "${ORANGE}Run this command manually: sudo ${command}${NC}"
+    else
+        print_message warning "${ORANGE}Run this command as root: ${command}${NC}"
+    fi
+}
+
+install_bubblewrap() {
+    local manager=$1
+
+    if is_root_user; then
+        case "$manager" in
+            apt-get) apt-get install -y bubblewrap ;;
+            dnf) dnf install -y bubblewrap ;;
+            pacman) pacman -S --noconfirm bubblewrap ;;
+            *) return 1 ;;
+        esac
+        return
+    fi
+
+    command -v sudo >/dev/null 2>&1 || return 1
+    case "$manager" in
+        apt-get) sudo apt-get install -y bubblewrap ;;
+        dnf) sudo dnf install -y bubblewrap ;;
+        pacman) sudo pacman -S --noconfirm bubblewrap ;;
+        *) return 1 ;;
+    esac
+}
+
+ensure_linux_bubblewrap() {
+    is_linux_install || return 0
+    has_bubblewrap && return 0
+
+    local manager
+    if ! manager=$(detect_bubblewrap_package_manager); then
+        print_message warning "${ORANGE}Linux sandbox prerequisite missing: install Bubblewrap with your system package manager.${NC}"
+        return 0
+    fi
+
+    local command
+    if ! command=$(bubblewrap_install_command "$manager"); then
+        print_message warning "${ORANGE}Linux sandbox prerequisite missing: install Bubblewrap with your system package manager.${NC}"
+        return 0
+    fi
+
+    if ! can_prompt_for_bubblewrap_install || ! confirm_bubblewrap_install; then
+        print_manual_bubblewrap_command "$command"
+        return 0
+    fi
+
+    print_message info "${MUTED}Installing Bubblewrap with ${manager}...${NC}"
+    if install_bubblewrap "$manager"; then
+        print_message info "${MUTED}Bubblewrap installed successfully.${NC}"
+        return 0
+    fi
+
+    print_message warning "${ORANGE}Automatic Bubblewrap installation failed.${NC}"
+    print_manual_bubblewrap_command "$command"
+    return 0
+}
+
+print_post_install_message() {
+    echo -e ""
+    echo -e "${MUTED}                       ${NC}                  "
+    echo -e "${MUTED}█▀▀ █  █ █▀▀▄ █▀▀█ █▀▀█ █▀▀▀ █  █${NC}"
+    echo -e "${MUTED}▀▀█ █▄▄█ █  █ █▀▀▀ █▄▄▀ █ ▀█ █▄▄█${NC}"
+    echo -e "${MUTED}▀▀▀  ▄▄█ ▀  ▀ ▀▀▀▀ ▀ ▀▀ ▀▀▀▀  ▄▄█${NC}"
+    echo -e ""
+    echo -e ""
+    echo -e "${MUTED}Synergy is ready! To start:${NC}"
+    echo -e ""
+    echo -e "synergy  ${MUTED}# Run command${NC}"
+    echo -e ""
+    echo -e "${MUTED}For more information visit ${NC}https://github.com/SII-Holos/synergy"
+    echo -e ""
+    echo -e ""
+}
+
+check_version() {
+    if command -v synergy >/dev/null 2>&1; then
+        local installed_version
+        installed_version=$(synergy --version 2>/dev/null || echo "")
+
+        if [[ "$installed_version" != "$specific_version" ]]; then
+            print_message info "${MUTED}Installed version: ${NC}$installed_version."
+        elif has_complete_bundle; then
+            print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+install_synergy() {
+    if [ -n "$binary_path" ]; then
+        install_from_binary
+    elif check_version; then
+        download_and_install
+    fi
+
+    ensure_linux_bubblewrap
+}
+
 if [ "${SYNERGY_INSTALL_LIBRARY_MODE:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
@@ -260,35 +428,7 @@ else
     fi
 fi
 
-print_message() {
-    local level=$1
-    local message=$2
-    local color=""
 
-    case $level in
-        info) color="${NC}" ;;
-        warning) color="${NC}" ;;
-        error) color="${RED}" ;;
-    esac
-
-    echo -e "${color}${message}${NC}"
-}
-
-check_version() {
-    if command -v synergy >/dev/null 2>&1; then
-        synergy_path=$(which synergy)
-
-        ## Check the installed version
-        installed_version=$(synergy --version 2>/dev/null || echo "")
-
-        if [[ "$installed_version" != "$specific_version" ]]; then
-            print_message info "${MUTED}Installed version: ${NC}$installed_version."
-        elif has_complete_bundle; then
-            print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed"
-            exit 0
-        fi
-    fi
-}
 
 unbuffered_sed() {
     if echo | sed -u -e "" >/dev/null 2>&1; then
@@ -412,16 +552,7 @@ install_from_binary() {
     fi
 }
 
-if [ -n "$binary_path" ]; then
-    install_from_binary
-else
-    check_version
-    download_and_install
-fi
-
-if [[ "$(uname -s)" == Linux* ]] && ! command -v bwrap >/dev/null 2>&1; then
-    print_message warning "${ORANGE}Linux sandbox prerequisite missing: install bubblewrap with your system package manager.${NC}"
-fi
+install_synergy
 
 
 add_to_path() {
@@ -508,18 +639,4 @@ if [ -n "${GITHUB_ACTIONS-}" ] && [ "${GITHUB_ACTIONS}" == "true" ]; then
     print_message info "Added $INSTALL_DIR to \$GITHUB_PATH"
 fi
 
-echo -e ""
-echo -e "${MUTED}                       ${NC}                  "
-echo -e "${MUTED}█▀▀ █  █ █▀▀▄ █▀▀█ █▀▀█ █▀▀▀ █  █${NC}"
-echo -e "${MUTED}▀▀█ █▄▄█ █  █ █▀▀▀ █▄▄▀ █ ▀█ █▄▄█${NC}"
-echo -e "${MUTED}▀▀▀  ▄▄█ ▀  ▀ ▀▀▀▀ ▀ ▀▀ ▀▀▀▀  ▄▄█${NC}"
-echo -e ""
-echo -e ""
-echo -e "${MUTED}Synergy is ready! To start:${NC}"
-echo -e ""
-echo -e "cd <project>  ${MUTED}# Open directory${NC}"
-echo -e "synergy       ${MUTED}# Run command${NC}"
-echo -e ""
-echo -e "${MUTED}For more information visit ${NC}https://github.com/SII-Holos/synergy"
-echo -e ""
-echo -e ""
+print_post_install_message

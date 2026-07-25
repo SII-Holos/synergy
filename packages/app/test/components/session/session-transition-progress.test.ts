@@ -4,9 +4,11 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { translateDescriptor } from "@/locales/translate"
 import { S } from "../../../src/components/session/session-i18n"
 import {
+  createNewSessionTransitionAcceptedProgress,
   createNewSessionTransitionErrorProgress,
   createNewSessionTransitionProgress,
   createNewSessionTransitionSuccessProgress,
+  createSessionTransitionHandoffErrorProgress,
   createSessionStartupSteps,
   isSessionTransitionBlocking,
   sessionTransitionPresentation,
@@ -46,6 +48,16 @@ describe("session transition progress model", () => {
       ["message", "Submit message", "active"],
     ])
 
+    const accepted = createNewSessionTransitionAcceptedProgress()
+    expect(accepted).toMatchObject({ kind: "new-session", phase: "loading" })
+    expect(translateSessionTransitionCopy(accepted.description, i18n)).toBe(
+      "Your first message is saved. Initializing the conversation.",
+    )
+    expect(accepted.steps.map((step) => [step.id, step.state])).toEqual([
+      ["session", "complete"],
+      ["message", "active"],
+    ])
+
     const success = createNewSessionTransitionSuccessProgress()
     expect(success).toMatchObject({ kind: "new-session", phase: "success" })
     expect(translateSessionTransitionCopy(success.title, i18n)).toBe("Session request accepted")
@@ -71,6 +83,16 @@ describe("session transition progress model", () => {
     expect(isSessionTransitionBlocking(loading)).toBe(true)
     expect(isSessionTransitionBlocking(error)).toBe(true)
     expect(isSessionTransitionBlocking(success)).toBe(false)
+
+    const stalled = createSessionTransitionHandoffErrorProgress({
+      kind: accepted.kind,
+      steps: accepted.steps,
+    })
+    expect(stalled).toMatchObject({ kind: "new-session", phase: "error", steps: accepted.steps })
+    expect(translateSessionTransitionCopy(stalled.title, i18n)).toBe("Conversation setup needs attention")
+    expect(translateSessionTransitionCopy(stalled.description, i18n)).toBe(
+      "Your first message is still saved, but initialization did not finish. Retry to resume processing.",
+    )
   })
 
   test("shares startup step ordering across ordinary and worktree sessions", () => {
@@ -86,6 +108,11 @@ describe("session transition progress model", () => {
       ["message", "pending"],
     ])
     expect(createSessionStartupSteps({ stage: "message", workspace }).map((step) => [step.id, step.state])).toEqual([
+      ["session", "complete"],
+      ["workspace", "complete"],
+      ["message", "active"],
+    ])
+    expect(createSessionStartupSteps({ stage: "accepted", workspace }).map((step) => [step.id, step.state])).toEqual([
       ["session", "complete"],
       ["workspace", "complete"],
       ["message", "active"],

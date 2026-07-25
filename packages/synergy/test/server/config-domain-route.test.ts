@@ -1,9 +1,12 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 import { Config } from "../../src/config/config"
+import { RuntimeReload } from "../../src/runtime/reload"
 import { ConfigRoute } from "../../src/server/config-route"
 
+const originalRuntimeReload = RuntimeReload.reload
 let originalGeneralConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
+let originalModelsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 
 function app() {
   return new Hono().route("/config", ConfigRoute)
@@ -17,10 +20,24 @@ function patchGeneral(config: unknown) {
   })
 }
 
+function patchModels(config: unknown, mode?: "merge" | "replace-domain" | "append") {
+  return app().request("/config/domains/models", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ config, mode }),
+  })
+}
+
 afterEach(async () => {
-  if (!originalGeneralConfig) return
-  await Config.domainUpdate("general", originalGeneralConfig, { mode: "replace-domain" })
-  originalGeneralConfig = undefined
+  RuntimeReload.reload = originalRuntimeReload
+  if (originalGeneralConfig) {
+    await Config.domainUpdate("general", originalGeneralConfig, { mode: "replace-domain" })
+    originalGeneralConfig = undefined
+  }
+  if (originalModelsConfig) {
+    await Config.domainUpdate("models", originalModelsConfig, { mode: "replace-domain" })
+    originalModelsConfig = undefined
+  }
 })
 
 describe.serial("global General config route locale", () => {
@@ -44,5 +61,104 @@ describe.serial("global General config route locale", () => {
       expect(response.status).toBe(400)
       expect(await Config.domainGet("general")).toMatchObject({ locale: "en" })
     }
+  })
+})
+
+describe.serial("global Models config route model roles", () => {
+  test("reloads role-backed agents after updating a model role", async () => {
+    originalModelsConfig = await Config.domainGet("models")
+    const previousModel = "kimi-for-coding/k3"
+    const nextModel = "deepseek/deepseek-v4-pro"
+    await Config.domainUpdate(
+      "models",
+      { ...originalModelsConfig, thinking_model: previousModel },
+      { mode: "replace-domain" },
+    )
+    const reload = mock(async () => ({
+      success: true,
+      requested: ["config"] as RuntimeReload.Target[],
+      executed: ["config"] as RuntimeReload.Target[],
+      cascaded: [] as RuntimeReload.Target[],
+      changedFields: ["thinking_model"],
+      restartRequired: [],
+      liveApplied: ["thinking_model"],
+      warnings: [],
+      failed: [] as RuntimeReload.Target[],
+      failures: [],
+      diagnostics: [],
+    }))
+    RuntimeReload.reload = reload as typeof RuntimeReload.reload
+
+    const response = await patchModels({ thinking_model: nextModel })
+
+    expect(response.status).toBe(200)
+    expect(reload).toHaveBeenCalledWith(
+      {
+        targets: ["config"],
+        scope: "global",
+        reason: "config.domain.update:models",
+      },
+      {
+        configChange: expect.objectContaining({
+          changedFields: ["thinking_model"],
+          oldConfig: expect.objectContaining({ thinking_model: previousModel }),
+          config: expect.objectContaining({ thinking_model: nextModel }),
+        }),
+      },
+    )
+  })
+
+  test("does not reload runtime state for a no-op model update", async () => {
+    originalModelsConfig = await Config.domainGet("models")
+    const model = "deepseek/deepseek-v4-pro"
+    await Config.domainUpdate("models", { ...originalModelsConfig, thinking_model: model }, { mode: "replace-domain" })
+    const reload = mock(async () => {
+      throw new Error("runtime reload should not run")
+    })
+    RuntimeReload.reload = reload as unknown as typeof RuntimeReload.reload
+
+    const response = await patchModels({ thinking_model: model })
+
+    expect(response.status).toBe(200)
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  test("reloads agents when replace-domain removes a model role", async () => {
+    originalModelsConfig = await Config.domainGet("models")
+    const previousModel = "deepseek/deepseek-v4-pro"
+    await Config.domainUpdate(
+      "models",
+      { ...originalModelsConfig, thinking_model: previousModel },
+      { mode: "replace-domain" },
+    )
+    let capturedChange: Config.Change | undefined
+    const reload = mock(async (_input: RuntimeReload.Input, options?: { configChange?: Config.Change }) => {
+      capturedChange = options?.configChange
+      return {
+        success: true,
+        requested: ["config"] as RuntimeReload.Target[],
+        executed: ["config"] as RuntimeReload.Target[],
+        cascaded: ["agent"] as RuntimeReload.Target[],
+        changedFields: ["thinking_model"],
+        restartRequired: [],
+        liveApplied: ["thinking_model"],
+        warnings: [],
+        failed: [] as RuntimeReload.Target[],
+        failures: [],
+        diagnostics: [],
+      }
+    })
+    RuntimeReload.reload = reload as typeof RuntimeReload.reload
+
+    const response = await patchModels({}, "replace-domain")
+
+    expect(response.status).toBe(200)
+    expect(reload).toHaveBeenCalledWith(expect.anything(), {
+      configChange: expect.objectContaining({
+        changedFields: expect.arrayContaining(["thinking_model"]),
+        oldConfig: expect.objectContaining({ thinking_model: previousModel }),
+      }),
+    })
+    expect(capturedChange?.config.thinking_model).toBeUndefined()
   })
 })

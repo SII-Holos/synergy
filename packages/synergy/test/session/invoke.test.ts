@@ -878,6 +878,38 @@ describe("SessionInvoke pre-stream error handling", () => {
 })
 
 describe("SessionInvoke inbox boundaries", () => {
+  test("keeps the next task durable until its root message is materialized", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalMaterializeItem = SessionInbox.materializeItem
+    let activeSessionID = ""
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          activeSessionID = session.id
+          const queued = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            parts: [{ type: "text", text: "Keep me durable" }],
+          })
+          ;(SessionInbox.materializeItem as any) = mock(async () => {
+            throw new Error("simulated materialization failure")
+          })
+
+          await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow("simulated materialization failure")
+          expect((await SessionInbox.list(session.id)).map((item) => item.id)).toContain(queued.id)
+          expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
+        },
+      })
+    } finally {
+      ;(SessionInbox.materializeItem as any) = originalMaterializeItem
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
   test("context inbox items are not materialized without a confirmed model call", async () => {
     await using tmp = await tmpdir({ git: true })
 

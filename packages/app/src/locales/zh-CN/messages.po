@@ -9995,7 +9995,7 @@ msgstr "快捷操作"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.quickActions.redo"
-msgstr "重做"
+msgstr "恢复消息"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -11352,7 +11352,7 @@ msgstr "转到上一条用户消息"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.cmd.redo"
-msgstr "重做"
+msgstr "恢复消息"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11515,7 +11515,7 @@ msgstr "已暂停"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.pausedTooltip"
-msgstr "回滚期间已暂停投递。重做或开始新任务后将恢复。"
+msgstr "回退期间已暂停投递。恢复消息或开始新任务后将恢复。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -12221,12 +12221,12 @@ msgstr "回退并恢复文件"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.description.before"
-msgstr "回到“{title}”之前。隐藏的工作在你开始新任务前仍可重做。"
+msgstr "回到“{title}”之前。隐藏的工作在你开始新任务前仍可恢复。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.description.untitled"
-msgstr "回到此消息之前。隐藏的工作在你开始新任务前仍可重做。"
+msgstr "回到此消息之前。隐藏的工作在你开始新任务前仍可恢复。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -12268,22 +12268,22 @@ msgstr "已回退 {messages, plural, one {# 条消息} other {# 条消息}}（{t
 
 #. rollback-dialog.tsx
 msgid "session.rollback.cannotRedo"
-msgstr "无法重做"
+msgstr "无法恢复消息"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedo.desc"
-msgstr "已开始新任务。此回滚无法再重做。"
+msgstr "已开始新任务。此次回退的消息无法再恢复。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoNew"
-msgstr "已添加新消息。此回滚无法再重做。"
+msgstr "已添加新消息。此次回退的消息无法再恢复。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.cannotRedoTooltip"
-msgstr "已添加新消息；无法重做此回滚"
+msgstr "已添加新消息；无法恢复此次回退的消息"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -12308,17 +12308,17 @@ msgstr "恢复文件失败"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.redo"
-msgstr "重做"
+msgstr "恢复消息"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.redoComplete"
-msgstr "重做完成"
+msgstr "消息恢复完成"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.redoFailed"
-msgstr "重做失败"
+msgstr "消息恢复失败"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -12514,8 +12514,18 @@ msgstr "重试"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.initializing"
+msgstr "你的第一条消息已保存，正在初始化会话。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.queued"
 msgstr "你的第一条消息已排队等待处理。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.stalled"
+msgstr "你的第一条消息仍已保存，但初始化未完成。请重试以恢复处理。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -12540,6 +12550,11 @@ msgstr "提交消息"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.accepted"
 msgstr "会话请求已接受"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.stalled"
+msgstr "会话初始化需要处理"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
