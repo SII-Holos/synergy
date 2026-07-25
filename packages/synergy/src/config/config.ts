@@ -920,6 +920,12 @@ export namespace Config {
     return result as Info
   }
 
+  export interface Change {
+    oldConfig: Info
+    config: Info
+    changedFields: string[]
+  }
+
   export interface ReloadResult {
     config: Info
     changedFields: string[]
@@ -967,6 +973,13 @@ export namespace Config {
     }
     const { ScopeRuntime } = await import("../scope/runtime")
     await ScopeRuntime.dispose()
+  }
+
+  export async function updateGlobalWithChange(config: Info): Promise<Change> {
+    const oldConfig = await globalResolved()
+    await updateGlobal(config)
+    const newConfig = await globalResolved()
+    return { oldConfig, config: newConfig, changedFields: diff(oldConfig, newConfig) }
   }
 
   export async function updateGlobal(config: Info) {
@@ -1038,6 +1051,20 @@ export namespace Config {
     global.reset()
     await state.resetAll()
     return redactForClient(await domainGet(parsed, options.root))
+  }
+
+  export async function domainUpdateWithChange(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode } = {},
+  ) {
+    const oldConfig = await globalResolved()
+    const result = await domainUpdate(id, patch, options)
+    const config = await globalResolved()
+    return {
+      result,
+      change: { oldConfig, config, changedFields: diff(oldConfig, config) } satisfies Change,
+    }
   }
 
   export function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {

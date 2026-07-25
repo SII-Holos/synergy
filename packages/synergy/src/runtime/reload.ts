@@ -78,7 +78,7 @@ export namespace RuntimeReload {
   export type Input = z.infer<typeof Input>
 
   interface ReloadOptions {
-    changedFields?: readonly string[]
+    configChange?: Config.Change
   }
 
   // ─── Target dependency map ───────────────────────────────────────────
@@ -117,7 +117,7 @@ export namespace RuntimeReload {
     const failures: RuntimeSchema.ReloadFailure[] = []
     const diagnostics: RuntimeSchema.ReloadDiagnostic[] = []
     const warnings = [] as string[]
-    const changedFields = new Set(options.changedFields)
+    const changedFields = new Set(options.configChange?.changedFields)
     const restartRequired = new Set<string>()
     const liveApplied = new Set<string>()
 
@@ -144,6 +144,7 @@ export namespace RuntimeReload {
       restartRequired,
       liveApplied,
       warnings,
+      configChange: options.configChange,
     }
 
     const targetsToExecute = requested.includes("all")
@@ -216,6 +217,7 @@ export namespace RuntimeReload {
     restartRequired: Set<string>
     liveApplied: Set<string>
     warnings: string[]
+    configChange?: Config.Change
   }
 
   // ─── Target executor ─────────────────────────────────────────────────
@@ -239,8 +241,8 @@ export namespace RuntimeReload {
 
       // Execute inline cascades (e.g. provider → agent)
       const cascades = unique([...(TARGET_CASCADES[target] ?? []), ...(inferredCascades ?? [])])
-      if (cascades.length > 0) {
-        await Promise.all(cascades.map((cascade) => executeTarget(cascade, ctx)))
+      for (const cascade of cascades) {
+        await executeTarget(cascade, ctx)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -277,6 +279,7 @@ export namespace RuntimeReload {
       case "config": {
         const resolvedScope = resolveConfigScope(ctx.scope)
         const result = await Config.reload(resolvedScope)
+        const oldConfig = ctx.configChange?.oldConfig ?? result.oldConfig
         const changedFields = unique([...ctx.changedFields, ...result.changedFields])
         for (const field of changedFields) {
           ctx.changedFields.add(field)
@@ -299,7 +302,7 @@ export namespace RuntimeReload {
         if (
           resolvedScope === "global" &&
           changedFields.includes("execution") &&
-          result.oldConfig?.execution?.agentWorkers !== result.config.execution?.agentWorkers
+          oldConfig.execution?.agentWorkers !== result.config.execution?.agentWorkers
         ) {
           AgentTurn.resize(result.config.execution?.agentWorkers)
           ctx.liveApplied.add("execution.agentWorkers")
@@ -314,8 +317,8 @@ export namespace RuntimeReload {
           await GitHubPollRuntime.start(result.config.github)
         }
         // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
-        if (changedFields.includes("library") && result.oldConfig) {
-          const oldAutonomy = result.oldConfig.library?.autonomy !== false
+        if (changedFields.includes("library")) {
+          const oldAutonomy = oldConfig.library?.autonomy !== false
           const newAutonomy = result.config.library?.autonomy !== false
           if (oldAutonomy !== newAutonomy) {
             try {
