@@ -572,6 +572,10 @@
   max-height: min(22rem, calc(100vh - 2rem));
 }
 
+.note-run-agent-list {
+  max-height: min(18rem, calc(100vh - 10rem));
+}
+
 .note-run-model-run {
   display: inline-flex;
   width: 100%;
@@ -591,17 +595,22 @@
     transform var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-.note-run-model-run:hover {
+.note-run-model-run:not(:disabled):hover {
   background: var(--surface-accent-hover);
 }
 
-.note-run-model-run:active {
+.note-run-model-run:not(:disabled):active {
   background: var(--surface-accent-active);
 }
 
 .note-run-model-run:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-strong-base) 38%, transparent);
+}
+
+.note-run-model-run:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 @media (prefers-reduced-motion: reduce) {
   .note-card {

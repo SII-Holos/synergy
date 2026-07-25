@@ -80,6 +80,7 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
           status: "connected" as const,
           authKind: profile?.authKind,
           source: environment ? "env" : profile?.origin === "plugin" ? "plugin" : undefined,
+          canDisconnect: false,
         },
       ]
     }),

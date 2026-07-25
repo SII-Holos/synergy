@@ -5,6 +5,10 @@ import { Log } from "../../src/util/log"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
+import { Identifier } from "../../src/id/id"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
+import { SessionNav } from "../../src/session/nav"
 
 Log.init({ print: false })
 
@@ -192,6 +196,134 @@ describe("GET /global/recent", () => {
         expect(res.status).toBe(400)
       },
     })
+  })
+})
+
+describe("POST /global/acknowledge-completions", () => {
+  test("acknowledges unread root sessions across scopes and preserves excluded sessions", async () => {
+    await using tmpA = await tmpdir({ git: true })
+    await using tmpB = await tmpdir({ git: true })
+    const scopeA = await tmpA.scope()
+    const scopeB = await tmpB.scope()
+
+    let rootA: Session.Info | undefined
+    let rootB: Session.Info | undefined
+    let parent: Session.Info | undefined
+    let child: Session.Info | undefined
+    let archived: Session.Info | undefined
+    let staleIndexRoot: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope: scopeA,
+      fn: async () => {
+        rootA = await Session.create({ title: "Unread Root A" })
+        await Session.recordCompletionNotice(rootA.id)
+        await Session.recordCompletionNotice(rootA.id)
+
+        staleIndexRoot = await Session.create({ title: "Stale Index Root" })
+        await Session.recordCompletionNotice(staleIndexRoot.id)
+        await Storage.update<Session.Info>(
+          StoragePath.sessionInfo(Identifier.asScopeID(scopeA.id), Identifier.asSessionID(staleIndexRoot.id)),
+          (draft) => {
+            draft.completionNotice.unread = false
+            draft.completionNotice.unreadCount = 0
+          },
+        )
+
+        parent = await Session.create({ title: "Read Parent" })
+        child = await Session.create({ title: "Unread Child", parentID: parent.id })
+        await Session.recordCompletionNotice(child.id)
+
+        archived = await Session.create({ title: "Archived Unread Root" })
+        await Session.recordCompletionNotice(archived.id)
+        await Session.update(archived.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+      },
+    })
+    await ScopeContext.provide({
+      scope: scopeB,
+      fn: async () => {
+        rootB = await Session.create({ title: "Unread Root B" })
+        await Session.recordCompletionNotice(rootB.id)
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const before = await app.request("/global/recent")
+        expect((await before.json()).unreadCompletionCount).toBe(4)
+        const first = await app.request("/global/acknowledge-completions", { method: "POST" })
+        expect(first.status).toBe(200)
+        expect(await first.json()).toEqual({ acknowledgedCount: 3, modifiedSessionCount: 2, failedSessionCount: 0 })
+
+        expect((await Session.get(rootA!.id)).completionNotice.unreadCount).toBe(0)
+        expect((await Session.get(rootB!.id)).completionNotice.unreadCount).toBe(0)
+        expect((await Session.get(child!.id)).completionNotice.unreadCount).toBe(1)
+        expect((await Session.get(archived!.id)).completionNotice.unreadCount).toBe(1)
+        expect((await Session.get(staleIndexRoot!.id)).completionNotice.unreadCount).toBe(0)
+
+        const recent = await app.request("/global/recent")
+        expect((await recent.json()).unreadCompletionCount).toBe(0)
+
+        const second = await app.request("/global/acknowledge-completions", { method: "POST" })
+        expect(second.status).toBe(200)
+        expect(await second.json()).toEqual({ acknowledgedCount: 0, modifiedSessionCount: 0, failedSessionCount: 0 })
+      },
+    })
+
+    await Session.remove(archived!.id)
+    await Session.remove(child!.id)
+    await Session.remove(parent!.id)
+    await Session.remove(rootB!.id)
+    await Session.remove(staleIndexRoot!.id)
+    await Session.remove(rootA!.id)
+  })
+
+  test("continues acknowledging valid sessions when one nav entry cannot be resolved", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const missingSessionID = Identifier.ascending("session")
+    let valid: Session.Info | undefined
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          valid = await Session.create({ title: "Valid Unread Root" })
+          await Session.recordCompletionNotice(valid.id)
+          await SessionNav.upsertNavEntry({
+            id: missingSessionID,
+            scopeID: scope.id,
+            scopeType: "project",
+            title: "Missing Unread Root",
+            category: "project",
+            lastActivityAt: Date.now(),
+            pinned: 0,
+            archived: false,
+            completionNotice: { unread: true, unreadCount: 1 },
+          })
+        },
+      })
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const response = await Server.App().request("/global/acknowledge-completions", { method: "POST" })
+          expect(response.status).toBe(200)
+          expect(await response.json()).toEqual({
+            acknowledgedCount: 1,
+            modifiedSessionCount: 1,
+            failedSessionCount: 1,
+          })
+        },
+      })
+    } finally {
+      if (valid) await Session.remove(valid.id)
+      await SessionNav.removeNavEntry(scope.id, missingSessionID)
+    }
   })
 })
 

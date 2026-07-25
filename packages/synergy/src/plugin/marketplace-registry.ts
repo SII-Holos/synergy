@@ -26,6 +26,14 @@ export namespace PluginMarketplaceRegistry {
 
   export const DEFAULT_REGISTRY_URL: string = PLUGIN_MARKETPLACE_DEFAULTS.registryUrl
 
+  export class ArtifactVerificationError extends Error {
+    readonly code = "plugin_artifact_verification_failed"
+  }
+
+  function verificationError(message: string): ArtifactVerificationError {
+    return new ArtifactVerificationError(message)
+  }
+
   const Risk = z.enum(["low", "medium", "high"])
   const RuntimeMode = z.literal("process")
   const Author = z.object({
@@ -608,11 +616,11 @@ export namespace PluginMarketplaceRegistry {
   export async function verifyOfficialArtifact(id: string, version: string): Promise<VerifiedArtifact> {
     const config = await currentConfig()
     const entry = await getOfficialEntry(id)
-    if (!entry) throw new Error(`Official registry plugin not found: ${id}`)
+    if (!entry) throw verificationError(`Official registry plugin not found: ${id}`)
     if (entry.yankedVersions?.includes(version))
-      throw new Error(`Official registry version is yanked: ${id}@${version}`)
+      throw verificationError(`Official registry version is yanked: ${id}@${version}`)
     const target = entry.versions.find((candidate) => candidate.version === version)
-    if (!target) throw new Error(`Official registry version not found: ${id}@${version}`)
+    if (!target) throw verificationError(`Official registry version not found: ${id}@${version}`)
 
     const { tarballPath, signaturePath } = await ensureDownloaded(
       target,
@@ -626,42 +634,42 @@ export namespace PluginMarketplaceRegistry {
       checkRequiredTarballFiles(tarballPath)
 
       const signature = readSignatureFile(tarballPath)
-      if (!signature) throw new Error(`Remote plugin artifact signature is missing or invalid`)
+      if (!signature) throw verificationError(`Remote plugin artifact signature is missing or invalid`)
       const trustedSignature = target.signature
-      if (!trustedSignature) throw new Error(`Official registry version is missing reviewed signature metadata`)
+      if (!trustedSignature) throw verificationError(`Official registry version is missing reviewed signature metadata`)
       if (trustedSignature.algorithm !== signature.algorithm) {
-        throw new Error(`Remote plugin artifact signature algorithm mismatch`)
+        throw verificationError(`Remote plugin artifact signature algorithm mismatch`)
       }
       if (trustedSignature.signer !== signature.signer) {
-        throw new Error(`Remote plugin artifact signature signer mismatch`)
+        throw verificationError(`Remote plugin artifact signature signer mismatch`)
       }
-      if (signature.pluginId !== id) throw new Error(`Remote plugin artifact signature plugin id mismatch`)
-      if (signature.version !== version) throw new Error(`Remote plugin artifact signature version mismatch`)
+      if (signature.pluginId !== id) throw verificationError(`Remote plugin artifact signature plugin id mismatch`)
+      if (signature.version !== version) throw verificationError(`Remote plugin artifact signature version mismatch`)
       if (signature.payload.tarballHash !== tarballHash) {
-        throw new Error(`Remote plugin artifact signature tarball hash mismatch`)
+        throw verificationError(`Remote plugin artifact signature tarball hash mismatch`)
       }
       if (signature.payload.manifestHash !== target.manifestHash) {
-        throw new Error(`Remote plugin artifact signature manifest hash mismatch`)
+        throw verificationError(`Remote plugin artifact signature manifest hash mismatch`)
       }
       if (signature.payload.permissionsHash !== target.permissionsHash) {
-        throw new Error(`Remote plugin artifact signature permissions hash mismatch`)
+        throw verificationError(`Remote plugin artifact signature permissions hash mismatch`)
       }
 
       extractedDir = await extractArchive(tarballPath)
       const manifestPath = path.join(extractedDir, "plugin.json")
       const manifest = PluginManifest.parse(JSON.parse(await Bun.file(manifestPath).text())) as PluginManifestType
-      if (manifest.name !== id) throw new Error(`Remote plugin artifact manifest name mismatch`)
-      if (manifest.version !== version) throw new Error(`Remote plugin artifact manifest version mismatch`)
+      if (manifest.id !== id) throw verificationError(`Remote plugin artifact manifest id mismatch`)
+      if (manifest.version !== version) throw verificationError(`Remote plugin artifact manifest version mismatch`)
 
       const capabilities = baseCapabilities(manifest)
       const manifestHash = computeManifestHash(manifest)
       const permissionsHash = computePermissionsHash(manifest, capabilities)
-      if (manifestHash !== target.manifestHash) throw new Error(`Remote plugin artifact manifest hash mismatch`)
+      if (manifestHash !== target.manifestHash) throw verificationError(`Remote plugin artifact manifest hash mismatch`)
       if (permissionsHash !== target.permissionsHash)
-        throw new Error(`Remote plugin artifact permissions hash mismatch`)
+        throw verificationError(`Remote plugin artifact permissions hash mismatch`)
 
       const signatureValid = await verifySignatureWithPublicKey(tarballPath, signature, trustedSignature.signer)
-      if (!signatureValid) throw new Error(`Remote plugin artifact signature verification failed`)
+      if (!signatureValid) throw verificationError(`Remote plugin artifact signature verification failed`)
 
       return {
         entry,

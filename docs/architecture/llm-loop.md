@@ -230,11 +230,11 @@ The compaction job:
 3. trims oldest summary input if even the compaction model cannot accept the full history, advancing the cut past any tool results whose assistant tool calls were omitted;
 4. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
 5. asks only for a structured continuation summary;
-6. records provider or processor failures as `failed` and empty output as `empty`, leaving those terminal attempts hidden and outside model context;
+6. records provider or processor failures as terminal `failed` attempts with a sanitized serialized error, `visible = true`, and `includeInContext = false`; provider response headers and bodies are not retained on this visible audit record, while empty output becomes `empty` and stays hidden outside model context;
 7. after a non-empty summary is complete, writes a `compaction_recovery` part and commits the assistant with attempt state `committed`, `summary = true`, `visible = true`, `includeInContext = true`, `parentID = R.id`, and `rootID = R.id`;
 8. publishes `session.compacted` only after that commit.
 
-The `summary` flag is the context-boundary commit marker, not an in-progress placeholder. The attempt state is the presentation lifecycle: `running` survives the processor's terminal checkpoint until the compaction owner resolves it to `committed`, `failed`, or `empty`. Failed and empty attempts stay hidden and excluded from model context, do not fulfill the request, and do not establish a filtering or pruning boundary.
+The `summary` flag is the context-boundary commit marker, not an in-progress placeholder. The attempt state is the presentation lifecycle: `running` survives the processor's terminal checkpoint until the compaction owner resolves it to `committed`, `failed`, or `empty`. Failed attempts are visible terminal audit records but remain excluded from model context; empty attempts stay hidden. Neither failed nor empty attempts fulfill the request or establish a filtering or pruning boundary.
 
 The compaction agent cannot use tools or continue the user's task. Its built-in permission layer denies every tool subject to normal configuration precedence, while the invocation independently passes an empty tool set so no configured permission can equip the compaction model with tools. Its prompt requires observed facts, completed work, current state, next steps, constraints, and relevant files without inventing progress.
 

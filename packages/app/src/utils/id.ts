@@ -1,4 +1,5 @@
 import z from "zod"
+import { generateRandomBytes } from "@ericsanchezok/synergy-util/uuid"
 
 const prefixes = {
   session: "ses",
@@ -74,26 +75,10 @@ function bytesToHex(bytes: Uint8Array): string {
 
 function randomBase62(length: number): string {
   const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-  const bytes = getRandomBytes(length)
+  const bytes = generateRandomBytes(length)
   let result = ""
   for (let i = 0; i < length; i += 1) {
     result += chars[bytes[i] % 62]
   }
   return result
-}
-
-function getRandomBytes(length: number): Uint8Array {
-  const bytes = new Uint8Array(length)
-  const cryptoObj = typeof globalThis !== "undefined" ? globalThis.crypto : undefined
-
-  if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
-    cryptoObj.getRandomValues(bytes)
-    return bytes
-  }
-
-  for (let i = 0; i < length; i += 1) {
-    bytes[i] = Math.floor(Math.random() * 256)
-  }
-
-  return bytes
 }

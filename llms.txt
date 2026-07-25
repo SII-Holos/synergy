@@ -19,7 +19,7 @@
 - [Activity and statistics](docs/product/activity-and-statistics.md): session, token, cost, model, agent, tool, code-change, and time-series summaries.
 - [Automation](docs/product/automation.md): Agenda schedules, session modes, delivery, recovery, and failure behavior.
 - [Connections](docs/product/connections.md): providers, MCP, Channels, Email, Holos, and Synergy Link.
-- [Browser workspace](docs/product/browser.md): shared human/agent page, native and Web presentations, and safety boundaries.
+- [Browser workspace](docs/product/browser.md): shared human/agent page, native and Web presentations, private-network HTTP support, and safety boundaries.
 
 ## Understand the Runtime
 

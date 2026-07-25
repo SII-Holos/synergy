@@ -28,7 +28,7 @@ Each session stores a durable `completionNotice` with three fields:
 
 When a root task reaches a normal terminal assistant reply, `Session.recordCompletionNotice()` increments `unreadCount` and sets `unread` to `true`. Successful replies then publish `SessionEvent.Completion` with `{ sessionID, unreadCount }`; error replies retain the durable unread state but publish only `SessionEvent.Error`, preventing duplicate success and error notifications. Archived and silent sessions skip both the increment and completion event. If an aborted run ends before producing any assistant message, its synthetic aborted assistant does not record a completion notice or publish either notification event. `SessionEvent.Error` may also omit `sessionID` for a global invocation failure that was not bound to a session.
 
-The frontend clears the notice through `Session.clearCompletionNotice()`, which resets `unread` to `false` and `unreadCount` to `0`. Clearing does not emit `SessionEvent.Completion`.
+The frontend clears one session through `Session.clearCompletionNotice()`, which resets `unread` to `false` and `unreadCount` to `0`. It can also acknowledge a caller-captured count through `Session.acknowledgeCompletionNotice()`: the storage update atomically subtracts only that snapshot, so a completion recorded concurrently remains unread. `POST /global/acknowledge-completions` applies that decrement to every non-archived root session with unread state in the complete global index and excludes child sessions. A stale unread navigation entry is repaired from canonical session state, while an entry whose session cannot be resolved increments `failedSessionCount` without preventing other acknowledgements. Neither acknowledgement path emits `SessionEvent.Completion`.
 
 The `session.completion` event is the durable success-notification signal. It is emitted once per successfully completed root task, independently of the lifecycle `session.idle` event. A session that completes a task, remains busy for additional work, and then finally idles will fire `session.completion` for each successful root task and `session.idle` once when the loop releases ownership.
 
@@ -303,6 +303,10 @@ Typical mappings:
 - an active-user interruption, Cortex completion, review rejection, or workflow continuation uses `steer`;
 - passive information intended for the next natural model call uses `context`;
 - assistant-role cross-session delivery materializes immediately against the latest root.
+
+Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
+
+The loop peeks the next task without deleting it, materializes its pre-allocated message ID as a root, and commits the inbox item only after that root write succeeds. A failure before materialization therefore leaves the task available for explicit retry or restart recovery. A read taken during startup always sees either the pending inbox item, the materialized root, or both; consumers deduplicate the overlap by message ID.
 
 Promoting a queued user task to guide/steer changes the inbox mode instead of writing permanent guided/no-reply metadata into the message model.
 
