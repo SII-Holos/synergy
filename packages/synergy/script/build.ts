@@ -25,9 +25,10 @@ const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
 const requireSandboxAssets = process.env.SYNERGY_REQUIRE_SANDBOX_ASSETS === "1"
-const browserHostPublicKey = process.env.SYNERGY_BROWSER_HOST_PUBLIC_KEY ?? ""
-if (process.env.SYNERGY_REQUIRE_BROWSER_HOST_PUBLIC_KEY === "1" && !browserHostPublicKey) {
-  throw new Error("SYNERGY_BROWSER_HOST_PUBLIC_KEY is required for a product release build")
+const browserManifestPublicKey =
+  process.env.SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY ?? process.env.SYNERGY_BROWSER_HOST_PUBLIC_KEY ?? ""
+if (process.env.SYNERGY_REQUIRE_BROWSER_HOST_PUBLIC_KEY === "1" && !browserManifestPublicKey) {
+  throw new Error("SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY is required for a product release build")
 }
 const requestedTargets = new Set(
   (process.env.SYNERGY_BUILD_TARGETS ?? "")
@@ -176,7 +177,7 @@ for (const item of targets) {
         SYNERGY_VERSION: `'${Script.version}'`,
         SYNERGY_CHANNEL: `'${Script.channel}'`,
         SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
-        SYNERGY_BROWSER_HOST_PUBLIC_KEY: JSON.stringify(browserHostPublicKey),
+        SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: JSON.stringify(browserManifestPublicKey),
         SYNERGY_SANDBOX_HELPER_SHA256: JSON.stringify(sandboxAsset?.sha256 ?? ""),
       },
     }),

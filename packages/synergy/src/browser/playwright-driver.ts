@@ -32,21 +32,6 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
     this._browserType = options.browserType ?? "chromium"
   }
 
-  private launchArgs(): string[] {
-    return [
-      "--headless=new",
-      "--disable-gpu",
-      "--disable-gpu-vsync",
-      "--disable-frame-rate-limit",
-      "--disable-background-networking",
-      "--disable-sync",
-      "--disable-default-apps",
-      "--disable-extensions",
-      "--disable-component-update",
-      "--disable-breakpad",
-    ]
-  }
-
   async ensure(): Promise<BrowserDriver.DriverState> {
     if (this._running) return { running: true, browserType: this._browserType, activeOwners: this.contexts.size }
 
@@ -64,12 +49,12 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
           headless: true,
           timeout: 10_000,
           ...(executablePath ? { executablePath } : {}),
-          args: this.launchArgs(),
+          args: BrowserInstall.chromiumLaunchArgs(),
         })
       }
     } catch (error) {
       throw new Error(
-        `Unable to launch Playwright Chromium. Run "bunx playwright install chromium" or set CHROMIUM_PATH to a usable Chromium executable. ${error instanceof Error ? error.message : String(error)}`,
+        `Unable to launch Playwright Chromium. Run "synergy browser install" to install verified managed Chromium, run "synergy browser doctor" for diagnostics, or set CHROMIUM_PATH to a usable executable. ${error instanceof Error ? error.message : String(error)}`,
         { cause: error },
       )
     }

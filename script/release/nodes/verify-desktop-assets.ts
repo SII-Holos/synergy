@@ -2,6 +2,7 @@ import {
   desktopChecksumsName,
   desktopPortableArtifactNames,
   expectedBrowserHostArtifacts,
+  expectedChromiumManifestArtifacts,
   expectedDesktopPrimaryArtifacts,
 } from "../../../packages/desktop/src/release-assets"
 import { viewRelease } from "../shared/github"
@@ -30,6 +31,11 @@ export async function verifyDesktopDraftAssets(state: ReleaseState) {
   for (const assetName of expectedBrowserHostArtifacts(state.version)) {
     if (!names.has(assetName)) {
       throw new Error(`missing Browser Host release asset ${assetName}`)
+    }
+  }
+  for (const assetName of expectedChromiumManifestArtifacts(state.version)) {
+    if (!names.has(assetName)) {
+      throw new Error(`missing Chromium manifest release asset ${assetName}`)
     }
   }
   const checksums = desktopChecksumsName(state.version)

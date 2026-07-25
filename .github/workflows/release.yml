@@ -105,7 +105,7 @@ jobs:
           SYNERGY_BUMP: ${{ inputs.bump }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SYNERGY_BROWSER_HOST_PUBLIC_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_PUBLIC_KEY }}
+          SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_PUBLIC_KEY }}
           SYNERGY_REQUIRE_BROWSER_HOST_PUBLIC_KEY: "1"
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1"
           SYNERGY_BUILD_TARGETS: linux-arm64,linux-x64,linux-x64-baseline,linux-arm64-musl,linux-x64-musl,linux-x64-baseline-musl,darwin-arm64,darwin-x64,darwin-x64-baseline,win32-x64,win32-x64-baseline
@@ -180,7 +180,7 @@ jobs:
           SYNERGY_CHANNEL: stable
           SYNERGY_BUILD_TARGETS: ${{ matrix.runtime_targets }}
           SYNERGY_REUSE_PUBLISHED_RUNTIME: ${{ matrix.platform == 'win32' && '1' || '' }}
-          SYNERGY_BROWSER_HOST_PUBLIC_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_PUBLIC_KEY }}
+          SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_PUBLIC_KEY }}
           SYNERGY_REQUIRE_BROWSER_HOST_PUBLIC_KEY: "1"
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1"
 
@@ -238,6 +238,15 @@ jobs:
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.CSC_KEY_PASSWORD || '' }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'darwin' && 'true' || 'false' }}
 
+      - name: Generate signed Chromium manifests
+        shell: bash
+        run: |
+          cd packages/desktop
+          SYNERGY_VERSION="${{ needs.stable_candidate.outputs.version }}" \
+          bun run script/chromium-manifest.ts release/chromium
+        env:
+          SYNERGY_BROWSER_MANIFEST_SIGNING_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_SIGNING_KEY }}
+
       - name: Upload desktop artifact bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -255,6 +264,8 @@ jobs:
             packages/desktop/release/browser-host/*.zip
             packages/desktop/release/browser-host/*.manifest.json
             packages/desktop/release/browser-host/*.manifest.json.sig
+            packages/desktop/release/chromium/*.manifest.json
+            packages/desktop/release/chromium/*.manifest.json.sig
 
   stable_desktop_publish:
     name: Upload Desktop Artifacts
