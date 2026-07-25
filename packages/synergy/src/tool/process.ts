@@ -28,22 +28,17 @@ const parameters = z.object({
       "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
     ),
   targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
-  envID: z
-    .string()
-    .optional()
-    .describe("Deprecated: use linkID instead. Accepted temporarily for backward compatibility."),
 })
 
 export const ProcessTool = Tool.define<typeof parameters, ProcessMetadata>("process", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
-    const effectiveLinkID = params.linkID ?? ((params as Record<string, unknown>).envID as string | undefined)
-    const linkIDSupplied = Object.hasOwn(params, "linkID") || Object.hasOwn(params, "envID")
+    const linkIDSupplied = Object.hasOwn(params, "linkID")
     const target = await SynergyLinkExecution.resolveExecutionTarget({
       targetID: params.targetID,
       targetIDSupplied: Object.hasOwn(params, "targetID"),
-      linkID: effectiveLinkID,
+      linkID: params.linkID,
       linkIDSupplied,
       tool: "process",
       agent: ctx.agent,

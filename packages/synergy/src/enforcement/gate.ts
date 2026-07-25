@@ -463,7 +463,7 @@ function hasNetworkActivity(command: string): boolean {
 }
 
 function requestsSynergyLink(args: Record<string, any>): boolean {
-  return [args.targetID, args.linkID, args.envID].some((value) => typeof value === "string" && value.trim().length > 0)
+  return [args.targetID, args.linkID].some((value) => typeof value === "string" && value.trim().length > 0)
 }
 
 function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: ProfileRule["action"]): ProfileRule {
@@ -701,12 +701,8 @@ export namespace EnforcementGate {
         // boundary so Smart allow can never bypass a profile deny on it.
         // shell_remote_publish covers ordinary branch push and PR creation.
         // shell_remote_write is broader remote mutation and stays Smart allow eligible.
-        // shell_remote_execute applies when linkID targets a remote Synergy Link host.
+        // shell_remote_execute applies when linkID/targetID targets a remote Synergy Link host.
         caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
-        // not the local machine. Add a separate remote-execute capability so
-        // profiles can distinguish local vs remote shell execution. Deprecated
-        // envID is accepted by the tool layer as a linkID alias, so it must be
-        // classified through the same remote-execute boundary.
         if (requestsSynergyLink(args)) {
           caps.push({ class: "shell_remote_execute", nonBypassable: true })
         }

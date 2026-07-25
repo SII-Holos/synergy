@@ -2,7 +2,7 @@
 
 This note covers the persisted-state and consumer cutover from MetaSynergy to Synergy Link protocol v2. For current behavior, see [Connections](../product/connections.md).
 
-The repository retains the former `packages/meta-protocol` and `packages/meta-synergy` source trees for cutover reference. They are outside the root Bun workspace and are not release packages.
+The former `packages/meta-protocol` and `packages/meta-synergy` source trees were removed after the cutover. Runtime migration from `~/.meta-synergy` state directories is unchanged and does not depend on those trees.
 
 ## Identifier and Package Changes
 
@@ -43,7 +43,7 @@ Use `linkID` for `connect`, remote `bash`, and remote `process` calls. Open an e
 
 Current Bash payload fields are `background` and `yieldSeconds`. Current process actions are `list`, `poll`, `log`, `write`, `send-keys`, `kill`, `clear`, and `remove`.
 
-The Synergy Bash and process tool schemas still accept `envID` as a deprecated compatibility alias, but new code and stored calls should use `linkID`. An omitted Link ID intentionally selects local execution; an invalid or unavailable supplied ID produces a warning and follows the tool's documented local fallback. `connect` itself requires a valid `linkID` and never falls back locally.
+The Synergy Bash and process tool schemas accept `linkID` only; the former `envID` alias has been removed. Persisted tool calls recorded with `envID` are rewritten by the session migration. An omitted Link ID intentionally selects local execution; an invalid or unavailable supplied ID produces a warning and follows the tool's documented local fallback. `connect` itself requires a valid `linkID` and never falls back locally.
 
 ## Protocol Consumers
 

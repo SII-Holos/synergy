@@ -31,4 +31,19 @@ describe("synergy-link state store", () => {
     const rawState = await readFile(path.join(secondRoot, "state.json"), "utf8")
     expect(JSON.parse(rawState).runtimeMode).toBe("standalone")
   })
+
+  test("concurrent saves serialize in call order so the last write wins", async () => {
+    const root = await tempRoot()
+    process.env.SYNERGY_LINK_HOME = root
+    const base = await SynergyLinkStore.loadState()
+
+    const writes: Promise<void>[] = []
+    for (let index = 0; index < 10; index += 1) {
+      writes.push(SynergyLinkStore.saveState({ ...base, label: `label-${index}` }))
+    }
+    await Promise.all(writes)
+
+    const rawState = await readFile(path.join(root, "state.json"), "utf8")
+    expect(JSON.parse(rawState).label).toBe("label-9")
+  })
 })

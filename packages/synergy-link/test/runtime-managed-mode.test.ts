@@ -68,7 +68,6 @@ describe("synergy-link managed mode", () => {
     expect(status.mode).toBe("managed")
     expect(status.auth.loggedIn).toBe(false)
     expect(status.auth.source).toBe(null)
-    expect(status.auth.hiddenReason).toBe(null)
     expect(status.ownership.local.owned).toBe(true)
 
     const reconnect = await runtime.reconnect()

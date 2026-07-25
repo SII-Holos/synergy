@@ -18,7 +18,7 @@ export class HolosSynergyLinkTransport {
     this.#unsubscribe = HolosRuntime.registerAppEventHandler((input) => this.#handleEvent(input))
   }
 
-  async request(input: SynergyLinkRequest): Promise<unknown> {
+  async request(targetAgentID: string | undefined, input: SynergyLinkRequest): Promise<unknown> {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(input.requestID)
@@ -28,15 +28,15 @@ export class HolosSynergyLinkTransport {
 
       this.#pending.set(input.requestID, { resolve, reject, timer })
 
-      if (!input.targetAgentID) {
+      if (!targetAgentID) {
         clearTimeout(timer)
         this.#pending.delete(input.requestID)
-        reject(new Error(`Synergy Link request ${input.requestID} is missing targetAgentID.`))
+        reject(new Error(`Synergy Link request ${input.requestID} is missing a target agent.`))
         return
       }
 
       this.provider
-        .send(input.targetAgentID, SynergyLinkBridge.REQUEST_EVENT, input)
+        .send(targetAgentID, SynergyLinkBridge.REQUEST_EVENT, input)
         .then((result) => {
           if (!result.sent) {
             clearTimeout(timer)

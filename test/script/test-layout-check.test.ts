@@ -10,7 +10,6 @@ describe("test layout check", () => {
         [
           "test/script/root.test.ts",
           "packages/app/test/components/button.test.tsx",
-          "packages/meta-synergy/test/migration.test.ts",
           "packages/sdk/js/test/client.test.ts",
           "packages/ui/test/components/card.spec.tsx",
           "packages/app/src/components/button.tsx",

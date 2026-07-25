@@ -86,7 +86,8 @@ export class SynergyLinkControlServer {
         },
       }
     }
-    socket.write(`${JSON.stringify(response)}\n`)
-    socket.end()
+    socket.end(`${JSON.stringify(response)}\n`, () => {
+      socket.destroy()
+    })
   }
 }

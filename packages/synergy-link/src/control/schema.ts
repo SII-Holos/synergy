@@ -26,12 +26,6 @@ export const ControlRequestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("runtime.mode") }),
   z.object({ action: z.literal("runtime.enter_managed") }),
   z.object({
-    action: z.literal("runtime.enter_managed_mode"),
-    owner: z.string().optional(),
-    ownerAgentId: z.string().optional(),
-    phase: z.number().optional(),
-  }),
-  z.object({
     action: z.literal("runtime.set_mode"),
     mode: z.enum(["managed", "standalone"]),
     owner: z.string().optional(),

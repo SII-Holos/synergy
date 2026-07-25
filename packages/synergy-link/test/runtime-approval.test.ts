@@ -40,8 +40,8 @@ describe("synergy-link runtime approval", () => {
     expect(listed.value.requests).toHaveLength(1)
     expect(listed.value.requests[0]?.status).toBe("pending")
 
-    const approved = await SynergyLinkCLIBackend.approveRequest(listed.value.requests[0]!.id)
-    expect(approved.available).toBe(true)
+    const approved = await runtime.approveRequest(listed.value.requests[0]!.id)
+    expect(approved.request.status).toBe("approved")
 
     const second = await runtime.decideSessionOpen({
       caller: { agentID: "agent_a", ownerUserID: 1 },

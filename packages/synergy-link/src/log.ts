@@ -33,7 +33,9 @@ export namespace SynergyLinkLog {
     }
     void SynergyLinkStore.ensureRoot()
       .then(() => appendFile(SynergyLinkStore.logsPath(), `${line}\n`))
-      .catch(() => undefined)
+      .catch((error) => {
+        console.error(`[synergy-link] ${time} ERROR log.write.failed ${String(error)}`)
+      })
   }
 }
 

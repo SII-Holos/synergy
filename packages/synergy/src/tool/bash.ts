@@ -41,10 +41,6 @@ const parameters = z.object({
       "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
     ),
   targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
-  envID: z
-    .string()
-    .optional()
-    .describe("Deprecated: use linkID instead. Accepted temporarily for backward compatibility."),
 })
 
 export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
@@ -55,14 +51,11 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
   },
   parameters,
   async execute(params, ctx) {
-    // Accept deprecated envID for backward compat — map to linkID with a warning
-    const effectiveLinkID = params.linkID ?? ((params as Record<string, unknown>).envID as string | undefined)
-    const linkIDSupplied = Object.hasOwn(params, "linkID") || Object.hasOwn(params, "envID")
     const target = await SynergyLinkExecution.resolveExecutionTarget({
       targetID: params.targetID,
       targetIDSupplied: Object.hasOwn(params, "targetID"),
-      linkID: effectiveLinkID,
-      linkIDSupplied,
+      linkID: params.linkID,
+      linkIDSupplied: Object.hasOwn(params, "linkID"),
       tool: "bash",
       agent: ctx.agent,
     })

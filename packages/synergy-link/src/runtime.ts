@@ -2,7 +2,6 @@ import process from "node:process"
 import { SynergyLinkControlClient } from "./control/client"
 import { SynergyLinkControlServer } from "./control/server"
 import type { SynergyLinkControlRequest } from "./control/schema"
-import { SynergyLinkDisplay } from "./display"
 import { SynergyLinkMigrationRunner } from "./migration"
 import { SynergyLinkHost } from "./host"
 import { SynergyLinkInboundHandler, type SessionOpenDecision } from "./inbound/handler"
@@ -158,9 +157,7 @@ export class SynergyLinkRuntime {
         this.#scheduleReconnect("initial_connect_failed")
       }
 
-      console.log(
-        `Synergy Link running as ${SynergyLinkDisplay.identifier(nextAuth.agentID, { hiddenReason: "policy" })}`,
-      )
+      console.log(`Synergy Link running as ${nextAuth.agentID}`)
     } else {
       this.#clearReconnectTimer()
       this.#client = null
@@ -171,7 +168,7 @@ export class SynergyLinkRuntime {
     state.service.runtimeStatus = "running"
     await SynergyLinkStore.saveState(state)
 
-    console.log(`linkID: ${this.host.linkID}`)
+    console.log(`Link ID: ${this.host.linkID}`)
     console.log(`Mode: ${state.runtimeMode}`)
     console.log(`Holos: ${this.state?.connectionStatus ?? "disconnected"}`)
     console.log(`Status: ${this.sessions.current() ? "busy" : "idle"}`)
@@ -523,9 +520,7 @@ export class SynergyLinkRuntime {
     const state = requireState(this)
     const authInfo = await SynergyLinkHolosAuth.inspect()
     return {
-      auth: sanitizeAuth(authInfo.auth, authInfo.source, {
-        hiddenReason: state.runtimeMode === "managed" ? "managed" : null,
-      }),
+      auth: sanitizeAuth(authInfo.auth, authInfo.source),
       mode: state.runtimeMode,
       ownership: this.getOwnershipSnapshot(),
       state: sanitizeState(state),
@@ -558,10 +553,6 @@ export class SynergyLinkRuntime {
         return await this.getMode()
       case "runtime.enter_managed":
         return await this.enterManagedMode()
-      case "runtime.enter_managed_mode":
-        return await this.enterManagedMode({
-          ownerID: controlOwnerID(request),
-        })
       case "runtime.set_mode":
         if (request.mode === "managed") {
           return await this.enterManagedMode({
@@ -631,12 +622,6 @@ export class SynergyLinkRuntime {
     label?: string
   }): Promise<SessionOpenDecision> {
     const state = requireState(this)
-    const disk = await SynergyLinkStore.loadState()
-    state.collaborationEnabled = disk.collaborationEnabled
-    state.approvalMode = disk.approvalMode
-    state.trusted = disk.trusted
-    state.pendingRequests = disk.pendingRequests
-    state.label = disk.label
     if (!state.collaborationEnabled) {
       return "deny"
     }
@@ -965,22 +950,17 @@ function controlLeaseExpiresAt(request: { leaseExpiresAt?: unknown }) {
 function sanitizeAuth(
   auth: { agentID: string; agentSecret: string } | undefined,
   source: SynergyLinkHolosAuthSource | null,
-  options?: { hiddenReason?: "managed" | "policy" | null },
 ) {
   return auth
     ? {
         loggedIn: true,
-        agentID: SynergyLinkDisplay.identifier(auth.agentID, {
-          hiddenReason: options?.hiddenReason,
-        }),
+        agentID: auth.agentID,
         source,
-        hiddenReason: options?.hiddenReason ?? null,
       }
     : {
         loggedIn: false,
         agentID: null,
         source: null,
-        hiddenReason: null,
       }
 }
 

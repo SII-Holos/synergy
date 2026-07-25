@@ -49,7 +49,6 @@ describe("synergy-link cli backend auth payloads", () => {
       loggedIn: true,
       agentID: "agent_shared",
       source: "shared",
-      hiddenReason: null,
     })
   })
 
@@ -61,7 +60,6 @@ describe("synergy-link cli backend auth payloads", () => {
       loggedIn: true,
       agentID: "agent_shared",
       source: "shared",
-      hiddenReason: null,
     })
     expect(result.checks.find((check) => check.name === "auth")).toEqual({
       name: "auth",
@@ -81,7 +79,6 @@ describe("synergy-link cli backend auth payloads", () => {
       loggedIn: false,
       agentID: null,
       source: null,
-      hiddenReason: null,
     })
   })
 })

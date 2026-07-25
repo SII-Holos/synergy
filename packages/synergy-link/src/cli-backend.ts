@@ -9,7 +9,6 @@ import {
   type SynergyLinkPendingRequest,
   type SynergyLinkState,
 } from "./state/store"
-import { SynergyLinkDisplay, type SynergyLinkHiddenReason } from "./display"
 import { SynergyLinkOwnerRegistry } from "./owner-registry"
 
 export type SynergyLinkTrustSubject = "agent" | "user"
@@ -166,7 +165,7 @@ export namespace SynergyLinkCLIBackend {
         ok: managed ? true : Boolean(auth),
         detail: managed
           ? auth
-            ? `Stored agent ${SynergyLinkDisplay.identifier(auth.agentID, { hiddenReason: "managed" })} (${authInfo.source}) — not required in managed mode`
+            ? `Stored agent ${auth.agentID} (${authInfo.source}) — not required in managed mode`
             : "Managed mode does not require Holos auth"
           : auth
             ? `agent ${auth.agentID} (${authInfo.source})`
@@ -200,9 +199,7 @@ export namespace SynergyLinkCLIBackend {
       mode: state.runtimeMode,
       ownership,
       state: sanitizeState(state),
-      auth: sanitizeAuth(auth, authInfo.source, {
-        hiddenReason: managed ? "managed" : null,
-      }),
+      auth: sanitizeAuth(auth, authInfo.source),
     }
   }
 
@@ -445,9 +442,7 @@ async function loadSnapshot() {
   ])
 
   return {
-    auth: sanitizeAuth(authInfo.auth, authInfo.source, {
-      hiddenReason: state.runtimeMode === "managed" ? "managed" : null,
-    }),
+    auth: sanitizeAuth(authInfo.auth, authInfo.source),
     mode: state.runtimeMode,
     ownership: SynergyLinkOwnerRegistry.snapshot(state.ownerRegistry),
     state: sanitizeState(state),
@@ -463,22 +458,17 @@ async function loadSnapshot() {
 function sanitizeAuth(
   auth: { agentID: string; agentSecret: string } | undefined,
   source: SynergyLinkHolosAuthSource | null,
-  options?: { hiddenReason?: SynergyLinkHiddenReason | null },
 ) {
   return auth
     ? {
         loggedIn: true,
-        agentID: SynergyLinkDisplay.identifier(auth.agentID, {
-          hiddenReason: options?.hiddenReason,
-        }),
+        agentID: auth.agentID,
         source,
-        hiddenReason: options?.hiddenReason ?? null,
       }
     : {
         loggedIn: false,
         agentID: null,
         source: null,
-        hiddenReason: null,
       }
 }
 

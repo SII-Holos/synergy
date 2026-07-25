@@ -98,6 +98,8 @@ const DEFAULT_STATE: SynergyLinkState = {
   },
 }
 
+let saveQueue: Promise<void> = Promise.resolve()
+
 export namespace SynergyLinkStore {
   export function root(): string {
     return process.env.SYNERGY_LINK_HOME || path.join(os.homedir(), ".synergy-link")
@@ -141,11 +143,17 @@ export namespace SynergyLinkStore {
 
   export async function saveState(state: SynergyLinkState): Promise<void> {
     const rootPath = root()
-    await writeRootFile(
-      rootPath,
-      statePathForRoot(rootPath),
-      JSON.stringify(hydrateState(state, rootPath), null, 2) + "\n",
-    )
+    const write = saveQueue.then(async () => {
+      await writeRootFile(
+        rootPath,
+        statePathForRoot(rootPath),
+        JSON.stringify(hydrateState(state, rootPath), null, 2) + "\n",
+      )
+    })
+    saveQueue = write.catch((error) => {
+      console.error(`Synergy Link state save failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+    await saveQueue
   }
 
   export async function loadMigrationLog(): Promise<Record<string, number>> {
