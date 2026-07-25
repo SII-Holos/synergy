@@ -10,6 +10,7 @@ import { buildPluginProject } from "./build.js"
 import { packPluginProject } from "./pack.js"
 import { signPluginTarball } from "./sign.js"
 import { validatePluginProject } from "./validate.js"
+import { extractTarballText } from "../lib/tarball.js"
 import {
   copyRegistryEntryIcon,
   githubRepoSlug,
@@ -84,13 +85,10 @@ function safeArtifactName(name: string): string {
 }
 
 function readTarballPackageName(tarballPath: string): string | undefined {
-  for (const entry of ["package.json", "./package.json"]) {
-    const result = Bun.spawnSync(["tar", "-xOf", tarballPath, entry], { stdout: "pipe", stderr: "pipe" })
-    if (result.exitCode !== 0) continue
-    const pkg = JSON.parse(new TextDecoder().decode(result.stdout)) as { name?: unknown }
-    return typeof pkg.name === "string" ? pkg.name : undefined
-  }
-  return undefined
+  const raw = extractTarballText(tarballPath, "package.json")
+  if (!raw) return undefined
+  const pkg = JSON.parse(raw) as { name?: unknown }
+  return typeof pkg.name === "string" ? pkg.name : undefined
 }
 
 export function assertMarketplaceNaming(input: {
