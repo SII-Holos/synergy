@@ -184,6 +184,11 @@ jobs:
           SYNERGY_REQUIRE_BROWSER_HOST_PUBLIC_KEY: "1"
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1"
 
+      - name: Prepare Synergy runtime for desktop package
+        run: bun run ./script/release/prepare-desktop-runtime.ts
+        env:
+          SYNERGY_BUILD_TARGETS: ${{ matrix.runtime_targets }}
+
       - name: Build desktop main process
         run: bun run --cwd packages/desktop desktop:build
 
