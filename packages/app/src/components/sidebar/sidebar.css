@@ -589,6 +589,11 @@
   gap: 1px;
 }
 
+.sb-project-menu-up {
+  top: auto;
+  bottom: 100%;
+}
+
 .sb-menu-item {
   display: flex;
   align-items: center;
