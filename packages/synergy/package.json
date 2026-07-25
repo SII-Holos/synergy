@@ -27,6 +27,7 @@
     "@ast-grep/cli-linux-arm64-gnu": "0.40.5",
     "@ast-grep/cli-linux-x64-gnu": "0.40.5",
     "@ast-grep/cli-win32-x64-msvc": "0.40.5",
+    "@ericsanchezok/synergy-link": "workspace:*",
     "@ericsanchezok/synergy-plugin-kit": "workspace:*",
     "@ericsanchezok/synergy-script": "workspace:*",
     "@parcel/watcher-darwin-arm64": "2.5.6",

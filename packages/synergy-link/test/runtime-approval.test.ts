@@ -5,6 +5,7 @@ import path from "node:path"
 import process from "node:process"
 import { SynergyLinkCLIBackend } from "../src/cli-backend"
 import { SynergyLinkRuntime } from "../src/runtime"
+import { SynergyLinkLog } from "../src/log"
 
 const originalHome = process.env.SYNERGY_LINK_HOME
 const tempRoots: string[] = []
@@ -16,6 +17,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await SynergyLinkLog.flush()
   if (originalHome === undefined) {
     delete process.env.SYNERGY_LINK_HOME
   } else {
@@ -40,8 +42,8 @@ describe("synergy-link runtime approval", () => {
     expect(listed.value.requests).toHaveLength(1)
     expect(listed.value.requests[0]?.status).toBe("pending")
 
-    const approved = await SynergyLinkCLIBackend.approveRequest(listed.value.requests[0]!.id)
-    expect(approved.available).toBe(true)
+    const approved = await runtime.approveRequest(listed.value.requests[0]!.id)
+    expect(approved.request.status).toBe("approved")
 
     const second = await runtime.decideSessionOpen({
       caller: { agentID: "agent_a", ownerUserID: 1 },

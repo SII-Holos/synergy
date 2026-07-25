@@ -46,4 +46,15 @@ describe("synergy-link cli backend mode transitions", () => {
     expect(next.runtimeMode).toBe("standalone")
     expect(next.ownerRegistry.local.activeOwnerID).toBeUndefined()
   })
+
+  test("refuses offline state mutation while a live runtime PID owns the state", async () => {
+    const state = await SynergyLinkStore.loadState()
+    state.service.pid = process.pid
+    state.service.runtimeStatus = "running"
+    state.label = "before"
+    await SynergyLinkStore.saveState(state)
+
+    await expect(SynergyLinkCLIBackend.setLabel("after")).rejects.toThrow("control socket is unavailable")
+    expect((await SynergyLinkStore.loadState()).label).toBe("before")
+  })
 })

@@ -9,9 +9,9 @@ import {
 import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
 
 export type SynergyLinkRequest =
-  | (SynergyLinkBash.ExecuteRequest & { targetAgentID?: string })
-  | (SynergyLinkProcess.ExecuteRequest & { targetAgentID?: string })
-  | (SynergyLinkSession.ExecuteRequest & { targetAgentID?: string })
+  | SynergyLinkBash.ExecuteRequest
+  | SynergyLinkProcess.ExecuteRequest
+  | SynergyLinkSession.ExecuteRequest
 export type SynergyLinkResponse =
   | SynergyLinkBash.ExecuteResult
   | SynergyLinkProcess.ExecuteResult
@@ -19,7 +19,7 @@ export type SynergyLinkResponse =
   | SynergyLinkEnvelope.ErrorResult
 
 export interface SynergyLinkTransport {
-  request(input: SynergyLinkRequest): Promise<unknown>
+  request(targetAgentID: string | undefined, input: SynergyLinkRequest): Promise<unknown>
   dispose?(): void
 }
 
@@ -55,11 +55,10 @@ export class HolosSynergyLinkClient implements SynergyLinkClient.ExecutionClient
       tool: "bash",
       action: "execute",
       sessionID: options.sessionID,
-      targetAgentID: options.targetAgentID,
       payload: input,
-    } satisfies SynergyLinkBash.ExecuteRequest & { targetAgentID?: string }
+    } satisfies SynergyLinkBash.ExecuteRequest
 
-    const response = await this.#request(request)
+    const response = await this.#request(request, options.targetAgentID)
     return response.result
   }
 
@@ -81,11 +80,10 @@ export class HolosSynergyLinkClient implements SynergyLinkClient.ExecutionClient
       tool: "process",
       action: input.action,
       sessionID: options.sessionID,
-      targetAgentID: options.targetAgentID,
       payload: input,
-    } satisfies SynergyLinkProcess.ExecuteRequest & { targetAgentID?: string }
+    } satisfies SynergyLinkProcess.ExecuteRequest
 
-    const response = await this.#request(request)
+    const response = await this.#request(request, options.targetAgentID)
     return response.result
   }
 
@@ -100,11 +98,10 @@ export class HolosSynergyLinkClient implements SynergyLinkClient.ExecutionClient
       linkID,
       tool: "session",
       action: input.action,
-      targetAgentID: options?.targetAgentID,
       payload: input,
-    } satisfies SynergyLinkSession.ExecuteRequest & { targetAgentID?: string }
+    } satisfies SynergyLinkSession.ExecuteRequest
 
-    const response = await this.#request(request)
+    const response = await this.#request(request, options?.targetAgentID)
     return response.result
   }
 
@@ -112,10 +109,13 @@ export class HolosSynergyLinkClient implements SynergyLinkClient.ExecutionClient
     this.transport.dispose?.()
   }
 
-  async #request<TRequest extends SynergyLinkRequest>(input: TRequest): Promise<ResponseForRequest<TRequest>> {
+  async #request<TRequest extends SynergyLinkRequest>(
+    input: TRequest,
+    targetAgentID: string | undefined,
+  ): Promise<ResponseForRequest<TRequest>> {
     let raw: unknown
     try {
-      raw = await this.transport.request(input)
+      raw = await this.transport.request(targetAgentID, input)
     } catch (error) {
       throw normalizeTransportError(error)
     }
@@ -139,15 +139,32 @@ type ResponseForRequest<TRequest extends SynergyLinkRequest> = TRequest extends 
 
 function parseResponse(input: SynergyLinkRequest, raw: unknown): SynergyLinkResponse {
   const error = SynergyLinkEnvelope.ErrorResult.safeParse(raw)
-  if (error.success) return error.data
+  if (error.success) {
+    assertResponseCorrelation(input, error.data)
+    return error.data
+  }
 
   const typed = getResponseSchema(input).safeParse(raw)
-  if (typed.success) return typed.data
+  if (typed.success) {
+    assertResponseCorrelation(input, typed.data)
+    return typed.data
+  }
 
   throw new SynergyLinkRemoteError("transport_error", "Invalid Synergy Link response", {
     expected: { tool: input.tool, action: input.action, requestID: input.requestID },
     issues: typed.error.issues,
-    raw,
+  })
+}
+
+function assertResponseCorrelation(input: SynergyLinkRequest, response: SynergyLinkResponse): void {
+  const mismatched =
+    response.requestID !== input.requestID ||
+    (response.tool !== undefined && response.tool !== input.tool) ||
+    (response.action !== undefined && response.action !== input.action)
+  if (!mismatched) return
+  throw new SynergyLinkRemoteError("transport_error", "Synergy Link response does not match its request", {
+    expected: { tool: input.tool, action: input.action, requestID: input.requestID },
+    received: { tool: response.tool, action: response.action, requestID: response.requestID },
   })
 }
 

@@ -3,29 +3,50 @@ import type { HolosCaller } from "../types"
 import { SynergyLinkHolosProtocol } from "./protocol"
 
 export namespace SynergyLinkHolosEnvelope {
-  export function parse(raw: string): { event: string; payload: unknown; caller: HolosCaller } | null {
+  export type Parsed =
+    | { kind: "request"; event: string; payload: unknown; caller: HolosCaller }
+    | { kind: "ignored"; type: string }
+    | { kind: "unknown"; type?: string }
+
+  const IGNORED_TYPES = new Set(["connected", "pong"])
+
+  export function parse(raw: string): Parsed {
     let data: unknown
     try {
       data = JSON.parse(raw)
     } catch {
-      return null
+      return { kind: "unknown" }
     }
+
+    const type =
+      typeof data === "object" && data !== null && "type" in data && typeof data.type === "string"
+        ? data.type
+        : undefined
 
     const parsed = SynergyLinkHolosProtocol.Envelope.safeParse(data)
-    if (!parsed.success || parsed.data.type !== "ws_send" || !parsed.data.caller) {
-      return null
+    if (!parsed.success) {
+      return type ? { kind: "unknown", type } : { kind: "unknown" }
     }
 
-    return {
-      event: String(parsed.data.meta.event ?? ""),
-      payload: parsed.data.payload,
-      caller: {
-        type: parsed.data.caller.type,
-        agentID: parsed.data.caller.agent_id,
-        ownerUserID: parsed.data.caller.owner_user_id,
-        profile: parsed.data.caller.profile,
-      },
+    if (parsed.data.type === "ws_send" && parsed.data.caller) {
+      return {
+        kind: "request",
+        event: String(parsed.data.meta.event ?? ""),
+        payload: parsed.data.payload,
+        caller: {
+          type: parsed.data.caller.type,
+          agentID: parsed.data.caller.agent_id,
+          ownerUserID: parsed.data.caller.owner_user_id,
+          profile: parsed.data.caller.profile,
+        },
+      }
     }
+
+    if (IGNORED_TYPES.has(parsed.data.type) || parsed.data.type === "ws_send") {
+      return { kind: "ignored", type: parsed.data.type }
+    }
+
+    return { kind: "unknown", type: parsed.data.type }
   }
 
   export function request(targetAgentID: string, payload: unknown, requestID = crypto.randomUUID()): string {

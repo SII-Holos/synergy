@@ -12,7 +12,6 @@ export interface ProcessParams {
   timeout?: number
   targetID?: string
   linkID?: string
-  envID?: string
 }
 
 export type ProcessMetadata = SynergyLinkProcess.ResultMetadata

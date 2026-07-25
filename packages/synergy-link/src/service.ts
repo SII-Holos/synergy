@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { closeSync, openSync } from "node:fs"
+import { chmodSync, closeSync, openSync } from "node:fs"
 import { SynergyLinkControlClient } from "./control/client"
 import type { SynergyLinkLogsPayload, SynergyLinkServiceSnapshot } from "./control/schema"
 import { Platform } from "./platform"
@@ -44,10 +44,6 @@ export namespace SynergyLinkService {
 
     const { state, running: currentRunning } = await loadReconciledState()
     if (currentRunning) {
-      await updatePersistedServiceState({
-        desiredState: "running",
-        runtimeStatus: "running",
-      })
       return {
         changed: false,
         alreadyRunning: true,
@@ -58,7 +54,8 @@ export namespace SynergyLinkService {
     await SynergyLinkStore.ensureRoot()
     await SynergyLinkLocalService.removeSocketFile(SynergyLinkStore.controlSocketPath())
     const outputPath = SynergyLinkStore.logsPath()
-    const stdout = openSync(outputPath, "a")
+    const stdout = openSync(outputPath, "a", 0o600)
+    chmodSync(outputPath, 0o600)
     const command = resolveServerLaunchCommand(input)
 
     await updatePersistedServiceState({
@@ -77,16 +74,18 @@ export namespace SynergyLinkService {
       child.unref()
       await waitForControlPlane(2_500)
       const controlPlaneReady = await SynergyLinkControlClient.isAvailable()
-      await updatePersistedServiceState((currentState) => ({
-        desiredState: controlPlaneReady ? "running" : "stopped",
-        runtimeStatus: controlPlaneReady ? "running" : "stopped",
-        pid: controlPlaneReady ? child.pid : undefined,
-        startedAt: controlPlaneReady ? Date.now() : currentState.service.startedAt,
-        stoppedAt: controlPlaneReady ? undefined : Date.now(),
-        lastExitAt: controlPlaneReady ? currentState.service.lastExitAt : Date.now(),
-        printLogs: input.printLogs ?? false,
-        logPath: outputPath,
-      }))
+      if (!controlPlaneReady) {
+        await updatePersistedServiceState((currentState) => ({
+          desiredState: "stopped",
+          runtimeStatus: "stopped",
+          pid: undefined,
+          startedAt: currentState.service.startedAt,
+          stoppedAt: Date.now(),
+          lastExitAt: Date.now(),
+          printLogs: input.printLogs ?? false,
+          logPath: outputPath,
+        }))
+      }
       return {
         changed: controlPlaneReady,
         alreadyRunning: false,
@@ -102,14 +101,6 @@ export namespace SynergyLinkService {
       const snapshot = await status()
       await SynergyLinkControlClient.request({ action: "service.stop" }).catch(() => undefined)
       await waitForControlPlaneShutdown(2_500)
-      const stoppedAt = Date.now()
-      await updatePersistedServiceState({
-        desiredState: "stopped",
-        runtimeStatus: "stopped",
-        pid: undefined,
-        stoppedAt,
-        lastExitAt: stoppedAt,
-      })
       return {
         changed: snapshot.running,
         alreadyStopped: !snapshot.running,

@@ -5,6 +5,7 @@ import path from "node:path"
 import process from "node:process"
 import { SynergyLinkCLIBackend } from "../src/cli-backend"
 import { SynergyLinkHolosAuth } from "../src/holos/auth"
+import { SynergyLinkLog } from "../src/log"
 
 const originalLinkHome = process.env.SYNERGY_LINK_HOME
 const originalSynergyHome = process.env.SYNERGY_TEST_HOME
@@ -25,6 +26,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await SynergyLinkLog.flush()
   globalThis.fetch = originalFetch
   if (originalLinkHome === undefined) delete process.env.SYNERGY_LINK_HOME
   else process.env.SYNERGY_LINK_HOME = originalLinkHome
@@ -49,7 +51,6 @@ describe("synergy-link cli backend auth payloads", () => {
       loggedIn: true,
       agentID: "agent_shared",
       source: "shared",
-      hiddenReason: null,
     })
   })
 
@@ -61,7 +62,6 @@ describe("synergy-link cli backend auth payloads", () => {
       loggedIn: true,
       agentID: "agent_shared",
       source: "shared",
-      hiddenReason: null,
     })
     expect(result.checks.find((check) => check.name === "auth")).toEqual({
       name: "auth",
@@ -81,7 +81,6 @@ describe("synergy-link cli backend auth payloads", () => {
       loggedIn: false,
       agentID: null,
       source: null,
-      hiddenReason: null,
     })
   })
 })

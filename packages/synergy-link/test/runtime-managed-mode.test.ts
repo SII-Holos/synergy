@@ -5,6 +5,7 @@ import path from "node:path"
 import process from "node:process"
 import { SynergyLinkRuntime } from "../src/runtime"
 import { SynergyLinkStore } from "../src/state/store"
+import { SynergyLinkLog } from "../src/log"
 
 const originalHome = process.env.SYNERGY_LINK_HOME
 const tempRoots: string[] = []
@@ -16,6 +17,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await SynergyLinkLog.flush()
   if (originalHome === undefined) {
     delete process.env.SYNERGY_LINK_HOME
   } else {
@@ -68,7 +70,6 @@ describe("synergy-link managed mode", () => {
     expect(status.mode).toBe("managed")
     expect(status.auth.loggedIn).toBe(false)
     expect(status.auth.source).toBe(null)
-    expect(status.auth.hiddenReason).toBe(null)
     expect(status.ownership.local.owned).toBe(true)
 
     const reconnect = await runtime.reconnect()

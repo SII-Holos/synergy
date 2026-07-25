@@ -175,7 +175,7 @@ export namespace SynergyLinkExecution {
 
   function matchesSession(session: SessionRecord, selector?: SessionSelector) {
     if (!selector) return true
-    if (selector.targetID && session.targetID !== selector.targetID) return false
+    if (selector.targetID && session.targetID && session.targetID !== selector.targetID) return false
     if (selector.targetAgentID && session.targetAgentID !== selector.targetAgentID) return false
     if (selector.sourceAgent && session.sourceAgent !== selector.sourceAgent) return false
     return true

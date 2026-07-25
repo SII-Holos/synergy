@@ -9,7 +9,6 @@ export namespace RemoteBashBackend {
     const {
       targetID: _targetID,
       linkID: _linkID,
-      envID: _envID,
       backgroundAfterSeconds: _backgroundAfterSeconds,
       timeoutSeconds: _timeoutSeconds,
       ...payload

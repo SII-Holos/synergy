@@ -14,8 +14,8 @@ const parameters = z.object({
     .string()
     .optional()
     .describe("Stable persisted Synergy Link target ID. Preferred for open, close, and status."),
-  linkID: z.string().optional().describe("Legacy raw Synergy Link locator. Must start with link_."),
-  targetAgentID: z.string().optional().describe("Legacy Holos target agent ID. Required with linkID for open."),
+  linkID: z.string().optional().describe("Raw Synergy Link locator. Must start with link_."),
+  targetAgentID: z.string().optional().describe("Holos target agent ID. Required with linkID for open."),
   label: z.string().optional().describe("Optional label for the Synergy Link session."),
 })
 
@@ -50,7 +50,7 @@ type ConnectMetadata = {
 
 export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("connect", {
   description:
-    "Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer targetID; raw linkID and targetAgentID are legacy locators. Remote lifecycle actions never fall back locally.",
+    "Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Remote lifecycle actions never fall back locally.",
   parameters,
   async execute(params, ctx) {
     if (params.action === "list_targets") {

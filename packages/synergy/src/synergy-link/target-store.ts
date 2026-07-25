@@ -11,10 +11,7 @@ export namespace SynergyLinkTargetStore {
     const ids = await Storage.scan(root)
     const records = await Storage.readMany<unknown>(ids.map((id) => StoragePath.synergyLinkTarget(id)))
     return records
-      .flatMap((record) => {
-        const parsed = SynergyLinkTarget.Info.safeParse(record)
-        return parsed.success ? [parsed.data] : []
-      })
+      .map((record, index) => parsePersistedTarget(record, ids[index] ?? "unknown"))
       .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
   }
 
@@ -35,9 +32,11 @@ export namespace SynergyLinkTargetStore {
   export async function get(id: string): Promise<SynergyLinkTarget.Info | undefined> {
     const parsedID = SynergyLinkTarget.ID.safeParse(id)
     if (!parsedID.success) return undefined
-    const record = await Storage.read<unknown>(StoragePath.synergyLinkTarget(parsedID.data)).catch(() => undefined)
-    const parsed = SynergyLinkTarget.Info.safeParse(record)
-    return parsed.success ? parsed.data : undefined
+    const record = await Storage.read<unknown>(StoragePath.synergyLinkTarget(parsedID.data)).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    return record === undefined ? undefined : parsePersistedTarget(record, parsedID.data)
   }
 
   export async function findByLocator(
@@ -111,4 +110,10 @@ export namespace SynergyLinkTargetStore {
     using _ = await Lock.write(`${collectionLock}:${id}`)
     await Storage.remove(StoragePath.synergyLinkTarget(id))
   }
+}
+
+function parsePersistedTarget(record: unknown, id: string): SynergyLinkTarget.Info {
+  const parsed = SynergyLinkTarget.Info.safeParse(record)
+  if (parsed.success) return parsed.data
+  throw new Error(`Invalid persisted Synergy Link target ${id}: ${parsed.error.message}`)
 }

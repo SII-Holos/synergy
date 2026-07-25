@@ -9,6 +9,25 @@ describe("synergy-link session manager", () => {
     expect(result.metadata.sessionID).toBeTruthy()
   })
 
+  test("waits for state persistence before reporting an opened session", async () => {
+    let release!: () => void
+    const persisted = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const manager = new SessionManager({ onChange: () => persisted })
+    let settled = false
+
+    const opening = manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 }).then((result) => {
+      settled = true
+      return result
+    })
+    await Bun.sleep(0)
+
+    expect(settled).toBe(false)
+    release()
+    await expect(opening).resolves.toMatchObject({ metadata: { status: "opened" } })
+  })
+
   test("reuses the active session when the same Holos caller reconnects", async () => {
     const manager = new SessionManager()
     const caller = { type: "agent" as const, agentID: "agent_a", ownerUserID: 1 }
@@ -38,7 +57,7 @@ describe("synergy-link session manager", () => {
   test("kicking a session disconnects without blocking by default", async () => {
     const manager = new SessionManager()
     await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
-    const kicked = manager.kickCurrent()
+    const kicked = await manager.kickCurrent()
     expect(kicked?.remoteAgentID).toBe("agent_a")
     const retry = await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
     expect(retry.metadata.status).toBe("opened")
@@ -49,7 +68,7 @@ describe("synergy-link session manager", () => {
     const opened = await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
     const sessionID = opened.metadata.sessionID
     expect(sessionID).toBeTruthy()
-    const expired = manager.expireIdle(Date.now() + 61_000)
+    const expired = await manager.expireIdle(Date.now() + 61_000)
     expect(expired?.sessionID).toBe(sessionID)
     expect(manager.current()).toBeNull()
   })
