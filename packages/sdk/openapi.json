@@ -2168,6 +2168,31 @@
         ]
       }
     },
+    "/global/acknowledge-completions": {
+      "post": {
+        "operationId": "global.nav.acknowledgeCompletions",
+        "summary": "Acknowledge completion notices across all scopes",
+        "description": "Acknowledge completion notices for non-archived root sessions across all scopes.",
+        "responses": {
+          "200": {
+            "description": "Completion notices acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalAcknowledgeCompletionsResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.nav.acknowledgeCompletions({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/pinned": {
       "get": {
         "operationId": "global.nav.pinned",
@@ -24602,6 +24627,27 @@
           }
         },
         "required": ["items", "nextCursor", "total", "unreadCompletionCount"]
+      },
+      "GlobalAcknowledgeCompletionsResponse": {
+        "type": "object",
+        "properties": {
+          "acknowledgedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "modifiedSessionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "failedSessionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["acknowledgedCount", "modifiedSessionCount", "failedSessionCount"]
       },
       "PinnedResponse": {
         "type": "object",

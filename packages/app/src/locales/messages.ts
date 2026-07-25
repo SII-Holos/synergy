@@ -653,6 +653,10 @@ export const sidebar = {
   agent: { id: "app.sidebar.agent", message: "Agent" },
   // Sections
   recent: { id: "app.sidebar.section.recent", message: "Recent" },
+  markAllRead: { id: "app.sidebar.markAllRead", message: "Mark all read" },
+  markingAllRead: { id: "app.sidebar.markingAllRead", message: "Marking all read…" },
+  markAllReadSuccess: { id: "app.sidebar.markAllReadSuccess", message: "Marked all sessions as read" },
+  markAllReadFailed: { id: "app.sidebar.markAllReadFailed", message: "Failed to mark all read" },
   home: { id: "app.sidebar.section.home", message: "Home" },
   channel: { id: "app.sidebar.section.channel", message: "Channel" },
   background: { id: "app.sidebar.section.background", message: "Background" },
