@@ -1,7 +1,13 @@
-import type { SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
+import type { Agent, NotePatchInput, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
 
 export type BlueprintRunMode = "current" | "new" | "worktree"
 export type BlueprintExecutionControlProfile = "autonomous" | "full_access"
+
+export type BlueprintExecutionAgentOption = {
+  name: string
+  description?: string
+  available: boolean
+}
 
 export type BlueprintScopeSummary = {
   id: string
@@ -31,6 +37,29 @@ export function blueprintSessionWorkspaceSelection(mode: BlueprintRunMode): Sess
 
 export function blueprintExecutionControlProfile(configured?: string | null): BlueprintExecutionControlProfile {
   return configured === "full_access" ? "full_access" : "autonomous"
+}
+
+export function blueprintExecutionAgentOptions(
+  agents: Agent[],
+  selectedAgent?: string | null,
+): BlueprintExecutionAgentOption[] {
+  const visible = agents
+    .filter((agent) => !agent.hidden)
+    .map((agent) => ({
+      name: agent.name,
+      description: agent.description,
+      available: true,
+    }))
+  const selected = selectedAgent?.trim()
+  if (!selected || visible.some((agent) => agent.name === selected)) return visible
+  return [{ name: selected, description: undefined, available: false }, ...visible]
+}
+
+export function blueprintExecutionAgentPatch(note: { version: number }, agentName: string): NotePatchInput {
+  return {
+    expectedVersion: note.version,
+    blueprint: { defaultAgent: agentName },
+  }
 }
 
 export function blueprintScopeIDForDirectory(directory: string | undefined, scopes: BlueprintScopeSummary[]) {

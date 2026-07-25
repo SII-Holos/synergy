@@ -485,6 +485,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
+    async function acknowledgeAllCompletionNotices() {
+      try {
+        const response = await globalSdk.client.global.nav.acknowledgeCompletions({ throwOnError: true })
+        return response.data
+      } finally {
+        await refreshGlobalRecent()
+      }
+    }
+
     async function refreshGitHubSection() {
       const key = "__refresh__github__"
       if (navPending.has(key)) return
@@ -1162,6 +1171,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         archiveSession,
         pinSession,
         clearCompletionNotice,
+        acknowledgeAllCompletionNotices,
+        unreadCompletionCount,
         loadScopeNav: (directory: string) => loadScopeNav(directory),
         navEntries: () => navEntries,
         scopeIndexLoaded,

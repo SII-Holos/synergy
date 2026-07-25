@@ -199,6 +199,7 @@ test("rate limits mark credentials exhausted with retry metadata and never refre
   expect(refreshes).toBe(0)
   expect(ProviderAuthHealth.fromEntry("test-exhausted", (await Auth.entries())["test-exhausted"])).toMatchObject({
     status: "exhausted",
+    canDisconnect: false,
     resetAt: reset,
   })
 })
@@ -261,6 +262,39 @@ test("a request that cannot start without credentials remains not configured", a
   expect(ProviderAuthHealth.fromEntry("test-missing", undefined)).toEqual({
     providerID: "test-missing",
     status: "not_configured",
+    canDisconnect: false,
+  })
+})
+
+test("a rejected request cannot restore runtime health after its stored credential is removed", async () => {
+  await Auth.set("test-status", { type: "api", key: "removed-during-request" })
+  let rejectRequest!: () => void
+  const requestStarted = new Promise<void>((resolve) => {
+    rejectRequest = resolve
+  })
+  let finishRequest!: () => void
+  const requestFinished = new Promise<void>((resolve) => {
+    finishRequest = resolve
+  })
+
+  const pending = ProviderAuthRecovery.execute({
+    providerID: "test-status",
+    request: async () => {
+      rejectRequest()
+      await requestFinished
+      return new Response(null, { status: 401 })
+    },
+    throwOnActionRequired: false,
+  })
+  await requestStarted
+  await Auth.remove("test-status")
+  finishRequest()
+
+  expect((await pending).status).toBe(401)
+  expect(ProviderAuthHealth.fromEntry("test-status", undefined)).toEqual({
+    providerID: "test-status",
+    status: "not_configured",
+    canDisconnect: false,
   })
 })
 
@@ -335,6 +369,7 @@ test("health events contain only public state and ignore connected token rotatio
             recovery: "reconnect",
             authKind: "api_key",
             source: "api",
+            canDisconnect: true,
             updatedAt: expect.any(Number),
             failureCode: "credential_rejected",
           },
