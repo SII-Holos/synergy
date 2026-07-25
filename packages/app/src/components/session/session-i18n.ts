@@ -409,9 +409,18 @@ export const S = {
   transitionDescSubmitting: { id: "session.transition.desc.submitting", message: "Submitting your first message." },
   transitionDetailMessageQueued: { id: "session.transition.detail.messageQueued", message: "First message queued." },
   transitionTitleAccepted: { id: "session.transition.title.accepted", message: "Session request accepted" },
+  transitionDescInitializing: {
+    id: "session.transition.desc.initializing",
+    message: "Your first message is saved. Initializing the conversation.",
+  },
   transitionDescQueued: {
     id: "session.transition.desc.queued",
     message: "Your first message is queued for processing.",
+  },
+  transitionTitleStalled: { id: "session.transition.title.stalled", message: "Conversation setup needs attention" },
+  transitionDescStalled: {
+    id: "session.transition.desc.stalled",
+    message: "Your first message is still saved, but initialization did not finish. Retry to resume processing.",
   },
 
   // worktree-transition-dialog.tsx

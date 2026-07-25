@@ -5,6 +5,7 @@ import type {
   SessionTransitionActions,
   SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
+import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
 import type { JSX } from "solid-js"
 
 export type DroppedSessionData = {
@@ -60,6 +61,7 @@ export interface PromptInputProps {
     sessionID: string
     progress: SessionTransitionProgress | null
     actions?: SessionTransitionActions
+    handoff?: SessionTransitionHandoff
   }) => void
   sessionTransitionPending?: boolean
   hideAgentSelector?: boolean

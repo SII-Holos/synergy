@@ -5,6 +5,7 @@ import {
   createNewSessionTransitionSuccessProgress,
 } from "@/components/session/session-transition-progress"
 import type { NewSessionRecovery } from "@/components/session/new-session-recovery"
+import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
 import { createSessionTransitionState } from "../../src/context/session-transition"
 
 describe("session transition state", () => {
@@ -17,6 +18,22 @@ describe("session transition state", () => {
 
       const readAfterRouteRemount = () => state.get("session-1")
       expect(readAfterRouteRemount()?.progress).toBe(progress)
+      dispose()
+    })
+  })
+
+  test("retains the expected root handoff until the session route observes it", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const progress = createNewSessionTransitionProgress()
+      const handoff = {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+      } satisfies SessionTransitionHandoff
+
+      state.set("session-1", progress, undefined, handoff)
+
+      expect(state.get("session-1")?.handoff).toEqual(handoff)
       dispose()
     })
   })

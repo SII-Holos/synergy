@@ -463,6 +463,8 @@ import type {
   SessionInboxRemoveErrors,
   SessionInboxRemoveResponses,
   SessionInboxResponses,
+  SessionInboxRetryErrors,
+  SessionInboxRetryResponses,
   SessionIndexResponses,
   SessionInitErrors,
   SessionInitResponses,
@@ -2143,7 +2145,7 @@ export class Session extends HeyApiClient {
   /**
    * Submit session input
    *
-   * Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.
+   * Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.
    */
   public input<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2203,6 +2205,40 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Retry durable session inbox item
+   *
+   * Resume processing for an existing durable inbox item without creating a duplicate message.
+   */
+  public inboxRetry<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      itemID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInboxRetryResponses, SessionInboxRetryErrors, ThrowOnError>({
+      url: "/session/{sessionID}/inbox/{itemID}/retry",
+      ...options,
+      ...params,
     })
   }
 

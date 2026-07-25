@@ -27,6 +27,7 @@ export function SessionConversation(props: {
   sessionTransition?: Accessor<SessionTransitionProgress | null>
   sessionTransitionActions?: Accessor<SessionTransitionActions | undefined>
   visibleUserMessages: Accessor<UserMessage[]>
+  hasCanonicalRoot: Accessor<boolean>
   lastUserMessage: Accessor<UserMessage | undefined>
   activeMessage: Accessor<UserMessage | undefined>
   workspaceOpen?: Accessor<boolean>
@@ -218,7 +219,10 @@ export function SessionConversation(props: {
         <div class="w-full flex flex-col items-start gap-2 opacity-50">
           <For each={props.pendingTimeline?.() ?? []}>
             {(item) => {
-              const view = () => pendingTimelineItemView(item.mode, props.rollbackActive === true)
+              const view = () =>
+                pendingTimelineItemView(item.mode, props.rollbackActive === true, {
+                  hasCanonicalRoot: props.hasCanonicalRoot(),
+                })
               const label = () =>
                 item.message?.parts?.[0]?.type === "text"
                   ? (item.message.parts[0] as { text: string }).text
