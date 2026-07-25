@@ -3,6 +3,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import z from "zod"
 import { ProviderAuthHealth } from "./auth-health"
+import { ProviderDeviceCode } from "./device-code"
 
 export namespace GitHubProvider {
   export const PROVIDER_ID = "github"
@@ -111,16 +112,16 @@ export namespace GitHubProvider {
     const userCode = payload.user_code
     const verificationURI = payload.verification_uri ?? "https://github.com/login/device"
     const intervalSeconds = Math.max(1, Number(payload.interval ?? 5))
-    const expiresIn = Math.max(60, Number(payload.expires_in ?? 300))
+    const expiresIn = ProviderDeviceCode.expirySeconds(payload.expires_in)
     return {
       url: verificationURI,
       method: "auto",
       instructions: String(userCode ?? ""),
-      async callback() {
+      async callback(signal?: AbortSignal) {
         const deadline = Date.now() + expiresIn * 1000
         let interval = intervalSeconds
-        while (Date.now() < deadline) {
-          await Bun.sleep(interval * 1000)
+        while (Date.now() < deadline && !signal?.aborted) {
+          if (!(await ProviderDeviceCode.wait(interval * 1000, signal))) return { type: "failed" }
           const poll = await fetchFn("https://github.com/login/oauth/access_token", {
             method: "POST",
             headers: {
@@ -133,8 +134,10 @@ export namespace GitHubProvider {
               device_code: String(deviceCode),
               grant_type: "urn:ietf:params:oauth:grant-type:device_code",
             }),
-            signal: AbortSignal.timeout(15_000),
-          })
+            signal: ProviderDeviceCode.requestSignal(signal),
+          }).catch(() => undefined)
+          if (signal?.aborted) return { type: "failed" }
+          if (!poll) continue
           const result = await safeJson(poll)
           if (typeof result.access_token === "string") {
             const account = await fetchAccount(result.access_token, fetchFn).catch(() => undefined)
