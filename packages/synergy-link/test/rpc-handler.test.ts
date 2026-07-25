@@ -45,7 +45,7 @@ describe("synergy-link rpc handler", () => {
         action: "execute",
         sessionID: "session_test",
         payload: {
-          command: `trap 'printf stopped > "${stoppedPath}"; exit 0' TERM; printf ready > "${readyPath}"; while :; do sleep 1; done`,
+          command: `trap 'sleep 0.3; printf stopped > "${stoppedPath}"; exit 0' TERM; printf ready > "${readyPath}"; while :; do sleep 1; done`,
           description: "reset cleanup test",
           workdir: root,
           background: true,
