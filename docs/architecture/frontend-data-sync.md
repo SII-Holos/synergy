@@ -326,9 +326,9 @@ This removes quadratic full-part disk writes while keeping snapshot reads and te
 
 ## Compaction Attempt Projection
 
-Compaction assistants remain canonically hidden until a non-empty summary commits, but the shared timeline makes one narrow presentation exception: a hidden compaction assistant whose persisted `metadata.compactionAttempt.state` is `running` projects as the running compaction card. Raw streamed compaction text stays suppressed behind that card. The same message ID and timeline key remain mounted when the backend changes the attempt to `committed`, makes the message visible, and adds the recovery part.
+Compaction assistants remain canonically hidden while running, but the shared timeline makes a narrow presentation exception: a hidden compaction assistant whose persisted `metadata.compactionAttempt.state` is `running` or `failed` projects as the compaction card. Raw streamed compaction text stays suppressed behind that card. The same message ID and timeline key remain mounted when the backend resolves the attempt: `committed` makes the message visible and adds the recovery part, while `failed` persists a visible terminal error on the existing message.
 
-The processor's terminal message checkpoint does not end this presentation lifecycle. The compaction owner resolves `running` to `committed`, `failed`, or `empty`; hidden failed and empty attempts therefore disappear instead of remaining as stale progress. Ordinary `visible = false` messages never receive this exception.
+The processor's terminal message checkpoint does not end this presentation lifecycle. The compaction owner resolves `running` to `committed`, `failed`, or `empty`; failed attempts replace progress in place with the dedicated error presentation, while hidden empty attempts disappear. Ordinary `visible = false` messages never receive this exception.
 
 ## Compaction Swap
 

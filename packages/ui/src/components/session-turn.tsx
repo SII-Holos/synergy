@@ -172,10 +172,10 @@ function isCompactionAssistant(message: AssistantMessage): boolean {
   return message.mode === "compaction" || message.agent === "compaction"
 }
 
-function isRunningCompactionAttempt(message: AssistantMessage): boolean {
+function isProjectedCompactionAttempt(message: AssistantMessage): boolean {
   if (!isCompactionAssistant(message)) return false
   const attempt = message.metadata?.compactionAttempt as { state?: unknown } | undefined
-  return attempt?.state === "running"
+  return attempt?.state === "running" || attempt?.state === "failed"
 }
 
 export function isCompactionBoundaryUser(message: Pick<UserMessage, "metadata">): boolean {
@@ -411,7 +411,7 @@ export function collectMessagesForTurnLifecycle(
 function filterMessagesForTurnDisplay(messages: readonly SessionTurnDisplayMessage[]): SessionTurnDisplayMessage[] {
   return messages.filter((message) => {
     if ((message as { visible?: boolean }).visible !== false) return true
-    return message.role === "assistant" && isRunningCompactionAttempt(message as AssistantMessage)
+    return message.role === "assistant" && isProjectedCompactionAttempt(message as AssistantMessage)
   })
 }
 
@@ -757,7 +757,8 @@ export function SessionTurn(
 
   const lastAssistantMessage = createMemo(() => assistantMessages().at(-1))
 
-  const error = createMemo(() => assistantMessages().find((m) => m.error)?.error)
+  // Compaction failures own their error presentation in the lifecycle card.
+  const error = createMemo(() => assistantMessages().find((m) => !isCompactionAssistant(m) && m.error)?.error)
   const errorMessage = createMemo(() => {
     const value = error()
     if (!value) return ""
