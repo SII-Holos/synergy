@@ -17,6 +17,7 @@
 - [ ] New or moved tests live under the owning package's `test/` directory (or the root `test/` directory for repository tests)
 - [ ] `bun run package:check` passes if package exports, build output, release logic, or publishable packages changed
 - [ ] `bun run workflow:check` passes if `.github/workflows/**`, GitHub Actions config, or CI helper scripts changed
+- [ ] Browser capability or App bootstrap changes pass the browser crypto contract and private HTTP browser smoke
 - [ ] `bun run secrets:check` passes locally or CI Gitleaks covers the change if auth, provider, channel, config, or credential examples changed
 - [ ] SDK regenerated if server routes or schemas changed (`./script/generate.ts`)
 - [ ] `bun run localization:check` passes if product copy, accessibility text, locale-sensitive formatting, or shared UI copy changed
