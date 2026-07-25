@@ -129,8 +129,9 @@ export namespace ProviderAuthRecovery {
     }
   }
 
-  async function markSuccess(providerID: string) {
+  async function markSuccess(providerID: string, removalRevision: number) {
     const entry = (await Auth.entries())[providerID]
+    if (Auth.removalRevision(providerID) !== removalRevision) return
     if (entry) {
       await ProviderAuthHealth.clearObservation(providerID, entry)
       return
@@ -148,7 +149,9 @@ export namespace ProviderAuthRecovery {
     input: ExecuteInput,
     selected: Awaited<ReturnType<typeof Auth.select>>,
     failure: ProviderProfile.ClassifiedError,
+    removalRevision: number,
   ) {
+    if (Auth.removalRevision(input.providerID) !== removalRevision) return
     const runtime = runtimeCredential(input.providerID)
     if (failure.exhausted) {
       if (selected) {
@@ -249,15 +252,15 @@ export namespace ProviderAuthRecovery {
     return typeof code === "string" && code.endsWith("_missing")
   }
 
-  async function retryOnce(input: ExecuteInput) {
+  async function retryOnce(input: ExecuteInput, removalRevision: number) {
     try {
       const response = await input.request()
       if (response.ok) {
-        await markSuccess(input.providerID)
+        await markSuccess(input.providerID, removalRevision)
         return response
       }
       const failure = await classify(input, response)
-      if (failure) await markFailure(input, await Auth.select(input.providerID), failure)
+      if (failure) await markFailure(input, await Auth.select(input.providerID), failure, removalRevision)
       return failure ? finishFailure(input, response, failure) : response
     } catch (error) {
       const failure = classifiedThrownError(error)
@@ -265,7 +268,7 @@ export namespace ProviderAuthRecovery {
       const selected = await Auth.select(input.providerID)
       const entry = (await Auth.entries())[input.providerID]
       if (isMissingCredentialError(error) && !entry) throw error
-      await markFailure(input, selected, failure)
+      await markFailure(input, selected, failure, removalRevision)
       if (input.throwOnActionRequired !== false) await throwActionRequired(input, failure)
       throw error
     }
@@ -276,13 +279,15 @@ export namespace ProviderAuthRecovery {
     rejectedCredentialID: string,
     original: Response,
     failure: ProviderProfile.ClassifiedError,
+    removalRevision: number,
   ) {
     const backup = await Auth.select(input.providerID)
     if (!backup || backup.credentialID === rejectedCredentialID) return finishFailure(input, original, failure)
-    return retryOnce(input)
+    return retryOnce(input, removalRevision)
   }
 
   export async function execute(input: ExecuteInput) {
+    const removalRevision = Auth.removalRevision(input.providerID)
     let first: Response
     try {
       first = await input.request()
@@ -292,23 +297,23 @@ export namespace ProviderAuthRecovery {
       const selected = await Auth.select(input.providerID)
       const entry = (await Auth.entries())[input.providerID]
       if (isMissingCredentialError(error) && !entry) throw error
-      await markFailure(input, selected, failure)
+      await markFailure(input, selected, failure, removalRevision)
       const backup = await Auth.select(input.providerID)
       if (selected && backup && backup.credentialID !== selected.credentialID) {
-        return retryOnce(input)
+        return retryOnce(input, removalRevision)
       }
       if (input.throwOnActionRequired !== false) await throwActionRequired(input, failure)
       throw error
     }
     if (first.ok) {
-      await markSuccess(input.providerID)
+      await markSuccess(input.providerID, removalRevision)
       return first
     }
 
     const firstFailure = await classify(input, first)
     if (!firstFailure) return first
     if (firstFailure.exhausted) {
-      await markFailure(input, await Auth.select(input.providerID), firstFailure)
+      await markFailure(input, await Auth.select(input.providerID), firstFailure, removalRevision)
       return first
     }
     if (!firstFailure.reloginRequired) return first
@@ -318,13 +323,13 @@ export namespace ProviderAuthRecovery {
       if (input.recoverWithoutCredential) {
         try {
           if (await input.recoverWithoutCredential()) {
-            return retryOnce(input)
+            return retryOnce(input, removalRevision)
           }
         } catch (error) {
           if (!requiresRelogin(error)) return first
         }
       }
-      await markFailure(input, selected, firstFailure)
+      await markFailure(input, selected, firstFailure, removalRevision)
       return finishFailure(input, first, firstFailure)
     }
 
@@ -338,19 +343,19 @@ export namespace ProviderAuthRecovery {
         retryable: false,
         reloginRequired: true,
       } satisfies ProviderProfile.ClassifiedError
-      await markFailure(input, selected, failure)
-      return retryWithBackup(input, selected.credentialID, first, failure)
+      await markFailure(input, selected, failure, removalRevision)
+      return retryWithBackup(input, selected.credentialID, first, failure, removalRevision)
     }
 
     if (!refreshed) {
       if (selected.auth.type === "api" && !Auth.hasUsableAlternative(selected.entry, selected.credentialID)) {
-        return retryOnce(input)
+        return retryOnce(input, removalRevision)
       }
-      await markFailure(input, selected, firstFailure)
-      return retryWithBackup(input, selected.credentialID, first, firstFailure)
+      await markFailure(input, selected, firstFailure, removalRevision)
+      return retryWithBackup(input, selected.credentialID, first, firstFailure, removalRevision)
     }
 
-    return retryOnce(input)
+    return retryOnce(input, removalRevision)
   }
 
   export function wrapFetch(providerID: string, fetchFn: FetchLike = fetch): FetchLike {

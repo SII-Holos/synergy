@@ -4,11 +4,13 @@ import type {
   SessionTransitionActions,
   SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
+import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
 import type { NewSessionRecovery } from "@/components/session/new-session-recovery"
 
 export type SessionTransitionEntry = {
   progress: SessionTransitionProgress
   actions?: SessionTransitionActions
+  handoff?: SessionTransitionHandoff
 }
 
 type StoredSessionTransitionEntry = SessionTransitionEntry & {
@@ -28,7 +30,12 @@ export function createSessionTransitionState() {
     )
   }
 
-  const set = (sessionID: string, progress: SessionTransitionProgress, actions?: SessionTransitionActions) => {
+  const set = (
+    sessionID: string,
+    progress: SessionTransitionProgress,
+    actions?: SessionTransitionActions,
+    handoff?: SessionTransitionHandoff,
+  ) => {
     const currentRevision = ++revision
     const guard = (action: (() => void) | undefined) =>
       action
@@ -48,6 +55,7 @@ export function createSessionTransitionState() {
     setEntries(sessionID, {
       progress,
       actions: guardedActions,
+      handoff,
       revision: currentRevision,
     })
   }

@@ -11,6 +11,10 @@ export function providerNeedsAction(health?: ProviderAuthHealth, usageSnapshot?:
   return usageSnapshot?.reloginRequired === true
 }
 
+export function providerCanDisconnect(health?: ProviderAuthHealth) {
+  return health?.status === "action_required" && health.canDisconnect === true
+}
+
 export function providerStatusLabel(
   health?: ProviderAuthHealth,
   availability?: ProviderRuntimeAvailability,

@@ -80,6 +80,30 @@ describe("ProcessOutput.lines", () => {
     ).rejects.toMatchObject({ name: "AbortError" })
     expect(observed).toEqual([])
   })
+
+  test("does not await stream cancellation during early cleanup", async () => {
+    const encoder = new TextEncoder()
+    let cancelCalled = false
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("alpha\n"))
+      },
+      cancel() {
+        cancelCalled = true
+        return new Promise<void>(() => {})
+      },
+    })
+    const iterator = ProcessOutput.lines(stream)
+
+    await expect(iterator.next()).resolves.toEqual({ value: "alpha", done: false })
+    const outcome = await Promise.race([
+      iterator.return(undefined).then(() => "settled" as const),
+      Bun.sleep(50).then(() => "timed_out" as const),
+    ])
+
+    expect(cancelCalled).toBe(true)
+    expect(outcome).toBe("settled")
+  })
 })
 
 describe("ProcessOutput.drainText", () => {

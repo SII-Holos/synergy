@@ -19,6 +19,7 @@ import { LoopJob } from "./loop-job"
 import { LLM } from "./llm"
 import type { ModelMessage } from "ai"
 import { SessionHistory } from "./history"
+import { ObservabilityRedaction } from "@/observability/redaction"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -403,6 +404,33 @@ export namespace SessionCompaction {
     ].join("\n")
   }
 
+  function sanitizeVisibleError(error: MessageV2.Assistant["error"]): MessageV2.Assistant["error"] {
+    if (!error) return undefined
+    if (error.name === "APIError") {
+      return new MessageV2.APIError({
+        message: ObservabilityRedaction.text(error.data.message),
+        isRetryable: error.data.isRetryable,
+      }).toObject()
+    }
+    if ("message" in error.data && typeof error.data.message === "string") {
+      error.data.message = ObservabilityRedaction.text(error.data.message)
+    }
+    return error
+  }
+
+  async function settleFailedAttempt(msg: MessageV2.Assistant, error?: unknown) {
+    if (!msg.error && error !== undefined) {
+      msg.error = MessageV2.fromError(error, { providerID: msg.providerID, modelID: msg.modelID })
+    }
+    msg.error = sanitizeVisibleError(msg.error)
+    setAttemptState(msg, "failed")
+    msg.visible = true
+    msg.includeInContext = false
+    msg.finish = "error"
+    if (!msg.time.completed) msg.time.completed = Date.now()
+    await Session.updateMessage(msg)
+  }
+
   export async function process(input: {
     parentID: string
     messages: MessageV2.WithParts[]
@@ -507,8 +535,7 @@ export namespace SessionCompaction {
         model,
       })
     } catch (error) {
-      setAttemptState(msg, "failed")
-      await Session.updateMessage(msg)
+      await settleFailedAttempt(msg, error)
       throw error
     }
 
@@ -524,8 +551,7 @@ export namespace SessionCompaction {
         await writeMechanicalSummary(msg, input)
         usedMechanicalFallback = true
       } else {
-        setAttemptState(msg, "failed")
-        await Session.updateMessage(msg)
+        await settleFailedAttempt(msg)
         return "stop"
       }
     }
