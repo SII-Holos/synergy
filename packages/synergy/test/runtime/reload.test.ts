@@ -13,15 +13,18 @@ import { GitHubDelivery, GitHubIntegrationConfig } from "../../src/github/types"
 import { GitHubRuntime } from "../../src/github/runtime"
 import { GitHubStore } from "../../src/github/store"
 import { AgentTurn } from "../../src/session/agent-turn"
+import { Agent } from "../../src/agent/agent"
 
 const originalConfigReload = Config.reload
 const originalNotifyConfigHooks = Plugin.notifyConfigHooks
 const originalAgentTurnResize = (AgentTurn as any).resize
+const originalAgentReload = Agent.reload
 
 afterEach(() => {
   Config.reload = originalConfigReload
   ;(Plugin as any).notifyConfigHooks = originalNotifyConfigHooks
   ;(AgentTurn as any).resize = originalAgentTurnResize
+  Agent.reload = originalAgentReload
   GlobalBus.removeAllListeners("event")
   CortexConcurrency.reset()
 })
@@ -331,6 +334,40 @@ describe("runtime.reload", () => {
         await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "hook-notify" })
 
         expect(notify).toHaveBeenCalledWith({ source: "reload", config, changedFields: ["toast"] })
+      },
+    })
+  })
+
+  test("applies known config changes after the writer resets the config cache", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const config = { thinking_model: "deepseek/deepseek-v4-pro" } as Config.Info
+        Config.reload = mock(async () => ({
+          config,
+          changedFields: [],
+          oldConfig: config,
+        })) as typeof Config.reload
+        const reloadAgent = mock(async () => {})
+        Agent.reload = reloadAgent
+        const notify = mock(async () => {})
+        ;(Plugin as any).notifyConfigHooks = notify
+
+        const result = await RuntimeReload.reload(
+          { targets: ["config"], scope: "global", reason: "known config change" },
+          { changedFields: ["thinking_model"] },
+        )
+
+        expect(result.changedFields).toEqual(["thinking_model"])
+        expect(result.liveApplied).toContain("thinking_model")
+        expect(result.cascaded).toContain("agent")
+        expect(reloadAgent).toHaveBeenCalledTimes(1)
+        expect(notify).toHaveBeenCalledWith({
+          source: "reload",
+          config,
+          changedFields: ["thinking_model"],
+        })
       },
     })
   })
