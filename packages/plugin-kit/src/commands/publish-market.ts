@@ -90,20 +90,23 @@ function readTarballPackageName(tarballPath: string): string | undefined {
   return typeof pkg.name === "string" ? pkg.name : undefined
 }
 
-function assertMarketplaceNaming(input: { tarballPath: string; manifest: { name: string; version: string } }) {
+export function assertMarketplaceNaming(input: {
+  tarballPath: string
+  manifest: { id: string; name: string; version: string }
+}) {
   const packageName = readTarballPackageName(input.tarballPath)
   if (!packageName) {
     throw new Error(
       "Marketplace publishing requires package.json inside the plugin tarball. Run `synergy-plugin build` and `synergy-plugin pack`.",
     )
   }
-  if (packageName !== input.manifest.name) {
+  if (packageName !== input.manifest.id) {
     throw new Error(
-      `Marketplace publishing requires package.json name "${packageName}" to match plugin.json name "${input.manifest.name}".`,
+      `Marketplace publishing requires package.json name "${packageName}" to match plugin.json id "${input.manifest.id}".`,
     )
   }
 
-  const expectedArtifact = `${safeArtifactName(input.manifest.name)}-${input.manifest.version}.synergy-plugin.tgz`
+  const expectedArtifact = `${safeArtifactName(input.manifest.id)}-${input.manifest.version}.synergy-plugin.tgz`
   if (path.basename(input.tarballPath) !== expectedArtifact) {
     throw new Error(
       `Marketplace publishing requires artifact name "${expectedArtifact}", got "${path.basename(input.tarballPath)}".`,

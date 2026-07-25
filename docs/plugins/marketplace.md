@@ -36,6 +36,8 @@ synergy-plugin publish-market --repo https://github.com/owner/my-plugin
 
 Publishing is explicit. Build, validate, test, pack, local dev, and install do not mutate a remote registry.
 
+Marketplace package names and artifact basenames derive from `manifest.id`; `manifest.name` is human-readable display text and may differ without changing plugin identity.
+
 plugin-kit signing, registry entry generation, host verification, and approval use the same canonical integrity contract exported by `@ericsanchezok/synergy-plugin/integrity`. A marketplace artifact is invalid when any participant derives either hash through a private payload or serializer.
 
 ## Install and Update Transaction
