@@ -1,5 +1,5 @@
 import net from "node:net"
-import { unlink } from "node:fs/promises"
+import { chmod, unlink } from "node:fs/promises"
 import { SynergyLinkLog } from "../log"
 import { SynergyLinkStore } from "../state/store"
 import { ControlRequestSchema, type SynergyLinkControlRequest, type SynergyLinkControlResponse } from "./schema"
@@ -46,6 +46,7 @@ export class SynergyLinkControlServer {
       this.#server!.once("error", reject)
       this.#server!.listen(this.socketPath)
     })
+    if (process.platform !== "win32") await chmod(this.socketPath, 0o600)
     SynergyLinkLog.info("control.socket.server.started", {
       socketPath: this.socketPath,
     })

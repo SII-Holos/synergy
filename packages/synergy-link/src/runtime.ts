@@ -61,7 +61,7 @@ export class SynergyLinkRuntime {
     const sessions = new SessionManager({
       blockedAgentIDs: state.blockedAgentIDs,
       timeoutMs: state.sessionIdleTimeoutMs,
-      onChange: ({ current, blockedAgentIDs }) => {
+      onChange: async ({ current, blockedAgentIDs }) => {
         if (!runtime?.state) return
         runtime.state.currentSession = current
           ? {
@@ -74,11 +74,7 @@ export class SynergyLinkRuntime {
             }
           : undefined
         runtime.state.blockedAgentIDs = blockedAgentIDs
-        void SynergyLinkStore.saveState(runtime.state).catch((error) => {
-          SynergyLinkLog.error("runtime.session_state.persist_failed", {
-            error: error instanceof Error ? error.message : String(error),
-          })
-        })
+        await SynergyLinkStore.saveState(runtime.state)
       },
     })
     const inbound = new SynergyLinkInboundHandler(rpc, sessions, (input) => runtime.decideSessionOpen(input))
@@ -192,6 +188,7 @@ export class SynergyLinkRuntime {
     this.#clearReconnectTimer()
     await this.#releaseManagedOwner("service_stop")
     this.#stopLoops()
+    await this.rpc.processRegistry.reset()
     if (this.state) {
       this.state.connectionStatus = "disconnected"
       this.state.currentSession = undefined
@@ -228,7 +225,7 @@ export class SynergyLinkRuntime {
     const state = requireState(this)
     state.collaborationEnabled = enabled
     if (!enabled && this.sessions.current()) {
-      this.sessions.kickCurrent(false)
+      await this.sessions.kickCurrent(false)
     }
     await SynergyLinkStore.saveState(state)
     return {
@@ -250,7 +247,7 @@ export class SynergyLinkRuntime {
   }
 
   async kickCurrentSession(block = false) {
-    const kicked = this.sessions.kickCurrent(block)
+    const kicked = await this.sessions.kickCurrent(block)
     const state = requireState(this)
     state.blockedAgentIDs = this.sessions.blockedAgentIDs()
     await SynergyLinkStore.saveState(state)
@@ -345,7 +342,7 @@ export class SynergyLinkRuntime {
     this.#clearReconnectTimer()
     this.#reconnectAttempt = 0
     if (this.sessions.current()) {
-      this.sessions.kickCurrent(false)
+      await this.sessions.kickCurrent(false)
     }
     await this.#client?.disconnect().catch(() => undefined)
     this.#client = null
@@ -589,11 +586,6 @@ export class SynergyLinkRuntime {
         return await this.getSessionStatus()
       case "session.kick":
         return await this.kickCurrentSession(Boolean(request.block))
-      case "synergy_link.execute":
-        return await this.inbound.handle({
-          caller: request.caller,
-          body: request.body,
-        })
       case "approval.get":
         return await this.getApproval()
       case "approval.set":
@@ -756,13 +748,18 @@ export class SynergyLinkRuntime {
   #startLoops() {
     this.#stopLoops()
     const idleTimer = setInterval(() => {
-      const expired = this.sessions.expireIdle()
-      if (expired) {
-        SynergyLinkLog.info("runtime.session.expired", {
-          sessionID: expired.sessionID,
-          remoteAgentID: expired.remoteAgentID,
+      void this.sessions
+        .expireIdle()
+        .then((expired) => {
+          if (!expired) return
+          SynergyLinkLog.info("runtime.session.expired", {
+            sessionID: expired.sessionID,
+            remoteAgentID: expired.remoteAgentID,
+          })
         })
-      }
+        .catch(() => {
+          SynergyLinkLog.error("runtime.session.expire_failed")
+        })
     }, 30_000)
     idleTimer.unref?.()
 

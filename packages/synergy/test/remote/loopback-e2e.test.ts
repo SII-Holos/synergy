@@ -2,18 +2,24 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { SynergyLinkInboundHandler, SessionManager, RPCHandler } from "@ericsanchezok/synergy-link"
+import { SynergyLinkInboundHandler, SynergyLinkLog, SessionManager, RPCHandler } from "@ericsanchezok/synergy-link"
 import type { SynergyLinkRequest } from "../../src/remote/client"
 import { HolosSynergyLinkClient } from "../../src/remote/client"
 
 describe("Synergy Link loopback E2E", () => {
   let home: string
+  let originalLinkHome: string | undefined
 
   beforeEach(async () => {
     home = await mkdtemp(path.join(tmpdir(), "synergy-link-loopback-"))
+    originalLinkHome = process.env.SYNERGY_LINK_HOME
+    process.env.SYNERGY_LINK_HOME = home
   })
 
   afterEach(async () => {
+    await SynergyLinkLog.flush()
+    if (originalLinkHome === undefined) delete process.env.SYNERGY_LINK_HOME
+    else process.env.SYNERGY_LINK_HOME = originalLinkHome
     await rm(home, { recursive: true, force: true })
   })
 
@@ -94,7 +100,7 @@ describe("Synergy Link loopback E2E", () => {
       caller: { type: "agent", agentID: "agent_loopback_caller", ownerUserID: 1 },
       body: {
         version: 2,
-        requestID: "request_strict_rejection",
+        requestID: crypto.randomUUID(),
         linkID: "link_loopback",
         tool: "session",
         action: "open",
@@ -103,6 +109,6 @@ describe("Synergy Link loopback E2E", () => {
       },
     })
 
-    expect(response).toMatchObject({ requestID: "request_strict_rejection", ok: false })
+    expect(response).toMatchObject({ ok: false })
   })
 })

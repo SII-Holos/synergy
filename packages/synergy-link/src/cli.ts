@@ -8,6 +8,10 @@ import { SynergyLinkService } from "./service"
 import { SynergyLinkHolosLogin } from "./holos/login"
 import { SynergyLinkCLIFormat } from "./cli/format"
 
+declare const SYNERGY_LINK_VERSION: string
+
+const VERSION = typeof SYNERGY_LINK_VERSION === "string" ? SYNERGY_LINK_VERSION : "0.0.0-dev"
+
 interface CLIContext {
   json: boolean
   printLogs: boolean
@@ -17,6 +21,7 @@ interface CLIContext {
 
 interface GlobalFlags {
   help: boolean
+  version: boolean
   json: boolean
   printLogs: boolean
 }
@@ -61,6 +66,11 @@ async function main() {
     printLogs: parsed.flags.printLogs,
     invocationEntry: process.argv[1],
     launcherPath: process.execPath,
+  }
+
+  if (parsed.flags.version) {
+    console.log(VERSION)
+    return
   }
 
   if (parsed.flags.help || parsed.command.length === 0) {
@@ -342,9 +352,16 @@ async function reconnect(args: string[]): Promise<CommandResult> {
     return invalidUsage("Usage: synergy-link reconnect")
   }
   const result = await SynergyLinkCLIBackend.reconnect()
+  if (!result.requested || result.succeeded === false) {
+    return {
+      ok: false,
+      message: result.reason ?? "Synergy Link reconnect failed.",
+      data: result,
+    }
+  }
   return {
     ok: true,
-    message: "Reconnect requested.",
+    message: result.succeeded === true ? "Reconnected to Holos." : "Reconnect requested.",
     data: result,
   }
 }
@@ -577,17 +594,20 @@ function unknownCommand(command: string[]): CommandFailure {
 
 function parseArgv(
   argv: string[],
-):
-  | { ok: true; command: string[]; flags: { help: boolean; json: boolean; printLogs: boolean } }
-  | { ok: false; error: CommandFailure } {
+): { ok: true; command: string[]; flags: GlobalFlags } | { ok: false; error: CommandFailure } {
   const command: string[] = []
   let help = false
+  let version = false
   let json = false
   let printLogs = false
 
   for (const token of argv) {
     if (token === "--help" || token === "-h") {
       help = true
+      continue
+    }
+    if (token === "--version" || token === "-v") {
+      version = true
       continue
     }
     if (token === "--json") {
@@ -619,7 +639,7 @@ function parseArgv(
   return {
     ok: true,
     command,
-    flags: { help, json, printLogs },
+    flags: { help, version, json, printLogs },
   }
 }
 
@@ -711,6 +731,7 @@ function rootUsage() {
     "  label <get|set <label>|clear>",
     "",
     "Options:",
+    "  --version, -v Show version",
     "  --json        Emit machine-readable output where supported",
     "  --help, -h    Show help",
   ]

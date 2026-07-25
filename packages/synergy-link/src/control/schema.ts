@@ -46,11 +46,6 @@ export const ControlRequestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("requests.deny"), requestID: z.string() }),
   z.object({ action: z.literal("session.status") }),
   z.object({ action: z.literal("session.kick"), block: z.boolean().optional() }),
-  z.object({
-    action: z.literal("synergy_link.execute"),
-    caller: z.unknown(),
-    body: z.unknown(),
-  }),
   z.object({ action: z.literal("approval.get") }),
   z.object({ action: z.literal("approval.set"), mode: z.enum(["auto", "manual", "trusted-only"]) }),
   z.object({ action: z.literal("trust.list") }),

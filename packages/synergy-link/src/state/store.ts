@@ -1,7 +1,7 @@
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { SynergyLinkOwnerRegistry, type SynergyLinkOwnerRegistryState } from "../owner-registry"
 
 export type SynergyLinkApprovalMode = "auto" | "manual" | "trusted-only"
@@ -126,20 +126,31 @@ export namespace SynergyLinkStore {
   }
 
   export async function ensureRoot(rootPath = root()): Promise<void> {
-    await mkdir(rootPath, { recursive: true, mode: 0o700 })
-    await chmod(rootPath, 0o700)
     const logsDirectory = path.dirname(logsPathForRoot(rootPath))
+    await mkdir(rootPath, { recursive: true, mode: 0o700 })
     await mkdir(logsDirectory, { recursive: true, mode: 0o700 })
-    await chmod(logsDirectory, 0o700)
+    if (process.platform !== "win32") {
+      await Promise.all([chmod(rootPath, 0o700), chmod(logsDirectory, 0o700)])
+    }
   }
 
   export async function loadState(): Promise<SynergyLinkState> {
     const rootPath = root()
+    const filepath = statePathForRoot(rootPath)
+    let raw: string
     try {
-      const parsed = JSON.parse(await readFile(statePathForRoot(rootPath), "utf8")) as Partial<SynergyLinkState>
+      raw = await readFile(filepath, "utf8")
+    } catch (error) {
+      if (isEnoent(error)) return hydrateState(undefined, rootPath)
+      throw error
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (!isPartialState(parsed)) throw new Error("State root must be a JSON object.")
       return hydrateState(parsed, rootPath)
-    } catch {
-      return hydrateState(undefined, rootPath)
+    } catch (error) {
+      throw new Error(`Failed to parse Synergy Link state at ${filepath}: ${errorMessage(error)}`, { cause: error })
     }
   }
 
@@ -177,19 +188,29 @@ export namespace SynergyLinkStore {
 
 async function writeRootFile(rootPath: string, filepath: string, content: string): Promise<void> {
   await SynergyLinkStore.ensureRoot(rootPath)
+  const temporaryPath = `${filepath}.${process.pid}.${crypto.randomUUID()}.tmp`
   try {
-    await writeFile(filepath, content, { mode: 0o600 })
-    await chmod(filepath, 0o600)
+    await writeTemporaryFile()
   } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined)
     if (!isEnoent(error)) throw error
     await SynergyLinkStore.ensureRoot(rootPath)
-    await writeFile(filepath, content, { mode: 0o600 })
-    await chmod(filepath, 0o600)
+    await writeTemporaryFile()
+  }
+
+  async function writeTemporaryFile() {
+    await writeFile(temporaryPath, content, { mode: 0o600 })
+    await rename(temporaryPath, filepath)
+    if (process.platform !== "win32") await chmod(filepath, 0o600)
   }
 }
 
 function isEnoent(error: unknown): error is NodeJS.ErrnoException {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function statePathForRoot(rootPath: string): string {

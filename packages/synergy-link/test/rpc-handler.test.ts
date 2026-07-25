@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import { RPCHandler } from "../src/rpc/handler"
 
 describe("synergy-link rpc handler", () => {
@@ -25,6 +28,44 @@ describe("synergy-link rpc handler", () => {
     const metadata = result.result.metadata as { processId?: string; background?: boolean }
     expect(metadata.processId).toBeTruthy()
     expect(metadata.background).toBe(true)
+  })
+
+  test("reset waits for background process trees to terminate", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-process-reset-"))
+    const readyPath = path.join(root, "ready")
+    const stoppedPath = path.join(root, "stopped")
+    const handler = new RPCHandler({ linkID: "link_test" })
+
+    try {
+      const result = await handler.handle({
+        version: 2,
+        requestID: "req_reset",
+        linkID: "link_test",
+        tool: "bash",
+        action: "execute",
+        sessionID: "session_test",
+        payload: {
+          command: `trap 'printf stopped > "${stoppedPath}"; exit 0' TERM; printf ready > "${readyPath}"; while :; do sleep 1; done`,
+          description: "reset cleanup test",
+          workdir: root,
+          background: true,
+        },
+      })
+      expect(result.ok).toBe(true)
+
+      for (let attempt = 0; attempt < 100 && !(await Bun.file(readyPath).exists()); attempt += 1) {
+        await Bun.sleep(10)
+      }
+      expect(await Bun.file(readyPath).exists()).toBe(true)
+
+      await handler.processRegistry.reset()
+
+      expect(await Bun.file(stoppedPath).exists()).toBe(true)
+    } finally {
+      await handler.processRegistry.reset()
+      await Bun.sleep(250)
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   test("process list includes backgrounded process", async () => {

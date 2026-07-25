@@ -34,7 +34,7 @@ export class SynergyLinkInboundHandler {
         return this.#handleSession(caller, request)
       }
 
-      this.sessions.validateCaller(caller, request.sessionID)
+      await this.sessions.validateCaller(caller, request.sessionID)
       const result = await this.rpc.handle(request)
       SynergyLinkLog.info("inbound.request.completed", {
         callerAgentID: caller.agentID,

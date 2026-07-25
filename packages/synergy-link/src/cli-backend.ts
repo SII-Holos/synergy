@@ -26,6 +26,13 @@ interface UnsupportedResult {
 
 type AvailabilityResult<T> = SupportedResult<T> | UnsupportedResult
 
+export interface SynergyLinkReconnectResult {
+  requested: boolean
+  succeeded?: boolean
+  reason?: string
+  service: Awaited<ReturnType<typeof SynergyLinkService.status>>
+}
+
 export namespace SynergyLinkCLIBackend {
   export async function status() {
     if (await SynergyLinkControlClient.isAvailable()) {
@@ -127,9 +134,9 @@ export namespace SynergyLinkCLIBackend {
     }
   }
 
-  export async function reconnect() {
+  export async function reconnect(): Promise<SynergyLinkReconnectResult> {
     if (await SynergyLinkControlClient.isAvailable()) {
-      return await SynergyLinkControlClient.request({ action: "runtime.reconnect" })
+      return await SynergyLinkControlClient.request<SynergyLinkReconnectResult>({ action: "runtime.reconnect" })
     }
     return {
       requested: false,

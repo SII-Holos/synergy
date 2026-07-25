@@ -19,15 +19,15 @@ describe("Synergy Link target store", () => {
     expect(await SynergyLinkTargetStore.list()).toEqual([created])
   })
 
-  test("skips malformed records without hiding healthy targets", async () => {
-    const created = await SynergyLinkTargetStore.create({
+  test("reports malformed records instead of silently hiding them", async () => {
+    await SynergyLinkTargetStore.create({
       name: "Linux Host",
       targetAgentID: "agent_linux",
       linkID: "link_linux",
     })
     await Storage.write(StoragePath.synergyLinkTarget("target_malformed"), { name: 42 })
 
-    expect(await SynergyLinkTargetStore.list()).toEqual([created])
+    await expect(SynergyLinkTargetStore.list()).rejects.toThrow("Invalid persisted Synergy Link target")
   })
 
   test("updates and removes one target without rewriting peers", async () => {
