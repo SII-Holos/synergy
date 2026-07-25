@@ -44,7 +44,7 @@ Download a platform installer from [GitHub Releases](https://github.com/SII-Holo
 
 The recommended installers include the Desktop app and expose its packaged runtime as the `synergy` CLI. Portable artifacts are also published but do not configure a system CLI.
 
-Released packages do not require Rust. Rust is used only to build the Linux and Windows sandbox helpers. The Linux `.deb` installs Bubblewrap as a package dependency; Linux portable and CLI archive users must install `bubblewrap` with their system package manager. Windows Desktop and CLI releases currently support x64.
+Released packages do not require Rust. Rust is used only to build the Linux and Windows sandbox helpers. The Linux `.deb` installs Bubblewrap as a package dependency. On supported distributions, the interactive CLI installer offers to install a missing `bubblewrap` package with `apt-get`, `dnf`, or `pacman`; declining the prompt, running non-interactively, or using a portable archive leaves the package as a documented system prerequisite. Windows Desktop and CLI releases currently support x64.
 
 ### CLI and Web
 
@@ -60,9 +60,9 @@ Install a specific release:
 curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version <version>
 ```
 
-The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`. It does not install the Electron Desktop app.
+The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`. It does not install the Electron Desktop app. After installation, run `synergy` directly from any directory.
 
-Desktop Browser presentation includes Electron's Chromium. Headless Browser tools used directly by the CLI/server require an installed Chrome or Chromium; set `CHROMIUM_PATH` when it is not in a standard system or Playwright cache location.
+Desktop Browser presentation includes Electron's Chromium. For headless Browser tools used directly by the CLI/server, run `synergy browser install` to install verified managed Chromium and `synergy browser doctor` to diagnose discovery and launch readiness. You can instead set `CHROMIUM_PATH` to a separately installed executable.
 
 Configure a model provider, start the background runtime, and open the Web client:
 

@@ -3,10 +3,13 @@ import {
   browserHostArtifactName,
   browserHostManifestName,
   browserHostManifestSignatureName,
+  chromiumManifestName,
+  chromiumManifestSignatureName,
   desktopChecksumsName,
   desktopPortableArtifactNames,
   desktopPrimaryArtifactName,
   expectedBrowserHostArtifacts,
+  expectedChromiumManifestArtifacts,
   expectedDesktopPrimaryArtifacts,
   isDesktopUpdateMetadata,
 } from "../src/release-assets.js"
@@ -51,5 +54,13 @@ describe("desktop release asset names", () => {
       "synergy-browser-host-linux-arm64-1.2.3.manifest.json.sig",
     )
     expect(expectedBrowserHostArtifacts("1.2.3")).toHaveLength(18)
+  })
+  test("names all supported signed Chromium manifests", () => {
+    expect(chromiumManifestName("1.2.3", "darwin", "arm64")).toBe("synergy-chromium-darwin-arm64-1.2.3.manifest.json")
+    expect(chromiumManifestSignatureName("1.2.3", "linux", "x64")).toBe(
+      "synergy-chromium-linux-x64-1.2.3.manifest.json.sig",
+    )
+    expect(expectedChromiumManifestArtifacts("1.2.3")).toHaveLength(10)
+    expect(expectedChromiumManifestArtifacts("1.2.3")).not.toContain("synergy-chromium-win32-arm64-1.2.3.manifest.json")
   })
 })
