@@ -4360,6 +4360,10 @@ msgstr "Show active"
 msgid "app.note.filter.showArchived"
 msgstr "Show archived"
 
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.agentUnavailable"
+msgstr "Unavailable"
+
 #. Run menu / models
 msgid "app.note.run.blueprint"
 msgstr "Run Blueprint"
@@ -4379,6 +4383,14 @@ msgstr "Run in the session you are viewing."
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.currentSessionHint"
 msgstr "Open a session in this Blueprint scope first."
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgent"
+msgstr "Execution agent"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgentChooseHelp"
+msgstr "Choose which agent executes this Blueprint."
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.label"
@@ -4401,12 +4413,28 @@ msgid "app.note.run.newSessionDesc"
 msgstr "Create a fresh session in this scope and start immediately."
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.noAgentResults"
+msgstr "No agent results"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.noModelResults"
 msgstr "No model results"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.searchAgents"
+msgstr "Search agents"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.searchModels"
 msgstr "Search models"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectedAgentUnavailable"
+msgstr "The selected agent is unavailable. Go back and choose another."
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectExecutionAgent"
+msgstr "Select execution agent"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.selectModel"
@@ -4535,6 +4563,10 @@ msgstr "Video"
 #. Toolbar
 msgid "app.note.toolbar.back"
 msgstr "Back"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.toolbar.backToAgent"
+msgstr "Back to agent selection"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.toolbar.backToSession"

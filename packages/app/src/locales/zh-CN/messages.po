@@ -4360,6 +4360,10 @@ msgstr "显示活动项"
 msgid "app.note.filter.showArchived"
 msgstr "显示已归档项"
 
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.agentUnavailable"
+msgstr "不可用"
+
 #. Run menu / models
 msgid "app.note.run.blueprint"
 msgstr "运行蓝图"
@@ -4379,6 +4383,14 @@ msgstr "在当前查看的会话中运行。"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.currentSessionHint"
 msgstr "请先在此蓝图作用域中打开一个会话。"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgent"
+msgstr "执行智能体"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgentChooseHelp"
+msgstr "选择由哪个智能体执行此蓝图。"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.label"
@@ -4401,12 +4413,28 @@ msgid "app.note.run.newSessionDesc"
 msgstr "在此作用域中新建会话并立即开始。"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.noAgentResults"
+msgstr "无智能体结果"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.noModelResults"
 msgstr "无模型结果"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.searchAgents"
+msgstr "搜索智能体"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.searchModels"
 msgstr "搜索模型"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectedAgentUnavailable"
+msgstr "所选智能体不可用。请返回并选择其他智能体。"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectExecutionAgent"
+msgstr "选择执行智能体"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.selectModel"
@@ -4535,6 +4563,10 @@ msgstr "视频"
 #. Toolbar
 msgid "app.note.toolbar.back"
 msgstr "后退"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.toolbar.backToAgent"
+msgstr "返回智能体选择"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.toolbar.backToSession"
