@@ -12,7 +12,7 @@ import {
   githubRepoSlug as sharedGithubRepoSlug,
   normalizeGitHubRepoUrl,
 } from "@ericsanchezok/synergy-plugin/market"
-import { computeManifestHash, computePermissionsHash } from "./hash.js"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { readSignatureFile } from "./signature.js"
 import { sha256File } from "./crypto.js"
 import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets.js"

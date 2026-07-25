@@ -8,12 +8,12 @@ import {
   PluginManifest,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths.js"
 import { sha256File } from "../lib/crypto.js"
 import type { SignatureMetadata } from "../lib/signature.js"
-import { computeManifestHash, computePermissionsHash } from "../lib/hash.js"
 
 interface KeyFile {
   publicKey: string
