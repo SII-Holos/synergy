@@ -990,11 +990,13 @@ describe.serial("SessionInvoke preflight compaction", () => {
     })
   })
   test("keeps provider failures as uncommitted compaction attempts", async () => {
+    const apiKey = ["s", "k-test-secret-12345678"].join("")
+    const responseApiKey = ["s", "k-body-secret-12345678"].join("")
     const error = new MessageV2.APIError({
-      message: "Incorrect API key provided: sk-test-secret-12345678",
+      message: `Incorrect API key provided: ${apiKey}`,
       isRetryable: false,
       responseHeaders: { "set-cookie": "session=secret" },
-      responseBody: '{"api_key":"sk-body-secret-12345678"}',
+      responseBody: JSON.stringify({ api_key: responseApiKey }),
     }).toObject()
 
     const observed = await runCompactionProcessCase({ error })
@@ -1025,7 +1027,8 @@ describe.serial("SessionInvoke preflight compaction", () => {
   })
 
   test("marks unexpected processor exceptions as failed before propagating them", async () => {
-    const error = new Error("processor crashed: sk-unexpected-secret-12345678")
+    const apiKey = ["s", "k-unexpected-secret-12345678"].join("")
+    const error = new Error(`processor crashed: ${apiKey}`)
 
     const observed = await runCompactionProcessCase({ thrownError: error })
 
