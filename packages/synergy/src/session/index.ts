@@ -594,36 +594,97 @@ export namespace Session {
     return withClientInfo(info)
   })
 
-  export async function clearCompletionNotice(id: string) {
-    const session = await SessionManager.requireSession(id)
-    const scope = session.scope as Scope
-    const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
-    const before = await Storage.read<Info>(key)
-    if (!before.completionNotice.unread && !before.completionNotice.unreadCount) return withRuntimeInfo(before)
+  const completionNoticeMutations = new Map<string, Promise<void>>()
 
-    const result = await Storage.update<Info>(key, (draft) => {
-      draft.completionNotice.unread = false
-      draft.completionNotice.unreadCount = 0
+  function serializeCompletionNoticeMutation<T>(id: string, mutation: () => Promise<T>): Promise<T> {
+    const previous = completionNoticeMutations.get(id) ?? Promise.resolve()
+    const current = previous.then(mutation, mutation)
+    const settled = current.then(
+      () => undefined,
+      () => undefined,
+    )
+    completionNoticeMutations.set(id, settled)
+    void settled.finally(() => {
+      if (completionNoticeMutations.get(id) === settled) completionNoticeMutations.delete(id)
     })
-
-    const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result))
-    await publishInfo(SessionEvent.Updated, result, navEntry)
-    return withRuntimeInfo(result)
+    return current
   }
-  export async function recordCompletionNotice(id: string, options?: { publishEvent?: boolean }) {
-    let unreadCount: number | undefined
-    const result = await update(id, (draft) => {
-      if (draft.time.archived || draft.completionNotice.silent) return
-      const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
-      const next = Math.min(Number.MAX_SAFE_INTEGER, current + 1)
-      draft.completionNotice.unread = true
-      draft.completionNotice.unreadCount = next
-      if (next !== current) unreadCount = next
-    })
-    if (unreadCount !== undefined && options?.publishEvent !== false) {
-      await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount })
+
+  async function acknowledgeCompletionNoticeResult(
+    id: string,
+    acknowledgedCount: number,
+    options?: { repairNavOnNoop?: boolean },
+  ) {
+    if (!Number.isSafeInteger(acknowledgedCount) || acknowledgedCount < 0) {
+      throw new TypeError("acknowledgedCount must be a non-negative safe integer")
     }
-    return result
+
+    return serializeCompletionNoticeMutation(id, async () => {
+      const session = await SessionManager.requireSession(id)
+      const scope = session.scope as Scope
+      const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
+      let actualAcknowledgedCount = 0
+      const result = await Storage.update<Info>(key, (draft) => {
+        const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
+        const next = Math.max(0, current - acknowledgedCount)
+        actualAcknowledgedCount = current - next
+        draft.completionNotice.unread = next > 0
+        draft.completionNotice.unreadCount = next
+      })
+      if (actualAcknowledgedCount === 0 && !options?.repairNavOnNoop) {
+        return { info: await withRuntimeInfo(result), acknowledgedCount: 0 }
+      }
+
+      const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result))
+      await publishInfo(SessionEvent.Updated, result, navEntry)
+      return { info: await withRuntimeInfo(result), acknowledgedCount: actualAcknowledgedCount }
+    })
+  }
+
+  export async function acknowledgeCompletionNotice(id: string, acknowledgedCount: number) {
+    return (await acknowledgeCompletionNoticeResult(id, acknowledgedCount)).info
+  }
+
+  export async function batchAcknowledgeCompletionNotices() {
+    const entries = await SessionNav.listUnreadCompletionEntries()
+    let acknowledgedCount = 0
+    let modifiedSessionCount = 0
+    let failedSessionCount = 0
+    for (const entry of entries) {
+      const capturedCount = entry.completionNotice.unreadCount
+      if (capturedCount === 0) continue
+      try {
+        const result = await acknowledgeCompletionNoticeResult(entry.id, capturedCount, { repairNavOnNoop: true })
+        acknowledgedCount += result.acknowledgedCount
+        if (result.acknowledgedCount > 0) modifiedSessionCount++
+      } catch (error) {
+        failedSessionCount++
+        log.warn("failed to acknowledge completion notice", { sessionID: entry.id, error })
+      }
+    }
+    return { acknowledgedCount, modifiedSessionCount, failedSessionCount }
+  }
+
+  export async function clearCompletionNotice(id: string) {
+    return acknowledgeCompletionNotice(id, Number.MAX_SAFE_INTEGER)
+  }
+
+  export async function recordCompletionNotice(id: string, options?: { publishEvent?: boolean }) {
+    return serializeCompletionNoticeMutation(id, async () => {
+      let unreadCount: number | undefined
+      const result = await update(id, (draft) => {
+        if (draft.time.archived || draft.completionNotice.silent) return
+        const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
+        const next = Math.min(Number.MAX_SAFE_INTEGER, current + 1)
+        draft.completionNotice.unread = true
+        draft.completionNotice.unreadCount = next
+        if (next !== current) unreadCount = next
+      })
+      if (unreadCount !== undefined && options?.publishEvent !== false) {
+        await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount })
+      }
+      return result
+    })
   }
 
   export async function update(id: string, editor: (session: Info) => void) {

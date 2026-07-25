@@ -161,6 +161,7 @@ import type {
   GlobalGitInitErrors,
   GlobalGitInitResponses,
   GlobalHealthResponses,
+  GlobalNavAcknowledgeCompletionsResponses,
   GlobalNavPinnedResponses,
   GlobalNavRecentResponses,
   GlobalPathsGetResponses,
@@ -3047,6 +3048,18 @@ export class Nav extends HeyApiClient {
       url: "/global/recent",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Acknowledge completion notices across all scopes
+   *
+   * Acknowledge completion notices for non-archived root sessions across all scopes.
+   */
+  public acknowledgeCompletions<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<GlobalNavAcknowledgeCompletionsResponses, unknown, ThrowOnError>({
+      url: "/global/acknowledge-completions",
+      ...options,
     })
   }
 

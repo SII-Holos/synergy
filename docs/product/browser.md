@@ -39,6 +39,12 @@ Both represent the same session-owned page and command model. Remote presentatio
 
 Interactive Browser presentation is not an iframe, pseudo-tab, or screenshot-stream fallback. Screenshots remain deliberate artifacts for inspection and agent tools, not the transport for interactive browsing.
 
+## Private-Network Web Access
+
+The remote Web presentation remains available when the Synergy UI is served over ordinary HTTP on a trusted private or overlay network. A non-loopback HTTP origin is not a browser Secure Context, so the App and WebRTC viewer use capability-safe ordinary identifiers rather than requiring `crypto.randomUUID()` during startup or client construction.
+
+Secure-Context-only browser features degrade at their owning action instead of disabling the Browser workspace or crashing the application. Common copy actions use the shared clipboard fallback, clipboard reads or unsupported plugin clipboard actions report a local failure, and system notifications remain silent when the browser API or permission is unavailable. Security-sensitive randomness never uses a weak fallback.
+
 ## Navigation and Network
 
 User address-bar navigation and agent navigation use the same Chromium-backed page. HTTP and HTTPS targets follow the machine's normal network routing, including localhost, private development services, direct IP addresses, and TUN/Fake-IP environments. Agent calls remain governed by the ordinary Browser interaction and network-request capabilities; Browser does not add a second private-network permission.

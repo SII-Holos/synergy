@@ -1416,6 +1416,12 @@ export type GlobalRecentResponse = {
   unreadCompletionCount: number
 }
 
+export type GlobalAcknowledgeCompletionsResponse = {
+  acknowledgedCount: number
+  modifiedSessionCount: number
+  failedSessionCount: number
+}
+
 export type PinnedResponse = {
   items: Array<SessionNavEntry>
   total: number
@@ -9415,6 +9421,23 @@ export type GlobalNavRecentResponses = {
 }
 
 export type GlobalNavRecentResponse = GlobalNavRecentResponses[keyof GlobalNavRecentResponses]
+
+export type GlobalNavAcknowledgeCompletionsData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/acknowledge-completions"
+}
+
+export type GlobalNavAcknowledgeCompletionsResponses = {
+  /**
+   * Completion notices acknowledged
+   */
+  200: GlobalAcknowledgeCompletionsResponse
+}
+
+export type GlobalNavAcknowledgeCompletionsResponse =
+  GlobalNavAcknowledgeCompletionsResponses[keyof GlobalNavAcknowledgeCompletionsResponses]
 
 export type GlobalNavPinnedData = {
   body?: never

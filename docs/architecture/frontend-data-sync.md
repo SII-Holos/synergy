@@ -93,15 +93,16 @@ The `messages` array in the store contains only the visible window messages, not
 
 ### Page size and cap
 
-- Frontend page loads use `limit: 200`; the store cap is 500.
-- The store's `DEFAULT_CAP` of 500 applies to both latest loads and history prepends.
+- Frontend page loads use `limit: 200`; the store primary-message cap is 500.
+- The store's `DEFAULT_CAP` of 500 applies to primary messages in latest loads and to the full retained set during history prepends. Latest mode additionally retains dependency roots referenced by those primary messages, so the visible window may exceed 500 entries without losing a turn anchor.
 
 ### Latest mode
 
 Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming `message.updated` events reconcile into the window:
 
 - If the message already exists, the window updates in place.
-- If the message is new and the window is in latest mode, it is inserted and the window is capped by dropping the oldest messages.
+- If the message is new and the window is in latest mode, it is inserted and the primary window is capped by dropping the oldest unreferenced messages.
+- Any root referenced through `rootID` by a retained primary message stays in the window outside the cap. Snapshot `referencedRoots` and live event reconciliation preserve the same dependency-root closure so non-root user guidance always retains its `SessionTurn` anchor.
 - Dropped message IDs release their part buckets from the store.
 
 The window cursor (`nextCursor`) is recorded from each page response so older pages can be loaded later.
@@ -326,9 +327,9 @@ This removes quadratic full-part disk writes while keeping snapshot reads and te
 
 ## Compaction Attempt Projection
 
-Compaction assistants remain canonically hidden until a non-empty summary commits, but the shared timeline makes one narrow presentation exception: a hidden compaction assistant whose persisted `metadata.compactionAttempt.state` is `running` projects as the running compaction card. Raw streamed compaction text stays suppressed behind that card. The same message ID and timeline key remain mounted when the backend changes the attempt to `committed`, makes the message visible, and adds the recovery part.
+Compaction assistants remain canonically hidden while running, but the shared timeline makes a narrow presentation exception: a hidden compaction assistant whose persisted `metadata.compactionAttempt.state` is `running` or `failed` projects as the compaction card. Raw streamed compaction text stays suppressed behind that card. The same message ID and timeline key remain mounted when the backend resolves the attempt: `committed` makes the message visible and adds the recovery part, while `failed` persists a visible terminal error on the existing message.
 
-The processor's terminal message checkpoint does not end this presentation lifecycle. The compaction owner resolves `running` to `committed`, `failed`, or `empty`; hidden failed and empty attempts therefore disappear instead of remaining as stale progress. Ordinary `visible = false` messages never receive this exception.
+The processor's terminal message checkpoint does not end this presentation lifecycle. The compaction owner resolves `running` to `committed`, `failed`, or `empty`; failed attempts replace progress in place with the dedicated error presentation, while hidden empty attempts disappear. Ordinary `visible = false` messages never receive this exception.
 
 ## Compaction Swap
 

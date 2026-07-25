@@ -77,6 +77,14 @@ See the [development reference](docs/reference/development.md) for source modes,
    bun run localization:check
    ```
 
+   Browser capability or App bootstrap changes must also verify the source boundary and a genuine non-loopback HTTP origin:
+
+   ```bash
+   bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
+   bun run --cwd packages/app build
+   bun packages/app/script/private-http-smoke.ts
+   ```
+
 3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
 
 4. **Open your PR against `dev`.** Describe what you changed and why. If it addresses an open issue, reference it.

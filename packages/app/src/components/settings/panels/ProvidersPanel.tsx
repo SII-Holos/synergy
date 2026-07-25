@@ -324,11 +324,15 @@ export function ProvidersPanel(props: {
                     when={provider().health?.recovery !== "update_environment"}
                     fallback={<p class="providers-connect-copy">{_(envRecoveryFallbackDesc)}</p>}
                   >
-                    <ProviderConnectionFlow
-                      providerID={provider().id}
-                      intent={providerNeedsAction(provider().health) ? "recover" : "connect"}
-                      compact
-                    />
+                    <Show keyed when={provider().id}>
+                      {(providerID) => (
+                        <ProviderConnectionFlow
+                          providerID={providerID}
+                          intent={providerNeedsAction(provider().health) ? "recover" : "connect"}
+                          compact
+                        />
+                      )}
+                    </Show>
                   </Show>
                 </div>
               </div>

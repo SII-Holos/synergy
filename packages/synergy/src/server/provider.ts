@@ -316,6 +316,7 @@ export const ProviderRoute = new Hono()
         providerID,
         method,
         code,
+        signal: c.req.raw.signal,
       })
       return c.json(true)
     },

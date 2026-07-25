@@ -5,6 +5,7 @@ import path from "path"
 import { Server } from "../../src/server/server"
 import { Auth } from "../../src/provider/api-key"
 import { CodexProvider } from "../../src/provider/codex"
+import { CopilotProvider } from "../../src/provider/copilot"
 import { tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
 import { ProviderCatalog } from "../../src/provider/catalog"
@@ -288,7 +289,7 @@ test("/provider returns custom providers without recommendation metadata", async
   expect(body.profiles["custom-provider"].recommendation).toBeUndefined()
 })
 
-test("/provider/auth exposes Codex OAuth and import methods", async () => {
+test("/provider/auth exposes built-in OAuth and alternate credential methods", async () => {
   const app = Server.App()
   const response = await app.request("/provider/auth")
   expect(response.status).toBe(200)
@@ -297,6 +298,14 @@ test("/provider/auth exposes Codex OAuth and import methods", async () => {
   expect(body[CodexProvider.PROVIDER_ID]).toEqual([
     { type: "oauth", label: "Login with ChatGPT" },
     { type: "import", label: "Import Codex CLI credentials" },
+  ])
+  expect(body[CopilotProvider.PROVIDER_ID]).toEqual([
+    { type: "oauth", label: "Login with GitHub Copilot" },
+    { type: "api", label: "GitHub token" },
+  ])
+  expect(body[CopilotProvider.ENTERPRISE_PROVIDER_ID]).toEqual([
+    { type: "oauth", label: "Login with GitHub Copilot Enterprise" },
+    { type: "api", label: "GitHub token" },
   ])
 })
 
