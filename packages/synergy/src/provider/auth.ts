@@ -17,6 +17,13 @@ import { Provider } from "./provider"
 import { RuntimeReload } from "@/runtime/reload"
 import { authHook } from "@/plugin/auth-provider"
 
+type AutoOauthResult = Extract<AuthOuathResult, { method: "auto" }>
+type PendingOauthResult =
+  | Extract<AuthOuathResult, { method: "code" }>
+  | (Omit<AutoOauthResult, "callback"> & {
+      callback(signal?: AbortSignal): ReturnType<AutoOauthResult["callback"]>
+    })
+
 export namespace ProviderAuth {
   async function reloadProvider(reason: string) {
     if (ScopeContext.tryScope()) {
@@ -133,7 +140,7 @@ export namespace ProviderAuth {
       },
     }
     const methods: Record<string, AuthHook> = { ...builtinMethods, ...pluginMethods }
-    return { methods, pending: {} as Record<string, AuthOuathResult> }
+    return { methods, pending: {} as Record<string, PendingOauthResult> }
   })
 
   export const Method = z
@@ -246,22 +253,23 @@ export namespace ProviderAuth {
       providerID: z.string(),
       method: z.number(),
       code: z.string().optional(),
+      signal: z.instanceof(AbortSignal).optional(),
     }),
     async (input) => {
-      const match = await state().then((s) => s.pending[input.providerID])
+      const s = await state()
+      const match = s.pending[input.providerID]
       if (!match) throw new OauthMissing({ providerID: input.providerID })
       let result
-
       if (match.method === "code") {
         if (!input.code) throw new OauthCodeMissing({ providerID: input.providerID })
         result = await match.callback(input.code)
+      } else {
+        delete s.pending[input.providerID]
+        result = await match.callback(input.signal)
       }
 
-      if (match.method === "auto") {
-        result = await match.callback()
-      }
-
-      if (result?.type === "success") {
+      if (result.type === "success") {
+        if (match.method === "code") delete s.pending[input.providerID]
         await persistResult(input.providerID, result, "web")
         return
       }

@@ -116,7 +116,7 @@ export namespace ExperienceEncoder {
     const userInfo = userMsg?.info as MessageV2.User | undefined
     const ctx: AgentContext = {
       sessionID,
-      userMsg: userInfo ?? ({} as MessageV2.User),
+      userMsg: userInfo,
       model,
       learning: effectiveLearning,
       signal,
@@ -157,7 +157,6 @@ export namespace ExperienceEncoder {
 
     const ctx: AgentContext = {
       sessionID,
-      userMsg: {} as MessageV2.User,
       model,
       learning: effectiveLearning,
       signal,
@@ -518,7 +517,7 @@ export namespace ExperienceEncoder {
 
   interface AgentContext {
     sessionID: string
-    userMsg: MessageV2.User
+    userMsg?: MessageV2.User
     model: Provider.Model | undefined
     learning: Required<Config.Learning>
     signal?: AbortSignal
@@ -535,7 +534,6 @@ export namespace ExperienceEncoder {
   }
 
   async function runAgent(agentName: string, ctx: AgentContext, content: string): Promise<string> {
-    if (!ctx.userMsg) return ""
     try {
       const result = await AgentCall.text({
         agent: agentName,

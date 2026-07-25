@@ -23,6 +23,7 @@ import {
   ApprovalApproveBodySchema,
   ApprovalReviewSchema,
 } from "../plugin/consent/approval-service"
+import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
 import { PluginInstallationTransaction } from "../plugin/installation-transaction"
 import { reload } from "../plugin/lifecycle"
 import { readApprovals } from "../plugin/consent/approval-store"
@@ -357,6 +358,8 @@ export const ApiPluginRoute = new Hono()
         if (err instanceof ApprovalPluginNotFoundError)
           return context.json({ code: err.code, message: err.message }, 404)
         if (err instanceof ApprovalInvalidError) return context.json({ code: err.code, message: err.message }, 422)
+        if (err instanceof PluginMarketplaceRegistry.ArtifactVerificationError)
+          return context.json({ code: err.code, message: err.message }, 422)
         throw err
       }
     },
@@ -400,6 +403,8 @@ export const ApiPluginRoute = new Hono()
         }
         if (err instanceof ApprovalPluginNotFoundError)
           return context.json({ code: err.code, message: err.message }, 422)
+        if (err instanceof PluginMarketplaceRegistry.ArtifactVerificationError)
+          return context.json({ code: err.code, message: err.message }, 422)
         throw err
       }
     },
@@ -442,6 +447,8 @@ export const ApiPluginRoute = new Hono()
           }
         }
         if (err instanceof ApprovalPluginNotFoundError)
+          return context.json({ code: err.code, message: err.message }, 422)
+        if (err instanceof PluginMarketplaceRegistry.ArtifactVerificationError)
           return context.json({ code: err.code, message: err.message }, 422)
         throw err
       }

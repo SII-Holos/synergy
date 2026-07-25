@@ -17982,6 +17982,30 @@ msgid "ui.compaction.complete"
 msgstr "上下文已整理"
 
 #. js-lingui-explicit-id
+msgid "ui.compaction.copied"
+msgstr "已复制"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyDetails"
+msgstr "复制详情"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyFailure"
+msgstr "无法复制上下文压缩错误详情。"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.errorDetails"
+msgstr "错误详情"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failed"
+msgstr "上下文压缩失败"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failedDescription"
+msgstr "无法压缩此会话的上下文"
+
+#. js-lingui-explicit-id
 msgid "ui.compaction.mechanicalWarning"
 msgstr "由于上下文限制，此摘要由机械方式生成。部分细节可能缺失。"
 

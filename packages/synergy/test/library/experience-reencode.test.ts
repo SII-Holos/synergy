@@ -456,6 +456,18 @@ describe.serial("ExperienceReencode bounded session loading", () => {
           raw: "### User\nRepair the build\n\n### Response\nThe build is repaired.",
         })
         installReencodeModelMocks()
+        let modelUser: MessageV2.User | undefined
+        ;(LLM.stream as any) = mock(async (input: { user: MessageV2.User }) => {
+          modelUser = input.user
+          const text =
+            "1. Read the stored experience\n2. Rebuild the reusable trajectory\n3. Persist the fresh embedding"
+          return {
+            textStream: (async function* () {
+              yield text
+            })(),
+            text: Promise.resolve(text),
+          }
+        })
 
         let embeddingSignal: AbortSignal | undefined
         ;(Embedding.generate as any) = mock(async (input: { id: string; signal?: AbortSignal }) => {
@@ -478,6 +490,11 @@ describe.serial("ExperienceReencode bounded session loading", () => {
         expect(finished).toMatchObject({ status: "completed", totalCount: 1, okCount: 1, failedCount: 0 })
         expect(messageReads).toBe(0)
         expect(embeddingSignal).toBeInstanceOf(AbortSignal)
+        expect(modelUser).toMatchObject({
+          id: expect.any(String),
+          sessionID: session.id,
+          role: "user",
+        })
       },
     })
   })
@@ -547,12 +564,27 @@ describe.serial("ExperienceReencode bounded session loading", () => {
           raw: "### User\nRecover the stored request\n\n### Response\nThe request was completed.",
         })
         installReencodeModelMocks()
+        let modelUser: MessageV2.User | undefined
+        ;(LLM.stream as any) = mock(async (input: { user: MessageV2.User }) => {
+          modelUser = input.user
+          return {
+            textStream: (async function* () {
+              yield "Bounded maintenance reencode"
+            })(),
+            text: Promise.resolve("Bounded maintenance reencode"),
+          }
+        })
 
         const started = ExperienceReencode.start({ type: "intent", reason: "too-long" })
         const finished = await waitForTerminalJob(started.id)
 
         expect(finished).toMatchObject({ status: "completed", totalCount: 1, okCount: 1, failedCount: 0 })
         expect(LibraryDB.Experience.get("missing-user-message")?.intent).toBe("Bounded maintenance reencode")
+        expect(modelUser).toMatchObject({
+          id: expect.any(String),
+          sessionID: session.id,
+          role: "user",
+        })
       },
     })
   })

@@ -17982,6 +17982,30 @@ msgid "ui.compaction.complete"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.compaction.copied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyDetails"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyFailure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.errorDetails"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failedDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.compaction.mechanicalWarning"
 msgstr ""
 
