@@ -269,7 +269,7 @@ export function registryEntry(input: {
   return {
     schemaVersion: 1,
     id: manifest.id,
-    name: manifest.name,
+    name: manifest.id,
     description: manifest.description,
     repo,
     ...(manifest.homepage ? { homepage: manifest.homepage } : {}),
