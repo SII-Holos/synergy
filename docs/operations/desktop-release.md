@@ -25,7 +25,7 @@ bun run desktop:pack
 bun run desktop:dist
 ```
 
-`desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform Synergy runtime, and run `electron-builder`. Release workflows build the exact runtime target with `SYNERGY_BUILD_TARGETS` and inject it with `packages/desktop/script/after-pack.cjs`.
+`desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform Synergy runtime with the Web application, schema, and native runtime assets, and run `electron-builder`. Release workflows build the exact runtime targets with `SYNERGY_BUILD_TARGETS`, run the same runtime preparation step, and inject each complete runtime with `packages/desktop/script/after-pack.cjs`. Packaging fails before copying when the runtime lacks its executable, `app/index.html`, schema, or required sandbox helper.
 
 Native unread indicators use `build/unread-overlay.png` for the Windows taskbar overlay and `build/icon-unread.png` for the Linux tray fallback. `electron-builder.json` copies both fixed assets into `resources/icons`; keep the source assets and packaging assertions together when changing their runtime paths.
 
@@ -108,7 +108,7 @@ Product release keeps the existing candidate/finalize model:
 1. `stable_sandbox_assets` builds Linux x64/arm64 helpers for glibc and musl plus the Windows x64 helper, then uploads target-keyed assets. It never commits generated hashes.
 2. `stable_candidate` validates signing material, downloads the helper assets, selects the requested bump after the highest stable version already published by any release-managed npm package, runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, creates the draft GitHub Release, and uploads release state. This prevents an immutable package version from being reused after a dist-tag rollback. Missing helpers or Browser Host trust material fail before publication.
 3. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. macOS and Linux build x64/arm64 Desktop artifacts; Windows builds x64 Desktop artifacts. Every platform still builds x64/arm64 minimal Browser Host zips.
-4. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key and helper hash embedded, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle.
+4. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key and helper hash embedded, assembles their Web application, schema, and native runtime assets, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle.
 5. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt`, and uploads the desktop assets to the draft GitHub Release.
 6. `stable_finalize` verifies npm candidates, runtime assets, recommended Desktop installer artifacts, portable artifacts, checksum, and updater metadata by reading the draft GitHub Release assets, then promotes npm tags and publishes the GitHub Release.
 
@@ -132,6 +132,7 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 - `bun run --cwd packages/desktop browser-host:dist`
 - `cd packages/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
 - Install `.pkg`, `.exe`, and `.deb` in platform runners or VMs and check `synergy --version` plus `synergy doctor`
+- Confirm every packaged Desktop runtime contains `app/index.html` and `schema/config.schema.json`, and that its managed server returns HTML from `/` after `/global/health` becomes healthy.
 - Confirm every Linux/Windows runtime archive contains `sandbox/synergy-sandbox-*` and `synergy doctor` reports a verified helper
 - Confirm Linux `.deb` installs Bubblewrap and portable Linux checks report a clear prerequisite when it is absent
 - Confirm the packaged macOS Dock badge, Windows taskbar overlay, and Linux launcher/tray indicators appear for unread completion notices and clear after acknowledgement
