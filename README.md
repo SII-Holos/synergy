@@ -139,6 +139,14 @@ bun run --cwd packages/app test
 bun run --cwd packages/ui test
 ```
 
+Browser capability or App bootstrap changes also verify the source boundary and a genuine non-loopback HTTP origin:
+
+```bash
+bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
+bun run --cwd packages/app build
+bun packages/app/script/private-http-smoke.ts
+```
+
 Tests live under each package's `test/` directory; repository-level tests live under the root `test/` directory. `bun run quality:quick` enforces this layout.
 
 Frontend product copy is extracted into English and Simplified Chinese catalogs, plus a development-only pseudo catalog. Changes to visible text or locale formatting also run:

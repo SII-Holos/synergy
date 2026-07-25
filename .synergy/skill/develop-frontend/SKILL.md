@@ -21,6 +21,13 @@ description: Implement or review Synergy Web and shared UI changes across packag
 5. Preserve Scope/directory parameters, authentication, error semantics, asset URLs, event `seq`/`epoch`, replay, and loading/error states.
 6. For append-only LLM streams, keep the full snapshot as recovery state while imperative renderers track an offset and consume only the appended suffix through the dependency's typed live-update API. Do not rescan the accumulated prefix or insert an independent character-rate playback backlog; reset from a checkpoint only when the append invariant breaks. Derive terminal presentation from explicit part or message lifecycle markers, not coarse session status or the presence of a later timeline part. Key imperative terminal transitions and enhancements by content identity so unrelated sibling updates cannot restart them.
 
+## Preserve Browser Capability Boundaries
+
+1. Route ordinary App/UI identifiers through `generateUUID()` or `generateRandomBytes()` from the shared utility package. Do not call `crypto.randomUUID()` or `crypto.getRandomValues()` directly from browser source.
+2. Use `generateSecureUUID()` or `generateSecureRandomBytes()` for authentication state, nonces, credentials, and other security-sensitive values. A missing secure source must fail only the affected operation; it must never fall back to `Math.random()`.
+3. Keep optional browser APIs out of module-scope startup paths. Gate Clipboard, Notifications, credentials, media, and other Secure Context capabilities at the owning action and provide a local unavailable or error state.
+4. Treat non-loopback private-network HTTP as a supported Web deployment. When capability or bootstrap code changes, verify an actual non-Secure Context rather than relying on localhost.
+
 ## Localize Product UI
 
 Read [Frontend localization](../../../docs/architecture/localization.md) before adding product copy, accessibility text, locale-sensitive formatting, or language settings.
@@ -92,6 +99,13 @@ bun run --cwd packages/app test
 bun run --cwd packages/app typecheck
 bun run --cwd packages/ui test
 bun run --cwd packages/app build
+```
+
+For browser capability or bootstrap changes, also run:
+
+```bash
+bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
+bun packages/app/script/private-http-smoke.ts
 ```
 
 For localized UI changes, also run:
