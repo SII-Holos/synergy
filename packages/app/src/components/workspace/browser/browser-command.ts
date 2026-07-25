@@ -1,10 +1,9 @@
 import type { BrowserStoreAPI } from "./browser-store"
 import type { BrowserAPISessionState, BrowserBackendResult } from "@ericsanchezok/synergy-browser"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 export function createBrowserCommandId() {
-  const random = globalThis.crypto?.randomUUID?.()
-  if (random) return `browser_cmd_${random}`
-  return `browser_cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+  return `browser_cmd_${generateUUID()}`
 }
 
 export function shouldResumeBrowserSession(state: BrowserAPISessionState): boolean {
