@@ -13,15 +13,21 @@ import { GitHubDelivery, GitHubIntegrationConfig } from "../../src/github/types"
 import { GitHubRuntime } from "../../src/github/runtime"
 import { GitHubStore } from "../../src/github/store"
 import { AgentTurn } from "../../src/session/agent-turn"
+import { Agent } from "../../src/agent/agent"
+import { Provider } from "../../src/provider/provider"
 
 const originalConfigReload = Config.reload
 const originalNotifyConfigHooks = Plugin.notifyConfigHooks
 const originalAgentTurnResize = (AgentTurn as any).resize
+const originalAgentReload = Agent.reload
+const originalProviderReload = Provider.reload
 
 afterEach(() => {
   Config.reload = originalConfigReload
   ;(Plugin as any).notifyConfigHooks = originalNotifyConfigHooks
   ;(AgentTurn as any).resize = originalAgentTurnResize
+  Agent.reload = originalAgentReload
+  Provider.reload = originalProviderReload
   GlobalBus.removeAllListeners("event")
   CortexConcurrency.reset()
 })
@@ -331,6 +337,92 @@ describe("runtime.reload", () => {
         await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "hook-notify" })
 
         expect(notify).toHaveBeenCalledWith({ source: "reload", config, changedFields: ["toast"] })
+      },
+    })
+  })
+
+  test("applies a writer-provided config transition after cache invalidation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const oldConfig = { thinking_model: "kimi-for-coding/k3" } as Config.Info
+        const config = { thinking_model: "deepseek/deepseek-v4-pro" } as Config.Info
+        Config.reload = mock(async () => ({
+          config,
+          changedFields: [],
+          oldConfig: config,
+        })) as typeof Config.reload
+        const reloadAgent = mock(async () => {})
+        Agent.reload = reloadAgent
+        const notify = mock(async () => {})
+        ;(Plugin as any).notifyConfigHooks = notify
+
+        const result = await RuntimeReload.reload(
+          { targets: ["config"], scope: "global", reason: "known config change" },
+          { configChange: { oldConfig, config, changedFields: ["thinking_model"] } },
+        )
+
+        expect(result.changedFields).toEqual(["thinking_model"])
+        expect(result.liveApplied).toContain("thinking_model")
+        expect(result.cascaded).toContain("agent")
+        expect(reloadAgent).toHaveBeenCalledTimes(1)
+        expect(notify).toHaveBeenCalledWith({
+          source: "reload",
+          config,
+          changedFields: ["thinking_model"],
+        })
+      },
+    })
+  })
+
+  test("uses writer old values for transition-dependent live apply", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const oldConfig = { execution: { agentWorkers: 4 } } as Config.Info
+        const config = { execution: { agentWorkers: 2 } } as Config.Info
+        Config.reload = mock(async () => ({ config, changedFields: [], oldConfig: config })) as typeof Config.reload
+        const resize = mock(() => {})
+        ;(AgentTurn as any).resize = resize
+
+        const result = await RuntimeReload.reload(
+          { targets: ["config"], scope: "global", reason: "known worker change" },
+          { configChange: { oldConfig, config, changedFields: ["execution"] } },
+        )
+
+        expect(resize).toHaveBeenCalledWith(2)
+        expect(result.liveApplied).toContain("execution.agentWorkers")
+      },
+    })
+  })
+
+  test("runs inferred dependency cascades once in order", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const oldConfig = {} as Config.Info
+        const config = { category: {} } as Config.Info
+        Config.reload = mock(async () => ({ config, changedFields: [], oldConfig: config })) as typeof Config.reload
+        const order: string[] = []
+        Provider.reload = mock(async () => {
+          order.push("provider:start")
+          await Bun.sleep(10)
+          order.push("provider:end")
+        })
+        Agent.reload = mock(async () => {
+          order.push("agent")
+        })
+
+        const result = await RuntimeReload.reload(
+          { targets: ["config"], scope: "global", reason: "ordered cascade" },
+          { configChange: { oldConfig, config, changedFields: ["category"] } },
+        )
+
+        expect(order).toEqual(["provider:start", "provider:end", "agent"])
+        expect(result.cascaded).toEqual(expect.arrayContaining(["provider", "agent"]))
       },
     })
   })
