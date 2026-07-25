@@ -93,15 +93,16 @@ The `messages` array in the store contains only the visible window messages, not
 
 ### Page size and cap
 
-- Frontend page loads use `limit: 200`; the store cap is 500.
-- The store's `DEFAULT_CAP` of 500 applies to both latest loads and history prepends.
+- Frontend page loads use `limit: 200`; the store primary-message cap is 500.
+- The store's `DEFAULT_CAP` of 500 applies to primary messages in latest loads and to the full retained set during history prepends. Latest mode additionally retains dependency roots referenced by those primary messages, so the visible window may exceed 500 entries without losing a turn anchor.
 
 ### Latest mode
 
 Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming `message.updated` events reconcile into the window:
 
 - If the message already exists, the window updates in place.
-- If the message is new and the window is in latest mode, it is inserted and the window is capped by dropping the oldest messages.
+- If the message is new and the window is in latest mode, it is inserted and the primary window is capped by dropping the oldest unreferenced messages.
+- Any root referenced through `rootID` by a retained primary message stays in the window outside the cap. Snapshot `referencedRoots` and live event reconciliation preserve the same dependency-root closure so non-root user guidance always retains its `SessionTurn` anchor.
 - Dropped message IDs release their part buckets from the store.
 
 The window cursor (`nextCursor`) is recorded from each page response so older pages can be loaded later.
@@ -149,6 +150,10 @@ Session detail loading is split by concern:
 - messages load through `session.messagePage()` in page size 200, stored in a bounded window capped at 500;
 - parts are sorted and reconciled under their owning message;
 - inbox, todo, and DAG refresh together through `session.volatileBatch()`, while diff, permissions, and questions retain separate refresh paths.
+
+Ordinary new-session input uses the generated `session.input()` method. A queued response is a durable partial Inbox mutation rather than a complete Inbox snapshot: the client validates the response against the captured Inbox request token and response watermark, reconciles the returned item into the Scope store, then invalidates the resource version so the complete `session.inbox.updated` event at the same sequence remains eligible. This makes the accepted prompt visible even when the event connection is delayed or disconnected.
+
+The new-session transition records the accepted item's message ID and remains blocking after the HTTP response. It changes to success only after the corresponding visible canonical root message is present in the message window; the three-second success hold begins at that handoff. If the pending Inbox item disappears before the root is observed, the active session forces one messages-and-volatile refresh to converge cross-resource event ordering. Inbox items whose message IDs are already materialized are omitted from the pending timeline.
 
 `POST /session/batch/volatile` accepts at most 50 deduplicated session IDs and returns an in-band state or error for each requested session. Missing, archived, and cross-Scope sessions do not expose state. After reconnect resync, the client invalidates volatile freshness for every retained session, clears inactive cached inbox/todo/DAG buckets, and batch-refreshes only the actively viewed session. An inactive session reloads through its normal detail path when viewed instead of being eagerly fetched during reconnect.
 
@@ -243,6 +248,8 @@ Every snapshot request captures a `SyncResourceRequest` token:
 
 1. **Snapshot version guard.** Responses that pass the request-token checks still go through the epoch and sequence checks below.
 
+Partial mutation responses use `acceptMutationResponse()`. They pass the same generation, revision, epoch, and sequence validation as snapshots, then invalidate the resource version after applying their targeted update. This prevents stale in-flight snapshots from overwriting the local mutation without suppressing a complete state event carrying the same sequence.
+
 ### Local invalidation
 
 Optimistic message insertion/removal, authoritative part checkpoints/removals for messages present in the loaded window, and history prepends call `invalidate()` for the session's `message` resource. Invalidation clears the stored resource version and advances its revision without changing the Scope epoch. Requests captured before that local write are therefore rejected, including versioned responses, because no current resource version remains to prove that they include the local mutation.
@@ -326,9 +333,9 @@ This removes quadratic full-part disk writes while keeping snapshot reads and te
 
 ## Compaction Attempt Projection
 
-Compaction assistants remain canonically hidden until a non-empty summary commits, but the shared timeline makes one narrow presentation exception: a hidden compaction assistant whose persisted `metadata.compactionAttempt.state` is `running` projects as the running compaction card. Raw streamed compaction text stays suppressed behind that card. The same message ID and timeline key remain mounted when the backend changes the attempt to `committed`, makes the message visible, and adds the recovery part.
+Compaction assistants remain canonically hidden while running, but the shared timeline makes a narrow presentation exception: a hidden compaction assistant whose persisted `metadata.compactionAttempt.state` is `running` or `failed` projects as the compaction card. Raw streamed compaction text stays suppressed behind that card. The same message ID and timeline key remain mounted when the backend resolves the attempt: `committed` makes the message visible and adds the recovery part, while `failed` persists a visible terminal error on the existing message.
 
-The processor's terminal message checkpoint does not end this presentation lifecycle. The compaction owner resolves `running` to `committed`, `failed`, or `empty`; hidden failed and empty attempts therefore disappear instead of remaining as stale progress. Ordinary `visible = false` messages never receive this exception.
+The processor's terminal message checkpoint does not end this presentation lifecycle. The compaction owner resolves `running` to `committed`, `failed`, or `empty`; failed attempts replace progress in place with the dedicated error presentation, while hidden empty attempts disappear. Ordinary `visible = false` messages never receive this exception.
 
 ## Compaction Swap
 

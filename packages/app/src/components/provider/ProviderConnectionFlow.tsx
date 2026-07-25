@@ -7,7 +7,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { iife } from "@ericsanchezok/synergy-util/iife"
-import { createMemo, For, Match, onMount, Show, Switch } from "solid-js"
+import { createMemo, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { providerFlow } from "@/locales/messages"
@@ -16,6 +16,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { providerConnectCopy, providerConnectReason, providerCTA } from "./provider-recommendation"
+import { resolveProviderAuthMethods, runProviderDeviceCallback } from "./provider-connection-model"
 
 export { compareProviderIDs, providerConnectCopy } from "./provider-recommendation"
 
@@ -38,14 +39,12 @@ export function ProviderConnectionFlow(props: {
   const provider = createMemo(() => globalSync.data.provider.all.find((x) => x.id === props.providerID))
   const providerName = createMemo(() => props.providerName ?? provider()?.name ?? props.providerID)
   const profiles = createMemo(() => globalSync.data.provider.profiles)
-  const methods = createMemo<ProviderAuthMethod[]>(
-    () =>
-      globalSync.data.provider_auth[props.providerID] ?? [
-        {
-          type: "api",
-          label: _(providerFlow.methodApiDefaultLabel),
-        },
-      ],
+  const methods = createMemo<ProviderAuthMethod[]>(() =>
+    resolveProviderAuthMethods({
+      registry: globalSync.data.provider_auth,
+      providerID: props.providerID,
+      fallbackLabel: _(providerFlow.methodApiDefaultLabel),
+    }),
   )
   const connected = createMemo(
     () => props.connectedOverride ?? globalSync.data.provider.connected.includes(props.providerID),
@@ -366,19 +365,32 @@ export function ProviderConnectionFlow(props: {
                     return instructions
                   })
 
-                  onMount(async () => {
+                  const controller = new AbortController()
+                  let active = true
+                  onCleanup(() => {
+                    active = false
+                    controller.abort()
+                  })
+
+                  onMount(() => {
                     if (store.authorization?.url) platform.openLink(store.authorization.url)
-                    const result = await globalSDK.client.provider.oauth.callback({
-                      providerID: props.providerID,
-                      method: store.methodIndex,
+                    void runProviderDeviceCallback({
+                      callback: () =>
+                        globalSDK.client.provider.oauth.callback(
+                          {
+                            providerID: props.providerID,
+                            method: store.methodIndex,
+                          },
+                          { signal: controller.signal, throwOnError: true },
+                        ),
+                      complete,
+                      active: () => active,
+                      onError: () => {
+                        setStore("state", "error")
+                        setStore("error", _(providerFlow.authTimeout))
+                      },
+                      onComplete: resetMethod,
                     })
-                    if (result.error) {
-                      setStore("state", "error")
-                      setStore("error", _(providerFlow.authTimeout))
-                      return
-                    }
-                    await complete()
-                    resetMethod()
                   })
 
                   return (

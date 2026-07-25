@@ -4,21 +4,23 @@ Synergy runs a multi-layer quality system that covers formatting, linting, type-
 
 ## Quality Layers
 
-| Layer              | Local command                        | CI job                | Tool                          | Pre-push |
-| ------------------ | ------------------------------------ | --------------------- | ----------------------------- | -------- |
-| Bun version check  | (pre-push only)                      | —                     | `check-bun-version`           | ✅       |
-| Formatting         | `bun run format:check`               | `quality`             | Prettier                      | ✅       |
-| Lint               | `bun run lint`                       | `quality`             | oxlint                        | ✅       |
-| Localization       | `bun run localization:check`         | `quality`             | Lingui + source contract      | —        |
-| Type checking      | `bun run typecheck`                  | `typecheck`           | tsc via turbo                 | ✅       |
-| Monorepo deps      | `bun run monorepo:check`             | `quality`             | sherif                        | ✅       |
-| Dead code          | `bun run deadcode`                   | `quality`             | knip                          | —        |
-| CI workflow lint   | `bun run workflow:check`             | `workflow-validation` | actionlint + zizmor           | —        |
-| Secret scanning    | `bun run secrets:check`              | `secret-scan`         | gitleaks                      | —        |
-| Package validation | `bun run package:check`              | `package-validation`  | publint + attw                | —        |
-| Tests              | `bun turbo test` / `bun run test:ci` | `test`                | Turbo + sequential Bun shards | —        |
-| Desktop checks     | `bun run desktop:test`               | `desktop`             | bun test + build              | —        |
-| Smoke test         | —                                    | `smoke`               | Synergy health check          | —        |
+| Layer                      | Local command                                                                       | CI job                | Tool                          | Pre-push |
+| -------------------------- | ----------------------------------------------------------------------------------- | --------------------- | ----------------------------- | -------- |
+| Bun version check          | (pre-push only)                                                                     | —                     | `check-bun-version`           | ✅       |
+| Formatting                 | `bun run format:check`                                                              | `quality`             | Prettier                      | ✅       |
+| Lint                       | `bun run lint`                                                                      | `quality`             | oxlint                        | ✅       |
+| Browser crypto contract    | `bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts`          | `quality`             | Bun source contract           | —        |
+| Localization               | `bun run localization:check`                                                        | `quality`             | Lingui + source contract      | —        |
+| Type checking              | `bun run typecheck`                                                                 | `typecheck`           | tsc via turbo                 | ✅       |
+| Monorepo deps              | `bun run monorepo:check`                                                            | `quality`             | sherif                        | ✅       |
+| Dead code                  | `bun run deadcode`                                                                  | `quality`             | knip                          | —        |
+| CI workflow lint           | `bun run workflow:check`                                                            | `workflow-validation` | actionlint + zizmor           | —        |
+| Secret scanning            | `bun run secrets:check`                                                             | `secret-scan`         | gitleaks                      | —        |
+| Package validation         | `bun run package:check`                                                             | `package-validation`  | publint + attw                | —        |
+| Tests                      | `bun turbo test` / `bun run test:ci`                                                | `test`                | Turbo + sequential Bun shards | —        |
+| Private HTTP browser smoke | `bun run --cwd packages/app build && bun packages/app/script/private-http-smoke.ts` | `test`                | Playwright Chromium           | —        |
+| Desktop checks             | `bun run desktop:test`                                                              | `desktop`             | bun test + build              | —        |
+| Server health smoke        | —                                                                                   | `smoke`               | Synergy health check          | —        |
 
 ### Pre-push hook (`.husky/pre-push`)
 
@@ -50,35 +52,36 @@ This runs the full suite locally. CI runs the same checks in parallel jobs.
 
 CI runs on push to `dev` / `main` and on pull requests targeting those branches. Jobs run in parallel:
 
-| Job                   | Purpose                                                                |
-| --------------------- | ---------------------------------------------------------------------- |
-| `quality`             | Formatting, lint, test layout, localization, monorepo deps, dead code  |
-| `typecheck`           | TypeScript type checking                                               |
-| `test`                | Non-Synergy package tests plus sequential fresh-process Synergy shards |
-| `package-validation`  | publint + attw for publishable packages                                |
-| `workflow-validation` | actionlint + zizmor for CI workflow files                              |
-| `secret-scan`         | gitleaks for secrets and credentials                                   |
-| `desktop`             | Desktop typecheck, unit tests, build config validation, runtime smoke  |
-| `smoke`               | Server health check smoke test                                         |
+| Job                   | Purpose                                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `quality`             | Formatting, lint, browser crypto contract, test layout, localization, monorepo deps, and dead code |
+| `typecheck`           | TypeScript type checking                                                                           |
+| `test`                | Non-Synergy package tests, private HTTP browser smoke, and sequential fresh-process Synergy shards |
+| `package-validation`  | publint + attw for publishable packages                                                            |
+| `workflow-validation` | actionlint + zizmor for CI workflow files                                                          |
+| `secret-scan`         | gitleaks for secrets and credentials                                                               |
+| `desktop`             | Desktop typecheck, unit tests, build config validation, runtime smoke                              |
+| `smoke`               | Server health check smoke test                                                                     |
 
 All jobs must pass for a PR to merge. The `package-validation` and `workflow-validation` jobs are not in the pre-push hook — they require network access or special tooling that is available in CI but may not be installed locally.
 
-The test job excludes `synergy` from the Turbo package pass, then runs the complete Synergy suite as four sequential fresh-process shards from `packages/synergy`. Each attempted shard emits an uploaded JUnit report. Coverage is not collected in the required CI path.
+The test job excludes `synergy` from the Turbo package pass, builds the App, verifies it through a genuine non-loopback HTTP origin, then runs the complete Synergy suite as four sequential fresh-process shards from `packages/synergy`. Each attempted shard emits an uploaded JUnit report. Coverage is not collected in the required CI path.
 
 ## Tool Responsibilities
 
-| Tool              | Responsibility                                                                                      | When to run                                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Prettier          | Repository-wide formatting                                                                          | Every change through `bun run format:check`; write fixes with `bun run format` or `./script/format.ts`                   |
-| oxlint            | Fast JavaScript/TypeScript linting without style-heavy churn                                        | Every change through `bun run lint`; auto-fix safe issues with `bun run lint:fix`                                        |
-| sherif            | Workspace package and dependency consistency                                                        | Every change through `bun run monorepo:check`, especially package manifest edits                                         |
-| knip              | Dead code, unused dependencies, unused scripts, unresolved entries, and catalog hygiene             | CI and explicit local checks through `bun run deadcode`; configure precise entries/ignores for dynamic or generated code |
-| publint           | npm package manifest, exports, and publish-shape validation                                         | Publishable package, release, SDK, plugin, util, or Synergy Link protocol changes through `bun run package:check`        |
-| attw              | TypeScript package resolution validation for published tarballs                                     | Same path as publint through `bun run package:check`                                                                     |
-| actionlint        | GitHub Actions syntax and expression validation                                                     | Workflow changes through `bun run workflow:check` and CI `workflow-validation`                                           |
-| zizmor            | GitHub Actions security analysis                                                                    | Workflow changes through `bun run workflow:check` and CI `workflow-validation`                                           |
-| gitleaks          | Secret and credential scanning                                                                      | Auth/provider/channel/config example changes through `bun run secrets:check`; all PRs through CI `secret-scan`           |
-| Localization gate | Catalog extraction drift, complete zh-CN coverage, strict ICU compilation, and App/UI source policy | Product copy, accessibility text, locale formatting, or shared UI changes through `bun run localization:check`           |
+| Tool                    | Responsibility                                                                                        | When to run                                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Prettier                | Repository-wide formatting                                                                            | Every change through `bun run format:check`; write fixes with `bun run format` or `./script/format.ts`                   |
+| oxlint                  | Fast JavaScript/TypeScript linting without style-heavy churn                                          | Every change through `bun run lint`; auto-fix safe issues with `bun run lint:fix`                                        |
+| sherif                  | Workspace package and dependency consistency                                                          | Every change through `bun run monorepo:check`, especially package manifest edits                                         |
+| knip                    | Dead code, unused dependencies, unused scripts, unresolved entries, and catalog hygiene               | CI and explicit local checks through `bun run deadcode`; configure precise entries/ignores for dynamic or generated code |
+| publint                 | npm package manifest, exports, and publish-shape validation                                           | Publishable package, release, SDK, plugin, util, or Synergy Link protocol changes through `bun run package:check`        |
+| attw                    | TypeScript package resolution validation for published tarballs                                       | Same path as publint through `bun run package:check`                                                                     |
+| actionlint              | GitHub Actions syntax and expression validation                                                       | Workflow changes through `bun run workflow:check` and CI `workflow-validation`                                           |
+| zizmor                  | GitHub Actions security analysis                                                                      | Workflow changes through `bun run workflow:check` and CI `workflow-validation`                                           |
+| gitleaks                | Secret and credential scanning                                                                        | Auth/provider/channel/config example changes through `bun run secrets:check`; all PRs through CI `secret-scan`           |
+| Localization gate       | Catalog extraction drift, complete zh-CN coverage, strict ICU compilation, and App/UI source policy   | Product copy, accessibility text, locale formatting, or shared UI changes through `bun run localization:check`           |
+| Browser crypto contract | Direct browser randomness under App/UI source must use the shared ordinary or strict utility boundary | Browser capability or identifier changes; every PR through CI `quality`                                                  |
 
 ## Package Publishing Validation
 
@@ -209,6 +212,14 @@ bun run --cwd packages/ui test
 bun run --cwd packages/app build
 bun turbo test
 bun run quality:quick
+```
+
+Browser capability or bootstrap changes also run the static boundary and genuine non-loopback HTTP smoke:
+
+```bash
+bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
+bun run --cwd packages/app build
+bun packages/app/script/private-http-smoke.ts
 ```
 
 For product copy, accessibility text, or locale-sensitive formatting, update the catalogs before those package and root gates:

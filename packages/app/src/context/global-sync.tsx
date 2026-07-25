@@ -361,6 +361,25 @@ function createGlobalSync() {
     apply()
     return true
   }
+
+  function applyResourceMutationResponse(
+    scopeKey: string,
+    sessionID: string,
+    resource: SyncResource,
+    request: SyncResourceRequest,
+    headers: Pick<Headers, "get"> | undefined,
+    apply: () => void,
+  ) {
+    const accepted = resourceFreshness.acceptMutationResponse(
+      { scopeKey, sessionID, resource },
+      request,
+      readSyncVersion(headers),
+    )
+    if (!accepted) return false
+    apply()
+    return true
+  }
+
   function invalidateResource(scopeKey: string, sessionID: string, resource: SyncResource) {
     resourceFreshness.invalidate({ scopeKey, sessionID, resource })
   }
@@ -1878,6 +1897,7 @@ function createGlobalSync() {
     reconnectVersion,
     captureResourceRequest,
     applyResourceResponse,
+    applyResourceMutationResponse,
     invalidateResource,
     capturePartSnapshotRequest,
     partSnapshotAction,

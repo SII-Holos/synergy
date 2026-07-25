@@ -19,6 +19,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveNoteConfirm, unarchiveNoteConfirm, deleteArchivedNoteConfirm } from "@/components/dialog/confirm-copy"
 import { SelectionCheckbox } from "@/components/library/shared"
 import type {
+  Agent,
   BlueprintLoopInfo,
   Event as SynergyEvent,
   NoteInfo,
@@ -32,14 +33,19 @@ import { useLocale } from "@/context/locale"
 import { useLingui } from "@lingui/solid"
 import { requestErrorMessage } from "@/utils/error"
 import { relativeTime } from "@/utils/time"
+import { getAgentVisual } from "@/components/agent-visual"
+import { translateDescriptor } from "@/locales/translate"
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import {
   activeBlueprintLoop,
+  blueprintExecutionAgentOptions,
+  blueprintExecutionAgentPatch,
   blueprintExecutionControlProfile,
   blueprintSessionWorkspaceSelection,
   canCreateBlueprintWorktree,
   canRunBlueprintInCurrentSession,
   isActiveBlueprintLoopStatus,
+  type BlueprintExecutionAgentOption,
   type BlueprintRunMode,
 } from "@/components/note/blueprint-run-session"
 import {
@@ -399,16 +405,19 @@ function NoteCardSkeleton() {
 }
 
 function RunMenu(props: {
+  agents: Agent[]
   title: string
+  executionAgent?: string
   canRunInCurrentSession: boolean
   canCreateWorktree: boolean
-  onRun: (mode: BlueprintRunMode, model?: { providerID: string; modelID: string }) => void
+  onRun: (mode: BlueprintRunMode, executionAgent: string, model?: { providerID: string; modelID: string }) => void
   onClose: () => void
 }) {
   const globalSync = useGlobalSync()
   const lingui = useLingui()
-  const [level, setLevel] = createSignal<"mode" | "model">("mode")
+  const [level, setLevel] = createSignal<"mode" | "agent" | "model">("mode")
   const [selectedMode, setSelectedMode] = createSignal<BlueprintRunMode | null>(null)
+  const [selectedAgentName, setSelectedAgentName] = createSignal(props.executionAgent?.trim() ?? "")
   const [selectedModelValue, setSelectedModelValue] = createSignal("")
   const [pickerOpen, setPickerOpen] = createSignal(false)
 
@@ -423,6 +432,22 @@ function RunMenu(props: {
         providerID: string
         modelID: string
       }
+
+  const executionAgentOptions = createMemo(() => blueprintExecutionAgentOptions(props.agents, selectedAgentName()))
+  const currentExecutionAgent = createMemo(() =>
+    executionAgentOptions().find((agent) => agent.name === selectedAgentName()),
+  )
+  const executionAgentLabel = createMemo(() => {
+    const agent = currentExecutionAgent()
+    if (!agent) return ""
+    return translateDescriptor(getAgentVisual(agent.name).label, lingui)
+  })
+
+  createEffect(() => {
+    if (selectedAgentName()) return
+    const first = executionAgentOptions().find((agent) => agent.available)
+    if (first) setSelectedAgentName(first.name)
+  })
 
   const providerModels = createMemo<ModelOption[]>(() => {
     const data = globalSync.data.provider
@@ -461,8 +486,14 @@ function RunMenu(props: {
   })
 
   const currentModelOption = createMemo(() => {
-    return modelOptions().find((o) => o.value === selectedModelValue()) ?? modelOptions()[0]
+    return modelOptions().find((option) => option.value === selectedModelValue()) ?? modelOptions()[0]
   })
+
+  function selectExecutionAgent(option: BlueprintExecutionAgentOption | undefined) {
+    if (!option?.available) return
+    setSelectedAgentName(option.name)
+    setLevel("model")
+  }
 
   function selectModelOption(option: ModelOption | undefined) {
     if (!option) return
@@ -472,13 +503,14 @@ function RunMenu(props: {
 
   function handleRun() {
     const mode = selectedMode()
-    if (!mode) return
-    const opt = currentModelOption()
-    if (opt && opt.kind === "model") {
-      props.onRun(mode, { providerID: opt.providerID, modelID: opt.modelID })
-    } else {
-      props.onRun(mode)
+    const agent = currentExecutionAgent()
+    if (!mode || !agent?.available) return
+    const model = currentModelOption()
+    if (model && model.kind === "model") {
+      props.onRun(mode, agent.name, { providerID: model.providerID, modelID: model.modelID })
+      return
     }
+    props.onRun(mode, agent.name)
   }
 
   const options = [
@@ -506,10 +538,10 @@ function RunMenu(props: {
   ]
 
   const modeLabel = createMemo(() => {
-    const m = selectedMode()
-    if (!m) return ""
-    if (m === "current") return lingui._(N.currentSession)
-    if (m === "new") return lingui._(N.newSessionRun)
+    const mode = selectedMode()
+    if (!mode) return ""
+    if (mode === "current") return lingui._(N.currentSession)
+    if (mode === "new") return lingui._(N.newSessionRun)
     return lingui._(N.newWorktreeSession)
   })
 
@@ -557,7 +589,7 @@ function RunMenu(props: {
                 disabled={option.disabled}
                 onClick={() => {
                   setSelectedMode(option.mode)
-                  setLevel("model")
+                  setLevel("agent")
                 }}
               >
                 <span class="note-run-option-icon">
@@ -573,7 +605,7 @@ function RunMenu(props: {
         </div>
       </Show>
 
-      <Show when={level() === "model"}>
+      <Show when={level() === "agent"}>
         <div class="note-run-menu-header">
           <div class="flex items-start gap-2">
             <button
@@ -586,9 +618,73 @@ function RunMenu(props: {
               <Icon name={getSemanticIcon("navigation.back")} size="small" class="size-3.5" />
             </button>
             <div class="min-w-0 flex-1">
+              <h3 class="text-13-medium text-text-strong">{lingui._(N.selectExecutionAgent)}</h3>
+              <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">
+                {modeLabel()}
+                {lingui._(N.separator)}
+                {props.title || lingui._(N.untitled)}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="note-run-menu-close"
+              onClick={props.onClose}
+              title={lingui._(N.close)}
+              aria-label={lingui._(N.closeRunMenu)}
+            >
+              <Icon name={getSemanticIcon("action.close")} size="small" class="size-3" />
+            </button>
+          </div>
+        </div>
+        <div class="note-run-model-body">
+          <div class="note-run-model-copy">
+            <span class="note-run-model-label">{lingui._(N.executionAgent)}</span>
+            <span class="note-run-model-description">{lingui._(N.executionAgentChooseHelp)}</span>
+          </div>
+          <List<BlueprintExecutionAgentOption>
+            class="settings-model-picker-list note-run-agent-list"
+            search={{ placeholder: lingui._(N.searchAgents), autofocus: true }}
+            emptyMessage={lingui._(N.noAgentResults)}
+            key={(option) => option.name}
+            items={executionAgentOptions}
+            current={currentExecutionAgent()}
+            filterKeys={["name", "description"]}
+            onSelect={selectExecutionAgent}
+          >
+            {(option) => (
+              <div class="settings-model-option" classList={{ "opacity-55": !option.available }}>
+                <span class="settings-model-option-title">
+                  {translateDescriptor(getAgentVisual(option.name).label, lingui)}
+                </span>
+                <span class="settings-model-option-detail">
+                  {option.available
+                    ? (option.description ?? option.name)
+                    : `${option.name} · ${lingui._(N.agentUnavailable)}`}
+                </span>
+              </div>
+            )}
+          </List>
+        </div>
+      </Show>
+
+      <Show when={level() === "model"}>
+        <div class="note-run-menu-header">
+          <div class="flex items-start gap-2">
+            <button
+              type="button"
+              class="note-run-menu-back"
+              onClick={() => setLevel("agent")}
+              title={lingui._(N.back)}
+              aria-label={lingui._(N.backToAgent)}
+            >
+              <Icon name={getSemanticIcon("navigation.back")} size="small" class="size-3.5" />
+            </button>
+            <div class="min-w-0 flex-1">
               <h3 class="text-13-medium text-text-strong">{lingui._(N.runBlueprint)}</h3>
               <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">
                 {modeLabel()}
+                {lingui._(N.separator)}
+                {executionAgentLabel()}
                 {lingui._(N.separator)}
                 {props.title || lingui._(N.untitled)}
               </p>
@@ -646,7 +742,15 @@ function RunMenu(props: {
               </KobaltePopover.Content>
             </KobaltePopover.Portal>
           </KobaltePopover>
-          <button type="button" class="note-run-model-run" onClick={handleRun}>
+          <Show when={!currentExecutionAgent()?.available}>
+            <p class="text-11-regular text-text-diff-delete-base">{lingui._(N.selectedAgentUnavailable)}</p>
+          </Show>
+          <button
+            type="button"
+            class="note-run-model-run"
+            disabled={!currentExecutionAgent()?.available}
+            onClick={handleRun}
+          >
             <Icon name={getSemanticIcon("prompt.blueprintStart")} size="small" class="size-3.5" />
             {lingui._(N.runWithSelectedModel)}
           </button>
@@ -1824,7 +1928,7 @@ function NoteEditor(props: {
     props.onBack()
   }
 
-  async function saveMetadata(patch: { pinned?: boolean; global?: boolean }) {
+  async function saveMetadata(buildPatch: (base: NoteInfo) => NotePatchInput) {
     const dir = directory()
     if (!dir || !baseNote()) return false
     setSaving(true)
@@ -1836,11 +1940,7 @@ function NoteEditor(props: {
           const result = await sdk.client.note.update({
             id: props.id,
             directory: dir,
-            notePatchInput: {
-              pinned: patch.pinned,
-              global: patch.global,
-              expectedVersion: base.version,
-            },
+            notePatchInput: buildPatch(base),
           })
           applySnapshot(result.data as NoteInfo)
           return true
@@ -1907,7 +2007,8 @@ function NoteEditor(props: {
     if (remoteConflict()) return
     const current = baseNote()
     if (!current) return
-    await saveMetadata({ pinned: !current.pinned })
+    const pinned = !current.pinned
+    await saveMetadata((base) => ({ pinned, expectedVersion: base.version }))
   }
 
   async function toggleGlobal() {
@@ -1915,7 +2016,8 @@ function NoteEditor(props: {
     if (remoteConflict()) return
     const current = baseNote()
     if (!current) return
-    await saveMetadata({ global: !current.global })
+    const global = !current.global
+    await saveMetadata((base) => ({ global, expectedVersion: base.version }))
   }
 
   function reloadRemote() {
@@ -2064,12 +2166,16 @@ function NoteEditor(props: {
     }
   }
 
-  async function runBlueprint(mode: BlueprintRunMode, model?: { providerID: string; modelID: string }) {
+  async function runBlueprint(
+    mode: BlueprintRunMode,
+    executionAgent: string,
+    model?: { providerID: string; modelID: string },
+  ) {
     const dir = directory()
     if (!dir || runningBlueprint()) return
     await flushSave()
     if (remoteConflict()) return
-    const base = baseNote()
+    let base = baseNote()
     if (!base || !isBlueprint()) return
     const activeLoop = activeBlueprintLoop(base, noteLoops())
     if (activeLoop) {
@@ -2081,6 +2187,13 @@ function NoteEditor(props: {
     let createdLoopID: string | undefined
     let target: Awaited<ReturnType<typeof createExecutionSession>> | undefined
     try {
+      if (base.blueprint?.defaultAgent !== executionAgent) {
+        const saved = await saveMetadata((current) => blueprintExecutionAgentPatch(current, executionAgent))
+        if (!saved) return
+        base = baseNote()
+        if (!base) return
+      }
+
       target = await createExecutionSession(mode, dir)
       if (!target) return
       const loop = await sdk.client.blueprint.loop
@@ -2093,6 +2206,7 @@ function NoteEditor(props: {
             description: base.blueprint?.description,
             sessionID: target.sessionID,
             runMode: mode,
+            executionAgent,
             ...(model ? { model: { providerID: model.providerID, modelID: model.modelID } } : {}),
           },
         })
@@ -2386,7 +2500,9 @@ function NoteEditor(props: {
 
       <Show when={showRunMenu() && activeBlueprintRun() === undefined}>
         <RunMenu
+          agents={sync.data.agent}
           title={baseNote()?.title ?? "Untitled"}
+          executionAgent={baseNote()?.blueprint?.defaultAgent}
           canRunInCurrentSession={canRunCurrentSession()}
           canCreateWorktree={canRunWorktreeSession()}
           onRun={runBlueprint}

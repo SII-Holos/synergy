@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { generateUUID, type UUIDCrypto } from "../src/uuid"
+import {
+  generateRandomBytes,
+  generateSecureRandomBytes,
+  generateSecureUUID,
+  generateUUID,
+  SecureRandomUnavailableError,
+  type UUIDCrypto,
+} from "../src/uuid"
 
 describe("generateUUID", () => {
   test("uses native randomUUID when available", () => {
@@ -43,5 +50,59 @@ describe("generateUUID", () => {
     }
 
     expect(generateUUID(environment)).not.toBe(generateUUID(environment))
+  })
+})
+
+describe("generateRandomBytes", () => {
+  test("uses Web Crypto when available", () => {
+    const crypto: UUIDCrypto = {
+      getRandomValues(bytes) {
+        bytes.fill(0xab)
+        return bytes
+      },
+    }
+
+    expect(generateRandomBytes(4, { crypto })).toEqual(new Uint8Array([0xab, 0xab, 0xab, 0xab]))
+  })
+
+  test("allows a deterministic weak fallback for ordinary identifiers", () => {
+    expect(generateRandomBytes(3, { crypto: undefined, random: () => 0.5 })).toEqual(new Uint8Array([128, 128, 128]))
+  })
+})
+
+describe("secure UUID generation", () => {
+  test("uses native randomUUID when available", () => {
+    expect(generateSecureUUID({ crypto: { randomUUID: () => "secure-native" } })).toBe("secure-native")
+  })
+
+  test("uses getRandomValues without a weak fallback", () => {
+    const crypto: UUIDCrypto = {
+      getRandomValues(bytes) {
+        bytes.fill(0xcd)
+        return bytes
+      },
+    }
+
+    expect(generateSecureUUID({ crypto })).toBe("cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd")
+    expect(generateSecureRandomBytes(3, { crypto })).toEqual(new Uint8Array([0xcd, 0xcd, 0xcd]))
+  })
+
+  test("fails the affected operation when Web Crypto is unavailable", () => {
+    expect(() => generateSecureUUID({ crypto: undefined, random: () => 0.5 })).toThrow(SecureRandomUnavailableError)
+    expect(() => generateSecureRandomBytes(16, { crypto: undefined, random: () => 0.5 })).toThrow(
+      SecureRandomUnavailableError,
+    )
+  })
+
+  test("fails when getRandomValues is exposed but unusable", () => {
+    expect(() =>
+      generateSecureRandomBytes(16, {
+        crypto: {
+          getRandomValues() {
+            throw new DOMException("Blocked", "SecurityError")
+          },
+        },
+      }),
+    ).toThrow(SecureRandomUnavailableError)
   })
 })

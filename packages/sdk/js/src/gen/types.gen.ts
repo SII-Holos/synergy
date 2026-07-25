@@ -1416,6 +1416,12 @@ export type GlobalRecentResponse = {
   unreadCompletionCount: number
 }
 
+export type GlobalAcknowledgeCompletionsResponse = {
+  acknowledgedCount: number
+  modifiedSessionCount: number
+  failedSessionCount: number
+}
+
 export type PinnedResponse = {
   items: Array<SessionNavEntry>
   total: number
@@ -1581,6 +1587,7 @@ export type ProviderAuthHealth = {
   recovery?: "reconnect" | "update_environment"
   authKind?: string
   source?: string
+  canDisconnect?: boolean
   updatedAt?: number
   cooldownUntil?: number
   resetAt?: number
@@ -5059,6 +5066,15 @@ export type AttachmentPartInput = {
   }
 }
 
+export type SessionInboxFirstTaskLockedError = {
+  name: "SessionInboxFirstTaskLockedError"
+  data: {
+    message: string
+    sessionID: string
+    itemID: string
+  }
+}
+
 export type UserMessage = {
   id: string
   sessionID: string
@@ -5765,6 +5781,19 @@ export type AccountUsageSnapshot = {
 export type ProviderAuthMethod = {
   type: "oauth" | "api" | "import"
   label: string
+}
+
+export type ProviderAuthRemoveResponse = {
+  providerID: string
+  cleared: true
+}
+
+export type ProviderAuthDisconnectUnavailableError = {
+  name: "ProviderAuthDisconnectUnavailableError"
+  data: {
+    providerID: string
+    status: "connected" | "not_configured" | "exhausted" | "action_required"
+  }
 }
 
 export type GitHubAccount = {
@@ -9402,6 +9431,23 @@ export type GlobalNavRecentResponses = {
 
 export type GlobalNavRecentResponse = GlobalNavRecentResponses[keyof GlobalNavRecentResponses]
 
+export type GlobalNavAcknowledgeCompletionsData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/acknowledge-completions"
+}
+
+export type GlobalNavAcknowledgeCompletionsResponses = {
+  /**
+   * Completion notices acknowledged
+   */
+  200: GlobalAcknowledgeCompletionsResponse
+}
+
+export type GlobalNavAcknowledgeCompletionsResponse =
+  GlobalNavAcknowledgeCompletionsResponses[keyof GlobalNavAcknowledgeCompletionsResponses]
+
 export type GlobalNavPinnedData = {
   body?: never
   path?: never
@@ -11191,6 +11237,51 @@ export type SessionInputResponses = {
 
 export type SessionInputResponse = SessionInputResponses[keyof SessionInputResponses]
 
+export type SessionInboxRetryData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Inbox item ID
+     */
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}/retry"
+}
+
+export type SessionInboxRetryErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Session worktree unavailable
+   */
+  409: WorktreeUnavailableError
+}
+
+export type SessionInboxRetryError = SessionInboxRetryErrors[keyof SessionInboxRetryErrors]
+
+export type SessionInboxRetryResponses = {
+  /**
+   * Inbox item scheduled for processing
+   */
+  200: SessionInboxItem
+}
+
+export type SessionInboxRetryResponse = SessionInboxRetryResponses[keyof SessionInboxRetryResponses]
+
 export type SessionInboxGuideData = {
   body?: never
   path: {
@@ -11219,6 +11310,10 @@ export type SessionInboxGuideErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * First task is locked until its root is ready
+   */
+  409: SessionInboxFirstTaskLockedError
 }
 
 export type SessionInboxGuideError = SessionInboxGuideErrors[keyof SessionInboxGuideErrors]
@@ -11260,6 +11355,10 @@ export type SessionInboxRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * First task is locked until its root is ready
+   */
+  409: SessionInboxFirstTaskLockedError
 }
 
 export type SessionInboxRemoveError = SessionInboxRemoveErrors[keyof SessionInboxRemoveErrors]
@@ -12535,6 +12634,43 @@ export type ProviderAuthResponses = {
 }
 
 export type ProviderAuthResponse = ProviderAuthResponses[keyof ProviderAuthResponses]
+
+export type ProviderDisconnectData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/auth"
+}
+
+export type ProviderDisconnectErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Stored provider credentials cannot be disconnected in their current state
+   */
+  409: ProviderAuthDisconnectUnavailableError
+}
+
+export type ProviderDisconnectError = ProviderDisconnectErrors[keyof ProviderDisconnectErrors]
+
+export type ProviderDisconnectResponses = {
+  /**
+   * Stored provider credentials removed
+   */
+  200: ProviderAuthRemoveResponse
+}
+
+export type ProviderDisconnectResponse = ProviderDisconnectResponses[keyof ProviderDisconnectResponses]
 
 export type ProviderAuthGithubStatusData = {
   body?: never

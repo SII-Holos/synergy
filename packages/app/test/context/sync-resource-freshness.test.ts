@@ -5,6 +5,7 @@ const scope = "/workspace/project"
 const session = "ses_progress"
 const dag = { scopeKey: scope, sessionID: session, resource: "dag" as const }
 const todo = { scopeKey: scope, sessionID: session, resource: "todo" as const }
+const inbox = { scopeKey: scope, sessionID: session, resource: "inbox" as const }
 const messages = { scopeKey: scope, sessionID: session, resource: "message" as const }
 const version = (seq: number, epoch = "epoch-1"): SyncVersion => ({ epoch, seq })
 
@@ -111,6 +112,15 @@ describe("SyncResourceFreshness", () => {
     const currentRequest = freshness.capture(dag)
     expect(freshness.acceptEvent(dag, version(11))).toBe(true)
     expect(freshness.acceptResponse(dag, currentRequest, version(11))).toBe(true)
+  })
+
+  test("keeps the complete inbox event eligible after a partial mutation response", () => {
+    const freshness = new SyncResourceFreshness()
+    const request = freshness.capture(inbox)
+
+    expect(freshness.acceptMutationResponse(inbox, request, version(10))).toBe(true)
+    expect(freshness.current(inbox)).toBeUndefined()
+    expect(freshness.acceptEvent(inbox, version(10))).toBe(true)
   })
 
   test("rejects responses captured before a scope reset", () => {

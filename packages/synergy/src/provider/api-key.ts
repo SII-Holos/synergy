@@ -5,6 +5,16 @@ import z from "zod"
 import { ProviderAuthHealth } from "./auth-health"
 
 export namespace Auth {
+  const removalRevisions = new Map<string, number>()
+
+  function recordRemoval(providerID: string) {
+    removalRevisions.set(providerID, (removalRevisions.get(providerID) ?? 0) + 1)
+  }
+
+  export function removalRevision(providerID: string) {
+    return removalRevisions.get(providerID) ?? 0
+  }
+
   export const Oauth = z
     .object({
       type: z.literal("oauth"),
@@ -295,8 +305,10 @@ export namespace Auth {
     await withLock("provider-auth-store:write", async () => {
       const store = await readStore()
       const previous = ProviderAuthHealth.fromEntry(providerID, store.credentials[providerID])
+      const existed = store.credentials[providerID] !== undefined
       await mutate(store)
       await writeStore(store)
+      if (existed && store.credentials[providerID] === undefined) recordRemoval(providerID)
       await ProviderAuthHealth.commitStored(previous, providerID, store.credentials[providerID])
     })
   }
@@ -457,6 +469,21 @@ export namespace Auth {
   export async function remove(key: string) {
     await mutateStore(key, (store) => {
       delete store.credentials[key]
+    })
+  }
+
+  export async function removeIf(key: string, predicate: (entry: StoreEntry) => boolean) {
+    return withLock("provider-auth-store:write", async () => {
+      const store = await readStore()
+      const entry = store.credentials[key]
+      if (!entry) return "missing" as const
+      if (!predicate(entry)) return "retained" as const
+      const previous = ProviderAuthHealth.fromEntry(key, entry)
+      delete store.credentials[key]
+      await writeStore(store)
+      recordRemoval(key)
+      await ProviderAuthHealth.commitStored(previous, key)
+      return "removed" as const
     })
   }
 

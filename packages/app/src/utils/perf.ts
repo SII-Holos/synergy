@@ -1,4 +1,5 @@
 import { recordSessionSwitchTiming } from "@/components/performance/browser-metrics"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 type Nav = {
   id: string
@@ -19,7 +20,7 @@ const key = (dir: string | undefined, to: string) => `${dir ?? ""}:${to}`
 
 const now = () => performance.now()
 
-const uid = () => crypto.randomUUID?.() ?? Math.random().toString(16).slice(2)
+const uid = generateUUID
 
 const navs = new Map<string, Nav>()
 const pending = new Map<string, string>()

@@ -4360,6 +4360,10 @@ msgstr "Show active"
 msgid "app.note.filter.showArchived"
 msgstr "Show archived"
 
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.agentUnavailable"
+msgstr "Unavailable"
+
 #. Run menu / models
 msgid "app.note.run.blueprint"
 msgstr "Run Blueprint"
@@ -4379,6 +4383,14 @@ msgstr "Run in the session you are viewing."
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.currentSessionHint"
 msgstr "Open a session in this Blueprint scope first."
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgent"
+msgstr "Execution agent"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgentChooseHelp"
+msgstr "Choose which agent executes this Blueprint."
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.label"
@@ -4401,12 +4413,28 @@ msgid "app.note.run.newSessionDesc"
 msgstr "Create a fresh session in this scope and start immediately."
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.noAgentResults"
+msgstr "No agent results"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.noModelResults"
 msgstr "No model results"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.searchAgents"
+msgstr "Search agents"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.searchModels"
 msgstr "Search models"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectedAgentUnavailable"
+msgstr "The selected agent is unavailable. Go back and choose another."
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectExecutionAgent"
+msgstr "Select execution agent"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.selectModel"
@@ -4535,6 +4563,10 @@ msgstr "Video"
 #. Toolbar
 msgid "app.note.toolbar.back"
 msgstr "Back"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.toolbar.backToAgent"
+msgstr "Back to agent selection"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.toolbar.backToSession"
@@ -6864,6 +6896,22 @@ msgid "app.sidebar.loadSessions"
 msgstr "Load sessions"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllRead"
+msgstr "Mark all read"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadFailed"
+msgstr "Failed to mark all read"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadSuccess"
+msgstr "Marked all sessions as read"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markingAllRead"
+msgstr "Marking all read…"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.menu.account"
 msgstr "Account"
 
@@ -8560,6 +8608,18 @@ msgstr "You have unsaved changes for Settings. Discard them and close Settings?"
 #. js-lingui-explicit-id
 msgid "confirm.discardSettings.title"
 msgstr "Discard unsaved changes?"
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.confirm"
+msgstr "Disconnect"
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.desc"
+msgstr "Disconnect {providerName}? Synergy will clear its stored credentials while preserving the provider and model configuration."
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.title"
+msgstr "Disconnect provider?"
 
 #. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
@@ -12454,8 +12514,18 @@ msgstr "Retry"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.initializing"
+msgstr "Your first message is saved. Initializing the conversation."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.queued"
 msgstr "Your first message is queued for processing."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.stalled"
+msgstr "Your first message is still saved, but initialization did not finish. Retry to resume processing."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -12480,6 +12550,11 @@ msgstr "Submit message"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.accepted"
 msgstr "Session request accepted"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.stalled"
+msgstr "Conversation setup needs attention"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -17948,6 +18023,30 @@ msgstr "Command output"
 #. js-lingui-explicit-id
 msgid "ui.compaction.complete"
 msgstr "Context compressed"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copied"
+msgstr "Copied"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyDetails"
+msgstr "Copy details"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyFailure"
+msgstr "Unable to copy the compaction error details."
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.errorDetails"
+msgstr "Error details"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failed"
+msgstr "Compaction failed"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failedDescription"
+msgstr "Unable to compact this session"
 
 #. js-lingui-explicit-id
 msgid "ui.compaction.mechanicalWarning"
