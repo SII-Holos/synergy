@@ -6,6 +6,10 @@ import { CopilotProvider } from "../../src/provider/copilot"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { MiniMaxProvider } from "../../src/provider/minimax"
 import { GitHubProvider } from "../../src/provider/github"
+import { ProviderAuth } from "../../src/provider/auth"
+import { ProviderDeviceCode } from "../../src/provider/device-code"
+import { ScopeContext } from "../../src/scope/context"
+import { tmpdir } from "../fixture/fixture"
 
 const originalFetch = globalThis.fetch
 const originalGHToken = process.env.GH_TOKEN
@@ -213,6 +217,162 @@ test("github copilot device login exchanges a GitHub token for Copilot models", 
   )
 
   expect(models).toEqual(["gpt-5.4-mini", "claude-sonnet-4.6"])
+})
+
+test("github copilot device login recovers from a transient polling timeout", async () => {
+  let polls = 0
+  const authorize = await CopilotProvider.authorizeDeviceCode(
+    CopilotProvider.PROVIDER_ID,
+    asFetch(async (input) => {
+      const url = String(input)
+      if (url.endsWith("/login/device/code")) {
+        return jsonResponse({
+          device_code: "device-transient",
+          user_code: "TIME-OUT1",
+          verification_uri: "https://github.com/login/device",
+          interval: 1,
+          expires_in: 60,
+        })
+      }
+      if (url.endsWith("/login/oauth/access_token")) {
+        polls++
+        if (polls === 1) throw new DOMException("poll timed out", "TimeoutError")
+        return jsonResponse({ access_token: "github-recovered-token" })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }),
+  )
+
+  if (authorize.method !== "auto") throw new Error("expected auto device flow")
+  await expect(authorize.callback()).resolves.toEqual({
+    type: "success",
+    provider: CopilotProvider.PROVIDER_ID,
+    key: "github-recovered-token",
+  })
+  expect(polls).toBe(2)
+})
+
+test("provider auth stops a cancelled device callback before polling", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      let polls = 0
+      globalThis.fetch = asFetch(async (input) => {
+        const url = String(input)
+        if (url.endsWith("/login/device/code")) {
+          return jsonResponse({
+            device_code: "device-cancelled",
+            user_code: "STOP-NOW",
+            verification_uri: "https://github.com/login/device",
+            interval: 1,
+            expires_in: 60,
+          })
+        }
+        if (url.endsWith("/login/oauth/access_token")) {
+          polls++
+          return jsonResponse({ access_token: "unexpected-token" })
+        }
+        throw new Error(`unexpected URL ${url}`)
+      })
+
+      const input = { providerID: CopilotProvider.PROVIDER_ID, method: 0 }
+      await ProviderAuth.authorize(input)
+      const controller = new AbortController()
+      controller.abort()
+
+      const result = await ProviderAuth.callback({ ...input, signal: controller.signal }).catch((error) => error)
+      expect(result).toBeInstanceOf(ProviderAuth.OauthCallbackFailed)
+      expect(polls).toBe(0)
+    },
+  })
+})
+
+test("device login caps an upstream expiry at fifteen minutes", () => {
+  expect(ProviderDeviceCode.expirySeconds(3600)).toBe(900)
+  expect(ProviderDeviceCode.expirySeconds(undefined)).toBe(900)
+})
+
+test("a completed device callback preserves a newer pending authorization", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      let authorizations = 0
+      let releaseFirstPoll = () => {}
+      const firstPollStarted = new Promise<void>((resolveStarted) => {
+        globalThis.fetch = asFetch(async (input, init) => {
+          const url = String(input)
+          if (url.endsWith("/login/device/code")) {
+            authorizations++
+            return jsonResponse({
+              device_code: `device-${authorizations}`,
+              user_code: `FLOW-${authorizations}`,
+              verification_uri: "https://github.com/login/device",
+              interval: 1,
+              expires_in: 60,
+            })
+          }
+          if (url.endsWith("/login/oauth/access_token")) {
+            const deviceCode = (init?.body as URLSearchParams).get("device_code")
+            if (deviceCode === "device-1") {
+              resolveStarted()
+              await new Promise<void>((resolvePoll) => {
+                releaseFirstPoll = resolvePoll
+              })
+              return jsonResponse({ access_token: "first-token" })
+            }
+            return jsonResponse({ error: "expired_token" })
+          }
+          throw new Error(`unexpected URL ${url}`)
+        })
+      })
+
+      const input = { providerID: CopilotProvider.PROVIDER_ID, method: 0 }
+      await ProviderAuth.authorize(input)
+      const firstCallback = ProviderAuth.callback(input)
+      await firstPollStarted
+      await ProviderAuth.authorize(input)
+      releaseFirstPoll()
+      await firstCallback
+
+      const controller = new AbortController()
+      controller.abort()
+      const second = await ProviderAuth.callback({ ...input, signal: controller.signal }).catch((error) => error)
+      expect(second).toBeInstanceOf(ProviderAuth.OauthCallbackFailed)
+    },
+  })
+})
+
+test("provider auth consumes a failed device callback before another callback can reuse it", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      globalThis.fetch = asFetch(async (input) => {
+        const url = String(input)
+        if (url.endsWith("/login/device/code")) {
+          return jsonResponse({
+            device_code: "device-failed",
+            user_code: "FAIL-ONCE",
+            verification_uri: "https://github.com/login/device",
+            interval: 1,
+            expires_in: 60,
+          })
+        }
+        if (url.endsWith("/login/oauth/access_token")) return jsonResponse({ error: "expired_token" })
+        throw new Error(`unexpected URL ${url}`)
+      })
+
+      const input = { providerID: CopilotProvider.PROVIDER_ID, method: 0 }
+      await ProviderAuth.authorize(input)
+      const first = await ProviderAuth.callback(input).catch((error) => error)
+      expect(first).toBeInstanceOf(ProviderAuth.OauthCallbackFailed)
+
+      const second = await ProviderAuth.callback(input).catch((error) => error)
+      expect(second).toBeInstanceOf(ProviderAuth.OauthMissing)
+    },
+  })
 })
 
 test("github copilot model catalog preserves API vision capabilities", async () => {

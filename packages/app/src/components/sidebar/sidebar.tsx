@@ -11,6 +11,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { sidebar } from "@/locales/messages"
 import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -34,6 +35,7 @@ import {
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
+import { projectMenuPlacement, type ProjectMenuPlacement } from "./project-menu-placement"
 import "./sidebar.css"
 
 const ORPHAN_CHAT_GROUP_ID = "__orphan__"
@@ -125,6 +127,30 @@ export function Sidebar(props: SidebarProps) {
   }
 
   const [recentSectionOpen, setRecentSectionOpen] = createSignal(true)
+  const [acknowledgingCompletions, setAcknowledgingCompletions] = createSignal(false)
+
+  const acknowledgeAllCompletions = async () => {
+    if (acknowledgingCompletions()) return
+    setAcknowledgingCompletions(true)
+    try {
+      const result = await layout.nav.acknowledgeAllCompletionNotices()
+      if ((result?.failedSessionCount ?? 0) > 0) {
+        showToast({ type: "error", title: _(sidebar.markAllReadFailed) })
+        return
+      }
+      if ((result?.acknowledgedCount ?? 0) > 0) {
+        showToast({ type: "info", title: _(sidebar.markAllReadSuccess) })
+      }
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: _(sidebar.markAllReadFailed),
+        description: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      setAcknowledgingCompletions(false)
+    }
+  }
   const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
   const [channelSectionOpen, setChannelSectionOpen] = createSignal(false)
   const [feishuGroupOpen, setFeishuGroupOpen] = createSignal(true)
@@ -424,18 +450,31 @@ export function Sidebar(props: SidebarProps) {
           >
             {/* Recent */}
             <div class="sb-root-section">
-              <div
-                class="sb-projects-header"
-                onClick={() => setRecentSectionOpen((v) => !v)}
-                role="button"
-                tabindex="0"
-              >
-                <span class="sb-section-title">{_(sidebar.recent)}</span>
-                <Icon
-                  name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
-                  size="small"
-                  class="sb-section-chevron"
-                />
+              <div class="sb-projects-header sb-recent-header">
+                <button
+                  type="button"
+                  class="sb-recent-toggle"
+                  aria-expanded={recentSectionOpen()}
+                  onClick={() => setRecentSectionOpen((v) => !v)}
+                >
+                  <span class="sb-section-title">{_(sidebar.recent)}</span>
+                  <Icon
+                    name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
+                    size="small"
+                    class="sb-section-chevron"
+                  />
+                </button>
+                <Show when={(layout.nav.unreadCompletionCount() ?? 0) > 0}>
+                  <button
+                    type="button"
+                    class="sb-mark-all-read"
+                    disabled={acknowledgingCompletions()}
+                    aria-busy={acknowledgingCompletions()}
+                    onClick={() => void acknowledgeAllCompletions()}
+                  >
+                    {_(acknowledgingCompletions() ? sidebar.markingAllRead : sidebar.markAllRead)}
+                  </button>
+                </Show>
               </div>
               <Show when={recentSectionOpen()}>
                 <Show
@@ -692,6 +731,34 @@ function SidebarProjectGroup(props: {
   _: ReturnType<typeof useLingui>["_"]
 }) {
   const [menuOpen, setMenuOpen] = createSignal(false)
+  const [menuPlacement, setMenuPlacement] = createSignal<ProjectMenuPlacement>("down")
+  let menuTrigger: HTMLButtonElement | undefined
+  let menu: HTMLDivElement | undefined
+
+  const updateMenuPlacement = () => {
+    if (!menuTrigger || !menu) return
+    const boundary = menuTrigger.closest(".sb-scroll")
+    if (!boundary) return
+
+    const triggerRect = menuTrigger.getBoundingClientRect()
+    const boundaryRect = boundary.getBoundingClientRect()
+    const menuRect = menu.getBoundingClientRect()
+    setMenuPlacement(
+      projectMenuPlacement({
+        triggerBottom: triggerRect.bottom,
+        boundaryBottom: boundaryRect.bottom,
+        menuHeight: menuRect.height,
+      }),
+    )
+  }
+
+  createEffect(() => {
+    if (!menuOpen()) {
+      setMenuPlacement("down")
+      return
+    }
+    queueMicrotask(updateMenuPlacement)
+  })
   const isSupplemental = createMemo(() => {
     const scope = props.scope()
     return scope ? props.isSupplemental(scope) : false
@@ -751,6 +818,7 @@ function SidebarProjectGroup(props: {
           </button>
           <div class="sb-project-actions">
             <button
+              ref={menuTrigger}
               type="button"
               classList={{
                 "sb-project-menu-btn": true,
@@ -776,7 +844,13 @@ function SidebarProjectGroup(props: {
             <Show when={menuOpen()}>
               <>
                 <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
-                <div class="sb-project-menu">
+                <div
+                  ref={menu}
+                  classList={{
+                    "sb-project-menu": true,
+                    "sb-project-menu-up": menuPlacement() === "up",
+                  }}
+                >
                   <button
                     type="button"
                     class="sb-menu-item"

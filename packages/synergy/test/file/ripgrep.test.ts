@@ -13,6 +13,7 @@ import fs from "fs/promises"
 import path from "path"
 import { Ripgrep } from "../../src/file/ripgrep"
 import { tmpdir } from "../fixture/fixture"
+import { ProcessOutput } from "../../src/process/output"
 
 describe("Ripgrep.files", () => {
   test.skipIf(!rgAvailable())("yields all files without signal parameter (backward compat)", async () => {
@@ -194,6 +195,51 @@ touch '${marker}'
       }
     },
   )
+
+  test.skipIf(process.platform === "win32")("forwards abort to the stderr drain", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        const script = path.join(dir, "hang-rg.sh")
+        await Bun.write(script, "#!/bin/sh\nwhile true; do :; done\n")
+        await fs.chmod(script, 0o755)
+      },
+    })
+
+    const originalFilepath = Ripgrep.filepath
+    const originalDrainText = ProcessOutput.drainText
+    const controller = new AbortController()
+    let stderrSignal: AbortSignal | undefined
+    ;(Ripgrep as any).filepath = async () => path.join(tmp.path, "hang-rg.sh")
+    ;(ProcessOutput as any).drainText = async (
+      _stream: ReadableStream<Uint8Array>,
+      options: { signal?: AbortSignal },
+    ) => {
+      stderrSignal = options.signal
+      if (!options.signal) return new Promise(() => {})
+      if (!options.signal.aborted) {
+        await new Promise<void>((resolve) => options.signal?.addEventListener("abort", () => resolve(), { once: true }))
+      }
+      return { text: "", truncated: false }
+    }
+
+    try {
+      const matches = Array.fromAsync(Ripgrep.matches({ cwd: tmp.path, pattern: "hit", signal: controller.signal }))
+      setTimeout(() => controller.abort(new DOMException("Aborted", "AbortError")), 25)
+      const outcome = await Promise.race([
+        matches.then(
+          () => "resolved" as const,
+          () => "rejected" as const,
+        ),
+        Bun.sleep(3_000).then(() => "timed_out" as const),
+      ])
+
+      expect(stderrSignal).toBe(controller.signal)
+      expect(outcome).toBe("rejected")
+    } finally {
+      ;(Ripgrep as any).filepath = originalFilepath
+      ;(ProcessOutput as any).drainText = originalDrainText
+    }
+  })
 })
 
 describe("Ripgrep.tree", () => {

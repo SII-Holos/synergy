@@ -85,13 +85,28 @@ class FakeRTCPeerConnection {
 
 const originalWebSocket = globalThis.WebSocket
 const originalRTCPeerConnection = globalThis.RTCPeerConnection
+const originalRandomUUID = Object.getOwnPropertyDescriptor(globalThis.crypto, "randomUUID")
 
 describe("BrowserWebRTCClient", () => {
   afterEach(() => {
     globalThis.WebSocket = originalWebSocket
     globalThis.RTCPeerConnection = originalRTCPeerConnection
+    if (originalRandomUUID) Object.defineProperty(globalThis.crypto, "randomUUID", originalRandomUUID)
+    else Reflect.deleteProperty(globalThis.crypto, "randomUUID")
     FakeWebSocket.instances = []
     FakeRTCPeerConnection.instances = []
+  })
+
+  test("constructs when crypto.randomUUID is unavailable", () => {
+    Object.defineProperty(globalThis.crypto, "randomUUID", { configurable: true, value: undefined })
+
+    expect(
+      () =>
+        new BrowserWebRTCClient({
+          signalingUrl: "ws://localhost/browser/webrtc/connect",
+          pageId: "page_1",
+        }),
+    ).not.toThrow()
   })
 
   test("waits for Browser Host readiness before sending an offer", async () => {
