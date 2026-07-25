@@ -2168,6 +2168,31 @@
         ]
       }
     },
+    "/global/acknowledge-completions": {
+      "post": {
+        "operationId": "global.nav.acknowledgeCompletions",
+        "summary": "Acknowledge completion notices across all scopes",
+        "description": "Acknowledge completion notices for non-archived root sessions across all scopes.",
+        "responses": {
+          "200": {
+            "description": "Completion notices acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalAcknowledgeCompletionsResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.nav.acknowledgeCompletions({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/pinned": {
       "get": {
         "operationId": "global.nav.pinned",
@@ -5978,7 +6003,7 @@
           }
         ],
         "summary": "Submit session input",
-        "description": "Submit user input to a session. If the session is running, the input is queued in the session inbox; otherwise a new turn starts immediately.",
+        "description": "Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.",
         "responses": {
           "200": {
             "description": "Input accepted",
@@ -6107,6 +6132,95 @@
         ]
       }
     },
+    "/session/{sessionID}/inbox/{itemID}/retry": {
+      "post": {
+        "operationId": "session.inbox_retry",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "path",
+            "name": "itemID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Inbox item ID"
+          }
+        ],
+        "summary": "Retry durable session inbox item",
+        "description": "Resume processing for an existing durable inbox item without creating a duplicate message.",
+        "responses": {
+          "200": {
+            "description": "Inbox item scheduled for processing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInboxItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session worktree unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeUnavailableError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inbox_retry({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/inbox/{itemID}/guide": {
       "post": {
         "operationId": "session.inbox_guide",
@@ -6173,6 +6287,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "First task is locked until its root is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInboxFirstTaskLockedError"
                 }
               }
             }
@@ -6245,6 +6369,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "First task is locked until its root is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInboxFirstTaskLockedError"
                 }
               }
             }
@@ -9067,6 +9201,77 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}/auth": {
+      "delete": {
+        "operationId": "provider.disconnect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Remove stored provider credentials",
+        "description": "Clear Synergy-managed stored credentials for a provider while preserving its catalog and configuration. Credentials sourced from the environment or plugins are unaffected.",
+        "responses": {
+          "200": {
+            "description": "Stored provider credentials removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAuthRemoveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stored provider credentials cannot be disconnected in their current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAuthDisconnectUnavailableError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.disconnect({\n  ...\n})"
           }
         ]
       }
@@ -24603,6 +24808,27 @@
         },
         "required": ["items", "nextCursor", "total", "unreadCompletionCount"]
       },
+      "GlobalAcknowledgeCompletionsResponse": {
+        "type": "object",
+        "properties": {
+          "acknowledgedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "modifiedSessionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "failedSessionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["acknowledgedCount", "modifiedSessionCount", "failedSessionCount"]
+      },
       "PinnedResponse": {
         "type": "object",
         "properties": {
@@ -25109,6 +25335,9 @@
           },
           "source": {
             "type": "string"
+          },
+          "canDisconnect": {
+            "type": "boolean"
           },
           "updatedAt": {
             "type": "number"
@@ -32513,6 +32742,33 @@
         },
         "required": ["type", "mime", "url"]
       },
+      "SessionInboxFirstTaskLockedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionInboxFirstTaskLockedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "itemID": {
+                "type": "string",
+                "pattern": "^inb.*"
+              }
+            },
+            "required": ["message", "sessionID", "itemID"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "UserMessage": {
         "type": "object",
         "properties": {
@@ -34615,6 +34871,42 @@
           }
         },
         "required": ["type", "label"]
+      },
+      "ProviderAuthRemoveResponse": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "cleared": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["providerID", "cleared"]
+      },
+      "ProviderAuthDisconnectUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProviderAuthDisconnectUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["connected", "not_configured", "exhausted", "action_required"]
+              }
+            },
+            "required": ["providerID", "status"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "GitHubAccount": {
         "type": "object",

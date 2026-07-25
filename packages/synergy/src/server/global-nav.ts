@@ -2,12 +2,21 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { NavCategory, SessionNav, SessionNavResponse, SessionNavEntry } from "../session/nav"
+import { Session } from "../session"
 
 const booleanQuery = z.preprocess((value) => (value === "false" ? false : value), z.coerce.boolean())
 
 const GlobalRecentResponse = SessionNavResponse.extend({
   unreadCompletionCount: z.number().int().nonnegative(),
 }).meta({ ref: "GlobalRecentResponse" })
+
+const GlobalAcknowledgeCompletionsResponse = z
+  .object({
+    acknowledgedCount: z.number().int().nonnegative(),
+    modifiedSessionCount: z.number().int().nonnegative(),
+    failedSessionCount: z.number().int().nonnegative(),
+  })
+  .meta({ ref: "GlobalAcknowledgeCompletionsResponse" })
 
 const PinnedResponse = z
   .object({
@@ -63,6 +72,25 @@ export const GlobalNavRoute = new Hono()
       })
       return c.json(result)
     },
+  )
+  .post(
+    "/acknowledge-completions",
+    describeRoute({
+      summary: "Acknowledge completion notices across all scopes",
+      description: "Acknowledge completion notices for non-archived root sessions across all scopes.",
+      operationId: "global.nav.acknowledgeCompletions",
+      responses: {
+        200: {
+          description: "Completion notices acknowledged",
+          content: {
+            "application/json": {
+              schema: resolver(GlobalAcknowledgeCompletionsResponse),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => c.json(await Session.batchAcknowledgeCompletionNotices()),
   )
   .get(
     "/pinned",

@@ -1,4 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
+import { createRequire } from "node:module"
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 
 interface ElectronBuilderConfig {
   mac?: {
@@ -28,6 +32,35 @@ interface ElectronBuilderConfig {
     from?: string
     to?: string
   }>
+}
+
+const temporaryDirectories: string[] = []
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })),
+  )
+})
+
+const require = createRequire(import.meta.url)
+const afterPack = require("../script/after-pack.cjs") as {
+  assertRuntimeAssets(runtimeDir: string, platform: string): void
+}
+
+async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy") {
+  const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-desktop-after-pack-"))
+  temporaryDirectories.push(runtimeDir)
+  await Promise.all([
+    fs.mkdir(path.join(runtimeDir, "bin"), { recursive: true }),
+    fs.mkdir(path.join(runtimeDir, "app"), { recursive: true }),
+    fs.mkdir(path.join(runtimeDir, "schema"), { recursive: true }),
+  ])
+  await Promise.all([
+    fs.writeFile(path.join(runtimeDir, "bin", binary), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "app", "index.html"), "<!doctype html>"),
+    fs.writeFile(path.join(runtimeDir, "schema", "config.schema.json"), "{}"),
+  ])
+  return runtimeDir
 }
 
 describe("desktop packaging", () => {
@@ -110,5 +143,26 @@ describe("desktop packaging", () => {
 
     expect(afterPackScript).toContain("desktop-package.json")
     expect(afterPackScript).toContain("appInfo?.version")
+  })
+
+  test("rejects a runtime that cannot serve the Desktop application", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.rm(path.join(runtimeDir, "app", "index.html"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(/app\/index\.html/)
+  })
+
+  test("requires the Linux sandbox helper", async () => {
+    const runtimeDir = await createRuntimeFixture()
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "linux")).toThrow(/sandbox\/synergy-sandbox-linux/)
+  })
+
+  test("requires the Windows executable and sandbox helper", async () => {
+    const runtimeDir = await createRuntimeFixture()
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(/bin\/synergy\.exe/)
+    await fs.writeFile(path.join(runtimeDir, "bin", "synergy.exe"), "runtime")
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(/sandbox\/synergy-sandbox-windows\.exe/)
   })
 })

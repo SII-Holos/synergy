@@ -15,10 +15,6 @@ import { requestWithinLimit } from "./request-body-limit"
 
 const log = Log.create({ service: "config-route" })
 
-function classifyChangedFields(rawBody: Record<string, unknown>): Set<string> {
-  return new Set(Object.keys(rawBody))
-}
-
 const DomainUpdateInput = z
   .object({
     config: Config.Info,
@@ -131,13 +127,12 @@ export const ConfigRoute = new Hono()
     validator("json", z.object({ config: Config.Info })),
     async (c) => {
       const rawBody = c.req.valid("json").config as Record<string, unknown>
-      const changedFields = classifyChangedFields(rawBody)
       const storedConfig = await Config.current()
       const validated = Config.Info.parse(rawBody)
       const merged = Config.mergeRedactedSecrets(validated, storedConfig)
-      await Config.updateGlobal(merged)
-      await reloadAfterConfigChange(changedFields, "config.update route")
-      return c.json(Config.redactForClient(await Config.current()))
+      const change = await Config.updateGlobalWithChange(merged)
+      await reloadAfterConfigChange(change, "config.update route")
+      return c.json(Config.redactForClient(change.config))
     },
   )
   .get(
@@ -256,9 +251,8 @@ export const ConfigRoute = new Hono()
     async (c) => {
       const { domain } = c.req.valid("param")
       const body = c.req.valid("json")
-      const changedFields = classifyChangedFields(body.config as Record<string, unknown>)
-      const result = await Config.domainUpdate(domain, body.config, { mode: body.mode })
-      await reloadAfterConfigChange(changedFields, `config.domain.update:${domain}`)
+      const { result, change } = await Config.domainUpdateWithChange(domain, body.config, { mode: body.mode })
+      await reloadAfterConfigChange(change, `config.domain.update:${domain}`)
       return c.json(result)
     },
   )
@@ -383,27 +377,26 @@ export const ConfigRoute = new Hono()
     },
   )
 
-async function reloadAfterConfigChange(changedFields: Set<string>, reason: string) {
-  const hasCascade = RuntimeReload.inferConfigCascades([...changedFields]).length > 0
-  const allClientSide =
-    changedFields.size > 0 && [...changedFields].every((f) => RuntimeReload.CONFIG_CLIENT_SIDE.has(f))
-  const allLiveNoCascade =
-    changedFields.size > 0 && [...changedFields].every((f) => RuntimeReload.CONFIG_LIVE_APPLIED.has(f)) && !hasCascade
+async function reloadAfterConfigChange(configChange: Config.Change, reason: string) {
+  const changedFields = new Set(configChange.changedFields)
+  if (changedFields.size === 0) {
+    log.info("config updated (no changes)")
+    return
+  }
+  const allClientSide = [...changedFields].every((field) => RuntimeReload.CONFIG_CLIENT_SIDE.has(field))
 
   if (allClientSide) {
     log.info("config updated (client-side only, skipping reload)", { changedFields: [...changedFields] })
     return
   }
-  if (allLiveNoCascade && !changedFields.has("cortex")) {
-    await Config.reload("global")
-    log.info("config updated (live-applied, no cascade)", { changedFields: [...changedFields] })
-    return
-  }
-  const result = await RuntimeReload.reload({
-    targets: ["config"],
-    scope: "global",
-    reason,
-  })
+  const result = await RuntimeReload.reload(
+    {
+      targets: ["config"],
+      scope: "global",
+      reason,
+    },
+    { configChange },
+  )
   log.info("config updated", {
     changedFields: result.changedFields,
     restartRequired: result.restartRequired,

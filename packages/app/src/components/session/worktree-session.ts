@@ -233,6 +233,21 @@ export function createNewSessionWorkspaceSuccessProgress(input: {
   }
 }
 
+export function createNewSessionWorkspaceAcceptedProgress(input: {
+  selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>
+}): SessionTransitionProgress {
+  return {
+    kind: "new-worktree-session",
+    phase: "loading",
+    title: S.transitionTitleAccepted,
+    description: S.transitionDescInitializing,
+    steps: createSessionStartupSteps({
+      stage: "accepted",
+      workspace: workspaceStepForSelection(input.selection),
+    }),
+  }
+}
+
 export function createNewSessionWorkspaceErrorProgress(input: {
   title: SessionTransitionProgress["title"]
   message: string

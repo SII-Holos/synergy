@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 interface WorkflowStep {
   name?: string
+  run?: string
   env?: Record<string, unknown>
 }
 
@@ -26,5 +27,21 @@ describe("desktop release packaging", () => {
       expect(step?.env?.CSC_KEY_PASSWORD).toBe("${{ matrix.platform == 'darwin' && secrets.CSC_KEY_PASSWORD || '' }}")
       expect(step?.env?.CSC_IDENTITY_AUTO_DISCOVERY).toBe("${{ matrix.platform == 'darwin' && 'true' || 'false' }}")
     }
+  })
+
+  test("assembles complete runtimes before packaging Desktop artifacts", async () => {
+    const source = await Bun.file(new URL("../../../.github/workflows/release.yml", import.meta.url)).text()
+    const workflow = Bun.YAML.parse(source) as ReleaseWorkflow
+    const steps = workflow.jobs?.stable_desktop_package?.steps ?? []
+    const buildIndex = steps.findIndex((step) => step.name === "Build Synergy runtime for desktop package")
+    const prepareIndex = steps.findIndex((step) => step.name === "Prepare Synergy runtime for desktop package")
+    const packageIndex = steps.findIndex((step) => step.name === "Package desktop artifact")
+    const prepareStep = steps[prepareIndex]
+
+    expect(buildIndex).toBeGreaterThanOrEqual(0)
+    expect(prepareIndex).toBeGreaterThan(buildIndex)
+    expect(packageIndex).toBeGreaterThan(prepareIndex)
+    expect(prepareStep?.run).toBe("bun run ./script/release/prepare-desktop-runtime.ts")
+    expect(prepareStep?.env?.SYNERGY_BUILD_TARGETS).toBe("${{ matrix.runtime_targets }}")
   })
 })

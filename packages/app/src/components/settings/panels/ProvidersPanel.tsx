@@ -10,6 +10,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
+import { disconnectProviderConfirm } from "@/components/dialog/confirm-copy"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
 import { translateDescriptor } from "@/locales/translate"
 import {
@@ -21,6 +23,7 @@ import {
 import { SettingsPage } from "../components/SettingsPrimitives"
 import {
   providerNeedsAction,
+  providerCanDisconnect,
   providerAuthTone,
   providerRecoveryActionLabel,
   providerRecoveryCopy,
@@ -106,6 +109,7 @@ export function ProvidersPanel(props: {
   const { _, i18n } = useLingui()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const confirm = useConfirm()
   const [query, setQuery] = createSignal("")
   const [selectedID, setSelectedID] = createSignal<string | undefined>(props.providerFocusID)
   const [refreshingID, setRefreshingID] = createSignal<string | undefined>()
@@ -166,6 +170,17 @@ export function ProvidersPanel(props: {
       await globalSync.refreshProviders()
       setRefreshingID(undefined)
     }
+  }
+
+  function confirmDisconnect(provider: ProviderConnectionSummary) {
+    const copy = disconnectProviderConfirm(provider.name)
+    confirm.show({
+      ...copy,
+      onConfirm: async () => {
+        await globalSDK.client.provider.disconnect({ providerID: provider.id }, { throwOnError: true })
+        await globalSync.refreshProviders()
+      },
+    })
   }
 
   return (
@@ -280,6 +295,11 @@ export function ProvidersPanel(props: {
                         i18n(),
                       )}
                     </span>
+                    <Show when={providerCanDisconnect(provider().health)}>
+                      <Button type="button" variant="ghost" size="small" onClick={() => confirmDisconnect(provider())}>
+                        {translateDescriptor(disconnectProviderConfirm(provider().name).confirmLabel, i18n())}
+                      </Button>
+                    </Show>
                   </div>
                 </Show>
 

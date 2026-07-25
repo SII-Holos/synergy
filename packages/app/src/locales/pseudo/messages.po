@@ -4360,6 +4360,10 @@ msgstr ""
 msgid "app.note.filter.showArchived"
 msgstr ""
 
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.agentUnavailable"
+msgstr ""
+
 #. Run menu / models
 msgid "app.note.run.blueprint"
 msgstr ""
@@ -4378,6 +4382,14 @@ msgstr ""
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.currentSessionHint"
+msgstr ""
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgent"
+msgstr ""
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgentChooseHelp"
 msgstr ""
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
@@ -4401,11 +4413,27 @@ msgid "app.note.run.newSessionDesc"
 msgstr ""
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.noAgentResults"
+msgstr ""
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.noModelResults"
 msgstr ""
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.searchAgents"
+msgstr ""
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.searchModels"
+msgstr ""
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectedAgentUnavailable"
+msgstr ""
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectExecutionAgent"
 msgstr ""
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
@@ -4534,6 +4562,10 @@ msgstr ""
 
 #. Toolbar
 msgid "app.note.toolbar.back"
+msgstr ""
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.toolbar.backToAgent"
 msgstr ""
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
@@ -6864,6 +6896,22 @@ msgid "app.sidebar.loadSessions"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllRead"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadFailed"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadSuccess"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markingAllRead"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.menu.account"
 msgstr ""
 
@@ -8559,6 +8607,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "confirm.discardSettings.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12454,7 +12514,17 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.initializing"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.queued"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.stalled"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -12479,6 +12549,11 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.accepted"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.stalled"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.

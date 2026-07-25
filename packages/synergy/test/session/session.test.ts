@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
+import { SessionNav } from "../../src/session/nav"
 import { SessionInteraction } from "../../src/session/interaction"
 import { AppChannel } from "../../src/channel/app"
 import { SessionEndpoint } from "../../src/session/endpoint"
@@ -70,6 +71,56 @@ describe("session lifecycle events", () => {
           unsub()
           await Session.remove(session.id)
         }
+      },
+    })
+  })
+
+  test("acknowledges only the completion count captured by the caller", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        await Session.recordCompletionNotice(session.id)
+        await Session.recordCompletionNotice(session.id)
+        const capturedCount = (await Session.get(session.id)).completionNotice.unreadCount
+        await Session.recordCompletionNotice(session.id)
+
+        await Session.acknowledgeCompletionNotice(session.id, capturedCount)
+
+        expect((await Session.get(session.id)).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 1,
+          silent: false,
+        })
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("keeps completion notice nav state consistent during concurrent record and acknowledge", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        await Session.recordCompletionNotice(session.id)
+        await Session.recordCompletionNotice(session.id)
+        const capturedCount = (await Session.get(session.id)).completionNotice.unreadCount
+
+        await Promise.all([
+          Session.recordCompletionNotice(session.id),
+          Session.acknowledgeCompletionNotice(session.id, capturedCount),
+        ])
+
+        expect((await Session.get(session.id)).completionNotice.unreadCount).toBe(1)
+        const nav = await SessionNav.queryGlobal({ parentOnly: true, includeArchived: false })
+        expect(nav.items.find((entry) => entry.id === session.id)?.completionNotice.unreadCount).toBe(1)
+
+        await Session.remove(session.id)
       },
     })
   })
