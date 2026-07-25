@@ -32,6 +32,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 - Keep only active product fonts in the application bundle. Adding an optional font requires a user-selectable runtime path and a loading strategy; do not import dormant font families from the root `Font` component.
 - Treat mobile drawers as named modal surfaces with initial focus, contained Tab traversal, Escape close, and focus return. Verify dense toolbars at 375 px and do not hide overflow that clips interactive controls.
 - Keep Browser native and remote presentations consistent with [Browser runtime](../../docs/architecture/browser-runtime.md); do not introduce iframe, screenshot-stream, pseudo-tab, or multi-page fallbacks.
+- Route ordinary browser randomness through `@ericsanchezok/synergy-util/uuid`; security-sensitive randomness uses its strict APIs with no weak fallback. Keep optional Secure Context APIs out of module-scope startup paths so private-network HTTP can boot and unsupported actions fail locally.
 
 ## Settings and Plugins
 
@@ -55,6 +56,8 @@ bun run --cwd packages/app typecheck
 bun run --cwd packages/app build
 bun run quality:quick
 ```
+
+Browser capability or bootstrap changes also run `bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts` and, after the production build, `bun packages/app/script/private-http-smoke.ts` from the repository root.
 
 For product copy, accessibility text, locale-sensitive formatting, or language settings, also run:
 

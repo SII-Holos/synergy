@@ -6,6 +6,7 @@ import type {
   BrowserPage as BrowserProtocolPage,
   BrowserPresentationSelection,
 } from "@ericsanchezok/synergy-browser"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
@@ -82,9 +83,7 @@ export interface SetViewportOptions {
 }
 
 function createBrowserTraceId() {
-  const random = globalThis.crypto?.randomUUID?.()
-  if (random) return `browser_${random}`
-  return `browser_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+  return `browser_${generateUUID()}`
 }
 
 export function createBrowserStore() {
