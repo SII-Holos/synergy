@@ -266,6 +266,38 @@ test("a request that cannot start without credentials remains not configured", a
   })
 })
 
+test("a rejected request cannot restore runtime health after its stored credential is removed", async () => {
+  await Auth.set("test-status", { type: "api", key: "removed-during-request" })
+  let rejectRequest!: () => void
+  const requestStarted = new Promise<void>((resolve) => {
+    rejectRequest = resolve
+  })
+  let finishRequest!: () => void
+  const requestFinished = new Promise<void>((resolve) => {
+    finishRequest = resolve
+  })
+
+  const pending = ProviderAuthRecovery.execute({
+    providerID: "test-status",
+    request: async () => {
+      rejectRequest()
+      await requestFinished
+      return new Response(null, { status: 401 })
+    },
+    throwOnActionRequired: false,
+  })
+  await requestStarted
+  await Auth.remove("test-status")
+  finishRequest()
+
+  expect((await pending).status).toBe(401)
+  expect(ProviderAuthHealth.fromEntry("test-status", undefined)).toEqual({
+    providerID: "test-status",
+    status: "not_configured",
+    canDisconnect: false,
+  })
+})
+
 test("plugin classifier and refresh hooks run, while an unclassified plugin 401 remains untouched", async () => {
   let classified = 0
   let refreshed = 0
