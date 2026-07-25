@@ -248,7 +248,7 @@ export namespace Ripgrep {
       stdout: "pipe",
       stderr: "pipe",
     })
-    const stderrPromise = ProcessOutput.drainText(proc.stderr)
+    const stderrPromise = ProcessOutput.drainText(proc.stderr, { signal: input.signal })
     let reachedEnd = false
 
     try {

@@ -10,6 +10,7 @@ import {
   type JSX,
 } from "solid-js"
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 type DialogElement = () => JSX.Element
 
@@ -45,7 +46,7 @@ function init() {
   }
 
   const mount = (element: DialogElement, owner: Owner, onClose?: () => void) => {
-    const id = Math.random().toString(36).slice(2)
+    const id = generateUUID()
     let dispose: (() => void) | undefined
 
     const node = runWithOwner(owner, () =>

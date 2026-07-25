@@ -4360,6 +4360,10 @@ msgstr "显示活动项"
 msgid "app.note.filter.showArchived"
 msgstr "显示已归档项"
 
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.agentUnavailable"
+msgstr "不可用"
+
 #. Run menu / models
 msgid "app.note.run.blueprint"
 msgstr "运行蓝图"
@@ -4379,6 +4383,14 @@ msgstr "在当前查看的会话中运行。"
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.currentSessionHint"
 msgstr "请先在此蓝图作用域中打开一个会话。"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgent"
+msgstr "执行智能体"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.executionAgentChooseHelp"
+msgstr "选择由哪个智能体执行此蓝图。"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.label"
@@ -4401,12 +4413,28 @@ msgid "app.note.run.newSessionDesc"
 msgstr "在此作用域中新建会话并立即开始。"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.noAgentResults"
+msgstr "无智能体结果"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.noModelResults"
 msgstr "无模型结果"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.searchAgents"
+msgstr "搜索智能体"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.searchModels"
 msgstr "搜索模型"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectedAgentUnavailable"
+msgstr "所选智能体不可用。请返回并选择其他智能体。"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.run.selectExecutionAgent"
+msgstr "选择执行智能体"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.run.selectModel"
@@ -4535,6 +4563,10 @@ msgstr "视频"
 #. Toolbar
 msgid "app.note.toolbar.back"
 msgstr "后退"
+
+#. ── Note panel ───────────────────────────────────────────────────────────────
+msgid "app.note.toolbar.backToAgent"
+msgstr "返回智能体选择"
 
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.toolbar.backToSession"
@@ -6864,6 +6896,22 @@ msgid "app.sidebar.loadSessions"
 msgstr "加载会话"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllRead"
+msgstr "全部标为已读"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadFailed"
+msgstr "全部标为已读失败"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markAllReadSuccess"
+msgstr "已将所有会话标为已读"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.markingAllRead"
+msgstr "正在全部标为已读…"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.menu.account"
 msgstr "账号"
 
@@ -8560,6 +8608,18 @@ msgstr "设置中有未保存的更改。要放弃更改并关闭设置吗？"
 #. js-lingui-explicit-id
 msgid "confirm.discardSettings.title"
 msgstr "放弃设置更改？"
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.confirm"
+msgstr "断开连接"
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.desc"
+msgstr "要断开 {providerName} 吗？Synergy 将清除其存储的凭据，同时保留提供商和模型配置。"
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.title"
+msgstr "断开提供商连接？"
 
 #. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
@@ -17948,6 +18008,30 @@ msgstr "命令输出"
 #. js-lingui-explicit-id
 msgid "ui.compaction.complete"
 msgstr "上下文已整理"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copied"
+msgstr "已复制"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyDetails"
+msgstr "复制详情"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyFailure"
+msgstr "无法复制上下文压缩错误详情。"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.errorDetails"
+msgstr "错误详情"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failed"
+msgstr "上下文压缩失败"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failedDescription"
+msgstr "无法压缩此会话的上下文"
 
 #. js-lingui-explicit-id
 msgid "ui.compaction.mechanicalWarning"

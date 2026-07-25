@@ -22,6 +22,15 @@
   );
 }
 
+[data-component="compaction-card"][data-status="failed"] {
+  background-color: var(--surface-critical-weak);
+  border-color: color-mix(in oklch, var(--border-critical-base) 52%, var(--border-weaker-base));
+}
+
+[data-component="compaction-card"][data-status="failed"] [data-slot="compaction-card-header"]:hover {
+  background-color: color-mix(in srgb, var(--surface-critical-weak) 82%, var(--surface-raised-base-hover));
+}
+
 [data-component="compaction-card"][data-status="running"]::before {
   content: "";
   position: absolute;
@@ -89,6 +98,10 @@
 
 [data-component="compaction-card"][data-status="running"] [data-slot="compaction-card-icon"] {
   color: var(--icon-info-base);
+}
+
+[data-component="compaction-card"][data-status="failed"] [data-slot="compaction-card-icon"] {
+  color: var(--icon-critical-base);
 }
 
 [data-slot="compaction-card-copy"] {
@@ -188,6 +201,94 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+}
+
+[data-slot="compaction-card-error"] {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-slot="compaction-card-error-label"] {
+  color: var(--text-on-critical-base);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.35;
+}
+
+[data-slot="compaction-card-error-text"] {
+  max-height: min(32vh, 18rem);
+  margin: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  border-left: 2px solid var(--border-critical-base);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-raised-base);
+  color: var(--text-base);
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+[data-slot="compaction-card-error-actions"] {
+  display: flex;
+  justify-content: flex-end;
+}
+
+[data-slot="compaction-card-copy-button"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-weaker-base);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-raised-base);
+  color: var(--text-base);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+[data-slot="compaction-card-copy-button"]:hover:not(:disabled) {
+  background-color: var(--surface-raised-base-hover);
+}
+
+[data-slot="compaction-card-copy-button"]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+[data-slot="compaction-card-copy-button"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+[data-slot="compaction-card-copy-button"] [data-slot="icon-svg"] {
+  color: var(--icon-base);
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+[data-slot="compaction-card-copy-button"][data-copy-state="copied"] [data-slot="icon-svg"] {
+  color: var(--icon-success-base);
+  transform: scale(1.06);
+}
+
+[data-slot="compaction-card-copy-button"][data-copy-state="failed"] [data-slot="icon-svg"] {
+  color: var(--icon-critical-base);
+  transform: scale(1.06);
 }
 
 [data-slot="compaction-card-warning"] {
