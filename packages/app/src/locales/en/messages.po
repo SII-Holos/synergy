@@ -17950,6 +17950,30 @@ msgid "ui.compaction.complete"
 msgstr "Context compressed"
 
 #. js-lingui-explicit-id
+msgid "ui.compaction.copied"
+msgstr "Copied"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyDetails"
+msgstr "Copy details"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.copyFailure"
+msgstr "Unable to copy the compaction error details."
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.errorDetails"
+msgstr "Error details"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failed"
+msgstr "Compaction failed"
+
+#. js-lingui-explicit-id
+msgid "ui.compaction.failedDescription"
+msgstr "Unable to compact this session"
+
+#. js-lingui-explicit-id
 msgid "ui.compaction.mechanicalWarning"
 msgstr "This summary was mechanically generated due to context limits. Some detail may be missing."
 
