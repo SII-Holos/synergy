@@ -213,7 +213,7 @@ async function resolveRegistryTarget(
 
   return {
     manifest: resolved.manifest,
-    source: resolved.source,
+    source: target.source,
     spec,
     oldVersion: latestApproval?.version,
     oldCapabilities: latestApproval?.approvedCapabilities ?? [],
