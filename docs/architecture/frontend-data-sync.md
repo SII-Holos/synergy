@@ -93,15 +93,16 @@ The `messages` array in the store contains only the visible window messages, not
 
 ### Page size and cap
 
-- Frontend page loads use `limit: 200`; the store cap is 500.
-- The store's `DEFAULT_CAP` of 500 applies to both latest loads and history prepends.
+- Frontend page loads use `limit: 200`; the store primary-message cap is 500.
+- The store's `DEFAULT_CAP` of 500 applies to primary messages in latest loads and to the full retained set during history prepends. Latest mode additionally retains dependency roots referenced by those primary messages, so the visible window may exceed 500 entries without losing a turn anchor.
 
 ### Latest mode
 
 Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming `message.updated` events reconcile into the window:
 
 - If the message already exists, the window updates in place.
-- If the message is new and the window is in latest mode, it is inserted and the window is capped by dropping the oldest messages.
+- If the message is new and the window is in latest mode, it is inserted and the primary window is capped by dropping the oldest unreferenced messages.
+- Any root referenced through `rootID` by a retained primary message stays in the window outside the cap. Snapshot `referencedRoots` and live event reconciliation preserve the same dependency-root closure so non-root user guidance always retains its `SessionTurn` anchor.
 - Dropped message IDs release their part buckets from the store.
 
 The window cursor (`nextCursor`) is recorded from each page response so older pages can be loaded later.
