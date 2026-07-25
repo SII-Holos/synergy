@@ -94,7 +94,7 @@ describe("Synergy Link loopback E2E", () => {
       caller: { type: "agent", agentID: "agent_loopback_caller", ownerUserID: 1 },
       body: {
         version: 2,
-        requestID: crypto.randomUUID(),
+        requestID: "request_strict_rejection",
         linkID: "link_loopback",
         tool: "session",
         action: "open",
@@ -103,6 +103,6 @@ describe("Synergy Link loopback E2E", () => {
       },
     })
 
-    expect(response).toMatchObject({ ok: false })
+    expect(response).toMatchObject({ requestID: "request_strict_rejection", ok: false })
   })
 })

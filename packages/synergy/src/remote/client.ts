@@ -139,15 +139,32 @@ type ResponseForRequest<TRequest extends SynergyLinkRequest> = TRequest extends 
 
 function parseResponse(input: SynergyLinkRequest, raw: unknown): SynergyLinkResponse {
   const error = SynergyLinkEnvelope.ErrorResult.safeParse(raw)
-  if (error.success) return error.data
+  if (error.success) {
+    assertResponseCorrelation(input, error.data)
+    return error.data
+  }
 
   const typed = getResponseSchema(input).safeParse(raw)
-  if (typed.success) return typed.data
+  if (typed.success) {
+    assertResponseCorrelation(input, typed.data)
+    return typed.data
+  }
 
   throw new SynergyLinkRemoteError("transport_error", "Invalid Synergy Link response", {
     expected: { tool: input.tool, action: input.action, requestID: input.requestID },
     issues: typed.error.issues,
-    raw,
+  })
+}
+
+function assertResponseCorrelation(input: SynergyLinkRequest, response: SynergyLinkResponse): void {
+  const mismatched =
+    response.requestID !== input.requestID ||
+    (response.tool !== undefined && response.tool !== input.tool) ||
+    (response.action !== undefined && response.action !== input.action)
+  if (!mismatched) return
+  throw new SynergyLinkRemoteError("transport_error", "Synergy Link response does not match its request", {
+    expected: { tool: input.tool, action: input.action, requestID: input.requestID },
+    received: { tool: response.tool, action: response.action, requestID: response.requestID },
   })
 }
 

@@ -5,6 +5,7 @@ import path from "node:path"
 import process from "node:process"
 import { SynergyLinkCLIBackend } from "../src/cli-backend"
 import { SynergyLinkRuntime } from "../src/runtime"
+import { SynergyLinkLog } from "../src/log"
 
 const originalHome = process.env.SYNERGY_LINK_HOME
 const tempRoots: string[] = []
@@ -16,6 +17,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await SynergyLinkLog.flush()
   if (originalHome === undefined) {
     delete process.env.SYNERGY_LINK_HOME
   } else {

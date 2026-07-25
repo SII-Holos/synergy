@@ -15,6 +15,7 @@ export class SynergyLinkInboundHandler {
   ) {}
 
   async handle(input: { caller: HolosCaller | unknown; body: unknown }): Promise<RPCResult> {
+    const correlation = extractRequestCorrelation(input.body)
     try {
       const caller = HolosCallerSchema.parse(input.caller)
       const request = RPCRequestSchema.parse(input.body)
@@ -77,7 +78,7 @@ export class SynergyLinkInboundHandler {
 
         error: error instanceof Error ? error.message : String(error),
       })
-      return errorResult(undefined, "host_internal_error", error instanceof Error ? error.message : String(error))
+      return errorResult(correlation, "host_internal_error", error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -195,6 +196,24 @@ function sessionResult(
       },
       output: input.output,
     },
+  }
+}
+
+function extractRequestCorrelation(input: unknown): {
+  requestID?: string
+  tool?: SynergyLinkEnvelope.Tool
+  action?: string
+} {
+  if (!input || typeof input !== "object") return {}
+  const candidate = input as Record<string, unknown>
+  return {
+    requestID:
+      typeof candidate.requestID === "string" && candidate.requestID.length > 0 ? candidate.requestID : undefined,
+    tool:
+      candidate.tool === "bash" || candidate.tool === "process" || candidate.tool === "session"
+        ? candidate.tool
+        : undefined,
+    action: typeof candidate.action === "string" ? candidate.action : undefined,
   }
 }
 

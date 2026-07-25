@@ -143,6 +143,29 @@ describe("Synergy Link remote client", () => {
     ).rejects.toBeInstanceOf(SynergyLinkRemoteError)
   })
 
+  test("rejects a typed response whose action does not match the request", async () => {
+    const client = new HolosSynergyLinkClient({
+      async request(_targetAgentID, input) {
+        return {
+          version: 2,
+          requestID: input.requestID,
+          ok: true,
+          tool: "process",
+          action: "list",
+          result: {
+            title: "wrong action",
+            metadata: { action: "list", backend: "remote", linkID: input.linkID, processes: [] },
+            output: "",
+          },
+        }
+      },
+    })
+
+    await expect(
+      client.executeProcess("link_test", { action: "kill", processId: "proc_test" }, { sessionID: "session_test" }),
+    ).rejects.toBeInstanceOf(SynergyLinkRemoteError)
+  })
+
   test("disposes the underlying transport", () => {
     let disposed = 0
     const client = new HolosSynergyLinkClient({

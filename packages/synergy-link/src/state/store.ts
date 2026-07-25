@@ -1,7 +1,7 @@
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
 import { SynergyLinkOwnerRegistry, type SynergyLinkOwnerRegistryState } from "../owner-registry"
 
 export type SynergyLinkApprovalMode = "auto" | "manual" | "trusted-only"
@@ -126,9 +126,11 @@ export namespace SynergyLinkStore {
   }
 
   export async function ensureRoot(rootPath = root()): Promise<void> {
-    await mkdir(rootPath, { recursive: true })
-    await mkdir(path.dirname(logsPathForRoot(rootPath)), { recursive: true })
-    await mkdir(path.dirname(controlSocketPathForRoot(rootPath)), { recursive: true })
+    await mkdir(rootPath, { recursive: true, mode: 0o700 })
+    await chmod(rootPath, 0o700)
+    const logsDirectory = path.dirname(logsPathForRoot(rootPath))
+    await mkdir(logsDirectory, { recursive: true, mode: 0o700 })
+    await chmod(logsDirectory, 0o700)
   }
 
   export async function loadState(): Promise<SynergyLinkState> {
@@ -143,17 +145,10 @@ export namespace SynergyLinkStore {
 
   export async function saveState(state: SynergyLinkState): Promise<void> {
     const rootPath = root()
-    const write = saveQueue.then(async () => {
-      await writeRootFile(
-        rootPath,
-        statePathForRoot(rootPath),
-        JSON.stringify(hydrateState(state, rootPath), null, 2) + "\n",
-      )
-    })
-    saveQueue = write.catch((error) => {
-      console.error(`Synergy Link state save failed: ${error instanceof Error ? error.message : String(error)}`)
-    })
-    await saveQueue
+    const snapshot = JSON.stringify(hydrateState(structuredClone(state), rootPath), null, 2) + "\n"
+    const write = saveQueue.then(() => writeRootFile(rootPath, statePathForRoot(rootPath), snapshot))
+    saveQueue = write.catch(() => undefined)
+    await write
   }
 
   export async function loadMigrationLog(): Promise<Record<string, number>> {
@@ -183,11 +178,13 @@ export namespace SynergyLinkStore {
 async function writeRootFile(rootPath: string, filepath: string, content: string): Promise<void> {
   await SynergyLinkStore.ensureRoot(rootPath)
   try {
-    await writeFile(filepath, content)
+    await writeFile(filepath, content, { mode: 0o600 })
+    await chmod(filepath, 0o600)
   } catch (error) {
     if (!isEnoent(error)) throw error
     await SynergyLinkStore.ensureRoot(rootPath)
-    await writeFile(filepath, content)
+    await writeFile(filepath, content, { mode: 0o600 })
+    await chmod(filepath, 0o600)
   }
 }
 

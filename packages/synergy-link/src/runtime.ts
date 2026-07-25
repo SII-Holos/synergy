@@ -74,7 +74,11 @@ export class SynergyLinkRuntime {
             }
           : undefined
         runtime.state.blockedAgentIDs = blockedAgentIDs
-        void SynergyLinkStore.saveState(runtime.state)
+        void SynergyLinkStore.saveState(runtime.state).catch((error) => {
+          SynergyLinkLog.error("runtime.session_state.persist_failed", {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
       },
     })
     const inbound = new SynergyLinkInboundHandler(rpc, sessions, (input) => runtime.decideSessionOpen(input))

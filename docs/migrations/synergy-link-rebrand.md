@@ -43,7 +43,7 @@ Use `linkID` for `connect`, remote `bash`, and remote `process` calls. Open an e
 
 Current Bash payload fields are `background` and `yieldSeconds`. Current process actions are `list`, `poll`, `log`, `write`, `send-keys`, `kill`, `clear`, and `remove`.
 
-The Synergy Bash and process tool schemas accept `linkID` only; the former `envID` alias has been removed. Persisted tool calls recorded with `envID` are rewritten by the session migration. An omitted Link ID intentionally selects local execution; an invalid or unavailable supplied ID produces a warning and follows the tool's documented local fallback. `connect` itself requires a valid `linkID` and never falls back locally.
+The Synergy Bash and process tool schemas accept `linkID` only; the former `envID` alias is rejected during parameter validation. Persisted tool calls recorded with `envID` are rewritten by the session migration. Omitting both `linkID` and `targetID` intentionally selects local execution. A supplied remote target that is invalid or unavailable fails explicitly and never falls back to local execution. `connect` likewise requires a valid Link target and never falls back locally.
 
 ## Protocol Consumers
 

@@ -146,6 +146,14 @@ describe("tool.bash", () => {
     )
   })
 
+  test("rejects removed envID instead of falling back to local execution", async () => {
+    const bash = await BashTool.init()
+    expect(
+      bash.parameters.safeParse({ command: "echo unsafe", description: "Reject legacy remote target", envID: "legacy" })
+        .success,
+    ).toBe(false)
+  })
+
   test("auto-backgrounds long commands after yieldSeconds", async () => {
     await withProjectScope(async () => {
       const bash = await BashTool.init()

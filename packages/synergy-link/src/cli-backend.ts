@@ -2,6 +2,7 @@ import { SynergyLinkControlClient } from "./control/client"
 import { SynergyLinkHolosAuth, type SynergyLinkHolosAuthSource } from "./holos/auth"
 import { SynergyLinkHolosLogin } from "./holos/login"
 import { SynergyLinkService } from "./service"
+import { SynergyLinkLocalService } from "./service/local"
 import {
   SynergyLinkStore,
   type SynergyLinkApprovalMode,
@@ -50,7 +51,7 @@ export namespace SynergyLinkCLIBackend {
     if (await SynergyLinkControlClient.isAvailable()) {
       return await SynergyLinkControlClient.request({ action: "runtime.enter_managed" })
     }
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.runtimeMode = "managed"
     SynergyLinkOwnerRegistry.declareLocalOwner(state.ownerRegistry, state.linkID ?? `local:${crypto.randomUUID()}`)
     state.connectionStatus = "disconnected"
@@ -67,7 +68,7 @@ export namespace SynergyLinkCLIBackend {
     if (await SynergyLinkControlClient.isAvailable()) {
       return await SynergyLinkControlClient.request({ action: "runtime.set_mode", mode: "standalone" })
     }
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.runtimeMode = "standalone"
     SynergyLinkOwnerRegistry.releaseLocalOwner(state.ownerRegistry)
     state.connectionStatus = "disconnected"
@@ -96,7 +97,7 @@ export namespace SynergyLinkCLIBackend {
 
   export async function logout() {
     const service = await SynergyLinkService.stop()
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.connectionStatus = "disconnected"
     state.currentSession = undefined
     state.service.desiredState = "stopped"
@@ -220,7 +221,7 @@ export namespace SynergyLinkCLIBackend {
     if (await SynergyLinkControlClient.isAvailable()) {
       return await SynergyLinkControlClient.request({ action: "collaboration.set", enabled })
     }
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.collaborationEnabled = enabled
     await SynergyLinkStore.saveState(state)
     return {
@@ -267,7 +268,7 @@ export namespace SynergyLinkCLIBackend {
     mode: SynergyLinkApprovalMode,
   ): Promise<AvailabilityResult<{ mode: SynergyLinkApprovalMode }>> {
     return await onlineOnlyAvailability({ action: "approval.set", mode }, async () => {
-      const state = await SynergyLinkStore.loadState()
+      const state = await loadOfflineWritableState()
       state.approvalMode = mode
       await SynergyLinkStore.saveState(state)
       return { mode }
@@ -292,7 +293,7 @@ export namespace SynergyLinkCLIBackend {
     value: string,
   ): Promise<AvailabilityResult<{ agents: string[]; users: number[] }>> {
     return await onlineOnlyAvailability({ action: "trust.add", subject, value }, async () => {
-      const state = await SynergyLinkStore.loadState()
+      const state = await loadOfflineWritableState()
       if (subject === "agent") {
         if (!state.trusted.agentIDs.includes(value)) {
           state.trusted.agentIDs.push(value)
@@ -319,7 +320,7 @@ export namespace SynergyLinkCLIBackend {
     value: string,
   ): Promise<AvailabilityResult<{ agents: string[]; users: number[] }>> {
     return await onlineOnlyAvailability({ action: "trust.remove", subject, value }, async () => {
-      const state = await SynergyLinkStore.loadState()
+      const state = await loadOfflineWritableState()
       if (subject === "agent") {
         state.trusted.agentIDs = state.trusted.agentIDs.filter((item) => item !== value)
       } else {
@@ -387,7 +388,7 @@ export namespace SynergyLinkCLIBackend {
     if (await SynergyLinkControlClient.isAvailable()) {
       return await SynergyLinkControlClient.request({ action: "label.set", label })
     }
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.label = label ?? undefined
     await SynergyLinkStore.saveState(state)
     return {
@@ -422,7 +423,7 @@ async function onlineOnlyAvailability<T>(
 }
 
 async function decideRequestOffline(requestID: string, status: "approved" | "denied") {
-  const state = await SynergyLinkStore.loadState()
+  const state = await loadOfflineWritableState()
   const request = state.pendingRequests.find((item) => item.id === requestID)
   if (!request) {
     throw new Error(`Unknown request: ${requestID}`)
@@ -432,6 +433,14 @@ async function decideRequestOffline(requestID: string, status: "approved" | "den
   request.decidedAt = request.updatedAt
   await SynergyLinkStore.saveState(state)
   return { request }
+}
+
+async function loadOfflineWritableState(): Promise<SynergyLinkState> {
+  const state = await SynergyLinkStore.loadState()
+  if (state.service.pid && SynergyLinkLocalService.isPidRunning(state.service.pid)) {
+    throw new Error("Synergy Link is running but its control socket is unavailable; refusing an offline state write.")
+  }
+  return state
 }
 
 async function loadSnapshot() {

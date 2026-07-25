@@ -1,10 +1,11 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
 import { SynergyLinkControlClient } from "../src/control/client"
 import { SynergyLinkRuntime } from "../src/runtime"
+import { SynergyLinkLog } from "../src/log"
 
 const originalHome = process.env.SYNERGY_LINK_HOME
 const tempRoots: string[] = []
@@ -16,6 +17,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
+  await SynergyLinkLog.flush()
   if (originalHome === undefined) {
     delete process.env.SYNERGY_LINK_HOME
   } else {
@@ -201,5 +203,18 @@ describe("synergy-link control socket", () => {
     } finally {
       await runtime.stopServerProcess()
     }
+  })
+
+  test("keeps control socket paths out of private runtime logs", async () => {
+    const runtime = await SynergyLinkRuntime.create()
+    await runtime.control.start()
+    await runtime.control.stop()
+    await SynergyLinkLog.flush()
+
+    const logPath = path.join(process.env.SYNERGY_LINK_HOME!, "logs", "runtime.log")
+    for (let attempt = 0; attempt < 50 && !(await Bun.file(logPath).exists()); attempt++) await Bun.sleep(10)
+    const log = await readFile(logPath, "utf8")
+    expect(log).not.toContain(path.join(process.env.SYNERGY_LINK_HOME!, "control.sock"))
+    expect((await stat(logPath)).mode & 0o777).toBe(0o600)
   })
 })

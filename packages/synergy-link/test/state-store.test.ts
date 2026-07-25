@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readFile } from "node:fs/promises"
+import { mkdtemp, readFile, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
 import { SynergyLinkStore } from "../src/state/store"
+import { SynergyLinkOwnerRegistry } from "../src/owner-registry"
 
 const originalHome = process.env.SYNERGY_LINK_HOME
 
@@ -45,5 +46,34 @@ describe("synergy-link state store", () => {
 
     const rawState = await readFile(path.join(root, "state.json"), "utf8")
     expect(JSON.parse(rawState).label).toBe("label-9")
+  })
+
+  test("captures state at call time and propagates persistence failures", async () => {
+    const root = await tempRoot()
+    process.env.SYNERGY_LINK_HOME = root
+    const state = await SynergyLinkStore.loadState()
+    state.label = "captured"
+
+    const write = SynergyLinkStore.saveState(state)
+    state.label = "mutated"
+    await write
+    expect(JSON.parse(await readFile(path.join(root, "state.json"), "utf8")).label).toBe("captured")
+
+    process.env.SYNERGY_LINK_HOME = path.join(root, "state.json")
+    await expect(SynergyLinkStore.saveState(state)).rejects.toThrow()
+  })
+
+  test("creates private runtime directories and state files", async () => {
+    const root = await tempRoot()
+    process.env.SYNERGY_LINK_HOME = root
+    const state = await SynergyLinkStore.loadState()
+
+    await SynergyLinkStore.saveState(state)
+    await SynergyLinkOwnerRegistry.saveFile(state.ownerRegistry)
+
+    expect((await stat(root)).mode & 0o777).toBe(0o700)
+    expect((await stat(path.join(root, "logs"))).mode & 0o777).toBe(0o700)
+    expect((await stat(path.join(root, "state.json"))).mode & 0o777).toBe(0o600)
+    expect((await stat(path.join(root, "owner.json"))).mode & 0o777).toBe(0o600)
   })
 })

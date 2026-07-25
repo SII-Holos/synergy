@@ -8,40 +8,42 @@ import { LocalBashBackend } from "./bash/local"
 import { RemoteBashBackend } from "./bash/remote"
 import type { BashMetadata } from "./bash/shared"
 
-const parameters = z.object({
-  command: z.string().describe("The command to execute"),
-  workdir: z
-    .string()
-    .describe(
-      `The working directory to run the command in. Defaults to the project directory. Use this instead of 'cd' commands.`,
-    )
-    .optional(),
-  description: z
-    .string()
-    .describe(
-      "Clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
-    ),
-  background: z
-    .boolean()
-    .optional()
-    .describe(
-      "Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process.",
-    ),
-  yieldSeconds: z
-    .number()
-    .positive()
-    .optional()
-    .describe(
-      "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds).",
-    ),
-  linkID: z
-    .string()
-    .optional()
-    .describe(
-      "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
-    ),
-  targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
-})
+const parameters = z
+  .object({
+    command: z.string().describe("The command to execute"),
+    workdir: z
+      .string()
+      .describe(
+        `The working directory to run the command in. Defaults to the project directory. Use this instead of 'cd' commands.`,
+      )
+      .optional(),
+    description: z
+      .string()
+      .describe(
+        "Clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
+      ),
+    background: z
+      .boolean()
+      .optional()
+      .describe(
+        "Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process.",
+      ),
+    yieldSeconds: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds).",
+      ),
+    linkID: z
+      .string()
+      .optional()
+      .describe(
+        "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
+      ),
+    targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
+  })
+  .strict()
 
 export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
   get description() {
