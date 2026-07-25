@@ -35,6 +35,9 @@ jobs:
       - name: Check test layout
         run: bun run test-layout:check
 
+      - name: Check browser crypto contract
+        run: bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
+
       - name: Check frontend localization
         run: bun run localization:check
 
@@ -81,7 +84,7 @@ jobs:
         run: bun install
 
       - name: Install Playwright Chromium
-        run: bunx playwright install chromium
+        run: bun run --cwd packages/app playwright install chromium
 
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
@@ -95,6 +98,11 @@ jobs:
         run: bun turbo test --filter='!synergy'
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
+
+      - name: Run private HTTP browser smoke
+        run: |
+          bun run --cwd packages/app build
+          bun packages/app/script/private-http-smoke.ts
 
       - name: Run release contract tests
         run: bun run release:test

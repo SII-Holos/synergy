@@ -118,6 +118,8 @@ bun run test:coverage
 
 Frontend package suites run through `bun run --cwd packages/app test` and `bun run --cwd packages/ui test`; both are part of the Turbo test graph.
 
+Browser capability or App bootstrap changes also run the browser crypto contract and the production-build private HTTP browser smoke documented in `packages/app/AGENTS.md`.
+
 Repository gates run from the root:
 
 ```bash
