@@ -1,12 +1,7 @@
 import z from "zod"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import {
-  computeManifestHash,
-  computePermissionsHash,
-  getApproval,
-  verifyApproval,
-  type PluginApprovalRecord,
-} from "./approval-store"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
+import { getApproval, verifyApproval, type PluginApprovalRecord } from "./approval-store"
 import { diffPermissions } from "./diff"
 import { PluginPermissionDiffSchema } from "./schema"
 import { riskForCapabilities } from "../capability"

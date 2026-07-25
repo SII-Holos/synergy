@@ -4,14 +4,9 @@ import { Installation } from "../global/installation"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { PluginSpec } from "../util/plugin-spec"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { riskForCapabilities } from "./capability"
-import {
-  computeManifestHash,
-  computePermissionsHash,
-  getApproval,
-  type PluginApprovalRecord,
-  verifyApproval,
-} from "./consent/approval-store"
+import { getApproval, type PluginApprovalRecord, verifyApproval } from "./consent/approval-store"
 import { ensureRuntime, forgetPlugin, specToPluginId, state, type LoadedPlugin } from "./loader"
 import { reload } from "./lifecycle"
 import * as Lockfile from "./lockfile"

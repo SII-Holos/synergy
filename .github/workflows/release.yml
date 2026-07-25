@@ -176,6 +176,7 @@ jobs:
       - name: Build Synergy runtime for desktop package
         run: bun run ./packages/synergy/script/build.ts
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
           SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
           SYNERGY_CHANNEL: stable
           SYNERGY_BUILD_TARGETS: ${{ matrix.runtime_targets }}
