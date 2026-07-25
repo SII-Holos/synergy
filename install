@@ -277,6 +277,31 @@ print_post_install_message() {
     echo -e ""
 }
 
+check_version() {
+    if command -v synergy >/dev/null 2>&1; then
+        local installed_version
+        installed_version=$(synergy --version 2>/dev/null || echo "")
+
+        if [[ "$installed_version" != "$specific_version" ]]; then
+            print_message info "${MUTED}Installed version: ${NC}$installed_version."
+        elif has_complete_bundle; then
+            print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+install_synergy() {
+    if [ -n "$binary_path" ]; then
+        install_from_binary
+    elif check_version; then
+        download_and_install
+    fi
+
+    ensure_linux_bubblewrap
+}
+
 if [ "${SYNERGY_INSTALL_LIBRARY_MODE:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
@@ -404,21 +429,6 @@ else
 fi
 
 
-check_version() {
-    if command -v synergy >/dev/null 2>&1; then
-        synergy_path=$(which synergy)
-
-        ## Check the installed version
-        installed_version=$(synergy --version 2>/dev/null || echo "")
-
-        if [[ "$installed_version" != "$specific_version" ]]; then
-            print_message info "${MUTED}Installed version: ${NC}$installed_version."
-        elif has_complete_bundle; then
-            print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed"
-            exit 0
-        fi
-    fi
-}
 
 unbuffered_sed() {
     if echo | sed -u -e "" >/dev/null 2>&1; then
@@ -542,14 +552,7 @@ install_from_binary() {
     fi
 }
 
-if [ -n "$binary_path" ]; then
-    install_from_binary
-else
-    check_version
-    download_and_install
-fi
-
-ensure_linux_bubblewrap
+install_synergy
 
 
 add_to_path() {

@@ -106,6 +106,42 @@ describe("CLI installer guidance", () => {
     expect(outputText(result)).not.toContain("cd <project>")
   })
 
+  test("checks Bubblewrap when the current Synergy version is already installed", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-current-install-"))
+    temporaryDirectories.push(root)
+    const home = path.join(root, "home")
+    const bin = path.join(root, "bin")
+    await Promise.all([
+      fs.mkdir(path.join(home, ".synergy", "app"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "schema"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "sandbox"), { recursive: true }),
+      fs.mkdir(bin, { recursive: true }),
+    ])
+    await Promise.all([
+      fs.writeFile(path.join(home, ".synergy", "app", "index.html"), "app"),
+      fs.writeFile(path.join(home, ".synergy", "schema", "config.schema.json"), "{}"),
+      fs.writeFile(path.join(home, ".synergy", "sandbox", "synergy-sandbox-linux"), "helper"),
+      writeExecutable(path.join(bin, "synergy"), 'printf "1.2.3\\n"'),
+    ])
+
+    const command = [
+      "specific_version=1.2.3",
+      'download_and_install() { printf "unexpected-download\\n"; return 1; }',
+      'ensure_linux_bubblewrap() { printf "bubblewrap-check-reached\\n"; }',
+      "install_synergy",
+    ].join("; ")
+    const result = runInstallFunction(command, [], {
+      HOME: home,
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+      SYNERGY_INSTALL_PLATFORM: "Linux",
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(outputText(result)).toContain("already installed")
+    expect(outputText(result)).toContain("bubblewrap-check-reached")
+    expect(outputText(result)).not.toContain("unexpected-download")
+  })
+
   test.each([
     ["apt-get", "apt-get install -y bubblewrap"],
     ["dnf", "dnf install -y bubblewrap"],
