@@ -193,8 +193,7 @@ function localStatusDescription(
   status: Extract<EmbeddingStatus, { mode: "local" }>,
   fmt: IntlFormatter,
 ): MessageDescriptor {
-  if (status.asset === "cached") return localCachedDesc
-  if (status.asset === "downloading") {
+  if (isEmbeddingDownloadActive(status)) {
     const progress = status.progress
     if (progress?.totalBytes) {
       return {
@@ -208,6 +207,7 @@ function localStatusDescription(
     }
     return localDownloadingFallbackDesc
   }
+  if (status.asset === "cached") return localCachedDesc
   if (status.asset === "failed") return localFailedDesc
   return localMissingDesc
 }
@@ -258,7 +258,7 @@ export function LibraryEmbeddingSection(props: {
       starting() ||
       props.configDirty ||
       customSourceMissing() ||
-      current?.asset === "downloading" ||
+      (current ? isEmbeddingDownloadActive(current) : false) ||
       current?.asset === "cached"
     )
   })
@@ -339,16 +339,16 @@ export function LibraryEmbeddingSection(props: {
   function buttonLabel(): string {
     if (starting()) return _(buttonStarting)
     const current = localStatus()
+    if (current && isEmbeddingDownloadActive(current)) return _(buttonDownloading)
     if (current?.asset === "failed") return _(buttonRetry)
     if (current?.asset === "cached") return _(buttonDownloaded)
-    if (current?.asset === "downloading") return _(buttonDownloading)
     return _(buttonDownload)
   }
 
   function stateLabelText(): string {
     const current = localStatus()
+    if (current && isEmbeddingDownloadActive(current)) return _(stateDownloading)
     if (current?.asset === "cached") return _(stateReady)
-    if (current?.asset === "downloading") return _(stateDownloading)
     if (current?.asset === "failed") return _(stateFailed)
     return _(stateMissing)
   }
@@ -449,7 +449,7 @@ export function LibraryEmbeddingSection(props: {
                     </Button>
                   }
                 />
-                <Show when={current().asset === "downloading"}>
+                <Show when={isEmbeddingDownloadActive(current())}>
                   <div class="settings-embedding-progress">
                     <div
                       class="usage-window-meter"
