@@ -77,6 +77,10 @@ export namespace RuntimeReload {
   })
   export type Input = z.infer<typeof Input>
 
+  interface ReloadOptions {
+    configChange?: Config.Change
+  }
+
   // ─── Target dependency map ───────────────────────────────────────────
   // If target A lists B, then B must be executed before A.
   // This replaces the previous implicit array-ordering approach.
@@ -105,7 +109,7 @@ export namespace RuntimeReload {
 
   // ─── Core reload function ────────────────────────────────────────────
 
-  export async function reload(input: Input): Promise<Result> {
+  export async function reload(input: Input, options: ReloadOptions = {}): Promise<Result> {
     const params = Input.parse(input)
     const requested = normalizeTargets(params.targets)
     const executed = [] as Target[]
@@ -113,7 +117,7 @@ export namespace RuntimeReload {
     const failures: RuntimeSchema.ReloadFailure[] = []
     const diagnostics: RuntimeSchema.ReloadDiagnostic[] = []
     const warnings = [] as string[]
-    const changedFields = new Set<string>()
+    const changedFields = new Set(options.configChange?.changedFields)
     const restartRequired = new Set<string>()
     const liveApplied = new Set<string>()
 
@@ -140,6 +144,7 @@ export namespace RuntimeReload {
       restartRequired,
       liveApplied,
       warnings,
+      configChange: options.configChange,
     }
 
     const targetsToExecute = requested.includes("all")
@@ -212,6 +217,7 @@ export namespace RuntimeReload {
     restartRequired: Set<string>
     liveApplied: Set<string>
     warnings: string[]
+    configChange?: Config.Change
   }
 
   // ─── Target executor ─────────────────────────────────────────────────
@@ -230,13 +236,13 @@ export namespace RuntimeReload {
 
     // P9: Error isolation — one subsystem failure doesn't abort the whole reload
     try {
-      await executeTargetCore(target, ctx)
+      const inferredCascades = await executeTargetCore(target, ctx)
       ctx.executed.push(target)
 
       // Execute inline cascades (e.g. provider → agent)
-      const cascades = TARGET_CASCADES[target]
-      if (cascades) {
-        await Promise.all(cascades.map((cascade) => executeTarget(cascade, ctx)))
+      const cascades = unique([...(TARGET_CASCADES[target] ?? []), ...(inferredCascades ?? [])])
+      for (const cascade of cascades) {
+        await executeTarget(cascade, ctx)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -273,7 +279,9 @@ export namespace RuntimeReload {
       case "config": {
         const resolvedScope = resolveConfigScope(ctx.scope)
         const result = await Config.reload(resolvedScope)
-        for (const field of result.changedFields) {
+        const oldConfig = ctx.configChange?.oldConfig ?? result.oldConfig
+        const changedFields = unique([...ctx.changedFields, ...result.changedFields])
+        for (const field of changedFields) {
           ctx.changedFields.add(field)
           if (CONFIG_RESTART_REQUIRED.has(field)) ctx.restartRequired.add(field)
           if (CONFIG_LIVE_APPLIED.has(field)) ctx.liveApplied.add(field)
@@ -288,18 +296,18 @@ export namespace RuntimeReload {
             })
           }
         }
-        if (resolvedScope === "global" && result.changedFields.includes("cortex")) {
+        if (resolvedScope === "global" && changedFields.includes("cortex")) {
           CortexConcurrency.configure(result.config.cortex?.maxConcurrentTasks)
         }
         if (
           resolvedScope === "global" &&
-          result.changedFields.includes("execution") &&
-          result.oldConfig?.execution?.agentWorkers !== result.config.execution?.agentWorkers
+          changedFields.includes("execution") &&
+          oldConfig.execution?.agentWorkers !== result.config.execution?.agentWorkers
         ) {
           AgentTurn.resize(result.config.execution?.agentWorkers)
           ctx.liveApplied.add("execution.agentWorkers")
         }
-        if (resolvedScope === "global" && result.changedFields.includes("github")) {
+        if (resolvedScope === "global" && changedFields.includes("github")) {
           const [{ GitHubPollRuntime }, { GitHubRuntime }] = await Promise.all([
             import("../github/poll-runtime"),
             import("../github/runtime"),
@@ -308,13 +316,9 @@ export namespace RuntimeReload {
           await GitHubRuntime.reload(result.config.github)
           await GitHubPollRuntime.start(result.config.github)
         }
-        // Infer cascades from changed config fields
-        for (const cascadedTarget of inferConfigCascades(result.changedFields)) {
-          await executeTarget(cascadedTarget, ctx)
-        }
         // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
-        if (result.changedFields.includes("library") && result.oldConfig) {
-          const oldAutonomy = result.oldConfig.library?.autonomy !== false
+        if (changedFields.includes("library")) {
+          const oldAutonomy = oldConfig.library?.autonomy !== false
           const newAutonomy = result.config.library?.autonomy !== false
           if (oldAutonomy !== newAutonomy) {
             try {
@@ -327,13 +331,13 @@ export namespace RuntimeReload {
             }
           }
         }
-        if (result.changedFields.includes("timeout")) {
+        if (changedFields.includes("timeout")) {
           const { TimeoutConfig } = await import("@/util/timeout-config")
           TimeoutConfig.invalidate()
         }
         const { Plugin } = await import("../plugin")
-        await Plugin.notifyConfigHooks({ source: "reload", config: result.config, changedFields: result.changedFields })
-        return
+        await Plugin.notifyConfigHooks({ source: "reload", config: result.config, changedFields })
+        return inferConfigCascades(changedFields)
       }
       case "provider": {
         const { Provider } = await import("../provider/provider")
