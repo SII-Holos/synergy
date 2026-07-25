@@ -9096,6 +9096,77 @@
         ]
       }
     },
+    "/provider/{providerID}/auth": {
+      "delete": {
+        "operationId": "provider.disconnect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Remove stored provider credentials",
+        "description": "Clear Synergy-managed stored credentials for a provider while preserving its catalog and configuration. Credentials sourced from the environment or plugins are unaffected.",
+        "responses": {
+          "200": {
+            "description": "Stored provider credentials removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAuthRemoveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stored provider credentials cannot be disconnected in their current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAuthDisconnectUnavailableError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.disconnect({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/auth/github/status": {
       "get": {
         "operationId": "provider.auth.githubStatus",
@@ -25156,6 +25227,9 @@
           "source": {
             "type": "string"
           },
+          "canDisconnect": {
+            "type": "boolean"
+          },
           "updatedAt": {
             "type": "number"
           },
@@ -34661,6 +34735,42 @@
           }
         },
         "required": ["type", "label"]
+      },
+      "ProviderAuthRemoveResponse": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "cleared": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["providerID", "cleared"]
+      },
+      "ProviderAuthDisconnectUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProviderAuthDisconnectUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["connected", "not_configured", "exhausted", "action_required"]
+              }
+            },
+            "required": ["providerID", "status"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "GitHubAccount": {
         "type": "object",

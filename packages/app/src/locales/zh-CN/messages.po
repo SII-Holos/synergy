@@ -8610,6 +8610,18 @@ msgid "confirm.discardSettings.title"
 msgstr "放弃设置更改？"
 
 #. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.confirm"
+msgstr "断开连接"
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.desc"
+msgstr "要断开 {providerName} 吗？Synergy 将清除其存储的凭据，同时保留提供商和模型配置。"
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.title"
+msgstr "断开提供商连接？"
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr "留在工作树"
 

@@ -372,6 +372,8 @@ import type {
   ProviderAuthResponses,
   ProviderCredentialsImportCredentialsErrors,
   ProviderCredentialsImportCredentialsResponses,
+  ProviderDisconnectErrors,
+  ProviderDisconnectResponses,
   ProviderListResponses,
   ProviderModelsRefreshErrors,
   ProviderModelsRefreshResponses,
@@ -7137,6 +7139,40 @@ export class Provider extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * Remove stored provider credentials
+   *
+   * Clear Synergy-managed stored credentials for a provider while preserving its catalog and configuration. Credentials sourced from the environment or plugins are unaffected.
+   */
+  public disconnect<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<ProviderDisconnectResponses, ProviderDisconnectErrors, ThrowOnError>(
+      {
+        url: "/provider/{providerID}/auth",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   models = new Models({ client: this.client })
