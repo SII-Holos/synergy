@@ -2,16 +2,24 @@ import { describe, expect, test } from "bun:test"
 import type { EmbeddingStatus } from "@ericsanchezok/synergy-sdk/client"
 import {
   describeEmbeddingModel,
+  isEmbeddingDownloadActive,
   pollEmbeddingStatus,
 } from "../../../../src/components/settings/panels/library-embedding-model"
 
-function localStatus(asset: "missing" | "downloading" | "cached" | "failed"): EmbeddingStatus {
+function localStatus(
+  asset: "missing" | "downloading" | "cached" | "failed",
+  runtime: "unloaded" | "loading" | "ready" = asset === "cached"
+    ? "ready"
+    : asset === "downloading"
+      ? "loading"
+      : "unloaded",
+): EmbeddingStatus {
   return {
     mode: "local",
     model: "Xenova/all-MiniLM-L6-v2",
     source: "huggingface",
     asset,
-    runtime: asset === "cached" ? "ready" : asset === "downloading" ? "loading" : "unloaded",
+    runtime,
   }
 }
 
@@ -47,8 +55,12 @@ describe("embedding model presentation", () => {
   })
 })
 describe("library embedding model", () => {
+  test("treats initialization as active before download progress begins", () => {
+    expect(isEmbeddingDownloadActive(localStatus("missing", "loading"))).toBe(true)
+  })
+
   test("polls sequentially until the local model download reaches a terminal state", async () => {
-    const states = [localStatus("downloading"), localStatus("downloading"), localStatus("cached")]
+    const states = [localStatus("missing", "loading"), localStatus("downloading"), localStatus("cached")]
     const updates: EmbeddingStatus[] = []
     let active = 0
     let peak = 0
@@ -70,11 +82,9 @@ describe("library embedding model", () => {
     })
 
     expect(peak).toBe(1)
-    expect(updates.map((status) => (status.mode === "local" ? status.asset : status.mode))).toEqual([
-      "downloading",
-      "downloading",
-      "cached",
-    ])
+    expect(
+      updates.map((status) => (status.mode === "local" ? `${status.runtime}:${status.asset}` : status.mode)),
+    ).toEqual(["loading:missing", "loading:downloading", "ready:cached"])
     expect(terminal).toEqual(localStatus("cached"))
   })
 
