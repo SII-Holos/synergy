@@ -158,4 +158,51 @@ describe("official registry install verification", () => {
       fs.rmSync(artifact.dir, { recursive: true, force: true })
     }
   })
+
+  test("approves and installs an official registry artifact after review", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const artifact = await buildSignedArtifact("Official Test Plugin")
+    try {
+      await withOfficialRegistry(artifact, async () => {
+        const app = Server.App()
+        const installRes = await app.request("/api/plugins/registry/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: PLUGIN_ID, version: PLUGIN_VERSION, source: "official" }),
+        })
+        expect(installRes.status).toBe(409)
+        const installBody = (await installRes.json()) as {
+          review: { target: unknown; reviewToken: string }
+        }
+
+        const approveRes = await app.request("/api/plugins/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target: installBody.review.target,
+            reviewToken: installBody.review.reviewToken,
+          }),
+        })
+        expect(approveRes.status).toBe(200)
+        const approveBody = (await approveRes.json()) as {
+          id: string
+          loaded: boolean
+          health: string
+          installation: { kind: string; registry?: string; spec?: string }
+          manifest: PluginManifestType
+        }
+        expect(approveBody.id).toBe(PLUGIN_ID)
+        expect(approveBody.loaded).toBe(true)
+        expect(approveBody.health).toBe("loaded")
+        expect(approveBody.installation).toEqual({
+          kind: "registry",
+          registry: "official",
+          spec: expect.any(String),
+        })
+        expect(approveBody.manifest.version).toBe(PLUGIN_VERSION)
+      })
+    } finally {
+      fs.rmSync(artifact.dir, { recursive: true, force: true })
+    }
+  })
 })
