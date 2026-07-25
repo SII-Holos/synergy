@@ -65,6 +65,25 @@ describe("Synergy Link execution state", () => {
     expect(SynergyLinkExecution.allSessions()).toHaveLength(2)
   })
 
+  test("matches a registered target to a bootstrap session with the same transport agent", () => {
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_bootstrap",
+      targetAgentID: "agent_bootstrap",
+      sourceAgent: "build",
+      sessionID: "session_bootstrap",
+      status: "opened",
+      openedAt: 1,
+      lastUsedAt: 1,
+    })
+
+    expect(
+      SynergyLinkExecution.getSession("link_bootstrap", {
+        targetID: "target_registered_later",
+        targetAgentID: "agent_bootstrap",
+      })?.sessionID,
+    ).toBe("session_bootstrap")
+  })
+
   test("does not resolve a raw session owned by another local agent", async () => {
     SynergyLinkExecution.setClient(fakeClient())
     SynergyLinkExecution.upsertSession({

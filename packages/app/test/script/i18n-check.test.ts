@@ -63,6 +63,33 @@ msgstr ""
     expect(missingTranslationIds(source, source)).toEqual([])
   })
 
+  test("describes unrollback as restoring messages rather than redoing model work", async () => {
+    const chinese = await readFile(new URL("../../src/locales/zh-CN/messages.po", import.meta.url), "utf-8")
+    const translations = catalogTranslations(chinese)
+
+    const expectedRollbackTranslations = new Map([
+      ["prompt.quickActions.redo", "恢复消息"],
+      ["prompt.quickActions.redo.desc", "恢复上一个已撤销的消息回合"],
+      ["session.cmd.redo", "恢复消息"],
+      ["session.cmd.redoDesc", "恢复上一个已撤销的消息回合"],
+      ["session.conversation.pausedTooltip", "回退期间已暂停投递。恢复消息或开始新任务后将恢复。"],
+      ["session.rewind.description.before", "回到“{title}”之前。隐藏的工作在你开始新任务前仍可恢复。"],
+      ["session.rewind.description.untitled", "回到此消息之前。隐藏的工作在你开始新任务前仍可恢复。"],
+      ["session.rollback.cannotRedo", "无法恢复消息"],
+      ["session.rollback.cannotRedo.desc", "已开始新任务。此次回退的消息无法再恢复。"],
+      ["session.rollback.cannotRedoNew", "已添加新消息。此次回退的消息无法再恢复。"],
+      ["session.rollback.cannotRedoTooltip", "已添加新消息；无法恢复此次回退的消息"],
+      ["session.rollback.redo", "恢复消息"],
+      ["session.rollback.redoComplete", "消息恢复完成"],
+      ["session.rollback.redoFailed", "消息恢复失败"],
+      ["session.rollback.restoreTooltip", "恢复已回退的消息"],
+      ["session.rollback.redoSuccessDesc", "已恢复 {count, plural, one {# 条消息} other {# 条消息}}"],
+    ])
+
+    for (const [id, message] of expectedRollbackTranslations) expect(translations.get(id)).toBe(message)
+    for (const message of expectedRollbackTranslations.values()) expect(message).not.toContain("重做")
+  })
+
   test("uses consistent user-facing product language in Simplified Chinese", async () => {
     const chinese = await readFile(new URL("../../src/locales/zh-CN/messages.po", import.meta.url), "utf-8")
     const translations = catalogTranslations(chinese)

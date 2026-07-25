@@ -29,7 +29,7 @@ export class SynergyLinkHolosClient {
     const endpoint = `${HOLOS_WS_URL}/api/v1/holos/agent_tunnel/ws?token=${token}`
     SynergyLinkLog.info("holos.connect.begin", {
       agentID: this.auth.agentID,
-      endpoint,
+      endpoint: `${HOLOS_WS_URL}/api/v1/holos/agent_tunnel/ws`,
     })
     const ws = new WebSocket(endpoint)
     this.#ws = ws
@@ -99,12 +99,14 @@ export class SynergyLinkHolosClient {
   }
 
   async #handleMessage(raw: string) {
-    SynergyLinkLog.info("holos.message.received.raw", {
-      raw,
-    })
     const parsed = SynergyLinkHolosEnvelope.parse(raw)
-    if (!parsed) {
-      SynergyLinkLog.warn("holos.message.ignored.unparsed")
+    if (parsed.kind === "ignored") {
+      return
+    }
+    if (parsed.kind === "unknown") {
+      SynergyLinkLog.warn("holos.message.ignored.unparsed", {
+        type: parsed.type,
+      })
       return
     }
 
@@ -112,7 +114,6 @@ export class SynergyLinkHolosClient {
       event: parsed.event,
       callerAgentID: parsed.caller.agentID,
       callerOwnerUserID: parsed.caller.ownerUserID,
-      payload: parsed.payload,
     })
 
     if (parsed.event !== SynergyLinkBridge.REQUEST_EVENT) {

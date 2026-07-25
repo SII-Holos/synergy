@@ -1,3 +1,5 @@
+import { chromiumManifestArtifacts } from "@ericsanchezok/synergy-browser"
+
 export const DESKTOP_RELEASE_PLATFORMS = ["darwin", "win32", "linux"] as const
 export const DESKTOP_RELEASE_ARCHES = ["x64", "arm64"] as const
 
@@ -82,6 +84,11 @@ export function expectedBrowserHostArtifacts(version: string): string[] {
       browserHostManifestSignatureName(version, platform, arch),
     ]),
   )
+}
+export { chromiumManifestName, chromiumManifestSignatureName } from "@ericsanchezok/synergy-browser"
+
+export function expectedChromiumManifestArtifacts(version: string): string[] {
+  return chromiumManifestArtifacts(version)
 }
 
 export function isDesktopUpdateMetadata(name: string): boolean {

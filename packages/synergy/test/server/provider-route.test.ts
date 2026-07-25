@@ -5,6 +5,7 @@ import path from "path"
 import { Server } from "../../src/server/server"
 import { Auth } from "../../src/provider/api-key"
 import { CodexProvider } from "../../src/provider/codex"
+import { CopilotProvider } from "../../src/provider/copilot"
 import { tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
 import { ProviderCatalog } from "../../src/provider/catalog"
@@ -85,6 +86,7 @@ test("/provider returns catalog, auth health, and runtime availability", async (
     providerID: CodexProvider.PROVIDER_ID,
     status: "not_configured",
   })
+  expect(body.authHealth[CodexProvider.PROVIDER_ID].canDisconnect).toBe(false)
   expect(body.runtimeAvailability[CodexProvider.PROVIDER_ID]).toMatchObject({
     providerID: CodexProvider.PROVIDER_ID,
     available: false,
@@ -115,6 +117,72 @@ test("/provider returns catalog, auth health, and runtime availability", async (
       },
     },
   })
+})
+
+test("DELETE /provider/:providerID/auth refuses to clear healthy stored credentials", async () => {
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken(),
+    refresh: "healthy-refresh",
+    expires: nowSeconds() + 3600,
+  })
+
+  const app = Server.App()
+  const beforeResponse = await app.request("/provider")
+  const before = await beforeResponse.json()
+  expect(before.authHealth[CodexProvider.PROVIDER_ID]).toMatchObject({
+    status: "connected",
+    canDisconnect: false,
+  })
+
+  const response = await app.request(`/provider/${CodexProvider.PROVIDER_ID}/auth`, { method: "DELETE" })
+  expect(response.status).toBe(409)
+  expect(await response.json()).toEqual({
+    name: "ProviderAuthDisconnectUnavailableError",
+    data: {
+      providerID: CodexProvider.PROVIDER_ID,
+      status: "connected",
+    },
+  })
+  expect((await Auth.entries())[CodexProvider.PROVIDER_ID]).toBeDefined()
+})
+
+test("DELETE /provider/:providerID/auth clears stored credentials without removing the provider", async () => {
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken(),
+    refresh: "revoked-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  await Auth.markDead(CodexProvider.PROVIDER_ID, "credential_rejected")
+
+  const app = Server.App()
+  const beforeResponse = await app.request("/provider")
+  const before = await beforeResponse.json()
+  expect(before.authHealth[CodexProvider.PROVIDER_ID]).toMatchObject({
+    status: "action_required",
+    recovery: "reconnect",
+    canDisconnect: true,
+  })
+
+  const response = await app.request(`/provider/${CodexProvider.PROVIDER_ID}/auth`, { method: "DELETE" })
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({ providerID: CodexProvider.PROVIDER_ID, cleared: true })
+  expect((await Auth.entries())[CodexProvider.PROVIDER_ID]).toBeUndefined()
+
+  const afterResponse = await app.request("/provider")
+  const after = await afterResponse.json()
+  expect(after.all.some((provider: Provider.Info) => provider.id === CodexProvider.PROVIDER_ID)).toBe(true)
+  expect(after.catalogProviders).toContain(CodexProvider.PROVIDER_ID)
+  expect(after.connected).not.toContain(CodexProvider.PROVIDER_ID)
+  expect(after.authHealth[CodexProvider.PROVIDER_ID]).toMatchObject({
+    status: "not_configured",
+    canDisconnect: false,
+  })
+
+  const repeated = await app.request(`/provider/${CodexProvider.PROVIDER_ID}/auth`, { method: "DELETE" })
+  expect(repeated.status).toBe(200)
+  expect(await repeated.json()).toEqual({ providerID: CodexProvider.PROVIDER_ID, cleared: true })
 })
 
 test("POST /provider/:providerID/models/refresh uses the shared catalog refresh path", async () => {
@@ -221,7 +289,7 @@ test("/provider returns custom providers without recommendation metadata", async
   expect(body.profiles["custom-provider"].recommendation).toBeUndefined()
 })
 
-test("/provider/auth exposes Codex OAuth and import methods", async () => {
+test("/provider/auth exposes built-in OAuth and alternate credential methods", async () => {
   const app = Server.App()
   const response = await app.request("/provider/auth")
   expect(response.status).toBe(200)
@@ -230,6 +298,14 @@ test("/provider/auth exposes Codex OAuth and import methods", async () => {
   expect(body[CodexProvider.PROVIDER_ID]).toEqual([
     { type: "oauth", label: "Login with ChatGPT" },
     { type: "import", label: "Import Codex CLI credentials" },
+  ])
+  expect(body[CopilotProvider.PROVIDER_ID]).toEqual([
+    { type: "oauth", label: "Login with GitHub Copilot" },
+    { type: "api", label: "GitHub token" },
+  ])
+  expect(body[CopilotProvider.ENTERPRISE_PROVIDER_ID]).toEqual([
+    { type: "oauth", label: "Login with GitHub Copilot Enterprise" },
+    { type: "api", label: "GitHub token" },
   ])
 })
 

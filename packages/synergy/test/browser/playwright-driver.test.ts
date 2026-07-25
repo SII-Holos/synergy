@@ -48,6 +48,16 @@ function fakeBrowser() {
 }
 
 describe("PlaywrightBrowserDriver", () => {
+  test("recommends the managed Browser installer when Chromium launch fails", async () => {
+    const driver = new PlaywrightBrowserDriver({
+      launchBrowser: async () => {
+        throw new Error("Chromium is missing")
+      },
+    })
+
+    await expect(driver.ensure()).rejects.toThrow('Run "synergy browser install"')
+  })
+
   test("reuses one context per owner and isolates different owners", async () => {
     const fake = fakeBrowser()
     const driver = new PlaywrightBrowserDriver({ launchBrowser: async () => fake.browser })

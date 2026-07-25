@@ -2,6 +2,7 @@ import { SynergyLinkControlClient } from "./control/client"
 import { SynergyLinkHolosAuth, type SynergyLinkHolosAuthSource } from "./holos/auth"
 import { SynergyLinkHolosLogin } from "./holos/login"
 import { SynergyLinkService } from "./service"
+import { SynergyLinkLocalService } from "./service/local"
 import {
   SynergyLinkStore,
   type SynergyLinkApprovalMode,
@@ -9,7 +10,6 @@ import {
   type SynergyLinkPendingRequest,
   type SynergyLinkState,
 } from "./state/store"
-import { SynergyLinkDisplay, type SynergyLinkHiddenReason } from "./display"
 import { SynergyLinkOwnerRegistry } from "./owner-registry"
 
 export type SynergyLinkTrustSubject = "agent" | "user"
@@ -25,6 +25,13 @@ interface UnsupportedResult {
 }
 
 type AvailabilityResult<T> = SupportedResult<T> | UnsupportedResult
+
+export interface SynergyLinkReconnectResult {
+  requested: boolean
+  succeeded?: boolean
+  reason?: string
+  service: Awaited<ReturnType<typeof SynergyLinkService.status>>
+}
 
 export namespace SynergyLinkCLIBackend {
   export async function status() {
@@ -51,7 +58,7 @@ export namespace SynergyLinkCLIBackend {
     if (await SynergyLinkControlClient.isAvailable()) {
       return await SynergyLinkControlClient.request({ action: "runtime.enter_managed" })
     }
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.runtimeMode = "managed"
     SynergyLinkOwnerRegistry.declareLocalOwner(state.ownerRegistry, state.linkID ?? `local:${crypto.randomUUID()}`)
     state.connectionStatus = "disconnected"
@@ -68,7 +75,7 @@ export namespace SynergyLinkCLIBackend {
     if (await SynergyLinkControlClient.isAvailable()) {
       return await SynergyLinkControlClient.request({ action: "runtime.set_mode", mode: "standalone" })
     }
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.runtimeMode = "standalone"
     SynergyLinkOwnerRegistry.releaseLocalOwner(state.ownerRegistry)
     state.connectionStatus = "disconnected"
@@ -97,7 +104,7 @@ export namespace SynergyLinkCLIBackend {
 
   export async function logout() {
     const service = await SynergyLinkService.stop()
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.connectionStatus = "disconnected"
     state.currentSession = undefined
     state.service.desiredState = "stopped"
@@ -127,9 +134,9 @@ export namespace SynergyLinkCLIBackend {
     }
   }
 
-  export async function reconnect() {
+  export async function reconnect(): Promise<SynergyLinkReconnectResult> {
     if (await SynergyLinkControlClient.isAvailable()) {
-      return await SynergyLinkControlClient.request({ action: "runtime.reconnect" })
+      return await SynergyLinkControlClient.request<SynergyLinkReconnectResult>({ action: "runtime.reconnect" })
     }
     return {
       requested: false,
@@ -166,7 +173,7 @@ export namespace SynergyLinkCLIBackend {
         ok: managed ? true : Boolean(auth),
         detail: managed
           ? auth
-            ? `Stored agent ${SynergyLinkDisplay.identifier(auth.agentID, { hiddenReason: "managed" })} (${authInfo.source}) — not required in managed mode`
+            ? `Stored agent ${auth.agentID} (${authInfo.source}) — not required in managed mode`
             : "Managed mode does not require Holos auth"
           : auth
             ? `agent ${auth.agentID} (${authInfo.source})`
@@ -200,9 +207,7 @@ export namespace SynergyLinkCLIBackend {
       mode: state.runtimeMode,
       ownership,
       state: sanitizeState(state),
-      auth: sanitizeAuth(auth, authInfo.source, {
-        hiddenReason: managed ? "managed" : null,
-      }),
+      auth: sanitizeAuth(auth, authInfo.source),
     }
   }
 
@@ -223,7 +228,7 @@ export namespace SynergyLinkCLIBackend {
     if (await SynergyLinkControlClient.isAvailable()) {
       return await SynergyLinkControlClient.request({ action: "collaboration.set", enabled })
     }
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.collaborationEnabled = enabled
     await SynergyLinkStore.saveState(state)
     return {
@@ -270,7 +275,7 @@ export namespace SynergyLinkCLIBackend {
     mode: SynergyLinkApprovalMode,
   ): Promise<AvailabilityResult<{ mode: SynergyLinkApprovalMode }>> {
     return await onlineOnlyAvailability({ action: "approval.set", mode }, async () => {
-      const state = await SynergyLinkStore.loadState()
+      const state = await loadOfflineWritableState()
       state.approvalMode = mode
       await SynergyLinkStore.saveState(state)
       return { mode }
@@ -295,7 +300,7 @@ export namespace SynergyLinkCLIBackend {
     value: string,
   ): Promise<AvailabilityResult<{ agents: string[]; users: number[] }>> {
     return await onlineOnlyAvailability({ action: "trust.add", subject, value }, async () => {
-      const state = await SynergyLinkStore.loadState()
+      const state = await loadOfflineWritableState()
       if (subject === "agent") {
         if (!state.trusted.agentIDs.includes(value)) {
           state.trusted.agentIDs.push(value)
@@ -322,7 +327,7 @@ export namespace SynergyLinkCLIBackend {
     value: string,
   ): Promise<AvailabilityResult<{ agents: string[]; users: number[] }>> {
     return await onlineOnlyAvailability({ action: "trust.remove", subject, value }, async () => {
-      const state = await SynergyLinkStore.loadState()
+      const state = await loadOfflineWritableState()
       if (subject === "agent") {
         state.trusted.agentIDs = state.trusted.agentIDs.filter((item) => item !== value)
       } else {
@@ -390,7 +395,7 @@ export namespace SynergyLinkCLIBackend {
     if (await SynergyLinkControlClient.isAvailable()) {
       return await SynergyLinkControlClient.request({ action: "label.set", label })
     }
-    const state = await SynergyLinkStore.loadState()
+    const state = await loadOfflineWritableState()
     state.label = label ?? undefined
     await SynergyLinkStore.saveState(state)
     return {
@@ -425,7 +430,7 @@ async function onlineOnlyAvailability<T>(
 }
 
 async function decideRequestOffline(requestID: string, status: "approved" | "denied") {
-  const state = await SynergyLinkStore.loadState()
+  const state = await loadOfflineWritableState()
   const request = state.pendingRequests.find((item) => item.id === requestID)
   if (!request) {
     throw new Error(`Unknown request: ${requestID}`)
@@ -437,6 +442,14 @@ async function decideRequestOffline(requestID: string, status: "approved" | "den
   return { request }
 }
 
+async function loadOfflineWritableState(): Promise<SynergyLinkState> {
+  const state = await SynergyLinkStore.loadState()
+  if (state.service.pid && SynergyLinkLocalService.isPidRunning(state.service.pid)) {
+    throw new Error("Synergy Link is running but its control socket is unavailable; refusing an offline state write.")
+  }
+  return state
+}
+
 async function loadSnapshot() {
   const [state, service, authInfo] = await Promise.all([
     SynergyLinkStore.loadState(),
@@ -445,9 +458,7 @@ async function loadSnapshot() {
   ])
 
   return {
-    auth: sanitizeAuth(authInfo.auth, authInfo.source, {
-      hiddenReason: state.runtimeMode === "managed" ? "managed" : null,
-    }),
+    auth: sanitizeAuth(authInfo.auth, authInfo.source),
     mode: state.runtimeMode,
     ownership: SynergyLinkOwnerRegistry.snapshot(state.ownerRegistry),
     state: sanitizeState(state),
@@ -463,22 +474,17 @@ async function loadSnapshot() {
 function sanitizeAuth(
   auth: { agentID: string; agentSecret: string } | undefined,
   source: SynergyLinkHolosAuthSource | null,
-  options?: { hiddenReason?: SynergyLinkHiddenReason | null },
 ) {
   return auth
     ? {
         loggedIn: true,
-        agentID: SynergyLinkDisplay.identifier(auth.agentID, {
-          hiddenReason: options?.hiddenReason,
-        }),
+        agentID: auth.agentID,
         source,
-        hiddenReason: options?.hiddenReason ?? null,
       }
     : {
         loggedIn: false,
         agentID: null,
         source: null,
-        hiddenReason: null,
       }
 }
 

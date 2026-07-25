@@ -289,6 +289,7 @@
         "@ast-grep/cli-linux-arm64-gnu": "0.40.5",
         "@ast-grep/cli-linux-x64-gnu": "0.40.5",
         "@ast-grep/cli-win32-x64-msvc": "0.40.5",
+        "@ericsanchezok/synergy-link": "workspace:*",
         "@ericsanchezok/synergy-plugin-kit": "workspace:*",
         "@ericsanchezok/synergy-script": "workspace:*",
         "@parcel/watcher-darwin-arm64": "2.5.6",
@@ -316,8 +317,10 @@
         "synergy-link": "./src/cli.ts",
       },
       "dependencies": {
+        "@clack/prompts": "1.0.0-alpha.1",
         "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "jsonc-parser": "3.3.1",
+        "picocolors": "1.1.1",
         "zod": "catalog:",
       },
       "devDependencies": {

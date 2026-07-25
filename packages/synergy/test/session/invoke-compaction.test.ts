@@ -990,7 +990,14 @@ describe.serial("SessionInvoke preflight compaction", () => {
     })
   })
   test("keeps provider failures as uncommitted compaction attempts", async () => {
-    const error = new MessageV2.APIError({ message: "quota exhausted", isRetryable: false }).toObject()
+    const apiKey = ["s", "k-test-secret-12345678"].join("")
+    const responseApiKey = ["s", "k-body-secret-12345678"].join("")
+    const error = new MessageV2.APIError({
+      message: `Incorrect API key provided: ${apiKey}`,
+      isRetryable: false,
+      responseHeaders: { "set-cookie": "session=secret" },
+      responseBody: JSON.stringify({ api_key: responseApiKey }),
+    }).toObject()
 
     const observed = await runCompactionProcessCase({ error })
 
@@ -1000,26 +1007,41 @@ describe.serial("SessionInvoke preflight compaction", () => {
     expect(observed.initialVisible).toBe(false)
     expect(observed.attempt.info.summary).toBeUndefined()
     expect(observed.attempt.info.includeInContext).toBe(false)
-    expect(observed.attempt.info.visible).toBe(false)
+    expect(observed.attempt.info.visible).toBe(true)
+    expect(observed.attempt.info.finish).toBe("error")
+    expect(observed.attempt.info.time.completed).toBeNumber()
     expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
     expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "running" }, { state: "failed" }])
-    expect(observed.attempt.info.error).toEqual(error)
+    expect(observed.attempt.info.error).toEqual(
+      new MessageV2.APIError({
+        message: "Incorrect API key provided: [redacted]",
+        isRetryable: false,
+      }).toObject(),
+    )
     expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
     expect(SessionCompaction.hasPendingCompaction(observed.root.parts, [observed.attempt], observed.root.info.id)).toBe(
       true,
     )
-    expect(Turn.collect([observed.root, observed.attempt], { skipSynthetic: true })[0]?.assistants).toHaveLength(0)
+    expect(Turn.collect([observed.root, observed.attempt])[0]?.assistants).toEqual([observed.attempt])
+    expect(Turn.collect([observed.root, observed.attempt], { skipSynthetic: true })[0]?.assistants).toEqual([])
   })
 
   test("marks unexpected processor exceptions as failed before propagating them", async () => {
-    const error = new Error("processor crashed")
+    const apiKey = ["s", "k-unexpected-secret-12345678"].join("")
+    const error = new Error(`processor crashed: ${apiKey}`)
 
     const observed = await runCompactionProcessCase({ thrownError: error })
 
     expect(observed.thrown).toBe(error)
     expect(observed.attempt.info.summary).toBeUndefined()
     expect(observed.attempt.info.includeInContext).toBe(false)
-    expect(observed.attempt.info.visible).toBe(false)
+    expect(observed.attempt.info.visible).toBe(true)
+    expect(observed.attempt.info.finish).toBe("error")
+    expect(observed.attempt.info.time.completed).toBeNumber()
+    expect(observed.attempt.info.error).toMatchObject({
+      name: "UnknownError",
+      data: { message: "Error: processor crashed: [redacted]" },
+    })
     expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
     expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "failed" }])
   })

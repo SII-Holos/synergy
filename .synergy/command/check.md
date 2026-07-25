@@ -29,6 +29,14 @@ bun run --cwd packages/app test
 bun run --cwd packages/ui test
 ```
 
+Browser capability or App bootstrap changes also run:
+
+```bash
+bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
+bun run --cwd packages/app build
+bun packages/app/script/private-http-smoke.ts
+```
+
 Theme changes also run `bun run --cwd packages/ui generate:theme` and verify that no generated artifact changes remain after a second generation.
 
 Localization changes update the catalogs and then run the single repository localization gate:

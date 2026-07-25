@@ -2,6 +2,7 @@
 import { $ } from "bun"
 import fs from "node:fs"
 import path from "node:path"
+import { prepareDesktopRuntimes } from "../../../script/release/prepare-desktop-runtime"
 
 const repoRoot = path.resolve(import.meta.dir, "../../..")
 const platformName = process.platform === "win32" ? "windows" : process.platform
@@ -15,3 +16,5 @@ if (!fs.existsSync(path.join(runtimeDir, "bin"))) {
 if (!fs.existsSync(path.join(runtimeDir, "bin"))) {
   throw new Error(`Failed to prepare Synergy runtime for desktop package: ${runtimeDir}`)
 }
+
+await prepareDesktopRuntimes(`${process.platform}-${process.arch}`)

@@ -1131,11 +1131,20 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         }
       }
 
-      // First: try mode-based next task (drains and materializes)
-      const taskItem = await SessionInbox.nextTask(sessionID)
+      const taskItem = await SessionInbox.peekTask(sessionID)
       if (taskItem) {
         log.info("next task found, materializing", { sessionID, itemID: taskItem.id })
-        await SessionInbox.materializeItem(taskItem)
+        const materialized = await SessionInbox.materializeItem(taskItem)
+        if (!materialized) {
+          throw new Error(`Session inbox task could not be materialized: ${taskItem.id}`)
+        }
+        await SessionInbox.commitReady(sessionID, [taskItem.id])
+        log.info("materialized durable task", {
+          sessionID,
+          itemID: taskItem.id,
+          messageID: taskItem.messageID,
+          queuedForMs: Math.max(0, Date.now() - taskItem.time.created),
+        })
         continue outer
       }
 

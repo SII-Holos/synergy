@@ -33,6 +33,7 @@ import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { DoctorCommand } from "./cli/cmd/doctor"
 import { DiagnosticsCommand } from "./cli/cmd/diagnostics"
+import { BrowserCommand } from "./cli/cmd/browser"
 
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
@@ -163,6 +164,7 @@ const cli = yargs(hideBin(process.argv))
   .command(PluginCommand)
   .command(DataCommand)
   .command(DoctorCommand)
+  .command(BrowserCommand)
 
   .command(MigrateCommand)
   .command(MigrationCommand)

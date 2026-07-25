@@ -47,7 +47,7 @@ function wait(ms: number, signal: AbortSignal) {
 }
 
 export function isEmbeddingDownloadActive(status: EmbeddingStatus): boolean {
-  return status.mode === "local" && status.asset === "downloading"
+  return status.mode === "local" && status.runtime === "loading"
 }
 
 export async function pollEmbeddingStatus(input: {
