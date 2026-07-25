@@ -84,10 +84,13 @@ function safeArtifactName(name: string): string {
 }
 
 function readTarballPackageName(tarballPath: string): string | undefined {
-  const result = Bun.spawnSync(["tar", "-xOf", tarballPath, "package.json"], { stdout: "pipe", stderr: "pipe" })
-  if (result.exitCode !== 0) return undefined
-  const pkg = JSON.parse(new TextDecoder().decode(result.stdout)) as { name?: unknown }
-  return typeof pkg.name === "string" ? pkg.name : undefined
+  for (const entry of ["package.json", "./package.json"]) {
+    const result = Bun.spawnSync(["tar", "-xOf", tarballPath, entry], { stdout: "pipe", stderr: "pipe" })
+    if (result.exitCode !== 0) continue
+    const pkg = JSON.parse(new TextDecoder().decode(result.stdout)) as { name?: unknown }
+    return typeof pkg.name === "string" ? pkg.name : undefined
+  }
+  return undefined
 }
 
 export function assertMarketplaceNaming(input: {
