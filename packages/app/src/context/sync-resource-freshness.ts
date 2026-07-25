@@ -80,6 +80,16 @@ export class SyncResourceFreshness {
     return this.acceptSnapshot(input, version)
   }
 
+  acceptMutationResponse(
+    input: SyncResourceKey,
+    request: SyncResourceRequest,
+    version: SyncVersion | undefined,
+  ): boolean {
+    if (!this.acceptResponse(input, request, version)) return false
+    this.invalidate(input)
+    return true
+  }
+
   acceptScopeEvent(scopeKey: string, version: SyncVersion | undefined): boolean {
     if (!isValidVersion(version)) return true
     if (this.retiredEpochs.get(scopeKey)?.has(version.epoch)) return false

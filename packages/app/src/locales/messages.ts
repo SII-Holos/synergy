@@ -457,6 +457,19 @@ export const note = {
     message: "Choose a specific model, or keep automatic fallback.",
   },
   chooseModel: { id: "app.note.run.chooseModel", message: "Choose model for Blueprint run" },
+  selectExecutionAgent: { id: "app.note.run.selectExecutionAgent", message: "Select execution agent" },
+  searchAgents: { id: "app.note.run.searchAgents", message: "Search agents" },
+  executionAgent: { id: "app.note.run.executionAgent", message: "Execution agent" },
+  executionAgentChooseHelp: {
+    id: "app.note.run.executionAgentChooseHelp",
+    message: "Choose which agent executes this Blueprint.",
+  },
+  noAgentResults: { id: "app.note.run.noAgentResults", message: "No agent results" },
+  agentUnavailable: { id: "app.note.run.agentUnavailable", message: "Unavailable" },
+  selectedAgentUnavailable: {
+    id: "app.note.run.selectedAgentUnavailable",
+    message: "The selected agent is unavailable. Go back and choose another.",
+  },
   useFallback: { id: "app.note.run.useFallback", message: "Use fallback" },
   useFallbackDesc: { id: "app.note.run.useFallbackDesc", message: "Let the agent pick the best model automatically." },
   currentSession: { id: "app.note.run.currentSession", message: "Current session" },
@@ -479,6 +492,7 @@ export const note = {
   // Toolbar
   back: { id: "app.note.toolbar.back", message: "Back" },
   backToSession: { id: "app.note.toolbar.backToSession", message: "Back to session mode" },
+  backToAgent: { id: "app.note.toolbar.backToAgent", message: "Back to agent selection" },
   close: { id: "app.note.toolbar.close", message: "Close" },
   closeRunMenu: { id: "app.note.toolbar.closeRunMenu", message: "Close run menu" },
   newNote: { id: "app.note.toolbar.newNote", message: "New note" },
@@ -653,6 +667,10 @@ export const sidebar = {
   agent: { id: "app.sidebar.agent", message: "Agent" },
   // Sections
   recent: { id: "app.sidebar.section.recent", message: "Recent" },
+  markAllRead: { id: "app.sidebar.markAllRead", message: "Mark all read" },
+  markingAllRead: { id: "app.sidebar.markingAllRead", message: "Marking all read…" },
+  markAllReadSuccess: { id: "app.sidebar.markAllReadSuccess", message: "Marked all sessions as read" },
+  markAllReadFailed: { id: "app.sidebar.markAllReadFailed", message: "Failed to mark all read" },
   home: { id: "app.sidebar.section.home", message: "Home" },
   channel: { id: "app.sidebar.section.channel", message: "Channel" },
   background: { id: "app.sidebar.section.background", message: "Background" },

@@ -4,6 +4,7 @@ import {
   deriveSessionInboxView,
   isInboxItemInteractive,
   sortInboxItems,
+  upsertSessionInboxItem,
 } from "../../../src/components/session/session-inbox-utils"
 
 function item(id: string, mode: SessionInboxItem["mode"], orderKey: string): SessionInboxItem {
@@ -58,6 +59,19 @@ describe("deriveSessionInboxView", () => {
     expect(view.status).toBe("ready")
     expect(view.count).toBe(2)
     expect(view.items.map((entry) => entry.id)).toEqual(["inb_guiding_late", "inb_queued_early"])
+  })
+})
+
+describe("upsertSessionInboxItem", () => {
+  test("makes an accepted item visible without waiting for an inbox event", () => {
+    const accepted = item("inb_accepted", "task", "002")
+    const existing = item("inb_existing", "task", "001")
+
+    expect(upsertSessionInboxItem(undefined, accepted)).toEqual([accepted])
+    expect(upsertSessionInboxItem([accepted, existing], { ...accepted, summary: { title: "Updated" } })).toEqual([
+      existing,
+      { ...accepted, summary: { title: "Updated" } },
+    ])
   })
 })
 

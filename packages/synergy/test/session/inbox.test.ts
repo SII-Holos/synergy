@@ -39,6 +39,41 @@ describe("SessionInbox", () => {
     })
   })
 
+  test("keeps a task visible until its preallocated root is durable and materializes retries once", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const queued = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "persist across the handoff" }],
+        })
+        const stored = await SessionInbox.getStored(session.id, queued.id)
+
+        const first = await SessionInbox.materializeItem(stored)
+        const retry = await SessionInbox.materializeItem(stored)
+
+        expect(first?.info.id).toBe(queued.messageID)
+        expect(retry?.info.id).toBe(queued.messageID)
+        expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([queued.id])
+        expect((await Session.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
+          queued.messageID,
+        ])
+
+        await SessionInbox.commitReady(session.id, [queued.id])
+
+        expect(await SessionInbox.list(session.id)).toEqual([])
+        expect((await Session.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
+          queued.messageID,
+        ])
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
   test("deduplicates concurrent delivery by stable delivery key", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -109,12 +144,46 @@ describe("SessionInbox", () => {
     })
   })
 
-  test("promotes queued user input into guiding state", async () => {
+  test("locks the first queued task until its canonical root is durable", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
+        const queued = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "remain the first task" }],
+        })
+
+        await expect(SessionInbox.guide({ sessionID: session.id, itemID: queued.id })).rejects.toBeInstanceOf(
+          SessionInbox.FirstTaskLockedError,
+        )
+        await expect(SessionInbox.assertMutable({ sessionID: session.id, itemID: queued.id })).rejects.toBeInstanceOf(
+          SessionInbox.FirstTaskLockedError,
+        )
+        expect((await SessionInbox.list(session.id))[0]?.mode).toBe("task")
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("promotes queued user input after a canonical root exists", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const first = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "establish the root" }],
+        })
+        await SessionInbox.materializeItem(await SessionInbox.getStored(session.id, first.id))
+        await SessionInbox.commitReady(session.id, [first.id])
         const queued = await SessionInbox.enqueueUser({
           sessionID: session.id,
           agent: "synergy",
@@ -126,11 +195,9 @@ describe("SessionInbox", () => {
         const items = await SessionInbox.list(session.id)
 
         expect(guided.mode).toBe("steer")
-        expect(guided.messageID).toBeDefined()
         expect(items).toHaveLength(1)
         expect(items[0].id).toBe(queued.id)
         expect(items[0].mode).toBe("steer")
-        expect(items[0].messageID).toBeDefined()
 
         SessionManager.unregisterRuntime(session.id)
       },

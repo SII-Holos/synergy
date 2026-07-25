@@ -7,6 +7,7 @@ import {
   type SessionTransitionProgress,
 } from "../../../src/components/session/session-transition-progress"
 import {
+  createNewSessionWorkspaceAcceptedProgress,
   createNewSessionWorkspaceProgress,
   createNewSessionWorkspaceErrorProgress,
   createNewSessionWorkspaceSuccessProgress,
@@ -196,6 +197,17 @@ describe("workspace transition progress model", () => {
       ["Prepare session", "complete"],
       ["Create checkout", "complete"],
       ["Submit message", "complete"],
+    ])
+
+    const createAccepted = createNewSessionWorkspaceAcceptedProgress({ selection: { mode: "create" } })
+    expect(createAccepted).toMatchObject({ kind: "new-worktree-session", phase: "loading" })
+    expect(translateProgressCopy(createAccepted.description)).toBe(
+      "Your first message is saved. Initializing the conversation.",
+    )
+    expect(createAccepted.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
+      ["Prepare session", "complete"],
+      ["Create checkout", "complete"],
+      ["Submit message", "active"],
     ])
 
     const existingSuccess = createNewSessionWorkspaceSuccessProgress({

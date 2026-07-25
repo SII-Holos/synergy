@@ -393,3 +393,17 @@ export function deleteWorktreeConfirm(input: { name?: string; dirty?: boolean; b
     tone: "danger",
   }
 }
+
+export function disconnectProviderConfirm(providerName: string): ConfirmCopy {
+  return {
+    title: { id: "confirm.disconnectProvider.title", message: "Disconnect provider?" },
+    description: descriptor(
+      "confirm.disconnectProvider.desc",
+      "Disconnect {providerName}? Synergy will clear its stored credentials while preserving the provider and model configuration.",
+      { providerName: quoted(providerName, "this provider") },
+    ),
+    confirmLabel: { id: "confirm.disconnectProvider.confirm", message: "Disconnect" },
+    cancelLabel: { id: "app.cancel", message: "Cancel" },
+    tone: "warning",
+  }
+}
