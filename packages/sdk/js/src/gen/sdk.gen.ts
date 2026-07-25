@@ -460,6 +460,8 @@ import type {
   SessionInboxRemoveErrors,
   SessionInboxRemoveResponses,
   SessionInboxResponses,
+  SessionInboxRetryErrors,
+  SessionInboxRetryResponses,
   SessionIndexResponses,
   SessionInitErrors,
   SessionInitResponses,
@@ -2200,6 +2202,40 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Retry durable session inbox item
+   *
+   * Resume processing for an existing durable inbox item without creating a duplicate message.
+   */
+  public inboxRetry<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      itemID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInboxRetryResponses, SessionInboxRetryErrors, ThrowOnError>({
+      url: "/session/{sessionID}/inbox/{itemID}/retry",
+      ...options,
+      ...params,
     })
   }
 

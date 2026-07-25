@@ -32,6 +32,7 @@ export function PromptDock(props: {
   isGlobal: boolean
   sessionID: string | undefined
   prompt: ReturnType<typeof usePrompt>
+  hasCanonicalRoot: Accessor<boolean>
   sync: ReturnType<typeof useSync>
   sdk: ReturnType<typeof useSDK>
   navigate: (sessionID: string, intent?: SessionNavigationIntent) => void
@@ -195,6 +196,7 @@ export function PromptDock(props: {
                       sessionID={props.sessionID!}
                       sync={props.sync}
                       sdk={props.sdk}
+                      hasCanonicalRoot={props.hasCanonicalRoot()}
                       freezeHint={props.rollbackActive}
                     />
                   </Show>

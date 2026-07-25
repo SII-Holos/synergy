@@ -46,24 +46,31 @@ import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { blueprintNoteCreateFocusRequest } from "@/context/plan-blueprint-offer"
 import {
+  createNewSessionWorkspaceAcceptedProgress,
+  createNewSessionWorkspaceSuccessProgress,
   createWorkspaceTransitionErrorProgress,
   createWorkspaceTransitionLoadingProgress,
   createWorkspaceTransitionRefreshErrorProgress,
   createWorkspaceTransitionRefreshProgress,
   createWorkspaceTransitionSuccessProgress,
   defaultNewSessionWorkspaceSelection,
+  isWorktreeWorkspaceSelection,
   normalizePathForCompare,
   worktreeSetupFailureMessage,
   type NewSessionWorkspaceSelection,
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
 import {
+  createNewSessionTransitionAcceptedProgress,
+  createNewSessionTransitionSuccessProgress,
+  createSessionTransitionHandoffErrorProgress,
   isSessionTransitionBlocking,
   type SessionTransitionActions,
   type SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
 import {
-  isSessionTransitionHandoffReady,
+  decideSessionTransitionHandoff,
+  recoverSessionTransitionHandoff,
   type SessionTransitionHandoff,
 } from "@/components/session/session-transition-handoff"
 import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
@@ -480,28 +487,131 @@ function SessionPageContent() {
   const renderableUserMessages = visibleRoots
   const lastUserMessage = lastRoot
   const lastRenderableUserMessage = lastRoot
-  const handoffRefreshes = new Set<string>()
+  const dismissedHandoffs = new Set<string>()
+  const dismissSessionTransitionHandoff = (sessionID: string, messageID: string) => {
+    dismissedHandoffs.add(`${sessionID}:${messageID}`)
+    clearSessionTransition(sessionID)
+  }
+  const [handoffNow, setHandoffNow] = createSignal(Date.now())
+  const acceptedProgressForHandoff = (handoff: Pick<SessionTransitionHandoff, "workspaceSelection">) => {
+    const selection = handoff.workspaceSelection
+    return selection && isWorktreeWorkspaceSelection(selection)
+      ? createNewSessionWorkspaceAcceptedProgress({ selection })
+      : createNewSessionTransitionAcceptedProgress()
+  }
+  const successProgressForHandoff = (handoff: Pick<SessionTransitionHandoff, "workspaceSelection">) => {
+    const selection = handoff.workspaceSelection
+    return selection && isWorktreeWorkspaceSelection(selection)
+      ? createNewSessionWorkspaceSuccessProgress({ selection })
+      : createNewSessionTransitionSuccessProgress()
+  }
+  const showStalledHandoff = (sessionID: string, handoff: SessionTransitionHandoff, message?: string) => {
+    const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+    const retry = () => retrySessionTransitionHandoff(sessionID, handoff)
+    setSessionTransition(
+      sessionID,
+      createSessionTransitionHandoffErrorProgress({
+        kind: accepted.kind,
+        steps: accepted.steps,
+        message,
+      }),
+      {
+        retry,
+        dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID),
+      },
+      { ...handoff, accepted },
+    )
+  }
+  const retrySessionTransitionHandoff = (sessionID: string, handoff: SessionTransitionHandoff) => {
+    const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+    dismissedHandoffs.delete(`${sessionID}:${handoff.messageID}`)
+    const nextHandoff = {
+      ...handoff,
+      acceptedAt: Date.now(),
+      accepted,
+      refreshAttempted: false,
+    }
+    setSessionTransition(sessionID, accepted, undefined, nextHandoff)
+    const run = async () => {
+      try {
+        if (handoff.itemID) {
+          await sdk.client.session.inboxRetry({ sessionID, itemID: handoff.itemID })
+          return
+        }
+        await sync.session.refresh(sessionID)
+      } catch (error) {
+        await sync.session.refresh(sessionID).catch(() => undefined)
+        if (
+          decideSessionTransitionHandoff({
+            messageID: handoff.messageID,
+            messages: messages(),
+            inbox: sync.data.inbox[sessionID],
+            elapsedMs: 0,
+            refreshAttempted: true,
+          }) === "ready"
+        ) {
+          setSessionTransition(sessionID, handoff.success, {
+            dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID),
+          })
+          return
+        }
+        showStalledHandoff(sessionID, nextHandoff, requestErrorMessage(error))
+      }
+    }
+    void run()
+  }
+  createEffect(() => {
+    const sessionID = params.id
+    if (!sessionID || visibleSessionTransitionEntry()) return
+    const recovered = recoverSessionTransitionHandoff({
+      messages: messages(),
+      inbox: sync.data.inbox[sessionID],
+    })
+    if (!recovered) return
+    if (dismissedHandoffs.has(`${sessionID}:${recovered.messageID}`)) return
+    const accepted = acceptedProgressForHandoff(recovered)
+    setSessionTransition(sessionID, accepted, undefined, {
+      ...recovered,
+      acceptedAt: recovered.acceptedAt ?? Date.now(),
+      accepted,
+      success: successProgressForHandoff(recovered),
+    })
+  })
+  createEffect(() => {
+    const entry = visibleSessionTransitionEntry()
+    if (entry?.progress.phase !== "loading" || !entry.handoff) return
+    setHandoffNow(Date.now())
+    const timer = setInterval(() => setHandoffNow(Date.now()), 250)
+    onCleanup(() => clearInterval(timer))
+  })
   createEffect(() => {
     const sessionID = params.id
     const entry = visibleSessionTransitionEntry()
     if (!sessionID || entry?.progress.phase !== "loading" || !entry.handoff) return
-    if (isSessionTransitionHandoffReady(entry.handoff.messageID, messages())) {
-      handoffRefreshes.delete(`${sessionID}:${entry.handoff.messageID}`)
+    const acceptedAt = entry.handoff.acceptedAt ?? handoffNow()
+    const decision = decideSessionTransitionHandoff({
+      messageID: entry.handoff.messageID,
+      messages: messages(),
+      inbox: sync.data.inbox[sessionID],
+      elapsedMs: Math.max(0, handoffNow() - acceptedAt),
+      refreshAttempted: entry.handoff.refreshAttempted ?? false,
+    })
+    if (decision === "ready") {
       setSessionTransition(sessionID, entry.handoff.success, {
-        dismiss: () => clearSessionTransition(sessionID),
+        dismiss: () => dismissSessionTransitionHandoff(sessionID, entry.handoff!.messageID),
       })
       return
     }
-
-    const inbox = sync.data.inbox[sessionID]
-    if (inbox === undefined || inbox.some((item) => item.messageID === entry.handoff?.messageID)) return
-    const refreshKey = `${sessionID}:${entry.handoff.messageID}`
-    if (handoffRefreshes.has(refreshKey)) return
-    handoffRefreshes.add(refreshKey)
-    void sync.session
-      .refresh(sessionID)
-      .catch(() => undefined)
-      .finally(() => handoffRefreshes.delete(refreshKey))
+    if (decision === "stalled") {
+      showStalledHandoff(sessionID, entry.handoff)
+      return
+    }
+    if (decision !== "refresh") return
+    setSessionTransition(sessionID, entry.progress, undefined, {
+      ...entry.handoff,
+      refreshAttempted: true,
+    })
+    void sync.session.refresh(sessionID).catch(() => undefined)
   })
   // Composer agent/model inheritance is handled inside local.model/local.agent as
   // a read-only "sessionDefault" derivation (server modelOverride, else the last
@@ -1162,6 +1272,7 @@ function SessionPageContent() {
                           sessionTransition={visibleSessionTransition}
                           sessionTransitionActions={visibleSessionTransitionActions}
                           visibleUserMessages={visibleUserMessages}
+                          hasCanonicalRoot={() => rootMessages().length > 0}
                           lastUserMessage={lastRenderableUserMessage}
                           activeMessage={activeMessage}
                           isWorking={isWorking}
@@ -1281,6 +1392,7 @@ function SessionPageContent() {
               isGlobal={isHomeScope(sdk.scopeKey)}
               sessionID={params.id}
               prompt={prompt}
+              hasCanonicalRoot={() => rootMessages().length > 0}
               sync={sync}
               sdk={sdk}
               navigate={navigateToSession}

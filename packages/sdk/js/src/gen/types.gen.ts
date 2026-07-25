@@ -5059,6 +5059,15 @@ export type AttachmentPartInput = {
   }
 }
 
+export type SessionInboxFirstTaskLockedError = {
+  name: "SessionInboxFirstTaskLockedError"
+  data: {
+    message: string
+    sessionID: string
+    itemID: string
+  }
+}
+
 export type UserMessage = {
   id: string
   sessionID: string
@@ -11191,6 +11200,51 @@ export type SessionInputResponses = {
 
 export type SessionInputResponse = SessionInputResponses[keyof SessionInputResponses]
 
+export type SessionInboxRetryData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Inbox item ID
+     */
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}/retry"
+}
+
+export type SessionInboxRetryErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Session worktree unavailable
+   */
+  409: WorktreeUnavailableError
+}
+
+export type SessionInboxRetryError = SessionInboxRetryErrors[keyof SessionInboxRetryErrors]
+
+export type SessionInboxRetryResponses = {
+  /**
+   * Inbox item scheduled for processing
+   */
+  200: SessionInboxItem
+}
+
+export type SessionInboxRetryResponse = SessionInboxRetryResponses[keyof SessionInboxRetryResponses]
+
 export type SessionInboxGuideData = {
   body?: never
   path: {
@@ -11219,6 +11273,10 @@ export type SessionInboxGuideErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * First task is locked until its root is ready
+   */
+  409: SessionInboxFirstTaskLockedError
 }
 
 export type SessionInboxGuideError = SessionInboxGuideErrors[keyof SessionInboxGuideErrors]
@@ -11260,6 +11318,10 @@ export type SessionInboxRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * First task is locked until its root is ready
+   */
+  409: SessionInboxFirstTaskLockedError
 }
 
 export type SessionInboxRemoveError = SessionInboxRemoveErrors[keyof SessionInboxRemoveErrors]

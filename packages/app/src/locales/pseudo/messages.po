@@ -12464,6 +12464,11 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.stalled"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.submitting"
 msgstr ""
 
@@ -12484,6 +12489,11 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.accepted"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.stalled"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.

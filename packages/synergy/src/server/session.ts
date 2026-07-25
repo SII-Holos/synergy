@@ -673,6 +673,47 @@ export const SessionRoute = new Hono()
     },
   )
   .post(
+    "/:sessionID/inbox/:itemID/retry",
+    describeRoute({
+      summary: "Retry durable session inbox item",
+      description: "Resume processing for an existing durable inbox item without creating a duplicate message.",
+      operationId: "session.inbox_retry",
+      responses: {
+        200: {
+          description: "Inbox item scheduled for processing",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.Item),
+            },
+          },
+        },
+        ...errors(400, 404),
+        409: {
+          description: "Session worktree unavailable",
+          content: {
+            "application/json": {
+              schema: resolver(Worktree.UnavailableError.Schema),
+            },
+          },
+        },
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: z.string().meta({ description: "Session ID" }),
+        itemID: z.string().meta({ description: "Inbox item ID" }),
+      }),
+    ),
+    async (c) => {
+      const params = c.req.valid("param")
+      await assertSessionWorkspaceAvailable(params.sessionID)
+      const item = await SessionInbox.get(params.sessionID, params.itemID)
+      await SessionDrive.request(params.sessionID, "user-input-retry")
+      return c.json(item)
+    },
+  )
+  .post(
     "/:sessionID/inbox/:itemID/guide",
     describeRoute({
       summary: "Guide current run with inbox item",
@@ -688,6 +729,14 @@ export const SessionRoute = new Hono()
           },
         },
         ...errors(400, 404),
+        409: {
+          description: "First task is locked until its root is ready",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.FirstTaskLockedError.Schema),
+            },
+          },
+        },
       },
     }),
     validator(
@@ -699,7 +748,12 @@ export const SessionRoute = new Hono()
     ),
     async (c) => {
       const params = c.req.valid("param")
-      return c.json(await SessionInbox.guide(params))
+      try {
+        return c.json(await SessionInbox.guide(params))
+      } catch (error) {
+        if (error instanceof SessionInbox.FirstTaskLockedError) return c.json(error.toObject(), 409)
+        throw error
+      }
     },
   )
   .delete(
@@ -713,6 +767,14 @@ export const SessionRoute = new Hono()
           description: "Inbox item removed",
         },
         ...errors(400, 404),
+        409: {
+          description: "First task is locked until its root is ready",
+          content: {
+            "application/json": {
+              schema: resolver(SessionInbox.FirstTaskLockedError.Schema),
+            },
+          },
+        },
       },
     }),
     validator(
@@ -724,8 +786,14 @@ export const SessionRoute = new Hono()
     ),
     async (c) => {
       const params = c.req.valid("param")
-      await SessionInbox.remove(params)
-      return c.body(null, 204)
+      try {
+        await SessionInbox.assertMutable(params)
+        await SessionInbox.remove(params)
+        return c.body(null, 204)
+      } catch (error) {
+        if (error instanceof SessionInbox.FirstTaskLockedError) return c.json(error.toObject(), 409)
+        throw error
+      }
     },
   )
 

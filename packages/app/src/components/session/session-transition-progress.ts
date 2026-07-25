@@ -135,6 +135,20 @@ export function createNewSessionTransitionAcceptedProgress(): SessionTransitionP
   }
 }
 
+export function createSessionTransitionHandoffErrorProgress(input: {
+  kind: SessionTransitionKind
+  steps?: SessionTransitionStep[]
+  message?: string
+}): SessionTransitionProgress {
+  return {
+    kind: input.kind,
+    phase: "error",
+    title: S.transitionTitleStalled,
+    description: input.message ?? S.transitionDescStalled,
+    steps: input.steps ?? [],
+  }
+}
+
 export function createNewSessionTransitionErrorProgress(input: {
   title: string
   message: string

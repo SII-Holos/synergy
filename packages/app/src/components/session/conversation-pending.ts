@@ -22,10 +22,12 @@ export function selectPendingTimelineItems(
 export function pendingTimelineItemView(
   mode: SessionInboxItem["mode"],
   rollbackActive: boolean,
+  options?: { hasCanonicalRoot?: boolean },
 ): PendingTimelineItemView {
-  if (rollbackActive || (mode !== "task" && mode !== "steer")) {
+  const firstTaskLocked = mode === "task" && options?.hasCanonicalRoot === false
+  if (rollbackActive || firstTaskLocked || (mode !== "task" && mode !== "steer")) {
     return {
-      frozen: rollbackActive,
+      frozen: rollbackActive || firstTaskLocked,
       primaryAction: undefined,
       canWithdraw: false,
     }

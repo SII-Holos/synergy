@@ -58,6 +58,104 @@ describe("session input acceptance", () => {
     }
   })
 
+  test("retries an existing durable inbox item without creating a duplicate", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const originalRequest = SessionDrive.request
+    const requests: Array<{ sessionID: string; reason: string }> = []
+    ;(SessionDrive.request as any) = mock(async (sessionID: string, reason: string) => {
+      requests.push({ sessionID, reason })
+      return true
+    })
+
+    let sessionID = ""
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Retry Durable Input" })
+          sessionID = session.id
+          const item = await SessionInbox.enqueueUser({
+            sessionID,
+            parts: [{ type: "text", text: "Resume this message" }],
+          })
+
+          const response = await Server.App().request(
+            `/session/${sessionID}/inbox/${item.id}/retry?directory=${encodeURIComponent(scope.worktree)}`,
+            { method: "POST" },
+          )
+
+          expect(response.status).toBe(200)
+          expect((await response.json()) as { id: string; messageID: string }).toMatchObject({
+            id: item.id,
+            messageID: item.messageID,
+          })
+          expect((await SessionInbox.list(sessionID)).map((entry) => entry.id)).toEqual([item.id])
+          expect(requests).toEqual([{ sessionID, reason: "user-input-retry" }])
+        },
+      })
+    } finally {
+      ;(SessionDrive.request as any) = originalRequest
+      if (sessionID) SessionManager.unregisterRuntime(sessionID)
+    }
+  })
+
+  test("returns not found when retrying a missing inbox item", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Missing Retry Item" })
+        try {
+          const response = await Server.App().request(
+            `/session/${session.id}/inbox/inb_missing/retry?directory=${encodeURIComponent(scope.worktree)}`,
+            { method: "POST" },
+          )
+          expect(response.status).toBe(404)
+        } finally {
+          SessionManager.unregisterRuntime(session.id)
+        }
+      },
+    })
+  })
+
+  test("rejects guide and withdrawal while the first task has no canonical root", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Locked First Task" })
+        try {
+          const item = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [{ type: "text", text: "Keep this root durable" }],
+          })
+          const path = `/session/${session.id}/inbox/${item.id}`
+          const guide = await Server.App().request(`${path}/guide?directory=${encodeURIComponent(scope.worktree)}`, {
+            method: "POST",
+          })
+          const remove = await Server.App().request(`${path}?directory=${encodeURIComponent(scope.worktree)}`, {
+            method: "DELETE",
+          })
+
+          expect(guide.status).toBe(409)
+          expect(remove.status).toBe(409)
+          expect((await guide.json()) as { name: string }).toMatchObject({
+            name: "SessionInboxFirstTaskLockedError",
+          })
+          expect((await remove.json()) as { name: string }).toMatchObject({
+            name: "SessionInboxFirstTaskLockedError",
+          })
+          expect((await SessionInbox.list(session.id)).map((entry) => entry.id)).toEqual([item.id])
+        } finally {
+          SessionManager.unregisterRuntime(session.id)
+        }
+      },
+    })
+  })
+
   test("keeps running-session input in the same durable queue", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()

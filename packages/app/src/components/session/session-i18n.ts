@@ -417,6 +417,11 @@ export const S = {
     id: "session.transition.desc.queued",
     message: "Your first message is queued for processing.",
   },
+  transitionTitleStalled: { id: "session.transition.title.stalled", message: "Conversation setup needs attention" },
+  transitionDescStalled: {
+    id: "session.transition.desc.stalled",
+    message: "Your first message is still saved, but initialization did not finish. Retry to resume processing.",
+  },
 
   // worktree-transition-dialog.tsx
   worktreeDialogTitle: { id: "session.worktree.dialog.title", message: "Move session to worktree?" },

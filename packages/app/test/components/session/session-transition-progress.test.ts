@@ -8,6 +8,7 @@ import {
   createNewSessionTransitionErrorProgress,
   createNewSessionTransitionProgress,
   createNewSessionTransitionSuccessProgress,
+  createSessionTransitionHandoffErrorProgress,
   createSessionStartupSteps,
   isSessionTransitionBlocking,
   sessionTransitionPresentation,
@@ -82,6 +83,16 @@ describe("session transition progress model", () => {
     expect(isSessionTransitionBlocking(loading)).toBe(true)
     expect(isSessionTransitionBlocking(error)).toBe(true)
     expect(isSessionTransitionBlocking(success)).toBe(false)
+
+    const stalled = createSessionTransitionHandoffErrorProgress({
+      kind: accepted.kind,
+      steps: accepted.steps,
+    })
+    expect(stalled).toMatchObject({ kind: "new-session", phase: "error", steps: accepted.steps })
+    expect(translateSessionTransitionCopy(stalled.title, i18n)).toBe("Conversation setup needs attention")
+    expect(translateSessionTransitionCopy(stalled.description, i18n)).toBe(
+      "Your first message is still saved, but initialization did not finish. Retry to resume processing.",
+    )
   })
 
   test("shares startup step ordering across ordinary and worktree sessions", () => {

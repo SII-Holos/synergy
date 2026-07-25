@@ -144,12 +144,46 @@ describe("SessionInbox", () => {
     })
   })
 
-  test("promotes queued user input into guiding state", async () => {
+  test("locks the first queued task until its canonical root is durable", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
+        const queued = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "remain the first task" }],
+        })
+
+        await expect(SessionInbox.guide({ sessionID: session.id, itemID: queued.id })).rejects.toBeInstanceOf(
+          SessionInbox.FirstTaskLockedError,
+        )
+        await expect(SessionInbox.assertMutable({ sessionID: session.id, itemID: queued.id })).rejects.toBeInstanceOf(
+          SessionInbox.FirstTaskLockedError,
+        )
+        expect((await SessionInbox.list(session.id))[0]?.mode).toBe("task")
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
+  test("promotes queued user input after a canonical root exists", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const first = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "establish the root" }],
+        })
+        await SessionInbox.materializeItem(await SessionInbox.getStored(session.id, first.id))
+        await SessionInbox.commitReady(session.id, [first.id])
         const queued = await SessionInbox.enqueueUser({
           sessionID: session.id,
           agent: "synergy",
@@ -161,11 +195,9 @@ describe("SessionInbox", () => {
         const items = await SessionInbox.list(session.id)
 
         expect(guided.mode).toBe("steer")
-        expect(guided.messageID).toBeDefined()
         expect(items).toHaveLength(1)
         expect(items[0].id).toBe(queued.id)
         expect(items[0].mode).toBe("steer")
-        expect(items[0].messageID).toBeDefined()
 
         SessionManager.unregisterRuntime(session.id)
       },

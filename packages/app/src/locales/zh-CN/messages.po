@@ -12464,6 +12464,11 @@ msgstr "你的第一条消息已排队等待处理。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.stalled"
+msgstr "你的第一条消息仍已保存，但初始化未完成。请重试以恢复处理。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.submitting"
 msgstr "正在提交你的第一条消息。"
 
@@ -12485,6 +12490,11 @@ msgstr "提交消息"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.accepted"
 msgstr "会话请求已接受"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.stalled"
+msgstr "会话初始化需要处理"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

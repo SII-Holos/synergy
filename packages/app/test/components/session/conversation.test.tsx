@@ -6,13 +6,18 @@ import {
 } from "../../../src/components/session/conversation-pending"
 
 describe("pending timeline item presentation", () => {
-  test("offers Guide for queued tasks and Queue for steering items", () => {
-    expect(pendingTimelineItemView("task", false)).toEqual({
+  test("locks the first pending root until a canonical root exists", () => {
+    expect(pendingTimelineItemView("task", false, { hasCanonicalRoot: false })).toEqual({
+      frozen: true,
+      primaryAction: undefined,
+      canWithdraw: false,
+    })
+    expect(pendingTimelineItemView("task", false, { hasCanonicalRoot: true })).toEqual({
       frozen: false,
       primaryAction: "guide",
       canWithdraw: true,
     })
-    expect(pendingTimelineItemView("steer", false)).toEqual({
+    expect(pendingTimelineItemView("steer", false, { hasCanonicalRoot: true })).toEqual({
       frozen: false,
       primaryAction: "queue",
       canWithdraw: true,
@@ -20,12 +25,12 @@ describe("pending timeline item presentation", () => {
   })
 
   test("freezes all pending actions during rollback", () => {
-    expect(pendingTimelineItemView("task", true)).toEqual({
+    expect(pendingTimelineItemView("task", true, { hasCanonicalRoot: true })).toEqual({
       frozen: true,
       primaryAction: undefined,
       canWithdraw: false,
     })
-    expect(pendingTimelineItemView("steer", true)).toEqual({
+    expect(pendingTimelineItemView("steer", true, { hasCanonicalRoot: true })).toEqual({
       frozen: true,
       primaryAction: undefined,
       canWithdraw: false,

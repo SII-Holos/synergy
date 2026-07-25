@@ -6107,6 +6107,95 @@
         ]
       }
     },
+    "/session/{sessionID}/inbox/{itemID}/retry": {
+      "post": {
+        "operationId": "session.inbox_retry",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "path",
+            "name": "itemID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Inbox item ID"
+          }
+        ],
+        "summary": "Retry durable session inbox item",
+        "description": "Resume processing for an existing durable inbox item without creating a duplicate message.",
+        "responses": {
+          "200": {
+            "description": "Inbox item scheduled for processing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInboxItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session worktree unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeUnavailableError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inbox_retry({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/inbox/{itemID}/guide": {
       "post": {
         "operationId": "session.inbox_guide",
@@ -6173,6 +6262,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "First task is locked until its root is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInboxFirstTaskLockedError"
                 }
               }
             }
@@ -6245,6 +6344,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "First task is locked until its root is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInboxFirstTaskLockedError"
                 }
               }
             }
@@ -32512,6 +32621,33 @@
           }
         },
         "required": ["type", "mime", "url"]
+      },
+      "SessionInboxFirstTaskLockedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionInboxFirstTaskLockedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "itemID": {
+                "type": "string",
+                "pattern": "^inb.*"
+              }
+            },
+            "required": ["message", "sessionID", "itemID"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "UserMessage": {
         "type": "object",

@@ -651,7 +651,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       })
     }
 
-    const handoffNewSessionMessage = (messageID: string) => {
+    const handoffNewSessionMessage = (input: { messageID: string; itemID?: string; acceptedAt: number }) => {
       if (!createdSessionForSubmit) return
       const accepted = worktreeWorkspaceSelection
         ? createNewSessionWorkspaceAcceptedProgress({ selection: worktreeWorkspaceSelection })
@@ -660,7 +660,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
         : createNewSessionTransitionSuccessProgress()
       publishNewSessionTransition(activeSession.id, accepted, undefined, {
-        messageID,
+        ...input,
+        accepted,
+        workspaceSelection,
         success,
       })
     }
@@ -1037,7 +1039,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         ...(messageID ? { messageID } : {}),
         parts: requestParts,
         variant,
-        metadata: { promptDraft: draftSnapshot },
+        metadata: {
+          promptDraft: draftSnapshot,
+          ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
+        },
       })
       .then((result) => {
         const accepted = result.data
@@ -1064,7 +1069,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           removeOptimisticMessage()
           optimisticAdded = false
         }
-        handoffNewSessionMessage(accepted.status === "queued" ? accepted.item.messageID : accepted.messageID)
+        handoffNewSessionMessage(
+          accepted.status === "queued"
+            ? {
+                messageID: accepted.item.messageID,
+                itemID: accepted.item.id,
+                acceptedAt: accepted.item.time.created,
+              }
+            : { messageID: accepted.messageID, acceptedAt: Date.now() },
+        )
         releaseNewSessionSubmit()
         if (!wsConnected) {
           showToast({

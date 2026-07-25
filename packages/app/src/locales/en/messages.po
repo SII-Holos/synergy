@@ -12464,6 +12464,11 @@ msgstr "Your first message is queued for processing."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.stalled"
+msgstr "Your first message is still saved, but initialization did not finish. Retry to resume processing."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.desc.submitting"
 msgstr "Submitting your first message."
 
@@ -12485,6 +12490,11 @@ msgstr "Submit message"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.accepted"
 msgstr "Session request accepted"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.stalled"
+msgstr "Conversation setup needs attention"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

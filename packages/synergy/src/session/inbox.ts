@@ -1,4 +1,5 @@
 import z from "zod"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
@@ -32,6 +33,15 @@ export namespace SessionInbox {
   //   context — non-root injection that only piggybacks on an already-needed call
   export const ItemMode = z.enum(["task", "steer", "context"])
   export type ItemMode = z.infer<typeof ItemMode>
+
+  export const FirstTaskLockedError = NamedError.create(
+    "SessionInboxFirstTaskLockedError",
+    z.object({
+      message: z.string(),
+      sessionID: Identifier.schema("session"),
+      itemID: Identifier.schema("inbox"),
+    }),
+  )
 
   export const ItemSource = z
     .object({
@@ -367,6 +377,10 @@ export namespace SessionInbox {
     )
   }
 
+  export async function get(sessionID: string, itemID: string): Promise<Item> {
+    return publicItem(await getStored(sessionID, itemID))
+  }
+
   function stableDeliveryItemID(sessionID: string, deliveryKey: string): string {
     const hash = sha256Content(`${sessionID}:${deliveryKey}`).slice(0, 26)
     return `inb_${hash}`
@@ -587,13 +601,25 @@ export namespace SessionInbox {
     return { itemID, messageID, created: true }
   }
 
+  export async function assertMutable(input: { sessionID: string; itemID: string }): Promise<StoredItem> {
+    const item = await getStored(input.sessionID, input.itemID)
+    if (item.mode === "task" && !(await latestRootID(input.sessionID))) {
+      throw new FirstTaskLockedError({
+        message: "The first queued task cannot be changed until its conversation root is ready.",
+        sessionID: input.sessionID,
+        itemID: input.itemID,
+      })
+    }
+    return item
+  }
+
   /**
    * Guide: flip mode task↔steer.
    * A task item becomes steer (joins next model call).
    * A steer item becomes task (queues for after-turn).
    */
   export async function guide(input: { sessionID: string; itemID: string }): Promise<Item> {
-    const item = await getStored(input.sessionID, input.itemID)
+    const item = await assertMutable(input)
     if (item.mode === "context") return publicItem(item)
     const updated: StoredItem = {
       ...item,
