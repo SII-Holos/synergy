@@ -1,6 +1,6 @@
 # Optional bundled bwrap binary
 
-Linux Stable packages use the system `bubblewrap` package by default. The Debian installer declares it as a dependency; portable and CLI archive users install it with their distribution package manager.
+Linux Stable packages use the system `bubblewrap` package by default. The Debian installer declares it as a dependency. The interactive CLI installer can install it with `apt-get`, `dnf`, or `pacman` after explicit confirmation; non-interactive runs, declined or failed installation, unsupported package managers, and portable archives require manual installation.
 
 The sandbox helper also supports an optional verified binary at:
 
