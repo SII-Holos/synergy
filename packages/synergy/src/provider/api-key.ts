@@ -460,6 +460,20 @@ export namespace Auth {
     })
   }
 
+  export async function removeIf(key: string, predicate: (entry: StoreEntry) => boolean) {
+    return withLock("provider-auth-store:write", async () => {
+      const store = await readStore()
+      const entry = store.credentials[key]
+      if (!entry) return "missing" as const
+      if (!predicate(entry)) return "retained" as const
+      const previous = ProviderAuthHealth.fromEntry(key, entry)
+      delete store.credentials[key]
+      await writeStore(store)
+      await ProviderAuthHealth.commitStored(previous, key)
+      return "removed" as const
+    })
+  }
+
   export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const previous = locks.get(key) ?? Promise.resolve()
     let release!: () => void

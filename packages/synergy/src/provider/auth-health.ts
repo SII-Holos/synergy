@@ -12,6 +12,7 @@ export namespace ProviderAuthHealth {
       recovery: z.enum(["reconnect", "update_environment"]).optional(),
       authKind: z.string().optional(),
       source: z.string().optional(),
+      canDisconnect: z.boolean().optional(),
       updatedAt: z.number().optional(),
       cooldownUntil: z.number().optional(),
       resetAt: z.number().optional(),
@@ -47,8 +48,8 @@ export namespace ProviderAuthHealth {
     return !cooldownActive && !resetActive
   }
 
-  function storedHealth(providerID: string, entry: Auth.StoreEntry | undefined): Info {
-    if (!entry) return { providerID, status: "not_configured" }
+  export function fromStoredEntry(providerID: string, entry: Auth.StoreEntry | undefined): Info {
+    if (!entry) return { providerID, status: "not_configured", canDisconnect: false }
 
     const pool = entry.pool ?? []
     if (pool.length === 0 || pool.some((item) => usable(item))) {
@@ -57,6 +58,7 @@ export namespace ProviderAuthHealth {
         status: "connected",
         authKind: entry.authKind,
         source: entry.source,
+        canDisconnect: false,
         updatedAt: entry.updatedAt,
       }
     }
@@ -69,6 +71,7 @@ export namespace ProviderAuthHealth {
         recovery: recovery(dead.source ?? entry.source),
         authKind: dead.authKind ?? entry.authKind,
         source: dead.source ?? entry.source,
+        canDisconnect: true,
         updatedAt: dead.updatedAt ?? entry.updatedAt,
         failureCode: dead.failureCode,
       }
@@ -81,6 +84,7 @@ export namespace ProviderAuthHealth {
         status: "exhausted",
         authKind: exhausted.authKind ?? entry.authKind,
         source: exhausted.source ?? entry.source,
+        canDisconnect: false,
         updatedAt: exhausted.updatedAt ?? entry.updatedAt,
         cooldownUntil: exhausted.cooldownUntil,
         resetAt: exhausted.resetAt,
@@ -94,17 +98,22 @@ export namespace ProviderAuthHealth {
       recovery: recovery(entry.source),
       authKind: entry.authKind,
       source: entry.source,
+      canDisconnect: true,
       updatedAt: entry.updatedAt,
     }
   }
 
   export function fromEntry(providerID: string, entry: Auth.StoreEntry | undefined): Info {
-    return observations.get(providerID) ?? storedHealth(providerID, entry)
+    return observations.get(providerID) ?? fromStoredEntry(providerID, entry)
   }
 
   export function observe(input: Info) {
     const previous = observations.get(input.providerID)
-    const next = Info.parse({ ...input, updatedAt: input.updatedAt ?? Date.now() })
+    const next = Info.parse({
+      ...input,
+      canDisconnect: input.canDisconnect ?? false,
+      updatedAt: input.updatedAt ?? Date.now(),
+    })
     observations.set(input.providerID, next)
     return publishIfChanged(previous, next)
   }
@@ -113,12 +122,12 @@ export namespace ProviderAuthHealth {
     const previous = observations.get(providerID)
     if (!previous) return Promise.resolve()
     observations.delete(providerID)
-    return publishIfChanged(previous, storedHealth(providerID, entry))
+    return publishIfChanged(previous, fromStoredEntry(providerID, entry))
   }
 
   export function commitStored(previous: Info, providerID: string, entry?: Auth.StoreEntry) {
     observations.delete(providerID)
-    return publishIfChanged(previous, storedHealth(providerID, entry))
+    return publishIfChanged(previous, fromStoredEntry(providerID, entry))
   }
 
   function comparable(info: Info) {
@@ -128,6 +137,7 @@ export namespace ProviderAuthHealth {
       recovery: info.recovery,
       authKind: info.authKind,
       source: info.source,
+      canDisconnect: info.canDisconnect,
       cooldownUntil: info.cooldownUntil,
       resetAt: info.resetAt,
       failureCode: info.failureCode,

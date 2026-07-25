@@ -16,6 +16,7 @@ import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
 import { RuntimeReload } from "@/runtime/reload"
 import { authHook } from "@/plugin/auth-provider"
+import { ProviderAuthHealth } from "./auth-health"
 
 export namespace ProviderAuth {
   async function reloadProvider(reason: string) {
@@ -285,6 +286,30 @@ export namespace ProviderAuth {
         { source: "web" },
       )
       await reloadProvider(`provider credentials connected: ${input.providerID}`)
+    },
+  )
+
+  export const DisconnectUnavailable = NamedError.create(
+    "ProviderAuthDisconnectUnavailableError",
+    z.object({
+      providerID: z.string(),
+      status: ProviderAuthHealth.Info.shape.status,
+    }),
+  )
+
+  export const disconnect = fn(
+    z.object({
+      providerID: z.string().min(1),
+    }),
+    async (input) => {
+      let status: ProviderAuthHealth.Info["status"] = "not_configured"
+      const result = await Auth.removeIf(input.providerID, (entry) => {
+        const health = ProviderAuthHealth.fromStoredEntry(input.providerID, entry)
+        status = health.status
+        return health.canDisconnect === true
+      })
+      if (result === "retained") throw new DisconnectUnavailable({ providerID: input.providerID, status })
+      if (result === "removed") await reloadProvider(`provider credentials removed: ${input.providerID}`)
     },
   )
 

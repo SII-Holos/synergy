@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { setupI18n, type MessageDescriptor } from "@lingui/core"
+import { disconnectProviderConfirm } from "../../../src/components/dialog/confirm-copy"
 import {
+  providerCanDisconnect,
   providerNeedsAction,
   providerRecoveryCopy,
   providerStatusLabel,
@@ -60,6 +62,39 @@ describe("provider auth presentation", () => {
     expect(render(openRouterCopy)).toContain("Replace")
     const codexCopy = providerRecoveryCopy("OpenAI Codex", { providerID: "openai-codex", status: "action_required" })
     expect(render(codexCopy)).toContain("Reconnect")
+  })
+
+  test("disconnect is limited to rejected Synergy-managed credentials", () => {
+    expect(
+      providerCanDisconnect({
+        providerID: "openrouter",
+        status: "action_required",
+        canDisconnect: true,
+      }),
+    ).toBe(true)
+    expect(
+      providerCanDisconnect({
+        providerID: "openrouter",
+        status: "connected",
+        canDisconnect: true,
+      }),
+    ).toBe(false)
+    expect(
+      providerCanDisconnect({
+        providerID: "openrouter",
+        status: "action_required",
+        canDisconnect: false,
+      }),
+    ).toBe(false)
+  })
+
+  test("disconnect confirmation explains preserved provider configuration", () => {
+    const copy = disconnectProviderConfirm("OpenRouter")
+    expect(render(copy.title)).toBe("Disconnect provider?")
+    expect(render(copy.description)).toContain("OpenRouter")
+    expect(render(copy.description)).toContain("provider and model configuration")
+    expect(render(copy.confirmLabel)).toBe("Disconnect")
+    expect(copy.tone).toBe("warning")
   })
 
   test("usage badges distinguish rejection, exhaustion, and transient failure", () => {

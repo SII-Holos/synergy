@@ -199,6 +199,7 @@ test("rate limits mark credentials exhausted with retry metadata and never refre
   expect(refreshes).toBe(0)
   expect(ProviderAuthHealth.fromEntry("test-exhausted", (await Auth.entries())["test-exhausted"])).toMatchObject({
     status: "exhausted",
+    canDisconnect: false,
     resetAt: reset,
   })
 })
@@ -261,6 +262,7 @@ test("a request that cannot start without credentials remains not configured", a
   expect(ProviderAuthHealth.fromEntry("test-missing", undefined)).toEqual({
     providerID: "test-missing",
     status: "not_configured",
+    canDisconnect: false,
   })
 })
 
@@ -335,6 +337,7 @@ test("health events contain only public state and ignore connected token rotatio
             recovery: "reconnect",
             authKind: "api_key",
             source: "api",
+            canDisconnect: true,
             updatedAt: expect.any(Number),
             failureCode: "credential_rejected",
           },

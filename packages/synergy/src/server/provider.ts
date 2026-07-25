@@ -14,6 +14,15 @@ import { ProviderCatalog } from "@/provider/catalog"
 
 const log = Log.create({ service: "provider" })
 
+const ProviderAuthRemoveResponse = z
+  .object({
+    providerID: z.string(),
+    cleared: z.literal(true),
+  })
+  .meta({ ref: "ProviderAuthRemoveResponse" })
+
+const ProviderAuthDisconnectConflict = ProviderAuth.DisconnectUnavailable.Schema
+
 export const ProviderRoute = new Hono()
   .get(
     "/",
@@ -137,6 +146,51 @@ export const ProviderRoute = new Hono()
     }),
     async (c) => {
       return c.json(await ProviderAuth.methods())
+    },
+  )
+  .delete(
+    "/:providerID/auth",
+    describeRoute({
+      summary: "Remove stored provider credentials",
+      description:
+        "Clear Synergy-managed stored credentials for a provider while preserving its catalog and configuration. " +
+        "Credentials sourced from the environment or plugins are unaffected.",
+      operationId: "provider.disconnect",
+      responses: {
+        200: {
+          description: "Stored provider credentials removed",
+          content: {
+            "application/json": {
+              schema: resolver(ProviderAuthRemoveResponse),
+            },
+          },
+        },
+        409: {
+          description: "Stored provider credentials cannot be disconnected in their current state",
+          content: {
+            "application/json": {
+              schema: resolver(ProviderAuthDisconnectConflict),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        providerID: z.string().min(1).meta({ description: "Provider ID" }),
+      }),
+    ),
+    async (c) => {
+      const providerID = c.req.valid("param").providerID
+      try {
+        await ProviderAuth.disconnect({ providerID })
+        return c.json({ providerID, cleared: true as const })
+      } catch (error) {
+        if (error instanceof ProviderAuth.DisconnectUnavailable) return c.json(error.toObject(), 409)
+        throw error
+      }
     },
   )
   .get(

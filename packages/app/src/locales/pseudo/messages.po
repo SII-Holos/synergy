@@ -8562,6 +8562,18 @@ msgid "confirm.discardSettings.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr ""
 

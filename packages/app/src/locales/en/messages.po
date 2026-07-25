@@ -8562,6 +8562,18 @@ msgid "confirm.discardSettings.title"
 msgstr "Discard unsaved changes?"
 
 #. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.confirm"
+msgstr "Disconnect"
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.desc"
+msgstr "Disconnect {providerName}? Synergy will clear its stored credentials while preserving the provider and model configuration."
+
+#. js-lingui-explicit-id
+msgid "confirm.disconnectProvider.title"
+msgstr "Disconnect provider?"
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.cancel"
 msgstr "Stay in worktree"
 

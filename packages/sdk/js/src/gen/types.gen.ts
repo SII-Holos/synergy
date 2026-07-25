@@ -1581,6 +1581,7 @@ export type ProviderAuthHealth = {
   recovery?: "reconnect" | "update_environment"
   authKind?: string
   source?: string
+  canDisconnect?: boolean
   updatedAt?: number
   cooldownUntil?: number
   resetAt?: number
@@ -5765,6 +5766,19 @@ export type AccountUsageSnapshot = {
 export type ProviderAuthMethod = {
   type: "oauth" | "api" | "import"
   label: string
+}
+
+export type ProviderAuthRemoveResponse = {
+  providerID: string
+  cleared: true
+}
+
+export type ProviderAuthDisconnectUnavailableError = {
+  name: "ProviderAuthDisconnectUnavailableError"
+  data: {
+    providerID: string
+    status: "connected" | "not_configured" | "exhausted" | "action_required"
+  }
 }
 
 export type GitHubAccount = {
@@ -12535,6 +12549,43 @@ export type ProviderAuthResponses = {
 }
 
 export type ProviderAuthResponse = ProviderAuthResponses[keyof ProviderAuthResponses]
+
+export type ProviderDisconnectData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/auth"
+}
+
+export type ProviderDisconnectErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Stored provider credentials cannot be disconnected in their current state
+   */
+  409: ProviderAuthDisconnectUnavailableError
+}
+
+export type ProviderDisconnectError = ProviderDisconnectErrors[keyof ProviderDisconnectErrors]
+
+export type ProviderDisconnectResponses = {
+  /**
+   * Stored provider credentials removed
+   */
+  200: ProviderAuthRemoveResponse
+}
+
+export type ProviderDisconnectResponse = ProviderDisconnectResponses[keyof ProviderDisconnectResponses]
 
 export type ProviderAuthGithubStatusData = {
   body?: never
