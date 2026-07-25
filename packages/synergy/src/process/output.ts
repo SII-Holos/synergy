@@ -84,7 +84,7 @@ export namespace ProcessOutput {
       if (pending) yield pending.endsWith("\r") ? pending.slice(0, -1) : pending
     } finally {
       options.signal?.removeEventListener("abort", onAbort)
-      if (!reachedEnd) await reader.cancel().catch(() => {})
+      if (!reachedEnd) void reader.cancel().catch(() => {})
       try {
         reader.releaseLock()
       } catch {}
