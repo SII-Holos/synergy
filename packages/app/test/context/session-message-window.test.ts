@@ -63,14 +63,13 @@ describe("applyLatestPage", () => {
     expect(result.droppedIds).toEqual(["a", "b"])
   })
 
-  test("referenced roots count against the cap — excess drops oldest refs too", () => {
+  test("keeps referenced roots outside the primary page cap", () => {
     const cap = 3
     const server = [msg("a", 1), msg("b", 2)]
-    const roots = [root("c", 3), root("d", 4)] // d is newest
+    const roots = [root("c", 3), root("d", 4)]
     const result = applyLatestPage(server, roots, cap)
-    // Canonical: a=1, b=2, c=3, d=4 — cap 3 keeps b,c,d, drops a
-    expect(result.window.messages.map((m) => m.id)).toEqual(["b", "c", "d"])
-    expect(result.droppedIds).toEqual(["a"])
+    expect(result.window.messages.map((m) => m.id)).toEqual(["a", "b", "c", "d"])
+    expect(result.droppedIds).toEqual([])
   })
 
   test("empty input produces empty window", () => {
@@ -198,6 +197,20 @@ describe("reconcileMessage in latest mode", () => {
     // Insert a=1 at front → a,b,c,d (4 items, cap 3). Evict oldest: a.
     expect(result.window.messages.map((m) => m.id)).toEqual(["b", "c", "d"])
     expect(result.droppedIds).toEqual(["a"])
+  })
+
+  test("keeps a referenced root outside the latest message cap", () => {
+    const root = { ...msg("root", 1), rootID: "root" }
+    const current = window([
+      root,
+      { ...msg("assistant-1", 2), rootID: root.id },
+      { ...msg("assistant-2", 3), rootID: root.id },
+    ])
+
+    const result = reconcileMessage(current, { ...msg("steer", 4), rootID: root.id }, 3)
+
+    expect(result.window.messages.map((message) => message.id)).toEqual(["root", "assistant-1", "assistant-2", "steer"])
+    expect(result.droppedIds).toEqual([])
   })
 
   test("reports no dropped IDs when under cap", () => {

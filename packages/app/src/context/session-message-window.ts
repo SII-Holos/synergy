@@ -5,6 +5,7 @@ export type MessageRef = {
   time: {
     created: number
   }
+  rootID?: string
 }
 
 export type MessageWindowState<T extends MessageRef = MessageRef> = {
@@ -40,17 +41,31 @@ function mergeMessages<T extends MessageRef>(groups: T[][]) {
   return Array.from(byID.values()).sort(compareByTimeThenId)
 }
 
+function capLatestMessages<T extends MessageRef>(messages: T[], cap: number, referencedRoots: T[] = []) {
+  const primary = messages.slice(Math.max(0, messages.length - cap))
+  const primaryIDs = new Set(primary.map((message) => message.id))
+  const referencedRootIDs = new Set(referencedRoots.map((message) => message.id))
+  for (const message of primary) {
+    if (message.rootID && !primaryIDs.has(message.rootID)) referencedRootIDs.add(message.rootID)
+  }
+  if (referencedRootIDs.size === 0) return primary
+  const candidates = mergeMessages([referencedRoots, messages])
+  return mergeMessages([candidates.filter((message) => referencedRootIDs.has(message.id)), primary])
+}
+
 export function applyLatestPage<T extends MessageRef>(
   items: T[],
   referencedRoots: T[] = [],
   cap = DEFAULT_CAP,
 ): MessageWindowResult<T> {
-  const messages = mergeMessages([referencedRoots, items])
-  const dropCount = Math.max(0, messages.length - cap)
-  const droppedIds = messages.slice(0, dropCount).map((message) => message.id)
+  const primary = mergeMessages([items])
+  const messages = mergeMessages([referencedRoots, primary])
+  const kept = capLatestMessages(primary, cap, referencedRoots)
+  const keptIDs = new Set(kept.map((message) => message.id))
+  const droppedIds = messages.filter((message) => !keptIDs.has(message.id)).map((message) => message.id)
   return {
     window: {
-      messages: messages.slice(dropCount),
+      messages: kept,
       mode: "latest",
       pendingLatest: false,
       pendingLatestIds: [],
@@ -103,15 +118,16 @@ export function reconcileMessage<T extends MessageRef>(
     }
   }
 
-  const dropCount = Math.max(0, messages.length - cap)
+  const kept = capLatestMessages(messages, cap)
+  const keptIDs = new Set(kept.map((item) => item.id))
   return {
     window: {
-      messages: messages.slice(dropCount),
+      messages: kept,
       mode: "latest",
       pendingLatest: false,
       pendingLatestIds: [],
     },
-    droppedIds: messages.slice(0, dropCount).map((item) => item.id),
+    droppedIds: messages.filter((item) => !keptIDs.has(item.id)).map((item) => item.id),
   }
 }
 
