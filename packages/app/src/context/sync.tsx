@@ -401,7 +401,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           })
           const pending = plan.ready ? undefined : inflight.get(sessionID)
           const baseReq =
-            pending && options?.trigger?.type === "workspace-transition"
+            pending && options?.trigger
               ? trackSessionSync(
                   inflight,
                   sessionID,

@@ -17,7 +17,8 @@ interface DialogRewindConfirmProps {
   /** All messages in canonical session order */
   allMessages: { id: string; role: string }[]
   partsByMessage: Record<string, PartType[] | undefined>
-  onRewind: (cutMessageID: string, restoreFiles: boolean) => Promise<void>
+  onConfirm: (action: "rewind" | "retry", cutMessageID: string, restoreFiles: boolean) => Promise<string | undefined>
+  canRetry: boolean
 }
 
 function activeMessageIndex(messages: { id: string }[], cutId: string) {
@@ -81,7 +82,7 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
   const dialog = useDialog()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
-  const [state, setState] = createStore({ pending: false, restoreFiles: false })
+  const [state, setState] = createStore({ pending: undefined as "rewind" | "retry" | undefined, restoreFiles: false })
 
   const summary = createMemo(() =>
     displaySummary((props.cutMessage as { summary?: { title?: string } }).summary?.title),
@@ -99,19 +100,22 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
 
   const confirmLabel = createMemo(() => (state.restoreFiles ? _(S.rewindConfirmRestore) : _(S.rewindConfirm)))
 
-  const handleRewind = async () => {
+  const handleConfirm = async (action: "rewind" | "retry") => {
     if (state.pending) return
-    setState("pending", true)
+    setState("pending", action)
     try {
-      await props.onRewind(props.cutMessage.id, state.restoreFiles)
+      const retryError = await props.onConfirm(action, props.cutMessage.id, state.restoreFiles)
       dialog.close()
+      if (retryError) {
+        showToast({ type: "error", title: _(S.rewindRetryFailed), description: retryError })
+      }
     } catch (error) {
       showToast({
         type: "error",
-        title: _(S.rewindFailed),
+        title: action === "retry" ? _(S.rewindRetryFailed) : _(S.rewindFailed),
         description: error instanceof Error ? error.message : _(S.rewindRequestFailed),
       })
-      setState("pending", false)
+      setState("pending", undefined)
     }
   }
 
@@ -127,7 +131,7 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
           data-slot="dialog-close-button"
           data-component="icon-button"
           data-variant="ghost"
-          disabled={state.pending}
+          disabled={state.pending !== undefined}
           onClick={() => {
             if (!state.pending) dialog.close()
           }}
@@ -159,7 +163,7 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
               type="checkbox"
               checked={state.restoreFiles}
               onChange={(event) => setState("restoreFiles", event.currentTarget.checked)}
-              disabled={state.pending}
+              disabled={state.pending !== undefined}
             />
             <span class="rewind-confirm-file-option-copy">
               <span class="rewind-confirm-file-option-title">{_(S.rewindAlsoRestore)}</span>
@@ -171,18 +175,24 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
         </div>
       </Show>
       <div data-slot="dialog-actions" class="rewind-confirm-actions">
-        <Button type="button" variant="ghost" size="large" disabled={state.pending} onClick={() => dialog.close()}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="large"
+          disabled={state.pending !== undefined}
+          onClick={() => dialog.close()}
+        >
           {_(S.rewindCancel)}
         </Button>
         <Button
           type="button"
-          variant="primary"
+          variant="secondary"
           size="large"
           class="rewind-confirm-button"
-          disabled={state.pending}
-          onClick={() => void handleRewind()}
+          disabled={state.pending !== undefined}
+          onClick={() => void handleConfirm("rewind")}
         >
-          {state.pending ? (
+          {state.pending === "rewind" ? (
             <>
               <Spinner class="rewind-confirm-spinner" />
               {_(S.rewindRewinding)}
@@ -191,6 +201,25 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
             confirmLabel()
           )}
         </Button>
+        <Show when={props.canRetry}>
+          <Button
+            type="button"
+            variant="primary"
+            size="large"
+            class="rewind-confirm-button"
+            disabled={state.pending !== undefined}
+            onClick={() => void handleConfirm("retry")}
+          >
+            {state.pending === "retry" ? (
+              <>
+                <Spinner class="rewind-confirm-spinner" />
+                {_(S.rewindRetrying)}
+              </>
+            ) : (
+              _(S.rewindRetry)
+            )}
+          </Button>
+        </Show>
       </div>
     </Dialog>
   )
