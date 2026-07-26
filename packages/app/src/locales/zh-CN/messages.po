@@ -11855,27 +11855,6 @@ msgstr "自动允许读取、安全编辑和网络查询；执行命令、写入
 msgid "session.permission.mode.guarded.short"
 msgstr "受控"
 
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.sessionRunning"
-msgstr "会话正在运行"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.stopBeforeChange"
-msgstr "更改权限模式前请停止会话。"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.stopBeforeChange.inline"
-msgstr "更改权限模式前请停止会话。"
-
 #. permission-selector.tsx
 msgid "session.permission.title"
 msgstr "权限模式"

@@ -308,4 +308,23 @@ export namespace PermissionNext {
   export async function list() {
     return state().then((x) => Object.values(x.pending).map((x) => x.info))
   }
+
+  export async function resolveAllForSessions(sessionIDs: string[]): Promise<number> {
+    const s = await state()
+    const set = new Set(sessionIDs)
+    let count = 0
+    for (const [id, pending] of Object.entries(s.pending)) {
+      if (!set.has(pending.info.sessionID)) continue
+      if (isNonBypassable(pending.info)) continue
+      delete s.pending[id]
+      Bus.publish(Event.Replied, {
+        sessionID: pending.info.sessionID,
+        requestID: pending.info.id,
+        reply: "once",
+      })
+      pending.resolve()
+      count++
+    }
+    return count
+  }
 }

@@ -1060,14 +1060,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
 
   async function updateControlProfile(profile: ControlProfileId, close?: () => void) {
-    if (working()) {
-      showToast({
-        type: "warning",
-        title: i18n._(PI.sessionRunning),
-        description: i18n._(PI.permissionStopBefore),
-      })
-      return
-    }
+    if (store.switchingProfile) return
 
     if (!params.id) {
       input.setControlProfile(profile)
@@ -1076,7 +1069,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
     setStore("switchingProfile", true)
     try {
-      await sdk.client.session.update({ sessionID: params.id, controlProfile: profile })
+      await sdk.client.session.update({
+        sessionID: params.id,
+        controlProfile: profile,
+        ...(profile === "full_access" ? { resolvePendingPermissions: true } : {}),
+      })
       close?.()
     } catch (err) {
       showToast({
@@ -1935,7 +1932,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   </div>
                 </Show>
                 <PermissionModeSelector
-                  working={working}
                   switching={() => store.switchingProfile}
                   activeMode={activePermissionMode}
                   selectedProfile={selectedControlProfile}

@@ -5241,6 +5241,9 @@
                     "type": "string",
                     "enum": ["guarded", "autonomous", "full_access"]
                   },
+                  "resolvePendingPermissions": {
+                    "type": "boolean"
+                  },
                   "completionNotice": {
                     "type": "object",
                     "properties": {
