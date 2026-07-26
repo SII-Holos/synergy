@@ -128,6 +128,66 @@ describe("session input event ordering", () => {
   })
 })
 
+describe("session root variants", () => {
+  test("persists an agent default on a new root and omits variants from non-root input", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        model: "test-provider/test-model",
+        provider: {
+          "test-provider": {
+            name: "Test Provider",
+            npm: "@ai-sdk/openai-compatible",
+            env: [],
+            models: {
+              "test-model": {
+                name: "Test Model",
+                tool_call: true,
+                limit: { context: 128_000, output: 4_096 },
+                variants: { high: { reasoningEffort: "high" } },
+              },
+            },
+            options: { apiKey: "test-key" },
+          },
+        },
+        agent: {
+          variant_agent: {
+            model: "test-provider/test-model",
+            mode: "primary",
+            defaultVariant: "high",
+          },
+        },
+      } as any,
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const root = await createUserMessage({
+          sessionID: session.id,
+          agent: "variant_agent",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          parts: [{ type: "text", text: "use the agent default" }],
+        })
+        const steer = await createUserMessage(
+          {
+            sessionID: session.id,
+            agent: "variant_agent",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            noReply: true,
+            variant: "high",
+            parts: [{ type: "text", text: "guide the current root" }],
+          },
+          root.info.id,
+        )
+
+        expect(root.info.variant).toBe("high")
+        expect(steer.info.variant).toBeUndefined()
+      },
+    })
+  })
+})
+
 describe("session input attachment extraction", () => {
   test("preserves a file attachment when document extraction fails", async () => {
     await using tmp = await tmpdir({ git: true })

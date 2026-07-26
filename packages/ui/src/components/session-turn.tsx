@@ -118,6 +118,32 @@ export function formatTurnCost(value: number): string | undefined {
     currency: "USD",
   }).format(value)
 }
+export function resolveSessionTurnError(value: NonNullable<AssistantMessage["error"]>) {
+  if (value.name === "ProviderModelUnavailableError") {
+    return {
+      kind: "model-unavailable" as const,
+      descriptor: SESSION_TURN_DESC.modelUnavailable,
+      values: { modelID: value.data.modelID, providerID: value.data.providerID },
+    }
+  }
+  if (value.name === "ProviderModelVariantUnavailableError") {
+    const availableVariants = value.data.availableVariants.join(", ")
+    return {
+      kind: "model-variant-unavailable" as const,
+      descriptor: SESSION_TURN_DESC.modelVariantUnavailable,
+      values: {
+        providerID: value.data.providerID,
+        modelID: value.data.modelID,
+        variant: value.data.variant,
+        availability: availableVariants ? "available" : "none",
+        availableVariants,
+      },
+    }
+  }
+  if ("message" in value.data && typeof value.data.message === "string") {
+    return { kind: "message" as const, message: value.data.message }
+  }
+}
 
 export function turnCompletionStats(messages: readonly AssistantMessage[]): TurnCompletionStats | undefined {
   const completed = messages.filter((message) => message.time.completed != null)
@@ -762,13 +788,13 @@ export function SessionTurn(
   const errorMessage = createMemo(() => {
     const value = error()
     if (!value) return ""
-    if (value.name === "ProviderModelUnavailableError") {
-      return _({
-        ...SESSION_TURN_DESC.modelUnavailable,
-        values: { modelID: value.data.modelID, providerID: value.data.providerID },
-      })
+    const presentation = resolveSessionTurnError(value)
+    if (!presentation) return ""
+    if (presentation.kind === "message") return presentation.message
+    if (presentation.kind === "model-unavailable") {
+      return _(SESSION_TURN_DESC.modelUnavailable.id, presentation.values)
     }
-    return "message" in value.data && typeof value.data.message === "string" ? value.data.message : ""
+    return _(SESSION_TURN_DESC.modelVariantUnavailable.id, presentation.values)
   })
 
   const permissions = createMemo(() => data.store.permission?.[props.sessionID] ?? emptyPermissions)

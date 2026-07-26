@@ -11003,6 +11003,10 @@ msgid "session-turn.model-unavailable"
 msgstr "模型 {modelID} 当前无法从 {providerID} 使用。请选择其他模型后继续。"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-variant-unavailable"
+msgstr "模型 {modelID}（提供方 {providerID}）不支持变体 {variant}。{availability, select, available {可用变体：{availableVariants}。} other {当前没有可用变体。}}请选择其他变体或模型后继续。"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
 msgstr "回退"
 
