@@ -40,7 +40,7 @@ async function fixture(
     name: target.name,
     sha256: createHash("sha256").update(artifact).digest("hex"),
     size: artifact.byteLength,
-    url: `https://cdn.playwright.dev/dbazure/download/playwright/${target.path}`,
+    url: target.urls[0],
     executable: target.executable,
     browserVersion: "149.0.7827.55",
     revision: "1228",
@@ -212,6 +212,26 @@ describe("managed Chromium installation", () => {
         arch: wrongUrl.arch,
         libc: "glibc",
         destination: wrongUrl.destination,
+      }),
+    ).rejects.toThrow(/artifact.*requested|URL/i)
+
+    const wrongCftMirror = await fixture({
+      platform: "linux",
+      arch: "x64",
+      manifestPatch: {
+        url: "https://cdn.playwright.dev/dbazure/download/playwright/builds/cft/149.0.7827.55/linux64/chrome-linux64.zip",
+      },
+    })
+    await expect(
+      BrowserInstall.installChromium({
+        fetch: wrongCftMirror.fetchMock,
+        publicKey: wrongCftMirror.publicKey,
+        manifestBaseUrl: wrongCftMirror.base,
+        version: wrongCftMirror.version,
+        platform: wrongCftMirror.platform,
+        arch: wrongCftMirror.arch,
+        libc: "glibc",
+        destination: wrongCftMirror.destination,
       }),
     ).rejects.toThrow(/artifact.*requested|URL/i)
   })

@@ -10,6 +10,7 @@ import { buildPluginProject } from "./build.js"
 import { packPluginProject } from "./pack.js"
 import { signPluginTarball } from "./sign.js"
 import { validatePluginProject } from "./validate.js"
+import { extractTarballText } from "../lib/tarball.js"
 import {
   copyRegistryEntryIcon,
   githubRepoSlug,
@@ -84,26 +85,29 @@ function safeArtifactName(name: string): string {
 }
 
 function readTarballPackageName(tarballPath: string): string | undefined {
-  const result = Bun.spawnSync(["tar", "-xOf", tarballPath, "package.json"], { stdout: "pipe", stderr: "pipe" })
-  if (result.exitCode !== 0) return undefined
-  const pkg = JSON.parse(new TextDecoder().decode(result.stdout)) as { name?: unknown }
+  const raw = extractTarballText(tarballPath, "package.json")
+  if (!raw) return undefined
+  const pkg = JSON.parse(raw) as { name?: unknown }
   return typeof pkg.name === "string" ? pkg.name : undefined
 }
 
-function assertMarketplaceNaming(input: { tarballPath: string; manifest: { name: string; version: string } }) {
+export function assertMarketplaceNaming(input: {
+  tarballPath: string
+  manifest: { id: string; name: string; version: string }
+}) {
   const packageName = readTarballPackageName(input.tarballPath)
   if (!packageName) {
     throw new Error(
       "Marketplace publishing requires package.json inside the plugin tarball. Run `synergy-plugin build` and `synergy-plugin pack`.",
     )
   }
-  if (packageName !== input.manifest.name) {
+  if (packageName !== input.manifest.id) {
     throw new Error(
-      `Marketplace publishing requires package.json name "${packageName}" to match plugin.json name "${input.manifest.name}".`,
+      `Marketplace publishing requires package.json name "${packageName}" to match plugin.json id "${input.manifest.id}".`,
     )
   }
 
-  const expectedArtifact = `${safeArtifactName(input.manifest.name)}-${input.manifest.version}.synergy-plugin.tgz`
+  const expectedArtifact = `${safeArtifactName(input.manifest.id)}-${input.manifest.version}.synergy-plugin.tgz`
   if (path.basename(input.tarballPath) !== expectedArtifact) {
     throw new Error(
       `Marketplace publishing requires artifact name "${expectedArtifact}", got "${path.basename(input.tarballPath)}".`,

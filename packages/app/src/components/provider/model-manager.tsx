@@ -3,6 +3,7 @@ import { createMemo, Show, type Component } from "solid-js"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
+import { listSelectableConnectedModels } from "@/components/provider/model-catalog"
 import { compareProviderIDs, type ProviderRecommendationMap } from "@/components/provider/provider-recommendation"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLocal, type LocalModel, type ModelKey } from "@/context/local"
@@ -191,24 +192,11 @@ export const ConnectedModelManager: Component<{
   const providers = useProviders()
 
   const models = createMemo(() =>
-    providers
-      .all()
-      .flatMap((p) =>
-        Object.values(p.models).map((m) => ({
-          ...m,
-          provider: p,
-          name: m.name.replace("(latest)", "").trim(),
-          latest: m.name.includes("(latest)"),
-        })),
-      )
-      .filter((model) =>
-        providers
-          .connected()
-          .map((p) => p.id)
-          .includes(model.provider.id),
-      )
-      .filter((model) => (props.provider ? model.provider.id === props.provider : true))
-      .sort((a, b) => a.name.localeCompare(b.name)),
+    listSelectableConnectedModels(
+      providers.all(),
+      providers.connected().map((provider) => provider.id),
+      props.provider,
+    ).sort((a, b) => a.name.localeCompare(b.name)),
   )
 
   const local = optionalLocal()

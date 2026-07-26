@@ -4,6 +4,7 @@ This package is the published plugin-author contract. Load `change-plugin-runtim
 
 - Keep this package independent from `packages/synergy` private runtime modules. Public definitions, generated-manifest schemas, capabilities, contributions, contexts, tools, UI contracts, artifacts, and version helpers must remain usable by third-party plugins.
 - Infer TypeScript types from the public schemas and preserve stable IDs, defaults, validation errors, and export paths. A host-only implementation detail does not belong in the public manifest.
+- Keep canonical manifest and permissions hashing in `src/integrity.ts`; plugin-kit and the host must import that public contract rather than duplicate its payload or stable serialization.
 - Capability declarations are Host Service ceilings consumed by approval and enforcement. Do not restore the old nested permission model or imply control over direct OS access.
 - Preserve tool result, hook, shell, UI API-major, and artifact contracts across Bun source exports and built `dist` output.
 - Keep `src/theme` independent from Solid and usable through `@ericsanchezok/synergy-plugin/theme`. Token names, seed/schema validation, reference resolution, color math, and contrast requirements are public plugin-author contracts; runtime registration and DOM application remain in `packages/ui`.

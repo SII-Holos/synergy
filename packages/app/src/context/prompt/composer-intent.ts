@@ -44,13 +44,19 @@ export function resolveAgent(
   }
   return undefined
 }
-/** Variant shown by the composer: session intent first, then configured defaults. */
+export type SessionVariantResolution = {
+  ready: boolean
+  value: string | undefined
+}
+
+/** Variant shown by the composer: session intent first, then configured defaults after intent loads. */
 export function resolveVariantDisplay(
-  sessionVariant: string | undefined,
+  sessionVariant: SessionVariantResolution,
   agentDefaultVariant: string | undefined,
   roleDefaultVariant: string | undefined,
 ): string | undefined {
-  return sessionVariant ?? agentDefaultVariant ?? roleDefaultVariant
+  if (!sessionVariant.ready) return undefined
+  return sessionVariant.value ?? agentDefaultVariant ?? roleDefaultVariant
 }
 
 type RootMessageLike = { role: string; isRoot?: boolean; model?: ModelKey; agent?: string; variant?: string }
@@ -92,4 +98,16 @@ export function sessionDefaultVariant(
   if (!message?.variant || !message.model) return undefined
   if (message.model.providerID !== model.providerID || message.model.modelID !== model.modelID) return undefined
   return message.variant
+}
+
+export function resolveSessionVariant(input: {
+  hasSession: boolean
+  hasDraft: boolean
+  draft: string | undefined
+  model: ModelKey | undefined
+  messages: readonly RootMessageLike[] | undefined
+}): SessionVariantResolution {
+  if (input.hasDraft) return { ready: true, value: input.draft }
+  if (input.hasSession && (!input.model || input.messages === undefined)) return { ready: false, value: undefined }
+  return { ready: true, value: sessionDefaultVariant(input.model, input.messages) }
 }

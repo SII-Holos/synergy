@@ -75,7 +75,7 @@ import { usePromptAttachments } from "@/components/prompt-input/attachments-hook
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
 import { sendSessionCommand } from "@/components/prompt-input/session-command"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
-import { canSubmitPrompt } from "@/components/prompt-input/submit-intent"
+import { resolvePromptSubmitIntent, shouldAllowPromptSubmit } from "@/components/prompt-input/submit-intent"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
@@ -193,6 +193,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
   const [newSessionSubmitPending, setNewSessionSubmitPending] = createSignal(false)
+  const [store, setStore] = createStore<PromptInputStore>({
+    popover: null,
+    historyIndex: -1,
+    savedPrompt: null,
+    placeholder: Math.floor(Math.random() * PLACEHOLDERS.length),
+    dragging: false,
+    mode: "normal",
+    applyingHistory: false,
+    switchingProfile: false,
+  })
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const sendShortcut = createMemo(() => input.sendShortcut())
@@ -489,10 +499,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const submitPending = createMemo(() => newSessionSubmitPending() || sessionTransitionPending())
   const canSubmit = createMemo(() => {
     if (submitPending()) return false
-    return canSubmitPrompt({
+    const intent = resolvePromptSubmitIntent({
       text: promptText(),
       working: working(),
       hasBlueprintSlot: !!localArmedLoop(),
+    })
+    if (intent === "blocked") return false
+    return shouldAllowPromptSubmit({
+      intent,
+      variantReady: local.model.variant.ready(),
+      requiresVariant: store.mode === "normal" && !localArmedLoop(),
     })
   })
   const submitStopsSession = createMemo(() => working() && !promptText().trim())
@@ -1097,17 +1113,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const hasAttachments = createMemo(
     () => uploadedAttachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0,
   )
-
-  const [store, setStore] = createStore<PromptInputStore>({
-    popover: null,
-    historyIndex: -1,
-    savedPrompt: null,
-    placeholder: Math.floor(Math.random() * PLACEHOLDERS.length),
-    dragging: false,
-    mode: "normal",
-    applyingHistory: false,
-    switchingProfile: false,
-  })
 
   const MAX_HISTORY = 100
   const [history, setHistory] = persisted(

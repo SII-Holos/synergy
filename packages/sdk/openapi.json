@@ -29934,6 +29934,11 @@
                   },
                   "reviewSessionID": {
                     "type": "string"
+                  },
+                  "reviewToolRecoveryAttempts": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]
@@ -37310,6 +37315,11 @@
               },
               "requesterMessageID": {
                 "type": "string"
+              },
+              "reviewToolRecoveryAttempts": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             },
             "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]

@@ -24,6 +24,7 @@ describe("Chromium release contract", () => {
       name: "chrome-mac-arm64.zip",
       executable: "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
       path: "builds/cft/149.0.7827.55/mac-arm64/chrome-mac-arm64.zip",
+      urls: ["https://cdn.playwright.dev/builds/cft/149.0.7827.55/mac-arm64/chrome-mac-arm64.zip"],
     })
     expect(chromiumReleaseTarget("linux", "arm64", "149.0.7827.55", "1228")).toEqual({
       platform: "linux",
@@ -31,8 +32,27 @@ describe("Chromium release contract", () => {
       name: "chromium-linux-arm64.zip",
       executable: "chrome-linux/chrome",
       path: "builds/chromium/1228/chromium-linux-arm64.zip",
+      urls: [
+        "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1228/chromium-linux-arm64.zip",
+        "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/chromium/1228/chromium-linux-arm64.zip",
+        "https://cdn.playwright.dev/builds/chromium/1228/chromium-linux-arm64.zip",
+      ],
     })
     expect(chromiumReleaseTarget("win32", "arm64", "149.0.7827.55", "1228")).toBeNull()
+  })
+
+  test("pairs Chromium artifact paths with the matching Playwright mirrors", () => {
+    const chromeForTesting = chromiumReleaseTarget("linux", "x64", "149.0.7827.55", "1228")
+    expect(chromeForTesting?.urls).toEqual([
+      "https://cdn.playwright.dev/builds/cft/149.0.7827.55/linux64/chrome-linux64.zip",
+    ])
+
+    const legacyChromium = chromiumReleaseTarget("linux", "arm64", "149.0.7827.55", "1228")
+    expect(legacyChromium?.urls).toEqual([
+      "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1228/chromium-linux-arm64.zip",
+      "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/chromium/1228/chromium-linux-arm64.zip",
+      "https://cdn.playwright.dev/builds/chromium/1228/chromium-linux-arm64.zip",
+    ])
   })
 
   test("strictly validates signed Chromium metadata", () => {
@@ -44,7 +64,7 @@ describe("Chromium release contract", () => {
       name: target.name,
       sha256: "a".repeat(64),
       size: 1024,
-      url: `https://cdn.playwright.dev/dbazure/download/playwright/${target.path}`,
+      url: target.urls[0],
       executable: target.executable,
       browserVersion: "149.0.7827.55",
       revision: "1228",

@@ -4047,6 +4047,7 @@ export type SessionWorkflowInfo =
         requesterMessageID: string
         reviewTaskID?: string
         reviewSessionID?: string
+        reviewToolRecoveryAttempts?: number
       }
       review?: {
         attempts: number
@@ -6562,6 +6563,7 @@ export type BlueprintLoopInfo = {
     requestedAt: number
     requesterSessionID: string
     requesterMessageID: string
+    reviewToolRecoveryAttempts?: number
   }
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
