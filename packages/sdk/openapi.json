@@ -33065,6 +33065,37 @@
         },
         "required": ["name", "data"]
       },
+      "ProviderModelVariantUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProviderModelVariantUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "variant": {
+                "type": "string"
+              },
+              "availableVariants": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["providerID", "modelID", "variant", "availableVariants"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "AssistantMessage": {
         "type": "object",
         "properties": {
@@ -33118,6 +33149,9 @@
               },
               {
                 "$ref": "#/components/schemas/ProviderModelUnavailableError"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderModelVariantUnavailableError"
               }
             ]
           },

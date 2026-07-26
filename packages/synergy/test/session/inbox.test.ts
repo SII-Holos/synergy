@@ -204,6 +204,84 @@ describe("SessionInbox", () => {
     })
   })
 
+  test("neutralizes a queued variant while guiding and restores it for a future root", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        provider: {
+          test: {
+            name: "Test Provider",
+            npm: "@ai-sdk/openai-compatible",
+            env: [],
+            models: {
+              "test-model": {
+                name: "Test Model",
+                tool_call: true,
+                limit: { context: 128_000, output: 4_096 },
+                variants: {
+                  high: { reasoningEffort: "high" },
+                  max: { reasoningEffort: "max" },
+                },
+              },
+            },
+            options: { apiKey: "test-key" },
+          },
+        },
+      } as any,
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const first = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          parts: [{ type: "text", text: "establish the root" }],
+        })
+        const root = await SessionInbox.materializeItem(await SessionInbox.getStored(session.id, first.id))
+        await SessionInbox.commitReady(session.id, [first.id])
+
+        const queued = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          variant: "high",
+          parts: [{ type: "text", text: "use high for the next task" }],
+        })
+        const guided = await SessionInbox.guide({ sessionID: session.id, itemID: queued.id })
+
+        expect(guided.mode).toBe("steer")
+        expect(guided.message?.variant).toBeUndefined()
+        expect((await SessionInbox.getStored(session.id, queued.id)).message?.variant).toBe("high")
+
+        const restored = await SessionInbox.guide({ sessionID: session.id, itemID: queued.id })
+        expect(restored.mode).toBe("task")
+        expect(restored.message?.variant).toBe("high")
+        const nextRoot = await SessionInbox.materializeItem(await SessionInbox.getStored(session.id, queued.id))
+        expect(nextRoot?.info.role).toBe("user")
+        if (nextRoot?.info.role === "user") expect(nextRoot.info.variant).toBe("high")
+
+        const steer = await SessionInbox.enqueueUser({
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test-model" },
+          variant: "max",
+          parts: [{ type: "text", text: "guide without changing effort" }],
+        })
+        await SessionInbox.guide({ sessionID: session.id, itemID: steer.id })
+        const materialized = await SessionInbox.materializeItem(
+          await SessionInbox.getStored(session.id, steer.id),
+          root?.info.id,
+        )
+        expect(materialized?.info.role).toBe("user")
+        if (materialized?.info.role === "user") expect(materialized.info.variant).toBeUndefined()
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
   test("queues noReply user input as steer", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -236,6 +314,7 @@ describe("SessionInbox", () => {
           sessionID: session.id,
           mode: "context",
           message: {
+            variant: "high",
             role: "user",
             parts: [{ type: "text", text: "only if a call is already needed" }],
           },
@@ -244,6 +323,7 @@ describe("SessionInbox", () => {
         const guided = await SessionInbox.guide({ sessionID: session.id, itemID: context.itemID })
 
         expect(guided.mode).toBe("context")
+        expect(guided.message?.variant).toBeUndefined()
         expect(await SessionInbox.hasRunnableItem(session.id)).toBe(false)
 
         SessionManager.unregisterRuntime(session.id)

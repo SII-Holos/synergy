@@ -4,6 +4,7 @@ import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 import { ProviderModelUnavailableError } from "@/provider/model-unavailable-error"
+import { ProviderModelVariantUnavailableError } from "@/provider/model-variant-unavailable-error"
 import { Identifier } from "../id/id"
 import { LSPSchema } from "../lsp/schema"
 import { SnapshotSchema } from "@/session/snapshot-schema"
@@ -614,6 +615,7 @@ export namespace MessageV2 {
         AbortedError.Schema,
         APIError.Schema,
         ProviderModelUnavailableError.Schema,
+        ProviderModelVariantUnavailableError.Schema,
       ])
       .optional(),
     parentID: z.string(),
@@ -1618,6 +1620,8 @@ export namespace MessageV2 {
       case MessageV2.OutputLengthError.isInstance(e):
         return e
       case ProviderModelUnavailableError.isInstance(e):
+        return e
+      case ProviderModelVariantUnavailableError.isInstance(e):
         return e
       case LoadAPIKeyError.isInstance(e):
         return new MessageV2.AuthError(

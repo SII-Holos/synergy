@@ -19,6 +19,7 @@ import { Tool } from "@/tool/tool"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import { SessionHistory } from "./history"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
+import { SessionRootVariant } from "./root-variant"
 
 const log = Log.create({ service: "session.input" })
 
@@ -208,6 +209,15 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
   // when its origin is user (steer/guide) or renders as a chip (cortex/agenda/…).
   const visible = isRoot || origin.type === "user" || MessageV2.originRenders(origin)
 
+  const model =
+    input.model ??
+    session?.modelOverride ??
+    (await Agent.getAvailableModel(agent)) ??
+    (await lastModel(input.sessionID))
+  const variant = isRoot
+    ? await SessionRootVariant.resolveForRoot({ explicit: input.variant, agent, model })
+    : undefined
+
   const info: MessageV2.Info = {
     id: messageID,
     role: "user",
@@ -217,13 +227,9 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
     },
     tools: input.tools,
     agent: agent.name,
-    model:
-      input.model ??
-      session?.modelOverride ??
-      (await Agent.getAvailableModel(agent)) ??
-      (await lastModel(input.sessionID)),
+    model,
     system: input.system,
-    variant: input.variant,
+    variant,
     ...(input.summary?.title ? { summary: { title: input.summary.title, diffs: [] } } : {}),
     origin,
     isRoot,
@@ -684,7 +690,7 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
       agent: input.agent,
       model: input.model,
       messageID: input.messageID,
-      variant: input.variant,
+      variant: info.variant,
     },
     {
       message: info,

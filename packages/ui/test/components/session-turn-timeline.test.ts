@@ -6,6 +6,7 @@ import type {
   SessionStatus,
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
+import { SESSION_TURN_DESC } from "../../src/components/tool-title-descriptors"
 
 const Empty = () => null
 
@@ -95,6 +96,7 @@ const {
   formatTurnTokenCount,
   providerPreludeElapsedLabel,
   providerPreludeText,
+  resolveSessionTurnError,
   resolveTurnWorking,
   shouldShowProviderPrelude,
   turnCompletionStats,
@@ -657,6 +659,46 @@ describe("session turn working state", () => {
 })
 
 describe("session turn timeline", () => {
+  test("builds an actionable presentation for unavailable model variants", () => {
+    expect(
+      resolveSessionTurnError({
+        name: "ProviderModelVariantUnavailableError",
+        data: {
+          providerID: "anthropic",
+          modelID: "claude-opus",
+          variant: "max",
+          availableVariants: ["high", "medium"],
+        },
+      }),
+    ).toEqual({
+      kind: "model-variant-unavailable",
+      descriptor: SESSION_TURN_DESC.modelVariantUnavailable,
+      values: {
+        providerID: "anthropic",
+        modelID: "claude-opus",
+        variant: "max",
+        availability: "available",
+        availableVariants: "high, medium",
+      },
+    })
+  })
+
+  test("handles unavailable variants when the model exposes no alternatives", () => {
+    expect(
+      resolveSessionTurnError({
+        name: "ProviderModelVariantUnavailableError",
+        data: {
+          providerID: "custom",
+          modelID: "plain-model",
+          variant: "high",
+          availableVariants: [],
+        },
+      }),
+    ).toMatchObject({
+      descriptor: SESSION_TURN_DESC.modelVariantUnavailable,
+      values: { availability: "none", availableVariants: "" },
+    })
+  })
   test("shows provider prelude while the first assistant response has no visible part", () => {
     expect(
       shouldShowProviderPrelude({

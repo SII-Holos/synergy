@@ -5176,6 +5176,16 @@ export type ProviderModelUnavailableError = {
   }
 }
 
+export type ProviderModelVariantUnavailableError = {
+  name: "ProviderModelVariantUnavailableError"
+  data: {
+    providerID: string
+    modelID: string
+    variant: string
+    availableVariants: Array<string>
+  }
+}
+
 export type AssistantMessage = {
   id: string
   sessionID: string
@@ -5194,6 +5204,7 @@ export type AssistantMessage = {
     | MessageAbortedError
     | ApiError
     | ProviderModelUnavailableError
+    | ProviderModelVariantUnavailableError
   parentID: string
   modelID: string
   providerID: string
