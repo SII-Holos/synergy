@@ -149,6 +149,34 @@ export namespace BlueprintLoopStore {
     return updated
   }
 
+  export async function recordAuditToolRecovery(
+    scopeID: string,
+    id: string,
+    input: {
+      auditSessionID: string
+      expectedAuditTaskID: string
+      auditTaskID: string
+      attempts: number
+    },
+  ): Promise<Info> {
+    const sid = Identifier.asScopeID(scopeID)
+    const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
+      if (
+        draft.status !== "auditing" ||
+        !draft.stopRequest ||
+        draft.auditSessionID !== input.auditSessionID ||
+        draft.auditTaskID !== input.expectedAuditTaskID
+      ) {
+        throw new Error(`BlueprintLoop ${draft.id} review binding changed before recovery`)
+      }
+      draft.auditTaskID = input.auditTaskID
+      draft.stopRequest.reviewToolRecoveryAttempts = input.attempts
+      draft.time.updated = Date.now()
+    })
+    await Bus.publish(LoopEvent.Updated, { loop: updated })
+    return updated
+  }
+
   export async function updateStatus(
     scopeID: string,
     id: string,

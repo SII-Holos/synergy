@@ -5241,6 +5241,9 @@
                     "type": "string",
                     "enum": ["guarded", "autonomous", "full_access"]
                   },
+                  "resolvePendingPermissions": {
+                    "type": "boolean"
+                  },
                   "completionNotice": {
                     "type": "object",
                     "properties": {
@@ -29931,6 +29934,11 @@
                   },
                   "reviewSessionID": {
                     "type": "string"
+                  },
+                  "reviewToolRecoveryAttempts": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]
@@ -37307,6 +37315,11 @@
               },
               "requesterMessageID": {
                 "type": "string"
+              },
+              "reviewToolRecoveryAttempts": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             },
             "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]

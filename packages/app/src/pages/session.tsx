@@ -77,6 +77,7 @@ import { selectPendingTimelineItems } from "@/components/session/conversation-pe
 import { RollbackDialog } from "@/components/session/rollback-dialog"
 import { rollbackDialogAction } from "@/components/session/rollback-dialog-model"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
+import { createRewindRetryInput } from "@/components/session/rewind-retry"
 import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
@@ -324,7 +325,7 @@ function SessionPageContent() {
     const summary = rollback()
     const sessionID = params.id
     const rollbackKey = summary && sessionID ? `${sessionID}:${summary.id}` : undefined
-    const seenKey = sessionID ? sync.data.rollbackDialogPresentation[sessionID]?.seenKey : undefined
+    const seenKey = sessionID ? sync.rollbackDialog.seenKey(sessionID) : undefined
     const action = rollbackDialogAction({
       rollbackKey,
       activeDialogID: dialog.active?.id,
@@ -388,32 +389,50 @@ function SessionPageContent() {
     const targetID = targetMsg.id
     const sessionID = params.id
     if (!sessionID) return
+    const cutParts = sync.data.part[targetID] ?? []
+    const retryInput = createRewindRetryInput({ message: targetMsg, parts: cutParts })
     dialog.push(() => (
       <DialogRewindConfirm
         cutMessage={targetMsg}
         allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
         partsByMessage={sync.data.part}
-        onRewind={async (cutMessageID, restoreFiles) => {
+        canRetry={retryInput !== undefined}
+        onConfirm={async (action, cutMessageID, restoreFiles) => {
           if (!sessionID || !cutMessageID) return
           const previousActiveMessage = previousMessage(userMessages(), cutMessageID)
-          // Abort if running. After abort, give the runtime a moment to settle
-          // so assertIdle in rollback doesn't reject with BusyError.
+          // Abort if running, then allow the runtime to release its loop lease before rollback asserts idle.
           if (status().type !== "idle") {
             await sdk.client.session.abort({ sessionID }).catch(() => {})
-            await new Promise((r) => setTimeout(r, 500))
+            await new Promise((resolve) => setTimeout(resolve, 500))
           }
           const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
+          if (action === "retry") {
+            if (result.data?.id) {
+              sync.rollbackDialog.markPresented(sessionID, `${sessionID}:${result.data.id}`)
+            }
+            try {
+              await sync.session.sync(sessionID, { trigger: { type: "history-transition" } })
+            } catch (error) {
+              return requestErrorMessage(error)
+            }
+          }
           if (restoreFiles && result.data?.id) {
             await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})
           }
-          // Backfill prompt from the cut message per spec §3.5
-          const cutParts = sync.data.part[targetID]
-          if (cutParts) {
+          if (cutParts.length > 0) {
             const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
             prompt.set(restored.prompt, inlineLength(restored.prompt))
             prompt.context.set(restored.context)
           }
           setActiveMessage(previousActiveMessage)
+          if (action !== "retry" || !retryInput) return
+          try {
+            await sdk.client.session.input(retryInput, { throwOnError: true })
+            prompt.resetDraft()
+            setActiveMessage(undefined)
+          } catch (error) {
+            return requestErrorMessage(error)
+          }
         }}
       />
     ))
@@ -564,7 +583,7 @@ function SessionPageContent() {
     const sessionID = params.id
     if (!sessionID || visibleSessionTransitionEntry()) return
     const recovered = recoverSessionTransitionHandoff({
-      messages: messages(),
+      messages: sync.data.message[sessionID],
       inbox: sync.data.inbox[sessionID],
     })
     if (!recovered) return

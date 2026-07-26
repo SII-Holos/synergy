@@ -38,7 +38,7 @@ import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import { buildLightLoopInstructions } from "./light-loop-instructions"
 import { getPendingLightLoopSlashBlock, resolveSlashCommandIntent, type SlashUiCommand } from "./slash-command-intent"
-import { resolvePromptSubmitIntent, shouldRunComposerBeforeSubmit } from "./submit-intent"
+import { resolvePromptSubmitIntent, shouldAllowPromptSubmit, shouldRunComposerBeforeSubmit } from "./submit-intent"
 import { acquireNewSessionSubmitLock } from "./new-session-submit-lock"
 import {
   createNewSessionWorkspaceAcceptedProgress,
@@ -295,6 +295,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         releaseNewSessionSubmit()
         return
       }
+    }
+    if (
+      !shouldAllowPromptSubmit({
+        intent: submitIntent,
+        variantReady: local.model.variant.ready(),
+        requiresVariant: mode === "normal" && !blueprintSlot,
+      })
+    ) {
+      releaseNewSessionSubmit()
+      return
     }
 
     const currentModel = local.model.current()
