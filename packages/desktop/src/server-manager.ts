@@ -189,7 +189,7 @@ export function buildManagedServerEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...inherited,
-    ...(shellEnvironment?.path ? { PATH: shellEnvironment.path } : {}),
+    ...(shellEnvironment ? { PATH: shellEnvironment.path } : {}),
     SYNERGY_CWD: input.cwd,
     SYNERGY_DESKTOP_CHANNEL: input.channel,
     SYNERGY_DESKTOP_PARENT_PID: String(input.parentPid),

@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import {
+  buildLoginShellInvocation,
   DesktopShellEnvironment,
   mergePathValues,
   normalizePathValue,
   parseLoginShellPath,
   resolvePathCommands,
+  runLoginShell,
 } from "../src/shell-environment.js"
 
 describe("desktop shell environment", () => {
@@ -59,15 +64,50 @@ describe("desktop shell environment", () => {
     ])
   })
 
+  test("uses a login argv0 with separately parsed interactive command flags", () => {
+    expect(buildLoginShellInvocation("/bin/zsh").argv0).toBe("-zsh")
+    expect(buildLoginShellInvocation("/bin/zsh").args.slice(0, 2)).toEqual(["-i", "-c"])
+    expect(buildLoginShellInvocation("/bin/tcsh").argv0).toBe("-tcsh")
+    expect(buildLoginShellInvocation("/bin/tcsh").args.slice(0, 2)).toEqual(["-i", "-c"])
+  })
+
+  test.skipIf(process.platform === "win32")("hard kills a login shell that ignores SIGTERM", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-desktop-login-shell-"))
+    const shell = path.join(directory, "ignore-term.sh")
+    await writeFile(shell, '#!/bin/sh\ntrap "" TERM\nwhile :; do sleep 1; done\n', { mode: 0o755 })
+    const started = Date.now()
+
+    try {
+      await expect(runLoginShell(shell, buildLoginShellInvocation(shell), {}, { timeoutMs: 50 })).rejects.toThrow(
+        "timed out",
+      )
+      expect(Date.now() - started).toBeLessThan(1_000)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test.skipIf(process.platform === "win32")("hard kills a login shell that exceeds the output limit", async () => {
+    const invocation = buildLoginShellInvocation("/bin/sh")
+    invocation.args = ["-c", "yes x | head -c 1000"]
+
+    await expect(runLoginShell("/bin/sh", invocation, {}, { timeoutMs: 1_000, maxBuffer: 10 })).rejects.toThrow(
+      "output exceeded",
+    )
+  })
+
   test("captures the login-shell PATH once and reuses the result", async () => {
     let calls = 0
     const environment = new DesktopShellEnvironment({
       env: { PATH: "/usr/bin:/bin", SHELL: "/bin/bash" },
       userShell: "/bin/sh",
-      runLoginShell: async (shell, args, env) => {
+      runLoginShell: async (shell, invocation, env) => {
         calls++
         expect(shell).toBe("/bin/sh")
-        expect(args).toEqual(["-ilc", `/bin/sh -c 'printf "\\0SYNERGY_PATH_START\\0%s\\0SYNERGY_PATH_END\\0" "$PATH"'`])
+        expect(invocation).toEqual({
+          argv0: "-sh",
+          args: ["-i", "-c", `/bin/sh -c 'printf "\\0SYNERGY_PATH_START\\0%s\\0SYNERGY_PATH_END\\0" "$PATH"'`],
+        })
         expect(env.PATH).toBe("/usr/bin:/bin")
         return "profile output\n\0SYNERGY_PATH_START\0/opt/homebrew/bin:/usr/bin\0SYNERGY_PATH_END\0\nfooter\0ignored\0"
       },

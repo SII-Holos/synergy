@@ -47,6 +47,22 @@ describe("desktop server manager", () => {
     })
   })
 
+  test("uses the normalized PATH even when every inherited entry is rejected", () => {
+    expect(
+      buildManagedServerEnv(
+        { PATH: "relative:." },
+        {
+          source: "inherited",
+          shell: null,
+          path: "",
+          commands: [],
+          warning: "login-shell-unavailable",
+        },
+        { channel: "dev", parentPid: 42, cwd: "/Users/example" },
+      ).PATH,
+    ).toBe("")
+  })
+
   test.skipIf(process.platform === "win32")("force kills a managed server that ignores SIGTERM", async () => {
     const child = spawn(
       process.execPath,

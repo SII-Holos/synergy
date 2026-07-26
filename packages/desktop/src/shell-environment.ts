@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process"
+import type { ChildProcess } from "node:child_process"
+import { spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { promisify } from "node:util"
 
-const execFileAsync = promisify(execFile)
 const LOGIN_PATH_START = "\0SYNERGY_PATH_START\0"
 const LOGIN_PATH_END = "\0SYNERGY_PATH_END\0"
 const LOGIN_PATH_COMMAND = `/bin/sh -c 'printf "\\0SYNERGY_PATH_START\\0%s\\0SYNERGY_PATH_END\\0" "$PATH"'`
@@ -29,7 +28,8 @@ export type DesktopShellEnvironmentDiagnostics = {
   warning: "login-shell-unavailable" | null
 }
 
-type RunLoginShell = (shell: string, args: string[], env: NodeJS.ProcessEnv) => Promise<string>
+export type LoginShellInvocation = { argv0: string; args: string[] }
+type RunLoginShell = (shell: string, invocation: LoginShellInvocation, env: NodeJS.ProcessEnv) => Promise<string>
 type ResolveCommands = (pathValue: string) => DesktopShellCommandResolution[]
 
 export type DesktopShellEnvironmentOptions = {
@@ -74,7 +74,7 @@ export class DesktopShellEnvironment {
     if (!shell) return this.diagnostics("inherited", null, inheritedPath, "login-shell-unavailable")
 
     try {
-      const output = await this.runLoginShell(shell, ["-ilc", LOGIN_PATH_COMMAND], this.env)
+      const output = await this.runLoginShell(shell, buildLoginShellInvocation(shell), this.env)
       const loginPath = parseLoginShellPath(output, this.platform)
       if (!loginPath) return this.diagnostics("inherited", shell, inheritedPath, "login-shell-unavailable")
       return this.diagnostics("login-shell", shell, mergePathValues(loginPath, inheritedPath, this.platform), null)
@@ -190,14 +190,76 @@ function systemLoginShell(platform: NodeJS.Platform): string | null {
   }
 }
 
-async function runLoginShell(shell: string, args: string[], env: NodeJS.ProcessEnv): Promise<string> {
-  const result = await execFileAsync(shell, args, {
-    env,
-    timeout: LOGIN_SHELL_TIMEOUT_MS,
-    maxBuffer: LOGIN_SHELL_MAX_BUFFER,
-    encoding: "utf8",
+export function buildLoginShellInvocation(shell: string): LoginShellInvocation {
+  return {
+    argv0: `-${path.basename(shell)}`,
+    args: ["-i", "-c", LOGIN_PATH_COMMAND],
+  }
+}
+
+export function runLoginShell(
+  shell: string,
+  invocation: LoginShellInvocation,
+  env: NodeJS.ProcessEnv,
+  options: { timeoutMs?: number; maxBuffer?: number } = {},
+): Promise<string> {
+  const timeoutMs = options.timeoutMs ?? LOGIN_SHELL_TIMEOUT_MS
+  const maxBuffer = options.maxBuffer ?? LOGIN_SHELL_MAX_BUFFER
+  return new Promise((resolve, reject) => {
+    const child = spawn(shell, invocation.args, {
+      argv0: invocation.argv0,
+      detached: true,
+      env,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+    const chunks: Buffer[] = []
+    let outputBytes = 0
+    let settled = false
+
+    const finish = (result: { output: string } | { error: Error }, kill = false) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (kill) killLoginShellProcessGroup(child)
+      if ("error" in result) reject(result.error)
+      else resolve(result.output)
+    }
+
+    const timeout = setTimeout(
+      () => finish({ error: new Error(`Login shell timed out after ${timeoutMs}ms`) }, true),
+      timeoutMs,
+    )
+    timeout.unref()
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      if (settled) return
+      outputBytes += chunk.length
+      if (outputBytes > maxBuffer) {
+        finish({ error: new Error(`Login shell output exceeded ${maxBuffer} bytes`) }, true)
+        return
+      }
+      chunks.push(chunk)
+    })
+    child.stdout?.once("error", (error) => finish({ error }, true))
+    child.once("error", (error) => finish({ error }))
+    child.once("close", (code, signal) => {
+      if (code === 0) {
+        finish({ output: Buffer.concat(chunks).toString("utf8") })
+        return
+      }
+      finish({ error: new Error(`Login shell exited with code ${code ?? "null"} signal ${signal ?? "null"}`) })
+    })
   })
-  return result.stdout
+}
+
+function killLoginShellProcessGroup(child: ChildProcess): void {
+  const pid = child.pid
+  if (pid !== undefined) {
+    try {
+      process.kill(-pid, "SIGKILL")
+    } catch {}
+  }
+  if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
 }
 
 function executableFile(candidate: string): boolean {
