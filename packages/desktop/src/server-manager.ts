@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import type { DesktopChannel, DesktopServerMode } from "./identity.js"
+import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from "./shell-environment.js"
 
 export type DesktopServerState = "stopped" | "starting" | "running" | "failed" | "external"
 
@@ -18,6 +19,7 @@ export interface DesktopServerStatus {
   pid: number | null
   lastError: string | null
   logFile: string | null
+  shellEnvironment: DesktopShellEnvironmentDiagnostics | null
 }
 
 export interface DesktopServerManagerOptions {
@@ -26,6 +28,7 @@ export interface DesktopServerManagerOptions {
   resourcesPath: string
   logDir: string
   externalUrl?: string
+  shellEnvironment?: DesktopShellEnvironment
 }
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -40,10 +43,21 @@ export class DesktopServerManager {
   private lastError: string | null = null
   private logFile: string | null = null
   private startPromise: Promise<string> | null = null
+  private shellEnvironment: DesktopShellEnvironmentDiagnostics | null = null
+  private readonly shellEnvironmentPromise: Promise<DesktopShellEnvironmentDiagnostics | null>
 
   constructor(private options: DesktopServerManagerOptions) {
     this.state = options.mode === "external" ? "external" : "stopped"
     this.url = options.mode === "external" ? (options.externalUrl ?? null) : null
+    if (options.mode === "external") {
+      this.shellEnvironmentPromise = Promise.resolve(null)
+    } else {
+      const shellEnvironment = options.shellEnvironment ?? new DesktopShellEnvironment()
+      this.shellEnvironmentPromise = shellEnvironment.resolve().then((diagnostics) => {
+        this.shellEnvironment = diagnostics
+        return diagnostics
+      })
+    }
   }
 
   status(): DesktopServerStatus {
@@ -55,6 +69,7 @@ export class DesktopServerManager {
       pid: this.child?.pid ?? null,
       lastError: this.lastError,
       logFile: this.logFile,
+      shellEnvironment: this.shellEnvironment,
     }
   }
 
@@ -102,6 +117,7 @@ export class DesktopServerManager {
     this.url = `http://127.0.0.1:${this.port}`
     await fsp.mkdir(this.options.logDir, { recursive: true })
     this.logFile = path.join(this.options.logDir, "server.log")
+    const shellEnvironment = await this.shellEnvironmentPromise
 
     const command = await this.resolveServerCommand(this.port)
     const logStream = fs.createWriteStream(this.logFile, { flags: "a" })
@@ -109,12 +125,11 @@ export class DesktopServerManager {
 
     const child = spawn(command.command, command.args, {
       cwd: command.cwd,
-      env: {
-        ...process.env,
-        SYNERGY_CWD: process.env.SYNERGY_CWD ?? os.homedir(),
-        SYNERGY_DESKTOP_CHANNEL: this.options.channel,
-        SYNERGY_DESKTOP_PARENT_PID: String(process.pid),
-      },
+      env: buildManagedServerEnv(process.env, shellEnvironment, {
+        channel: this.options.channel,
+        parentPid: process.pid,
+        cwd: process.env.SYNERGY_CWD ?? os.homedir(),
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     })
     this.child = child
@@ -164,6 +179,20 @@ export class DesktopServerManager {
       args: ["run", "--conditions=browser", "./src/index.ts", "server", "--port", String(port)],
       cwd: sourceRoot,
     }
+  }
+}
+
+export function buildManagedServerEnv(
+  inherited: NodeJS.ProcessEnv,
+  shellEnvironment: DesktopShellEnvironmentDiagnostics | null,
+  input: { channel: DesktopChannel; parentPid: number; cwd: string },
+): NodeJS.ProcessEnv {
+  return {
+    ...inherited,
+    ...(shellEnvironment ? { PATH: shellEnvironment.path } : {}),
+    SYNERGY_CWD: input.cwd,
+    SYNERGY_DESKTOP_CHANNEL: input.channel,
+    SYNERGY_DESKTOP_PARENT_PID: String(input.parentPid),
   }
 }
 

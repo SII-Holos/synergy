@@ -16407,6 +16407,38 @@ msgid "settings.runtime.observ.page.title"
 msgstr "Observability"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.found"
+msgstr "Resolved"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.missing"
+msgstr "Not found"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.desc"
+msgstr "Environment captured once when the Desktop managed server starts."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.path"
+msgstr "Effective PATH"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.inherited"
+msgstr "Desktop process"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.login"
+msgstr "Login shell"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.title"
+msgstr "Desktop Shell Environment"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.warning"
+msgstr "The login shell PATH could not be read, so the Desktop process PATH is being used."
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.observ.watcher.desc"
 msgstr "Patterns the file watcher should skip, one per line."
 
