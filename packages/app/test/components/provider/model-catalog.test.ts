@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk"
-import { isSelectableModel, resolveSessionModel } from "../../../src/components/provider/model-catalog"
+import {
+  isSelectableModel,
+  listSelectableConnectedModels,
+  resolveSessionModel,
+} from "../../../src/components/provider/model-catalog"
 
 type Provider = ProviderListResponse["all"][number]
 
@@ -52,5 +56,23 @@ describe("provider model catalog selection", () => {
     })
 
     expect(resolved?.model).toBe(retained)
+  })
+
+  test("quick-switcher management lists only selectable models from connected providers", () => {
+    const connected = provider({
+      active: { ...baseModel, id: "active", catalogState: "active" },
+      retained: { ...baseModel, id: "retained", catalogState: "retained" },
+      deprecated: { ...baseModel, id: "deprecated", status: "deprecated" },
+    })
+    const disconnected = {
+      ...provider({
+        other: { ...baseModel, id: "other", catalogState: "active" },
+      }),
+      id: "disconnected",
+    }
+
+    expect(listSelectableConnectedModels([connected, disconnected], ["provider"]).map((model) => model.id)).toEqual([
+      "active",
+    ])
   })
 })

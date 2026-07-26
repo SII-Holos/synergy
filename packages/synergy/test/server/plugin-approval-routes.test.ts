@@ -4,12 +4,8 @@ import { Server } from "../../src/server/server"
 import { Log } from "../../src/util/log"
 import { Scope } from "../../src/scope"
 import { Config } from "../../src/config/config"
-import {
-  readApprovals,
-  writeApprovals,
-  computeManifestHash,
-  computePermissionsHash,
-} from "../../src/plugin/consent/approval-store"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
+import { readApprovals, writeApprovals } from "../../src/plugin/consent/approval-store"
 import { buildApprovalReview, generateReviewToken } from "../../src/plugin/consent/approval-service"
 import * as Lockfile from "../../src/plugin/lockfile"
 import { getDisabledPlugins, resetAllPluginState } from "../../src/plugin/loader"

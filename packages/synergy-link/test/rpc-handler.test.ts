@@ -34,9 +34,21 @@ describe("synergy-link rpc handler", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-process-reset-"))
     const readyPath = path.join(root, "ready")
     const stoppedPath = path.join(root, "stopped")
+    const workerPath = path.join(root, "worker.ts")
     const handler = new RPCHandler({ linkID: "link_test" })
 
     try {
+      await Bun.write(
+        workerPath,
+        `process.on("SIGTERM", async () => {
+  await Bun.sleep(300)
+  await Bun.write(${JSON.stringify(stoppedPath)}, "stopped")
+  process.exit(0)
+})
+await Bun.write(${JSON.stringify(readyPath)}, "ready")
+setInterval(() => {}, 1_000)
+`,
+      )
       const result = await handler.handle({
         version: 2,
         requestID: "req_reset",
@@ -45,7 +57,7 @@ describe("synergy-link rpc handler", () => {
         action: "execute",
         sessionID: "session_test",
         payload: {
-          command: `trap 'printf stopped > "${stoppedPath}"; exit 0' TERM; printf ready > "${readyPath}"; while :; do sleep 1; done`,
+          command: `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(workerPath)}`,
           description: "reset cleanup test",
           workdir: root,
           background: true,

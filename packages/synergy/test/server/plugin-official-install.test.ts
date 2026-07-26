@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { subtle } from "node:crypto"
 import path from "path"
 import fs from "fs"
+import { signPluginTarball } from "../../../plugin-kit/src/commands/sign"
+import { registryEntry } from "../../../plugin-kit/src/lib/market-entry"
 import { tmpdir } from "../fixture/fixture"
 import { Global } from "../../src/global"
 import { ScopeContext } from "../../src/scope/context"
@@ -10,9 +11,7 @@ import { Scope } from "../../src/scope"
 import { Config } from "../../src/config/config"
 import { PLUGIN_MARKETPLACE_DEFAULTS } from "../../src/config/schema"
 import { PluginMarketplaceRegistry } from "../../src/plugin/marketplace-registry"
-import { computeManifestHash, computePermissionsHash } from "../../src/plugin/consent/approval-store"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { sha256File } from "../../src/util/crypto"
 import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
@@ -20,16 +19,6 @@ Log.init({ print: false })
 const PLUGIN_ID = "official-test-plugin"
 const PLUGIN_VERSION = "1.0.0"
 const REGISTRY_URL = "https://registry.test/synergy/plugins/registry.json"
-
-async function generateKeyPair() {
-  const key = (await subtle.generateKey("Ed25519" as any, true, ["sign", "verify"])) as CryptoKeyPair
-  const privateRaw = await subtle.exportKey("pkcs8", key.privateKey)
-  const publicRaw = await subtle.exportKey("raw", key.publicKey)
-  return {
-    privateKey: Buffer.from(privateRaw as ArrayBuffer).toString("hex"),
-    publicKey: Buffer.from(publicRaw as ArrayBuffer).toString("hex"),
-  }
-}
 
 function buildManifest(displayName: string): PluginManifestType {
   return PluginManifest.parse({
@@ -46,11 +35,7 @@ function buildManifest(displayName: string): PluginManifestType {
 }
 
 async function buildSignedArtifact(displayName: string) {
-  const key = await generateKeyPair()
   const manifest = buildManifest(displayName)
-  const manifestHash = computeManifestHash(manifest)
-  const permissionsHash = computePermissionsHash(manifest, [])
-
   const dir = fs.mkdtempSync(path.join(Global.Path.cache, "official-install-fixture-"))
   const staging = path.join(dir, "payload")
   fs.mkdirSync(staging, { recursive: true })
@@ -64,38 +49,24 @@ async function buildSignedArtifact(displayName: string) {
   const packed = Bun.spawnSync(["tar", "-czf", tarballPath, "-C", staging, "."], { stdout: "pipe", stderr: "pipe" })
   if (packed.exitCode !== 0) throw new Error(`Failed to pack fixture tarball: ${packed.stderr}`)
 
-  const tarballHash = sha256File(tarballPath)
-  const payload = { tarballHash, manifestHash, permissionsHash }
-  const privateKey = await subtle.importKey("pkcs8", Buffer.from(key.privateKey, "hex"), "Ed25519" as any, false, [
-    "sign",
-  ])
-  const signature = await subtle.sign("Ed25519" as any, privateKey, new TextEncoder().encode(JSON.stringify(payload)))
-  const metadata = {
-    signatureVersion: 1,
-    pluginId: PLUGIN_ID,
-    version: PLUGIN_VERSION,
-    algorithm: "ed25519",
-    signer: key.publicKey,
-    signature: Buffer.from(signature as ArrayBuffer).toString("hex"),
-    signedAt: Date.now(),
-    payload,
-  }
-  await Bun.write(`${tarballPath}.sig`, JSON.stringify(metadata, null, 2))
-
-  return {
-    dir,
+  await signPluginTarball(tarballPath)
+  const entry = registryEntry({
     tarballPath,
-    tarballHash,
-    manifestHash,
-    permissionsHash,
-    signer: key.publicKey,
-  }
+    repo: "https://github.com/SII-Holos/official-test-plugin",
+    downloadUrl: `file://${tarballPath}`,
+    signatureUrl: `file://${tarballPath}.sig`,
+    publishedAt: "2026-07-20T00:00:00.000Z",
+  })
+
+  return { dir, tarballPath, entry }
 }
 
 async function writeOfficialCache(artifact: Awaited<ReturnType<typeof buildSignedArtifact>>) {
   const paths = PluginMarketplaceRegistry.cachePaths(REGISTRY_URL)
   fs.mkdirSync(paths.entries, { recursive: true })
   const publishedAt = new Date("2026-07-20T00:00:00.000Z").toISOString()
+  const entry = { ...artifact.entry, verified: true, official: true }
+  const version = entry.versions[0]!
   await Bun.write(
     paths.registry,
     JSON.stringify({
@@ -105,55 +76,24 @@ async function writeOfficialCache(artifact: Awaited<ReturnType<typeof buildSigne
         {
           id: PLUGIN_ID,
           name: PLUGIN_ID,
-          description: "Official registry install test plugin",
-          repo: "https://github.com/SII-Holos/official-test-plugin",
+          description: entry.description,
+          repo: entry.repo,
           entry: "plugins/official-test-plugin.json",
-          author: { name: "SII Holos" },
+          author: entry.author,
           verified: true,
           official: true,
-          keywords: ["synergy-plugin", "official"],
+          keywords: entry.keywords,
           latestVersion: PLUGIN_VERSION,
           updatedAt: publishedAt,
-          risk: "low",
+          risk: version.risk,
           runtimeMode: "process",
-          tools: [],
-          uiSurfaces: [],
+          tools: version.tools,
+          uiSurfaces: version.uiSurfaces,
         },
       ],
     }),
   )
-  await Bun.write(
-    path.join(paths.entries, `${PLUGIN_ID}.json`),
-    JSON.stringify({
-      schemaVersion: 1,
-      id: PLUGIN_ID,
-      name: PLUGIN_ID,
-      description: "Official registry install test plugin",
-      repo: "https://github.com/SII-Holos/official-test-plugin",
-      author: { name: "SII Holos" },
-      verified: true,
-      official: true,
-      keywords: ["synergy-plugin", "official"],
-      versions: [
-        {
-          version: PLUGIN_VERSION,
-          downloadUrl: `file://${artifact.tarballPath}`,
-          signatureUrl: `file://${artifact.tarballPath}.sig`,
-          signature: { algorithm: "ed25519", signer: artifact.signer },
-          integrity: `sha256-${artifact.tarballHash}`,
-          manifestHash: artifact.manifestHash,
-          permissionsHash: artifact.permissionsHash,
-          risk: "low",
-          runtimeMode: "process",
-          permissionsSummary: [],
-          tools: [],
-          uiSurfaces: [],
-          publishedAt,
-        },
-      ],
-      yankedVersions: [],
-    }),
-  )
+  await Bun.write(path.join(paths.entries, `${PLUGIN_ID}.json`), JSON.stringify(entry))
 }
 
 async function withOfficialRegistry<T>(
@@ -213,6 +153,53 @@ describe("official registry install verification", () => {
         const body = await res.json()
         expect(body.code).toBe("plugin_artifact_verification_failed")
         expect(body.message).toBe(`Official registry version not found: ${PLUGIN_ID}@9.9.9`)
+      })
+    } finally {
+      fs.rmSync(artifact.dir, { recursive: true, force: true })
+    }
+  })
+
+  test("approves and installs an official registry artifact after review", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const artifact = await buildSignedArtifact("Official Test Plugin")
+    try {
+      await withOfficialRegistry(artifact, async () => {
+        const app = Server.App()
+        const installRes = await app.request("/api/plugins/registry/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: PLUGIN_ID, version: PLUGIN_VERSION, source: "official" }),
+        })
+        expect(installRes.status).toBe(409)
+        const installBody = (await installRes.json()) as {
+          review: { target: unknown; reviewToken: string }
+        }
+
+        const approveRes = await app.request("/api/plugins/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target: installBody.review.target,
+            reviewToken: installBody.review.reviewToken,
+          }),
+        })
+        expect(approveRes.status).toBe(200)
+        const approveBody = (await approveRes.json()) as {
+          id: string
+          loaded: boolean
+          health: string
+          installation: { kind: string; registry?: string; spec?: string }
+          manifest: PluginManifestType
+        }
+        expect(approveBody.id).toBe(PLUGIN_ID)
+        expect(approveBody.loaded).toBe(true)
+        expect(approveBody.health).toBe("loaded")
+        expect(approveBody.installation).toEqual({
+          kind: "registry",
+          registry: "official",
+          spec: expect.any(String),
+        })
+        expect(approveBody.manifest.version).toBe(PLUGIN_VERSION)
       })
     } finally {
       fs.rmSync(artifact.dir, { recursive: true, force: true })
