@@ -98,9 +98,9 @@ The `messages` array in the store contains only the visible window messages, not
 
 ### Latest mode
 
-Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming `message.updated` events reconcile into the window:
+Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming `message.updated` events only reconcile into the visible window when both `messages[sessionID]` and `messageWindow[sessionID]` are present — the session message bucket must be loaded. When either is absent (session never loaded or bucket evicted), the event advances resource freshness and the `latestContextMessage` projection but does not create a message window from empty state. The window is instead established by `messagePage` when the user enters the session.
 
-- If the message already exists, the window updates in place.
+- If the session message bucket is loaded and the message already exists, the window updates in place.
 - If the message is new and the window is in latest mode, it is inserted and the primary window is capped by dropping the oldest unreferenced messages.
 - Any root referenced through `rootID` by a retained primary message stays in the window outside the cap. Snapshot `referencedRoots` and live event reconciliation preserve the same dependency-root closure so non-root user guidance always retains its `SessionTurn` anchor.
 - Dropped message IDs release their part buckets from the store.
@@ -402,5 +402,6 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 - Composer fallback resolution never writes upward into user intent.
 - The frontend message window is a viewport, not the full transcript. `messages()` and `messagePage()` serve different consumers.
 - Latest mode keeps the newest messages and evicts oldest; history mode preserves the existing window and caps newest overflow.
+- Only a loaded session message bucket — both `messages[sessionID]` and `messageWindow[sessionID]` present — forms an authoritative visible window. Incoming `message.updated` events for an unloaded or evicted session advance resource freshness and the `latestContextMessage` projection but must not create a message window from empty state. The window is established by `messagePage` when the user enters the session.
 - `messageWindow` metadata and messages are evicted together by the message-bucket LRU.
 - Latest Context usage is sync-owned and independent of history viewport suppression; authoritative latest pages seed it and bucket eviction removes it.

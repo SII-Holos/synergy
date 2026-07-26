@@ -94,6 +94,7 @@ import {
   selectPrependAnchor,
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
+import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 
 const handoff = {
   prompt: "",
@@ -172,7 +173,7 @@ function SessionPageContent() {
   createEffect(() => {
     const id = params.id
     if (!id) return
-    if (sync.data.message[id] === undefined) return
+    if (!hasMessageWindowSnapshot(sync.data.message[id], sync.data.messageWindow[id])) return
     navMark({ dir: params.dir, to: id, name: "session:data-ready" })
   })
 
@@ -370,8 +371,14 @@ function SessionPageContent() {
     if (rb.cutMessageID && rb.canUnrollback) return { cutMessageID: rb.cutMessageID }
     return new Set(rb.droppedMessageIDs ?? [])
   })
+  const messageSnapshot = createMemo(() => {
+    const id = params.id
+    if (!id) return [] as Message[]
+    const messages = sync.data.message[id]
+    return hasMessageWindowSnapshot(messages, sync.data.messageWindow[id]) ? messages : undefined
+  })
   const messages = createMemo(() => {
-    const raw = (params.id ? (sync.data.message[params.id] ?? []) : []) ?? []
+    const raw = messageSnapshot() ?? []
     // Rollback filtering is gated by hiddenMessageIDs: the prefix-cut only
     // applies while redo is possible (canUnrollback). Once a new root has been
     // started the cut is superseded by the dropped-id set so the new branch —
@@ -418,11 +425,7 @@ function SessionPageContent() {
       />
     ))
   }
-  const messagesReady = createMemo(() => {
-    const id = params.id
-    if (!id) return true
-    return sync.data.message[id] !== undefined
-  })
+  const messagesReady = createMemo(() => messageSnapshot() !== undefined)
   const messageLoad = createMemo(() => {
     const id = params.id
     if (!id) return { phase: "idle" as const, generation: 0, hasSnapshot: false }
@@ -720,7 +723,7 @@ function SessionPageContent() {
         pendingTimelineCount: pendingTimeline().length,
         hasTransition: visibleSessionTransition() !== null,
       }),
-      messages: params.id ? sync.data.message[params.id] : [],
+      messages: messageSnapshot(),
       load: messageLoad(),
       delayed: messageLoadDelayed(),
     }),
@@ -817,10 +820,7 @@ function SessionPageContent() {
     return runtimeStatus ?? idle
   })
 
-  const sessionHasMessages = createMemo(() => {
-    if (!params.id) return false
-    return (sync.data.message[params.id] ?? []).length > 0
-  })
+  const sessionHasMessages = createMemo(() => (messageSnapshot()?.length ?? 0) > 0)
 
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
   const focusedBlueprintCreateParts = new Set<string>()
