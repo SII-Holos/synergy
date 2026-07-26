@@ -70,6 +70,7 @@ describe("new session transition handoff", () => {
       time: { created: 123 },
     }
 
+    expect(recoverSessionTransitionHandoff({ messages: undefined, inbox: [pending] })).toBeUndefined()
     expect(recoverSessionTransitionHandoff({ messages: [], inbox: [pending] })).toEqual({
       itemID: "inb_first",
       messageID,
