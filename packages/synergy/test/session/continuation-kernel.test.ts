@@ -183,6 +183,71 @@ describe("ContinuationKernel arbitration", () => {
     })
   }, 15_000)
 
+  test("policy revision keys allow reconciliation after durable workflow state changes", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await terminalSession()
+        let revision = "review-task-one"
+        let count = 0
+        ContinuationKernel.reset()
+        ContinuationKernel.register({
+          id: "stateful-review",
+          priority: 50,
+          revisionKey() {
+            return revision
+          },
+          async handle() {
+            count++
+            return { kind: "handled" }
+          },
+        })
+
+        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+        expect(await ContinuationKernel.evaluate(session.id)).toBe(false)
+
+        revision = "review-task-two"
+        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+        expect(count).toBe(2)
+      },
+    })
+  }, 15_000)
+
+  test("revision key failures fall through to the next policy", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await terminalSession()
+        const calls: string[] = []
+        ContinuationKernel.reset()
+        ContinuationKernel.register({
+          id: "broken",
+          priority: 100,
+          revisionKey() {
+            throw new Error("storage unavailable")
+          },
+          async handle() {
+            calls.push("broken")
+            return { kind: "handled" }
+          },
+        })
+        ContinuationKernel.register({
+          id: "fallback",
+          priority: 10,
+          async handle() {
+            calls.push("fallback")
+            return { kind: "handled" }
+          },
+        })
+
+        expect(await ContinuationKernel.evaluate(session.id)).toBe(true)
+        expect(calls).toEqual(["fallback"])
+      },
+    })
+  }, 15_000)
+
   test("no continuation while Cortex work is active", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

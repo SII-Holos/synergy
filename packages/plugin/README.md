@@ -87,6 +87,10 @@ External plugins run in one process per active `pluginId + version + generation`
 
 Plugins own their business data, schema, concurrency, backup, migration, and deletion. Synergy stores only installation metadata, approval, Scope enablement, declarative settings, and plugin credentials.
 
+## Integrity Contract
+
+`@ericsanchezok/synergy-plugin/integrity` owns the canonical manifest and permissions hash functions used by plugin-kit signing, marketplace metadata, installation verification, and approval records. The permissions hash binds capability constraints, contribution requirements, operation exposure, and trusted UI presence. Tooling and hosts must import this contract rather than reimplement its serialization or payload.
+
 ## Toolchain
 
 ```bash

@@ -200,7 +200,7 @@ The standard profiles express three product modes:
 | `autonomous`  | Unattended work. Synergy must automatically allow or deny and never wait for a user prompt.                                                                |
 | `full_access` | Author-at-own-risk execution. Capability checks are allowed silently, while ordinary validation, operating-system, test, and network failures still apply. |
 
-These boundaries apply across direct tool calls, delegated tasks, Agenda, Browser automation, MCP, and plugins.
+Users can switch an active session to `full_access` without stopping execution. The frontend keeps the permission-mode selector available while the session is running. Selecting Full Access persists the profile immediately and resolves eligible pending permission asks for the session and its inheriting descendant sessions with one-time approval; the agent cannot self-escalate through the `session_control` tool, which remains idle-only. See [Live Profile Transitions](../architecture/execution-boundaries.md#live-profile-transitions) for the complete semantics.
 
 ## Standalone and Connected Use
 

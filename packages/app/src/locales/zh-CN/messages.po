@@ -11859,27 +11859,6 @@ msgstr "自动允许读取、安全编辑和网络查询；执行命令、写入
 msgid "session.permission.mode.guarded.short"
 msgstr "受控"
 
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.sessionRunning"
-msgstr "会话正在运行"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.stopBeforeChange"
-msgstr "更改权限模式前请停止会话。"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.stopBeforeChange.inline"
-msgstr "更改权限模式前请停止会话。"
-
 #. permission-selector.tsx
 msgid "session.permission.title"
 msgstr "权限模式"
@@ -12246,6 +12225,21 @@ msgstr "可选"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.requestFailed"
 msgstr "请求失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retry"
+msgstr "重试"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retryFailed"
+msgstr "重试失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retrying"
+msgstr "正在重试…"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -16415,6 +16409,38 @@ msgstr "日志、追踪和诊断。"
 #. Observability
 msgid "settings.runtime.observ.page.title"
 msgstr "可观测性"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.found"
+msgstr "已解析"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.missing"
+msgstr "未找到"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.desc"
+msgstr "Desktop Managed Server 启动时一次性捕获的环境。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.path"
+msgstr "实际 PATH"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.inherited"
+msgstr "Desktop 进程"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.login"
+msgstr "登录 Shell"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.title"
+msgstr "Desktop Shell 环境"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.warning"
+msgstr "无法读取登录 Shell 的 PATH，因此正在使用 Desktop 进程的 PATH。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.observ.watcher.desc"

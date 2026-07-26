@@ -1796,6 +1796,7 @@ export class Session extends HeyApiClient {
       title?: string
       pinned?: number
       controlProfile?: "guarded" | "autonomous" | "full_access"
+      resolvePendingPermissions?: boolean
       completionNotice?: {
         unread: false
       }
@@ -1820,6 +1821,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "title" },
             { in: "body", key: "pinned" },
             { in: "body", key: "controlProfile" },
+            { in: "body", key: "resolvePendingPermissions" },
             { in: "body", key: "completionNotice" },
             { in: "body", key: "time" },
             { in: "body", key: "modelOverride" },

@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
 import { PermissionRules } from "../../src/permission/rules"
+import { Bus } from "../../src/bus"
 import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../fixture/fixture"
@@ -829,4 +830,200 @@ test("evaluate - merge preserves rule ordering needed for workspace boundary rul
   expect(PermissionNext.evaluate("bash", "/outside/safe/ok.sh", merged).action).toBe("allow")
   // base's allow should apply for normal paths
   expect(PermissionNext.evaluate("bash", "src/build.sh", merged).action).toBe("allow")
+})
+
+// === Bulk resolution contract (issue #903) ===
+
+test("resolveAllForSessions approves eligible pending asks with once semantics", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const sessionA = "session_target_a"
+      const sessionB = "session_target_b"
+      const sessionOther = "session_other_x"
+
+      // Create pending asks across multiple sessions
+      const promiseA1 = PermissionNext.ask({
+        id: "perm_a1",
+        sessionID: sessionA,
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        ruleset: [],
+      })
+      const promiseA2 = PermissionNext.ask({
+        id: "perm_a2",
+        sessionID: sessionA,
+        permission: "edit",
+        patterns: ["foo.ts"],
+        metadata: {},
+        ruleset: [],
+      })
+      const promiseB1 = PermissionNext.ask({
+        id: "perm_b1",
+        sessionID: sessionB,
+        permission: "bash",
+        patterns: ["pwd"],
+        metadata: {},
+        ruleset: [],
+      })
+      const promiseOther = PermissionNext.ask({
+        id: "perm_other1",
+        sessionID: sessionOther,
+        permission: "bash",
+        patterns: ["date"],
+        metadata: {},
+        ruleset: [],
+      })
+
+      // Capture permission.replied events
+      const replied: Array<{ sessionID: string; requestID: string; reply: string }> = []
+      const unsub = Bus.subscribe(PermissionNext.Event.Replied, (event) => {
+        replied.push(event.properties)
+      })
+
+      // Resolve only sessions A and B
+      const count = await PermissionNext.resolveAllForSessions([sessionA, sessionB])
+
+      unsub()
+
+      // All target promises should be resolved
+      await expect(promiseA1).resolves.toBeUndefined()
+      await expect(promiseA2).resolves.toBeUndefined()
+      await expect(promiseB1).resolves.toBeUndefined()
+
+      // Unrelated session should remain pending
+      expect(Promise.race([promiseOther, Promise.resolve("still_pending")])).resolves.toBe("still_pending")
+
+      // Should report 3 resolved
+      expect(count).toBe(3)
+
+      // Should have published 3 replied events with "once"
+      const targetReplied = replied.filter((r) => r.sessionID === sessionA || r.sessionID === sessionB)
+      expect(targetReplied).toHaveLength(3)
+      for (const r of targetReplied) {
+        expect(r.reply).toBe("once")
+      }
+
+      // No events for the unrelated session
+      const otherReplied = replied.filter((r) => r.sessionID === sessionOther)
+      expect(otherReplied).toHaveLength(0)
+
+      // Verify no session rules were added (once semantics must not leak rules)
+      const rulesA = PermissionRules.sessionRuleset(sessionA)
+      expect(rulesA).toHaveLength(0)
+      const rulesB = PermissionRules.sessionRuleset(sessionB)
+      expect(rulesB).toHaveLength(0)
+
+      // Cleanup the unrelated pending ask
+      await PermissionNext.reply({ requestID: "perm_other1", reply: "once" })
+    },
+  })
+})
+
+test("resolveAllForSessions leaves non-bypassable asks pending", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const sessionID = "session_non_bypassable"
+      const eligible = PermissionNext.ask({
+        id: "perm_eligible",
+        sessionID,
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        ruleset: [],
+      })
+      const nonBypassable = PermissionNext.ask({
+        id: "perm_non_bypassable",
+        sessionID,
+        permission: "external_directory",
+        patterns: ["/outside/workspace"],
+        metadata: { nonBypassable: true },
+        ruleset: [],
+      })
+
+      expect(await PermissionNext.resolveAllForSessions([sessionID])).toBe(1)
+      await expect(eligible).resolves.toBeUndefined()
+      expect((await PermissionNext.list()).map((request) => request.id)).toContain("perm_non_bypassable")
+
+      await PermissionNext.reply({ requestID: "perm_non_bypassable", reply: "once" })
+      await expect(nonBypassable).resolves.toBeUndefined()
+    },
+  })
+})
+
+test("resolveAllForSessions is idempotent; repeated call resolves zero", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const sessionID = "session_idempotent"
+
+      const promise = PermissionNext.ask({
+        id: "perm_idem1",
+        sessionID,
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        ruleset: [],
+      })
+
+      // First call resolves
+      const firstCount = await PermissionNext.resolveAllForSessions([sessionID])
+      expect(firstCount).toBe(1)
+      await expect(promise).resolves.toBeUndefined()
+
+      // Second call resolves zero (no pending left)
+      const secondCount = await PermissionNext.resolveAllForSessions([sessionID])
+      expect(secondCount).toBe(0)
+
+      // Manual late reply is a no-op (already resolved)
+      await PermissionNext.reply({ requestID: "perm_idem1", reply: "once" })
+      // Should not throw or create unwanted side effects
+    },
+  })
+})
+
+test("resolveAllForSessions targets only matching sessions; unrelated session stays pending", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const targetSession = "session_drain_target"
+      const unrelatedSession = "session_unrelated"
+
+      const targetPromise = PermissionNext.ask({
+        id: "perm_drain1",
+        sessionID: targetSession,
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        ruleset: [],
+      })
+
+      const unrelatedPromise = PermissionNext.ask({
+        id: "perm_drain2",
+        sessionID: unrelatedSession,
+        permission: "bash",
+        patterns: ["date"],
+        metadata: {},
+        ruleset: [],
+      })
+
+      const count = await PermissionNext.resolveAllForSessions([targetSession])
+      expect(count).toBe(1)
+
+      await expect(targetPromise).resolves.toBeUndefined()
+
+      // Unrelated should STILL be pending
+      const pending = await PermissionNext.list()
+      expect(pending.some((r) => r.id === "perm_drain2")).toBe(true)
+
+      // Cleanup
+      await PermissionNext.reply({ requestID: "perm_drain2", reply: "once" })
+    },
+  })
 })

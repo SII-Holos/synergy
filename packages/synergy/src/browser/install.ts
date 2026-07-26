@@ -495,7 +495,7 @@ async function installChromiumOnce(options: {
     !target ||
     manifest.name !== target.name ||
     manifest.executable !== target.executable ||
-    !isExpectedChromiumURL(manifest.url, target.path)
+    !target.urls.includes(manifest.url)
   ) {
     throw new Error("Chromium manifest artifact URL and layout do not match the requested Playwright release.")
   }
@@ -595,12 +595,6 @@ function unsupportedChromium(platform: string, arch: string, libc: string): Erro
   return new Error(
     `Managed Chromium installation is unsupported on ${platform} ${arch} ${libc}. Install Chromium manually and set CHROMIUM_PATH.`,
   )
-}
-
-function isExpectedChromiumURL(value: string, expectedPath: string): boolean {
-  const url = new URL(value)
-  const hosts = new Set(["cdn.playwright.dev", "playwright.download.prss.microsoft.com"])
-  return url.protocol === "https:" && hosts.has(url.hostname) && url.pathname.endsWith(`/${expectedPath}`)
 }
 
 async function discoverChromiumWithSource(

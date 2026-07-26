@@ -46,6 +46,8 @@ Use `server` for backend/CLI work, `web` for normal full-stack work, `desktop` f
 
 Development process lifecycle is owned by the root orchestrator. Both serial build-and-run workflows and parallel workflows tag their descendants at spawn time so cleanup can recover nested process groups even after package wrappers exit. A managed Desktop server arms parent-process liveness monitoring before startup becomes healthy and shuts down if its Electron parent disappears, because forced application termination cannot run Electron quit handlers.
 
+Managed Desktop captures the user's login-shell `PATH` once and passes only its normalized value to the managed server, preserving inherited absolute entries as fallbacks. It does not import arbitrary profile variables. Verify the effective value and fixed command resolutions in developer-mode Settings → Observability; a Desktop-process source indicates that the login-shell probe safely fell back. Do not replace this startup boundary by making Bash tool execution use a login shell: Bash remains ordinary `shell -c` under the sandbox environment allowlist.
+
 ## Preserve Desktop Renderer Lifecycle
 
 Route main-process broadcasts for the application renderer through `DesktopRendererDelivery`. A live `BrowserWindow` or `WebContents` does not prove that its current main frame can receive IPC during startup, document navigation, reload, renderer exit, or shutdown.
