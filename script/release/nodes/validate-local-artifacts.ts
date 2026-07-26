@@ -2,10 +2,11 @@ import { $ } from "bun"
 import fs from "fs"
 import path from "path"
 import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
+import { PLAYWRIGHT_CORE_REQUIRED_PATHS } from "../../../packages/synergy/script/playwright-runtime-assets"
 
 export function requiredRuntimeArtifactPaths(name: string): string[] {
   const binaryRelative = name.includes("windows") ? "bin/synergy.exe" : "bin/synergy"
-  const required = [binaryRelative, "app/index.html", "schema/config.schema.json"]
+  const required = [binaryRelative, "app/index.html", "schema/config.schema.json", ...PLAYWRIGHT_CORE_REQUIRED_PATHS]
   if (name.includes("linux")) required.push("sandbox/synergy-sandbox-linux")
   if (name.includes("windows")) required.push("sandbox/synergy-sandbox-windows.exe")
   return required
@@ -28,6 +29,7 @@ export async function validateLocalArtifacts(platformPackageNames: string[]) {
   if (smokeTarget) {
     const smokeBinary = smokeTarget.includes("windows") ? "./bin/synergy.exe" : "./bin/synergy"
     await $`${smokeBinary} --version`.cwd(path.join(SYNERGY_DIST_DIR, smokeTarget))
+    await $`${smokeBinary} __browser-playwright-runtime-check`.cwd(path.join(SYNERGY_DIST_DIR, smokeTarget))
   }
 
   for (const name of platformPackageNames) {

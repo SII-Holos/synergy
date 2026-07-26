@@ -2,6 +2,13 @@ import { describe, expect, test } from "bun:test"
 import { requiredRuntimeArtifactPaths } from "../../../../script/release/nodes/validate-local-artifacts"
 
 describe("release runtime artifact contract", () => {
+  test("requires the filesystem-backed Playwright Core runtime", () => {
+    expect(requiredRuntimeArtifactPaths("synergy-linux-x64")).toContain("browser-runtime/playwright-core/package.json")
+    expect(requiredRuntimeArtifactPaths("synergy-darwin-arm64")).toContain(
+      "browser-runtime/playwright-core/lib/coreBundle.js",
+    )
+  })
+
   test("requires the Linux sandbox helper in every Linux package variant", () => {
     expect(requiredRuntimeArtifactPaths("synergy-linux-x64")).toContain("sandbox/synergy-sandbox-linux")
     expect(requiredRuntimeArtifactPaths("synergy-linux-x64-baseline-musl")).toContain("sandbox/synergy-sandbox-linux")

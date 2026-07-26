@@ -341,6 +341,7 @@ describe("Chromium diagnosis", () => {
         id: "shared_libraries",
         status: "fail",
         detail: expect.stringContaining("libnss3.so"),
+        recovery: { command: "synergy browser install-deps" },
       }),
     )
     expect(report.checks).toContainEqual(

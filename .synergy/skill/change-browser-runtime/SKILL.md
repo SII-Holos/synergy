@@ -37,6 +37,8 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 8. For Browser action changes, verify failure atomicity and agent-facing guidance. `select` must distinguish value from label, targeted scroll must finish on a real scroll container, and `includeSnapshot` must make the next DOM state available without a second tool call.
 9. Run `packages/synergy/test/session/agent-worker-runtime-boundary.test.ts` when a shared Browser schema or utility can become reachable from Agent inference.
 10. For resource-lifecycle changes, prove that an active page cancels idle Host retirement and report headless process coverage as partial when the driver cannot expose RSS.
+11. When Playwright imports or standalone packaging change, build the compiled runtime, copy the whole packaged runtime to a different directory, and run the packaged Playwright loader check there. Verify release validation, the curl installer, and Desktop packaging all retain the filesystem-backed Playwright Core sidecar.
+12. When Linux Browser installation changes, exercise dependency installation in each supported distribution family affected by the change. At minimum, test the oldest supported target image and confirm `browser doctor` names the independent repair command.
 
 ## Handoff
 

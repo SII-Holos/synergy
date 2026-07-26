@@ -194,11 +194,17 @@ synergy browser doctor
 synergy browser doctor --json
 synergy browser install
 synergy browser install --force --json
+synergy browser install --no-deps
+synergy browser install-deps
 ```
 
 `browser doctor` checks Chromium discovery, executable version, and an actual headless launch using the same arguments as Browser tools. On Linux it also reports dynamic-loader diagnostics. The command exits with status 1 when Browser is not ready; `--json` emits the complete structured report.
 
-`browser install` downloads Chromium into Synergy-managed data without changing system browsers. It accepts only a release manifest signed by Synergy, verifies the target, archive size, and SHA-256 digest, and installs atomically. Repeated installs reuse the current managed version; `--force` reinstalls it. Local source builds do not have signed release manifests; use an installed release or set `CHROMIUM_PATH`. Unsupported platforms can also install Chrome or Chromium separately and set `CHROMIUM_PATH`.
+`browser install` downloads Chromium into Synergy-managed data without replacing system browsers. It accepts only a release manifest signed by Synergy, verifies the target, archive size, and SHA-256 digest, and installs atomically. Repeated installs reuse the current managed version; `--force` reinstalls it.
+
+On Linux, `browser install` also installs the distribution packages required by the release's pinned Playwright version. This system-package step can invoke `sudo` or `su`; run it from an account authorized to install packages. Use `--no-deps` when those packages are managed separately, or run `browser install-deps` to repair only the system dependencies. JSON install reports include `systemDependencies` with `installed`, `not-required`, or `skipped`.
+
+Local source builds do not have signed release manifests; use an installed release or set `CHROMIUM_PATH`. Unsupported platforms can also install Chrome or Chromium separately and set `CHROMIUM_PATH`.
 
 ## Diagnostics and Maintenance
 
