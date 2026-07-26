@@ -406,8 +406,15 @@ function SessionPageContent() {
             await new Promise((resolve) => setTimeout(resolve, 500))
           }
           const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
-          if (action === "retry" && result.data?.id) {
-            sync.rollbackDialog.markPresented(sessionID, `${sessionID}:${result.data.id}`)
+          if (action === "retry") {
+            if (result.data?.id) {
+              sync.rollbackDialog.markPresented(sessionID, `${sessionID}:${result.data.id}`)
+            }
+            try {
+              await sync.session.sync(sessionID, { trigger: { type: "history-transition" } })
+            } catch (error) {
+              return requestErrorMessage(error)
+            }
           }
           if (restoreFiles && result.data?.id) {
             await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})

@@ -44,6 +44,25 @@ describe("planSessionSyncReload (#509)", () => {
     })
   })
 
+  test("refreshes authoritative session metadata after a history transition", () => {
+    expect(
+      planSessionSyncReload({
+        hasSessionRecord: true,
+        hasMessages: true,
+        reconnectVersion: 2,
+        lastSyncedReconnectVersion: 2,
+        canUnrollback: false,
+        trigger: { type: "history-transition" },
+      }),
+    ).toEqual({
+      versionStale: false,
+      needsDerivedHistoryRefresh: false,
+      forceSession: true,
+      forceMessages: false,
+      ready: false,
+    })
+  })
+
   test("forces message snapshot reload when reconnectVersion advances", () => {
     expect(
       planSessionSyncReload({
