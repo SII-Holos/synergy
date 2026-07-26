@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   canSubmitPrompt,
   resolvePromptSubmitIntent,
+  shouldAllowPromptSubmit,
   shouldRunComposerBeforeSubmit,
 } from "../../../src/components/prompt-input/submit-intent"
 
@@ -21,6 +22,22 @@ describe("prompt submit intent", () => {
 
   test("treats empty submit while running as abort", () => {
     expect(resolvePromptSubmitIntent({ text: "", working: true, hasBlueprintSlot: false })).toBe("abort")
+  })
+})
+
+describe("prompt submit readiness", () => {
+  test("blocks variant-dependent submits while intent is unresolved", () => {
+    expect(shouldAllowPromptSubmit({ intent: "message", variantReady: false, requiresVariant: true })).toBe(false)
+  })
+
+  test("keeps variant-independent submits available while intent is unresolved", () => {
+    expect(shouldAllowPromptSubmit({ intent: "abort", variantReady: false, requiresVariant: true })).toBe(true)
+    expect(shouldAllowPromptSubmit({ intent: "message", variantReady: false, requiresVariant: false })).toBe(true)
+    expect(shouldAllowPromptSubmit({ intent: "blueprint", variantReady: false, requiresVariant: false })).toBe(true)
+  })
+
+  test("allows variant-dependent submits after intent resolves", () => {
+    expect(shouldAllowPromptSubmit({ intent: "message", variantReady: true, requiresVariant: true })).toBe(true)
   })
 })
 
