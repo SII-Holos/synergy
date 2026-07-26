@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import {
   emptyRollbackDialogPresentationState,
+  readPersistedRollbackDialogSeenKey,
   reduceRollbackDialogPresentationState,
+  removePersistedRollbackDialogSeenKey,
+  writePersistedRollbackDialogSeenKey,
 } from "../../src/context/rollback-dialog"
 
 describe("rollback dialog presentation state", () => {
@@ -28,5 +31,22 @@ describe("rollback dialog presentation state", () => {
     expect(reduceRollbackDialogPresentationState(second, { type: "session_removed" })).toEqual(
       emptyRollbackDialogPresentationState,
     )
+  })
+
+  test("persists the presented rollback across page lifecycles and clears it with the session", () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    }
+
+    writePersistedRollbackDialogSeenKey(storage, "session-a", "session-a:rollback-a")
+
+    expect(readPersistedRollbackDialogSeenKey(storage, "session-a")).toBe("session-a:rollback-a")
+
+    removePersistedRollbackDialogSeenKey(storage, "session-a")
+
+    expect(readPersistedRollbackDialogSeenKey(storage, "session-a")).toBeUndefined()
   })
 })

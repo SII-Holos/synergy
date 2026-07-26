@@ -16,6 +16,15 @@ export function canSubmitPrompt(input: { text: string; working: boolean; hasBlue
   return resolvePromptSubmitIntent(input) !== "blocked"
 }
 
+export function shouldAllowPromptSubmit(input: {
+  intent: PromptSubmitIntent
+  variantReady: boolean
+  requiresVariant: boolean
+}) {
+  if (input.intent === "abort") return true
+  return !input.requiresVariant || input.variantReady
+}
+
 export function shouldRunComposerBeforeSubmit(input: {
   intent: PromptSubmitIntent
   mode: "normal" | "shell"

@@ -247,14 +247,38 @@ export class DesktopUpdater {
   }
 }
 
-class ElectronUpdateBackend implements DesktopUpdateBackend {
-  private autoUpdater: any
-  private loading: Promise<any> | null = null
+type ElectronUpdateCheckResult = {
+  isUpdateAvailable: boolean
+  updateInfo: { version: string }
+}
+
+type ElectronAutoUpdater = {
+  autoDownload: boolean
+  allowPrerelease: boolean
+  checkForUpdates(): Promise<ElectronUpdateCheckResult | null>
+  downloadUpdate(): Promise<unknown>
+  quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void
+  on(event: BackendEvent, listener: (...args: any[]) => void): unknown
+  off(event: BackendEvent, listener: (...args: any[]) => void): unknown
+}
+
+type ElectronAutoUpdaterLoader = () => Promise<ElectronAutoUpdater>
+
+const loadElectronAutoUpdater: ElectronAutoUpdaterLoader = async () => {
+  const { autoUpdater } = await import("electron-updater")
+  return autoUpdater
+}
+
+export class ElectronUpdateBackend implements DesktopUpdateBackend {
+  private autoUpdater: ElectronAutoUpdater | null = null
+  private loading: Promise<ElectronAutoUpdater> | null = null
+
+  constructor(private readonly loader: ElectronAutoUpdaterLoader = loadElectronAutoUpdater) {}
 
   async checkForUpdates(): Promise<{ version: string | null }> {
     const autoUpdater = await this.load()
     const result = await autoUpdater.checkForUpdates()
-    return { version: result?.updateInfo.version ?? null }
+    return { version: result?.isUpdateAvailable ? result.updateInfo.version : null }
   }
 
   async downloadUpdate(): Promise<void> {
@@ -272,12 +296,12 @@ class ElectronUpdateBackend implements DesktopUpdateBackend {
     return () => void this.load().then((autoUpdater) => autoUpdater.off(event, listener))
   }
 
-  private async load(): Promise<any> {
+  private async load(): Promise<ElectronAutoUpdater> {
     if (this.autoUpdater) return this.autoUpdater
-    this.loading ??= import("electron-updater").then((mod) => {
-      mod.autoUpdater.autoDownload = false
-      mod.autoUpdater.allowPrerelease = false
-      return mod.autoUpdater
+    this.loading ??= this.loader().then((autoUpdater) => {
+      autoUpdater.autoDownload = false
+      autoUpdater.allowPrerelease = false
+      return autoUpdater
     })
     this.autoUpdater = await this.loading
     return this.autoUpdater

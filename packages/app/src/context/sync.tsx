@@ -24,6 +24,7 @@ import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
 import { findSessionByID, findSessionIndex } from "./session-collection"
+import { browserRollbackDialogStorage, readPersistedRollbackDialogSeenKey } from "./rollback-dialog"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean; trigger?: SessionSyncTrigger }
@@ -350,6 +351,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
       },
       rollbackDialog: {
+        seenKey(sessionID: string) {
+          return (
+            store.rollbackDialogPresentation[sessionID]?.seenKey ??
+            readPersistedRollbackDialogSeenKey(browserRollbackDialogStorage(), sessionID)
+          )
+        },
         markPresented(sessionID: string, key: string) {
           updateRollbackDialogPresentationState(store, setStore, sessionID, { type: "presented", key })
         },

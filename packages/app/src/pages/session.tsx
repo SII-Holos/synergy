@@ -325,7 +325,7 @@ function SessionPageContent() {
     const summary = rollback()
     const sessionID = params.id
     const rollbackKey = summary && sessionID ? `${sessionID}:${summary.id}` : undefined
-    const seenKey = sessionID ? sync.data.rollbackDialogPresentation[sessionID]?.seenKey : undefined
+    const seenKey = sessionID ? sync.rollbackDialog.seenKey(sessionID) : undefined
     const action = rollbackDialogAction({
       rollbackKey,
       activeDialogID: dialog.active?.id,
@@ -583,7 +583,7 @@ function SessionPageContent() {
     const sessionID = params.id
     if (!sessionID || visibleSessionTransitionEntry()) return
     const recovered = recoverSessionTransitionHandoff({
-      messages: messages(),
+      messages: sync.data.message[sessionID],
       inbox: sync.data.inbox[sessionID],
     })
     if (!recovered) return
