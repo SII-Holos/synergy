@@ -37,6 +37,7 @@ export namespace ContinuationKernel {
   export interface Policy {
     id: string
     priority: number
+    revisionKey?(gate: Gate): string | Promise<string>
     handle(gate: Gate): Promise<PolicyResult>
   }
 
@@ -83,7 +84,14 @@ export namespace ContinuationKernel {
     if (!gate) return undefined
 
     for (const policy of policies) {
-      const key = dedupKey(policy.id, gate.terminalMessageID)
+      const revision = await Promise.resolve()
+        .then(() => policy.revisionKey?.(gate) ?? gate.terminalMessageID)
+        .catch((error) => {
+          log.error("continuation policy revision failed", { policy: policy.id, sessionID, error })
+          return undefined
+        })
+      if (!revision) continue
+      const key = dedupKey(policy.id, revision)
       if (dedup.get(sessionID)?.has(key)) continue
 
       const proposal = await policy.handle(gate).catch((error) => {
@@ -97,7 +105,7 @@ export namespace ContinuationKernel {
       }
       return {
         ...proposal,
-        deliveryKey: proposal.deliveryKey ?? `continuation:${policy.id}:${gate.terminalMessageID}`,
+        deliveryKey: proposal.deliveryKey ?? `continuation:${policy.id}:${revision}`,
       }
     }
   }
