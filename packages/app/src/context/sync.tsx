@@ -19,7 +19,7 @@ import {
   trackSessionSync,
   type SessionSyncTrigger,
 } from "./session-sync-plan"
-import type { MessageWindowState } from "./session-message-window"
+import { hasMessageWindowSnapshot, type MessageWindowState } from "./session-message-window"
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
@@ -54,6 +54,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const sessionReconnectVersions = new Map<string, number>()
 
     const getSession = (sessionID: string) => findSessionByID(store.session, sessionID)
+    const hasMessageSnapshot = (sessionID: string) =>
+      hasMessageWindowSnapshot(store.message[sessionID], store.messageWindow[sessionID])
 
     const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
 
@@ -205,7 +207,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       messageLoader
         .load(sessionID, {
           force: options?.force,
-          hasSnapshot: store.message[sessionID] !== undefined,
+          hasSnapshot: hasMessageSnapshot(sessionID),
           input,
         })
         .then(() => {
@@ -369,9 +371,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         loadState(sessionID: string): SessionMessageLoadState {
           const current = meta.messageLoad[sessionID]
           if (current) return current
-          if (store.message[sessionID] !== undefined) {
-            return { phase: "ready", generation: 0, hasSnapshot: true }
-          }
+          if (hasMessageSnapshot(sessionID)) return { phase: "ready", generation: 0, hasSnapshot: true }
           return { phase: "idle", generation: 0, hasSnapshot: false }
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
@@ -393,7 +393,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const session = getSession(sessionID)
           const plan = planSessionSyncReload({
             hasSessionRecord: session !== undefined,
-            hasMessages: store.message[sessionID] !== undefined && store.messageWindow[sessionID] !== undefined,
+            hasMessages: hasMessageSnapshot(sessionID),
             reconnectVersion: currentReconnectVersion,
             lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
             canUnrollback: session?.history?.rollback?.canUnrollback === true,

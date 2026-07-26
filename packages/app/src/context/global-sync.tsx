@@ -42,7 +42,8 @@ import { createSessionMessageLoader } from "./session-message-loader"
 import { SessionPartSnapshotFreshness, type SessionPartSnapshotRequest } from "./session-part-snapshot-freshness"
 import {
   applyLatestPage,
-  reconcileMessage,
+  hasMessageWindowSnapshot,
+  reconcileLoadedMessage,
   removeMessageFromWindow,
   type MessageWindowMetadata,
   type MessageWindowState,
@@ -1343,22 +1344,20 @@ function createGlobalSync() {
         const info = event.properties.info as Message
         const sessionID = info.sessionID
         applyResourceEvent(scopeKey, sessionID, "message", event, () => {
-          touchMessageBucket(scopeKey, sessionID)
           contextProjectionRevision.invalidate(scopeKey, sessionID)
           const latestContextMessage = reduceLatestSessionContextUsageMessage(
             store.latestContextMessage[sessionID],
             info,
           )
-          const messages = store.message[sessionID] ?? []
+          const messages = store.message[sessionID]
           const metadata = store.messageWindow[sessionID]
-          const existing = messages.some((message) => message.id === info.id)
-          const current: MessageWindowState<Message> = {
-            messages,
-            mode: metadata?.mode ?? "latest",
-            pendingLatest: metadata?.pendingLatest ?? false,
-            pendingLatestIds: metadata?.pendingLatestIds ?? [],
+          const result = reconcileLoadedMessage(messages, metadata, info)
+          if (!result || !metadata) {
+            setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
+            return
           }
-          const result = reconcileMessage(current, info)
+          touchMessageBucket(scopeKey, sessionID)
+          const existing = messages.some((message) => message.id === info.id)
 
           batch(() => {
             setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
@@ -1368,23 +1367,21 @@ function createGlobalSync() {
               }),
             )
             setStore("message", sessionID, reconcile(result.window.messages, { key: "id" }))
-            if (metadata) {
-              setStore(
-                "messageWindow",
-                sessionID,
-                reconcile({
-                  ...metadata,
-                  total: nextMessageWindowTotal({
-                    total: metadata.total,
-                    existing,
-                    visible: result.window.messages.some((message) => message.id === info.id),
-                  }),
-                  mode: result.window.mode,
-                  pendingLatest: result.window.pendingLatest,
-                  pendingLatestIds: result.window.pendingLatestIds,
+            setStore(
+              "messageWindow",
+              sessionID,
+              reconcile({
+                ...metadata,
+                total: nextMessageWindowTotal({
+                  total: metadata.total,
+                  existing,
+                  visible: result.window.messages.some((message) => message.id === info.id),
                 }),
-              )
-            }
+                mode: result.window.mode,
+                pendingLatest: result.window.pendingLatest,
+                pendingLatestIds: result.window.pendingLatestIds,
+              }),
+            )
           })
         })
         break
@@ -1399,17 +1396,20 @@ function createGlobalSync() {
             messageID,
           )
           const messages = store.message[sessionID]
-          if (!messages && latestContextMessage === store.latestContextMessage[sessionID]) return
           const metadata = store.messageWindow[sessionID]
+          if (!hasMessageWindowSnapshot(messages, metadata)) {
+            setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
+            return
+          }
           const current: MessageWindowState<Message> = {
-            messages: messages ?? [],
-            mode: metadata?.mode ?? "latest",
-            pendingLatest: metadata?.pendingLatest ?? false,
-            pendingLatestIds: metadata?.pendingLatestIds ?? [],
+            messages,
+            mode: metadata.mode,
+            pendingLatest: metadata.pendingLatest,
+            pendingLatestIds: metadata.pendingLatestIds,
           }
           const pending = current.pendingLatestIds.includes(messageID)
           const result = removeMessageFromWindow(current, messageID)
-          const removedVisible = result.messages.length !== (messages?.length ?? 0)
+          const removedVisible = result.messages.length !== messages.length
           batch(() => {
             setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
             if (removedVisible) {
@@ -1420,18 +1420,16 @@ function createGlobalSync() {
               )
               setStore("message", sessionID, reconcile(result.messages, { key: "id" }))
             }
-            if (metadata) {
-              setStore(
-                "messageWindow",
-                sessionID,
-                reconcile({
-                  ...metadata,
-                  total: nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }),
-                  pendingLatest: result.pendingLatest,
-                  pendingLatestIds: result.pendingLatestIds,
-                }),
-              )
-            }
+            setStore(
+              "messageWindow",
+              sessionID,
+              reconcile({
+                ...metadata,
+                total: nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }),
+                pendingLatest: result.pendingLatest,
+                pendingLatestIds: result.pendingLatestIds,
+              }),
+            )
           })
         })
         break
@@ -1475,7 +1473,10 @@ function createGlobalSync() {
       }
       case "message.part.updated": {
         const part = event.properties.part
-        const messageLoaded = store.message[part.sessionID]?.some((message) => message.id === part.messageID) ?? false
+        const messages = store.message[part.sessionID]
+        const metadata = store.messageWindow[part.sessionID]
+        const messageLoaded =
+          hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === part.messageID)
         partSnapshotFreshness.touch(scopeKey, part.sessionID, part.messageID, { requiresSnapshot: !messageLoaded })
         if (!messageLoaded) break
         invalidateResource(scopeKey, part.sessionID, "message")
@@ -1548,7 +1549,10 @@ function createGlobalSync() {
       }
       case "message.part.removed": {
         const { sessionID, messageID, partID } = event.properties
-        const messageLoaded = store.message[sessionID]?.some((message) => message.id === messageID) ?? false
+        const messages = store.message[sessionID]
+        const metadata = store.messageWindow[sessionID]
+        const messageLoaded =
+          hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === messageID)
         partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: !messageLoaded })
         if (!messageLoaded) break
         invalidateResource(scopeKey, sessionID, "message")

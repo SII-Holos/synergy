@@ -29,6 +29,13 @@ export type MessageWindowResult<T extends MessageRef> = {
   droppedIds: string[]
 }
 
+export function hasMessageWindowSnapshot<T>(
+  messages: T[] | undefined,
+  metadata: MessageWindowMetadata | undefined,
+): messages is T[] {
+  return messages !== undefined && metadata !== undefined
+}
+
 export function compareByTimeThenId(a: MessageRef, b: MessageRef) {
   return a.time.created - b.time.created || a.id.localeCompare(b.id)
 }
@@ -129,6 +136,25 @@ export function reconcileMessage<T extends MessageRef>(
     },
     droppedIds: messages.filter((item) => !keptIDs.has(item.id)).map((item) => item.id),
   }
+}
+
+export function reconcileLoadedMessage<T extends MessageRef>(
+  messages: T[] | undefined,
+  metadata: MessageWindowMetadata | undefined,
+  message: T,
+  cap = DEFAULT_CAP,
+): MessageWindowResult<T> | undefined {
+  if (messages === undefined || metadata === undefined) return
+  return reconcileMessage(
+    {
+      messages,
+      mode: metadata.mode,
+      pendingLatest: metadata.pendingLatest,
+      pendingLatestIds: metadata.pendingLatestIds,
+    },
+    message,
+    cap,
+  )
 }
 
 export function removeMessageFromWindow<T extends MessageRef>(
