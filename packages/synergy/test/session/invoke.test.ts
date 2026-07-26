@@ -910,6 +910,84 @@ describe("SessionInvoke inbox boundaries", () => {
     }
   })
 
+  test("repairs a stale root before waking the next queued task", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const processedRoots: string[] = []
+    const restore = installBasicLoopMocks({
+      onProcess(input) {
+        processedRoots.push(input.user.id)
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          activeSessionID = session.id
+          const rootID = Identifier.ascending("message")
+          const root = await Session.updateMessage({
+            id: rootID,
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            isRoot: true,
+            rootID,
+            time: { created: Date.now() },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: root.id,
+            sessionID: session.id,
+            type: "text",
+            text: "old root that must not resume",
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "assistant",
+            sessionID: session.id,
+            parentID: root.id,
+            rootID: root.id,
+            mode: "synergy",
+            agent: "synergy",
+            path: { cwd: tmp.path, root: tmp.path },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: "test-model",
+            providerID: "test-provider",
+            time: { created: Date.now(), completed: Date.now() },
+            error: new MessageV2.APIError({ message: "old root failed", isRetryable: false }).toObject(),
+          })
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+          const queued = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            parts: [{ type: "text", text: "new queued root" }],
+          })
+
+          await SessionManager.wake(session.id)
+
+          expect(processedRoots).toEqual([queued.messageID])
+          const messages = await Session.messages({ sessionID: session.id })
+          const repaired = messages.find(
+            (message) => message.info.role === "assistant" && message.info.rootID === root.id,
+          )?.info as MessageV2.Assistant | undefined
+          expect(repaired?.finish).toBe("error")
+          expect(repaired?.error?.name).toBe("APIError")
+          expect(await SessionInbox.list(session.id)).toHaveLength(0)
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
   test("context inbox items are not materialized without a confirmed model call", async () => {
     await using tmp = await tmpdir({ git: true })
 

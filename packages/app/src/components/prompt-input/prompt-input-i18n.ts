@@ -172,6 +172,7 @@ export const PI = {
   stopAction: { id: "prompt.stop", message: "Stop" },
   sendAction: { id: "prompt.send", message: "Send" },
   startingSession: { id: "prompt.startingSession", message: "Starting session" },
+  stopping: { id: "prompt.stopping", message: "Stopping..." },
   stopSession: { id: "prompt.stopSession", message: "Stop session" },
   sendMessage: { id: "prompt.sendMessage", message: "Send message" },
   selectAgent: { id: "prompt.selectAgent", message: "Select agent" },

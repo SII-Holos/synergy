@@ -303,11 +303,11 @@ When the inner loop reaches a terminal assistant:
 - completion notification state is updated;
 - waiters receive the selected terminal assistant.
 
-Provider, auth, output-length, timeout, abort, and unknown failures are persisted on the assistant message with terminal timing. A terminal assistant error is then propagated to callers such as Cortex so a failed task cannot be reported as completed.
+Provider, auth, output-length, timeout, abort, and unknown failures are persisted on the assistant message with terminal timing and canonical `finish: "error"`. A terminal assistant error is then propagated to callers such as Cortex so a failed task cannot be reported as completed.
 
-If abort interrupts a processor before normal finalization, repair writes an explicit aborted assistant and clears `pendingReply`. Runtime startup also detects and repairs incomplete persisted turns.
+Startup reconciliation, Abort, and the pre-wake guard share one root-anchored, idempotent terminal repair. It canonicalizes a failed assistant that has an error or completion time but lacks a terminal finish without replacing its structured error, terminalizes a genuinely incomplete assistant with an aborted error, or creates one terminal aborted assistant when the latest reply-required root has none. Repair clears stale `pendingReply` and never invokes the model or tools.
 
-Abort never publishes idle by itself. The owner remains in `stopping` until its loop exits and releases the lease, after terminal persistence and waiter settlement. A repeated abort reports that stopping is already in progress.
+Abort never publishes lifecycle idle by itself. The owner remains in `stopping` until its loop exits and releases the lease, after terminal persistence and waiter settlement. A repeated abort reports that stopping is already in progress, while the client may project immediate local stopping feedback during the request.
 
 ## Invariants
 

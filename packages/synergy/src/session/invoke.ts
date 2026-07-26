@@ -8,6 +8,7 @@ import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { SessionCompaction } from "./compaction"
 import { Token } from "@/util/token"
+import { Lock } from "@/util/lock"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { Bus } from "../bus"
 import { SystemPrompt } from "./system"
@@ -1209,39 +1210,107 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
   // --- Helpers ---
 
   /**
-   * Repair an incomplete assistant message when abort was requested but the
-   * processor never reached the normal completion path. Marks the last assistant
-   * with time.completed, finish: "error", and an AbortedError, then clears
-   * pendingReply so working.ts no longer reports "recovering".
+   * Terminalize the latest reply-required root after an interrupted turn.
+   * The repair is root-anchored and serialized per session so startup, Abort,
+   * and pre-wake callers can safely share the same idempotent operation.
    */
   async function repairIncompleteAssistant(sessionID: string): Promise<boolean> {
+    using _ = await Lock.write(`session-terminal-repair:${sessionID}`)
     const session = await SessionManager.getSession(sessionID)
     if (!session) return false
 
-    const messages = await SessionHistory.modelMessages({ sessionID })
+    const messages = await Session.messages({ sessionID })
+    let latestRoot: MessageV2.User | undefined
+    let latestAssistantWithoutRoot: MessageV2.Assistant | undefined
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const info = messages[index].info
+      if (!latestAssistantWithoutRoot && info.role === "assistant") {
+        latestAssistantWithoutRoot = info as MessageV2.Assistant
+      }
+      if (info.role !== "user") continue
+      const user = info as MessageV2.User
+      if (!SessionProgress.isReplyRequiredUser(user)) continue
+      latestRoot = user
+      break
+    }
+
     let latestAssistant: MessageV2.Assistant | undefined
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].info.role === "assistant") {
-        latestAssistant = messages[i].info as MessageV2.Assistant
+    if (latestRoot) {
+      for (let index = messages.length - 1; index >= 0; index--) {
+        const info = messages[index].info
+        if (info.role !== "assistant") continue
+        const assistant = info as MessageV2.Assistant
+        if (assistant.parentID !== latestRoot.id && assistant.rootID !== latestRoot.id) continue
+        latestAssistant = assistant
         break
       }
+    } else {
+      latestAssistant = latestAssistantWithoutRoot
     }
-    if (!latestAssistant || latestAssistant.time.completed != null) return false
+    if (!latestRoot && !latestAssistant) return false
 
-    log.info("repairing incomplete assistant after abort", {
-      sessionID,
-      messageID: latestAssistant.id,
-    })
-
-    const repaired: MessageV2.Assistant = {
-      ...latestAssistant,
-      time: { ...latestAssistant.time, completed: Date.now() },
-      finish: "error",
-      error: new MessageV2.AbortedError({
-        message: "Session aborted during turn — assistant response was not completed",
-      }).toObject(),
+    if (latestAssistant && SessionProgress.isTerminalAssistant(latestAssistant)) {
+      if (!session.pendingReply) return false
+      await Session.update(sessionID, (draft) => {
+        draft.pendingReply = undefined
+      })
+      return true
     }
-    await Session.updateMessage(repaired)
+
+    if (latestAssistant) {
+      const preserveError = latestAssistant.error && latestAssistant.time.completed != null
+      log.info("repairing non-terminal assistant", {
+        sessionID,
+        rootID: latestRoot?.id ?? latestAssistant.rootID,
+        messageID: latestAssistant.id,
+        preserveError: !!preserveError,
+      })
+      await Session.updateMessage({
+        ...latestAssistant,
+        time: { ...latestAssistant.time, completed: latestAssistant.time.completed ?? Date.now() },
+        finish: "error",
+        error:
+          preserveError || latestAssistant.error
+            ? latestAssistant.error
+            : new MessageV2.AbortedError({
+                message: "Session aborted during turn — assistant response was not completed",
+              }).toObject(),
+      })
+    } else if (latestRoot) {
+      log.info("creating aborted assistant for pending root", {
+        sessionID,
+        rootID: latestRoot.id,
+      })
+      const now = Date.now()
+      await Session.updateMessage({
+        id: Identifier.ascending("message"),
+        parentID: latestRoot.id,
+        rootID: latestRoot.rootID ?? latestRoot.id,
+        visible: true,
+        role: "assistant",
+        mode: latestRoot.agent,
+        agent: latestRoot.agent,
+        path: {
+          cwd: ScopeContext.current.directory,
+          root: ScopeContext.current.directory,
+        },
+        cost: 0,
+        tokens: {
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+        modelID: latestRoot.model.modelID,
+        providerID: latestRoot.model.providerID,
+        time: { created: now, completed: now },
+        finish: "error",
+        error: new MessageV2.AbortedError({
+          message: "Session aborted during turn — assistant response was not completed",
+        }).toObject(),
+        sessionID,
+      } satisfies MessageV2.Assistant)
+    }
 
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
