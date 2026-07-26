@@ -19,6 +19,8 @@ The provider contract supports:
 
 Feishu/Lark is the current built-in provider. It owns Feishu-specific deduplication, mentions, group behavior, media transfer, cards, and reconnect handling while the Channel core owns endpoint/session routing and outbound delivery.
 
+Feishu/Lark distinguishes Synergy's own bot messages from messages sent by other bots using the authenticated account's `botOpenId`. The provider resolves that identity from account configuration or the Feishu bot-info API and fails closed for bot senders while it is unknown. With `requireMention: true`, an external bot message is accepted only when it contains a real mention whose open ID matches Synergy; the Feishu app also needs the bot-to-bot group mention event permission. Set `groupSessionScope` to `group_topic` when each Feishu topic should reuse an independent Synergy session.
+
 Each Feishu/Lark account can set a default model and one of that model's exposed variants. The account selection is written onto each inbound root message so the session header and provider request agree. A conversation-level `/model` override takes precedence over the account default; because that override selects a different model, it does not inherit the account model's variant.
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
