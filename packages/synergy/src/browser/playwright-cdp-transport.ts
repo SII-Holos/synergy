@@ -1,4 +1,4 @@
-import type { CDPSession, Page } from "playwright"
+import type { CDPSession, Page } from "playwright-core"
 import { cdpCommandTimeoutMs, withCdpCommandTimeout, type CdpTransport } from "@ericsanchezok/synergy-browser"
 
 export class PlaywrightCdpTransport implements CdpTransport {

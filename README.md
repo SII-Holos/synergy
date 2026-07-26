@@ -62,7 +62,7 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | ba
 
 The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`. It does not install the Electron Desktop app. After installation, run `synergy` directly from any directory.
 
-Desktop Browser presentation includes Electron's Chromium. For headless Browser tools used directly by the CLI/server, run `synergy browser install` to install verified managed Chromium and `synergy browser doctor` to diagnose discovery and launch readiness. You can instead set `CHROMIUM_PATH` to a separately installed executable.
+Desktop Browser presentation includes Electron's Chromium. For headless Browser tools used directly by the CLI/server, run `synergy browser install` to install verified managed Chromium and `synergy browser doctor` to diagnose discovery and launch readiness. On Linux, installation also ensures the Playwright-pinned system libraries are present; use `--no-deps` to skip that step or `synergy browser install-deps` to rerun it independently. You can instead set `CHROMIUM_PATH` to a separately installed executable.
 
 Configure a model provider, start the background runtime, and open the Web client:
 

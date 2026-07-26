@@ -1,4 +1,18 @@
 async function bootstrap(): Promise<void> {
+  if (process.argv.includes("__browser-playwright-runtime-check")) {
+    const { PlaywrightRuntime } = await import("./browser/playwright-runtime.js")
+    console.log(`Playwright Core ${PlaywrightRuntime.version()}`)
+    return
+  }
+
+  if (process.argv.includes("__browser-install-deps-runner")) {
+    if (process.platform !== "linux")
+      throw new Error("Browser system dependency installation is only available on Linux.")
+    const { PlaywrightRuntime } = await import("./browser/playwright-runtime.js")
+    await PlaywrightRuntime.installChromiumDependencies()
+    return
+  }
+
   const pluginRuntimeRunnerArgIndex = process.argv.indexOf("__plugin-runtime-runner")
   if (pluginRuntimeRunnerArgIndex >= 0) {
     const entryPath = process.argv[pluginRuntimeRunnerArgIndex + 1]

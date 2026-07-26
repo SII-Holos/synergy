@@ -54,11 +54,15 @@ async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy
     fs.mkdir(path.join(runtimeDir, "bin"), { recursive: true }),
     fs.mkdir(path.join(runtimeDir, "app"), { recursive: true }),
     fs.mkdir(path.join(runtimeDir, "schema"), { recursive: true }),
+    fs.mkdir(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
   ])
   await Promise.all([
     fs.writeFile(path.join(runtimeDir, "bin", binary), "runtime"),
     fs.writeFile(path.join(runtimeDir, "app", "index.html"), "<!doctype html>"),
     fs.writeFile(path.join(runtimeDir, "schema", "config.schema.json"), "{}"),
+    fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "package.json"), "{}"),
+    fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "index.js"), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib", "coreBundle.js"), "runtime"),
   ])
   return runtimeDir
 }
@@ -164,5 +168,14 @@ describe("desktop packaging", () => {
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(/bin\/synergy\.exe/)
     await fs.writeFile(path.join(runtimeDir, "bin", "synergy.exe"), "runtime")
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(/sandbox\/synergy-sandbox-windows\.exe/)
+  })
+
+  test("rejects a runtime without its Playwright Core sidecar", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.rm(path.join(runtimeDir, "browser-runtime", "playwright-core", "package.json"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /browser-runtime\/playwright-core\/package\.json/,
+    )
   })
 })
