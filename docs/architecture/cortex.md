@@ -33,7 +33,7 @@ Synergy has one Cortex launch mechanism and two authorization entry paths:
 
 Both paths enter `Cortex.launch()` and create the same Task and child Session. Plugins do not get a second Agent registry, task scheduler, transcript store, or execution loop.
 
-Cortex creates a child session in the parent's `Scope` and workspace, or reuses an idle compatible child when reuse is requested. If a new worktree is requested, Cortex creates one for the child; a child of an existing worktree inherits that worktree instead of nesting another.
+Cortex creates a child session in the parent's `Scope` and workspace, or reuses an idle compatible child when reuse is requested. Reuse preserves the child transcript while refreshing its durable task controls, including the tool allowlist, output contract, and visibility. If a new worktree is requested, Cortex creates one for the child; a child of an existing worktree inherits that worktree instead of nesting another.
 
 Tasks are admitted through both per-agent and process-global concurrency limits. Each concurrency key allows at most eight running tasks. The global maximum defaults to eight and can be set with the global `cortex.maxConcurrentTasks` configuration or overridden for the process by `SYNERGY_CORTEX_GLOBAL_CONCURRENCY`. Lowering the maximum does not cancel running tasks; it queues new work until capacity is available, while raising it wakes eligible queued work.
 
