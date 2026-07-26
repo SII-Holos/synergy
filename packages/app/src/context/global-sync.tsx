@@ -59,11 +59,14 @@ import {
   type PlanBlueprintOfferState,
 } from "./plan-blueprint-offer"
 import {
+  browserRollbackDialogStorage,
   emptyRollbackDialogPresentationState,
   isEmptyRollbackDialogPresentationState,
+  removePersistedRollbackDialogSeenKey,
   reduceRollbackDialogPresentationState,
   type RollbackDialogPresentationEvent,
   type RollbackDialogPresentationState,
+  writePersistedRollbackDialogSeenKey,
 } from "./rollback-dialog"
 import {
   createSessionContextProjectionRevision,
@@ -229,6 +232,12 @@ export function updateRollbackDialogPresentationState(
 ) {
   const current = store.rollbackDialogPresentation[sessionID] ?? emptyRollbackDialogPresentationState
   setRollbackDialogPresentationState(store, setStore, sessionID, reduceRollbackDialogPresentationState(current, event))
+  const storage = browserRollbackDialogStorage()
+  if (event.type === "presented") {
+    writePersistedRollbackDialogSeenKey(storage, sessionID, event.key)
+    return
+  }
+  removePersistedRollbackDialogSeenKey(storage, sessionID)
 }
 
 function capturePlanBlueprintOfferFromPart(store: State, setStore: SetStoreFunction<State>, part: Part) {

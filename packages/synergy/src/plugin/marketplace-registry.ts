@@ -4,6 +4,7 @@ import {
   normalizePluginArchiveEntry,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { SYNERGY_CAPABILITY_DETAILS, permissionCategoryForKey } from "@ericsanchezok/synergy-util/capability"
 import fs from "fs/promises"
 import fsSync from "fs"
@@ -16,7 +17,6 @@ import { Global } from "../global"
 import { sha256Content, sha256File } from "../util/crypto"
 import { baseCapabilities } from "./capability"
 import { riskForCapabilities } from "./capability"
-import { computeManifestHash, computePermissionsHash } from "./consent/approval-store"
 import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
 import { defaultPluginTrustDecision } from "./trust"
 

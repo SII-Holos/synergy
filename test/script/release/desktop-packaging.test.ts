@@ -36,11 +36,13 @@ describe("desktop release packaging", () => {
     const buildIndex = steps.findIndex((step) => step.name === "Build Synergy runtime for desktop package")
     const prepareIndex = steps.findIndex((step) => step.name === "Prepare Synergy runtime for desktop package")
     const packageIndex = steps.findIndex((step) => step.name === "Package desktop artifact")
+    const buildStep = steps[buildIndex]
     const prepareStep = steps[prepareIndex]
 
     expect(buildIndex).toBeGreaterThanOrEqual(0)
     expect(prepareIndex).toBeGreaterThan(buildIndex)
     expect(packageIndex).toBeGreaterThan(prepareIndex)
+    expect(buildStep?.env?.NODE_OPTIONS).toBe("--max-old-space-size=4096")
     expect(prepareStep?.run).toBe("bun run ./script/release/prepare-desktop-runtime.ts")
     expect(prepareStep?.env?.SYNERGY_BUILD_TARGETS).toBe("${{ matrix.runtime_targets }}")
   })

@@ -12,6 +12,8 @@ Source `plugin.json` is forbidden because it would create a second declaration p
 
 Approval covers the full generated manifest, permission set, and trusted UI. Loading is gated by the exact manifest hash and permissions hash recorded at approval time; any ordinary manifest or permission change requires a new approval review before executable code or trusted UI is imported. A handler cannot request a Host Service that is absent from the approved manifest.
 
+The permissions hash binds capability constraints, contribution requirements, operation exposure, and trusted UI presence through the shared public integrity contract. plugin-kit and the host do not maintain separate hash payloads or canonical JSON implementations.
+
 Approval review is server-authoritative. Configured plugins use `GET /api/plugins/:pluginId/approval-review` to fetch the current review. Submission uses `POST /api/plugins/approve` with only the canonical `target` and opaque `reviewToken`; Web and CLI clients never send manifests, capabilities, source specs, or paths as approval evidence. The `reviewToken` binds the canonical target, current manifest hash, and permissions hash. If the artifact changes before submit, the server returns `stale_review` with a refreshed review and performs no writes.
 
 Plugins disabled for approval keep their canonical identity, version, capabilities, risk, contribution summary, and disabled status. User-facing surfaces should label that state as `Needs approval`.
