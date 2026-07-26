@@ -36,8 +36,16 @@ export interface ChromiumReleaseTarget {
   arch: ChromiumReleaseArch
   name: string
   path: string
+  urls: readonly string[]
   executable: string
 }
+
+const PLAYWRIGHT_CHROMIUM_ORIGINS = [
+  "https://cdn.playwright.dev/dbazure/download/playwright",
+  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright",
+  "https://cdn.playwright.dev",
+] as const
+const PLAYWRIGHT_CFT_ORIGINS = ["https://cdn.playwright.dev"] as const
 
 const STABLE_TARGETS: ReadonlyArray<Pick<ChromiumReleaseTarget, "platform" | "arch">> = [
   { platform: "darwin", arch: "x64" },
@@ -78,40 +86,47 @@ export function chromiumReleaseTarget(
 ): ChromiumReleaseTarget | null {
   if (platform === "darwin") {
     const suffix = arch === "arm64" ? "mac-arm64" : "mac-x64"
-    return {
+    return releaseTarget(PLAYWRIGHT_CFT_ORIGINS, {
       platform,
       arch,
       name: `chrome-${suffix}.zip`,
       path: `builds/cft/${browserVersion}/${suffix}/chrome-${suffix}.zip`,
       executable: `chrome-${suffix}/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`,
-    }
+    })
   }
   if (platform === "linux") {
     if (arch === "arm64") {
-      return {
+      return releaseTarget(PLAYWRIGHT_CHROMIUM_ORIGINS, {
         platform,
         arch,
         name: "chromium-linux-arm64.zip",
         path: `builds/chromium/${revision}/chromium-linux-arm64.zip`,
         executable: "chrome-linux/chrome",
-      }
+      })
     }
-    return {
+    return releaseTarget(PLAYWRIGHT_CFT_ORIGINS, {
       platform,
       arch,
       name: "chrome-linux64.zip",
       path: `builds/cft/${browserVersion}/linux64/chrome-linux64.zip`,
       executable: "chrome-linux64/chrome",
-    }
+    })
   }
   if (platform === "win32" && arch === "x64") {
-    return {
+    return releaseTarget(PLAYWRIGHT_CFT_ORIGINS, {
       platform,
       arch,
       name: "chrome-win64.zip",
       path: `builds/cft/${browserVersion}/win64/chrome-win64.zip`,
       executable: "chrome-win64/chrome.exe",
-    }
+    })
   }
   return null
+}
+
+function releaseTarget(origins: readonly string[], target: Omit<ChromiumReleaseTarget, "urls">): ChromiumReleaseTarget {
+  return {
+    ...target,
+    urls: origins.map((origin) => `${origin}/${target.path}`),
+  }
 }

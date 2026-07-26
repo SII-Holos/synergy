@@ -14,6 +14,7 @@ import { SessionEvent } from "./event"
 import { SessionNav } from "./nav"
 import { Log } from "@/util/log"
 import { SnapshotSchema } from "./snapshot-schema"
+import { SessionRootVariant } from "./root-variant"
 
 export namespace SessionImport {
   const log = Log.create({ service: "session-import" })
@@ -172,7 +173,7 @@ export namespace SessionImport {
       await writeSessionInfo(scopeID, info)
 
       for (const message of data.messages) {
-        const nextMessage = remapMessage(message.info, sessionID, idMap)
+        const nextMessage = await remapMessage(message.info, sessionID, idMap)
         await Session.updateMessage(nextMessage)
         messageCount++
 
@@ -303,7 +304,11 @@ export namespace SessionImport {
     })
   }
 
-  function remapMessage(info: MessageV2.Info, sessionID: string, idMap: Map<string, string>): MessageV2.Info {
+  async function remapMessage(
+    info: MessageV2.Info,
+    sessionID: string,
+    idMap: Map<string, string>,
+  ): Promise<MessageV2.Info> {
     const metadata = info.metadata ? (remapSessionIDs(info.metadata, idMap) as Record<string, any>) : undefined
     if (info.role === "assistant") {
       return {
@@ -313,7 +318,7 @@ export namespace SessionImport {
       }
     }
 
-    return {
+    const next: MessageV2.User = {
       ...info,
       sessionID,
       origin: info.origin?.sessionID
@@ -323,6 +328,10 @@ export namespace SessionImport {
           }
         : info.origin,
       metadata,
+    }
+    return {
+      ...next,
+      variant: await SessionRootVariant.resolveLegacyRoot(next),
     }
   }
 

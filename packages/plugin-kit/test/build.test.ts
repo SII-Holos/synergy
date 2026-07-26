@@ -375,6 +375,7 @@ export default definePlugin({
 import { definePlugin } from "@ericsanchezok/synergy-plugin"
 export default definePlugin({
   id: "capability-risk-fixture",
+  name: "Capability Risk Fixture",
   version: "1.0.0",
   description: "Capability risk fixture",
   capabilities: [{ id: "asset.write" }, { id: "shell.execute" }],
@@ -410,6 +411,7 @@ await signPluginTarball(process.argv[2])
         signatureUrl: "https://example.com/capability-risk-fixture.tgz.sig",
         publishedAt: "2026-07-22T00:00:00.000Z",
       })
+      expect(entry.name).toBe("capability-risk-fixture")
       expect(entry.versions[0]?.risk).toBe("high")
       expect(entry.versions[0]?.permissionsSummary).toEqual([
         expect.objectContaining({ key: "asset.write", risk: "medium" }),

@@ -86,6 +86,14 @@ export type DesktopUpdateBridge = {
   onEvent?(listener: (event: { type: "status"; status: DesktopUpdateStatus }) => void): () => void
 }
 
+export type DesktopShellEnvironmentDiagnostics = {
+  source: "login-shell" | "inherited"
+  shell: string | null
+  path: string
+  commands: Array<{ command: string; path: string | null }>
+  warning: "login-shell-unavailable" | null
+}
+
 export type DesktopServerStatus = {
   mode: "managed" | "external"
   state: "stopped" | "starting" | "running" | "failed" | "external"
@@ -94,6 +102,7 @@ export type DesktopServerStatus = {
   pid: number | null
   lastError: string | null
   logFile: string | null
+  shellEnvironment: DesktopShellEnvironmentDiagnostics | null
 }
 
 export type DesktopServerBridge = {

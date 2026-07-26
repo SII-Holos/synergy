@@ -538,6 +538,40 @@ export namespace Session {
     return updated
   }
 
+  async function collectDescendantIDs(sessionID: string): Promise<string[]> {
+    const ids: string[] = []
+    for (const child of await children(sessionID)) {
+      ids.push(child.id)
+      const sub = await collectDescendantIDs(child.id)
+      ids.push(...sub)
+    }
+    return ids
+  }
+
+  export async function transitionControlProfileAndResolve(
+    sessionID: string,
+    controlProfile: NonNullable<Info["controlProfile"]>,
+    editor?: (session: Info) => void,
+  ): Promise<Info> {
+    const updated = await update(sessionID, (draft) => {
+      draft.controlProfile = controlProfile
+      editor?.(draft)
+    })
+
+    const descendantIDs = await collectDescendantIDs(sessionID)
+    const inheritingIDs = [sessionID]
+    for (const descID of descendantIDs) {
+      const state = await sessionControlProfileState(descID)
+      if (state.root.id === sessionID) {
+        inheritingIDs.push(descID)
+      }
+    }
+
+    await PermissionNext.resolveAllForSessions(inheritingIDs)
+
+    return updated
+  }
+
   async function sessionControlProfileState(
     sessionID: string,
   ): Promise<{ controlProfile?: Info["controlProfile"]; root: Info }> {

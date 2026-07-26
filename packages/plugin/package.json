@@ -48,6 +48,11 @@
       "types": "./src/artifact.ts",
       "import": "./dist/artifact.js"
     },
+    "./integrity": {
+      "bun": "./src/integrity.ts",
+      "types": "./src/integrity.ts",
+      "import": "./dist/integrity.js"
+    },
     "./market": {
       "bun": "./src/market.ts",
       "types": "./src/market.ts",

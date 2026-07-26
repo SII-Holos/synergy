@@ -96,6 +96,8 @@ See [Cortex delegation](../architecture/cortex.md) for task lifecycle and output
 
 Session history is durable and append-oriented. Undo and rewind are represented by history events that project a different effective view instead of destructively rewriting canonical messages. File restoration is an explicit operation associated with the selected point; changing the visible message timeline alone does not silently modify workspace files.
 
+When the selected history point is a replayable root user message, the rewind confirmation also offers **Retry**. Retry records the same rewind first, optionally restores files, and then resubmits the original user-authored text and attachments with the original agent, model, variant, and prompt metadata but fresh message and part identities. If resubmission fails after the rewind succeeds, the rewound state remains authoritative and the restored draft stays available for manual recovery.
+
 Archived sessions remain stored and can be restored. Deletion removes the session record and associated runtime resources through the session lifecycle. Startup recovery detects interrupted sessions, incomplete loop state, pending invocations, and stale runtime artifacts so an unclean process exit does not leave invisible active work.
 
 ## Compaction

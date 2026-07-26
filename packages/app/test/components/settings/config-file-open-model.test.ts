@@ -11,6 +11,7 @@ const managedRunningStatus: DesktopServerStatus = {
   pid: 123,
   lastError: null,
   logFile: null,
+  shellEnvironment: null,
 }
 
 function platform(overrides: Partial<Platform> = {}): Platform {

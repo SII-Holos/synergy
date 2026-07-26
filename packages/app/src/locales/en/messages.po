@@ -11003,6 +11003,10 @@ msgid "session-turn.model-unavailable"
 msgstr "Model {modelID} is unavailable from {providerID}. Choose another model to continue."
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-variant-unavailable"
+msgstr "Variant {variant} is unavailable for model {modelID} from {providerID}. {availability, select, available {Available variants: {availableVariants}.} other {No variants are currently available.}} Choose another variant or model to continue."
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
 msgstr "Rewind"
 
@@ -11855,27 +11859,6 @@ msgstr "Auto-approve reads, safe edits, and network lookups. Ask before shell, e
 msgid "session.permission.mode.guarded.short"
 msgstr "Guarded"
 
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.sessionRunning"
-msgstr "Session is running"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.stopBeforeChange"
-msgstr "Stop the session before changing its permission mode."
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.stopBeforeChange.inline"
-msgstr "Stop the session before changing permission mode."
-
 #. permission-selector.tsx
 msgid "session.permission.title"
 msgstr "Permission mode"
@@ -12242,6 +12225,21 @@ msgstr "Optional"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.requestFailed"
 msgstr "Request failed"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retry"
+msgstr "Retry"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retryFailed"
+msgstr "Retry failed"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retrying"
+msgstr "Retrying…"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -16411,6 +16409,38 @@ msgstr "Logs, traces, and diagnostics."
 #. Observability
 msgid "settings.runtime.observ.page.title"
 msgstr "Observability"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.found"
+msgstr "Resolved"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.missing"
+msgstr "Not found"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.desc"
+msgstr "Environment captured once when the Desktop managed server starts."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.path"
+msgstr "Effective PATH"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.inherited"
+msgstr "Desktop process"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.login"
+msgstr "Login shell"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.title"
+msgstr "Desktop Shell Environment"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.warning"
+msgstr "The login shell PATH could not be read, so the Desktop process PATH is being used."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.observ.watcher.desc"

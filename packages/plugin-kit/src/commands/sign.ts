@@ -8,22 +8,17 @@ import {
   PluginManifest,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths.js"
 import { sha256File } from "../lib/crypto.js"
 import type { SignatureMetadata } from "../lib/signature.js"
-import { computeManifestHash, computePermissionsHash } from "../lib/hash.js"
+import { extractTarballText } from "../lib/tarball.js"
 
 interface KeyFile {
   publicKey: string
   privateKey: string
-}
-
-function extractFromTarball(tarballPath: string, memberPath: string): string | null {
-  const result = Bun.spawnSync(["tar", "-xOf", tarballPath, memberPath], { stdout: "pipe", stderr: "pipe" })
-  if (result.exitCode !== 0) return null
-  return new TextDecoder().decode(result.stdout)
 }
 
 function readKeyFile(): KeyFile | null {
@@ -59,7 +54,7 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
   UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Signing${UI.Style.TEXT_NORMAL} ${path.basename(tarballPath)}`)
 
   const tarballHash = sha256File(tarballPath)
-  const manifestRaw = extractFromTarball(tarballPath, PluginArtifact.manifestFile)
+  const manifestRaw = extractTarballText(tarballPath, PluginArtifact.manifestFile)
   if (!manifestRaw)
     throw new Error(`Failed to extract ${PluginArtifact.manifestFile} from tarball. Has the plugin been built?`)
 
@@ -70,7 +65,7 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
     throw new Error(`Failed to parse ${PluginArtifact.manifestFile} from tarball`)
   }
 
-  if (!extractFromTarball(tarballPath, PluginArtifact.permissionsSummaryFile)) {
+  if (!extractTarballText(tarballPath, PluginArtifact.permissionsSummaryFile)) {
     throw new Error(
       `Failed to extract ${PluginArtifact.permissionsSummaryFile} from tarball. Has the plugin been built?`,
     )

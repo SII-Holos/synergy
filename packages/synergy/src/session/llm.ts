@@ -21,6 +21,7 @@ import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ContextUsage } from "./context-usage"
 import type { LLMTurnMemory } from "./llm-memory"
+import { SessionRootVariant } from "./root-variant"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -345,28 +346,27 @@ export namespace LLM {
       Config.current(),
       TimeoutConfig.resolve(),
     ])
-    const effectiveVariant =
-      input.user.variant ?? input.agent.defaultVariant ?? cfg.role_variant?.[input.agent.modelRole || "default"]
-    let variant: Record<string, any> = {}
-    if (!input.small && input.model.variants && Object.keys(input.model.variants).length > 0 && effectiveVariant) {
-      if (Object.prototype.hasOwnProperty.call(input.model.variants, effectiveVariant)) {
-        variant = input.model.variants[effectiveVariant]
-      } else {
-        l.warn("configured variant not available for model", {
-          variant: effectiveVariant,
-          modelID: input.model.id,
-          availableVariants: Object.keys(input.model.variants),
-          agent: input.agent.name,
-        })
-      }
-    }
+    const variant = SessionRootVariant.options({
+      variant: input.user.variant,
+      model: input.model,
+      small: input.small,
+    })
     const base = input.small
       ? ProviderTransform.smallOptions(input.model)
       : ProviderTransform.options(input.model, input.sessionID, provider?.options)
-    const options = pipe(base, mergeDeep(input.model.options), mergeDeep(input.agent.options), mergeDeep(variant))
-
+    const options: Record<string, unknown> = pipe(
+      base,
+      mergeDeep(input.model.options),
+      mergeDeep(input.agent.options),
+      mergeDeep(variant),
+    )
+    const thinking = options["thinking"]
     const isAnthropicThinking =
-      input.model.api.npm === "@ai-sdk/anthropic" && options["thinking"]?.["type"] === "enabled"
+      input.model.api.npm === "@ai-sdk/anthropic" &&
+      typeof thinking === "object" &&
+      thinking !== null &&
+      "type" in thinking &&
+      thinking.type === "enabled"
 
     const params = await trigger(
       "chat.params",

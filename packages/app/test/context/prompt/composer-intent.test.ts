@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   handoffNewSessionDraft,
+  resolveSessionVariant,
   resolveVariantDisplay,
   resolveModel,
   resolveAgent,
@@ -157,21 +158,111 @@ describe("sessionDefaultVariant", () => {
   })
 })
 
+describe("resolveSessionVariant", () => {
+  test("stays unresolved while an existing session's messages are unavailable", () => {
+    expect(
+      resolveSessionVariant({
+        hasSession: true,
+        hasDraft: false,
+        draft: undefined,
+        model: A,
+        messages: undefined,
+      }),
+    ).toEqual({ ready: false, value: undefined })
+  })
+
+  test("stays unresolved while an existing session's model is unavailable", () => {
+    expect(
+      resolveSessionVariant({
+        hasSession: true,
+        hasDraft: false,
+        draft: undefined,
+        model: undefined,
+        messages: [],
+      }),
+    ).toEqual({ ready: false, value: undefined })
+  })
+
+  test("uses an explicit draft without waiting for messages", () => {
+    expect(
+      resolveSessionVariant({
+        hasSession: true,
+        hasDraft: true,
+        draft: "high",
+        model: A,
+        messages: undefined,
+      }),
+    ).toEqual({ ready: true, value: "high" })
+  })
+
+  test("preserves an explicit clear without waiting for messages", () => {
+    expect(
+      resolveSessionVariant({
+        hasSession: true,
+        hasDraft: true,
+        draft: undefined,
+        model: A,
+        messages: undefined,
+      }),
+    ).toEqual({ ready: true, value: undefined })
+  })
+
+  test("inherits history after messages load", () => {
+    expect(
+      resolveSessionVariant({
+        hasSession: true,
+        hasDraft: false,
+        draft: undefined,
+        model: A,
+        messages: [{ role: "user", isRoot: true, model: A, variant: "high" }],
+      }),
+    ).toEqual({ ready: true, value: "high" })
+  })
+
+  test("allows configured fallback after loaded history resolves without a matching variant", () => {
+    expect(
+      resolveSessionVariant({
+        hasSession: true,
+        hasDraft: false,
+        draft: undefined,
+        model: B,
+        messages: [{ role: "user", isRoot: true, model: A, variant: "high" }],
+      }),
+    ).toEqual({ ready: true, value: undefined })
+  })
+
+  test("new sessions are ready without message history", () => {
+    expect(
+      resolveSessionVariant({
+        hasSession: false,
+        hasDraft: false,
+        draft: undefined,
+        model: A,
+        messages: undefined,
+      }),
+    ).toEqual({ ready: true, value: undefined })
+  })
+})
+
 describe("resolveVariantDisplay", () => {
+  test("does not expose configured fallback while session intent is unresolved", () => {
+    expect(resolveVariantDisplay({ ready: false, value: undefined }, "high", "xhigh")).toBeUndefined()
+  })
+
   test("prefers the explicit or historical variant", () => {
-    expect(resolveVariantDisplay("low", "high", "xhigh")).toBe("low")
+    expect(resolveVariantDisplay({ ready: true, value: "low" }, "high", "xhigh")).toBe("low")
   })
 
   test("falls back to the agent default variant", () => {
-    expect(resolveVariantDisplay(undefined, "high", "xhigh")).toBe("high")
+    expect(resolveVariantDisplay({ ready: true, value: undefined }, "high", "xhigh")).toBe("high")
   })
 
   test("falls back to the model role default variant", () => {
-    expect(resolveVariantDisplay(undefined, undefined, "xhigh")).toBe("xhigh")
+    expect(resolveVariantDisplay({ ready: true, value: undefined }, undefined, "xhigh")).toBe("xhigh")
   })
 
   test("returns undefined when no variant is configured", () => {
-    expect(resolveVariantDisplay(undefined, undefined, undefined)).toBeUndefined()
+    expect(resolveVariantDisplay({ ready: true, value: undefined }, undefined, undefined)).toBeUndefined()
   })
 })
 
