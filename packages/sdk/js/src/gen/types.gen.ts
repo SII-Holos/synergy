@@ -4047,6 +4047,7 @@ export type SessionWorkflowInfo =
         requesterMessageID: string
         reviewTaskID?: string
         reviewSessionID?: string
+        reviewToolRecoveryAttempts?: number
       }
       review?: {
         attempts: number
@@ -5175,6 +5176,16 @@ export type ProviderModelUnavailableError = {
   }
 }
 
+export type ProviderModelVariantUnavailableError = {
+  name: "ProviderModelVariantUnavailableError"
+  data: {
+    providerID: string
+    modelID: string
+    variant: string
+    availableVariants: Array<string>
+  }
+}
+
 export type AssistantMessage = {
   id: string
   sessionID: string
@@ -5193,6 +5204,7 @@ export type AssistantMessage = {
     | MessageAbortedError
     | ApiError
     | ProviderModelUnavailableError
+    | ProviderModelVariantUnavailableError
   parentID: string
   modelID: string
   providerID: string
@@ -6562,6 +6574,7 @@ export type BlueprintLoopInfo = {
     requestedAt: number
     requesterSessionID: string
     requesterMessageID: string
+    reviewToolRecoveryAttempts?: number
   }
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
@@ -10832,6 +10845,7 @@ export type SessionUpdateData = {
     title?: string
     pinned?: number
     controlProfile?: "guarded" | "autonomous" | "full_access"
+    resolvePendingPermissions?: boolean
     completionNotice?: {
       unread: false
     }

@@ -5,6 +5,8 @@ import { Identifier } from "@/id/id"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Global } from "@/global"
+import { Scope } from "@/scope"
+import { ScopeContext } from "@/scope/context"
 import type { Migration } from "@/migration"
 import { SessionEndpoint } from "./endpoint"
 import { Info } from "./types"
@@ -14,6 +16,7 @@ import { SessionNav } from "./nav"
 import { SessionProgress } from "./progress"
 import { SnapshotSchema } from "./snapshot-schema"
 import { Dag } from "./dag"
+import { SessionRootVariant } from "./root-variant"
 
 import { MigrationRegistry } from "@/migration/registry"
 const log = Log.create({ service: "session.migration" })
@@ -1825,6 +1828,54 @@ async function migrateRetiredIntentAnalystDagAssignments(progress: (current: num
   log.info("retired intent analyst DAG assignment migration complete", { total: tasks.length, changed })
 }
 
+async function migrateSessionRootVariants(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [] as string[])
+  const tasks: Array<{ scopeID: string; sessionID: string }> = []
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) tasks.push({ scopeID, sessionID })
+  }
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    try {
+      const session = await Storage.read<any>(StoragePath.sessionInfo(scope, sid)).catch(() => undefined)
+      const storedScope = session?.scope as Scope | undefined
+      const runtimeScope = (await Scope.fromID(scopeID)) ?? storedScope
+      if (!runtimeScope) continue
+
+      await ScopeContext.provide({
+        scope: runtimeScope,
+        workspace: session?.workspace,
+        fn: async () => {
+          const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => [])
+          for (const messageID of messageIDs) {
+            const mid = Identifier.asMessageID(messageID)
+            const key = StoragePath.messageInfo(scope, sid, mid)
+            const message = await Storage.read<MessageV2.Info>(key).catch(() => undefined)
+            if (!message || message.role !== "user" || message.isRoot !== true || message.variant) continue
+            const variant = await SessionRootVariant.resolveLegacyRoot(message)
+            if (!variant) continue
+            await Storage.write(key, { ...message, variant })
+            changed++
+          }
+        },
+      })
+    } catch (error) {
+      log.warn("failed to migrate session root variants", { scopeID, sessionID, error: String(error) })
+    } finally {
+      done++
+      progress(done, tasks.length)
+    }
+  }
+
+  log.info("session root variant migration complete", { total: tasks.length, changed })
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260411-session-endpoint-index",
@@ -2424,6 +2475,13 @@ export const migrations: Migration[] = [
     description: "Move terminal plugin Light Loop results out of the interactive workflow slot",
     async up(progress) {
       await migrateTerminalLightloops(progress)
+    },
+  },
+  {
+    id: "20260726-session-root-variant",
+    description: "Persist effective variants on legacy session task roots",
+    async up(progress) {
+      await migrateSessionRootVariants(progress)
     },
   },
 ]

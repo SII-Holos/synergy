@@ -11,6 +11,7 @@ import { StoragePath } from "../../src/storage/path"
 import { SnapshotSchema } from "../../src/session/snapshot-schema"
 import { SessionBounds } from "../../src/session/bounds"
 import { Worktree } from "../../src/project/worktree"
+import { MessageV2 } from "../../src/session/message-v2"
 
 const projectRoot = path.join(__dirname, "../..")
 
@@ -44,6 +45,72 @@ async function addTerminalAssistantMessage(sessionID: string, parentID: string) 
 }
 
 describe("session migrations", () => {
+  test("canonicalizes legacy root variants once from the root agent default", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        model: "test-provider/test-model",
+        provider: {
+          "test-provider": {
+            name: "Test Provider",
+            npm: "@ai-sdk/openai-compatible",
+            env: [],
+            models: {
+              "test-model": {
+                name: "Test Model",
+                tool_call: true,
+                limit: { context: 128_000, output: 4_096 },
+                variants: { high: { reasoningEffort: "high" } },
+              },
+            },
+            options: { apiKey: "test-key" },
+          },
+        },
+        agent: {
+          variant_agent: {
+            model: "test-provider/test-model",
+            mode: "primary",
+            defaultVariant: "high",
+          },
+        },
+      } as any,
+    })
+    const scope = await tmp.scope()
+    const session = await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await Session.create({})
+        const messageID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: messageID,
+          sessionID: created.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "variant_agent",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          isRoot: true,
+          rootID: messageID,
+          origin: { type: "user" },
+        } satisfies MessageV2.User)
+        return { sessionID: created.id, messageID }
+      },
+    })
+
+    const migration = migrations.find((entry) => entry.id === "20260726-session-root-variant")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+    await migration!.up(() => {})
+
+    const stored = await Storage.read<MessageV2.User>(
+      StoragePath.messageInfo(
+        Identifier.asScopeID(scope.id),
+        Identifier.asSessionID(session.sessionID),
+        Identifier.asMessageID(session.messageID),
+      ),
+    )
+    expect(stored.variant).toBe("high")
+  })
+
   test("builds child session indexes from existing session info files", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()

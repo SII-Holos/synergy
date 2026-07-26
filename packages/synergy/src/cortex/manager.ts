@@ -120,25 +120,24 @@ export namespace Cortex {
       new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
     )
 
-    const reusableSession = input.reuseInterrupted
-      ? (await Session.children(input.parentSessionID)).find(
-          (child) =>
-            child.cortex?.parentMessageID === input.parentMessageID &&
-            child.cortex.agent === input.agent &&
-            (child.cortex.status === "queued" || child.cortex.status === "interrupted"),
-        )
-      : undefined
+    const reusableSession =
+      input.reuseInterrupted && !input.sessionID
+        ? (await Session.children(input.parentSessionID)).find(
+            (child) =>
+              child.cortex?.parentMessageID === input.parentMessageID &&
+              child.cortex.agent === input.agent &&
+              (child.cortex.status === "queued" || child.cortex.status === "interrupted"),
+          )
+        : undefined
+    const existing = input.sessionID ? await Session.get(input.sessionID) : reusableSession
+    if (input.sessionID && !existing) throw new Error(`Session ${input.sessionID} not found`)
 
     let session: import("../session/types").Info
 
-    if (input.sessionID || reusableSession) {
-      const existing = reusableSession ?? (await Session.get(input.sessionID!))
-      if (!existing) {
-        throw new Error(`Session ${input.sessionID} not found`)
-      }
+    if (existing) {
       if (existing.parentID !== input.parentSessionID) {
         throw new Error(
-          `Session ${input.sessionID} does not belong to parent session ${input.parentSessionID}. ` +
+          `Session ${existing.id} does not belong to parent session ${input.parentSessionID}. ` +
             `Reuse is only allowed for sessions created by the same parent.`,
         )
       }
@@ -264,6 +263,10 @@ export namespace Cortex {
       draft.cortex.deliveryNotifiedAt = undefined
       draft.cortex.owner = input.owner
       draft.cortex.timeoutMs = input.timeoutMs
+      draft.cortex.tools = input.tools
+      draft.cortex.outputConfig = input.output
+      draft.cortex.visibility = input.visibility
+      draft.completionNotice.silent = input.visibility === "hidden"
     })
     taskBudgets.set(taskID, {
       maxOutputTokens: input.maxOutputTokens,

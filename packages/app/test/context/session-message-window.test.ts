@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import {
   applyLatestPage,
+  hasMessageWindowSnapshot,
   prependOlderPage,
+  reconcileLoadedMessage,
   reconcileMessage,
   removeMessageFromWindow,
   DEFAULT_CAP,
   compareByTimeThenId,
   type MessageRef,
+  type MessageWindowMetadata,
   type MessageWindowState,
 } from "../../src/context/session-message-window"
 
@@ -23,6 +26,16 @@ const root = (id: string, created: number): MessageRef => msg(id, created)
 
 const window = (messages: MessageRef[], overrides?: Partial<MessageWindowState>): MessageWindowState => ({
   messages,
+  mode: "latest",
+  pendingLatest: false,
+  pendingLatestIds: [],
+  ...overrides,
+})
+
+const metadata = (overrides?: Partial<MessageWindowMetadata>): MessageWindowMetadata => ({
+  nextCursor: null,
+  hasMore: false,
+  total: 0,
   mode: "latest",
   pendingLatest: false,
   pendingLatestIds: [],
@@ -154,6 +167,26 @@ describe("prependOlderPage", () => {
 
     expect(result.window.pendingLatest).toBe(false)
     expect(result.window.pendingLatestIds).toEqual([])
+  })
+})
+
+describe("loaded message window events", () => {
+  test("requires both messages and window metadata for an authoritative snapshot", () => {
+    expect(hasMessageWindowSnapshot(undefined, undefined)).toBe(false)
+    expect(hasMessageWindowSnapshot([msg("a", 1)], undefined)).toBe(false)
+    expect(hasMessageWindowSnapshot(undefined, metadata())).toBe(false)
+    expect(hasMessageWindowSnapshot([], metadata())).toBe(true)
+  })
+
+  test("does not construct a visible window from an event when the snapshot is unloaded", () => {
+    expect(reconcileLoadedMessage(undefined, undefined, msg("event", 2))).toBeUndefined()
+    expect(reconcileLoadedMessage([msg("existing", 1)], undefined, msg("event", 2))).toBeUndefined()
+  })
+
+  test("reconciles an event into an initialized message window", () => {
+    const result = reconcileLoadedMessage([msg("existing", 1)], metadata({ total: 1 }), msg("event", 2))
+
+    expect(result?.window.messages.map((message) => message.id)).toEqual(["existing", "event"])
   })
 })
 

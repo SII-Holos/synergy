@@ -83,6 +83,44 @@ Skill slash-command fallback preserves that same root. When a Skill template has
 
 `SessionProgress.needsModelCall(messages, R.id)` asks whether the latest user message belonging to `R` has a later terminal assistant reply belonging to the same root. Terminal assistant finishes exclude `tool-calls` and `unknown`, which keep the model/tool loop active.
 
+### Root variant lifecycle
+
+Each task root user message stores an optional `variant` string that selects a
+reasoning or effort variant for the model call. The variant is resolved once
+when the root message is created (input acceptance or inbox materialization)
+and then persisted. Active roots do not re-resolve after config reload.
+
+Resolution priority (first non-empty wins):
+
+1. explicit `variant` from the input payload
+2. `agent.defaultVariant` from the resolved agent definition
+3. `config.role_variant[modelRole]` from the Models domain configuration
+
+Only task roots (`isRoot = true`) receive a resolved variant. Steer and
+context messages never expose or materialize a variant. A queued inbox item
+may retain its internal variant snapshot so promotion back to task mode does
+not lose intent, while non-task public projections unset the field.
+
+`LLM.prepare()` consumes the persisted `variant` from the root user message.
+When the variant is absent, no variant options are applied and the provider
+uses its default behavior.
+
+A persisted variant that is absent from the current enabled model catalog
+raises `ProviderModelVariantUnavailableError` at
+`SessionRootVariant.options()` — the runtime does not silently fall back to
+another variant or unset the field.
+
+`SessionRootVariant.resolve()` validates a candidate variant against the
+model's declared `variants`. When the model declares variants, an unknown
+candidate surfaces the same error before persistence so the caller can
+correct the request. A model that declares no variants leaves a newly
+resolved root variant unset.
+
+Legacy task roots that were persisted without a variant are filled by
+migration `20260726-session-root-variant` when the agent/config defaults can
+be resolved. Session import applies the same canonicalization to missing
+imported root variants while preserving explicit values.
+
 ## Canonical Message Semantics
 
 Message scheduling, presentation, model context, and provenance are orthogonal.
@@ -367,15 +405,15 @@ Recovery covers:
 - Light Loop and Lattice workflow sessions
 - stale note `activeLoopID` and session loop metadata
 
-An interrupted assistant that never reached terminal persistence is completed with an explicit error during repair. Recovery state is surfaced as `recovering`; it is not presented as ordinary busy work.
+An interrupted latest reply-required root is repaired through one root-anchored, per-session serialized terminalization primitive shared by startup reconciliation, Abort, and the pre-wake guard. If that root has a non-terminal assistant, repair preserves an existing structured error, fills missing terminal timing, and sets `finish: "error"`; if it has no assistant, repair attaches one aborted terminal assistant to that root. A canonical terminal reply only causes stale `pendingReply` cleanup. Repeating repair is idempotent, and recovery state is surfaced as `recovering` whenever the latest assistant lacks a canonical terminal `finish`, not merely when `time.completed` is absent.
 
-Startup pending-reply reconciliation isolates failures by session. An unreadable history remains pending and is reported as a warning, while recovery continues for other sessions so one corrupt record cannot prevent the global runtime from starting.
+Startup pending-reply reconciliation isolates failures by session. An unreadable history remains pending and is reported as a warning, while recovery continues for other sessions so one corrupt record cannot prevent the global runtime from starting. Ordinary startup recovery terminalizes interrupted roots without invoking the model or tools.
 
 ### Abort status synchronization
 
-When a running session is aborted, `signalAbort()` signals the owning controller and sets the phase to `stopping` but does not publish events or repair durable state. The abort HTTP route additionally calls `repairAfterAbort()` to repair the persisted incomplete assistant message and synchronize the frontend status.
+When a running session is aborted, `signalAbort()` signals the owning controller and sets the phase to `stopping` but does not publish events or repair durable state. The abort HTTP route cancels descendant Cortex work and calls the shared `repairAfterAbort()` terminalization path; the frontend presents local stopping feedback immediately while that request settles.
 
-`repairAfterAbort()` reads `SessionWorking.resolve()` (the same canonical check used at startup) to decide whether the repaired session is truly idle or still has active work (workflows, BlueprintLoops, incomplete assistants, or pending reply). It then publishes a status-only idle event through `SessionManager.publishStatusOnly()`, which emits `SessionEvent.Status` with `{ type: "idle" }` but never publishes `SessionEvent.Idle`.
+`repairAfterAbort()` reads `SessionWorking.resolve()` (the same canonical check used at startup) to decide whether the repaired session is truly idle or still has active work (workflows, BlueprintLoops, non-terminal assistants, or pending reply). It then publishes a status-only idle event through `SessionManager.publishStatusOnly()`, which emits `SessionEvent.Status` with `{ type: "idle" }` but never publishes `SessionEvent.Idle`. `SessionManager.wake()` runs the same idempotent repair before entering the model loop so newly queued work cannot revive an older malformed root.
 
 This separation exists because `SessionEvent.Idle` has side-effect consumers — `ContinuationKernel` for automatic loop wakeups — that must not fire for repair-only status corrections. Lifecycle idle (`SessionEvent.Idle`) remains owned exclusively by `SessionManager.release()`, which publishes both `SessionEvent.Status` and `SessionEvent.Idle` when the runtime loop voluntarily yields ownership. Completion notifications are driven by the independent `SessionEvent.Completion` event emitted after each root task produces a terminal reply; they do not depend on `SessionEvent.Idle`.
 
@@ -386,6 +424,7 @@ This separation exists because `SessionEvent.Idle` has side-effect consumers —
 - Agent workers never own Session/Message persistence or canonical event sequencing.
 - Internal execution phases refine an owned loop without replacing the public busy/retry/idle status contract.
 - One root user message owns each task and all assistant messages in that task.
+- Root variant is resolved once at persistence and does not drift after config reload; steer and context messages never carry a variant.
 - `rootID`, `visible`, `includeInContext`, and `origin` remain orthogonal.
 - `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()` are the canonical legacy boundaries.
 - Transcript chronology comes from the canonical ordered message array; raw message ID comparison is not a temporal boundary.

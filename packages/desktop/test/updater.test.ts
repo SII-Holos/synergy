@@ -3,7 +3,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { describe, expect, test } from "bun:test"
-import { DesktopUpdateStore, DesktopUpdater, type DesktopUpdateBackend } from "../src/updater.js"
+import { DesktopUpdateStore, DesktopUpdater, ElectronUpdateBackend, type DesktopUpdateBackend } from "../src/updater.js"
 
 class FakeBackend implements DesktopUpdateBackend {
   readonly events = new EventEmitter()
@@ -33,7 +33,31 @@ class FakeBackend implements DesktopUpdateBackend {
   }
 }
 
+class FakeElectronAutoUpdater extends EventEmitter {
+  autoDownload = true
+  allowPrerelease = true
+  checkResult = { isUpdateAvailable: false, updateInfo: { version: "3.0.7" } }
+
+  async checkForUpdates() {
+    return this.checkResult
+  }
+
+  async downloadUpdate(): Promise<void> {}
+
+  quitAndInstall(): void {}
+}
+
 describe("desktop updater", () => {
+  test("ignores release metadata when Electron reports no available update", async () => {
+    const autoUpdater = new FakeElectronAutoUpdater()
+    const backend = new ElectronUpdateBackend(async () => autoUpdater)
+
+    expect(await backend.checkForUpdates()).toEqual({ version: null })
+
+    autoUpdater.checkResult = { isUpdateAvailable: true, updateInfo: { version: "3.0.8" } }
+    expect(await backend.checkForUpdates()).toEqual({ version: "3.0.8" })
+  })
+
   test("stores update mode and recovers corrupt preference files", async () => {
     await using tmp = await tempdir()
     const store = new DesktopUpdateStore(path.join(tmp.path, "desktop-update.json"))

@@ -369,25 +369,26 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return find(key)
       })
 
-      const sessionDefaultVariant = createMemo((): string | undefined => {
+      const variantResolution = createMemo((): ComposerIntent.SessionVariantResolution => {
         const id = params.id
         const m = current()
-        if (!id || !m) return undefined
-        return ComposerIntent.sessionDefaultVariant({ providerID: m.provider.id, modelID: m.id }, sync.data.message[id])
-      })
-      const currentVariant = () => {
-        const m = current()
-        if (!m) return undefined
-        const modelKey = { providerID: m.provider.id, modelID: m.id }
+        const model = m ? { providerID: m.provider.id, modelID: m.id } : undefined
         const session = variantSession()
-        if (session.has(modelKey)) return session.get(modelKey)
-        return sessionDefaultVariant()
-      }
+        if (!session.ready()) return { ready: false, value: undefined }
+        return ComposerIntent.resolveSessionVariant({
+          hasSession: !!id,
+          hasDraft: session.has(model),
+          draft: session.get(model),
+          model,
+          messages: id ? sync.data.message[id] : undefined,
+        })
+      })
+      const currentVariant = () => variantResolution().value
 
       const displayedVariant = () => {
         const a = agent.current()
         return ComposerIntent.resolveVariantDisplay(
-          currentVariant(),
+          variantResolution(),
           a?.defaultVariant,
           a ? sync.data.config.role_variant?.[a.modelRole || "default"] : undefined,
         )
@@ -473,6 +474,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           return recommendedSet().has(keyOf(model))
         },
         variant: {
+          ready: () => variantResolution().ready,
           current: currentVariant,
           displayed: displayedVariant,
           list() {

@@ -35,7 +35,7 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
 
   for await (const info of MessageV2.readNewestInfos({ scopeID, sessionID: sid })) {
     if (info.role !== "assistant") continue
-    if (info.time.completed == null) {
+    if (!SessionProgress.isTerminalAssistant(info as MessageV2.Assistant)) {
       log.info("detected recovering session (incomplete)", { sessionID, messageID: info.id })
       return { status: "recovering" }
     }

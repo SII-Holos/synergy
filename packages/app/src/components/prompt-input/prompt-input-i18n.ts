@@ -172,6 +172,7 @@ export const PI = {
   stopAction: { id: "prompt.stop", message: "Stop" },
   sendAction: { id: "prompt.send", message: "Send" },
   startingSession: { id: "prompt.startingSession", message: "Starting session" },
+  stopping: { id: "prompt.stopping", message: "Stopping..." },
   stopSession: { id: "prompt.stopSession", message: "Stop session" },
   sendMessage: { id: "prompt.sendMessage", message: "Send message" },
   selectAgent: { id: "prompt.selectAgent", message: "Select agent" },
@@ -287,15 +288,6 @@ export const PI = {
   // permission-selector.tsx
   permissionMode: { id: "session.permission.title", message: "Permission mode" },
   permissionModeAria: { id: "session.permission.ariaLabel", message: "{mode} permission mode" },
-  permissionRunning: { id: "session.permission.sessionRunning", message: "Session is running" },
-  permissionStopBefore: {
-    id: "session.permission.stopBeforeChange",
-    message: "Stop the session before changing its permission mode.",
-  },
-  permissionStopBeforeInline: {
-    id: "session.permission.stopBeforeChange.inline",
-    message: "Stop the session before changing permission mode.",
-  },
 
   // quick-actions.tsx
   qaClose: { id: "prompt.quickActions.close", message: "Close quick actions" },

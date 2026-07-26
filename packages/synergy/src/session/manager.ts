@@ -477,6 +477,7 @@ export namespace SessionManager {
     if (isRunning(sessionID)) return
     if (!(await SessionInbox.hasRunnableItem(sessionID))) return
     const { SessionInvoke } = await import("./invoke")
+    await SessionInvoke.repairAfterAbort(sessionID)
     await SessionInvoke.loop(sessionID)
   }
 

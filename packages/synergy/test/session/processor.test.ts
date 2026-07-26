@@ -280,6 +280,26 @@ describe("SessionProcessor stream lifecycle", () => {
   }
 })
 
+describe("SessionProcessor terminal assistant persistence", () => {
+  test("persists stream failures with the canonical error finish", async () => {
+    let persisted: MessageV2.Assistant | undefined
+
+    await runSettlementScenario({
+      messageID: "msg_terminal_stream_failure",
+      updateMessage(message) {
+        persisted = structuredClone(message)
+      },
+      async *stream() {
+        yield await Promise.reject(new Error("stream failed after assistant creation"))
+      },
+    })
+
+    expect(persisted?.error).toBeDefined()
+    expect(persisted?.finish).toBe("error")
+    expect(persisted?.time.completed).toBeNumber()
+  })
+})
+
 describe("SessionProcessor execution layering", () => {
   test("releases the Agent stream before starting a proposed tool", async () => {
     let streamDisposed = false
