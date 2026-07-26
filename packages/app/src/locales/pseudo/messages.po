@@ -16413,6 +16413,38 @@ msgid "settings.runtime.observ.page.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.found"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.missing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.path"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.inherited"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.login"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.warning"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.observ.watcher.desc"
 msgstr ""
 

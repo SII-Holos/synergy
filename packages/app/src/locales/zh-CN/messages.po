@@ -16413,6 +16413,38 @@ msgid "settings.runtime.observ.page.title"
 msgstr "可观测性"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.found"
+msgstr "已解析"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.missing"
+msgstr "未找到"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.desc"
+msgstr "Desktop Managed Server 启动时一次性捕获的环境。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.path"
+msgstr "实际 PATH"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.inherited"
+msgstr "Desktop 进程"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.login"
+msgstr "登录 Shell"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.title"
+msgstr "Desktop Shell 环境"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.warning"
+msgstr "无法读取登录 Shell 的 PATH，因此正在使用 Desktop 进程的 PATH。"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.observ.watcher.desc"
 msgstr "文件监视器应跳过的模式，每行一个。"
 

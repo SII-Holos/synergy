@@ -603,6 +603,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     observability: () => (
       <ObservabilityPanel
         runtime={settings.runtime}
+        shellEnvironment={desktopServerStatus()?.shellEnvironment}
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
     ),

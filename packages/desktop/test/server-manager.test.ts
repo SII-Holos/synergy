@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import net from "node:net"
-import { findAvailablePort, terminateServerProcess } from "../src/server-manager.js"
+import { buildManagedServerEnv, findAvailablePort, terminateServerProcess } from "../src/server-manager.js"
 
 describe("desktop server manager", () => {
   test("allocates a usable localhost port", async () => {
@@ -14,6 +14,37 @@ describe("desktop server manager", () => {
       })
     })
     expect(port).toBeGreaterThan(0)
+  })
+
+  test("overrides only PATH when building the managed server environment", () => {
+    expect(
+      buildManagedServerEnv(
+        {
+          HOME: "/Users/example",
+          PATH: "/usr/bin:/bin",
+          SECRET_FROM_DESKTOP: "preserved-inherited-value",
+        },
+        {
+          source: "login-shell",
+          shell: "/bin/zsh",
+          path: "/opt/homebrew/bin:/usr/bin:/bin",
+          commands: [],
+          warning: null,
+        },
+        {
+          channel: "stable",
+          parentPid: 42,
+          cwd: "/Users/example",
+        },
+      ),
+    ).toEqual({
+      HOME: "/Users/example",
+      PATH: "/opt/homebrew/bin:/usr/bin:/bin",
+      SECRET_FROM_DESKTOP: "preserved-inherited-value",
+      SYNERGY_CWD: "/Users/example",
+      SYNERGY_DESKTOP_CHANNEL: "stable",
+      SYNERGY_DESKTOP_PARENT_PID: "42",
+    })
   })
 
   test.skipIf(process.platform === "win32")("force kills a managed server that ignores SIGTERM", async () => {
