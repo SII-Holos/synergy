@@ -69,7 +69,7 @@ export function decideSessionTransitionHandoff(input: {
 }
 
 export function recoverSessionTransitionHandoff(input: {
-  messages: ReadonlyArray<Pick<HandoffMessage, "id">>
+  messages: ReadonlyArray<Pick<HandoffMessage, "id">> | undefined
   inbox: ReadonlyArray<HandoffInboxItem> | undefined
 }):
   | {
@@ -79,7 +79,7 @@ export function recoverSessionTransitionHandoff(input: {
       workspaceSelection?: NewSessionWorkspaceSelection
     }
   | undefined {
-  if (input.messages.length > 0 || input.inbox === undefined) return
+  if (input.messages === undefined || input.messages.length > 0 || input.inbox === undefined) return
   const candidates = input.inbox.filter(
     (item) =>
       item.id &&

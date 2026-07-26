@@ -564,7 +564,7 @@ function SessionPageContent() {
     const sessionID = params.id
     if (!sessionID || visibleSessionTransitionEntry()) return
     const recovered = recoverSessionTransitionHandoff({
-      messages: messages(),
+      messages: sync.data.message[sessionID],
       inbox: sync.data.inbox[sessionID],
     })
     if (!recovered) return
