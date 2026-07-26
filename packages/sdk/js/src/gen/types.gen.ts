@@ -10834,6 +10834,7 @@ export type SessionUpdateData = {
     title?: string
     pinned?: number
     controlProfile?: "guarded" | "autonomous" | "full_access"
+    resolvePendingPermissions?: boolean
     completionNotice?: {
       unread: false
     }

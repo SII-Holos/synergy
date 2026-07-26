@@ -642,15 +642,6 @@ export namespace ToolResolver {
     // metadata only; its .action is discarded.
     const decision = { ...policyDecision, action: envelope.decision }
 
-    if (profile.profileId === "full_access" && decision.action !== "allow") {
-      await setApprovalMetadata(
-        ctx,
-        ApprovalPolicy.metadata(approval, { ...decision, action: "allow" }, "auto_allowed"),
-      )
-      if (toolName === "bash") markShellSandboxBypass(ctx)
-      return
-    }
-
     // Profile already permits the operation — no need for Smart allow.
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
@@ -912,21 +903,20 @@ export namespace ToolResolver {
 
   function contextFactory(input: Input) {
     return (args: any, options: ToolCallOptions): Tool.Context => {
+      const resolveCurrentProfile = async (): Promise<ResolvedProfile> => {
+        const profileId = await Session.resolveEffectiveControlProfile({
+          sessionID: input.session?.id,
+          agentControlProfile: input.agent.controlProfile,
+        })
+        const workspaceInfo = ScopeContext.current.workspace
+        return ControlProfileCompiler.resolve(profileId, {
+          workspace: ScopeContext.current.directory,
+          workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+        })
+      }
       let profilePromise: Promise<ResolvedProfile> | undefined
       const resolvedProfile = async (): Promise<ResolvedProfile> => {
-        if (!profilePromise) {
-          profilePromise = (async () => {
-            const profileId = await Session.resolveEffectiveControlProfile({
-              sessionID: input.session?.id,
-              agentControlProfile: input.agent.controlProfile,
-            })
-            const workspaceInfo = ScopeContext.current.workspace
-            return ControlProfileCompiler.resolve(profileId, {
-              workspace: ScopeContext.current.directory,
-              workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            })
-          })()
-        }
+        profilePromise ??= resolveCurrentProfile()
         return profilePromise
       }
       const match = input.processor.partFromToolCall(options.toolCallId)
@@ -975,6 +965,7 @@ export namespace ToolResolver {
               ctx,
               ApprovalPolicy.metadata(profile.approval, { ...decision, action: "allow" }, "auto_allowed"),
             )
+            rememberShellApproval(ctx, req.permission, requestMetadata)
             return
           }
 
@@ -996,6 +987,15 @@ export namespace ToolResolver {
           await setApprovalMetadata(ctx, ApprovalPolicy.metadata(profile.approval, decision, "pending_user"))
           const forcedAsk = [{ permission: req.permission, pattern: "*", action: "ask" as const }]
           try {
+            const freshProfile = await resolveCurrentProfile()
+            if (freshProfile.summary?.profileId === "full_access") {
+              await setApprovalMetadata(
+                ctx,
+                ApprovalPolicy.metadata(freshProfile.approval, { ...decision, action: "allow" }, "auto_allowed"),
+              )
+              rememberShellApproval(ctx, req.permission, requestMetadata)
+              return
+            }
             await PermissionNext.ask({
               ...req,
               sessionID: input.sessionID,

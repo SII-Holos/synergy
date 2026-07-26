@@ -452,6 +452,7 @@ export const SessionRoute = new Hono()
         title: z.string().optional(),
         pinned: z.number().optional(),
         controlProfile: ControlProfileId.optional(),
+        resolvePendingPermissions: z.boolean().optional(),
         completionNotice: z
           .object({
             unread: z.literal(false),
@@ -478,17 +479,6 @@ export const SessionRoute = new Hono()
       const sessionID = c.req.valid("param").sessionID
       const updates = c.req.valid("json")
 
-      const hasOtherUpdates =
-        updates.title !== undefined ||
-        updates.pinned !== undefined ||
-        updates.controlProfile !== undefined ||
-        updates.time?.archived !== undefined ||
-        updates.modelOverride !== undefined
-
-      if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
-        return c.json(await Session.clearCompletionNotice(sessionID))
-      }
-
       const applyOtherUpdates = (session: Session.Info) => {
         if (updates.title !== undefined) session.title = updates.title
         if (updates.pinned !== undefined) session.pinned = updates.pinned
@@ -498,6 +488,31 @@ export const SessionRoute = new Hono()
           session.completionNotice.unreadCount = 0
         }
         if (updates.modelOverride !== undefined) session.modelOverride = updates.modelOverride ?? undefined
+      }
+
+      if (updates.resolvePendingPermissions === true) {
+        if (updates.controlProfile !== "full_access") {
+          return c.json(
+            {
+              name: "BadRequestError",
+              message: "resolvePendingPermissions requires controlProfile: full_access",
+            },
+            400,
+          )
+        }
+        const result = await Session.transitionControlProfileAndResolve(sessionID, "full_access", applyOtherUpdates)
+        return c.json(result)
+      }
+
+      const hasOtherUpdates =
+        updates.title !== undefined ||
+        updates.pinned !== undefined ||
+        updates.controlProfile !== undefined ||
+        updates.time?.archived !== undefined ||
+        updates.modelOverride !== undefined
+
+      if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
+        return c.json(await Session.clearCompletionNotice(sessionID))
       }
 
       const updatedSession =
