@@ -28,8 +28,9 @@ export async function validateLocalArtifacts(platformPackageNames: string[]) {
   )
   if (smokeTarget) {
     const smokeBinary = smokeTarget.includes("windows") ? "./bin/synergy.exe" : "./bin/synergy"
+    const playwrightRuntimeCheck = "__browser-playwright-runtime-check"
     await $`${smokeBinary} --version`.cwd(path.join(SYNERGY_DIST_DIR, smokeTarget))
-    await $`${smokeBinary} __browser-playwright-runtime-check`.cwd(path.join(SYNERGY_DIST_DIR, smokeTarget))
+    await $`${smokeBinary} ${playwrightRuntimeCheck}`.cwd(path.join(SYNERGY_DIST_DIR, smokeTarget))
   }
 
   for (const name of platformPackageNames) {
