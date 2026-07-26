@@ -21,10 +21,6 @@ interface PlaywrightBrowsers {
 }
 
 const MAX_ARCHIVE_BYTES = 500 * 1024 * 1024
-const PLAYWRIGHT_DOWNLOAD_ORIGINS = [
-  "https://cdn.playwright.dev/dbazure/download/playwright",
-  "https://playwright.download.prss.microsoft.com/dbazure/download/playwright",
-]
 const releaseDir = path.resolve(process.argv[2] ?? "release/chromium")
 const packageJson = JSON.parse(await fs.readFile(path.resolve("package.json"), "utf8")) as { version: string }
 const version = process.env.SYNERGY_VERSION?.trim() || packageJson.version
@@ -48,7 +44,7 @@ await fs.mkdir(releaseDir, { recursive: true })
 for (const arch of arches) {
   const target = chromiumReleaseTarget(platform, arch, chromium.browserVersion, chromium.revision)
   if (!target) throw new Error(`Chromium release target is unavailable for ${platform} ${arch}.`)
-  const artifact = await inspectArtifact(target.path)
+  const artifact = await inspectArtifact(target.urls)
   const manifest = ChromiumManifestSchema.parse({
     version,
     platform,
@@ -69,10 +65,9 @@ for (const arch of arches) {
   ])
 }
 
-async function inspectArtifact(artifactPath: string): Promise<{ url: string; sha256: string; size: number }> {
+async function inspectArtifact(urls: readonly string[]): Promise<{ url: string; sha256: string; size: number }> {
   const failures: string[] = []
-  for (const origin of PLAYWRIGHT_DOWNLOAD_ORIGINS) {
-    const url = `${origin}/${artifactPath}`
+  for (const url of urls) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(10 * 60_000) })
       if (!response.ok || !response.body) {
