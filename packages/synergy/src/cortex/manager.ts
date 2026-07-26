@@ -264,6 +264,9 @@ export namespace Cortex {
       draft.cortex.deliveryNotifiedAt = undefined
       draft.cortex.owner = input.owner
       draft.cortex.timeoutMs = input.timeoutMs
+      draft.cortex.tools = input.tools
+      draft.cortex.outputConfig = input.output
+      draft.cortex.visibility = input.visibility
     })
     taskBudgets.set(taskID, {
       maxOutputTokens: input.maxOutputTokens,

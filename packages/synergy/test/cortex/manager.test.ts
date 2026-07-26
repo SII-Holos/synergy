@@ -198,6 +198,56 @@ describe.serial("Cortex", () => {
     })
   })
 
+  describe("prepare", () => {
+    test("persists revised task controls when reusing a terminal child session", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({})
+          const parentMessageID = Identifier.ascending("message")
+          const child = await Session.create({
+            parentID: parent.id,
+            cortex: {
+              taskID: "ctx_previous_task",
+              parentSessionID: parent.id,
+              parentMessageID,
+              description: "Previous task",
+              agent: "developer",
+              status: "completed",
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+              tools: { bash: true },
+              visibility: "visible",
+            },
+          })
+
+          const task = await Cortex.prepare({
+            description: "Terminal tool recovery",
+            prompt: "Call the terminal tool",
+            agent: "developer",
+            executionRole: "delegated_subagent",
+            parentSessionID: parent.id,
+            parentMessageID,
+            sessionID: child.id,
+            tools: { "*": false, terminal_tool: true },
+            output: { mode: "final_response" },
+            visibility: "hidden",
+          })
+
+          const persisted = await Session.get(child.id)
+          expect(persisted.cortex?.taskID).toBe(task.id)
+          expect(persisted.cortex?.status).toBe("queued")
+          expect(persisted.cortex?.tools).toEqual({ "*": false, terminal_tool: true })
+          expect(persisted.cortex?.outputConfig).toEqual({ mode: "final_response" })
+          expect(persisted.cortex?.visibility).toBe("hidden")
+
+          await Cortex.cancel(task.id)
+        },
+      })
+    })
+  })
+
   describe("list", () => {
     test("returns empty array when no tasks", () => {
       const tasks = Cortex.list()

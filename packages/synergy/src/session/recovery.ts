@@ -364,14 +364,17 @@ export namespace SessionRecovery {
         if (!stopRequest) continue
         if (stopRequest.reviewSessionID) {
           const reviewer = sessionsByID.get(stopRequest.reviewSessionID)
-          if (reviewer?.cortex?.status !== "interrupted") continue
-          await Session.update(session.id, (draft) => {
-            if (draft.workflow?.kind !== "lightloop") return
-            const current = draft.workflow.stopRequest
-            if (!current || current.reviewSessionID !== stopRequest.reviewSessionID) return
-            current.reviewTaskID = undefined
-            current.reviewSessionID = undefined
-          })
+          if (reviewer?.cortex?.status === "interrupted") {
+            await Session.update(session.id, (draft) => {
+              if (draft.workflow?.kind !== "lightloop") return
+              const current = draft.workflow.stopRequest
+              if (!current || current.reviewSessionID !== stopRequest.reviewSessionID) return
+              current.reviewTaskID = undefined
+              current.reviewSessionID = undefined
+            })
+          } else if (reviewer?.cortex?.status !== "completed") {
+            continue
+          }
         }
         pending.set(session.id, session)
       }
@@ -380,13 +383,16 @@ export namespace SessionRecovery {
         if (!loop.stopRequest) continue
         if (loop.status === "auditing" && loop.auditSessionID) {
           const reviewer = sessionsByID.get(loop.auditSessionID)
-          if (reviewer?.cortex?.status !== "interrupted") continue
-          await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
-            status: "running",
-            auditSessionID: null,
-            auditTaskID: null,
-            stopRequest: loop.stopRequest,
-          })
+          if (reviewer?.cortex?.status === "interrupted") {
+            await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+              status: "running",
+              auditSessionID: null,
+              auditTaskID: null,
+              stopRequest: loop.stopRequest,
+            })
+          } else if (reviewer?.cortex?.status !== "completed") {
+            continue
+          }
         } else if (loop.status !== "running") {
           continue
         }

@@ -4,16 +4,35 @@ import { Cortex } from "../cortex"
 import { Session } from "./index"
 import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "../blueprint"
 import { ContinuationKernel } from "./continuation-kernel"
+import { ReviewToolRecovery } from "./review-tool-recovery"
+
+const BLUEPRINT_APPROVE_TOOL = "blueprint_loop_approve"
+const BLUEPRINT_REJECT_TOOL = "blueprint_loop_reject"
 
 export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
   id: "blueprint_loop",
   priority: 100,
+  async revisionKey(gate) {
+    const loopID = gate.session.blueprint?.loopID
+    if (!loopID) return gate.terminalMessageID
+    const loop = await BlueprintLoopStore.get(gate.scopeID, loopID).catch(() => undefined)
+    if (!loop) return gate.terminalMessageID
+    return [
+      gate.terminalMessageID,
+      loop.status,
+      loop.stopRequest?.requesterMessageID ?? "no-stop-request",
+      loop.auditTaskID ?? "no-audit-task",
+      loop.stopRequest?.reviewToolRecoveryAttempts ?? 0,
+    ].join("|")
+  },
   async handle(gate) {
     const loopID = gate.session.blueprint?.loopID
     if (!loopID) return undefined
 
     const loop = await BlueprintLoopStore.get(gate.scopeID, loopID).catch(() => undefined)
-    if (!loop || loop.status !== "running") return undefined
+    if (!loop) return undefined
+    if (loop.status === "auditing") return recoverCompletedReviewer(gate.scopeID, loop)
+    if (loop.status !== "running") return undefined
     if (!loop.stopRequest) return continuationProposal(loop)
 
     const task = await Cortex.prepare({
@@ -41,6 +60,64 @@ export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
     await Cortex.start(task.id)
     return { kind: "handled" }
   },
+}
+
+async function recoverCompletedReviewer(
+  scopeID: string,
+  loop: BlueprintLoopInfo,
+): Promise<ContinuationKernel.PolicyResult> {
+  const stopRequest = loop.stopRequest
+  const auditSessionID = loop.auditSessionID
+  const auditTaskID = loop.auditTaskID
+  if (!stopRequest || !auditSessionID || !auditTaskID) return undefined
+
+  const reviewer = await Session.get(auditSessionID).catch(() => undefined)
+  if (!reviewer?.cortex || reviewer.cortex.taskID !== auditTaskID || reviewer.cortex.status !== "completed") {
+    return undefined
+  }
+
+  const attempts = stopRequest.reviewToolRecoveryAttempts ?? 0
+  if (attempts >= ReviewToolRecovery.MAX_ATTEMPTS) {
+    await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+      status: "failed",
+      error: ReviewToolRecovery.exhaustedError(attempts),
+    })
+    return { kind: "handled" }
+  }
+
+  const nextAttempt = attempts + 1
+  const task = await Cortex.prepare({
+    description: `[Review Recovery ${nextAttempt}] Audit BlueprintLoop ${loop.id}`,
+    prompt: ReviewToolRecovery.prompt({
+      executionSessionID: loop.sessionID,
+      approveTool: BLUEPRINT_APPROVE_TOOL,
+      rejectTool: BLUEPRINT_REJECT_TOOL,
+      attempt: nextAttempt,
+    }),
+    agent: loop.auditAgent || "supervisor",
+    executionRole: "delegated_subagent",
+    category: "general",
+    parentSessionID: loop.sessionID,
+    parentMessageID: stopRequest.requesterMessageID,
+    sessionID: auditSessionID,
+    tools: ReviewToolRecovery.tools(BLUEPRINT_APPROVE_TOOL, BLUEPRINT_REJECT_TOOL),
+    reuseInterrupted: true,
+    notifyParentOnComplete: false,
+    visibility: "visible",
+  })
+  try {
+    await BlueprintLoopStore.recordAuditToolRecovery(scopeID, loop.id, {
+      auditSessionID,
+      expectedAuditTaskID: auditTaskID,
+      auditTaskID: task.id,
+      attempts: nextAttempt,
+    })
+  } catch (error) {
+    await Cortex.cancel(task.id).catch(() => undefined)
+    throw error
+  }
+  await Cortex.start(task.id)
+  return { kind: "handled" }
 }
 
 function reviewPrompt(loop: BlueprintLoopInfo): string {
