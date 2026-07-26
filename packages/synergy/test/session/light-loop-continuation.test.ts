@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { Cortex } from "../../src/cortex"
 import { Session } from "../../src/session"
+import { SessionInbox } from "../../src/session/inbox"
 import { LightLoopContinuationPolicy } from "../../src/session/light-loop-continuation"
 import type { ContinuationKernel } from "../../src/session/continuation-kernel"
 import type { Info as SessionInfo } from "../../src/session/types"
+import { ScopeContext } from "../../src/scope/context"
+import { tmpdir } from "../fixture/fixture"
 
 const originalPrepare = (Cortex as any).prepare
 const originalStart = (Cortex as any).start
@@ -151,5 +154,238 @@ describe("LightLoopContinuationPolicy", () => {
 
     expect(proposal).toEqual({ kind: "handled" })
     expect(order).toEqual(["prepare", "bind", "start"])
+  })
+
+  test("reuses a completed reviewer that omitted the terminal review tool", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execution = await Session.create({})
+        const requesterMessageID = "msg_review_request"
+        const reviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            taskID: "ctx_completed_review",
+            parentSessionID: execution.id,
+            parentMessageID: requesterMessageID,
+            description: "Review LightLoop",
+            agent: "lightloop-reviewer",
+            status: "completed",
+            startedAt: Date.now(),
+            completedAt: Date.now(),
+          },
+        })
+        await Session.update(execution.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Write unit tests",
+            status: "reviewing",
+            stopRequest: {
+              summary: "done",
+              requestedAt: Date.now(),
+              requesterSessionID: execution.id,
+              requesterMessageID,
+              reviewTaskID: "ctx_completed_review",
+              reviewSessionID: reviewer.id,
+            },
+          }
+        })
+        ;(Cortex as any).prepare = mock(async (input: any) => {
+          expect(input.sessionID).toBe(reviewer.id)
+          expect(input.parentSessionID).toBe(execution.id)
+          expect(input.parentMessageID).toBe(requesterMessageID)
+          expect(input.reuseInterrupted).toBe(true)
+          expect(input.tools).toEqual({
+            "*": false,
+            light_loop_approve: true,
+            light_loop_reject: true,
+          })
+          expect(input.prompt).toContain(`Execution session ID: ${execution.id}`)
+          expect(input.prompt).toContain("Do not search for sessions")
+          return { id: "ctx_recovery_review", sessionID: reviewer.id, status: "queued" }
+        })
+        ;(Cortex as any).start = mock(async (taskID: string) => {
+          expect(taskID).toBe("ctx_recovery_review")
+        })
+
+        const proposal = await LightLoopContinuationPolicy.handle(gate(await Session.get(execution.id)))
+
+        expect(proposal).toEqual({ kind: "handled" })
+        const recovered = await Session.get(execution.id)
+        if (recovered.workflow?.kind !== "lightloop") throw new Error("expected LightLoop workflow")
+        expect(recovered.workflow.stopRequest?.reviewSessionID).toBe(reviewer.id)
+        expect(recovered.workflow.stopRequest?.reviewTaskID).toBe("ctx_recovery_review")
+        expect(recovered.workflow.stopRequest?.reviewToolRecoveryAttempts).toBe(1)
+      },
+    })
+  })
+
+  test("terminalizes after the bounded terminal-tool recovery budget is exhausted", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execution = await Session.create({})
+        const requesterMessageID = "msg_review_request"
+        const reviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            taskID: "ctx_exhausted_review",
+            parentSessionID: execution.id,
+            parentMessageID: requesterMessageID,
+            description: "Review LightLoop",
+            agent: "lightloop-reviewer",
+            status: "completed",
+            startedAt: Date.now(),
+            completedAt: Date.now(),
+          },
+        })
+        await Session.update(execution.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Write unit tests",
+            status: "reviewing",
+            stopRequest: {
+              summary: "done",
+              requestedAt: Date.now(),
+              requesterSessionID: execution.id,
+              requesterMessageID,
+              reviewTaskID: "ctx_exhausted_review",
+              reviewSessionID: reviewer.id,
+              reviewToolRecoveryAttempts: 2,
+            },
+          }
+        })
+        const prepare = mock(async () => {
+          throw new Error("recovery must not relaunch after exhaustion")
+        })
+        ;(Cortex as any).prepare = prepare
+
+        const proposal = await LightLoopContinuationPolicy.handle(gate(await Session.get(execution.id)))
+
+        expect(proposal).toEqual({ kind: "handled" })
+        expect(prepare).not.toHaveBeenCalled()
+        expect((await Session.get(execution.id)).workflow).toBeUndefined()
+      },
+    })
+  })
+  test.each(["error", "cancelled"] as const)(
+    "retries when reviewer is %s by consuming recovery budget",
+    async (status) => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const execution = await Session.create({})
+          const requesterMessageID = "msg_review_request"
+          const reviewer = await Session.create({
+            parentID: execution.id,
+            cortex: {
+              taskID: "ctx_errored_review",
+              parentSessionID: execution.id,
+              parentMessageID: requesterMessageID,
+              description: "Review LightLoop",
+              agent: "lightloop-reviewer",
+              status,
+              ...(status === "error" ? { error: "some crash" } : {}),
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+            },
+          })
+          await Session.update(execution.id, (draft) => {
+            draft.workflow = {
+              kind: "lightloop",
+              instructions: "Write unit tests",
+              status: "reviewing",
+              stopRequest: {
+                summary: "done",
+                requestedAt: Date.now(),
+                requesterSessionID: execution.id,
+                requesterMessageID,
+                reviewTaskID: "ctx_errored_review",
+                reviewSessionID: reviewer.id,
+              },
+            }
+          })
+          ;(Cortex as any).prepare = mock(async (input: any) => {
+            expect(input.sessionID).toBe(reviewer.id)
+            expect(input.parentSessionID).toBe(execution.id)
+            expect(input.parentMessageID).toBe(requesterMessageID)
+            expect(input.reuseInterrupted).toBe(true)
+            return { id: "ctx_recovery_review", sessionID: reviewer.id, status: "queued" }
+          })
+          ;(Cortex as any).start = mock(async () => {})
+
+          const proposal = await LightLoopContinuationPolicy.handle(gate(await Session.get(execution.id)))
+
+          expect(proposal).toEqual({ kind: "handled" })
+          const recovered = await Session.get(execution.id)
+          if (recovered.workflow?.kind !== "lightloop") throw new Error("expected LightLoop workflow")
+          expect(recovered.workflow.stopRequest?.reviewSessionID).toBe(reviewer.id)
+          expect(recovered.workflow.stopRequest?.reviewTaskID).toBe("ctx_recovery_review")
+          expect(recovered.workflow.stopRequest?.reviewToolRecoveryAttempts).toBe(1)
+        },
+      })
+    },
+  )
+
+  test("delivers an inbox failure message when non-plugin Light Loop review recovery is exhausted", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execution = await Session.create({})
+        const requesterMessageID = "msg_review_request"
+        const reviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            taskID: "ctx_exhausted_review",
+            parentSessionID: execution.id,
+            parentMessageID: requesterMessageID,
+            description: "Review LightLoop",
+            agent: "lightloop-reviewer",
+            status: "completed",
+            startedAt: Date.now(),
+            completedAt: Date.now(),
+          },
+        })
+        await Session.update(execution.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Write unit tests",
+            status: "reviewing",
+            stopRequest: {
+              summary: "done",
+              requestedAt: Date.now(),
+              requesterSessionID: execution.id,
+              requesterMessageID,
+              reviewTaskID: "ctx_exhausted_review",
+              reviewSessionID: reviewer.id,
+              reviewToolRecoveryAttempts: 2,
+            },
+          }
+        })
+        const prepare = mock(async () => {
+          throw new Error("recovery must not relaunch after exhaustion")
+        })
+        ;(Cortex as any).prepare = prepare
+
+        const proposal = await LightLoopContinuationPolicy.handle(gate(await Session.get(execution.id)))
+
+        expect(proposal).toEqual({ kind: "handled" })
+        expect(prepare).not.toHaveBeenCalled()
+        expect((await Session.get(execution.id)).workflow).toBeUndefined()
+
+        const messages = await Session.messages({ sessionID: execution.id })
+        const failure = messages.find((message) => message.info.metadata?.source === "light_loop_exhaustion")
+        expect(failure?.info.role).toBe("assistant")
+        const part = failure?.parts[0]
+        expect(part?.type).toBe("text")
+        if (part?.type !== "text") throw new Error("expected failure text")
+        expect(part.text).toContain("review_terminal_tool_missing")
+        expect(await SessionInbox.list(execution.id)).toEqual([])
+      },
+    })
   })
 })

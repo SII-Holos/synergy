@@ -111,6 +111,7 @@ export const WorkflowInfo = z
           requesterMessageID: z.string(),
           reviewTaskID: z.string().optional(),
           reviewSessionID: z.string().optional(),
+          reviewToolRecoveryAttempts: z.number().int().nonnegative().optional(),
         })
         .optional(),
       review: z

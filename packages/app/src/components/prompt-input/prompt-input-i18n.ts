@@ -288,15 +288,6 @@ export const PI = {
   // permission-selector.tsx
   permissionMode: { id: "session.permission.title", message: "Permission mode" },
   permissionModeAria: { id: "session.permission.ariaLabel", message: "{mode} permission mode" },
-  permissionRunning: { id: "session.permission.sessionRunning", message: "Session is running" },
-  permissionStopBefore: {
-    id: "session.permission.stopBeforeChange",
-    message: "Stop the session before changing its permission mode.",
-  },
-  permissionStopBeforeInline: {
-    id: "session.permission.stopBeforeChange.inline",
-    message: "Stop the session before changing permission mode.",
-  },
 
   // quick-actions.tsx
   qaClose: { id: "prompt.quickActions.close", message: "Close quick actions" },

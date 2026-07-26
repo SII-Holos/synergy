@@ -24,6 +24,7 @@ export const Info = z
         requestedAt: z.number(),
         requesterSessionID: z.string(),
         requesterMessageID: z.string(),
+        reviewToolRecoveryAttempts: z.number().int().nonnegative().optional(),
       })
       .optional(),
     scopeID: z.string(),

@@ -90,6 +90,29 @@ Explicit denials and hard boundaries are not bypassed by preauthorization. Deny 
 
 In `guarded`, unresolved asks can be presented to the user. A response can authorize once, for the session, always, or reject. In `autonomous`, an ask is converted to a policy denial rather than waiting for a user who may never be present.
 
+## Live Profile Transitions
+
+A user can change the effective control profile of an active session without stopping execution. The agent cannot escalate its own privileges.
+
+### User-initiated transition
+
+The frontend keeps the permission-mode selector available while the session is running. A PATCH request to `/session/:sessionID` with `controlProfile: "full_access"` and `resolvePendingPermissions: true` performs an ordered transition:
+
+1. The explicit `full_access` profile is persisted on the session before any other side effect.
+2. All inheriting descendant sessions are identified — sessions whose effective profile resolves through the target session because they have no explicit profile of their own.
+3. Eligible pending permission asks for the target session and its inheriting descendants are resolved with `once` semantics (one-time approval of the specific operation). This does not create persistent user or session permission rules.
+4. Hard denials and Policy Worker infrastructure failures never enter the pending approval flow and remain denials. As defense in depth, any pending request marked non-bypassable is not auto-resolved.
+
+### Agent-facing tool remains idle-only
+
+The `session_control.set_control_profile` tool used by agents still requires an idle session (`SessionManager.assertIdle`). A running agent cannot self-escalate or trigger pending-ask resolution.
+
+### Behavior boundaries
+
+- In-flight tool execution already admitted under the previous control profile continues unchanged. Later permission decisions see the new profile.
+- `full_access` authorizes every classified capability encountered from the transition point onward, but it does not retroactively convert validation errors, missing files, operating-system failures, test failures, hooks, or network errors into success.
+- Pending-ask resolution covers only the target session and descendant sessions that inherit its profile. Sessions with their own explicit profile override are not affected.
+
 ## SmartAllow
 
 SmartAllow is a constrained policy assistant, not a second permission system. It runs only for eligible capabilities and must clear a confidence threshold. Interactive asks require at least `0.85`; eligible autonomous soft denials require at least `0.90`.

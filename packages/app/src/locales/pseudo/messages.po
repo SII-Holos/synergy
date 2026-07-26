@@ -11010,6 +11010,10 @@ msgid "session-turn.model-unavailable"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-variant-unavailable"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
 msgstr ""
 
@@ -11862,27 +11866,6 @@ msgstr ""
 msgid "session.permission.mode.guarded.short"
 msgstr ""
 
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.sessionRunning"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.stopBeforeChange"
-msgstr ""
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "session.permission.stopBeforeChange.inline"
-msgstr ""
-
 #. permission-selector.tsx
 msgid "session.permission.title"
 msgstr ""
@@ -12248,6 +12231,21 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rewind.requestFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retry"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retryFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rewind.retrying"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -16417,6 +16415,38 @@ msgstr ""
 
 #. Observability
 msgid "settings.runtime.observ.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.found"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.command.missing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.path"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.inherited"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.source.login"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.shell.warning"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -4,7 +4,9 @@ import process from "node:process"
 import { spawn } from "node:child_process"
 import { SynergyLinkHost } from "@ericsanchezok/synergy-link-protocol"
 
-const SIGKILL_TIMEOUT_MS = 200
+const SIGTERM_GRACE_MS = 1_000
+const SIGKILL_TIMEOUT_MS = 1_000
+const PROCESS_EXIT_POLL_MS = 10
 const ESC = "\u001b"
 
 export type ProcessEnv = Record<string, string | undefined>
@@ -97,16 +99,25 @@ export namespace Platform {
       return
     }
 
+    let processGroupSignaled = false
     try {
       process.kill(-pid, "SIGTERM")
-      await sleep(SIGKILL_TIMEOUT_MS)
-      if (!exited?.()) process.kill(-pid, "SIGKILL")
-      return
+      processGroupSignaled = true
     } catch {}
 
+    if (processGroupSignaled) {
+      if (await waitForExit(exited, SIGTERM_GRACE_MS)) return
+      try {
+        process.kill(-pid, "SIGKILL")
+      } catch {}
+      await waitForExit(exited, SIGKILL_TIMEOUT_MS)
+      return
+    }
+
     child.kill("SIGTERM")
-    await sleep(SIGKILL_TIMEOUT_MS)
-    if (!exited?.()) child.kill("SIGKILL")
+    if (await waitForExit(exited, SIGTERM_GRACE_MS)) return
+    child.kill("SIGKILL")
+    await waitForExit(exited, SIGKILL_TIMEOUT_MS)
   }
 
   export function encodeKeySequence(keys: string[]): { data: string; warnings: string[] } {
@@ -154,6 +165,21 @@ function encodeKeyToken(raw: string, warnings: string[]): string {
     warnings.push(`Unknown key \"${parsed.base}\" for modifiers; sending literal.`)
   }
   return parsed.base
+}
+
+async function waitForExit(exited: (() => boolean) | undefined, timeoutMs: number): Promise<boolean> {
+  if (!exited) {
+    await Platform.sleep(timeoutMs)
+    return false
+  }
+
+  const deadline = Date.now() + timeoutMs
+  while (!exited()) {
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) return exited()
+    await Platform.sleep(Math.min(PROCESS_EXIT_POLL_MS, remainingMs))
+  }
+  return true
 }
 
 function parseModifiers(token: string) {

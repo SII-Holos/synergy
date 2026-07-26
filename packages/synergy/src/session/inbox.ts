@@ -23,6 +23,7 @@ import type { Info } from "./types"
 import type { SessionManager } from "./manager"
 import { SessionHistory } from "./history"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
+import { SessionRootVariant } from "./root-variant"
 
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
@@ -185,12 +186,13 @@ export namespace SessionInbox {
   }
 
   function publicItem(item: StoredItem): Item {
+    const message = item.mode === "task" || !item.message ? item.message : { ...item.message, variant: undefined }
     return Item.parse({
       id: item.id,
       sessionID: item.sessionID,
       mode: item.mode,
       deliveryKey: item.deliveryKey,
-      message: item.message,
+      message,
       summaryPreview: item.summaryPreview,
       summary: item.summary,
       detail: item.detail,
@@ -322,7 +324,7 @@ export namespace SessionInbox {
   async function resolveUserRuntime(
     sessionID: string,
     payload: NonNullable<StoredItem["message"]>,
-  ): Promise<{ agent: string; model: { providerID: string; modelID: string } }> {
+  ): Promise<{ agent: Agent.Info; model: { providerID: string; modelID: string } }> {
     const session = await Session.get(sessionID).catch(() => undefined)
     let agentName = payload.agent ?? session?.agentOverride
     if (!agentName) {
@@ -339,7 +341,7 @@ export namespace SessionInbox {
     const inheritedModel = await lastModel(sessionID).catch(() => undefined)
     const model = payload.model ?? session?.modelOverride ?? (await Agent.getAvailableModel(agent)) ?? inheritedModel
     return {
-      agent: agent.name,
+      agent,
       model: model ?? { providerID: "system", modelID: "fallback" },
     }
   }
@@ -743,6 +745,9 @@ export namespace SessionInbox {
 
       const origin = payload.origin ?? { type: "user" as const }
       const runtime = await resolveUserRuntime(item.sessionID, payload)
+      const variant = isRoot
+        ? await SessionRootVariant.resolveForRoot({ explicit: payload.variant, ...runtime })
+        : undefined
       const summary =
         payload.summary?.title || payload.summary?.body
           ? {
@@ -758,7 +763,7 @@ export namespace SessionInbox {
         role: "user",
         sessionID: item.sessionID,
         time: { created: Date.now() },
-        agent: runtime.agent,
+        agent: runtime.agent.name,
         model: runtime.model,
         isRoot,
         ...(resolvedRootID ? { rootID: resolvedRootID } : {}),
@@ -775,7 +780,7 @@ export namespace SessionInbox {
         ...(summary ? { summary } : {}),
         ...(payload.system ? { system: payload.system } : {}),
         ...(payload.tools ? { tools: payload.tools } : {}),
-        ...(payload.variant ? { variant: payload.variant } : {}),
+        ...(variant ? { variant } : {}),
       }
       return SessionUserMessageMaterialization.write({ info, parts })
     }

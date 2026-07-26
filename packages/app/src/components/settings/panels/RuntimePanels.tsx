@@ -2,13 +2,14 @@ import type { MessageDescriptor } from "@lingui/core"
 
 import { useLingui } from "@lingui/solid"
 import type { Agent, CortexConcurrencyStatus } from "@ericsanchezok/synergy-sdk/client"
-import { For } from "solid-js"
+import { For, Show } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingRow } from "../components/SettingRow"
 import { SettingsStepScale } from "../components/SettingsStepScale"
-import { SettingsFieldGrid, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { SettingsFieldGrid, SettingsPage, SettingsPathRow, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
+import type { DesktopShellEnvironmentDiagnostics } from "@/context/platform"
 import { concurrencyPressureState } from "./runtime-concurrency-model"
 
 const managedByEnvLabel = { id: "settings.runtime.managedByEnv", message: "Managed by environment" }
@@ -160,6 +161,20 @@ const watcherRowDesc = {
   id: "settings.runtime.observ.watcher.desc",
   message: "Patterns the file watcher should skip, one per line.",
 }
+const shellSectionTitle = { id: "settings.runtime.observ.shell.title", message: "Desktop Shell Environment" }
+const shellSectionDesc = {
+  id: "settings.runtime.observ.shell.desc",
+  message: "Environment captured once when the Desktop managed server starts.",
+}
+const shellSourceLogin = { id: "settings.runtime.observ.shell.source.login", message: "Login shell" }
+const shellSourceInherited = { id: "settings.runtime.observ.shell.source.inherited", message: "Desktop process" }
+const shellFallbackWarning = {
+  id: "settings.runtime.observ.shell.warning",
+  message: "The login shell PATH could not be read, so the Desktop process PATH is being used.",
+}
+const shellPathLabel = { id: "settings.runtime.observ.shell.path", message: "Effective PATH" }
+const shellCommandFound = { id: "settings.runtime.observ.shell.command.found", message: "Resolved" }
+const shellCommandMissing = { id: "settings.runtime.observ.shell.command.missing", message: "Not found" }
 
 function withLabel(def: { value: string; label: MessageDescriptor }, _: (d: MessageDescriptor) => string) {
   return { value: def.value, label: _(def.label) }
@@ -450,6 +465,7 @@ export function TimeoutsPanel(props: {
 
 export function ObservabilityPanel(props: {
   runtime: RuntimeStore
+  shellEnvironment?: DesktopShellEnvironmentDiagnostics | null
   onRuntimeChange: (key: keyof RuntimeStore, value: string) => void
 }) {
   const { _ } = useLingui()
@@ -484,6 +500,28 @@ export function ObservabilityPanel(props: {
           }
         />
       </SettingsSection>
+      <Show when={props.shellEnvironment}>
+        {(environment) => (
+          <SettingsSection title={_(shellSectionTitle)} description={_(shellSectionDesc)}>
+            <SettingsPathRow
+              label={environment().shell ?? _(shellSourceInherited)}
+              path={environment().path}
+              status={environment().source === "login-shell" ? _(shellSourceLogin) : _(shellSourceInherited)}
+              description={environment().warning ? _(shellFallbackWarning) : _(shellPathLabel)}
+            />
+            <For each={environment().commands}>
+              {(command) => (
+                <SettingRow
+                  title={command.command}
+                  description={command.path ?? _(shellCommandMissing)}
+                  stateLabel={command.path ? _(shellCommandFound) : _(shellCommandMissing)}
+                  trailing={<span />}
+                />
+              )}
+            </For>
+          </SettingsSection>
+        )}
+      </Show>
     </SettingsPage>
   )
 }
