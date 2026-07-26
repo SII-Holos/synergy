@@ -13,6 +13,25 @@ export interface WorkbenchSurfaceState {
   resized?: boolean
 }
 
+export type WorkbenchSurfacesState = {
+  side?: WorkbenchSurfaceState
+  bottom?: WorkbenchSurfaceState
+}
+
+export function transferWorkbenchStateOnce(
+  surfaces: Record<string, WorkbenchSurfacesState | undefined>,
+  from: string,
+  to: string,
+) {
+  if (from === to) return
+  const source = surfaces[from]
+  if (!source) return
+  const target = surfaces[to]
+  const targetHasTabs = [target?.side, target?.bottom].some((surface) => (surface?.tabs?.length ?? 0) > 0)
+  if (!targetHasTabs) surfaces[to] = source
+  delete surfaces[from]
+}
+
 export interface OpenWorkbenchPanelInput {
   panelId: string
   cardinality: WorkbenchPanelCardinality

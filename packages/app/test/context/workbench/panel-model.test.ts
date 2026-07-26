@@ -5,6 +5,7 @@ import {
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
   resolveWorkbenchEscapeAction,
+  transferWorkbenchStateOnce,
   updateWorkbenchPanelTab,
 } from "../../../src/context/workbench/panel-model"
 
@@ -270,5 +271,40 @@ describe("workbench panel launchability", () => {
         cardinality: "multi",
       }),
     ).toBe(true)
+  })
+})
+
+describe("workbench state transfer", () => {
+  test("consumes draft state without overwriting a populated destination", () => {
+    const draft = {
+      side: { opened: true, active: "draft-file", tabs: [{ id: "draft-file", panelId: "file" }] },
+    }
+    const destination = {
+      side: { opened: true, active: "notes", tabs: [{ id: "notes", panelId: "notes" }] },
+    }
+    const surfaces = {
+      home: draft,
+      "home/session-1": destination,
+    }
+
+    transferWorkbenchStateOnce(surfaces, "home", "home/session-1")
+
+    expect(surfaces.home).toBeUndefined()
+    expect(surfaces["home/session-1"]).toBe(destination)
+  })
+
+  test("moves draft state into an empty destination exactly once", () => {
+    const draft = {
+      side: { opened: true, active: "draft-file", tabs: [{ id: "draft-file", panelId: "file" }] },
+    }
+    const surfaces: Record<string, typeof draft> = { home: draft }
+
+    transferWorkbenchStateOnce(surfaces, "home", "home/session-1")
+
+    expect(surfaces.home).toBeUndefined()
+    expect(surfaces["home/session-1"]).toBe(draft)
+
+    transferWorkbenchStateOnce(surfaces, "home", "home/session-2")
+    expect(surfaces["home/session-2"]).toBeUndefined()
   })
 })

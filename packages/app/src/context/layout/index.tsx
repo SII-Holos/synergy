@@ -13,7 +13,7 @@ import { createScrollPersistence, type SessionScroll } from "./scroll"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { computeDefaultWorkspaceWidth } from "./workspace"
 import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
-import type { WorkbenchSurfaceState } from "../workbench/panel-model"
+import { transferWorkbenchStateOnce, type WorkbenchSurfaceState } from "../workbench/panel-model"
 import { migrateWorkbenchLayout } from "../workbench/layout-migration"
 import { createInitialLayoutDefaults } from "./defaults"
 import { reconcile } from "solid-js/store"
@@ -1299,16 +1299,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
       },
       transferWorkbenchState(from: string, to: string) {
-        if (from === to) return
-        const source = store.workbenchSurfaces[from]
-        if (!source) return
-        const target = store.workbenchSurfaces[to]
-        const targetHasTabs = [target?.side, target?.bottom].some((surface) => (surface?.tabs?.length ?? 0) > 0)
-        if (targetHasTabs) return
         setStore(
           produce((draft) => {
-            draft.workbenchSurfaces[to] = source
-            delete draft.workbenchSurfaces[from]
+            transferWorkbenchStateOnce(draft.workbenchSurfaces, from, to)
           }),
         )
       },
