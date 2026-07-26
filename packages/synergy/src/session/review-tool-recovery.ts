@@ -19,7 +19,7 @@ export namespace ReviewToolRecovery {
     return [
       "## Review completion recovery",
       "",
-      "Your previous review turn completed without a successful terminal review tool call.",
+      "Your previous review turn ended without a successful terminal review tool call.",
       "Keep the evidence and analysis already present in this reviewer session. Do not search for sessions or repeat completed investigation.",
       `Execution session ID: ${input.executionSessionID}`,
       "",
@@ -31,6 +31,6 @@ export namespace ReviewToolRecovery {
   }
 
   export function exhaustedError(attempts: number): string {
-    return `${ERROR_CODE}: reviewer completed without a successful terminal review tool after ${attempts} recovery attempts`
+    return `${ERROR_CODE}: reviewer ended without a successful terminal review tool after ${attempts} recovery attempts`
   }
 }

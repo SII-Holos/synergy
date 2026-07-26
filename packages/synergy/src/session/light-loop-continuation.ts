@@ -1,9 +1,10 @@
-import { Cortex } from "../cortex"
+import { Cortex, CortexTypes } from "../cortex"
 import { Session } from "./index"
 import { ContinuationKernel } from "./continuation-kernel"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 import { LightLoopRuntime } from "./light-loop-runtime"
 import { ReviewToolRecovery } from "./review-tool-recovery"
+import { SessionInbox } from "./inbox"
 
 const LIGHT_LOOP_APPROVE_TOOL = "light_loop_approve"
 const LIGHT_LOOP_REJECT_TOOL = "light_loop_reject"
@@ -28,10 +29,11 @@ export const LightLoopContinuationPolicy: ContinuationKernel.Policy = {
     const stopRequest = workflow.stopRequest
     if (!stopRequest) return continuationProposal(workflow.instructions)
     if (stopRequest.reviewSessionID) {
-      return recoverCompletedReviewer({
+      return recoverTerminalReviewer({
         sessionID: gate.sessionID,
         instructions: workflow.instructions,
         reviewAgent: workflow.reviewAgent,
+        pluginOwned: workflow.pluginOwner !== undefined,
         stopRequest,
       })
     }
@@ -55,24 +57,34 @@ export const LightLoopContinuationPolicy: ContinuationKernel.Policy = {
   },
 }
 
-async function recoverCompletedReviewer(input: {
+async function recoverTerminalReviewer(input: {
   sessionID: string
   instructions: string
   reviewAgent?: string
+  pluginOwned: boolean
   stopRequest: NonNullable<Extract<Session.Info["workflow"], { kind: "lightloop" }>["stopRequest"]>
 }): Promise<ContinuationKernel.PolicyResult> {
   const reviewSessionID = input.stopRequest.reviewSessionID
   const reviewTaskID = input.stopRequest.reviewTaskID
   if (!reviewSessionID || !reviewTaskID) return undefined
-
   const reviewer = await Session.get(reviewSessionID).catch(() => undefined)
-  if (!reviewer?.cortex || reviewer.cortex.taskID !== reviewTaskID || reviewer.cortex.status !== "completed") {
+
+  if (
+    !reviewer?.cortex ||
+    reviewer.cortex.taskID !== reviewTaskID ||
+    reviewer.cortex.status === "interrupted" ||
+    !CortexTypes.isTerminalStatus(reviewer.cortex.status)
+  ) {
     return undefined
   }
 
   const attempts = input.stopRequest.reviewToolRecoveryAttempts ?? 0
   if (attempts >= ReviewToolRecovery.MAX_ATTEMPTS) {
-    await LightLoopRuntime.setTerminalStatus(input.sessionID, "failed", ReviewToolRecovery.exhaustedError(attempts))
+    const error = ReviewToolRecovery.exhaustedError(attempts)
+    if (!input.pluginOwned) {
+      await deliverExhaustionNotice(input.sessionID, input.stopRequest.requesterMessageID, error)
+    }
+    await LightLoopRuntime.setTerminalStatus(input.sessionID, "failed", error)
     return { kind: "handled" }
   }
 
@@ -118,6 +130,30 @@ async function recoverCompletedReviewer(input: {
   }
   await Cortex.start(task.id)
   return { kind: "handled" }
+}
+
+async function deliverExhaustionNotice(
+  executionSessionID: string,
+  requesterMessageID: string,
+  error: string,
+): Promise<void> {
+  await SessionInbox.deliverUnique({
+    sessionID: executionSessionID,
+    deliveryKey: `lightloop-review-exhausted:${requesterMessageID}`,
+    mode: "context",
+    message: {
+      role: "assistant",
+      agent: "lightloop-reviewer",
+      visible: true,
+      metadata: { source: "light_loop_exhaustion" },
+      parts: [
+        {
+          type: "text",
+          text: `[Light Loop Review Failed]\n${error}\nThe workflow stopped without an approval or rejection. Restart the Light Loop manually if more work is required.`,
+        },
+      ],
+    },
+  })
 }
 
 async function prepareReviewer(input: {

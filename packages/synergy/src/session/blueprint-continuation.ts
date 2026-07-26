@@ -1,6 +1,6 @@
 import { LoopEvent } from "../blueprint/event"
 import { Bus } from "../bus"
-import { Cortex } from "../cortex"
+import { Cortex, CortexTypes } from "../cortex"
 import { Session } from "./index"
 import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "../blueprint"
 import { ContinuationKernel } from "./continuation-kernel"
@@ -8,7 +8,6 @@ import { ReviewToolRecovery } from "./review-tool-recovery"
 
 const BLUEPRINT_APPROVE_TOOL = "blueprint_loop_approve"
 const BLUEPRINT_REJECT_TOOL = "blueprint_loop_reject"
-
 export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
   id: "blueprint_loop",
   priority: 100,
@@ -31,7 +30,7 @@ export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
 
     const loop = await BlueprintLoopStore.get(gate.scopeID, loopID).catch(() => undefined)
     if (!loop) return undefined
-    if (loop.status === "auditing") return recoverCompletedReviewer(gate.scopeID, loop)
+    if (loop.status === "auditing") return recoverTerminalReviewer(gate.scopeID, loop)
     if (loop.status !== "running") return undefined
     if (!loop.stopRequest) return continuationProposal(loop)
 
@@ -62,7 +61,7 @@ export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
   },
 }
 
-async function recoverCompletedReviewer(
+async function recoverTerminalReviewer(
   scopeID: string,
   loop: BlueprintLoopInfo,
 ): Promise<ContinuationKernel.PolicyResult> {
@@ -72,7 +71,12 @@ async function recoverCompletedReviewer(
   if (!stopRequest || !auditSessionID || !auditTaskID) return undefined
 
   const reviewer = await Session.get(auditSessionID).catch(() => undefined)
-  if (!reviewer?.cortex || reviewer.cortex.taskID !== auditTaskID || reviewer.cortex.status !== "completed") {
+  if (
+    !reviewer?.cortex ||
+    reviewer.cortex.taskID !== auditTaskID ||
+    reviewer.cortex.status === "interrupted" ||
+    !CortexTypes.isTerminalStatus(reviewer.cortex.status)
+  ) {
     return undefined
   }
 

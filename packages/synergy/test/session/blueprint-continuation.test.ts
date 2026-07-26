@@ -433,4 +433,125 @@ describe("BlueprintContinuation", () => {
       },
     })
   })
+  test.each(["error", "cancelled"] as const)(
+    "retries when reviewer is %s by consuming recovery budget",
+    async (status) => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, loop } = await setupLoop()
+          const scopeID = ScopeContext.current.scope.id
+          const requesterMessageID = Identifier.ascending("message")
+          await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
+            summary: "Blueprint complete",
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID,
+          })
+          const reviewer = await Session.create({
+            parentID: session.id,
+            cortex: {
+              taskID: "ctx_errored_review",
+              parentSessionID: session.id,
+              parentMessageID: requesterMessageID,
+              description: "Audit BlueprintLoop",
+              agent: "supervisor",
+              status,
+              ...(status === "error" ? { error: "some crash" } : {}),
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+            },
+          })
+          await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+            status: "auditing",
+            auditSessionID: reviewer.id,
+            auditTaskID: "ctx_errored_review",
+          })
+          ;(Cortex as any).prepare = mock(async (input: any) => {
+            expect(input.sessionID).toBe(reviewer.id)
+            expect(input.parentSessionID).toBe(session.id)
+            expect(input.parentMessageID).toBe(requesterMessageID)
+            expect(input.reuseInterrupted).toBe(true)
+            expect(input.tools).toEqual({
+              "*": false,
+              blueprint_loop_approve: true,
+              blueprint_loop_reject: true,
+            })
+            return { id: "ctx_recovery_review", sessionID: reviewer.id, status: "queued" }
+          })
+          ;(Cortex as any).start = mock(async () => {})
+
+          const proposal = await BlueprintContinuationPolicy.handle({
+            session: await Session.get(session.id),
+            scopeID,
+            sessionID: session.id,
+            terminalMessageID: "msg_terminal",
+          })
+
+          expect(proposal).toEqual({ kind: "handled" })
+          const recovered = await BlueprintLoopStore.get(scopeID, loop.id)
+          expect(recovered.status).toBe("auditing")
+          expect(recovered.auditSessionID).toBe(reviewer.id)
+          expect(recovered.auditTaskID).toBe("ctx_recovery_review")
+          expect(recovered.stopRequest?.reviewToolRecoveryAttempts).toBe(1)
+        },
+      })
+    },
+  )
+
+  test("fails an audit after reviewer error exhausts recovery budget", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await setupLoop()
+        const scopeID = ScopeContext.current.scope.id
+        const requesterMessageID = Identifier.ascending("message")
+        await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
+          summary: "Blueprint complete",
+          requestedAt: Date.now(),
+          requesterSessionID: session.id,
+          requesterMessageID,
+          reviewToolRecoveryAttempts: 2,
+        })
+        const reviewer = await Session.create({
+          parentID: session.id,
+          cortex: {
+            taskID: "ctx_exhausted_error_review",
+            parentSessionID: session.id,
+            parentMessageID: requesterMessageID,
+            description: "Audit BlueprintLoop",
+            agent: "supervisor",
+            status: "error",
+            error: "some crash",
+            startedAt: Date.now(),
+            completedAt: Date.now(),
+          },
+        })
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+          status: "auditing",
+          auditSessionID: reviewer.id,
+          auditTaskID: "ctx_exhausted_error_review",
+        })
+        const prepare = mock(async () => {
+          throw new Error("recovery must not relaunch after exhaustion")
+        })
+        ;(Cortex as any).prepare = prepare
+
+        const proposal = await BlueprintContinuationPolicy.handle({
+          session: await Session.get(session.id),
+          scopeID,
+          sessionID: session.id,
+          terminalMessageID: "msg_terminal",
+        })
+
+        expect(proposal).toEqual({ kind: "handled" })
+        expect(prepare).not.toHaveBeenCalled()
+        const failed = await BlueprintLoopStore.get(scopeID, loop.id)
+        expect(failed.status).toBe("failed")
+        expect(failed.error).toContain("review_terminal_tool_missing")
+      },
+    })
+  })
 })
