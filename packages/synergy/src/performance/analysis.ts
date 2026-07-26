@@ -247,12 +247,12 @@ export namespace PerformanceAnalysis {
     SessionInvoke.cancel(sessionID)
     const deadline = Date.now() + CANCEL_WAIT_MS
     while (SessionManager.isRunning(sessionID) && Date.now() < deadline) await Bun.sleep(CANCEL_POLL_MS)
-    await SessionInvoke.repairAfterAbort(sessionID)
     if (!SessionManager.isRunning(sessionID)) {
       const current = await analysisSession(sessionID)
       if (!SessionProgress.findTerminalReply(current.messages, current.root.info.id))
         await writeCancelledAssistant(current)
     }
+    await SessionInvoke.repairAfterAbort(sessionID)
     return get(sessionID)
   }
 
@@ -325,9 +325,6 @@ export namespace PerformanceAnalysis {
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       finish: "error",
       error: new MessageV2.AbortedError({ message: "Performance analysis cancelled" }).toObject(),
-    })
-    await Session.update(input.session.id, (draft) => {
-      draft.pendingReply = undefined
     })
   }
 

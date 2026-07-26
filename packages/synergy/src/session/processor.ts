@@ -1544,6 +1544,7 @@ export namespace SessionProcessor {
                 await SessionRetry.sleep(delay, input.abort).catch(() => {})
                 continue
               }
+              input.assistantMessage.finish = "error"
               input.assistantMessage.error = error
               ObservabilityMetrics.record({
                 name: "session.turn.error",

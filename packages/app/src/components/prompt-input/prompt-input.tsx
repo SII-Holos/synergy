@@ -98,6 +98,7 @@ import { LightLoopSubmitControl } from "./light-loop-submit-control"
 import { isActiveLightLoopWorkflow } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
+import { createAbortRequestController } from "./abort-request"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 
 function sanitizePromptHistory(value: unknown) {
@@ -193,6 +194,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
   const [newSessionSubmitPending, setNewSessionSubmitPending] = createSignal(false)
+  const [abortStopping, setAbortStopping] = createSignal(false)
   const idle = { type: "idle" as const }
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const sendShortcut = createMemo(() => input.sendShortcut())
@@ -343,8 +345,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     await sdk.client.session.abort({ sessionID })
   }
 
+  const abortController = createAbortRequestController({
+    request: async () => {
+      await abortSession()
+    },
+    setPending: setAbortStopping,
+  })
   const abort = () => {
-    abortSession().catch(() => {})
+    abortController.run().catch(() => {})
   }
 
   const clearBoundLoop = (sessionID: string | undefined, loopID: string) => {
@@ -2124,15 +2132,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Tooltip
                   placement="top"
-                  inactive={!submitPending() && !canSubmit()}
+                  inactive={!submitPending() && !canSubmit() && !abortStopping()}
                   value={
                     <Show
-                      when={!submitPending()}
+                      when={!submitPending() && !abortStopping()}
                       fallback={
                         <span>
-                          {sessionTransitionPending()
-                            ? i18n._(PI.submitTransitionPendingTitle)
-                            : i18n._(PI.startingSession)}
+                          {abortStopping()
+                            ? i18n._(PI.stopping)
+                            : sessionTransitionPending()
+                              ? i18n._(PI.submitTransitionPendingTitle)
+                              : i18n._(PI.startingSession)}
                         </span>
                       }
                     >
@@ -2155,9 +2165,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 >
                   <IconButton
                     type="submit"
-                    aria-label={submitStopsSession() ? i18n._(PI.stopSession) : i18n._(PI.sendMessage)}
-                    disabled={!canSubmit()}
-                    icon={submitStopsSession() ? getSemanticIcon("action.stop") : getSemanticIcon("prompt.submitArrow")}
+                    aria-label={
+                      abortStopping()
+                        ? i18n._(PI.stopping)
+                        : submitStopsSession()
+                          ? i18n._(PI.stopSession)
+                          : i18n._(PI.sendMessage)
+                    }
+                    disabled={abortStopping() || !canSubmit()}
+                    icon={
+                      abortStopping()
+                        ? getSemanticIcon("session.running")
+                        : submitStopsSession()
+                          ? getSemanticIcon("action.stop")
+                          : getSemanticIcon("prompt.submitArrow")
+                    }
                     variant="primary"
                     class="prompt-input-submit size-9 rounded-full!"
                   />

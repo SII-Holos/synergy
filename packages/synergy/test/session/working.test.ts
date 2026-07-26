@@ -12,6 +12,7 @@ import { SessionInvoke } from "../../src/session/invoke"
 import { Cortex } from "../../src/cortex"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionEvent } from "../../src/session/event"
+import { MessageV2 } from "../../src/session/message-v2"
 
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
@@ -224,6 +225,45 @@ describe("SessionWorking", () => {
         },
       })
     })
+
+    test("returns recovering when the latest assistant has no terminal finish", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const rootID = Identifier.ascending("message")
+          const root = (await Session.updateMessage({
+            id: rootID,
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+            isRoot: true,
+            rootID,
+          })) as MessageV2.User
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: root.id,
+            rootID: root.id,
+            time: { created: Date.now() - 1, completed: Date.now() },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            error: new MessageV2.APIError({ message: "provider failed", isRetryable: false }).toObject(),
+          })
+
+          expect(await SessionWorking.resolve(session.id)).toEqual({ status: "recovering" })
+        },
+      })
+    })
     test("uses message creation time to find the latest incomplete assistant", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -378,6 +418,159 @@ describe("SessionWorking", () => {
           expect(assistantInfo.finish).toBe("error")
           expect(assistantInfo.error).toBeDefined()
           expect(assistantInfo.error?.name).toBe("MessageAbortedError")
+        },
+      })
+    })
+
+    test("canonicalizes a completed structured error without replacing its durable details", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const rootID = Identifier.ascending("message")
+          const root = await Session.updateMessage({
+            id: rootID,
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+            isRoot: true,
+            rootID,
+          })
+          const assistantID = Identifier.ascending("message")
+          const completedAt = Date.now() - 1_000
+          const error = new MessageV2.APIError({
+            message: "Provider failed after the turn started",
+            statusCode: 503,
+            isRetryable: false,
+            metadata: { requestID: "req_test" },
+          }).toObject()
+          await Session.updateMessage({
+            id: assistantID,
+            sessionID: session.id,
+            role: "assistant",
+            parentID: root.id,
+            rootID: root.id,
+            time: { created: completedAt - 1_000, completed: completedAt },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: tmp.path, root: tmp.path },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 1, output: 2, reasoning: 3, cache: { read: 4, write: 5 } },
+            error,
+          })
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          const statuses: Array<{ type: string }> = []
+          let idleEvents = 0
+          const unsubscribeStatus = Bus.subscribe(SessionEvent.Status, (event) => {
+            if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
+          })
+          const unsubscribeIdle = Bus.subscribe(SessionEvent.Idle, (event) => {
+            if (event.properties.sessionID === session.id) idleEvents++
+          })
+
+          try {
+            expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(true)
+            expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
+          } finally {
+            unsubscribeStatus()
+            unsubscribeIdle()
+          }
+
+          const messages = await Session.messages({ sessionID: session.id })
+          expect(messages).toHaveLength(2)
+          const assistant = messages.find((message) => message.info.id === assistantID)?.info
+          assertExists(assistant)
+          expect(assistant.role).toBe("assistant")
+          const repaired = assistant as MessageV2.Assistant
+          expect(repaired.finish).toBe("error")
+          expect(repaired.time.completed).toBe(completedAt)
+          expect(repaired.error).toEqual(error)
+          expect(repaired.tokens).toEqual({ input: 1, output: 2, reasoning: 3, cache: { read: 4, write: 5 } })
+          expect((await Session.get(session.id)).pendingReply).toBeUndefined()
+          expect(statuses).toEqual([{ type: "idle" }])
+          expect(idleEvents).toBe(0)
+        },
+      })
+    })
+
+    test("attaches one aborted assistant to a pending root that has no assistant", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const completedRootID = Identifier.ascending("message")
+          const completedRoot = (await Session.updateMessage({
+            id: completedRootID,
+            sessionID: session.id,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() - 2_000 },
+            isRoot: true,
+            rootID: completedRootID,
+          })) as MessageV2.User
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: completedRoot.id,
+            rootID: completedRoot.id,
+            time: { created: Date.now() - 1_500, completed: Date.now() - 1_000 },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: tmp.path, root: tmp.path },
+            mode: "synergy",
+            agent: "synergy",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            finish: "stop",
+          })
+          const rootID = Identifier.ascending("message")
+          const root = (await Session.updateMessage({
+            id: rootID,
+            sessionID: session.id,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+            isRoot: true,
+            rootID,
+          })) as MessageV2.User
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          const repairs = await Promise.all([
+            SessionInvoke.repairAfterAbort(session.id),
+            SessionInvoke.repairAfterAbort(session.id),
+          ])
+          expect(repairs.filter(Boolean)).toHaveLength(1)
+
+          const messages = await Session.messages({ sessionID: session.id })
+          const assistants = messages.filter(
+            (message) => message.info.role === "assistant" && message.info.rootID === root.id,
+          )
+          expect(assistants).toHaveLength(1)
+          const assistant = assistants[0]!.info as MessageV2.Assistant
+          expect(assistant.parentID).toBe(root.id)
+          expect(assistant.rootID).toBe(root.id)
+          expect(assistant.agent).toBe(root.agent)
+          expect(assistant.modelID).toBe(root.model.modelID)
+          expect(assistant.providerID).toBe(root.model.providerID)
+          expect(assistant.path).toEqual({ cwd: tmp.path, root: tmp.path })
+          expect(assistant.finish).toBe("error")
+          expect(assistant.error?.name).toBe("MessageAbortedError")
+          expect(assistant.time.completed).toBeNumber()
+          expect((await Session.get(session.id)).pendingReply).toBeUndefined()
         },
       })
     })
