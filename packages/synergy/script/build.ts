@@ -20,6 +20,7 @@ import {
   resolveSandboxAsset,
   type SandboxRuntimeTarget,
 } from "./sandbox-assets"
+import { stagePlaywrightCoreRuntime } from "./playwright-runtime-assets"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -146,6 +147,7 @@ for (const item of targets) {
   console.log(`building ${name}`)
   if (shouldReusePublishedRuntime(item)) {
     await extractPublishedRuntimePackage(name, Script.version)
+    await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
     if (requireSandboxAssets) assertPackagedSandboxAsset(item, path.join("dist", name))
     binaries[name] = Script.version
     continue
@@ -160,7 +162,7 @@ for (const item of targets) {
       conditions: ["browser"],
       tsconfig: "./tsconfig.json",
       sourcemap: "external",
-      external: ["@aws-sdk/client-s3", "chromium-bidi", "chromium-bidi/*"],
+      external: ["@aws-sdk/client-s3", "chromium-bidi", "chromium-bidi/*", "playwright-core", "playwright-core/*"],
       compile: {
         autoloadBunfig: false,
         autoloadDotenv: false,
@@ -196,6 +198,7 @@ for (const item of targets) {
     ),
   )
   binaries[name] = Script.version
+  await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
 
   if (sandboxAsset) {
     copySandboxAsset(sandboxAsset, path.join("dist", name))

@@ -3,11 +3,13 @@ import fs from "node:fs/promises"
 import { createRequire } from "node:module"
 import path from "node:path"
 import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "./packages"
+import { stagePlaywrightCoreRuntime } from "../../../packages/synergy/script/playwright-runtime-assets"
 
 type RuntimeCoreAssetOptions = {
   runtimeDir: string
   appDistDir?: string
   schemaPath?: string
+  playwrightCoreDir?: string
 }
 
 const astGrepPlatformPackages: Record<string, string> = {
@@ -37,6 +39,10 @@ export async function prepareRuntimeCoreAssets(options: RuntimeCoreAssetOptions)
   const schemaDestination = path.join(options.runtimeDir, "schema/config.schema.json")
   await fs.mkdir(path.dirname(schemaDestination), { recursive: true })
   await fs.copyFile(schemaPath, schemaDestination)
+  await stagePlaywrightCoreRuntime({
+    runtimeDir: options.runtimeDir,
+    playwrightCoreDir: options.playwrightCoreDir,
+  })
 }
 
 export async function prepareRuntimeAssets(name: string) {
