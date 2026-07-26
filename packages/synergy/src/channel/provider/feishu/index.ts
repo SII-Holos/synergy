@@ -65,6 +65,12 @@ export function isSelfSender(senderType?: string): boolean {
   return SELF_SENDER_TYPES.has(senderType.toLowerCase())
 }
 
+export function isOwnBotMessage(sender?: FeishuSender, botOpenId?: string): boolean {
+  if (!isSelfSender(sender?.sender_type)) return false
+  const senderOpenId = resolveSenderOpenId(sender)
+  return !botOpenId || !senderOpenId || senderOpenId === botOpenId
+}
+
 export function normalizeBotOpenId(openId?: string): string | undefined {
   const normalized = openId?.trim()
   return normalized ? normalized : undefined
@@ -107,7 +113,7 @@ export function filterInboundMessage(input: MessageFilterInput): MessageFilterRe
     }
   }
 
-  if (isSelfSender(sender?.sender_type)) {
+  if (isOwnBotMessage(sender, botOpenId)) {
     return {
       accepted: false,
       reason: "self sender",
@@ -330,16 +336,6 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
           chatId: message?.chat_id,
           chatType: message?.chat_type,
         })
-
-        const account = this.accounts.get(accountId)
-        if (account && isSelfSender(sender?.sender_type)) {
-          const senderOpenId = resolveSenderOpenId(sender)
-          if (senderOpenId && account.botOpenId !== senderOpenId) {
-            account.botOpenId = senderOpenId
-            account.missingBotOpenIdWarned = false
-            log.info("learned feishu bot open_id from self event", { accountId, botOpenId: senderOpenId })
-          }
-        }
 
         void (async () => {
           try {
