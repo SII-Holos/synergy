@@ -20,6 +20,7 @@ type StoredSessionTransitionEntry = SessionTransitionEntry & {
 export function createSessionTransitionState() {
   const [entries, setEntries] = createStore<Record<string, StoredSessionTransitionEntry>>({})
   const recoveries = new Map<string, NewSessionRecovery>()
+  const dismissedHandoffs = new Map<string, string>()
   let revision = 0
 
   const clear = (sessionID: string) => {
@@ -29,6 +30,13 @@ export function createSessionTransitionState() {
       }),
     )
   }
+
+  const dismissHandoff = (sessionID: string, messageID: string) => {
+    dismissedHandoffs.set(sessionID, messageID)
+    clear(sessionID)
+  }
+
+  const isHandoffDismissed = (sessionID: string, messageID: string) => dismissedHandoffs.get(sessionID) === messageID
 
   const set = (
     sessionID: string,
@@ -60,6 +68,15 @@ export function createSessionTransitionState() {
     })
   }
 
+  const completeHandoff = (sessionID: string, messageID: string) => {
+    const handoff = entries[sessionID]?.handoff
+    if (handoff?.messageID !== messageID) return false
+    set(sessionID, handoff.success, {
+      dismiss: () => dismissHandoff(sessionID, messageID),
+    })
+    return true
+  }
+
   const clearRecovery = (scopeKey: string) => {
     recoveries.delete(scopeKey)
   }
@@ -72,6 +89,9 @@ export function createSessionTransitionState() {
     get: (sessionID: string): SessionTransitionEntry | undefined => entries[sessionID],
     set,
     clear,
+    dismissHandoff,
+    completeHandoff,
+    isHandoffDismissed,
     getRecovery: (scopeKey: string) => recoveries.get(scopeKey),
     setRecovery,
     clearRecovery,
