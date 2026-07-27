@@ -68,6 +68,15 @@ export function createSessionTransitionState() {
     })
   }
 
+  const completeHandoff = (sessionID: string, messageID: string) => {
+    const handoff = entries[sessionID]?.handoff
+    if (handoff?.messageID !== messageID) return false
+    set(sessionID, handoff.success, {
+      dismiss: () => dismissHandoff(sessionID, messageID),
+    })
+    return true
+  }
+
   const clearRecovery = (scopeKey: string) => {
     recoveries.delete(scopeKey)
   }
@@ -81,6 +90,7 @@ export function createSessionTransitionState() {
     set,
     clear,
     dismissHandoff,
+    completeHandoff,
     isHandoffDismissed,
     getRecovery: (scopeKey: string) => recoveries.get(scopeKey),
     setRecovery,

@@ -53,6 +53,41 @@ describe("session transition state", () => {
     })
   })
 
+  test("dismisses a completed handoff after its loading entry is replaced", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const handoff = {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+      } satisfies SessionTransitionHandoff
+      state.set("session-1", createNewSessionTransitionProgress(), undefined, handoff)
+
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(() => state.get("session-1")?.actions?.dismiss?.()).not.toThrow()
+      expect(state.get("session-1")).toBeUndefined()
+      expect(state.isHandoffDismissed("session-1", "msg_first")).toBe(true)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
+      dispose()
+    })
+  })
+
+  test("does not complete a newer handoff from a stale message result", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const handoff = {
+        messageID: "msg_second",
+        success: createNewSessionTransitionSuccessProgress(),
+      } satisfies SessionTransitionHandoff
+      const loading = createNewSessionTransitionProgress()
+      state.set("session-1", loading, undefined, handoff)
+
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
+      expect(state.get("session-1")?.progress).toBe(loading)
+      expect(state.get("session-1")?.handoff?.messageID).toBe("msg_second")
+      dispose()
+    })
+  })
+
   test("ignores a stale dismiss after a newer transition replaces the entry", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()

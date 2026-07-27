@@ -569,9 +569,7 @@ function SessionPageContent() {
             refreshAttempted: true,
           }) === "ready"
         ) {
-          setSessionTransition(sessionID, handoff.success, {
-            dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID),
-          })
+          sessionTransition.completeHandoff(sessionID, handoff.messageID)
           return
         }
         showStalledHandoff(sessionID, nextHandoff, requestErrorMessage(error))
@@ -616,9 +614,7 @@ function SessionPageContent() {
       refreshAttempted: entry.handoff.refreshAttempted ?? false,
     })
     if (decision === "ready") {
-      setSessionTransition(sessionID, entry.handoff.success, {
-        dismiss: () => dismissSessionTransitionHandoff(sessionID, entry.handoff!.messageID),
-      })
+      sessionTransition.completeHandoff(sessionID, entry.handoff.messageID)
       return
     }
     if (decision === "stalled") {
