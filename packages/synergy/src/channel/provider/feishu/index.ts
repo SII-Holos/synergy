@@ -673,6 +673,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       body: JSON.stringify({
         content: payload.content,
         msg_type: payload.msgType,
+        ...(account.config.replyInThread ? { reply_in_thread: true } : {}),
       }),
     })
 
