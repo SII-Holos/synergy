@@ -2998,6 +2998,10 @@ export type ChannelFeishuAccountConfig = {
    */
   botOpenId?: string
   /**
+   * Project directory whose Scope owns sessions for this Feishu account
+   */
+  projectDir?: string
+  /**
    * Enable streaming card updates
    */
   streaming?: boolean
