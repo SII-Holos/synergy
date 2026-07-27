@@ -22,6 +22,21 @@ describe("session transition state", () => {
     })
   })
 
+  test("remembers a dismissed handoff across remounted session route consumers", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      state.set("session-1", createNewSessionTransitionSuccessProgress())
+
+      state.dismissHandoff("session-1", "msg_first")
+
+      const readAfterRouteRemount = () => state.isHandoffDismissed("session-1", "msg_first")
+      expect(state.get("session-1")).toBeUndefined()
+      expect(readAfterRouteRemount()).toBe(true)
+      expect(state.isHandoffDismissed("session-1", "msg_second")).toBe(false)
+      dispose()
+    })
+  })
+
   test("retains the expected root handoff until the session route observes it", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
@@ -34,6 +49,41 @@ describe("session transition state", () => {
       state.set("session-1", progress, undefined, handoff)
 
       expect(state.get("session-1")?.handoff).toEqual(handoff)
+      dispose()
+    })
+  })
+
+  test("dismisses a completed handoff after its loading entry is replaced", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const handoff = {
+        messageID: "msg_first",
+        success: createNewSessionTransitionSuccessProgress(),
+      } satisfies SessionTransitionHandoff
+      state.set("session-1", createNewSessionTransitionProgress(), undefined, handoff)
+
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(true)
+      expect(() => state.get("session-1")?.actions?.dismiss?.()).not.toThrow()
+      expect(state.get("session-1")).toBeUndefined()
+      expect(state.isHandoffDismissed("session-1", "msg_first")).toBe(true)
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
+      dispose()
+    })
+  })
+
+  test("does not complete a newer handoff from a stale message result", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      const handoff = {
+        messageID: "msg_second",
+        success: createNewSessionTransitionSuccessProgress(),
+      } satisfies SessionTransitionHandoff
+      const loading = createNewSessionTransitionProgress()
+      state.set("session-1", loading, undefined, handoff)
+
+      expect(state.completeHandoff("session-1", "msg_first")).toBe(false)
+      expect(state.get("session-1")?.progress).toBe(loading)
+      expect(state.get("session-1")?.handoff?.messageID).toBe("msg_second")
       dispose()
     })
   })
