@@ -21,6 +21,7 @@ import { SessionInvoke, InvokeInput } from "../session/invoke"
 import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
+import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
 import {
   Info as InfoSchema,
   Status as StatusSchema,
@@ -572,7 +573,7 @@ export namespace Channel {
             parts: buildPromptParts(ctx),
           })
 
-          const responseText = buildAssistantTranscript(assistantTranscript) || extractResponseText(result.parts)
+          const responseText = resolveFinalResponseText(assistantTranscript, result.parts)
           const hasError = result.info.role === "assistant" && "error" in result.info && result.info.error != null
 
           // If the response failed but tools completed successfully, build a
@@ -628,21 +629,6 @@ export namespace Channel {
     }
 
     return parts
-  }
-
-  function buildAssistantTranscript(parts: ReadonlyMap<string, string>): string {
-    return Array.from(parts.values())
-      .map((text) => text.trim())
-      .filter(Boolean)
-      .join("\n\n")
-  }
-
-  function extractResponseText(parts: MessageV2.Part[]): string {
-    return parts
-      .filter((p): p is MessageV2.TextPart => p.type === "text")
-      .filter((p) => !MessageV2.isSystemPart(p) && p.text.trim().length > 0)
-      .map((p) => p.text)
-      .join("\n")
   }
 
   function cleanupAttachments(attachments?: Attachment[]) {
