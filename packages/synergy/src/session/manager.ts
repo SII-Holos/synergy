@@ -185,7 +185,7 @@ export namespace SessionManager {
     return Storage.read<Info>(StoragePath.sessionInfo(Identifier.asScopeID(scopeID), sessionID)).catch(() => undefined)
   }
 
-  export async function getSessionID(endpoint: SessionEndpoint.Info): Promise<string | undefined> {
+  export async function getSessionID(endpoint: SessionEndpoint.Info, scopeID?: string): Promise<string | undefined> {
     const endpointKey = SessionEndpoint.toKey(endpoint)
     const candidateSessionIDs = await Storage.scan(StoragePath.endpointSessionRoot(endpointKey)).catch(() => [])
 
@@ -194,7 +194,7 @@ export namespace SessionManager {
       const indexed = await Storage.read<{ scopeID: string }>(
         StoragePath.endpointSession(endpointKey, sessionID),
       ).catch(() => undefined)
-      if (!indexed) continue
+      if (!indexed || (scopeID && indexed.scopeID !== scopeID)) continue
 
       const info = await readSessionInfo(indexed.scopeID, sessionID)
       if (!info || info.time.archived || !info.endpoint) continue
@@ -204,8 +204,8 @@ export namespace SessionManager {
     return undefined
   }
 
-  export async function getSession(input: string | SessionEndpoint.Info): Promise<Info | undefined> {
-    const sessionID = typeof input === "string" ? input : await getSessionID(input)
+  export async function getSession(input: string | SessionEndpoint.Info, scopeID?: string): Promise<Info | undefined> {
+    const sessionID = typeof input === "string" ? input : await getSessionID(input, scopeID)
     if (!sessionID) return undefined
     const indexed = await Storage.read<{ scopeID: string }>(
       StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
