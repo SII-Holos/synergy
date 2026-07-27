@@ -69,9 +69,10 @@ export namespace SessionRootVariant {
     small?: boolean
   }): Record<string, unknown> {
     if (!input.variant) return {}
+    // Lightweight internal calls use target-model small options, never durable root variants.
+    if (input.small) return {}
     const availableVariants = Object.keys(input.model.variants ?? {})
     assertAvailable({ variant: input.variant, model: input.model, availableVariants })
-    if (input.small) return {}
     return input.model.variants![input.variant]
   }
 
