@@ -216,9 +216,13 @@ A Feishu/Lark account may also set `projectDir` to bind the account's sessions t
 
 ## Server Settings
 
-The `server` object supports `hostname`, `port`, `mdns`, and additional CORS origins. Explicit CLI network flags override configured values. The managed background service snapshots these values into its service definition, so restart the service after changing them.
+The `server` object supports `hostname`, `port`, `mdns`, and additional allowed origins through `cors`. Explicit CLI network flags override configured values. The managed background service snapshots these values into its service definition, so restart the service after changing them.
 
-Binding a server beyond loopback exposes it to other hosts. Configure CORS and the surrounding network boundary deliberately.
+Each explicit `server.cors` entry authorizes both ordinary cross-origin HTTP requests and Browser viewer WebSocket handshakes from that exact HTTP(S) origin. Automatically detected LAN CORS origins and reverse-proxy forwarding headers do not authorize Browser viewer sockets; configure the public Browser viewer Origin explicitly.
+
+`SYNERGY_ALLOWED_ORIGINS` is a comma-separated compatibility source for additional Browser viewer Origins. Its value is snapshotted when the server process starts, is read again after a restart, and does not add HTTP CORS response headers.
+
+Binding a server beyond loopback exposes it to other hosts. Configure allowed origins and the surrounding network boundary deliberately.
 
 ## Code Checks
 

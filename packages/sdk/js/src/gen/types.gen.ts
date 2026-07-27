@@ -2050,7 +2050,7 @@ export type ServerConfig = {
    */
   mdns?: boolean
   /**
-   * Additional domains to allow for CORS
+   * Additional origins allowed for CORS and Browser viewer WebSockets
    */
   cors?: Array<string>
 }

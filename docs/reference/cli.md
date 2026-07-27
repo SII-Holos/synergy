@@ -38,6 +38,7 @@ synergy stop
 `start` runs the first-time configuration wizard in an interactive terminal when no config exists. `--non-interactive` skips first-run and Holos prompts. Existing services report config drift; stop and start again to install changed network settings into the service definition.
 
 The managed service defaults to `127.0.0.1:4096`. `--hostname`, `--port`, `--mdns`, and repeatable `--cors` override the corresponding `server` config for the installed service invocation.
+Each explicit `--cors` value authorizes both cross-origin HTTP requests and Browser viewer WebSocket handshakes from that exact HTTP(S) origin. Automatically detected LAN CORS origins and reverse-proxy forwarding headers do not authorize Browser viewer sockets, so pass the public Browser viewer Origin explicitly.
 
 `status --verbose` adds runtime-lock, health, process, listening-port, trace, and local process-registry information. `stop` manages only the installed background service; do not use it as a generic process killer for an unrelated foreground server.
 
