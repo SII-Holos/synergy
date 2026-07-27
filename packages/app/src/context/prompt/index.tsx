@@ -201,11 +201,13 @@ function createPromptSession(dir: string, id: string | undefined) {
     }),
   )
 
+  const current = createMemo(() => sanitizePrompt(store.prompt))
+
   return {
     ready,
-    current: createMemo(() => store.prompt),
+    current,
     cursor: createMemo(() => store.cursor),
-    dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
+    dirty: createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT)),
     context: {
       items: createMemo(() => store.context.items),
       add(item: ContextItem) {
