@@ -22,6 +22,21 @@ describe("session transition state", () => {
     })
   })
 
+  test("remembers a dismissed handoff across remounted session route consumers", () => {
+    createRoot((dispose) => {
+      const state = createSessionTransitionState()
+      state.set("session-1", createNewSessionTransitionSuccessProgress())
+
+      state.dismissHandoff("session-1", "msg_first")
+
+      const readAfterRouteRemount = () => state.isHandoffDismissed("session-1", "msg_first")
+      expect(state.get("session-1")).toBeUndefined()
+      expect(readAfterRouteRemount()).toBe(true)
+      expect(state.isHandoffDismissed("session-1", "msg_second")).toBe(false)
+      dispose()
+    })
+  })
+
   test("retains the expected root handoff until the session route observes it", () => {
     createRoot((dispose) => {
       const state = createSessionTransitionState()
