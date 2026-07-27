@@ -739,22 +739,22 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
 
-    const streamingEnabled = account.config.streaming ?? account.channelConfig.streaming ?? true
-    if (!streamingEnabled) {
-      return new NonStreamingSession(async (text) => {
-        if (input.replyToMessageId) {
-          await this.sendReplyMessage(input.accountId, input.replyToMessageId, {
-            msgType: "text",
-            content: JSON.stringify({ text }),
-          })
-          return
-        }
-        await this.sendCreateMessage(input.accountId, input.chatId, {
+    const sendText = async (text: string) => {
+      if (input.replyToMessageId) {
+        await this.sendReplyMessage(input.accountId, input.replyToMessageId, {
           msgType: "text",
           content: JSON.stringify({ text }),
         })
+        return
+      }
+      await this.sendCreateMessage(input.accountId, input.chatId, {
+        msgType: "text",
+        content: JSON.stringify({ text }),
       })
     }
+
+    const streamingEnabled = account.config.streaming ?? account.channelConfig.streaming ?? true
+    if (!streamingEnabled) return new NonStreamingSession(sendText)
 
     return new FeishuStreamingCard({
       apiBase: account.apiBase,
@@ -763,6 +763,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       replyToMessageId: input.replyToMessageId,
       replyInThread: account.config.replyInThread,
       throttleMs: account.config.streamingThrottleMs,
+      sendFallback: sendText,
     })
   }
 }
