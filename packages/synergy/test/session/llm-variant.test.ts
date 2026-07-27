@@ -94,15 +94,35 @@ describe("LLM root variant consumption", () => {
     })
   })
 
-  test("validates unavailable persisted variants before bypassing options for small calls", async () => {
+  test("bypasses variant validation and options for small calls even when the persisted variant is unavailable", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        await expect(LLM.prepare(input("missing", true))).rejects.toMatchObject({
-          name: "ProviderModelVariantUnavailableError",
-          data: { variant: "missing" },
-        })
+        const prepared = await LLM.prepare(input("missing", true))
+        expect(prepared.params.options.rootVariantMarker).toBeUndefined()
+      },
+    })
+  })
+
+  test("bypasses variant options for small calls when the persisted variant is valid", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const prepared = await LLM.prepare(input("high", true))
+        expect(prepared.params.options.rootVariantMarker).toBeUndefined()
+      },
+    })
+  })
+
+  test("applies variant options for a valid persisted variant on a non-small root", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const prepared = await LLM.prepare(input("high"))
+        expect(prepared.params.options.rootVariantMarker).toBe("high")
       },
     })
   })
