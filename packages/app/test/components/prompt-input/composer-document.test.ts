@@ -19,6 +19,20 @@ function fixture(options?: { settleMs?: number; submitTimeoutMs?: number }) {
 }
 
 describe("ComposerDocumentController", () => {
+  test("does not read the document when no completion exists", () => {
+    let reads = 0
+    const controller = new ComposerDocumentController({
+      read: () => {
+        reads++
+        throw new Error("Prompt is unavailable during navigation")
+      },
+      applyEdits: () => undefined,
+    })
+
+    expect(controller.completion()).toBeUndefined()
+    expect(reads).toBe(0)
+  })
+
   test("settles the latest revision and aborts stale draft work", async () => {
     const { controller } = fixture()
     const calls: Array<{ revision: number; signal: AbortSignal }> = []

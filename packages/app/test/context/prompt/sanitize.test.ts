@@ -1,7 +1,22 @@
 import { describe, expect, test } from "bun:test"
-import { sanitizePromptContextValue, sanitizePromptValue } from "../../../src/context/prompt/sanitize"
+import {
+  sanitizePromptContextValue,
+  sanitizePromptStateValue,
+  sanitizePromptValue,
+} from "../../../src/context/prompt/sanitize"
 
 describe("prompt sanitization", () => {
+  test("restores a valid prompt state when persisted data is missing", () => {
+    expect(sanitizePromptStateValue(undefined)).toEqual({
+      prompt: [{ type: "text", content: "", start: 0, end: 0 }],
+      context: { items: [] },
+    })
+    expect(sanitizePromptStateValue(null)).toEqual({
+      prompt: [{ type: "text", content: "", start: 0, end: 0 }],
+      context: { items: [] },
+    })
+  })
+
   test("removes legacy image parts and data URL attachments", () => {
     const prompt = sanitizePromptValue([
       { type: "text", content: "hello", start: 0, end: 5 },
