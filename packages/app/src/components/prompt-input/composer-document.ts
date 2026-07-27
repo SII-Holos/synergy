@@ -91,6 +91,7 @@ export class ComposerDocumentController {
   }
 
   completion(): ComposerCompletion | undefined {
+    if (this.#completions.size === 0) return undefined
     const snapshot = this.current()
     return this.#ordered()
       .map((entry) => this.#completions.get(entry.id))
