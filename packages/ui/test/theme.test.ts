@@ -221,6 +221,7 @@ describe("resolveTheme (synergy)", () => {
       expectReadablePair(variant, "text-on-success-base", "surface-success-weak")
       expectReadablePair(variant, "text-on-warning-base", "surface-warning-weak")
       expectReadablePair(variant, "text-on-critical-base", "surface-critical-weak")
+      expectReadablePair(variant, "text-on-critical-solid", "surface-critical-solid")
     }
     expectAtLeastAsBright(resolved.light, "surface-float-base", "background-stronger")
     expectAtMostAsBright(resolved.light, "surface-float-base-hover", "surface-float-base")

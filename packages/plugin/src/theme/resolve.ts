@@ -108,6 +108,10 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-warning-strong"] = warning[8]
   tokens["surface-critical-base"] = error[2]
   tokens["surface-critical-weak"] = error[1]
+  tokens["surface-critical-solid"] = pickReadableColor(
+    "#ffffff",
+    isDark ? [error[7], error[6], error[5], error[4]] : [error[9], error[10], error[11]],
+  )
   tokens["surface-critical-strong"] = error[8]
   tokens["surface-info-base"] = info[2]
   tokens["surface-info-weak"] = info[1]
@@ -173,6 +177,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
     error,
     error[isDark ? 8 : 10],
   )
+  tokens["text-on-critical-solid"] = "#ffffff"
   tokens["text-on-critical-weak"] = error[7]
   tokens["text-on-critical-strong"] = error[11]
   tokens["text-on-warning-base"] = readableStatusText(
@@ -442,6 +447,7 @@ export const THEME_CONTRAST_REQUIREMENTS: readonly ThemeContrastRequirement[] = 
   { foreground: "text-on-success-base", background: "surface-success-weak", minimum: 4.5 },
   { foreground: "text-on-warning-base", background: "surface-warning-weak", minimum: 4.5 },
   { foreground: "text-on-critical-base", background: "surface-critical-weak", minimum: 4.5 },
+  { foreground: "text-on-critical-solid", background: "surface-critical-solid", minimum: 4.5 },
   { foreground: "text-on-info-base", background: "surface-info-weak", minimum: 4.5 },
   { foreground: "text-diff-add-base", background: "surface-diff-add-weak", minimum: 4.5 },
   { foreground: "text-diff-delete-base", background: "surface-diff-delete-weak", minimum: 4.5 },

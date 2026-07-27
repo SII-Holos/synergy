@@ -54,6 +54,7 @@
   --surface-warning-strong: #f59e0b;
   --surface-critical-base: #ffdfda;
   --surface-critical-weak: #ffeeeb;
+  --surface-critical-solid: #a8000c;
   --surface-critical-strong: #ef4444;
   --surface-info-base: #d9edff;
   --surface-info-weak: #eaf6ff;
@@ -98,6 +99,7 @@
   --text-on-interactive-weak: #6c6c6c;
   --text-on-success-base: #006e03;
   --text-on-critical-base: #a8000c;
+  --text-on-critical-solid: #ffffff;
   --text-on-critical-weak: #e35652;
   --text-on-critical-strong: #5c0000;
   --text-on-warning-base: #6c6c6c;
@@ -331,6 +333,7 @@
     --surface-warning-strong: #f59e0b;
     --surface-critical-base: #320c0b;
     --surface-critical-weak: #210908;
+    --surface-critical-solid: #c73c3a;
     --surface-critical-strong: #ef4444;
     --surface-info-base: #0c1b2e;
     --surface-info-weak: #09121e;
@@ -375,6 +378,7 @@
     --text-on-interactive-weak: #b7b7b7;
     --text-on-success-base: #22c55e;
     --text-on-critical-base: #ef4444;
+    --text-on-critical-solid: #ffffff;
     --text-on-critical-weak: #c73c3a;
     --text-on-critical-strong: #ffc7bd;
     --text-on-warning-base: #b7b7b7;

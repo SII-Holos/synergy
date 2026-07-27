@@ -162,6 +162,7 @@
   --color-surface-brand-base: var(--surface-brand-base);
   --color-surface-brand-hover: var(--surface-brand-hover);
   --color-surface-critical-base: var(--surface-critical-base);
+  --color-surface-critical-solid: var(--surface-critical-solid);
   --color-surface-critical-strong: var(--surface-critical-strong);
   --color-surface-critical-weak: var(--surface-critical-weak);
   --color-surface-diff-add-base: var(--surface-diff-add-base);
@@ -255,6 +256,7 @@
   --color-text-on-brand-weak: var(--text-on-brand-weak);
   --color-text-on-brand-weaker: var(--text-on-brand-weaker);
   --color-text-on-critical-base: var(--text-on-critical-base);
+  --color-text-on-critical-solid: var(--text-on-critical-solid);
   --color-text-on-critical-strong: var(--text-on-critical-strong);
   --color-text-on-critical-weak: var(--text-on-critical-weak);
   --color-text-on-info-base: var(--text-on-info-base);
