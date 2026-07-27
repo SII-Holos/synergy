@@ -320,6 +320,47 @@ describe("filterInboundMessage", () => {
   })
 })
 
+describe("Feishu replies", () => {
+  test("requests a threaded reply when the account enables replyInThread", async () => {
+    const originalFetch = globalThis.fetch
+    let requestBody: Record<string, unknown> | undefined
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (
+        provider as unknown as {
+          accounts: Map<string, unknown>
+        }
+      ).accounts
+      accounts.set("acct_test", {
+        config: accountConfig({ replyInThread: true }),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_test",
+        messageId: "msg_topic_root",
+        parts: [{ type: "text", text: "Background work finished" }],
+      })
+
+      expect(requestBody).toMatchObject({
+        msg_type: "text",
+        reply_in_thread: true,
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
+
 describe("Feishu streaming merge", () => {
   test("keeps existing text when a non-prefix rewrite arrives", () => {
     expect(

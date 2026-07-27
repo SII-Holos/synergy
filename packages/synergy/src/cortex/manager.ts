@@ -901,6 +901,7 @@ export namespace Cortex {
         sessionID: session.id,
         parentSessionID: delegation.parentSessionID,
         description: delegation.description,
+        parentMessageID: delegation.parentMessageID,
         status: delegation.status,
         startedAt: delegation.startedAt,
         completedAt: delegation.completedAt,
@@ -987,6 +988,7 @@ export namespace Cortex {
     id: string
     sessionID: string
     parentSessionID: string
+    parentMessageID: string
     description: string
     status: CortexTypes.TaskStatus
     startedAt: number
@@ -1016,6 +1018,23 @@ export namespace Cortex {
     const session = await Session.get(task.sessionID).catch(() => undefined)
     if (!session?.cortex || session.cortex.taskID !== task.id) return
     if (session.cortex.notifyParentOnComplete !== true) return
+    const parentSession = await Session.get(task.parentSessionID).catch(() => undefined)
+    const parentChannel = parentSession?.endpoint?.kind === "channel" ? parentSession.endpoint.channel : undefined
+    const parentMessage = await MessageV2.get({
+      sessionID: task.parentSessionID,
+      messageID: task.parentMessageID,
+    }).catch(() => undefined)
+    const parentRootID = parentMessage?.info.rootID ?? parentMessage?.info.id
+    const parentRoot = parentRootID
+      ? await MessageV2.get({ sessionID: task.parentSessionID, messageID: parentRootID }).catch(() => undefined)
+      : undefined
+    const channelReplyToMessageId =
+      parentRoot?.info.role === "user" &&
+      typeof parentRoot.info.metadata?.channelReplyToMessageId === "string" &&
+      parentRoot.info.metadata.channelReplyToMessageId.trim()
+        ? parentRoot.info.metadata.channelReplyToMessageId
+        : undefined
+    const replyToChannel = parentChannel?.type !== "app" && !!parentChannel?.accountId && !!channelReplyToMessageId
 
     const delivery = await SessionInbox.deliverUnique({
       sessionID: task.parentSessionID,
@@ -1023,7 +1042,11 @@ export namespace Cortex {
       mode: "steer",
       message: {
         role: "user",
-        metadata: { source: "cortex", sourceSessionID: task.sessionID },
+        metadata: {
+          source: "cortex",
+          sourceSessionID: task.sessionID,
+          ...(replyToChannel ? { channelPush: true, channelReply: true, channelReplyToMessageId } : {}),
+        },
         parts: [{ type: "text", text: notification }],
       },
     })

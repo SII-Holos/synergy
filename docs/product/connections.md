@@ -25,6 +25,48 @@ Each Feishu/Lark account can set a default model and one of that model's exposed
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
 
+### Outbound Delivery Anchoring
+
+Outbound channel delivery uses a message-scoped reply anchor instead of a
+generic push when the assistant message carries `channelReply: true`. Each
+inbound Channel root user message records `channelReplyToMessageId` from the
+provider root ID, or from the inbound message ID when no root exists. The
+session endpoint remains stable when a Channel session is reused and does not
+store or refresh this transient routing state.
+
+`ChannelOutbound` reacts to terminal assistant messages. For each new terminal
+assistant it:
+
+1. acquires a lock on the message ID and re-reads the current metadata to
+   prevent duplicate or stale delivery
+2. checks for `channelPush`, `mailbox`, or `channelReply` metadata — without
+   any of these, the assistant is not sent
+3. when `channelReply` is true and no `channelReplyToMessageId` exists on that
+   assistant, logs a warning and drops the message instead of pushing to the
+   chat
+4. calls `provider.replyMessage()` when replying, or `provider.pushMessage()`
+   for a regular push
+5. records `channelOutboundSent: true` on the assistant after successful
+   provider delivery so repeated terminal events do not send it again
+
+### Reply in Thread
+
+The Feishu/Lark provider supports per-account `replyInThread: true` in account
+configuration. When enabled, `provider.replyMessage()` includes
+`reply_in_thread: true` in the request body so the reply appears in a thread
+rather than at the top level of the chat.
+
+### Continuation Delivery
+
+`SessionInvoke` propagates channel delivery metadata through continuation
+steps. When a steer message injected by Cortex (or another source) carries
+`channelPush`, `channelReply`, and `channelReplyToMessageId`, every assistant
+message produced in that continuation round inherits them. An unrelated user
+message that starts a new task root does not inherit the delivery metadata. If
+one continuation contains conflicting reply anchors, it keeps reply intent but
+omits the target so outbound delivery fails closed instead of replying to the
+wrong topic.
+
 ## Holos Identity
 
 Holos is an optional identity and agent-network layer. Synergy can create or import a Holos agent, store multiple local account credentials, select the active identity, and remove an identity from the local account store. The selected agent ID is the network identity used by the connection.
