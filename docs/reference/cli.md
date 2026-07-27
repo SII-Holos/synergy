@@ -218,6 +218,8 @@ Local source builds do not have signed release manifests; use an installed relea
 | `synergy uninstall`        | Remove the installed product after confirmation/options                                    |
 | `synergy generate`         | Generate supported artifacts used by development/release workflows                         |
 
+`synergy upgrade` preserves the detected installation channel. Package-manager installations use their owning manager, Desktop installations defer to the Desktop updater, and standalone CLI installations with the binary at `~/.synergy/bin/synergy` rerun the official installer for the requested release. Override detection with `--method <npm|yarn|pnpm|bun|brew|desktop|standalone>`. If the installation method cannot be determined, the command stops with recovery guidance instead of attempting an unknown upgrade method.
+
 `debug` and migration commands are maintainer-oriented. Prefer stable product commands and APIs for application integrations.
 
 ## Plugins

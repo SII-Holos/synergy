@@ -57,6 +57,7 @@ describe("CLI bundle installer", () => {
     ])
     await Promise.all([
       fs.writeFile(path.join(bundle, "bin", "synergy"), "runtime"),
+      fs.writeFile(path.join(bundle, "bin", ".runtime-metadata"), "metadata"),
       fs.writeFile(path.join(bundle, "app", "index.html"), "app"),
       fs.writeFile(path.join(bundle, "schema", "config.schema.json"), "{}"),
       fs.writeFile(path.join(bundle, "sandbox", "synergy-sandbox-linux"), "helper"),
@@ -77,9 +78,42 @@ describe("CLI bundle installer", () => {
 
     expect(result.exitCode).toBe(0)
     expect(await Bun.file(path.join(home, ".synergy", "sandbox", "synergy-sandbox-linux")).text()).toBe("helper")
+    expect(await Bun.file(path.join(home, ".synergy", "bin", ".runtime-metadata")).text()).toBe("metadata")
     expect(
       await Bun.file(path.join(home, ".synergy", "browser-runtime", "playwright-core", "package.json")).text(),
     ).toBe("{}")
+  })
+
+  test.skipIf(process.platform === "win32")("atomically replaces a running Synergy executable", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-install-running-"))
+    temporaryDirectories.push(root)
+    const home = path.join(root, "home")
+    const bundle = path.join(root, "bundle")
+    const installed = path.join(home, ".synergy", "bin", "synergy")
+    await Promise.all([
+      fs.mkdir(path.dirname(installed), { recursive: true }),
+      fs.mkdir(path.join(bundle, "bin"), { recursive: true }),
+    ])
+    await fs.copyFile("/bin/sleep", installed)
+    await fs.chmod(installed, 0o755)
+    const originalInode = (await fs.stat(installed)).ino
+    await fs.writeFile(path.join(bundle, "bin", "synergy"), "updated runtime")
+
+    const running = Bun.spawn([installed, "30"], { stdout: "ignore", stderr: "ignore" })
+    await Bun.sleep(50)
+    try {
+      const result = runInstallFunction('install_bundle_contents "$1"', [bundle], {
+        HOME: home,
+        SYNERGY_INSTALL_PLATFORM: process.platform === "linux" ? "Linux" : "Darwin",
+      })
+
+      expect(result.exitCode).toBe(0)
+      expect(await Bun.file(installed).text()).toBe("updated runtime")
+      expect((await fs.stat(installed)).ino).not.toBe(originalInode)
+    } finally {
+      running.kill()
+      await running.exited
+    }
   })
 
   test("does not treat an existing Linux install without its sandbox helper as complete", async () => {
