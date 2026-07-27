@@ -1,4 +1,4 @@
-import type { Page } from "playwright"
+import type { Page } from "playwright-core"
 import type { BrowserOwner } from "./owner.js"
 
 // TAG survives type erasure so BrowserDriver is importable at runtime

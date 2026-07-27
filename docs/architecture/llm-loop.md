@@ -37,6 +37,8 @@ Each outer iteration loads effective, canonicalized session history and finds th
 
 The loop never chooses a Cortex notification, workflow continuation, or other non-root message as the task owner.
 
+A root message's model and variant belong to that durable root execution and remain stable for its continuation and tool loop. Steer and `noReply` messages do not own an execution variant. Each new root independently resolves its model and then its variant; QuickSwitch or `modelOverride` changes apply to the next root. Non-small root execution remains strict for unavailable persisted variants.
+
 ## Inbox Drain Order
 
 For root `R`, each inner iteration follows two inbox gates:
@@ -87,6 +89,8 @@ Model capability metadata from catalogs such as models.dev describes what a mode
 `ProviderTransform.variants()` applies transport-specific rules for third-party services on Anthropic and OpenAI-compatible wiring. Kimi K3 models on direct Anthropic transport expose catalog-declared `low`, `high`, and `max` variants. `low` and `high` map to Anthropic `effort`; `max` omits `effort` because Kimi's service default is already `max` and the locked Anthropic SDK accepts only `low`, `medium`, or `high`. Selecting no variant likewise uses Kimi's server-side `max` default. Kimi K2.x models remain provider-managed and receive no automatic Anthropic thinking variants. MiniMax M2.x models on direct Anthropic transport likewise produce no variants because reasoning is always on. MiniMax M3 on direct Anthropic transport exposes only a `max` variant mapped to `thinking: { type: "adaptive" }`; without it, reasoning defaults to off. MiniMax models on direct OpenAI-compatible Chat transport receive no `reasoningEffort` variants because that endpoint does not support `reasoning_effort`.
 
 When a third-party transport case returns no automatic variants, a configured `role_variant` such as `max` is applied only if the resolved model exposes a same-named variant; otherwise the provider receives no generated option and uses its server-side reasoning default. User-defined model `variants` are merged after automatic defaults and can add or override named variants for individual models.
+
+A sessionless or internal lightweight call may reuse a source root user envelope for context and attribution, but `small: true` never consumes that envelope's durable variant. `SessionRootVariant.options()` returns `{}` before variant validation, so target-model options come from `ProviderTransform.smallOptions()` even when the source and target models match. Non-small root execution continues to validate and apply its persisted variant.
 
 ## Internal LLM Invocation Paths
 

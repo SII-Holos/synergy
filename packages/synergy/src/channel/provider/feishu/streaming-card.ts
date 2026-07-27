@@ -14,6 +14,7 @@ type StreamingCardOptions = FeishuApiContext & {
   replyToMessageId?: string
   replyInThread?: boolean
   throttleMs?: number
+  sendFallback?: (text: string) => Promise<void>
 }
 
 type RenderedSections = {
@@ -30,6 +31,24 @@ type CardState = {
   toolProgress: ChannelTypes.StreamingToolProgress[]
   rendered: RenderedSections
   error?: boolean
+}
+
+type FeishuApiResult = {
+  code?: number
+  msg?: string
+}
+
+async function assertFeishuSuccess(response: Response, operation: string): Promise<void> {
+  let result: FeishuApiResult
+  try {
+    result = (await response.json()) as FeishuApiResult
+  } catch {
+    throw new Error(`${operation} failed: HTTP ${response.status}`)
+  }
+
+  if (!response.ok || result.code !== 0) {
+    throw new Error(`${operation} failed: ${result.msg ?? `code ${result.code ?? response.status}`}`)
+  }
 }
 
 export function mergeStreamingText(previous: string, next: string): string {
@@ -292,24 +311,32 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     if (!this.state || this.closed) return
     this.closed = true
     this.clearTrailingTimer()
-    await this.queue
 
     const text = finalText?.trim() ? finalText : (this.pendingText ?? this.state.answerText)
     this.pendingText = null
 
-    await this.applyRender(
-      {
-        answerText: text,
-        toolProgress: this.state.toolProgress,
-        error,
-      },
-      true,
-    )
+    try {
+      await this.queue
+      await this.applyRender(
+        {
+          answerText: text,
+          toolProgress: this.state.toolProgress,
+          error,
+        },
+        true,
+      )
+    } catch (cause) {
+      log.error("streaming card final content update failed", { error: cause, cardId: this.state.cardId })
+      if (!text || !this.opts.sendFallback) throw cause
+      await this.opts.sendFallback(text)
+      log.warn("streaming card final answer sent as text fallback", { cardId: this.state.cardId })
+      return
+    }
 
     const summaryText = text || this.state.answerText
     try {
       const token = await this.opts.getAccessToken()
-      await fetch(`${this.opts.apiBase}/cardkit/v1/cards/${this.state.cardId}/settings`, {
+      const response = await fetch(`${this.opts.apiBase}/cardkit/v1/cards/${this.state.cardId}/settings`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -326,8 +353,13 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
           uuid: `c_${this.state.cardId}_${this.state.sequence}`,
         }),
       })
-    } catch (error) {
-      log.error("streaming card close failed", { error, cardId: this.state.cardId })
+      await assertFeishuSuccess(response, "Close streaming card")
+    } catch (cause) {
+      log.error("streaming card settings update failed", { error: cause, cardId: this.state.cardId })
+      if (!text || !this.opts.sendFallback) return
+      await this.opts.sendFallback(text)
+      log.warn("streaming card final answer sent as text fallback", { cardId: this.state.cardId })
+      return
     }
 
     log.info("streaming card closed", { cardId: this.state.cardId })
@@ -338,7 +370,7 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
   }
 
   private enqueueRender(update: Partial<Pick<CardState, "answerText" | "toolProgress" | "error">>) {
-    this.queue = this.queue.then(async () => {
+    const render = this.queue.then(async () => {
       if (!this.state || this.closed) return
       await this.applyRender(
         {
@@ -349,7 +381,8 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
         false,
       )
     })
-    return this.queue
+    this.queue = render.catch(() => {})
+    return render
   }
 
   private async applyRender(nextState: Pick<CardState, "answerText" | "toolProgress" | "error">, closed: boolean) {
@@ -368,22 +401,23 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
       updates.push({ elementId: TOOL_ELEMENT_ID, content: nextRendered.toolContent })
     }
 
+    for (const update of updates) {
+      await this.updateElementContent(update.elementId, update.content)
+    }
+
     this.state.answerText = nextState.answerText
     this.state.toolProgress = nextState.toolProgress
     this.state.error = nextState.error
     this.state.rendered = nextRendered
-
-    for (const update of updates) {
-      await this.updateElementContent(update.elementId, update.content)
-    }
   }
 
   private async updateElementContent(elementId: string, content: string) {
     if (!this.state) return
 
-    try {
-      const token = await this.opts.getAccessToken()
-      await fetch(`${this.opts.apiBase}/cardkit/v1/cards/${this.state.cardId}/elements/${elementId}/content`, {
+    const token = await this.opts.getAccessToken()
+    const response = await fetch(
+      `${this.opts.apiBase}/cardkit/v1/cards/${this.state.cardId}/elements/${elementId}/content`,
+      {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -394,10 +428,9 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
           sequence: this.nextSequence(),
           uuid: `s_${this.state.cardId}_${this.state.sequence}_${elementId}`,
         }),
-      })
-    } catch (error) {
-      log.error("streaming card update failed", { error, cardId: this.state.cardId, elementId })
-    }
+      },
+    )
+    await assertFeishuSuccess(response, `Update streaming card element ${elementId}`)
   }
 
   private nextSequence(): number {
@@ -414,7 +447,9 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
       const text = this.pendingText
       this.pendingText = null
       this.lastUpdateTime = Date.now()
-      void this.enqueueRender({ answerText: text })
+      void this.enqueueRender({ answerText: text }).catch((error) => {
+        log.warn("streaming card trailing update failed", { error, cardId: this.state?.cardId })
+      })
     }, this.throttleMs)
   }
 

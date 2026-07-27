@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import type { Dialog, Download, FileChooser, Page, Response, Route } from "playwright"
+import type { Dialog, Download, FileChooser, Page, Response, Route } from "playwright-core"
 import {
   BROWSER_MAX_DOWNLOAD_BYTES,
   BrowserNavigationPolicy,

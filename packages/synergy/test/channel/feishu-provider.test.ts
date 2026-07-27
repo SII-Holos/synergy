@@ -3,6 +3,7 @@ import {
   FeishuProvider,
   filterInboundMessage,
   isSelfSender,
+  isOwnBotMessage,
   normalizeBotOpenId,
   resolveSenderOpenId,
   isBotMentioned,
@@ -44,6 +45,22 @@ describe("isSelfSender", () => {
     expect(isSelfSender("user")).toBe(false)
     expect(isSelfSender(undefined)).toBe(false)
     expect(isSelfSender("")).toBe(false)
+  })
+})
+
+describe("isOwnBotMessage", () => {
+  test("returns true only when a bot sender matches the known bot open_id", () => {
+    expect(isOwnBotMessage({ sender_id: { open_id: "ou_synergy" }, sender_type: "bot" }, "ou_synergy")).toBe(true)
+    expect(isOwnBotMessage({ sender_id: { open_id: "ou_chaos" }, sender_type: "bot" }, "ou_synergy")).toBe(false)
+  })
+
+  test("preserves the safe legacy fallback when the bot open_id is unknown", () => {
+    expect(isOwnBotMessage({ sender_id: { open_id: "ou_chaos" }, sender_type: "bot" }, undefined)).toBe(true)
+    expect(isOwnBotMessage({ sender_id: { open_id: "ou_user" }, sender_type: "user" }, undefined)).toBe(false)
+  })
+
+  test("fails closed when a bot sender has no resolvable open_id", () => {
+    expect(isOwnBotMessage({ sender_id: {}, sender_type: "bot" }, "ou_synergy")).toBe(true)
   })
 })
 
@@ -157,6 +174,28 @@ describe("filterInboundMessage", () => {
     expect(result.reason).toBe("self sender")
   })
 
+  test("accepts external bot DM messages when the bot identity is known", () => {
+    const result = filterInboundMessage({
+      message: { chat_id: "chat_1", chat_type: "p2p", message_type: "text" },
+      sender: { sender_id: { open_id: "ou_chaos" }, sender_type: "bot" },
+      accountConfig: accountConfig(),
+      botOpenId: "ou_synergy",
+    })
+    expect(result.accepted).toBe(true)
+    expect(result.isGroup).toBe(false)
+  })
+
+  test("rejects own bot messages when the sender matches the bot identity", () => {
+    const result = filterInboundMessage({
+      message: { chat_id: "chat_1", chat_type: "group", message_type: "text" },
+      sender: { sender_id: { open_id: "ou_synergy" }, sender_type: "bot" },
+      accountConfig: accountConfig(),
+      botOpenId: "ou_synergy",
+    })
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("self sender")
+  })
+
   test("accepts normal user DM messages", () => {
     const result = filterInboundMessage({
       message: { chat_id: "chat_1", chat_type: "p2p", message_type: "text" },
@@ -220,6 +259,38 @@ describe("filterInboundMessage", () => {
     expect(result.wasMentioned).toBe(true)
   })
 
+  test("accepts a mentioned external bot in a requireMention group", () => {
+    const result = filterInboundMessage({
+      message: {
+        chat_id: "chat_1",
+        chat_type: "group",
+        message_type: "text",
+        mentions: [{ key: "@_user_1", id: { open_id: "ou_synergy" }, name: "Synergy" }],
+      },
+      sender: { sender_id: { open_id: "ou_chaos" }, sender_type: "bot" },
+      accountConfig: accountConfig({ requireMention: true }),
+      botOpenId: "ou_synergy",
+    })
+    expect(result.accepted).toBe(true)
+    expect(result.wasMentioned).toBe(true)
+  })
+
+  test("rejects an unmentioned external bot in a requireMention group", () => {
+    const result = filterInboundMessage({
+      message: {
+        chat_id: "chat_1",
+        chat_type: "group",
+        message_type: "text",
+        mentions: [{ key: "@_user_1", id: { open_id: "ou_reporter" }, name: "Reporter" }],
+      },
+      sender: { sender_id: { open_id: "ou_chaos" }, sender_type: "bot" },
+      accountConfig: accountConfig({ requireMention: true }),
+      botOpenId: "ou_synergy",
+    })
+    expect(result.accepted).toBe(false)
+    expect(result.reason).toBe("bot not mentioned")
+  })
+
   test("rejects group message when requireMention but no botOpenId available", () => {
     const result = filterInboundMessage({
       message: {
@@ -246,6 +317,47 @@ describe("filterInboundMessage", () => {
     expect(result.accepted).toBe(true)
     expect(result.isGroup).toBe(true)
     expect(result.wasMentioned).toBe(false)
+  })
+})
+
+describe("Feishu replies", () => {
+  test("requests a threaded reply when the account enables replyInThread", async () => {
+    const originalFetch = globalThis.fetch
+    let requestBody: Record<string, unknown> | undefined
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (
+        provider as unknown as {
+          accounts: Map<string, unknown>
+        }
+      ).accounts
+      accounts.set("acct_test", {
+        config: accountConfig({ replyInThread: true }),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_test",
+        messageId: "msg_topic_root",
+        parts: [{ type: "text", text: "Background work finished" }],
+      })
+
+      expect(requestBody).toMatchObject({
+        msg_type: "text",
+        reply_in_thread: true,
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })
 

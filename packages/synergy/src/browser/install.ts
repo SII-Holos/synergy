@@ -2,6 +2,7 @@ import path from "path"
 import os from "os"
 import fs from "fs/promises"
 import { createHash } from "node:crypto"
+import { fileURLToPath } from "node:url"
 import z from "zod"
 import unzipper from "unzipper"
 import { Global } from "../global/index.js"
@@ -15,6 +16,7 @@ import {
   type ChromiumReleasePlatform,
 } from "@ericsanchezok/synergy-browser"
 import { isPathContained } from "../util/path-contain.js"
+import { PlaywrightRuntime } from "./playwright-runtime.js"
 
 declare global {
   const SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: string
@@ -263,6 +265,7 @@ export namespace BrowserInstall {
           label: "Linux shared libraries",
           status: missing.length ? "fail" : "pass",
           detail: missing.length ? `Missing: ${missing.join(", ")}.` : "Chromium shared libraries are available.",
+          ...(missing.length ? { recovery: { command: "synergy browser install-deps" } } : {}),
         })
       } catch (error) {
         checks.push({
@@ -297,6 +300,22 @@ export namespace BrowserInstall {
 
   export function hostDir(version = Installation.VERSION): string {
     return path.join(Global.Path.data, "browser", "host", version, process.platform, process.arch)
+  }
+
+  export async function installChromiumDependencies(options: { captureOutput?: boolean } = {}): Promise<void> {
+    if (process.platform !== "linux") return
+    const command = dependencyRunnerCommand()
+    if (!options.captureOutput) {
+      const proc = Bun.spawn(command, { stdin: "inherit", stdout: "inherit", stderr: "inherit" })
+      const exitCode = await proc.exited
+      if (exitCode !== 0) throw new Error(`Linux Browser dependency installation exited with code ${exitCode}.`)
+      return
+    }
+
+    const proc = Bun.spawn(command, { stdin: "inherit", stdout: "pipe", stderr: "inherit" })
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+    if (stdout.trim()) console.error(stdout.trimEnd())
+    if (exitCode !== 0) throw new Error(`Linux Browser dependency installation exited with code ${exitCode}.`)
   }
 
   export async function ensureHost(
@@ -597,6 +616,12 @@ function unsupportedChromium(platform: string, arch: string, libc: string): Erro
   )
 }
 
+function dependencyRunnerCommand(): string[] {
+  if (!Installation.isLocal()) return [process.execPath, "__browser-install-deps-runner"]
+  const entrypoint = fileURLToPath(new URL("../index.ts", import.meta.url))
+  return [process.execPath, "--conditions=browser", entrypoint, "__browser-install-deps-runner"]
+}
+
 async function discoverChromiumWithSource(
   options: {
     platform?: NodeJS.Platform
@@ -628,7 +653,7 @@ async function discoverChromiumWithSource(
   try {
     const executable = options.playwrightCoreExecutable
       ? await options.playwrightCoreExecutable()
-      : (await import("playwright-core")).chromium.executablePath()
+      : PlaywrightRuntime.load().chromium.executablePath()
     if (executable && (await fileExists(executable))) return { path: executable, source: "playwright-core" }
   } catch {}
   const candidates =
@@ -662,7 +687,7 @@ async function discoverChromiumWithSource(
 }
 
 async function launchChromiumProbe(executablePath: string): Promise<void> {
-  const { chromium } = await import("playwright")
+  const { chromium } = PlaywrightRuntime.load()
   const browser = await chromium.launch({
     executablePath,
     headless: true,

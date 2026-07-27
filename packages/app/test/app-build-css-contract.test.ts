@@ -463,16 +463,19 @@ async function expectSessionInboxBadgePreservesIconCenter(css: string) {
         throw new Error("Missing session inbox fixture")
       }
 
+      const badgeStyle = getComputedStyle(badge)
       return {
         emptyIconOffset: centerOffset(emptyTrigger, emptyIcon),
         activeIconOffset: centerOffset(activeTrigger, activeIcon),
-        badgePosition: getComputedStyle(badge).position,
+        badgePosition: badgeStyle.position,
+        badgeColor: badgeStyle.color,
       }
     })
 
     expect(Math.abs(layout.emptyIconOffset)).toBeLessThanOrEqual(0.5)
     expect(Math.abs(layout.activeIconOffset)).toBeLessThanOrEqual(0.5)
     expect(layout.badgePosition).toBe("absolute")
+    expect(layout.badgeColor).toBe("rgb(255, 255, 255)")
   } finally {
     await browser.close()
   }

@@ -1,11 +1,12 @@
 import fs from "fs/promises"
 import path from "node:path"
-import type { Browser, BrowserContext, Page } from "playwright"
+import type { Browser, BrowserContext, Page } from "playwright-core"
 import { BrowserOwner } from "./owner.js"
 import type { BrowserDriver } from "./driver.js"
 import { BrowserInstall } from "./install.js"
 import { BrowserStorage } from "./storage.js"
 import { BrowserNetworkGateway } from "./network-gateway.js"
+import { PlaywrightRuntime } from "./playwright-runtime.js"
 
 interface InternalContext {
   owner: BrowserOwner.Info
@@ -39,9 +40,7 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
       if (this.options.launchBrowser) {
         this._browser = await this.options.launchBrowser()
       } else {
-        const playwright = (await import("playwright")) as {
-          chromium?: { launch(options?: Record<string, unknown>): Promise<Browser> }
-        }
+        const playwright = PlaywrightRuntime.load()
         if (!playwright.chromium) throw new Error("Playwright chromium is unavailable")
 
         const executablePath = await BrowserInstall.discoverChromium()

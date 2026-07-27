@@ -168,6 +168,7 @@ Execution-context checks reject sessions whose Scope or workspace cannot be used
 - worktree sessions
 - Cortex child sessions
 - Agenda and Channel endpoints
+  Channel endpoint sessions are scoped to the Scope resolved from each account's project directory configuration. `Session.findForEndpoint()`, `getOrCreateForEndpoint()`, and `archiveEndpointSession()` use the active `ScopeContext` Scope as an implicit scope filter, so session reuse is confined to the same Scope. This means the same messaging account produces independent endpoint sessions in different project Scopes without session cross-contamination.
 - remote or background invocations after a runtime restart
 
 ## Configuration Context

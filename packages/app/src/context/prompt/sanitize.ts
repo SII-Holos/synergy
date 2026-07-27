@@ -158,10 +158,10 @@ export function sanitizePromptValue(value: unknown): Record<string, unknown>[] {
 }
 
 export function sanitizePromptStateValue(value: unknown) {
-  if (!isRecord(value)) return value
+  const state = isRecord(value) ? value : {}
   return {
-    ...value,
-    prompt: sanitizePromptValue(value.prompt),
-    context: sanitizePromptContextValue(value.context),
+    ...state,
+    prompt: sanitizePromptValue(state.prompt),
+    context: sanitizePromptContextValue(state.context),
   }
 }

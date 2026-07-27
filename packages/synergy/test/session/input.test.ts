@@ -186,6 +186,69 @@ describe("session root variants", () => {
       },
     })
   })
+  test("resolves variant independently against the model override after a model switch", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        model: "test-provider/model-a",
+        provider: {
+          "test-provider": {
+            name: "Test Provider",
+            npm: "@ai-sdk/openai-compatible",
+            env: [],
+            models: {
+              "model-a": {
+                name: "Model A",
+                tool_call: true,
+                limit: { context: 128_000, output: 4_096 },
+                variants: { high: { from: "model-a" } },
+              },
+              "model-b": {
+                name: "Model B",
+                tool_call: true,
+                limit: { context: 128_000, output: 4_096 },
+                variants: { high: { from: "model-b" } },
+              },
+            },
+            options: { apiKey: "test-key" },
+          },
+        },
+        agent: {
+          switch_agent: {
+            model: "test-provider/model-a",
+            mode: "primary",
+            defaultVariant: "high",
+          },
+        },
+      } as any,
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const firstRoot = await createUserMessage({
+          sessionID: session.id,
+          agent: "switch_agent",
+          model: { providerID: "test-provider", modelID: "model-a" },
+          parts: [{ type: "text", text: "first request" }],
+        })
+        expect(firstRoot.info.variant).toBe("high")
+
+        await Session.update(session.id, (draft) => {
+          draft.modelOverride = { providerID: "test-provider", modelID: "model-b" }
+        })
+
+        const secondRoot = await createUserMessage({
+          sessionID: session.id,
+          agent: "switch_agent",
+          parts: [{ type: "text", text: "request after model switch" }],
+        })
+        expect(secondRoot.info.model).toEqual({ providerID: "test-provider", modelID: "model-b" })
+        expect(secondRoot.info.variant).toBe("high")
+        expect(secondRoot.info.agent).toBe("switch_agent")
+      },
+    })
+  })
 })
 
 describe("session input attachment extraction", () => {

@@ -22,7 +22,14 @@ exports.default = async function afterPack(context) {
 
 function assertRuntimeAssets(runtimeDir, platform) {
   const binary = platform === "win32" ? "bin/synergy.exe" : "bin/synergy"
-  const required = [binary, "app/index.html", "schema/config.schema.json"]
+  const required = [
+    binary,
+    "app/index.html",
+    "schema/config.schema.json",
+    "browser-runtime/playwright-core/package.json",
+    "browser-runtime/playwright-core/index.js",
+    "browser-runtime/playwright-core/lib/coreBundle.js",
+  ]
   if (platform === "linux") required.push("sandbox/synergy-sandbox-linux")
   if (platform === "win32") required.push("sandbox/synergy-sandbox-windows.exe")
 

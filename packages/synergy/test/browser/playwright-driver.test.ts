@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { Browser } from "playwright"
+import type { Browser } from "playwright-core"
 import { BrowserOwner } from "../../src/browser/owner"
 import { PlaywrightBrowserDriver } from "../../src/browser/playwright-driver"
 

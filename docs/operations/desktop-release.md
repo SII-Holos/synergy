@@ -67,6 +67,8 @@ The same release also publishes signed Chromium installation metadata for `darwi
 
 Each Chromium manifest binds the Synergy version and target to the exact Playwright-pinned browser version, revision, upstream archive URL, executable path, SHA-256, and byte size. Release runners download and hash only their own platform archives; the Chromium archives remain on the Playwright CDN. `synergy browser install` verifies the signed manifest and archive before an atomic managed install.
 
+Every packaged runtime also includes the matching Playwright Core package under `browser-runtime/playwright-core`. Artifact validation loads that sidecar through the compiled executable after checking its required entry points. The curl installer and Desktop packaging must preserve the directory so Browser startup never resolves Playwright from the release runner's checkout.
+
 Updater metadata expected on stable releases:
 
 - `latest-mac.yml`

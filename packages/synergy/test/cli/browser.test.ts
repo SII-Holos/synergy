@@ -38,6 +38,14 @@ describe("browser CLI", () => {
     expect(result.exitCode).toBe(0)
     expect(result.output).toContain("--force")
     expect(result.output).toContain("--json")
+    expect(result.output).toContain("--no-deps")
     expect(result.output).toMatch(/verified|managed Chromium/i)
+  })
+
+  test("exposes Linux dependency installation separately", async () => {
+    const result = await cli(["browser", "--help"])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.output).toContain("browser install-deps")
   })
 })

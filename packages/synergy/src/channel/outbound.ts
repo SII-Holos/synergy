@@ -1,8 +1,9 @@
 import { Bus } from "@/bus"
 import { Log } from "@/util/log"
+import { Lock } from "@/util/lock"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionManager } from "@/session/manager"
-import { SessionEndpoint } from "@/session/endpoint"
+import { SessionProgress } from "@/session/progress"
 import { Session } from "@/session"
 import { Channel } from "."
 
@@ -21,20 +22,42 @@ export namespace ChannelOutbound {
       if (msg.role !== "assistant") return
 
       const assistant = msg as MessageV2.Assistant
-      if (!assistant.time.completed) return
+      if (!assistant.time.completed || !SessionProgress.isTerminalAssistant(assistant)) return
 
-      const metadata = (assistant.metadata ?? undefined) as Record<string, unknown> | undefined
-      if (!metadata?.mailbox && !metadata?.channelPush) return
+      const eventMetadata = assistant.metadata
+      if (!eventMetadata?.mailbox && !eventMetadata?.channelPush && !eventMetadata?.channelReply) return
+      if (eventMetadata.channelOutboundSent) return
 
+      using _ = await Lock.write(`channel-outbound:${msg.id}`)
+      const current = await MessageV2.get({ sessionID: msg.sessionID, messageID: msg.id }).catch(() => undefined)
+      if (!current || current.info.role !== "assistant") return
+
+      const currentAssistant = current.info as MessageV2.Assistant
+      const metadata = currentAssistant.metadata
+      if (!currentAssistant.time.completed || !SessionProgress.isTerminalAssistant(currentAssistant)) return
+      if (!metadata?.mailbox && !metadata?.channelPush && !metadata?.channelReply) return
       if (metadata.channelOutboundSent) return
 
       const session = await SessionManager.getSession(msg.sessionID).catch(() => undefined)
-      if (!session?.endpoint) return
-      if (session.endpoint.kind !== "channel") return
+      if (!session?.endpoint || session.endpoint.kind !== "channel") return
 
       const channelInfo = session.endpoint.channel
       if (INTERNAL_CHANNEL_TYPES.has(channelInfo.type)) return
-      if (!channelInfo.accountId || !channelInfo.chatId) return
+      if (!channelInfo.accountId) return
+
+      const replyRequired = metadata.channelReply === true
+      const replyToMessageId =
+        typeof metadata.channelReplyToMessageId === "string" && metadata.channelReplyToMessageId.trim()
+          ? metadata.channelReplyToMessageId
+          : undefined
+      if (replyRequired && !replyToMessageId) {
+        log.warn("channel reply skipped without message anchor", {
+          sessionID: msg.sessionID,
+          channelType: channelInfo.type,
+        })
+        return
+      }
+      if (!replyRequired && !channelInfo.chatId) return
 
       const provider = Channel.getProvider(channelInfo.type)
       if (!provider) {
@@ -42,33 +65,38 @@ export namespace ChannelOutbound {
         return
       }
 
-      const parts = await MessageV2.parts({ sessionID: msg.sessionID, messageID: msg.id }).catch(() => [])
-      const text = MessageV2.extractText(parts, { includeSynthetic: false })
+      const text = MessageV2.extractText(current.parts, { includeSynthetic: false })
       if (!text) return
 
       try {
-        await provider.pushMessage({
-          accountId: channelInfo.accountId,
-          chatId: channelInfo.chatId,
-          parts: [{ type: "text", text }],
+        if (replyRequired && replyToMessageId) {
+          await provider.replyMessage({
+            accountId: channelInfo.accountId,
+            messageId: replyToMessageId,
+            parts: [{ type: "text", text }],
+          })
+        } else {
+          await provider.pushMessage({
+            accountId: channelInfo.accountId,
+            chatId: channelInfo.chatId,
+            parts: [{ type: "text", text }],
+          })
+        }
+
+        await Session.mergeMessageMetadata({
+          sessionID: msg.sessionID,
+          messageID: msg.id,
+          metadata: { channelOutboundSent: true },
         })
 
-        await Session.updateMessage({
-          ...assistant,
-          metadata: {
-            ...(metadata ?? {}),
-            channelOutboundSent: true,
-          },
-        })
-
-        log.info("message pushed to channel", {
+        log.info(replyRequired ? "message replied to channel" : "message pushed to channel", {
           sessionID: msg.sessionID,
           channelType: channelInfo.type,
           accountId: channelInfo.accountId,
           chatId: channelInfo.chatId,
         })
       } catch (err) {
-        log.error("channel outbound push failed", {
+        log.error(replyRequired ? "channel outbound reply failed" : "channel outbound push failed", {
           sessionID: msg.sessionID,
           channelType: channelInfo.type,
           chatId: channelInfo.chatId,

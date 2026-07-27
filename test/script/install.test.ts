@@ -53,12 +53,16 @@ describe("CLI bundle installer", () => {
       fs.mkdir(path.join(bundle, "app"), { recursive: true }),
       fs.mkdir(path.join(bundle, "schema"), { recursive: true }),
       fs.mkdir(path.join(bundle, "sandbox"), { recursive: true }),
+      fs.mkdir(path.join(bundle, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
     ])
     await Promise.all([
       fs.writeFile(path.join(bundle, "bin", "synergy"), "runtime"),
       fs.writeFile(path.join(bundle, "app", "index.html"), "app"),
       fs.writeFile(path.join(bundle, "schema", "config.schema.json"), "{}"),
       fs.writeFile(path.join(bundle, "sandbox", "synergy-sandbox-linux"), "helper"),
+      fs.writeFile(path.join(bundle, "browser-runtime", "playwright-core", "package.json"), "{}"),
+      fs.writeFile(path.join(bundle, "browser-runtime", "playwright-core", "index.js"), "runtime"),
+      fs.writeFile(path.join(bundle, "browser-runtime", "playwright-core", "lib", "coreBundle.js"), "runtime"),
     ])
 
     const installScript = path.resolve(import.meta.dir, "..", "..", "install")
@@ -73,6 +77,9 @@ describe("CLI bundle installer", () => {
 
     expect(result.exitCode).toBe(0)
     expect(await Bun.file(path.join(home, ".synergy", "sandbox", "synergy-sandbox-linux")).text()).toBe("helper")
+    expect(
+      await Bun.file(path.join(home, ".synergy", "browser-runtime", "playwright-core", "package.json")).text(),
+    ).toBe("{}")
   })
 
   test("does not treat an existing Linux install without its sandbox helper as complete", async () => {
@@ -115,12 +122,19 @@ describe("CLI installer guidance", () => {
       fs.mkdir(path.join(home, ".synergy", "app"), { recursive: true }),
       fs.mkdir(path.join(home, ".synergy", "schema"), { recursive: true }),
       fs.mkdir(path.join(home, ".synergy", "sandbox"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "browser-runtime", "playwright-core", "lib"), { recursive: true }),
       fs.mkdir(bin, { recursive: true }),
     ])
     await Promise.all([
       fs.writeFile(path.join(home, ".synergy", "app", "index.html"), "app"),
       fs.writeFile(path.join(home, ".synergy", "schema", "config.schema.json"), "{}"),
       fs.writeFile(path.join(home, ".synergy", "sandbox", "synergy-sandbox-linux"), "helper"),
+      fs.writeFile(path.join(home, ".synergy", "browser-runtime", "playwright-core", "package.json"), "{}"),
+      fs.writeFile(path.join(home, ".synergy", "browser-runtime", "playwright-core", "index.js"), "runtime"),
+      fs.writeFile(
+        path.join(home, ".synergy", "browser-runtime", "playwright-core", "lib", "coreBundle.js"),
+        "runtime",
+      ),
       writeExecutable(path.join(bin, "synergy"), 'printf "1.2.3\\n"'),
     ])
 
@@ -140,6 +154,32 @@ describe("CLI installer guidance", () => {
     expect(outputText(result)).toContain("already installed")
     expect(outputText(result)).toContain("bubblewrap-check-reached")
     expect(outputText(result)).not.toContain("unexpected-download")
+  })
+
+  test("does not treat an install without the Playwright runtime as complete", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-playwright-incomplete-"))
+    temporaryDirectories.push(root)
+    const home = path.join(root, "home")
+    await Promise.all([
+      fs.mkdir(path.join(home, ".synergy", "app"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "schema"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "sandbox"), { recursive: true }),
+    ])
+    await Promise.all([
+      fs.writeFile(path.join(home, ".synergy", "app", "index.html"), "app"),
+      fs.writeFile(path.join(home, ".synergy", "schema", "config.schema.json"), "{}"),
+      fs.writeFile(path.join(home, ".synergy", "sandbox", "synergy-sandbox-linux"), "helper"),
+    ])
+
+    const command = 'install_script="$1"; set --; source "$install_script"; has_complete_bundle'
+    const result = Bun.spawnSync({
+      cmd: ["bash", "-c", command, "bash", installScript],
+      env: { ...process.env, HOME: home, SYNERGY_INSTALL_LIBRARY_MODE: "1", SYNERGY_INSTALL_PLATFORM: "Linux" },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    expect(result.exitCode).not.toBe(0)
   })
 
   test.each([
