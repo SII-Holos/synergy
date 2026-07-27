@@ -531,6 +531,7 @@ export namespace Channel {
           const result = await SessionInvoke.invoke({
             sessionID,
             ...accountInvocation,
+            metadata: { channelReplyToMessageId: ctx.rootId ?? ctx.messageId },
             parts: buildPromptParts(ctx),
           })
 

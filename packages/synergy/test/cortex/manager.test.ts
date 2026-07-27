@@ -4,6 +4,7 @@ import { CortexTypes } from "../../src/cortex/types"
 import { Bus } from "../../src/bus"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionManager } from "../../src/session/manager"
@@ -1380,6 +1381,9 @@ describe.serial("Cortex", () => {
             expect(notificationText).not.toContain("completed")
             expect((await Session.get(task.sessionID)).cortex?.deliveryNotifiedAt).toBeNumber()
 
+            expect(notification?.message?.metadata?.channelPush).toBeUndefined()
+            expect(notification?.message?.metadata?.channelReply).toBeUndefined()
+
             await Cortex.reconcileParentNotifications()
 
             expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
@@ -1390,6 +1394,75 @@ describe.serial("Cortex", () => {
       })
     })
 
+    test("marks completion notifications for reply-capable external channel parents", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, "completed")
+            },
+          )
+          try {
+            const parentSession = await Session.create({
+              endpoint: SessionEndpoint.fromChannel({
+                type: "feishu",
+                accountId: "acct_test",
+                chatId: "chat_test",
+              }),
+            })
+            const rootID = Identifier.ascending("message")
+            await Session.updateMessage({
+              id: rootID,
+              role: "user",
+              sessionID: parentSession.id,
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              isRoot: true,
+              rootID,
+              metadata: { channelReplyToMessageId: "msg_original_topic" },
+              time: { created: Date.now() - 1 },
+            })
+            const parentMessageID = Identifier.ascending("message")
+            await Session.updateMessage({
+              id: parentMessageID,
+              role: "assistant",
+              sessionID: parentSession.id,
+              parentID: rootID,
+              rootID,
+              mode: "synergy",
+              agent: "synergy",
+              path: { cwd: tmp.path, root: tmp.path },
+              cost: 0,
+              tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+              modelID: "test-model",
+              providerID: "test-provider",
+              time: { created: Date.now() },
+            })
+            const task = await Cortex.launch({
+              description: "Notify channel parent",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID,
+              model: { providerID: "test-provider", modelID: "test-model" },
+            })
+
+            expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
+            const notification = await waitForNotification(parentSession.id, task.id)
+
+            expect(notification?.message?.metadata?.source).toBe("cortex")
+            expect(notification?.message?.metadata?.channelPush).toBe(true)
+            expect(notification?.message?.metadata?.channelReply).toBe(true)
+            expect(notification?.message?.metadata?.channelReplyToMessageId).toBe("msg_original_topic")
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
     test("publishes the terminal task before an idle parent processes its completion notice", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
