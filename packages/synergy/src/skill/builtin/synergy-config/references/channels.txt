@@ -36,6 +36,7 @@ Channels integrate Synergy with external messaging platforms.
           "streamingThrottleMs": 100,
           "groupSessionScope": "group",
           "inboundDebounceMs": 0,
+          "projectDir": "/home/user/projects/my-project",
           "model": "openai/gpt-5",
           "variant": "high",
           "resolveSenderNames": true,
@@ -65,6 +66,7 @@ Channels integrate Synergy with external messaging platforms.
 | `inboundDebounceMs` | 0 | Debounce rapid-fire messages (0 = disabled) |
 | `resolveSenderNames` | true | Resolve sender names via Feishu contact API |
 | `replyInThread` | false | Reply in thread when message is part of a topic |
+| `projectDir` | (none) | Project directory whose Scope owns sessions for this account; absolute or relative to Synergy home; must exist, be readable, and resolve to a project Scope |
 
 **Group session scoping:**
 - `"group"` — one shared session per group chat

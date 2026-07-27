@@ -6,6 +6,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Scope } from "@/scope"
+import { Global } from "@/global"
 
 import { Config } from "../config/config"
 import { Log } from "../util/log"
@@ -62,6 +63,50 @@ export namespace Channel {
   export type Provider = ProviderType
 
   export const toKey = toKeyFn
+
+  export async function resolveAccountScope(input: {
+    channelType: string
+    accountId: string
+    accountConfig: unknown
+  }): Promise<Scope> {
+    const parsed = z
+      .object({ projectDir: z.string().trim().min(1).optional() })
+      .passthrough()
+      .safeParse(input.accountConfig)
+    const projectDir = parsed.success ? parsed.data.projectDir : undefined
+    if (!projectDir) return Scope.home()
+
+    const resolved = path.resolve(Global.Path.home, projectDir)
+    try {
+      const stat = await fs.stat(resolved)
+      if (!stat.isDirectory()) throw new Error("not a directory")
+      await fs.access(resolved, fs.constants.R_OK | fs.constants.X_OK)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      const reason = code === "ENOENT" ? "CHANNEL_PROJECT_DIR_NOT_FOUND" : "CHANNEL_PROJECT_DIR_NOT_READABLE"
+      throw new StartError({
+        message: `${reason}: ${input.channelType} account "${input.accountId}" projectDir "${projectDir}" is unavailable`,
+        channelType: input.channelType,
+        accountId: input.accountId,
+      })
+    }
+
+    const { scope } = await Scope.fromDirectory(resolved)
+    if (scope.type !== "project") {
+      throw new StartError({
+        message: `CHANNEL_PROJECT_DIR_NOT_A_PROJECT: ${input.channelType} account "${input.accountId}" projectDir "${projectDir}" did not resolve to a project Scope`,
+        channelType: input.channelType,
+        accountId: input.accountId,
+      })
+    }
+    log.info("channel account bound to project scope", {
+      channelType: input.channelType,
+      accountId: input.accountId,
+      projectDir: resolved,
+      scopeID: scope.id,
+    })
+    return scope
+  }
 
   export const StartError = NamedError.create(
     "ChannelStartError",
@@ -129,7 +174,6 @@ export namespace Channel {
 
   const state = ScopedState.create(
     async (): Promise<State> => {
-      const scope = Scope.home()
       const cfg = await Config.current()
       const channels = cfg.channel ?? {}
       const connections = new Map<string, Connection>()
@@ -165,7 +209,6 @@ export namespace Channel {
             connections,
             statuses,
             reconnects,
-            scope,
           }).catch((err) => {
             const error = err instanceof Error ? err.message : String(err)
             log.error("channel connection failed", { channelType, accountId, error })
@@ -209,7 +252,6 @@ export namespace Channel {
     connections: Map<string, Connection>
     statuses: Map<string, Status>
     reconnects: Map<string, ReturnType<typeof setTimeout>>
-    scope: Scope
     attempt?: number
   }): Promise<void> {
     const {
@@ -222,10 +264,10 @@ export namespace Channel {
       connections,
       statuses,
       reconnects,
-      scope,
       attempt = 0,
     } = input
     const key = connectionKey(channelType, accountId)
+    const scope = await resolveAccountScope({ channelType, accountId, accountConfig })
 
     const reconnectTimer = reconnects.get(key)
     if (reconnectTimer) {
@@ -255,7 +297,6 @@ export namespace Channel {
           connections,
           statuses,
           reconnects,
-          scope,
           attempt: 0,
         })
       },
@@ -285,7 +326,6 @@ export namespace Channel {
     connections: Map<string, Connection>
     statuses: Map<string, Status>
     reconnects: Map<string, ReturnType<typeof setTimeout>>
-    scope: Scope
     attempt: number
   }): void {
     const {
@@ -298,7 +338,6 @@ export namespace Channel {
       connections,
       statuses,
       reconnects,
-      scope,
       attempt,
     } = input
     if (abort.signal.aborted) return
@@ -331,7 +370,6 @@ export namespace Channel {
         connections,
         statuses,
         reconnects,
-        scope,
         attempt: attempt + 1,
       }).catch((err) => {
         const error = err instanceof Error ? err.message : String(err)
@@ -347,7 +385,6 @@ export namespace Channel {
           connections,
           statuses,
           reconnects,
-          scope,
           attempt: attempt + 1,
         })
       })
@@ -531,6 +568,7 @@ export namespace Channel {
           const result = await SessionInvoke.invoke({
             sessionID,
             ...accountInvocation,
+            metadata: { channelReplyToMessageId: ctx.rootId ?? ctx.messageId },
             parts: buildPromptParts(ctx),
           })
 
@@ -732,7 +770,6 @@ export namespace Channel {
 
     s.statuses.set(key, { status: "connecting" })
     const abort = new AbortController()
-    const scope = Scope.home()
 
     await connectAccount({
       channelType,
@@ -744,7 +781,6 @@ export namespace Channel {
       connections: s.connections,
       statuses: s.statuses,
       reconnects: s.reconnects,
-      scope,
     })
   }
 

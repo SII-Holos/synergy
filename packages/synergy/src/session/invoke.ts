@@ -95,6 +95,33 @@ export namespace SessionInvoke {
   const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
   const maxOutputTokensByMessage = new Map<string, number>()
 
+  function channelDeliveryMetadata(messages: MessageV2.WithParts[], afterIndex: number) {
+    let channelPush = false
+    let channelReply = false
+    let channelReplyToMessageId: string | undefined
+    let replyAnchorConflict = false
+    for (let index = afterIndex + 1; index < messages.length; index++) {
+      const info = messages[index].info
+      if (info.role !== "user") continue
+      const metadata = info.metadata
+      if (metadata?.mailbox || metadata?.channelPush || metadata?.channelReply) channelPush = true
+      if (metadata?.channelReply) channelReply = true
+      const replyAnchor =
+        typeof metadata?.channelReplyToMessageId === "string" && metadata.channelReplyToMessageId.trim()
+          ? metadata.channelReplyToMessageId
+          : undefined
+      if (!replyAnchor) continue
+      if (channelReplyToMessageId && channelReplyToMessageId !== replyAnchor) replyAnchorConflict = true
+      else channelReplyToMessageId = replyAnchor
+    }
+    if (!channelPush) return undefined
+    return {
+      channelPush: true,
+      ...(channelReply ? { channelReply: true } : {}),
+      ...(channelReply && channelReplyToMessageId && !replyAnchorConflict ? { channelReplyToMessageId } : {}),
+    }
+  }
+
   async function commandRuntime() {
     return (await import("../command/command")).Command
   }
@@ -471,8 +498,7 @@ export namespace SessionInvoke {
         const maxSteps = agent.steps ?? Infinity
         const isLastStep = step >= maxSteps
 
-        const userMetadata = (R.metadata ?? undefined) as Record<string, unknown> | undefined
-        const channelPush = !!(userMetadata?.mailbox || userMetadata?.channelPush)
+        const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
         const toolDisplayByName = new Map<string, ToolDisplay>()
         const processor = SessionProcessor.create({
           assistantMessage: (await Session.updateMessage({
@@ -500,7 +526,7 @@ export namespace SessionInvoke {
               created: Date.now(),
             },
             sessionID,
-            ...(channelPush ? { metadata: { channelPush: true } } : {}),
+            ...(deliveryMetadata ? { metadata: deliveryMetadata } : {}),
           })) as MessageV2.Assistant,
           sessionID: sessionID,
           model,

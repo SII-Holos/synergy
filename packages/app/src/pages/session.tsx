@@ -509,10 +509,8 @@ function SessionPageContent() {
   const renderableUserMessages = visibleRoots
   const lastUserMessage = lastRoot
   const lastRenderableUserMessage = lastRoot
-  const dismissedHandoffs = new Set<string>()
   const dismissSessionTransitionHandoff = (sessionID: string, messageID: string) => {
-    dismissedHandoffs.add(`${sessionID}:${messageID}`)
-    clearSessionTransition(sessionID)
+    sessionTransition.dismissHandoff(sessionID, messageID)
   }
   const [handoffNow, setHandoffNow] = createSignal(Date.now())
   const acceptedProgressForHandoff = (handoff: Pick<SessionTransitionHandoff, "workspaceSelection">) => {
@@ -546,7 +544,6 @@ function SessionPageContent() {
   }
   const retrySessionTransitionHandoff = (sessionID: string, handoff: SessionTransitionHandoff) => {
     const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
-    dismissedHandoffs.delete(`${sessionID}:${handoff.messageID}`)
     const nextHandoff = {
       ...handoff,
       acceptedAt: Date.now(),
@@ -572,9 +569,7 @@ function SessionPageContent() {
             refreshAttempted: true,
           }) === "ready"
         ) {
-          setSessionTransition(sessionID, handoff.success, {
-            dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID),
-          })
+          sessionTransition.completeHandoff(sessionID, handoff.messageID)
           return
         }
         showStalledHandoff(sessionID, nextHandoff, requestErrorMessage(error))
@@ -590,7 +585,7 @@ function SessionPageContent() {
       inbox: sync.data.inbox[sessionID],
     })
     if (!recovered) return
-    if (dismissedHandoffs.has(`${sessionID}:${recovered.messageID}`)) return
+    if (sessionTransition.isHandoffDismissed(sessionID, recovered.messageID)) return
     const accepted = acceptedProgressForHandoff(recovered)
     setSessionTransition(sessionID, accepted, undefined, {
       ...recovered,
@@ -619,9 +614,7 @@ function SessionPageContent() {
       refreshAttempted: entry.handoff.refreshAttempted ?? false,
     })
     if (decision === "ready") {
-      setSessionTransition(sessionID, entry.handoff.success, {
-        dismiss: () => dismissSessionTransitionHandoff(sessionID, entry.handoff!.messageID),
-      })
+      sessionTransition.completeHandoff(sessionID, entry.handoff.messageID)
       return
     }
     if (decision === "stalled") {

@@ -1367,6 +1367,201 @@ describe("SessionInvoke inbox boundaries", () => {
       if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
     }
   })
+
+  test("propagates channel delivery from a cortex steer through every continuation step", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const assistantMetadata: Array<Record<string, unknown> | undefined> = []
+    const restore = installBasicLoopMocks({
+      onProcess: (_input, assistant, callIndex) => {
+        assistantMetadata.push(assistant.metadata)
+        return callIndex === 1 ? "continue" : "stop"
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          activeSessionID = session.id
+          const rootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: rootID,
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            isRoot: true,
+            rootID,
+            time: { created: Date.now() - 2 },
+            metadata: { channelReplyToMessageId: "msg_original_topic" },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: rootID,
+            sessionID: session.id,
+            type: "text",
+            text: "initial channel request",
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "assistant",
+            sessionID: session.id,
+            parentID: rootID,
+            rootID,
+            mode: "synergy",
+            agent: "synergy",
+            path: { cwd: tmp.path, root: tmp.path },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: "test-model",
+            providerID: "test-provider",
+            time: { created: Date.now() - 1, completed: Date.now() - 1 },
+            finish: "stop",
+          })
+          await SessionInbox.deliverUnique({
+            sessionID: session.id,
+            deliveryKey: "cortex:test-channel-delivery",
+            mode: "steer",
+            message: {
+              role: "user",
+              metadata: {
+                source: "cortex",
+                sourceSessionID: "ses_child",
+                channelPush: true,
+                channelReply: true,
+                channelReplyToMessageId: "msg_original_topic",
+              },
+              parts: [{ type: "text", text: "background task completed" }],
+            },
+          })
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(assistantMetadata).toHaveLength(2)
+          expect(assistantMetadata.every((metadata) => metadata?.channelPush === true)).toBe(true)
+          expect(assistantMetadata.every((metadata) => metadata?.channelReply === true)).toBe(true)
+          expect(
+            assistantMetadata.every((metadata) => metadata?.channelReplyToMessageId === "msg_original_topic"),
+          ).toBe(true)
+
+          const nextRootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: nextRootID,
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            isRoot: true,
+            rootID: nextRootID,
+            time: { created: Date.now() },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: nextRootID,
+            sessionID: session.id,
+            type: "text",
+            text: "unrelated later request",
+          })
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(assistantMetadata).toHaveLength(3)
+          expect(assistantMetadata[2]?.channelPush).toBeUndefined()
+          expect(assistantMetadata[2]?.channelReply).toBeUndefined()
+          expect(assistantMetadata[2]?.channelReplyToMessageId).toBeUndefined()
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("fails closed when one continuation contains conflicting channel reply anchors", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const assistantMetadata: Array<Record<string, unknown> | undefined> = []
+    const restore = installBasicLoopMocks({
+      onProcess: (_input, assistant) => {
+        assistantMetadata.push(assistant.metadata)
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          activeSessionID = session.id
+          const rootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: rootID,
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            isRoot: true,
+            rootID,
+            time: { created: Date.now() - 2 },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: rootID,
+            sessionID: session.id,
+            type: "text",
+            text: "initial channel request",
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "assistant",
+            sessionID: session.id,
+            parentID: rootID,
+            rootID,
+            mode: "synergy",
+            agent: "synergy",
+            path: { cwd: tmp.path, root: tmp.path },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: "test-model",
+            providerID: "test-provider",
+            time: { created: Date.now() - 1, completed: Date.now() - 1 },
+            finish: "stop",
+          })
+
+          for (const [index, channelReplyToMessageId] of ["msg_first_topic", "msg_second_topic"].entries()) {
+            await SessionInbox.deliverUnique({
+              sessionID: session.id,
+              deliveryKey: `cortex:test-channel-conflict:${index}`,
+              mode: "steer",
+              message: {
+                role: "user",
+                metadata: {
+                  source: "cortex",
+                  sourceSessionID: `ses_child_${index}`,
+                  channelPush: true,
+                  channelReply: true,
+                  channelReplyToMessageId,
+                },
+                parts: [{ type: "text", text: `background task ${index} completed` }],
+              },
+            })
+          }
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(assistantMetadata).toHaveLength(1)
+          expect(assistantMetadata[0]?.channelPush).toBe(true)
+          expect(assistantMetadata[0]?.channelReply).toBe(true)
+          expect(assistantMetadata[0]?.channelReplyToMessageId).toBeUndefined()
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
 })
 
 describe("SessionInvoke coauthor reminder prompt", () => {

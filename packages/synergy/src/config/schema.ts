@@ -64,6 +64,12 @@ export const ChannelFeishuAccount = z
     allowGroup: z.boolean().optional().default(true).describe("Allow group messages"),
     requireMention: z.boolean().optional().default(true).describe("Require @mention in group chats"),
     botOpenId: z.string().optional().describe("Bot open_id used to verify real @mentions in group chats"),
+    projectDir: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe("Project directory whose Scope owns sessions for this Feishu account"),
     streaming: z.boolean().optional().default(true).describe("Enable streaming card updates"),
     streamingThrottleMs: z
       .number()

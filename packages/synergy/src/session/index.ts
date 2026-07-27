@@ -1256,8 +1256,8 @@ export namespace Session {
     return undefined
   }
 
-  export async function findForEndpoint(endpoint: SessionEndpoint.Info) {
-    return SessionManager.getSession(endpoint)
+  export async function findForEndpoint(endpoint: SessionEndpoint.Info, scope = ScopeContext.current.scope) {
+    return SessionManager.getSession(endpoint, scope.id)
   }
 
   export async function getOrCreateForEndpoint(
@@ -1265,7 +1265,8 @@ export namespace Session {
     scope?: Scope,
     interaction?: SessionInteraction.Info,
   ) {
-    const existing = await SessionManager.getSession(endpoint)
+    const targetScope = scope ?? ScopeContext.current.scope
+    const existing = await SessionManager.getSession(endpoint, targetScope.id)
     if (existing) {
       const existingChatName = existing.endpoint?.kind === "channel" ? existing.endpoint.channel?.chatName : undefined
       const newChatName = endpoint.kind === "channel" ? endpoint.channel.chatName : undefined
@@ -1290,11 +1291,11 @@ export namespace Session {
       }
       return existing
     }
-    return create({ scope, endpoint, interaction })
+    return create({ scope: targetScope, endpoint, interaction })
   }
 
-  export async function archiveEndpointSession(endpoint: SessionEndpoint.Info) {
-    const session = await SessionManager.getSession(endpoint)
+  export async function archiveEndpointSession(endpoint: SessionEndpoint.Info, scope = ScopeContext.current.scope) {
+    const session = await SessionManager.getSession(endpoint, scope.id)
     if (!session) return
     await update(session.id, (draft) => {
       draft.time.archived = Date.now()

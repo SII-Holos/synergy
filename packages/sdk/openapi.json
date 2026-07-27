@@ -27840,6 +27840,11 @@
             "description": "Bot open_id used to verify real @mentions in group chats",
             "type": "string"
           },
+          "projectDir": {
+            "description": "Project directory whose Scope owns sessions for this Feishu account",
+            "type": "string",
+            "minLength": 1
+          },
           "streaming": {
             "description": "Enable streaming card updates",
             "default": true,

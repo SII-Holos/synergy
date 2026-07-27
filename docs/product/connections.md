@@ -20,10 +20,53 @@ The provider contract supports:
 Feishu/Lark is the current built-in provider. It owns Feishu-specific deduplication, mentions, group behavior, media transfer, cards, and reconnect handling while the Channel core owns endpoint/session routing and outbound delivery.
 
 Feishu/Lark distinguishes Synergy's own bot messages from messages sent by other bots using the authenticated account's `botOpenId`. The provider resolves that identity from account configuration or the Feishu bot-info API and fails closed for bot senders while it is unknown. With `requireMention: true`, an external bot message is accepted only when it contains a real mention whose open ID matches Synergy; the Feishu app also needs the bot-to-bot group mention event permission. Set `groupSessionScope` to `group_topic` when each Feishu topic should reuse an independent Synergy session.
+Each Feishu/Lark account can optionally set `projectDir` to bind its sessions to a project Scope. The directory is resolved relative to the Synergy home directory unless absolute. It must exist, be readable, and resolve to a project Scope (as determined by `Scope.fromDirectory()`). A missing, unreadable, or non-project directory fails the account connection at startup. When `projectDir` is omitted, the account uses the home Scope. All endpoint sessions for that account are scoped to the resolved Scope, so session lookup and reuse stay within that Scope and do not intersect sessions belonging to other Scopes.
 
 Each Feishu/Lark account can set a default model and one of that model's exposed variants. The account selection is written onto each inbound root message so the session header and provider request agree. A conversation-level `/model` override takes precedence over the account default; because that override selects a different model, it does not inherit the account model's variant.
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
+
+### Outbound Delivery Anchoring
+
+Outbound channel delivery uses a message-scoped reply anchor instead of a
+generic push when the assistant message carries `channelReply: true`. Each
+inbound Channel root user message records `channelReplyToMessageId` from the
+provider root ID, or from the inbound message ID when no root exists. The
+session endpoint remains stable when a Channel session is reused and does not
+store or refresh this transient routing state.
+
+`ChannelOutbound` reacts to terminal assistant messages. For each new terminal
+assistant it:
+
+1. acquires a lock on the message ID and re-reads the current metadata to
+   prevent duplicate or stale delivery
+2. checks for `channelPush`, `mailbox`, or `channelReply` metadata — without
+   any of these, the assistant is not sent
+3. when `channelReply` is true and no `channelReplyToMessageId` exists on that
+   assistant, logs a warning and drops the message instead of pushing to the
+   chat
+4. calls `provider.replyMessage()` when replying, or `provider.pushMessage()`
+   for a regular push
+5. records `channelOutboundSent: true` on the assistant after successful
+   provider delivery so repeated terminal events do not send it again
+
+### Reply in Thread
+
+The Feishu/Lark provider supports per-account `replyInThread: true` in account
+configuration. When enabled, `provider.replyMessage()` includes
+`reply_in_thread: true` in the request body so the reply appears in a thread
+rather than at the top level of the chat.
+
+### Continuation Delivery
+
+`SessionInvoke` propagates channel delivery metadata through continuation
+steps. When a steer message injected by Cortex (or another source) carries
+`channelPush`, `channelReply`, and `channelReplyToMessageId`, every assistant
+message produced in that continuation round inherits them. An unrelated user
+message that starts a new task root does not inherit the delivery metadata. If
+one continuation contains conflicting reply anchors, it keeps reply intent but
+omits the target so outbound delivery fails closed instead of replying to the
+wrong topic.
 
 ## Holos Identity
 
