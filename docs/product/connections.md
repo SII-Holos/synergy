@@ -28,6 +28,25 @@ Each Feishu/Lark account can set a default model and one of that model's exposed
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
 
+### Slash Commands
+
+Channel sessions recognize slash commands as the first token of an inbound message. Commands are handled before agent invocation and set the conversation workflow mode.
+
+| Command                       | Aliases                               | Workflow       | Description                                                                                                                                |
+| ----------------------------- | ------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/chat [message]`             | —                                     | normal chat    | Exit the current workflow and return to ordinary conversation. Cancels Light Loop; other workflows are exited after confirming the switch. |
+| `/blueprint [request]`        | `/plan`                               | Plan           | Enter canonical Plan to author a Blueprint. If already in Plan mode the command is a no-op.                                                |
+| `/lightloop <task>`           | —                                     | Light Loop     | Keep working until the task passes independent review. Requires a task; reuse while active updates the instructions without restarting.    |
+| `/lattice [goal]`             | —                                     | Lattice (auto) | Decompose and execute a larger goal. Without a goal, Lattice is enabled and the next message provides the goal.                            |
+| `/status`                     | `/状态`                               | —              | Show the current conversation message count, creation time, and last-update time.                                                          |
+| `/model <providerID/modelID>` | —                                     | —              | Override the account-default model for this conversation.                                                                                  |
+| `/new`                        | `/reset`, `/重置`, `/清空`, `/新对话` | —              | Archive the current endpoint session and start a new conversation.                                                                         |
+| `/help`                       | `/commands`                           | —              | Show the command list.                                                                                                                     |
+
+When a workflow command carries a message parameter (`/chat hello`, `/blueprint design a CLI`, `/lightloop fix the build`, `/lattice plan the release`), the workflow is set and the parameter text is forwarded as the next user message in the same invocation.
+
+Only one workflow can be active at a time. Sending a workflow command while a different workflow is active replies with a prompt to `/chat` first rather than silently switching.
+
 ### Outbound Delivery Anchoring
 
 Outbound channel delivery uses a message-scoped reply anchor instead of a
