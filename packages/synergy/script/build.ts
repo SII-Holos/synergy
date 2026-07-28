@@ -21,7 +21,7 @@ import {
   type SandboxRuntimeTarget,
 } from "./sandbox-assets"
 import { stagePlaywrightCoreRuntime } from "./playwright-runtime-assets"
-import { copyHolosCliAsset } from "./holos-cli-assets
+import { copyHolosCliAsset } from "./holos-cli-assets"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")

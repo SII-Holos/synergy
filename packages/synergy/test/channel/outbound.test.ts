@@ -21,6 +21,7 @@ async function waitFor(check: () => boolean, timeoutMs = 1_000) {
 function provider(type: string, calls: { replies: string[]; pushes: string[] }): Provider {
   return {
     type,
+    lifecycle: "self_connected",
     async connect() {},
     async replyMessage(input) {
       calls.replies.push(input.messageId)
@@ -111,6 +112,43 @@ test("replies async channel output to the persisted message anchor exactly once"
         ])
         await Bun.sleep(25)
         expect(calls.replies).toEqual(["msg_topic_root"])
+      } finally {
+        dispose()
+      }
+    },
+  })
+})
+
+test("replies through providers that do not support proactive push", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const type = `outbound-reply-only-${crypto.randomUUID()}`
+      const replies: string[] = []
+      Channel.registerProvider({
+        type,
+        lifecycle: "self_connected",
+        async connect() {},
+        async replyMessage(input) {
+          replies.push(input.messageId)
+          return { messageId: "reply_sent" }
+        },
+      })
+      const dispose = ChannelOutbound.init()
+      try {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type,
+            accountId: "acct_test",
+            chatId: "chat_test",
+          }),
+        })
+
+        await completedAssistant(session.id, "Background work finished")
+        await waitFor(() => replies.length > 0)
+
+        expect(replies).toEqual(["msg_topic_root"])
       } finally {
         dispose()
       }

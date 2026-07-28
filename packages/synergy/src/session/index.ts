@@ -1290,7 +1290,6 @@ export namespace Session {
     const existing = await SessionManager.getSession(endpoint)
     if (existing) assertEndpointScope(existing, options.scope)
     return existing
-
   }
 
   export async function getOrCreateForEndpoint(
@@ -1342,7 +1341,6 @@ export namespace Session {
           })
         }
         return existing
-
       }
       return await ScopeContext.provide({
         scope: options.scope,

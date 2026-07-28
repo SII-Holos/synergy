@@ -58,30 +58,33 @@ export namespace ChannelOutbound {
         })
         return
       }
-      if (!replyRequired && !channelInfo.chatId) return
+      const chatId = channelInfo.chatId
+      if (!replyRequired && !chatId) return
 
       const provider = Channel.getProvider(channelInfo.type)
       if (!provider) {
         log.warn("no provider for channel type", { type: channelInfo.type, sessionID: msg.sessionID })
         return
       }
-      const pushMessage = provider.pushMessage?.bind(provider)
-      if (!pushMessage) return
 
       const text = MessageV2.extractText(current.parts, { includeSynthetic: false })
       if (!text) return
 
       try {
         if (replyRequired && replyToMessageId) {
-          await provider.replyMessage({
+          const replyMessage = provider.replyMessage?.bind(provider)
+          if (!replyMessage) return
+          await replyMessage({
             accountId: channelInfo.accountId,
             messageId: replyToMessageId,
             parts: [{ type: "text", text }],
           })
-        } else {
+        } else if (chatId) {
+          const pushMessage = provider.pushMessage?.bind(provider)
+          if (!pushMessage) return
           await pushMessage({
             accountId: channelInfo.accountId,
-            chatId: channelInfo.chatId,
+            chatId,
             parts: [{ type: "text", text }],
           })
         }
