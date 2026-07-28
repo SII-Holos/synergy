@@ -23,23 +23,25 @@ function provider(type: string, calls: { replies: string[]; pushes: string[] }):
     type,
     lifecycle: "self_connected",
     async connect() {},
-    async replyMessage(input) {
-      calls.replies.push(input.messageId)
-      return { messageId: "reply_sent" }
-    },
-    async pushMessage(input) {
-      calls.pushes.push(input.chatId)
-      return { messageId: "push_sent" }
-    },
-    async addReaction() {},
-    createStreamingSession() {
-      return {
-        async start() {},
-        async update() {},
-        async updateToolProgress() {},
-        async close() {},
-        isActive: () => false,
-      }
+    conversation: {
+      async replyMessage(input) {
+        calls.replies.push(input.messageId)
+        return { messageId: "reply_sent" }
+      },
+      async pushMessage(input) {
+        calls.pushes.push(input.chatId)
+        return { messageId: "push_sent" }
+      },
+      async addReaction() {},
+      createStreamingSession() {
+        return {
+          async start() {},
+          async update() {},
+          async updateToolProgress() {},
+          async close() {},
+          isActive: () => false,
+        }
+      },
     },
   }
 }
@@ -130,9 +132,11 @@ test("replies through providers that do not support proactive push", async () =>
         type,
         lifecycle: "self_connected",
         async connect() {},
-        async replyMessage(input) {
-          replies.push(input.messageId)
-          return { messageId: "reply_sent" }
+        conversation: {
+          async replyMessage(input) {
+            replies.push(input.messageId)
+            return { messageId: "reply_sent" }
+          },
         },
       })
       const dispose = ChannelOutbound.init()

@@ -1,6 +1,6 @@
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import { ChannelTarget } from "./types"
+import { ChannelTarget, MessageContext } from "./types"
 import { ManagedProjectOwnership, type OwnershipRecord } from "./managed-project-ownership"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
@@ -12,6 +12,7 @@ import { SessionDrive } from "@/session/drive"
 
 export namespace ChannelHost {
   export type ProviderStatus = { kind: string }
+  export type ConversationMessage = Omit<MessageContext, "channelType" | "accountId">
 
   export const DiagnosticRecordInput = z.object({
     level: z.string(),
@@ -104,9 +105,10 @@ export namespace ChannelHost {
     accountId: string
     onStatus?: (status: ProviderStatus) => void
     onDiagnostic?: (record: DiagnosticRecordInput) => void | Promise<void>
+    onConversationMessage?: (message: MessageContext) => Promise<void>
     activateTasks?: boolean
   }) {
-    const { channelType, accountId, onStatus, onDiagnostic, activateTasks = false } = options
+    const { channelType, accountId, onStatus, onDiagnostic, onConversationMessage, activateTasks = false } = options
     const hostIdentity = { channelType, accountId }
 
     return {
@@ -122,6 +124,18 @@ export namespace ChannelHost {
       diagnostics: {
         async record(record: DiagnosticRecordInput) {
           await onDiagnostic?.(record)
+        },
+      },
+
+      conversations: {
+        async receive(input: ConversationMessage) {
+          if (!onConversationMessage) throw new Error("Channel host does not accept conversation messages")
+          const message = MessageContext.parse({
+            ...input,
+            channelType,
+            accountId,
+          })
+          await onConversationMessage(message)
         },
       },
 

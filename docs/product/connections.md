@@ -6,12 +6,14 @@ Synergy can connect to model and tool services through providers and MCP, messag
 
 Channels connect external accounts to the same durable Scope, Session, inbox, and permission model used by interactive clients. Channel core owns account lifecycle, endpoint target identity, Scope and Session routing, managed Project ownership, and diagnostics. Each provider owns its remote protocol and provider-private state.
 
-A provider declares one messaging shape:
+A provider reports typed ingress facts through the account-bound Channel host:
 
-- `chat` providers map remote conversations to stable unattended Sessions and may support replies, proactive pushes, media, reactions, streaming progress, and provider-owned reconnect.
-- `task_only` providers discover remote Projects and deliver assignments to dedicated Task Sessions. Discovery never creates a Project conversation Session, and Project-level protocol events never invoke a model.
+- Conversation ingress maps remote messages to stable unattended Sessions through `host.conversations`. Provider conversation capabilities may support replies, proactive pushes, media, reactions, and streaming progress.
+- Project and Task ingress reports discovery and assignments through `host.projects` and `host.tasks`. Discovery never creates a Project conversation Session, and Project-level protocol events never invoke a model.
 
-Feishu/Lark is the built-in chat provider. It retains its existing chat endpoint keys, Home-Scope behavior, media and mention handling, cards, and self-connected lifecycle while Channel core owns endpoint and Session routing.
+These ingress families are capabilities rather than exclusive provider kinds, so one provider may support both.
+
+Feishu/Lark is the built-in conversation provider. It retains its existing chat endpoint keys, default Home Scope, configured project Scope routing, media and mention handling, cards, and self-connected lifecycle while Channel core owns endpoint and Session routing.
 
 Feishu streaming cards replace accumulated progress with the terminal assistant answer when the run completes. CardKit writes are successful only when both the HTTP response and Feishu response code succeed. If the final card cannot be updated and closed successfully, the provider sends the terminal answer through the ordinary message API instead of leaving the user with a stale progress card.
 
@@ -66,7 +68,7 @@ wrong topic.
 
 ### Native Clarus tasks
 
-Clarus is the built-in task-only provider. A Holos identity creates its matching Channel account disabled by default. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity. While Holos is connecting or reconnecting, Clarus waits passively in `waiting_for_transport` until the matching authenticated transport becomes ready.
+Clarus is the built-in Project and Task provider and does not emit conversation ingress. A Holos identity creates its matching Channel account disabled by default. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity. While Holos is connecting or reconnecting, Clarus waits passively in `waiting_for_transport` until the matching authenticated transport becomes ready.
 
 Project refresh discovers all visible non-archived remote Projects and provisions one deterministic managed Project Scope per `(provider, account, external Project)` identity, including Projects that currently have no Tasks. These are normal Project Scopes with files, Git, LSP, configuration, and Sessions, but the Sidebar shows them only under their Channel account rather than duplicating them in the generic Projects section.
 

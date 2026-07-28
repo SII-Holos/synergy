@@ -1,5 +1,4 @@
 import z from "zod"
-import type { Scope } from "@/scope"
 import type { ChannelHost } from "./host"
 
 export const ChannelTarget = z.discriminatedUnion("kind", [
@@ -141,8 +140,6 @@ export const MessageContext = z
   .meta({ ref: "ChannelMessageContext" })
 export type MessageContext = z.infer<typeof MessageContext>
 
-export type MessageHandler = (ctx: MessageContext, scope: Scope) => Promise<void>
-
 export type SendResult = {
   messageId: string
 }
@@ -164,23 +161,7 @@ export interface StreamingSession {
 
 export type ProviderLifecycle = "self_connected" | "borrowed_transport"
 
-export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
-  readonly type: string
-  readonly lifecycle: ProviderLifecycle
-  readonly messaging?: "chat" | "task_only"
-
-  waitForTransport?(input: { accountId: string; signal: AbortSignal }): Promise<void>
-
-  connect(input: {
-    accountId: string
-    accountConfig: TAccountConfig
-    channelConfig: TChannelConfig
-    onMessage: MessageHandler
-    signal: AbortSignal
-    host: ChannelHost.Instance
-    onDisconnect?: (reason?: string) => void
-  }): Promise<void>
-
+export interface ConversationCapabilities {
   replyMessage?(input: { accountId: string; messageId: string; parts: OutboundPart[] }): Promise<SendResult>
 
   pushMessage?(input: { accountId: string; chatId: string; parts: OutboundPart[] }): Promise<SendResult>
@@ -190,5 +171,22 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   removeReaction?(input: { accountId: string; messageId: string; reactionId: string }): Promise<void>
 
   createStreamingSession?(input: { accountId: string; chatId: string; replyToMessageId?: string }): StreamingSession
+}
+
+export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
+  readonly type: string
+  readonly lifecycle: ProviderLifecycle
+  readonly conversation?: ConversationCapabilities
+
+  waitForTransport?(input: { accountId: string; signal: AbortSignal }): Promise<void>
+
+  connect(input: {
+    accountId: string
+    accountConfig: TAccountConfig
+    channelConfig: TChannelConfig
+    signal: AbortSignal
+    host: ChannelHost.Instance
+    onDisconnect?: (reason?: string) => void
+  }): Promise<void>
   refreshProjects?(input: { accountId: string; signal: AbortSignal; host: ChannelHost.Instance }): Promise<void>
 }

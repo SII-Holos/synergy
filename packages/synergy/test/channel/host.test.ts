@@ -7,6 +7,7 @@ import { SessionInbox } from "../../src/session/inbox"
 function createHost(label = crypto.randomUUID()) {
   const statuses: ChannelHost.ProviderStatus[] = []
   const diagnostics: ChannelHost.DiagnosticRecordInput[] = []
+  const messages: ChannelHost.ConversationMessage[] = []
   const host = ChannelHost.create({
     channelType: "test-channel",
     accountId: `account-${label}`,
@@ -14,21 +15,39 @@ function createHost(label = crypto.randomUUID()) {
     onDiagnostic: async (record) => {
       diagnostics.push(record)
     },
+    onConversationMessage: async (message) => {
+      messages.push(message)
+    },
   })
-  return { host, statuses, diagnostics }
+  return { host, statuses, diagnostics, messages }
 }
 
 describe("ChannelHost", () => {
-  test("binds account identity and forwards status and diagnostics", async () => {
-    const { host, statuses, diagnostics } = createHost()
+  test("binds account identity and forwards conversations, status, and diagnostics", async () => {
+    const { host, statuses, diagnostics, messages } = createHost()
 
     host.status.update({ kind: "syncing" })
     await host.diagnostics.record({ level: "warn", message: "partial discovery", data: { page: 2 } })
+    await host.conversations.receive({
+      chatId: "chat",
+      chatType: "dm",
+      senderId: "sender",
+      text: "hello",
+      messageId: "message",
+      timestamp: 1,
+    })
 
     expect(host.channelType).toBe("test-channel")
     expect(host.accountId).toStartWith("account-")
     expect(statuses).toEqual([{ kind: "syncing" }])
     expect(diagnostics).toEqual([{ level: "warn", message: "partial discovery", data: { page: 2 } }])
+    expect(messages).toEqual([
+      expect.objectContaining({
+        channelType: host.channelType,
+        accountId: host.accountId,
+        chatId: "chat",
+      }),
+    ])
   })
 
   test("ensures active and paused managed Projects without overwriting ownership", async () => {

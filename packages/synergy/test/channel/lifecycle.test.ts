@@ -32,19 +32,21 @@ function provider(input: {
   const value = {
     type: input.type,
     lifecycle: input.lifecycle,
+    conversation: {
+      async replyMessage() {
+        return { messageId: "reply" }
+      },
+      async pushMessage() {
+        return { messageId: "push" }
+      },
+      async addReaction() {},
+      createStreamingSession: streaming,
+    },
     async connect(connectInput) {
       connectCount += 1
       callbacks = connectInput
       input.onConnected?.(connectInput)
     },
-    async replyMessage() {
-      return { messageId: "reply" }
-    },
-    async pushMessage() {
-      return { messageId: "push" }
-    },
-    async addReaction() {},
-    createStreamingSession: streaming,
   } as Provider & {
     waitForTransport?: (input: { accountId: string; signal: AbortSignal }) => Promise<void>
   }

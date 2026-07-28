@@ -73,7 +73,6 @@ function hash(...parts: string[]): string {
 export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClarusAccount, Config.ChannelClarus> {
   readonly type = "clarus"
   readonly lifecycle = "borrowed_transport" as const
-  readonly messaging = "task_only" as const
   private readonly log = Log.create({ service: "channel.clarus" })
   private readonly connections = new Map<string, AccountConnection>()
 
@@ -128,7 +127,6 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     accountId: string
     accountConfig: Config.ChannelClarusAccount
     channelConfig: Config.ChannelClarus
-    onMessage: ChannelTypes.MessageHandler
     signal: AbortSignal
     host: ChannelHost.Instance
     onDisconnect?: (reason?: string) => void

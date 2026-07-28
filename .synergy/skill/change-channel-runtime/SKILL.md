@@ -8,15 +8,15 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 ## Trace the Contract
 
 1. Read [Channels](../../../docs/architecture/channels.md), [Sessions and messages](../../../docs/architecture/session-and-messages.md), [Connections](../../../docs/product/connections.md), and the nearest package `AGENTS.md` files.
-2. Classify the provider as `chat` or `task_only`, and its lifecycle as `self_connected` or `borrowed_transport`.
+2. Identify the provider's conversation, Project, and Task ingress capabilities independently, and classify its lifecycle as `self_connected` or `borrowed_transport`.
 3. Trace target identity, provider configuration, account start/stop/status, `ChannelHost`, managed ownership, Session endpoint lookup, inbox delivery, navigation projection, routes, generated SDK consumers, diagnostics, and recovery state.
 4. Load `change-persistence` for ownership, indexes, provider-private state, or outboxes; `change-server-api` for routes or generated contracts; `develop-frontend` for account/navigation UI; `add-tool` for first-party Channel tools; and `develop-synergy` for isolated runtime verification.
 
 ## Preserve Ownership
 
 1. Keep Scope and Session creation in Channel core. A project/task-capable provider reports remote facts through `ChannelHost`; it does not call Scope, Session, or model execution directly.
-2. Use typed `ChannelTarget` identity for new chat, Project, and Task endpoints. Preserve existing Feishu legacy endpoint keys and Home-Scope behavior byte-for-byte.
-3. Keep task-only Project targets as ownership/navigation identity only. Discovery and Project-level events must not create a Project conversation Session or invoke a model.
+2. Use typed `ChannelTarget` identity for new chat, Project, and Task endpoints. Preserve existing Feishu legacy endpoint keys, default Home-Scope behavior, and configured project Scope routing byte-for-byte.
+3. Keep Project targets as ownership/navigation identity only. Discovery and Project-level events must not create a Project conversation Session or invoke a model.
 4. Map each external Project identity to one canonical managed Project Scope with hashed forward and reverse ownership indexes. Keep raw external IDs out of path components, reject path escape and symbolic links, initialize an independent Git repository, and never remove a Scope in response to remote archive.
 5. Map one external Task ID to one stable unattended Session in its managed Project Scope. Deliver assignments and updates through the persistent inbox with deterministic delivery keys; keep participation and deadline guidance hidden and system-authored.
 
@@ -24,7 +24,7 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 
 1. Borrow the existing authenticated Holos Agent Tunnel through `HolosRuntime.getNativeTunnel()`. Do not add another WebSocket, reconnect loop, credential owner, daemon, or Holos server change.
 2. Validate account identity, process epoch, connection generation, event schemas, request correlation, and acknowledgement identity at the transport boundary. Dispose observers and in-flight work on account stop or transport replacement.
-3. Treat Clarus as task-only. Accept subscription state and runtime Task events; classify legacy Project message, file, system, and notary events as unknown without Session delivery.
+3. Clarus emits only Project and Task ingress. Accept subscription state and runtime Task events; classify legacy Project message, file, system, and notary events as unknown without Session delivery.
 4. Persist result and extension outbox records before dispatch. Only `not_dispatched` may retry automatically with a fresh request ID and lineage; `rejected`, `ambiguous`, and `acknowledged` are terminal for automatic retry. Recovered `pending` records become `ambiguous`.
 5. Keep remote Project pause as display/protocol state for already accepted work. Use the standard Session Abort path for local cancellation, and keep accepted-task result, extension, and deadline behavior available while remotely paused.
 6. Use Agenda `session_guidance` only for durable hidden steering into the owning Task Session. It must not create an Agenda execution Session or a visible fake user prompt.

@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { Channel } from "../../src/channel"
 import { Config } from "../../src/config/config"
+import type { Provider, StreamingSession } from "../../src/channel/types"
+import type { ChannelHost } from "../../src/channel/host"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { SessionEndpoint } from "../../src/session/endpoint"
 import { ManagedProjectOwnership } from "../../src/channel/managed-project-ownership"
 import { tmpdir } from "../fixture/fixture"
 import fs from "fs/promises"
@@ -77,6 +80,92 @@ describe("Channel account project scope", () => {
     })
 
     expect(scope).toEqual(Scope.home())
+  })
+
+  test("routes provider conversation ingress through the resolved account Scope", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const type = `project-scope-${crypto.randomUUID()}`
+    const accountId = "project-account"
+    const chatId = "project-chat"
+    const endpoint = SessionEndpoint.fromChannel({ type, accountId, chatId })
+    await ScopeContext.provide({
+      scope,
+      fn: () => Session.create({ scope, endpoint }),
+    })
+
+    let host: ChannelHost.Instance | undefined
+    const replies: string[] = []
+    const streaming = (): StreamingSession => ({
+      async start() {},
+      async update() {},
+      async updateToolProgress() {},
+      async close() {},
+      isActive: () => false,
+    })
+    const provider = {
+      type,
+      lifecycle: "self_connected" as const,
+      conversation: {
+        async replyMessage(input) {
+          replies.push(
+            input.parts
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join(""),
+          )
+          return { messageId: "reply" }
+        },
+        async pushMessage() {
+          return { messageId: "push" }
+        },
+        async addReaction() {},
+        createStreamingSession: streaming,
+      },
+      async connect(input: Parameters<Provider["connect"]>[0]) {
+        host = input.host
+      },
+    } satisfies Provider
+    Channel.registerProvider(provider)
+
+    const originalConfigCurrent = Config.current
+    Config.current = mock(async () => {
+      return {
+        channel: {
+          [type]: {
+            type,
+            accounts: { [accountId]: { enabled: true, projectDir: tmp.path } },
+          },
+        },
+      } as unknown as Config.Info
+    }) as typeof Config.current
+
+    try {
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await Channel.reload()
+          await Channel.init()
+        },
+      })
+      const timeoutAt = Date.now() + 2_000
+      while (!host && Date.now() < timeoutAt) await Bun.sleep(5)
+      expect(host).toBeDefined()
+      await host!.conversations.receive({
+        chatId,
+        chatType: "dm",
+        senderId: "sender",
+        text: "/status",
+        messageId: "message",
+        timestamp: Date.now(),
+      })
+
+      expect(replies).toHaveLength(1)
+      expect(replies[0]).toContain("Messages: 0")
+    } finally {
+      Config.current = originalConfigCurrent
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => Channel.stopAll() })
+    }
   })
 })
 

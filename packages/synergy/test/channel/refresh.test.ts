@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 import type { Config } from "../../src/config/config"
 import { Config as ConfigRuntime } from "../../src/config/config"
 import { Channel } from "../../src/channel"
-import type { Provider, StreamingSession } from "../../src/channel/types"
+import type { Provider } from "../../src/channel/types"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 
@@ -13,16 +13,6 @@ const originalConfigCurrent = ConfigRuntime.current
 
 function inHome<T>(fn: () => T | Promise<T>) {
   return ScopeContext.provide({ scope: Scope.home(), fn })
-}
-
-function streaming(): StreamingSession {
-  return {
-    async start() {},
-    async update() {},
-    async updateToolProgress() {},
-    async close() {},
-    isActive: () => false,
-  }
 }
 
 function refreshProvider(input: {
@@ -44,10 +34,6 @@ function refreshProvider(input: {
       async connect(connectInput: Parameters<Provider["connect"]>[0]) {
         callbacks = connectInput
       },
-      async replyMessage() {
-        return { messageId: "reply" }
-      },
-      createStreamingSession: streaming,
       refreshProjects: input.refreshProjects,
     } satisfies Provider,
     disconnect: (reason = "test") => {

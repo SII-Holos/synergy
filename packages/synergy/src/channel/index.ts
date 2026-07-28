@@ -44,7 +44,7 @@ import type {
   Mention as MentionType,
   Attachment as AttachmentType,
   MessageContext as MessageContextType,
-  MessageHandler as MessageHandlerType,
+  ConversationCapabilities as ConversationCapabilitiesType,
   SendResult as SendResultType,
   StreamingSession as StreamingSessionType,
   Provider as ProviderType,
@@ -66,7 +66,7 @@ export namespace Channel {
   export type Mention = MentionType
   export type Attachment = AttachmentType
   export type MessageContext = MessageContextType
-  export type MessageHandler = MessageHandlerType
+  export type ConversationCapabilities = ConversationCapabilitiesType
   export type SendResult = SendResultType
   export type StreamingSession = StreamingSessionType
   export type Provider<TAccountConfig = unknown, TChannelConfig = unknown> = ProviderType<
@@ -357,6 +357,7 @@ export namespace Channel {
       channelType,
       accountId,
       activateTasks: true,
+      onConversationMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
       onDiagnostic: async (record) => {
         await recordDiagnostic(channelType, accountId, record)
       },
@@ -365,7 +366,6 @@ export namespace Channel {
       accountId,
       accountConfig,
       channelConfig,
-      onMessage: (ctx, messageScope) => handleMessage(provider, ctx, messageScope, accountConfig),
       signal: abort.signal,
       host,
       onDisconnect: (reason) => {
@@ -503,12 +503,13 @@ export namespace Channel {
     scope: Scope,
     accountConfig: unknown,
   ): Promise<void> {
-    if (provider.messaging === "task_only") return
-    const replyMessage = provider.replyMessage?.bind(provider)
-    const addReaction = provider.addReaction?.bind(provider)
-    const createStreamingSession = provider.createStreamingSession?.bind(provider)
+    const conversation = provider.conversation
+    const replyMessage = conversation?.replyMessage?.bind(conversation)
+    const addReaction = conversation?.addReaction?.bind(conversation)
+    const removeReaction = conversation?.removeReaction?.bind(conversation)
+    const createStreamingSession = conversation?.createStreamingSession?.bind(conversation)
     if (!replyMessage || !addReaction || !createStreamingSession) {
-      log.warn("channel provider is missing chat capabilities", { channelType: provider.type })
+      log.warn("channel provider is missing conversation capabilities", { channelType: provider.type })
       return
     }
     await ScopeContext.provide({
@@ -569,9 +570,9 @@ export namespace Channel {
               })
               return result?.reactionId
             },
-            removeReaction: provider.removeReaction
+            removeReaction: removeReaction
               ? async (reactionId: string) => {
-                  await provider.removeReaction?.({
+                  await removeReaction({
                     accountId: ctx.accountId,
                     messageId: ctx.messageId,
                     reactionId,

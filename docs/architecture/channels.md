@@ -4,12 +4,12 @@
 
 The Channel domain adapts external accounts into Synergy-owned Scope and Session behavior. Providers own remote protocol details; Channel core owns target identity, account lifecycle, managed Project ownership, task routing, diagnostics, and integration with the durable Session inbox.
 
-Channels support two provider shapes:
+Providers report typed ingress facts through `ChannelHost` and may support one or both ingress families:
 
-- `chat` providers translate remote conversations into endpoint Sessions with replies, media, reactions, streaming, and provider-owned reconnect behavior.
-- `task_only` providers discover remote Projects and dispatch remote Tasks into dedicated Synergy Sessions. They do not create a Project conversation or expose chat reply/push behavior.
+- Conversation ingress translates remote messages into endpoint Sessions through `host.conversations.receive()`. Matching provider capabilities may supply replies, proactive pushes, media, reactions, and streaming.
+- Project and Task ingress reports discovery and assignments through `host.projects` and `host.tasks`. Project discovery does not create a conversation Session; Task assignments use dedicated Task Sessions.
 
-Feishu is a `chat` provider with a `self_connected` lifecycle. Clarus is a `task_only` provider with a `borrowed_transport` lifecycle over the existing Holos Agent Tunnel.
+Ingress families are capabilities, not mutually exclusive provider kinds. A provider may support both. Feishu currently exposes conversation ingress with a `self_connected` lifecycle. Clarus exposes only Project and Task ingress with a `borrowed_transport` lifecycle over the existing Holos Agent Tunnel.
 
 ## Target Identity
 
@@ -26,7 +26,7 @@ type ChannelTarget =
     }
 ```
 
-Project targets identify managed ownership and navigation. A task-only provider does not materialize them as conversation Sessions.
+Project targets identify managed ownership and navigation. Project discovery does not materialize them as conversation Sessions.
 
 Target keys include provider type and account ID. Project and Task identities therefore cannot collide with chat identities or with another account's external IDs.
 
@@ -49,7 +49,7 @@ Disconnect settles in-flight native requests as ambiguous and notifies borrowed 
 
 ## Managed Project Ownership
 
-A task-only provider maps each `(channelType, accountId, externalProjectId)` identity to one real Project Scope through `ManagedProjectOwnership`.
+A provider using Project and Task ingress maps each `(channelType, accountId, externalProjectId)` identity to one real Project Scope through `ManagedProjectOwnership`.
 
 The owner:
 
@@ -111,7 +111,7 @@ On connect or manual refresh, Clarus:
 3. subscribes to each active Project and waits for its correlated subscription acknowledgement;
 4. recovers eligible result and extension outbox records.
 
-The provider accepts only subscription state and runtime Task events. Assignment payloads normalize nullable retry lineage and attempt mode to absent semantic fields instead of rejecting the event. Legacy Project message, file, system, and notary events are not Channel behaviors and are classified as unknown by the task-only adapter.
+The provider accepts only subscription state and runtime Task events. Assignment payloads normalize nullable retry lineage and attempt mode to absent semantic fields instead of rejecting the event. Legacy Project message, file, system, and notary events are not Channel behaviors and are classified as unknown by the Clarus adapter.
 
 `clarus.runtime.task.assigned` rejects an already-expired deadline before REST preflight, Session creation, assignment persistence, inbox delivery, or model wake, then records a bounded informational diagnostic. A previously bound assignment whose owning Session is archived is blocked under the Session endpoint lock, retains its original binding, creates no replacement Session, and records a bounded warning diagnostic.
 

@@ -66,13 +66,15 @@ export namespace ChannelOutbound {
         log.warn("no provider for channel type", { type: channelInfo.type, sessionID: msg.sessionID })
         return
       }
+      const conversation = provider.conversation
+      if (!conversation) return
 
       const text = MessageV2.extractText(current.parts, { includeSynthetic: false })
       if (!text) return
 
       try {
         if (replyRequired && replyToMessageId) {
-          const replyMessage = provider.replyMessage?.bind(provider)
+          const replyMessage = conversation.replyMessage?.bind(conversation)
           if (!replyMessage) return
           await replyMessage({
             accountId: channelInfo.accountId,
@@ -80,7 +82,7 @@ export namespace ChannelOutbound {
             parts: [{ type: "text", text }],
           })
         } else if (chatId) {
-          const pushMessage = provider.pushMessage?.bind(provider)
+          const pushMessage = conversation.pushMessage?.bind(conversation)
           if (!pushMessage) return
           await pushMessage({
             accountId: channelInfo.accountId,

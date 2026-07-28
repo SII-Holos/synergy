@@ -4,6 +4,7 @@ import * as Lark from "@larksuiteoapi/node-sdk"
 import { Log } from "../../../util/log"
 import { Config } from "../../../config/config"
 import * as ChannelTypes from "../../types"
+import type { ChannelHost } from "../../host"
 import { FeishuStreamingCard } from "./streaming-card"
 import { feishuDedup } from "./dedup"
 import { senderNameCache, chatNameCache } from "./sender"
@@ -19,7 +20,6 @@ import {
 import type { FeishuEventPayload, FeishuMessage, FeishuMention, FeishuSender } from "./feishu-types"
 import type { FeishuApiContext } from "./api-context"
 import { FeishuOutboundMedia } from "./outbound-media"
-import { Scope } from "@/scope"
 
 const log = Log.create({ service: "channel.feishu" })
 
@@ -169,6 +169,14 @@ export function filterInboundMessage(input: MessageFilterInput): MessageFilterRe
 export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeishuAccount, Config.ChannelFeishu> {
   readonly type = "feishu"
   readonly lifecycle = "self_connected" as const
+  readonly conversation = {
+    replyMessage: (input: Parameters<FeishuProvider["replyMessage"]>[0]) => this.replyMessage(input),
+    pushMessage: (input: Parameters<FeishuProvider["pushMessage"]>[0]) => this.pushMessage(input),
+    addReaction: (input: Parameters<FeishuProvider["addReaction"]>[0]) => this.addReaction(input),
+    removeReaction: (input: Parameters<FeishuProvider["removeReaction"]>[0]) => this.removeReaction(input),
+    createStreamingSession: (input: Parameters<FeishuProvider["createStreamingSession"]>[0]) =>
+      this.createStreamingSession(input),
+  } satisfies ChannelTypes.ConversationCapabilities
 
   private accounts = new Map<string, AccountState>()
 
@@ -269,10 +277,10 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     accountId: string
     accountConfig: Config.ChannelFeishuAccount
     channelConfig: Config.ChannelFeishu
-    onMessage: ChannelTypes.MessageHandler
     signal: AbortSignal
+    host: ChannelHost.Instance
   }): Promise<void> {
-    const { accountId, accountConfig, channelConfig, onMessage, signal } = input
+    const { accountId, accountConfig, channelConfig, signal, host } = input
 
     const domain = accountConfig.domain ?? channelConfig.domain
     const larkDomain = domain === "lark" ? Lark.Domain.Lark : Lark.Domain.Feishu
@@ -319,7 +327,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       resolveText: (event) => event.ctx.text,
       onFlush: async (merged) => {
         const ctx = { ...merged.last.ctx, text: merged.combinedText }
-        await enqueueChatTask(ctx.chatId, () => onMessage(ctx, Scope.home()))
+        await enqueueChatTask(ctx.chatId, () => host.conversations.receive(ctx))
       },
       onError: (err) => log.error("debounce flush failed", { accountId, error: err }),
     })
@@ -357,7 +365,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
             if (debounceMs > 0) {
               debouncer.enqueue({ ctx })
             } else {
-              await enqueueChatTask(ctx.chatId, () => onMessage(ctx, Scope.home()))
+              await enqueueChatTask(ctx.chatId, () => host.conversations.receive(ctx))
             }
           } catch (err) {
             log.error("failed to process message", { messageId: rawMessageId, error: err })

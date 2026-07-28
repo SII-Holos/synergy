@@ -300,7 +300,6 @@ describe("ClarusProvider routing integration", () => {
         accountId: FAKE_AGENT_ID,
         accountConfig: accountConfig(),
         channelConfig: channelConfig(),
-        onMessage: async () => {},
         signal: abort.signal,
         onDisconnect: () => {},
         host,
