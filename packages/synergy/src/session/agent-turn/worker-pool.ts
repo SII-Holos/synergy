@@ -4,6 +4,7 @@ import { Log } from "@/util/log"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import type { LLM } from "../llm"
 import type { ToolCatalog } from "../tool-catalog"
+import type { ContextUsage } from "../context-usage"
 import { AgentTurnProtocol } from "./protocol"
 import { spawnAgentWorkerProcess, type AgentWorkerProcess, type SpawnAgentWorkerProcessOptions } from "./process-host"
 
@@ -11,21 +12,22 @@ export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
 
 export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn" | "prepared"> {
   toolDefinitions: ToolCatalog.Definition[]
+  contextUsageProvenance?: ContextUsage.Provenance
 }
 
-export type AgentTurnWorkerInput = Omit<AgentTurnInput, "abort" | "user" | "agent"> & {
+export type AgentTurnWorkerInput = Omit<AgentTurnInput, "abort" | "user" | "agent" | "contextUsageProvenance"> & {
   user: Pick<AgentTurnInput["user"], "id">
   agent: Pick<AgentTurnInput["agent"], "name">
   prepared: LLM.PreparedTurn
 }
 
-type AgentTurnPoolInput = AgentTurnInput & {
+type AgentTurnPoolInput = Omit<AgentTurnInput, "contextUsageProvenance"> & {
   prepared: LLM.PreparedTurn
 }
 
 export interface AgentTurnStream {
   fullStream: AsyncIterable<AgentTurnStreamPart>
-  contextUsageDraft?: LLM.StreamOutput["contextUsageDraft"]
+  contextUsageDraft?: Promise<ContextUsage.Draft | undefined>
   usage: Promise<Awaited<LLM.StreamOutput["usage"]> | undefined>
   dispose(): Promise<void>
 }
@@ -562,7 +564,6 @@ export class AgentWorkerPool {
       })
       task.resolve({
         fullStream: task.stream.iterate(),
-        contextUsageDraft: message.contextUsageDraft as LLM.StreamOutput["contextUsageDraft"],
         usage: task.usage,
         dispose: () => this.disposeTask(task),
       })

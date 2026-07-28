@@ -5,10 +5,10 @@ import { Config } from "../../src/config/config"
 import { ExperienceEncoder } from "../../src/library/experience-encoder"
 import { Plugin } from "../../src/plugin"
 import { Session } from "../../src/session"
-import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
 import { ContextUsage } from "../../src/session/context-usage"
+import { AgentTurn } from "../../src/session/agent-turn"
 import { Snapshot } from "../../src/session/snapshot"
 import { SessionBounds } from "../../src/session/bounds"
 import { Bus } from "../../src/bus"
@@ -153,7 +153,7 @@ type SettlementScenario = {
   updatePart?: (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => Promise<MessageV2.Part>
   abort?: AbortSignal
   residualStream?: { cancel(reason?: unknown): Promise<void> }
-  contextUsageDraft?: ContextUsage.Draft
+  contextUsageDraft?: ContextUsage.Draft | Promise<ContextUsage.Draft | undefined>
   updateMessage?: (message: MessageV2.Assistant) => void
   executionTools?: (processor: SessionProcessor.Info) => Record<string, any>
   inspectAgentInput?: (input: Record<string, unknown>) => void
@@ -161,12 +161,13 @@ type SettlementScenario = {
 }
 
 async function runSettlementScenario(scenario: SettlementScenario) {
-  const originalStream = LLM.stream
+  const originalStream = AgentTurn.stream
   const originalUpdatePart = Session.updatePart
   const originalUpdatePartDelta = Session.updatePartDelta
   const originalFlushPartWrites = Session.flushPartWrites
   const originalParts = MessageV2.parts
   const originalUpdateMessage = Session.updateMessage
+  const originalUpdateAssistantContextUsage = Session.updateAssistantContextUsage
   const originalUpdateLastExchange = Session.updateLastExchange
   const originalSnapshotTrack = Snapshot.track
   const originalConfigCurrent = Config.current
@@ -174,6 +175,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
   const originalExperienceComplete = ExperienceEncoder.onComplete
   const originalBusPublish = Bus.publish
   const parts = new Map<string, MessageV2.Part>()
+  let latestAssistant: MessageV2.Assistant | undefined
   let processor!: SessionProcessor.Info
 
   try {
@@ -190,9 +192,18 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(Session.flushPartWrites as any) = mock(async () => {})
     ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
     ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => {
+      latestAssistant = structuredClone(message)
       scenario.updateMessage?.(message)
       return message
     })
+    ;(Session.updateAssistantContextUsage as any) = mock(
+      async (input: { contextUsage: NonNullable<MessageV2.Assistant["contextUsage"]> }) => {
+        if (!latestAssistant) throw new Error("expected a persisted assistant message")
+        latestAssistant = { ...latestAssistant, contextUsage: input.contextUsage }
+        scenario.updateMessage?.(latestAssistant)
+        return latestAssistant
+      },
+    )
     ;(Session.updateLastExchange as any) = mock(async () => {})
     ;(Config.current as any) = mock(
       async () => scenario.config ?? { experimental: {}, timeout: { tool: { default_sec: 60 } } },
@@ -201,12 +212,18 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(Bus.publish as any) = mock(async () => {})
     ;(Snapshot.track as any) = mock(async () => "snapshot_test")
-    ;(LLM.stream as any) = mock(async (input: Record<string, unknown>) => {
+    ;(AgentTurn.stream as any) = mock(async (input: Record<string, unknown>) => {
       scenario.inspectAgentInput?.(input)
       return {
         fullStream: scenario.stream(processor),
-        baseStream: scenario.residualStream,
-        contextUsageDraft: scenario.contextUsageDraft,
+        contextUsageDraft:
+          "contextUsageDraft" in scenario
+            ? Promise.resolve(scenario.contextUsageDraft).then((draft) => draft)
+            : undefined,
+        usage: Promise.resolve(undefined),
+        async dispose() {
+          await scenario.residualStream?.cancel()
+        },
       }
     })
 
@@ -237,15 +254,17 @@ async function runSettlementScenario(scenario: SettlementScenario) {
         ? { executionTools: scenario.executionTools(processor), executorKinds: { layered_probe: "control_plane" } }
         : {}),
     } as any)
+    await Bun.sleep(10)
     return [...parts.values()]
   } finally {
     TimeoutConfig.invalidate()
-    ;(LLM.stream as any) = originalStream
+    ;(AgentTurn.stream as any) = originalStream
     ;(Session.updatePart as any) = originalUpdatePart
     ;(Session.updatePartDelta as any) = originalUpdatePartDelta
     ;(Session.flushPartWrites as any) = originalFlushPartWrites
     ;(MessageV2.parts as any) = originalParts
     ;(Session.updateMessage as any) = originalUpdateMessage
+    ;(Session.updateAssistantContextUsage as any) = originalUpdateAssistantContextUsage
     ;(Session.updateLastExchange as any) = originalUpdateLastExchange
     ;(Snapshot.track as any) = originalSnapshotTrack
     ;(Config.current as any) = originalConfigCurrent
@@ -507,12 +526,12 @@ describe("SessionProcessor context usage persistence", () => {
   }
 
   test("persists a provider-exact reconciled snapshot with normalized usage", async () => {
-    let persisted: MessageV2.Assistant | undefined
+    const persisted: MessageV2.Assistant[] = []
     await runSettlementScenario({
       messageID: "msg_context_usage",
       contextUsageDraft,
       updateMessage(message) {
-        persisted = structuredClone(message)
+        persisted.push(structuredClone(message))
       },
       async *stream() {
         yield {
@@ -523,10 +542,11 @@ describe("SessionProcessor context usage persistence", () => {
       },
     })
 
-    expect(persisted?.tokens).toEqual({ input: 9, output: 2, reasoning: 1, cache: { read: 3, write: 0 } })
-    expect(persisted?.contextUsage?.totalInput).toBe(12)
-    expect(persisted?.contextUsage && ContextUsage.attributedTotal(persisted.contextUsage)).toBe(12)
-    expect(JSON.stringify(persisted?.contextUsage)).not.toContain("prompt")
+    const enriched = persisted.findLast((message) => message.contextUsage !== undefined)
+    expect(enriched?.tokens).toEqual({ input: 9, output: 2, reasoning: 1, cache: { read: 3, write: 0 } })
+    expect(enriched?.contextUsage?.totalInput).toBe(12)
+    expect(enriched?.contextUsage && ContextUsage.attributedTotal(enriched.contextUsage)).toBe(12)
+    expect(JSON.stringify(enriched?.contextUsage)).not.toContain("prompt")
   })
 
   test("does not persist a snapshot when provider input usage is unavailable", async () => {
@@ -567,6 +587,35 @@ describe("SessionProcessor context usage persistence", () => {
     })
 
     expect(persisted?.contextUsage).toBeUndefined()
+  })
+
+  test("does not wait for unavailable Context Usage enrichment", async () => {
+    let persisted: MessageV2.Assistant | undefined
+    let settleDraft!: (draft: ContextUsage.Draft | undefined) => void
+    const draft = new Promise<ContextUsage.Draft | undefined>((resolve) => {
+      settleDraft = resolve
+    })
+    const processing = runSettlementScenario({
+      messageID: "msg_context_usage_fail_open",
+      contextUsageDraft: draft,
+      updateMessage(message) {
+        persisted = structuredClone(message)
+      },
+      async *stream() {
+        yield {
+          type: "finish-step",
+          finishReason: "stop",
+          usage: { inputTokens: 12, outputTokens: 2 },
+        }
+      },
+    })
+
+    await expect(
+      Promise.race([processing, Bun.sleep(100).then(() => Promise.reject(new Error("blocked")))]),
+    ).resolves.toBeDefined()
+    expect(persisted?.finish).toBe("stop")
+    expect(persisted?.contextUsage).toBeUndefined()
+    settleDraft(undefined)
   })
 })
 describe("SessionProcessor tool input bounds", () => {
