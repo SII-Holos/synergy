@@ -98,7 +98,7 @@ export const contextWorkspace = {
   exactInputShare: { id: "app.context.breakdown.exactInputShare", message: "{percent} of exact input" },
   estimateNote: {
     id: "app.context.breakdown.estimateNote",
-    message: "Category values are model-tokenizer estimates reconciled to the exact provider input total.",
+    message: "Category values use bounded UTF-8 estimates reconciled to the exact provider input total.",
   },
   usageDetails: { id: "app.context.details.usage", message: "Usage details" },
   provider: { id: "app.context.details.provider", message: "Provider" },
