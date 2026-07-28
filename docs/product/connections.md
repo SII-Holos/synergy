@@ -16,17 +16,50 @@ The provider contract supports:
 - reactions and delivery-status reactions
 - streaming text and tool progress
 - reconnect and account status
+- provider-native response cards with buttons and bounded static selects
 
 Feishu/Lark is the current built-in provider. It owns Feishu-specific deduplication, mentions, group behavior, media transfer, cards, and reconnect handling while the Channel core owns endpoint/session routing and outbound delivery.
 
 Feishu streaming cards replace accumulated progress with the terminal assistant answer when the run completes. CardKit writes are successful only when both the HTTP response and Feishu response code succeed. If the final card cannot be updated and closed successfully, the provider sends the terminal answer through the ordinary message API instead of leaving the user with a stale progress card.
 
 Feishu/Lark distinguishes Synergy's own bot messages from messages sent by other bots using the authenticated account's `botOpenId`. The provider resolves that identity from account configuration or the Feishu bot-info API and fails closed for bot senders while it is unknown. With `requireMention: true`, an external bot message is accepted only when it contains a real mention whose open ID matches Synergy; the Feishu app also needs the bot-to-bot group mention event permission. Set `groupSessionScope` to `group_topic` when each Feishu topic should reuse an independent Synergy session.
+
+`groupSessionScope` accepts four strategies: `group` shares one session across the chat; `group_sender` isolates each sender; `group_topic` isolates each topic or thread; and `group_topic_sender` isolates each sender within a topic or thread. Topic-aware modes fall back to their non-topic equivalent when the message has no topic identifier.
+
 Each Feishu/Lark account can optionally set `projectDir` to bind its sessions to a project Scope. The directory is resolved relative to the Synergy home directory unless absolute. It must exist, be readable, and resolve to a project Scope (as determined by `Scope.fromDirectory()`). A missing, unreadable, or non-project directory fails the account connection at startup. When `projectDir` is omitted, the account uses the home Scope. All endpoint sessions for that account are scoped to the resolved Scope, so session lookup and reuse stay within that Scope and do not intersect sessions belonging to other Scopes.
 
 Each Feishu/Lark account can set a default model and one of that model's exposed variants. The account selection is written onto each inbound root message so the session header and provider request agree. A conversation-level `/model` override takes precedence over the account default; because that override selects a different model, it does not inherit the account model's variant.
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
+
+### Channel Commands
+
+Channel commands are handled before ordinary agent invocation. Commands that accept trailing text can switch or reset the conversation and immediately continue that text as the next user request.
+
+| Command                       | Aliases                               | Behavior                                                                                                         |
+| ----------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/chat [message]`             | —                                     | Switches the conversation to normal chat; optional trailing text continues immediately.                          |
+| `/blueprint [request]`        | `/plan`                               | Enables Blueprint planning; optional trailing text is handled as the planning request.                           |
+| `/lightloop <task>`           | —                                     | Starts or updates Light Loop with the required task text and continues that task immediately.                    |
+| `/lattice [goal]`             | —                                     | Enables automatic Lattice decomposition; optional trailing text continues as the goal.                           |
+| `/model <providerID/modelID>` | —                                     | Changes the model override for an existing conversation.                                                         |
+| `/new [message]`              | `/reset`, `/重置`, `/清空`, `/新对话` | Archives the endpoint's current session; optional trailing text starts the replacement conversation immediately. |
+| `/status`                     | `/状态`                               | Reports whether a conversation exists and, when it does, its message count and timestamps.                       |
+| `/help`                       | `/commands`                           | Displays the command list in the Channel conversation.                                                           |
+
+### Response Cards
+
+Response cards let the agent present ordered text, buttons, and bounded static selects when structured presentation is clearer than plain text. In Feishu/Lark they appear as interactive CardKit messages; choosing a registered control starts a fresh Channel task after identity, message, action, value, deduplication, and expiry checks succeed.
+
+The provider-neutral card intent is limited to 28 KiB. It does not support raw provider JSON, URLs, free-form inputs, commands, or arbitrary tool calls.
+
+The Channel-only `response_card` tool produces a provider-neutral card intent; it does not send a message or execute an action itself. Channel delivery renders each completed intent through the active provider and durably registers it against the original task requester. Foreground and unattended delivery share the same registration, so a terminal task sends each card at most once even when both paths observe it.
+
+Feishu/Lark renders response cards with CardKit v2. Callback envelopes use the built-in `response_card:` namespace. Synergy validates the account, chat, original requester, sent card message, registered control, submitted value, and 14-day expiry before accepting a callback. Invalid or expired built-in callbacks fail closed; unrelated callback namespaces continue to the existing plugin callback handlers.
+
+An accepted callback never treats its opaque ID or value as a command, tool name, URL, or executable instruction. Synergy creates a fresh Channel user task whose visible text is synthesized only from the registered card title and labels. The raw callback fields remain in structured message metadata for audit and routing. Callback event IDs use durable inbox delivery keys, so retries enqueue one task and return a duplicate acknowledgement without invoking the model twice.
+
+Response-card registration writes a pending record before the provider send and activates it only after receiving the sent message ID. If a process stops while the provider outcome is unknown, the surviving pending record blocks resend until its expiry rather than risk issuing a duplicate interactive card.
 
 ### Outbound Delivery Anchoring
 
@@ -47,10 +80,8 @@ assistant it:
 3. when `channelReply` is true and no `channelReplyToMessageId` exists on that
    assistant, logs a warning and drops the message instead of pushing to the
    chat
-4. calls `provider.replyMessage()` when replying, or `provider.pushMessage()`
-   for a regular push
-5. records `channelOutboundSent: true` on the assistant after successful
-   provider delivery so repeated terminal events do not send it again
+4. delivers provider-native response cards and ordinary text/media parts; card-only terminal responses are valid outbound results. Tool-produced file, image, audio, and video attachments found across the completed task thread are projected into the same delivery, so attachment-only terminal responses are valid too
+5. records `channelOutboundSent: true` after all matching cards are durably handled and ordinary provider delivery succeeds, so repeated terminal events do not send the result again
 
 ### Reply in Thread
 
