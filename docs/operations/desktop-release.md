@@ -59,6 +59,7 @@ The product release also publishes the minimal remote Browser Host for every sup
 - the matching `.manifest.json.sig`
 
 Each manifest is Ed25519-signed and contains the exact Synergy version, Browser protocol version, SHA-256, byte size, release URL, and executable path. The standalone server downloads a Host only when WebRTC presentation is first required, verifies the embedded public key, signature, digest, version, and protocol, and atomically extracts it below `Global.Path.data/browser/host`. Desktop installations use their built-in broker and do not download this artifact for local native presentation.
+Manifest generation opens the completed ZIP before hashing or signing and fails unless the declared executable entry exists. The exact paths are `Synergy Browser Host.app/Contents/MacOS/Synergy Browser Host` on macOS, `Synergy Browser Host.exe` on Windows, and `synergy-browser-host` on Linux. Electron Builder executable names and manifest paths must continue to derive from this shared release contract.
 
 The same release also publishes signed Chromium installation metadata for `darwin-x64`, `darwin-arm64`, `win32-x64`, `linux-x64`, and `linux-arm64`:
 
@@ -150,5 +151,5 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 - Confirm Windows does not expose internal runtime helper binaries through PATH
 - Confirm Linux provides both `/usr/bin/synergy-desktop` for the desktop shell and `/usr/bin/synergy` for the runtime CLI
 - Draft GitHub Release contains all expected recommended installer artifacts, portable artifacts, checksum, and updater metadata before finalize
-- Draft GitHub Release contains six Browser Host zips, six exact-version manifests, and six signatures; tampered zip/signature tests pass before finalize
+- Draft GitHub Release contains six Browser Host zips, six exact-version manifests, and six signatures; every manifest executable exists at its exact platform path inside the matching zip, and tampered zip/signature tests pass before finalize
 - Draft GitHub Release contains five exact-version Chromium manifests and five signatures for the supported standalone install targets; signature, target-substitution, and archive-tampering tests pass before finalize.

@@ -26089,7 +26089,7 @@
             "type": "boolean"
           },
           "cors": {
-            "description": "Additional domains to allow for CORS",
+            "description": "Additional origins allowed for CORS and Browser viewer WebSockets",
             "type": "array",
             "items": {
               "type": "string"

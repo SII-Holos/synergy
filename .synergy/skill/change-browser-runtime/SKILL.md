@@ -24,6 +24,7 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 8. Dispose live Browser state on session archive/delete and global shutdown; preserve profile, storage-state, download, annotation, and restored page-ID ownership.
 9. Keep Browser implementations out of the Agent worker runner's static dependency graph. Only serializable Browser tool definitions cross into the worker; callbacks, canonical sessions, Playwright/Chromium state, host signaling, native views, and WebRTC state remain Control Plane/tool-runtime owned.
 10. Attribute resource state by owner and page backend without exposing owner IDs. Retire the remote Host only after the broker reports no active canonical page; Performance aggregation must never close a page or stop the Host.
+11. Keep Browser viewer Origin authorization on explicit server CORS origins. Do not promote auto-detected LAN CORS origins or reverse-proxy forwarding headers into the viewer trust boundary. Origin checks supplement one-shot owner/page/role-bound tickets and never replace them.
 
 ## Verify
 
@@ -39,6 +40,8 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 10. For resource-lifecycle changes, prove that an active page cancels idle Host retirement and report headless process coverage as partial when the driver cannot expose RSS.
 11. When Playwright imports or standalone packaging change, build the compiled runtime, copy the whole packaged runtime to a different directory, and run the packaged Playwright loader check there. Verify release validation, the curl installer, and Desktop packaging all retain the filesystem-backed Playwright Core sidecar.
 12. When Linux Browser installation changes, exercise dependency installation in each supported distribution family affected by the change. At minimum, test the oldest supported target image and confirm `browser doctor` names the independent repair command.
+13. When Browser viewer Origin policy changes, cover same-origin, loopback peers, explicitly configured CORS origins, forged forwarding headers, automatic LAN-origin exclusion, Host local-file semantics, and process-global test cleanup.
+14. When Browser Host packaging changes, keep Electron Builder executable names and manifest executable paths on one platform contract, then open each ZIP and prove the declared executable exists before hashing or signing.
 
 ## Handoff
 

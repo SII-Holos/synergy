@@ -34,6 +34,11 @@ interface ElectronBuilderConfig {
   }>
 }
 
+interface BrowserHostBuilderConfig {
+  win?: { executableName?: string }
+  linux?: { executableName?: string }
+}
+
 const temporaryDirectories: string[] = []
 
 afterEach(async () => {
@@ -104,6 +109,15 @@ describe("desktop packaging", () => {
     expect(config.nsis?.shortcutName).toBe("Synergy")
     expect(config.linux?.desktop?.entry?.Name).toBe("Synergy")
     expect(config.linux?.desktop?.entry?.StartupWMClass).toBe("synergy")
+  })
+
+  test("pins Browser Host executable names to the signed manifest contract", async () => {
+    const config = (await Bun.file(
+      new URL("../electron-builder.browser-host.json", import.meta.url),
+    ).json()) as BrowserHostBuilderConfig
+
+    expect(config.win?.executableName).toBe("Synergy Browser Host")
+    expect(config.linux?.executableName).toBe("synergy-browser-host")
   })
 
   test("configures installer hooks that expose the embedded runtime as synergy", async () => {
