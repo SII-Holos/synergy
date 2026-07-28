@@ -1,3 +1,4 @@
+import "./response-card"
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { createMemo, For, Show } from "solid-js"

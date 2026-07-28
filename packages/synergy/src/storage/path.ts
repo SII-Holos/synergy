@@ -120,6 +120,17 @@ export namespace StoragePath {
 
   export const share = (shareID: string) => ["shares", shareID]
 
+  export const channelResponseCardsRoot = () => ["channel", "response_cards"]
+  export const channelResponseCardAccountRoot = (channelType: string, accountId: string) => [
+    ...channelResponseCardsRoot(),
+    encodeURIComponent(channelType),
+    encodeURIComponent(accountId),
+  ]
+  export const channelResponseCard = (channelType: string, accountId: string, requestId: string) => [
+    ...channelResponseCardAccountRoot(channelType, accountId),
+    encodeURIComponent(requestId),
+  ]
+
   export const agendaItemsRoot = (scopeID: ScopeID) => ["agenda", "items", scopeID as string]
   export const agendaItem = (scopeID: ScopeID, itemID: string) => ["agenda", "items", scopeID as string, itemID]
   export const agendaRunsRoot = (scopeID: ScopeID, itemID: string) => ["agenda", "runs", scopeID as string, itemID]

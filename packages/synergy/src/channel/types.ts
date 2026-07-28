@@ -50,6 +50,122 @@ export const Attachment = z.object({
   placeholder: z.string().optional(),
 })
 export type Attachment = z.infer<typeof Attachment>
+const ResponseCardIdentifier = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/, "Use a stable identifier without spaces")
+
+const ResponseCardText = z
+  .object({
+    type: z.literal("text"),
+    text: z.string().trim().min(1).max(3_000),
+    format: z.enum(["plain", "markdown"]).optional(),
+  })
+  .strict()
+
+const ResponseCardButton = z
+  .object({
+    type: z.literal("button"),
+    id: ResponseCardIdentifier,
+    label: z.string().trim().min(1).max(40),
+    value: z.string().trim().min(1).max(100),
+    style: z.enum(["default", "primary", "danger"]).optional(),
+  })
+  .strict()
+
+const ResponseCardSelectOption = z
+  .object({
+    label: z.string().trim().min(1).max(40),
+    value: z.string().trim().min(1).max(100),
+  })
+  .strict()
+
+const ResponseCardSelect = z
+  .object({
+    type: z.literal("select"),
+    id: ResponseCardIdentifier,
+    label: z.string().trim().min(1).max(40),
+    placeholder: z.string().trim().min(1).max(60).optional(),
+    options: z.array(ResponseCardSelectOption).min(1).max(10),
+  })
+  .strict()
+
+export const ResponseCardElement = z.discriminatedUnion("type", [
+  ResponseCardText,
+  ResponseCardButton,
+  ResponseCardSelect,
+])
+export type ResponseCardElement = z.infer<typeof ResponseCardElement>
+
+export const ResponseCard = z
+  .object({
+    title: z.string().trim().min(1).max(80),
+    elements: z.array(ResponseCardElement).min(1).max(20),
+  })
+  .strict()
+  .superRefine((card, ctx) => {
+    const elementIDs = new Set<string>()
+    for (const [elementIndex, element] of card.elements.entries()) {
+      if (element.type === "text") continue
+      if (elementIDs.has(element.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["elements", elementIndex, "id"],
+          message: "Interactive element IDs must be unique",
+        })
+      }
+      elementIDs.add(element.id)
+
+      if (element.type !== "select") continue
+      const optionValues = new Set<string>()
+      for (const [optionIndex, option] of element.options.entries()) {
+        if (optionValues.has(option.value)) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["elements", elementIndex, "options", optionIndex, "value"],
+            message: "Select option values must be unique",
+          })
+        }
+        optionValues.add(option.value)
+      }
+    }
+  })
+  .meta({ ref: "ChannelResponseCard" })
+export type ResponseCard = z.infer<typeof ResponseCard>
+
+export const ResponseCardIntent = z
+  .object({
+    type: z.literal("response_card"),
+    card: ResponseCard,
+  })
+  .strict()
+  .meta({ ref: "ChannelResponseCardIntent" })
+export type ResponseCardIntent = z.infer<typeof ResponseCardIntent>
+
+export const ResponseCardCallback = z
+  .object({
+    eventId: z.string().trim().min(1).max(200),
+    requestId: z.string().trim().min(1).max(200),
+    messageId: z.string().trim().min(1).max(200),
+    chatId: z.string().trim().min(1).max(200),
+    requesterId: z.string().trim().min(1).max(200),
+    action: z
+      .object({
+        type: z.enum(["button", "select"]),
+        id: z.string().startsWith("response_card:").max(114),
+        value: z.string().trim().min(1).max(100),
+      })
+      .strict(),
+  })
+  .strict()
+  .meta({ ref: "ChannelResponseCardCallback" })
+export type ResponseCardCallback = z.infer<typeof ResponseCardCallback>
+
+export type ResponseCardActionResult = {
+  status: "accepted" | "duplicate" | "expired" | "rejected"
+}
 
 export const OutboundPart = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
@@ -141,11 +257,20 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
     onMessage: MessageHandler
     signal: AbortSignal
     onDisconnect?: (reason?: string) => void
+    onResponseCardAction?: (callback: ResponseCardCallback) => Promise<ResponseCardActionResult>
   }): Promise<void>
 
   replyMessage(input: { accountId: string; messageId: string; parts: OutboundPart[] }): Promise<SendResult>
 
   pushMessage(input: { accountId: string; chatId: string; parts: OutboundPart[] }): Promise<SendResult>
+
+  sendResponseCard?(input: {
+    accountId: string
+    chatId: string
+    replyToMessageId?: string
+    requestId: string
+    card: ResponseCard
+  }): Promise<SendResult>
 
   addReaction(input: { accountId: string; messageId: string; emoji: string }): Promise<{ reactionId: string } | void>
 

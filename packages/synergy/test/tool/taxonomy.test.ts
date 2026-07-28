@@ -16,6 +16,14 @@ describe("tool taxonomy", () => {
     expect(entry.domain).toBe("communication")
   })
 
+  test("classifies response_card as stateful external Channel delivery", () => {
+    expect(ToolTaxonomy.classify("response_card")).toEqual({
+      kind: "communication.deliver",
+      domain: "communication",
+      traits: { stateful: true, externalIO: true },
+    })
+  })
+
   test("classifies Lattice reads and writes by their durable behavior", () => {
     expect(ToolTaxonomy.classify("pathway_read")).toMatchObject({
       kind: "orchestration.dag",

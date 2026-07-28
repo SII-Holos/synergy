@@ -22,6 +22,8 @@ import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
+import { loadChannelTaskMessages, replyChannelTaskAttachments } from "./outbound-parts"
+import { ResponseCardRuntime } from "./response-card"
 import {
   Info as InfoSchema,
   Status as StatusSchema,
@@ -39,6 +41,7 @@ import type {
   MessageHandler as MessageHandlerType,
   SendResult as SendResultType,
   StreamingSession as StreamingSessionType,
+  StreamingToolProgress as StreamingToolProgressType,
   Provider as ProviderType,
 } from "./types"
 
@@ -281,6 +284,12 @@ export namespace Channel {
       accountConfig,
       channelConfig,
       onMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
+      onResponseCardAction: (callback) =>
+        ResponseCardRuntime.acceptAction({
+          channelType,
+          accountId,
+          callback,
+        }),
       signal: abort.signal,
       onDisconnect: (reason) => {
         if (abort.signal.aborted) return
@@ -400,200 +409,218 @@ export namespace Channel {
     scope: Scope,
     accountConfig: unknown,
   ): Promise<void> {
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        log.info("message received", {
-          channel: ctx.channelType,
-          account: ctx.accountId,
-          chatId: ctx.chatId,
-          from: ctx.senderId,
-        })
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          log.info("message received", {
+            channel: ctx.channelType,
+            account: ctx.accountId,
+            chatId: ctx.chatId,
+            from: ctx.senderId,
+          })
 
-        Bus.publish(Event.MessageReceived, {
-          channelType: ctx.channelType,
-          accountId: ctx.accountId,
-          chatId: ctx.chatId,
-          text: ctx.text,
-        })
+          Bus.publish(Event.MessageReceived, {
+            channelType: ctx.channelType,
+            accountId: ctx.accountId,
+            chatId: ctx.chatId,
+            text: ctx.text,
+          })
 
-        const cmdResult = await ChannelCommand.execute(ctx.text, {
-          channelType: ctx.channelType,
-          accountId: ctx.accountId,
-          chatId: ctx.chatId,
-          senderId: ctx.senderId,
-          senderName: ctx.senderName,
-          scopeKey: ctx.scopeKey,
-          messageId: ctx.messageId,
-          wasMentioned: ctx.wasMentioned,
-          mentions: ctx.mentions,
-        })
+          const cmdResult = await ChannelCommand.execute(ctx.text, {
+            channelType: ctx.channelType,
+            accountId: ctx.accountId,
+            chatId: ctx.chatId,
+            chatType: ctx.chatType,
+            chatName: ctx.chatName,
+            senderId: ctx.senderId,
+            senderName: ctx.senderName,
+            scopeKey: ctx.scopeKey,
+            messageId: ctx.messageId,
+            wasMentioned: ctx.wasMentioned,
+            mentions: ctx.mentions,
+          })
 
-        if (cmdResult.action === "handled") {
-          if (cmdResult.reply) {
-            await provider.replyMessage({
-              accountId: ctx.accountId,
-              messageId: ctx.messageId,
-              parts: [{ type: "text", text: cmdResult.reply }],
-            })
-          }
-          return
-        }
-
-        if (cmdResult.action === "continue") {
-          ctx.text = cmdResult.text
-        }
-
-        const reactionController = createStatusReactionController({
-          adapter: {
-            setReaction: async (emoji: string) => {
-              const result = await provider.addReaction({
+          if (cmdResult.action === "handled") {
+            if (cmdResult.reply) {
+              await provider.replyMessage({
                 accountId: ctx.accountId,
                 messageId: ctx.messageId,
-                emoji,
+                parts: [{ type: "text", text: cmdResult.reply }],
               })
-              return result?.reactionId
-            },
-            removeReaction: provider.removeReaction
-              ? async (reactionId: string) => {
-                  await provider.removeReaction?.({
-                    accountId: ctx.accountId,
-                    messageId: ctx.messageId,
-                    reactionId,
-                  })
-                }
-              : undefined,
-          },
-          onError: (error: unknown) => log.warn("failed to update status reaction", { error }),
-        })
-        void reactionController.setQueued()
-
-        const streaming = provider.createStreamingSession({
-          accountId: ctx.accountId,
-          chatId: ctx.chatId,
-          replyToMessageId: ctx.messageId,
-        })
-
-        const endpoint = SessionEndpoint.fromChannel({
-          type: ctx.channelType,
-          accountId: ctx.accountId,
-          chatId: ctx.chatId,
-          chatType: ctx.chatType,
-          chatName: ctx.chatName,
-          senderId: ctx.senderId,
-          senderName: ctx.senderName,
-          scopeKey: ctx.scopeKey,
-          createdAt: Date.now(),
-        })
-        const [session] = await Promise.all([
-          Session.getOrCreateForEndpoint(
-            endpoint,
-            undefined,
-            SessionInteraction.unattended(`channel:${ctx.channelType}`),
-          ),
-          streaming.start(),
-        ])
-        const sessionID = session.id
-        const accountInvocation = resolveChannelAccountInvocation({
-          accountConfig,
-          sessionModelOverride: session.modelOverride,
-        })
-
-        let activeTextMessageId: string | null = null
-        const assistantTranscript = new Map<string, string>()
-        const messageRoles = new Map<string, MessageV2.Info["role"]>()
-        const toolProgress = new Map<
-          string,
-          StreamingSession["updateToolProgress"] extends (progress: infer P) => Promise<void>
-            ? P extends Array<infer Item>
-              ? Item
-              : never
-            : never
-        >()
-
-        const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
-          if (event.properties.info.sessionID !== sessionID) return
-          messageRoles.set(event.properties.info.id, event.properties.info.role)
-        })
-
-        const pushToolProgress = async () => {
-          const progress = Array.from(toolProgress.values())
-          log.info("tool progress pushed", {
-            sessionID,
-            count: progress.length,
-            items: progress.map((item) => ({
-              tool: item.tool,
-              status: item.status,
-              title: item.title,
-            })),
-          })
-          await streaming
-            .updateToolProgress(progress)
-            .catch((err) => log.warn("tool progress update failed", { error: err }))
-        }
-
-        const unsubPart = Bus.subscribe(MessageV2.Event.PartUpdated, async (event) => {
-          const part = event.properties.part
-          if (part.sessionID !== sessionID) return
-
-          const role = messageRoles.get(part.messageID)
-          if (role !== "assistant") return
-
-          if (part.type === "text") {
-            if (MessageV2.isSystemPart(part) || !part.text.trim()) return
-            if (activeTextMessageId !== part.messageID) {
-              activeTextMessageId = part.messageID
             }
-
-            assistantTranscript.set(part.messageID, part.text)
-            const transcriptText = buildAssistantTranscript(assistantTranscript)
-            await streaming.update(transcriptText).catch((err) => log.warn("streaming update failed", { error: err }))
             return
           }
 
-          if (part.type !== "tool") return
-
-          toolProgress.set(part.id, {
-            id: part.id,
-            tool: part.tool,
-            title: "title" in part.state ? part.state.title : undefined,
-            status: part.state.status,
-          })
-          if (part.state.status === "running") {
-            void reactionController.setTool(part.tool)
+          if (cmdResult.action === "continue") {
+            ctx.text = cmdResult.text
           }
-          await pushToolProgress()
-        })
 
-        try {
-          const result = await SessionInvoke.invoke({
-            sessionID,
-            ...accountInvocation,
-            metadata: { channelReplyToMessageId: ctx.rootId ?? ctx.messageId },
-            parts: buildPromptParts(ctx),
+          const reactionController = createStatusReactionController({
+            adapter: {
+              setReaction: async (emoji: string) => {
+                const result = await provider.addReaction({
+                  accountId: ctx.accountId,
+                  messageId: ctx.messageId,
+                  emoji,
+                })
+                return result?.reactionId
+              },
+              removeReaction: provider.removeReaction
+                ? async (reactionId: string) => {
+                    await provider.removeReaction?.({
+                      accountId: ctx.accountId,
+                      messageId: ctx.messageId,
+                      reactionId,
+                    })
+                  }
+                : undefined,
+            },
+            onError: (error: unknown) => log.warn("failed to update status reaction", { error }),
+          })
+          void reactionController.setQueued()
+
+          const streaming = provider.createStreamingSession({
+            accountId: ctx.accountId,
+            chatId: ctx.chatId,
+            replyToMessageId: ctx.messageId,
           })
 
-          const responseText = resolveFinalResponseText(assistantTranscript, result.parts)
-          const hasError = result.info.role === "assistant" && "error" in result.info && result.info.error != null
+          const endpoint = SessionEndpoint.fromChannel({
+            type: ctx.channelType,
+            accountId: ctx.accountId,
+            chatId: ctx.chatId,
+            chatType: ctx.chatType,
+            chatName: ctx.chatName,
+            senderId: ctx.senderId,
+            senderName: ctx.senderName,
+            scopeKey: ctx.scopeKey,
+            createdAt: Date.now(),
+          })
+          const session = await Session.getOrCreateForEndpoint(
+            endpoint,
+            undefined,
+            SessionInteraction.unattended(`channel:${ctx.channelType}`),
+          )
+          await streaming.start()
+          const sessionID = session.id
+          const accountInvocation = resolveChannelAccountInvocation({
+            accountConfig,
+            sessionModelOverride: session.modelOverride,
+          })
 
-          // If the response failed but tools completed successfully, build a
-          // degraded fallback so the user still receives tool outputs.
-          const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
-          await streaming.close(responseText || fallbackText, hasError)
+          const assistantTranscript = new Map<string, string>()
+          const messageRoles = new Map<string, MessageV2.Info["role"]>()
+          const toolProgress = new Map<string, StreamingToolProgressType>()
 
-          await reactionController.setDone()
-        } catch (err) {
-          log.error("prompt failed", { sessionID, error: err })
-          void reactionController.setError()
-          const errorText = buildAssistantTranscript(assistantTranscript) || undefined
-          await streaming.close(errorText, true).catch(() => {})
-        } finally {
-          unsubMessage()
-          unsubPart()
-          cleanupAttachments(ctx.attachments)
-        }
-      },
-    })
+          const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
+            if (event.properties.info.sessionID !== sessionID) return
+            messageRoles.set(event.properties.info.id, event.properties.info.role)
+          })
+
+          const pushToolProgress = async () => {
+            const progress = Array.from(toolProgress.values())
+            log.info("tool progress pushed", {
+              sessionID,
+              count: progress.length,
+              items: progress.map((item) => ({
+                tool: item.tool,
+                status: item.status,
+                title: item.title,
+              })),
+            })
+            await streaming
+              .updateToolProgress(progress)
+              .catch((err) => log.warn("tool progress update failed", { error: err }))
+          }
+
+          const unsubPart = Bus.subscribe(MessageV2.Event.PartUpdated, async (event) => {
+            const part = event.properties.part
+            if (part.sessionID !== sessionID) return
+
+            const role = messageRoles.get(part.messageID)
+            if (role !== "assistant") return
+
+            if (part.type === "text") {
+              if (MessageV2.isSystemPart(part) || !part.text.trim()) return
+
+              assistantTranscript.set(part.messageID, part.text)
+              const transcriptText = buildAssistantTranscript(assistantTranscript)
+              await streaming.update(transcriptText).catch((err) => log.warn("streaming update failed", { error: err }))
+              return
+            }
+
+            if (part.type !== "tool") return
+
+            toolProgress.set(part.id, {
+              id: part.id,
+              tool: part.tool,
+              title: "title" in part.state ? part.state.title : undefined,
+              status: part.state.status,
+            })
+            if (part.state.status === "running") {
+              void reactionController.setTool(part.tool)
+            }
+            await pushToolProgress()
+          })
+
+          try {
+            const result = await SessionInvoke.invoke({
+              sessionID,
+              ...accountInvocation,
+              metadata: {
+                channelReplyToMessageId: ctx.rootId ?? ctx.messageId,
+                channelRequesterId: ctx.senderId,
+              },
+              parts: buildPromptParts(ctx),
+            })
+
+            const responseText = resolveFinalResponseText(assistantTranscript, result.parts)
+            const hasError = result.info.role === "assistant" && "error" in result.info && result.info.error != null
+
+            // If the response failed but tools completed successfully, build a
+            // degraded fallback so the user still receives tool outputs.
+            const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
+            await streaming.close(responseText || fallbackText, hasError)
+            const rootID =
+              result.info.role === "assistant" ? (result.info.rootID ?? result.info.parentID) : result.info.id
+            const taskMessages = await loadChannelTaskMessages({ sessionID, rootID, terminal: result })
+            await ResponseCardRuntime.deliverTaskCards({
+              provider,
+              accountId: ctx.accountId,
+              chatId: ctx.chatId,
+              replyToMessageId: ctx.rootId ?? ctx.messageId,
+              sessionID,
+              terminal: result,
+              messages: taskMessages,
+            }).catch((err) => log.warn("response card delivery failed", { sessionID, error: err }))
+            await replyChannelTaskAttachments({
+              provider,
+              accountId: ctx.accountId,
+              messageId: ctx.rootId ?? ctx.messageId,
+              sessionID,
+              terminal: result,
+              messages: taskMessages,
+            }).catch((err) => log.warn("channel task attachments delivery failed", { sessionID, error: err }))
+            await reactionController.setDone()
+          } catch (err) {
+            log.error("prompt failed", { sessionID, error: err })
+            void reactionController.setError()
+            const errorText = buildAssistantTranscript(assistantTranscript) || undefined
+            await streaming
+              .close(errorText, true)
+              .catch((closeError) =>
+                log.warn("streaming card error finalization failed", { sessionID, error: closeError }),
+              )
+          } finally {
+            unsubMessage()
+            unsubPart()
+          }
+        },
+      })
+    } finally {
+      await cleanupAttachments(ctx.attachments)
+    }
   }
 
   function buildPromptParts(ctx: MessageContext): InvokeInput["parts"] {
@@ -631,11 +658,8 @@ export namespace Channel {
     return parts
   }
 
-  function cleanupAttachments(attachments?: Attachment[]) {
-    if (!attachments) return
-    for (const attachment of attachments) {
-      fs.unlink(attachment.path).catch(() => {})
-    }
+  async function cleanupAttachments(attachments?: Attachment[]) {
+    await Promise.all(attachments?.map((attachment) => fs.unlink(attachment.path).catch(() => {})) ?? [])
   }
 
   /**
@@ -649,12 +673,12 @@ export namespace Channel {
     const completedTools = Array.from(toolProgress.values()).filter((t) => t.status === "completed")
     if (completedTools.length === 0) return undefined
 
-    const lines = ["⚠️ 回答生成失败，但以下工具已执行完成："]
+    const lines = ["⚠️ Response generation failed, but these tools completed successfully:"]
     for (const tool of completedTools) {
       const title = tool.title ?? tool.tool
       lines.push(`- ${title}`)
     }
-    lines.push("\n请检查相关输出或稍后重试。")
+    lines.push("\nReview the tool outputs above or try again later.")
     return lines.join("\n")
   }
 

@@ -70,7 +70,7 @@ export const ChannelFeishuAccount = z
       .min(1)
       .optional()
       .describe("Project directory whose Scope owns sessions for this Feishu account"),
-    streaming: z.boolean().optional().default(true).describe("Enable streaming card updates"),
+    streaming: z.boolean().optional().describe("Enable streaming card updates"),
     streamingThrottleMs: z
       .number()
       .int()
