@@ -1,11 +1,15 @@
-import { expect, test } from "bun:test"
+import { expect, mock, test } from "bun:test"
 import { streamText } from "ai"
+import z from "zod"
+import { Config } from "../../src/config/config"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { SessionProcessor } from "../../src/session/processor"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { tmpdir } from "../fixture/fixture"
 import { SessionBounds } from "../../src/session/bounds"
+import { ToolRegistry } from "../../src/tool/registry"
+import { TimeoutConfig } from "../../src/util/timeout-config"
 
 for (const scenario of [
   { name: "successful", terminalEvent: "tool-result", error: false },
@@ -140,6 +144,120 @@ test("rejects oversized tool input before the handler executes", async () => {
         expect(executionCount).toBe(0)
       } finally {
         processor.dispose("test")
+      }
+    },
+  })
+})
+
+test("configured tool timeout settles a non-cooperative built-in execution exactly once", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const originalConfigCurrent = Config.current
+      const originalRegistryTools = ToolRegistry.tools
+      let releaseTool!: () => void
+      const toolRelease = new Promise<void>((resolve) => {
+        releaseTool = resolve
+      })
+      let markToolFinished!: () => void
+      const toolFinished = new Promise<void>((resolve) => {
+        markToolFinished = resolve
+      })
+      let executionCount = 0
+      ;(Config.current as any) = mock(async () => ({
+        timeout: {
+          tool: {
+            default_sec: 0.01,
+          },
+        },
+      }))
+      ;(ToolRegistry.tools as any) = mock(async () => [
+        {
+          id: "file_search",
+          description: "Waits without observing AbortSignal",
+          parameters: z.object({ query: z.string() }),
+          async execute() {
+            executionCount++
+            await toolRelease
+            markToolFinished()
+            return {
+              title: "Late result",
+              output: "late",
+              metadata: {},
+            }
+          },
+        },
+      ])
+      TimeoutConfig.invalidate()
+
+      const sessionID = "ses_tool_timeout"
+      const callID = "call_tool_timeout"
+      const processor = SessionProcessor.create({
+        assistantMessage: {
+          id: "msg_tool_timeout",
+          sessionID,
+          role: "assistant",
+          parentID: "msg_user",
+          modelID: "test-model",
+          providerID: "test-provider",
+          mode: "build",
+          agent: "synergy",
+          path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 0 },
+        },
+        sessionID,
+        model,
+        abort: new AbortController().signal,
+      })
+
+      try {
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID,
+          processor,
+          userTools: { file_search: true },
+          includeMCP: false,
+        })
+        const execution = (resolved.executionTools.file_search as any).execute(
+          { query: "evidence" },
+          { toolCallId: callID },
+        )
+
+        await expect(
+          Promise.race([
+            execution,
+            Bun.sleep(1_000).then(() => {
+              throw new Error("Tool execution did not settle after its configured timeout")
+            }),
+          ]),
+        ).rejects.toThrow("Tool execution timed out")
+
+        const slot = processor.beginExecution(callID)
+        const outcome = await slot.promise
+        expect(outcome.status).toBe("error")
+        if (outcome.status === "error") {
+          expect(outcome.error).toContain("Tool execution timed out")
+        }
+        expect(executionCount).toBe(1)
+
+        releaseTool()
+        await toolFinished
+        await Bun.sleep(0)
+        expect(slot.outcome?.status).toBe("error")
+        if (slot.outcome?.status === "error") {
+          expect(slot.outcome.error).toContain("Tool execution timed out")
+        }
+        expect(executionCount).toBe(1)
+      } finally {
+        releaseTool()
+        processor.dispose("test")
+        ;(Config.current as any) = originalConfigCurrent
+        ;(ToolRegistry.tools as any) = originalRegistryTools
+        TimeoutConfig.invalidate()
       }
     },
   })

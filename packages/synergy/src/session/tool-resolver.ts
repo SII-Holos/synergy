@@ -1,5 +1,6 @@
 import { Global } from "@/global"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import z from "zod"
 import { Agent } from "@/agent/agent"
 import { Identifier } from "@/id/id"
@@ -612,13 +613,43 @@ export namespace ToolResolver {
   function startToolTimeout(ctx: Tool.Context, timeoutMs: number) {
     const timing = toolTiming(ctx)
     const timeout = new AbortController()
-    const timer = setTimeout(() => timeout.abort(), timeoutMs)
+    const timeoutError = new DOMException(`Tool execution timed out after ${timeoutMs}ms`, "TimeoutError")
+    const timer = setTimeout(() => timeout.abort(timeoutError), timeoutMs)
     if (typeof timer === "object" && "unref" in timer) timer.unref()
     timing.toolTimeoutCleanup = () => {
       clearTimeout(timer)
       timing.toolTimeoutCleanup = undefined
     }
     return AbortSignal.any([timing.sessionAbort, timeout.signal])
+  }
+
+  function settleExecutionOnAbort<T>(execute: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) {
+      return Promise.reject(signal.reason ?? new DOMException("Tool execution aborted", "AbortError"))
+    }
+
+    return new Promise<T>((resolve, reject) => {
+      function cleanup() {
+        signal.removeEventListener("abort", abort)
+      }
+      function abort() {
+        cleanup()
+        reject(signal.reason ?? new DOMException("Tool execution aborted", "AbortError"))
+      }
+      signal.addEventListener("abort", abort, { once: true })
+      Promise.resolve()
+        .then(execute)
+        .then(
+          (result) => {
+            cleanup()
+            resolve(result)
+          },
+          (error) => {
+            cleanup()
+            reject(error)
+          },
+        )
+    })
   }
 
   function disposeToolTimeout(ctx: Tool.Context) {
@@ -1589,7 +1620,7 @@ export namespace ToolResolver {
                 )
                 await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
                 await toolTrace.phase("tool.execute.start", "tool execute start")
-                const result = await item.execute(args, toolCtx)
+                const result = await settleExecutionOnAbort(() => item.execute(args, toolCtx), combinedAbort)
                 Tool.validateAttachmentResult(item.id, result)
                 await toolTrace.phase("tool.execute.end", "tool execute end", {
                   outputChars: result.output.length,
@@ -1798,7 +1829,10 @@ export namespace ToolResolver {
                   await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
 
                   await toolTrace.phase("tool.execute.start", "tool execute start")
-                  const result = await execute(args, { ...opts, abortSignal: combinedAbort })
+                  const result = await settleExecutionOnAbort(
+                    () => execute(args, { ...opts, abortSignal: combinedAbort }) as Promise<CallToolResult>,
+                    combinedAbort,
+                  )
                   await toolTrace.phase("tool.execute.end", "tool execute end", {
                     contentCount: result.content.length,
                   })

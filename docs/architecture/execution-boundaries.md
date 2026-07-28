@@ -26,6 +26,8 @@ The Agent worker never receives an `execute()` callback. It emits proposed calls
 
 `ToolScheduler` keys a dispatch by session, session generation, message, call, executor class, and attempt. It deduplicates the same dispatch, bounds queued item count and serialized input bytes, applies global and per-executor concurrency, propagates cancellation, and never retries a running side-effecting call automatically. Executor classes are `local_process`, `file`, `plugin`, `mcp`, `browser`, `link`, and `control_plane`.
 
+Built-in/plugin and MCP execution both race the combined session and tool-timeout abort signal at the Resolver boundary. When that signal fires, the Resolver immediately settles the provider call as an error even if the physical implementation ignores cancellation. A later physical return is ignored and cannot overwrite the terminal slot or trigger an automatic retry; the underlying runtime remains responsible for stopping work and containing any side effects.
+
 The scheduler is one logical execution layer, not one universal sandbox process. Local commands and command-backed search remain child processes with bounded output; installed plugin implementations reuse the plugin process runtime; MCP, Browser, and Link use their existing isolated transports or canonical runtimes. File operations and narrow operations that mutate canonical session/workflow state run asynchronously under scheduled Control Plane ownership. Classification changes admission and fault accounting, not authorization semantics.
 
 The process boundary follows three ownership layers:

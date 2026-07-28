@@ -10,6 +10,7 @@ import { ProcessOutput } from "../process/output"
 
 const DEFAULT_LIMIT = 50
 const SEARCH_TIMEOUT_MS = 20_000
+const PATH_ENRICHMENT_TIMEOUT_MS = 20_000
 const MAX_CONTENT_LINE_LENGTH = 2000
 
 function parseCursor(input: string | undefined) {
@@ -71,22 +72,27 @@ async function searchFiles(input: {
     : filtered.slice(0, searchLimit).map((target, index) => ({ target, score: -index }))
   const page = matches.slice(offset, offset + input.limit)
   const pageLimited = offset + page.length < matches.length
-  const output = await Promise.all(
-    page.map(async (match) => {
-      const target = match.target
-      const directory = target.endsWith("/")
-      const path = directory ? target.slice(0, -1) : target
-      const node = await WorkspaceFileService.maybeNode(path)
-      return {
-        kind: "file" as const,
-        path,
-        name: path.split("/").at(-1) ?? path,
-        type: directory ? ("directory" as const) : ("file" as const),
-        score: match.score,
-        indices: resultIndices(match),
-        node,
-      }
-    }),
+  const enrichmentTimeout = AbortSignal.timeout(PATH_ENRICHMENT_TIMEOUT_MS)
+  const enrichmentSignal = input.signal ? AbortSignal.any([input.signal, enrichmentTimeout]) : enrichmentTimeout
+  const output = await withSearchAbort(
+    Promise.all(
+      page.map(async (match) => {
+        const target = match.target
+        const directory = target.endsWith("/")
+        const path = directory ? target.slice(0, -1) : target
+        const node = await WorkspaceFileService.maybeNode(path)
+        return {
+          kind: "file" as const,
+          path,
+          name: path.split("/").at(-1) ?? path,
+          type: directory ? ("directory" as const) : ("file" as const),
+          score: match.score,
+          indices: resultIndices(match),
+          node,
+        }
+      }),
+    ),
+    enrichmentSignal,
   )
 
   return {
