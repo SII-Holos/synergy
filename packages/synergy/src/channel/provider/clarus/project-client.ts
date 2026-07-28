@@ -39,8 +39,8 @@ export class ClarusProjectClient {
     }
   }
 
-  async listProjects(input: { cursor?: string; limit?: number } = {}) {
-    const query = new URLSearchParams({ status: "active", limit: String(input.limit ?? 50) })
+  async listProjects(input: { status: "active" | "paused"; cursor?: string; limit?: number }) {
+    const query = new URLSearchParams({ status: input.status, limit: String(input.limit ?? 50) })
     if (input.cursor) query.set("cursor", input.cursor)
     const url = new URL("/api/v1/holos/clarus/projects", this.origin)
     url.search = query.toString()

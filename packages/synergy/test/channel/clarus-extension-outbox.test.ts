@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { Channel } from "../../src/channel"
 import { ChannelHost } from "../../src/channel/host"
 import { ClarusAssignmentRuntime } from "../../src/channel/provider/clarus/assignment-runtime"
@@ -162,6 +162,52 @@ describe("Clarus extension outbox disposition", () => {
 
         expect(persistedBeforeSend).toBe(true)
         expect(recordStateBeforeSend).toBe("pending")
+      },
+    })
+  })
+
+  test("persists extension intent before projecting pending assignment state", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "ext-order-account"
+        const projectID = "ext-order-project"
+        await setupProjectScope(accountId, projectID)
+        const created = await dispatchAssignment(
+          accountId,
+          assignmentFixture({ agentID: accountId, projectID, taskID: "task-ext-order", runID: "run-ext-order" }),
+        )
+        const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
+        expect(located).toBeDefined()
+        const originalBeginExtension = ClarusAssignmentStore.beginExtension
+        let persistedBeforePending = false
+        using beginExtension = spyOn(ClarusAssignmentStore, "beginExtension").mockImplementation(
+          async (sessionID, requestID) => {
+            const hashes = await Storage.scan(StoragePath.clarusProviderExtensionOutboxRoot(located!.accountHash))
+            const records = await Promise.all(
+              hashes.map((recordHash) =>
+                Storage.read<{ requestID: string; state: string }>(
+                  StoragePath.clarusProviderExtensionOutbox(located!.accountHash, recordHash),
+                ),
+              ),
+            )
+            persistedBeforePending = records.some(
+              (record) => record.requestID === requestID && record.state === "pending",
+            )
+            return originalBeginExtension(sessionID, requestID)
+          },
+        )
+
+        const { ClarusExtensionOutbox } = await import("../../src/channel/provider/clarus/extension-outbox")
+        await ClarusExtensionOutbox.submit({
+          sessionID: created.assignment.sessionID,
+          payload: extendPayload(),
+          send: async () => {},
+        })
+
+        expect(beginExtension).toHaveBeenCalledTimes(1)
+        expect(persistedBeforePending).toBe(true)
       },
     })
   })
@@ -366,6 +412,51 @@ describe("Clarus extension outbox disposition", () => {
             send: async () => {},
           }),
         ).rejects.toMatchObject({ code: "CLARUS_TOOL_EXTENSION_NOT_ACCEPTABLE" })
+      },
+    })
+  })
+
+  test("recovery completes an interrupted pending-to-ambiguous projection", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "ext-partial-recovery-account"
+        const projectID = "ext-partial-recovery-project"
+        await setupProjectScope(accountId, projectID)
+        const created = await dispatchAssignment(
+          accountId,
+          assignmentFixture({
+            agentID: accountId,
+            projectID,
+            taskID: "task-ext-partial-recovery",
+            runID: "run-ext-partial-recovery",
+          }),
+        )
+        const located = await ClarusAssignmentStore.beginExtension(
+          created.assignment.sessionID,
+          "request-ext-partial-recovery",
+        )
+        await Storage.write(
+          StoragePath.clarusProviderExtensionOutbox(located.accountHash, hash("request-ext-partial-recovery")),
+          {
+            requestID: "request-ext-partial-recovery",
+            assignmentHash: located.assignmentHash,
+            sessionID: created.assignment.sessionID,
+            payload: extendPayload(),
+            state: "ambiguous",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        )
+
+        const { ClarusExtensionOutbox } = await import("../../src/channel/provider/clarus/extension-outbox")
+        await ClarusExtensionOutbox.recover(located.accountHash)
+
+        expect((await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID))?.assignment).toMatchObject({
+          extensionRequestID: "request-ext-partial-recovery",
+          extensionState: "ambiguous",
+        })
       },
     })
   })

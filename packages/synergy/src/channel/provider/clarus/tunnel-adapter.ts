@@ -50,43 +50,47 @@ function validateRequestID(requestID: string): string {
   return requestID
 }
 
-const NonBlankRunID = z.string().refine((value) => value.trim().length > 0, { message: "run_id must not be blank" })
+const Identity = z.string().max(NATIVE_MAX_ID_LENGTH)
+const NonBlankRunID = Identity.refine((value) => value.trim().length > 0, { message: "run_id must not be blank" })
+const Deadline = z.string().refine((value) => Number.isFinite(Date.parse(value)), {
+  message: "deadline must be a valid date-time",
+})
 
-const ProjectSubscribedPayload = z.object({ project_id: z.string(), subscribed: z.literal(true) }).passthrough()
-const ProjectUnsubscribedPayload = z.object({ project_id: z.string(), subscribed: z.literal(false) }).passthrough()
+const ProjectSubscribedPayload = z.object({ project_id: Identity, subscribed: z.literal(true) }).passthrough()
+const ProjectUnsubscribedPayload = z.object({ project_id: Identity, subscribed: z.literal(false) }).passthrough()
 
 const RuntimeTaskAssignedPayload = z
   .object({
     run_id: NonBlankRunID,
-    project_id: z.string(),
-    task_id: z.string(),
-    phase: z.string(),
-    subtask_id: z.string(),
-    attempt: z.number(),
-    deadline_at: z.string().nullable(),
-    attempt_mode: z.string().nullable().optional(),
-    retry_of_task_id: z.string().nullable().optional(),
+    project_id: Identity,
+    task_id: Identity,
+    phase: Identity,
+    subtask_id: Identity,
+    attempt: z.number().int().positive(),
+    deadline_at: Deadline.nullable(),
+    attempt_mode: Identity.nullable().optional(),
+    retry_of_task_id: Identity.nullable().optional(),
   })
   .passthrough()
 
 const ClarusTaskWire = z
   .object({
-    task_id: z.string(),
+    task_id: Identity,
     run_id: NonBlankRunID,
-    project_id: z.string(),
-    phase: z.string(),
-    subtask_id: z.string(),
-    attempt: z.number(),
-    assigned_agent_id: z.string().optional(),
-    resolution_id: z.string().optional(),
-    attempt_mode: z.string().nullable().optional(),
-    retry_of_task_id: z.string().nullable().optional(),
+    project_id: Identity,
+    phase: Identity,
+    subtask_id: Identity,
+    attempt: z.number().int().positive(),
+    assigned_agent_id: Identity.optional(),
+    resolution_id: Identity.optional(),
+    attempt_mode: Identity.nullable().optional(),
+    retry_of_task_id: Identity.nullable().optional(),
     superseded_at: z.string().nullable().optional(),
     status: z.string(),
     input: z.unknown().optional(),
     result: z.unknown().optional(),
     error: z.string().nullable().optional(),
-    deadline_at: z.string().nullable(),
+    deadline_at: Deadline.nullable(),
     dispatched_at: z.string().nullable(),
     completed_at: z.string().nullable(),
     created_at: z.string().nullable(),
@@ -95,11 +99,11 @@ const ClarusTaskWire = z
   .passthrough()
 
 const RuntimeTaskExtendedPayload = z
-  .object({ project_id: z.string(), run_id: NonBlankRunID, task: ClarusTaskWire })
+  .object({ project_id: Identity, run_id: NonBlankRunID, task: ClarusTaskWire })
   .passthrough()
 
 const RuntimeTaskResultRecordedPayload = z
-  .object({ project_id: z.string(), run_id: NonBlankRunID, task: ClarusTaskWire })
+  .object({ project_id: Identity, run_id: NonBlankRunID, task: ClarusTaskWire })
   .passthrough()
 
 const knownPayloadSchemas = {
@@ -137,10 +141,6 @@ export namespace ClarusPayload {
 }
 
 namespace Bounds {
-  export function id(value: string): string {
-    return value.length > NATIVE_MAX_ID_LENGTH ? value.slice(0, NATIVE_MAX_ID_LENGTH) : value
-  }
-
   export function string(value: string): string {
     return value.length > NATIVE_MAX_STRING_LENGTH ? value.slice(0, NATIVE_MAX_STRING_LENGTH) : value
   }
@@ -204,12 +204,12 @@ function toSemanticDTO(
   switch (parsed.type) {
     case "clarus.project.subscribed": {
       const p = parsed.payload
-      dto = { ...base, type: "projectSubscribed", projectID: Bounds.id(p.project_id) }
+      dto = { ...base, type: "projectSubscribed", projectID: p.project_id }
       break
     }
     case "clarus.project.unsubscribed": {
       const p = parsed.payload as { project_id: string; subscribed: boolean }
-      dto = { ...base, type: "projectUnsubscribed", projectID: Bounds.id(p.project_id) }
+      dto = { ...base, type: "projectUnsubscribed", projectID: p.project_id }
       break
     }
     case "clarus.runtime.task.assigned": {
@@ -223,15 +223,15 @@ function toSemanticDTO(
       dto = {
         ...base,
         type: "runtimeTaskAssigned",
-        projectID: Bounds.id(p.project_id),
-        runID: Bounds.id(p.run_id),
-        taskID: Bounds.id(p.task_id),
-        phase: Bounds.id(p.phase),
-        subtaskID: Bounds.id(p.subtask_id),
+        projectID: p.project_id,
+        runID: p.run_id,
+        taskID: p.task_id,
+        phase: p.phase,
+        subtaskID: p.subtask_id,
         attempt: p.attempt,
         deadlineAt: p.deadline_at,
-        attemptMode: p.attempt_mode == null ? undefined : Bounds.id(p.attempt_mode),
-        retryOfTaskID: p.retry_of_task_id == null ? undefined : Bounds.id(p.retry_of_task_id),
+        attemptMode: p.attempt_mode == null ? undefined : p.attempt_mode,
+        retryOfTaskID: p.retry_of_task_id == null ? undefined : p.retry_of_task_id,
         goal,
         instructions,
         input,
@@ -245,10 +245,10 @@ function toSemanticDTO(
       dto = {
         ...base,
         type: "runtimeTaskExtended",
-        projectID: Bounds.id(p.project_id),
-        runID: Bounds.id(p.run_id),
+        projectID: p.project_id,
+        runID: p.run_id,
         task: {
-          taskID: Bounds.id(p.task.task_id),
+          taskID: p.task.task_id,
           deadlineAt: p.task.deadline_at,
           status: Bounds.string(p.task.status),
         },
@@ -260,11 +260,11 @@ function toSemanticDTO(
       dto = {
         ...base,
         type: "runtimeTaskResultRecorded",
-        projectID: Bounds.id(p.project_id),
-        runID: Bounds.id(p.run_id),
+        projectID: p.project_id,
+        runID: p.run_id,
         task: {
-          taskID: Bounds.id(p.task.task_id),
-          subtaskID: Bounds.id(p.task.subtask_id),
+          taskID: p.task.task_id,
+          subtaskID: p.task.subtask_id,
           status: Bounds.string(p.task.status),
         },
       }

@@ -268,25 +268,29 @@ describe("ClarusProvider routing integration", () => {
     const originalFetch = globalThis.fetch as unknown
 
     // Fake REST project list
-    globalThis.fetch = mock(
-      async () =>
-        new Response(
-          JSON.stringify({
-            code: 0,
-            data: {
-              items: [
-                {
-                  project_id: "proj-discover",
-                  title: "Discovered Project",
-                  status: "active",
-                },
-              ],
-              next_cursor: null,
-            },
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-    ) as any
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input)
+      const status = new URL(request.url).searchParams.get("status")
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          data: {
+            items:
+              status === "active"
+                ? [
+                    {
+                      project_id: "proj-discover",
+                      title: "Discovered Project",
+                      status: "active",
+                    },
+                  ]
+                : [],
+            next_cursor: null,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    }) as any
 
     const abort = new AbortController()
     const host = ChannelHost.create({ channelType: "clarus", accountId: FAKE_AGENT_ID })

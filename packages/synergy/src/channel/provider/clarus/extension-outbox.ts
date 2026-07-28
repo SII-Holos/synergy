@@ -175,18 +175,18 @@ export namespace ClarusExtensionOutbox {
       using _ = await Lock.write(lockKey(located.accountHash))
       const payload = ClarusExtendPayload.parse(input.payload)
       const requestID = crypto.randomUUID()
-      const pending = await ClarusAssignmentStore.beginExtension(input.sessionID, requestID)
       const now = Date.now()
       const record = ExtensionRecord.parse({
         requestID,
-        assignmentHash: pending.assignmentHash,
+        assignmentHash: located.assignmentHash,
         sessionID: input.sessionID,
         payload,
         state: "pending",
         createdAt: now,
         updatedAt: now,
       })
-      await writeRecord(pending.accountHash, record)
+      await writeRecord(located.accountHash, record)
+      const pending = await ClarusAssignmentStore.beginExtension(input.sessionID, requestID)
 
       try {
         const response = await input.send({ requestID, assignment: pending.assignment, payload })
@@ -260,19 +260,31 @@ export namespace ClarusExtensionOutbox {
         .catch(() => undefined)
       if (!record) continue
       const located = await ClarusAssignmentStore.find(accountHash, record.assignmentHash)
-      if (!located || located.assignment.extensionRequestID !== record.requestID) continue
+      if (!located) continue
 
-      if (record.state === "pending" && located.assignment.extensionState === "pending") {
-        const ambiguous = ExtensionRecord.parse({ ...record, state: "ambiguous", updatedAt: Date.now() })
-        await writeRecord(accountHash, ambiguous)
-        await ClarusAssignmentStore.settleExtension({
-          accountHash,
-          assignmentHash: record.assignmentHash,
-          requestID: record.requestID,
-          state: "ambiguous",
-        })
+      if (
+        record.state === "pending" ||
+        (record.state === "ambiguous" && located.assignment.extensionState === "pending")
+      ) {
+        if (record.state === "pending") {
+          const ambiguous = ExtensionRecord.parse({ ...record, state: "ambiguous", updatedAt: Date.now() })
+          await writeRecord(accountHash, ambiguous)
+        }
+        if (
+          located.assignment.extensionRequestID === record.requestID &&
+          located.assignment.extensionState === "pending"
+        ) {
+          await ClarusAssignmentStore.settleExtension({
+            accountHash,
+            assignmentHash: record.assignmentHash,
+            requestID: record.requestID,
+            state: "ambiguous",
+          })
+        }
         continue
       }
+
+      if (located.assignment.extensionRequestID !== record.requestID) continue
 
       if (record.state !== "not_dispatched" || located.assignment.extensionState !== "not_dispatched" || !send) {
         continue
@@ -281,7 +293,6 @@ export namespace ClarusExtensionOutbox {
       activeSessions.add(record.sessionID)
       try {
         const requestID = crypto.randomUUID()
-        const pending = await ClarusAssignmentStore.beginExtension(record.sessionID, requestID)
         const retried = ExtensionRecord.parse({
           ...record,
           requestID,
@@ -292,6 +303,7 @@ export namespace ClarusExtensionOutbox {
           updatedAt: Date.now(),
         })
         await writeRecord(accountHash, retried)
+        const pending = await ClarusAssignmentStore.beginExtension(record.sessionID, requestID)
         try {
           const response = await send({
             requestID,

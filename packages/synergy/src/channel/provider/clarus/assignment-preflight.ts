@@ -13,7 +13,12 @@ const MAX_REFS = 200
 
 export const ClarusAssignmentPreflightError = NamedError.create(
   "ClarusAssignmentPreflightError",
-  z.object({ missingInputs: z.array(z.string()) }),
+  z.object({
+    reason: z
+      .enum(["missing_inputs", "input_ref_limit_exceeded", "input_ref_depth_exceeded"])
+      .default("missing_inputs"),
+    missingInputs: z.array(z.string()),
+  }),
 )
 
 type ResolvedInput = { ref: string; relativePath: string }
@@ -32,8 +37,28 @@ function safeFilename(value: string, fallback: string): string {
   return (normalized || fallback).slice(0, 120)
 }
 
+function addInputRef(refs: Set<string>, value: string): void {
+  const ref = value.trim()
+  if (!ref || refs.has(ref)) return
+  if (refs.size >= MAX_REFS) {
+    throw new ClarusAssignmentPreflightError({
+      reason: "input_ref_limit_exceeded",
+      missingInputs: [...refs, ref],
+    })
+  }
+  refs.add(ref)
+}
+
 function collectInputRefs(value: unknown, refs = new Set<string>(), depth = 0): Set<string> {
-  if (depth > 16 || refs.size >= MAX_REFS) return refs
+  if (depth > 16) {
+    if (Array.isArray(value) || isRecord(value)) {
+      throw new ClarusAssignmentPreflightError({
+        reason: "input_ref_depth_exceeded",
+        missingInputs: [...refs],
+      })
+    }
+    return refs
+  }
   if (Array.isArray(value)) {
     for (const item of value) collectInputRefs(item, refs, depth + 1)
     return refs
@@ -43,10 +68,10 @@ function collectInputRefs(value: unknown, refs = new Set<string>(), depth = 0): 
     if (key === "input_refs" || key === "inputRefs") {
       if (Array.isArray(nested)) {
         for (const item of nested) {
-          if (typeof item === "string" && item.trim()) refs.add(item.trim())
+          if (typeof item === "string") addInputRef(refs, item)
           else if (isRecord(item)) {
             const name = item.name ?? item.artifact_id ?? item.artifactId ?? item.ref
-            if (typeof name === "string" && name.trim()) refs.add(name.trim())
+            if (typeof name === "string") addInputRef(refs, name)
           }
         }
       }

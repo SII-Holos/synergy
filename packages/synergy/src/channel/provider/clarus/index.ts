@@ -322,16 +322,18 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
       signal,
     )
     const projects: ChannelHost.ExternalProjectRef[] = []
-    let cursor: string | undefined
-    do {
-      const page = await rest.listProjects({ limit: 50, cursor })
-      for (const project of page.projects) {
-        const name = project.projectName ?? project.projectID
-        projects.push({ externalProjectId: project.projectID, name, isActive: project.status === "active" })
-        connection.projects.set(project.projectID, name)
-      }
-      cursor = page.nextCursor
-    } while (cursor && !signal.aborted)
+    for (const status of ["active", "paused"] as const) {
+      let cursor: string | undefined
+      do {
+        const page = await rest.listProjects({ status, limit: 50, cursor })
+        for (const project of page.projects) {
+          const name = project.projectName ?? project.projectID
+          projects.push({ externalProjectId: project.projectID, name, isActive: project.status === "active" })
+          connection.projects.set(project.projectID, name)
+        }
+        cursor = page.nextCursor
+      } while (cursor && !signal.aborted)
+    }
 
     await connection.host.projects.reconcile({ projects, complete: !signal.aborted })
     for (const project of projects) {

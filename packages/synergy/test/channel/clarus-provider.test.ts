@@ -69,20 +69,25 @@ describe("Clarus Channel provider", () => {
     })
   })
 
-  test("project REST wire fields are converted at the provider boundary", async () => {
+  test("project discovery requests active and paused lifecycle pages", async () => {
     const originalFetch = globalThis.fetch
+    const requestedStatuses: string[] = []
     globalThis.fetch = Object.assign(
-      async () =>
-        new Response(
+      async (input: RequestInfo | URL) => {
+        const request = input instanceof Request ? input : new Request(input)
+        const status = new URL(request.url).searchParams.get("status")
+        requestedStatuses.push(status ?? "")
+        return new Response(
           JSON.stringify({
             code: 0,
             data: {
-              items: [{ project_id: "project-wire", title: "Wire Project", status: "active" }],
+              items: [{ project_id: `project-${status}`, title: `${status} Project`, status }],
               next_cursor: null,
             },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
-        ),
+        )
+      },
       { preconnect: originalFetch.preconnect },
     )
     try {
@@ -91,9 +96,15 @@ describe("Clarus Channel provider", () => {
         async () => ({ agentID: "account-a", agentSecret: "secret" }),
         new AbortController().signal,
       )
-      const page = await client.listProjects()
-      expect(page.projects).toEqual([{ projectID: "project-wire", projectName: "Wire Project", status: "active" }])
-      expect(page.nextCursor).toBeUndefined()
+      const active = await client.listProjects({ status: "active" })
+      const paused = await client.listProjects({ status: "paused" })
+      expect(active.projects).toEqual([
+        { projectID: "project-active", projectName: "active Project", status: "active" },
+      ])
+      expect(paused.projects).toEqual([
+        { projectID: "project-paused", projectName: "paused Project", status: "paused" },
+      ])
+      expect(requestedStatuses).toEqual(["active", "paused"])
     } finally {
       globalThis.fetch = originalFetch
     }

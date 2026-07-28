@@ -408,6 +408,53 @@ describe("Clarus tunnel adapter event observation", () => {
     expect((received[0] as { retryOfTaskID?: string }).retryOfTaskID).toBeUndefined()
   })
 
+  test("rejects oversized external identities instead of truncating them", () => {
+    const base = {
+      run_id: "run-identity",
+      project_id: "project-identity",
+      task_id: "task-identity",
+      phase: "implementation",
+      subtask_id: "subtask-identity",
+      attempt: 1,
+      deadline_at: null,
+      attempt_mode: "initial",
+      retry_of_task_id: "previous-task",
+    }
+    for (const field of [
+      "run_id",
+      "project_id",
+      "task_id",
+      "phase",
+      "subtask_id",
+      "attempt_mode",
+      "retry_of_task_id",
+    ] as const) {
+      fake.emitEvent("clarus.runtime.task.assigned", { ...base, [field]: "x".repeat(257) })
+    }
+
+    expect(received).toHaveLength(7)
+    expect(received.every((event) => event.kind === "invalid")).toBe(true)
+  })
+
+  test("rejects invalid assignment attempt and deadline semantics", () => {
+    const base = {
+      run_id: "run-semantics",
+      project_id: "project-semantics",
+      task_id: "task-semantics",
+      phase: "implementation",
+      subtask_id: "subtask-semantics",
+      attempt: 1,
+      deadline_at: null,
+    }
+    for (const attempt of [0, -1, 1.5]) {
+      fake.emitEvent("clarus.runtime.task.assigned", { ...base, attempt })
+    }
+    fake.emitEvent("clarus.runtime.task.assigned", { ...base, deadline_at: "not-a-date" })
+
+    expect(received).toHaveLength(4)
+    expect(received.every((event) => event.kind === "invalid")).toBe(true)
+  })
+
   test("legacy project conversation events are classified as unknown", () => {
     const legacyTypes = [
       "clarus.project.message.created",

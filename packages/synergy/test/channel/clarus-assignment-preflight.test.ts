@@ -5,6 +5,7 @@ import { ChannelHost } from "../../src/channel/host"
 import type { RuntimeTaskAssignedEvent } from "../../src/channel/provider/clarus/agent-tunnel-port"
 import {
   ClarusAssignmentPreflightError,
+  clarusAssignmentInputRefs,
   preflightClarusAssignment,
 } from "../../src/channel/provider/clarus/assignment-preflight"
 import { ClarusAssignmentRuntime } from "../../src/channel/provider/clarus/assignment-runtime"
@@ -212,6 +213,20 @@ describe("Clarus assignment preflight", () => {
         ).rejects.toBeInstanceOf(ClarusAssignmentPreflightError)
       },
     })
+  })
+
+  test("fails closed when declared input refs exceed the supported count", () => {
+    const event = assignment({ input: { input_refs: Array.from({ length: 201 }, (_, index) => `ref-${index}`) } })
+
+    expect(() => clarusAssignmentInputRefs(event)).toThrow(ClarusAssignmentPreflightError)
+  })
+
+  test("fails closed when input ref traversal exceeds the supported depth", () => {
+    let nested: Record<string, unknown> = { input_refs: ["too-deep"] }
+    for (let depth = 0; depth < 17; depth += 1) nested = { nested }
+    const event = assignment({ context: nested })
+
+    expect(() => clarusAssignmentInputRefs(event)).toThrow(ClarusAssignmentPreflightError)
   })
 
   test("does not invoke Holos CLI for assignments without input refs", async () => {
