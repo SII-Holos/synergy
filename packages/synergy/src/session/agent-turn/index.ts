@@ -1,4 +1,5 @@
 import { LLM } from "../llm"
+import { ContextUsage } from "../context-usage"
 import { ToolCatalog } from "../tool-catalog"
 import {
   AgentWorkerPool,
@@ -38,11 +39,13 @@ export namespace AgentTurn {
 
   export async function stream(input: Input): Promise<Stream> {
     if (!accepting || stopPromise) throw new Error("Agent worker pool is stopping")
+    const { contextUsageProvenance, ...turnInput } = input
     if (process.env.SYNERGY_TEST_HOME) {
       const result = await LLM.stream({
-        ...input,
+        ...turnInput,
         tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
       })
+      const contextUsageDraft = startContextUsageDraft(input, input.system, contextUsageProvenance)
       const usage = result.usage?.catch(() => undefined) ?? Promise.resolve(undefined)
       if (!result.fullStream) {
         if (!result.textStream && result.text) {
@@ -51,7 +54,7 @@ export namespace AgentTurn {
               const text = await result.text
               if (text) yield { type: "text-delta", id: "test-text", text } as AgentTurnStreamPart
             })(),
-            contextUsageDraft: result.contextUsageDraft,
+            contextUsageDraft,
             usage,
             async dispose() {},
           }
@@ -63,7 +66,7 @@ export namespace AgentTurn {
               yield { type: "text-delta", id: "test-text", text } as AgentTurnStreamPart
             }
           })(),
-          contextUsageDraft: result.contextUsageDraft,
+          contextUsageDraft,
           usage,
           dispose: owned.dispose,
         }
@@ -75,17 +78,35 @@ export namespace AgentTurn {
             yield* AgentTurnProtocol.projectEvents([value])
           }
         })(),
-        contextUsageDraft: result.contextUsageDraft,
+        contextUsageDraft,
         usage,
         dispose: owned.dispose,
       }
     }
     pool ??= new AgentWorkerPool(options)
     const prepared = await LLM.prepare({
-      ...input,
+      ...turnInput,
       tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
     })
-    return pool.run({ ...input, prepared })
+    const stream = pool.run({ ...turnInput, prepared })
+    const contextUsageDraft = startContextUsageDraft(input, prepared.system, contextUsageProvenance)
+    const result = await stream
+    return { ...result, contextUsageDraft }
+  }
+
+  function startContextUsageDraft(
+    input: Input,
+    system: string[],
+    provenance: ContextUsage.Provenance | undefined,
+  ): Promise<ContextUsage.Draft | undefined> | undefined {
+    if (!provenance) return undefined
+    return ContextUsage.measureDraft({
+      modelID: input.model.id,
+      providerID: input.model.providerID,
+      limits: input.model.limit,
+      instructions: [...system, ...(input.lateSystem ?? [])],
+      provenance,
+    }).catch(() => undefined)
   }
 
   export async function collectText(stream: Stream): Promise<string> {

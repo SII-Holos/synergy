@@ -5,7 +5,7 @@ import { Runtime as ScopeRuntime } from "@/scope/types"
 import { Workspace } from "../workspace-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 4
+  export const VERSION = 5
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -120,7 +120,6 @@ export namespace AgentTurnProtocol {
       ),
       activeToolIDs: z.array(z.string()).optional(),
       retries: z.number().int().nonnegative().optional(),
-      contextUsageProvenance: z.unknown().optional(),
       maxOutputTokens: z.number().int().positive().optional(),
       prepared: z
         .object({
@@ -187,7 +186,7 @@ export namespace AgentTurnProtocol {
     | { type: "ready"; protocolVersion: number; pid: number; memory: WorkerMemory }
     | { type: "run-ready"; requestId: string }
     | { type: "chunk-ack"; requestId: string; index: number }
-    | { type: "started"; requestId: string; contextUsageDraft?: unknown }
+    | { type: "started"; requestId: string }
     | { type: "events"; requestId: string; sequence: number; events: StreamEvent[] }
     | {
         type: "complete"
@@ -269,13 +268,7 @@ export namespace AgentTurnProtocol {
       .strict(),
     z.object({ type: z.literal("run-ready"), requestId: z.string() }).strict(),
     z.object({ type: z.literal("chunk-ack"), requestId: z.string(), index: z.number().int().nonnegative() }).strict(),
-    z
-      .object({
-        type: z.literal("started"),
-        requestId: z.string(),
-        contextUsageDraft: z.unknown().optional(),
-      })
-      .strict(),
+    z.object({ type: z.literal("started"), requestId: z.string() }).strict(),
     z
       .object({
         type: z.literal("events"),

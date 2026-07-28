@@ -1,9 +1,9 @@
 import type { ModelMessage } from "ai"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
-import { Token } from "@/util/token"
 import type { MessageV2 } from "./message-v2"
 import type { ToolResolver } from "./tool-resolver"
 import { ContextUsageSchema, type ContextUsageSnapshot } from "./context-usage-schema"
+import { ContextUsageEstimator } from "./context-usage-estimator"
 
 export namespace ContextUsage {
   const CATEGORY_KEYS = ["conversation", "toolActivity", "filesReferences", "instructions"] as const
@@ -23,10 +23,16 @@ export namespace ContextUsage {
     contextLimit?: number
     usableInputLimit?: number
     categories: Record<CategoryKey, DraftCategory>
-    estimator: {
-      kind: "model-tokenizer"
-      encoding?: string
-    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
   }
 
   type Contribution = MessageV2.ModelMessageContribution
@@ -109,7 +115,6 @@ export namespace ContextUsage {
     instructions: string[]
     provenance: Provenance
   }): Promise<Draft | undefined> {
-    const categories = emptyDraftCategories()
     const contributions: Record<CategoryKey, Contribution[]> = {
       ...input.provenance.categories,
       instructions: [
@@ -117,16 +122,14 @@ export namespace ContextUsage {
         ...input.provenance.categories.instructions,
       ],
     }
+    const request = boundedEstimatorRequest(contributions)
+    const measured = await ContextUsageEstimator.estimate(request)
+    if (!measured) return undefined
 
+    const categories = emptyDraftCategories()
     for (const key of CATEGORY_KEYS) {
-      let estimatedTokens = 0
-      for (const contribution of contributions[key]) {
-        const measured = await Token.countModel(input.modelID, contribution.text)
-        if (measured === undefined) return undefined
-        estimatedTokens += measured
-      }
       categories[key] = {
-        estimatedTokens: nonNegativeInteger(estimatedTokens),
+        estimatedTokens: nonNegativeInteger(measured.categories[key]),
         items: nonNegativeInteger(
           input.provenance.items[key] + (key === "instructions" ? input.instructions.length : 0),
         ),
@@ -142,8 +145,9 @@ export namespace ContextUsage {
       ...(usableInputLimit === undefined ? {} : { usableInputLimit }),
       categories,
       estimator: {
-        kind: "model-tokenizer",
-        encoding: Token.encodingForModelID(input.modelID),
+        kind: "bounded-utf8",
+        sampledCharacters: measured.sampledCharacters,
+        truncated: measured.truncated,
       },
     }
   }
@@ -266,6 +270,55 @@ export namespace ContextUsage {
     if (!text) return
     provenance.categories[category].push({ text })
     provenance.items[category]++
+  }
+
+  function boundedEstimatorRequest(contributions: Record<CategoryKey, Contribution[]>): ContextUsageEstimator.Request {
+    const categories = Object.fromEntries(
+      CATEGORY_KEYS.map((key) => [key, boundedSamples(contributions[key])]),
+    ) as Record<CategoryKey, ContextUsageEstimator.Contribution[]>
+    const sampledCharacters = Object.values(categories)
+      .flat()
+      .reduce((sum, contribution) => sum + contribution.sample.length, 0)
+    const truncated = CATEGORY_KEYS.some((key) => {
+      const source = contributions[key]
+      const sampled = categories[key]
+      return (
+        source.length > sampled.length ||
+        sampled.some((contribution) => contribution.sample.length < contribution.sourceCharacters)
+      )
+    })
+    return { categories, sampledCharacters, truncated }
+  }
+
+  function boundedSamples(contributions: Contribution[]): ContextUsageEstimator.Contribution[] {
+    const indexes = sampleIndexes(contributions.length)
+    let remainingCharacters: number = ContextUsageEstimator.LIMITS.sampleCharactersPerCategory
+    const result: ContextUsageEstimator.Contribution[] = []
+    for (const index of indexes) {
+      if (remainingCharacters === 0) break
+      const text = contributions[index]?.text
+      if (!text) continue
+      const limit = Math.min(ContextUsageEstimator.LIMITS.sampleCharactersPerContribution, remainingCharacters)
+      const sample = sampleText(text, limit)
+      if (!sample) continue
+      result.push({ sample, sourceCharacters: text.length })
+      remainingCharacters -= sample.length
+    }
+    return result
+  }
+
+  function sampleIndexes(length: number): number[] {
+    const count = Math.min(length, ContextUsageEstimator.LIMITS.contributionsPerCategory)
+    if (count === 0) return []
+    if (count === 1) return [0]
+    if (count === length) return Array.from({ length }, (_, index) => index)
+    return Array.from({ length: count }, (_, index) => Math.floor((index * (length - 1)) / (count - 1)))
+  }
+
+  function sampleText(text: string, limit: number): string {
+    if (text.length <= limit) return text
+    const head = Math.ceil(limit / 2)
+    return text.slice(0, head) + text.slice(text.length - (limit - head))
   }
 
   function largestRemainder(estimates: number[], total: number): number[] {
