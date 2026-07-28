@@ -59,7 +59,7 @@ Feishu/Lark renders response cards with CardKit v2. Callback envelopes use the b
 
 An accepted callback never treats its opaque ID or value as a command, tool name, URL, or executable instruction. Synergy creates a fresh Channel user task whose visible text is synthesized only from the registered card title and labels. The raw callback fields remain in structured message metadata for audit and routing. Callback event IDs use durable inbox delivery keys, so retries enqueue one task and return a duplicate acknowledgement without invoking the model twice.
 
-Response-card registration writes a pending record before the provider send and activates it only after receiving the sent message ID. If a process stops while the provider outcome is unknown, the surviving pending record blocks resend until its expiry rather than risk issuing a duplicate interactive card.
+Response-card registration writes a pending record before the provider send and activates it only after receiving the sent message ID. If a process stops while the provider outcome is unknown, the surviving pending record blocks resend until its expiry rather than risk issuing a duplicate interactive card. Expired and malformed registrations are pruned at global runtime startup.
 
 ### Outbound Delivery Anchoring
 

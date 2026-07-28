@@ -257,6 +257,7 @@ describe("ResponseCardRuntime", () => {
       },
     })
   })
+
   test("validates account, chat, requester, message, action, and expiry before durable task delivery", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -374,6 +375,149 @@ describe("ResponseCardRuntime", () => {
           },
         })
         expect(JSON.stringify(items[0].message?.parts)).not.toContain("bash")
+      },
+    })
+  })
+
+  test("provider send failure preserves pending registration and blocks retry", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const type = `response-card-fail-${crypto.randomUUID()}`
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type,
+            accountId: "acct_test",
+            chatId: "oc_chat",
+            senderId: "ou_requester",
+          }),
+        })
+        const task = await createTask({ sessionID: session.id, requesterId: "ou_requester" })
+
+        const firstCalls: Array<Record<string, unknown>> = []
+        const failingProvider: Provider = {
+          ...provider(type, firstCalls),
+          async sendResponseCard(recv) {
+            firstCalls.push(recv)
+            throw new Error("Network failure")
+          },
+        }
+
+        await expect(
+          ResponseCardRuntime.deliverTaskCards({
+            provider: failingProvider,
+            accountId: "acct_test",
+            chatId: "oc_chat",
+            replyToMessageId: "om_topic",
+            sessionID: session.id,
+            terminal: task.terminal,
+          }),
+        ).rejects.toThrow("Network failure")
+
+        const saved = await Storage.read(StoragePath.channelResponseCard(type, "acct_test", task.requestId))
+        expect(saved).toMatchObject({
+          status: "pending",
+          requestId: task.requestId,
+        })
+
+        const secondCalls: Array<Record<string, unknown>> = []
+        const secondResult = await ResponseCardRuntime.deliverTaskCards({
+          provider: provider(type, secondCalls),
+          accountId: "acct_test",
+          chatId: "oc_chat",
+          replyToMessageId: "om_topic",
+          sessionID: session.id,
+          terminal: task.terminal,
+        })
+        expect(secondResult).toBe(true)
+        expect(secondCalls).toEqual([])
+      },
+    })
+  })
+
+  test("pruneExpired removes expired response-card registrations globally while preserving unexpired ones", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const type = `response-card-prune-${crypto.randomUUID()}`
+        const now = Date.now()
+
+        const expiredA = {
+          version: 1 as const,
+          status: "pending" as const,
+          requestId: "req_a",
+          channelType: type,
+          accountId: "acct_a",
+          chatId: "oc_a",
+          requesterId: "ou_a",
+          sessionID: "ses_a",
+          replyToMessageId: "om_a",
+          card: { title: "Expired A", elements: [{ type: "text" as const, text: "gone" }] },
+          createdAt: now - 100_000,
+          expiresAt: now - 1_000,
+        }
+        const unexpired = {
+          version: 1 as const,
+          status: "active" as const,
+          requestId: "req_b",
+          channelType: type,
+          accountId: "acct_b",
+          chatId: "oc_b",
+          requesterId: "ou_b",
+          sessionID: "ses_b",
+          replyToMessageId: "om_b",
+          messageId: "msg_b",
+          card: { title: "Unexpired B", elements: [{ type: "text" as const, text: "keep" }] },
+          createdAt: now - 10_000,
+          expiresAt: now + 60_000,
+        }
+        const expiredC = {
+          version: 1 as const,
+          status: "pending" as const,
+          requestId: "req_c",
+          channelType: type,
+          accountId: "acct_c",
+          chatId: "oc_c",
+          requesterId: "ou_c",
+          sessionID: "ses_c",
+          replyToMessageId: "om_c",
+          card: { title: "Expired C", elements: [{ type: "text" as const, text: "gone too" }] },
+          createdAt: now - 200_000,
+          expiresAt: now - 5_000,
+        }
+
+        await Storage.write(StoragePath.channelResponseCard(type, "acct_a", "req_a"), expiredA)
+        await Storage.write(StoragePath.channelResponseCard(type, "acct_b", "req_b"), unexpired)
+        await Storage.write(StoragePath.channelResponseCard(type, "acct_c", "req_c"), expiredC)
+
+        await ResponseCardRuntime.pruneExpired()
+
+        await expect(Storage.read(StoragePath.channelResponseCard(type, "acct_a", "req_a"))).rejects.toThrow()
+        await expect(Storage.read(StoragePath.channelResponseCard(type, "acct_c", "req_c"))).rejects.toThrow()
+
+        const saved = await Storage.read(StoragePath.channelResponseCard(type, "acct_b", "req_b"))
+        expect(saved).toMatchObject({
+          requestId: "req_b",
+          status: "active",
+        })
+      },
+    })
+  })
+
+  test("pruneExpired removes malformed registration records", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const type = `response-card-malformed-${crypto.randomUUID()}`
+        const key = StoragePath.channelResponseCard(type, "acct_a", "req_a")
+        await Storage.write(key, { not: "a valid registration" })
+
+        await ResponseCardRuntime.pruneExpired()
+
+        await expect(Storage.read(key)).rejects.toThrow()
       },
     })
   })

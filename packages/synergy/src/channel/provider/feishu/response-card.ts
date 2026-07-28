@@ -5,6 +5,8 @@ import type { FeishuApiContext } from "./api-context"
 
 const ACTION_PREFIX = "response_card:"
 const REQUEST_TIMEOUT_MS = 15_000
+const MAX_RESPONSE_CARD_BYTES = 30 * 1024
+const RESPONSE_CARD_SIZE_RESERVE_BYTES = 2 * 1024
 
 const CallbackEnvelope = z
   .object({
@@ -167,8 +169,16 @@ export async function sendFeishuResponseCard(
     card: ResponseCard
   },
 ): Promise<{ messageId: string }> {
-  const token = await input.getAccessToken()
   const cardJson = renderFeishuResponseCard(input.card, input.requestId)
+  const cardBytes = new TextEncoder().encode(JSON.stringify(cardJson)).byteLength
+  const budgetedBytes = cardBytes + RESPONSE_CARD_SIZE_RESERVE_BYTES
+  if (budgetedBytes > MAX_RESPONSE_CARD_BYTES) {
+    throw new Error(
+      `Response card too large: ${cardBytes} payload bytes plus ${RESPONSE_CARD_SIZE_RESERVE_BYTES} reserved bytes exceeds ${MAX_RESPONSE_CARD_BYTES} byte limit`,
+    )
+  }
+
+  const token = await input.getAccessToken()
   const createResponse = await fetch(`${input.apiBase}/cardkit/v1/cards`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

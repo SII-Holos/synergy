@@ -19,6 +19,10 @@ import {
 const log = Log.create({ service: "channel.response-card" })
 const RESPONSE_CARD_TTL_MS = 14 * 24 * 60 * 60 * 1_000
 
+function registrationLockKey(key: string[]): string {
+  return `channel-response-card:${JSON.stringify(key)}`
+}
+
 const PendingRegistration = z
   .object({
     version: z.literal(1),
@@ -98,6 +102,7 @@ export namespace ResponseCardRuntime {
     if (!parsedCallback.success) return { status: "rejected" }
     const callback = parsedCallback.data
     const key = StoragePath.channelResponseCard(input.channelType, input.accountId, callback.requestId)
+    using _ = await Lock.write(registrationLockKey(key))
 
     const stored = await Storage.read<unknown>(key).catch(() => undefined)
     const parsedRegistration = Registration.safeParse(stored)
@@ -137,6 +142,28 @@ export namespace ResponseCardRuntime {
     return { status: "accepted" }
   }
 
+  export async function pruneExpired(): Promise<number> {
+    const keys = await Storage.list(StoragePath.channelResponseCardsRoot())
+    let removed = 0
+    for (const key of keys) {
+      using _ = await Lock.write(registrationLockKey(key))
+      try {
+        const stored = await Storage.read<unknown>(key)
+        const parsed = Registration.safeParse(stored)
+        if (parsed.success && parsed.data.expiresAt > Date.now()) continue
+        await Storage.remove(key)
+        removed++
+      } catch {
+        const didRemove = await Storage.remove(key).then(
+          () => true,
+          () => false,
+        )
+        if (didRemove) removed++
+      }
+    }
+    return removed
+  }
+
   function collectRequests(messages: MessageV2.WithParts[], rootID: string) {
     const seen = new Set<string>()
     const result: Array<{ requestId: string; card: ResponseCardType }> = []
@@ -165,7 +192,7 @@ export namespace ResponseCardRuntime {
     card: ResponseCardType
   }): Promise<void> {
     const key = StoragePath.channelResponseCard(input.provider.type, input.accountId, input.requestId)
-    using _ = await Lock.write(`channel-response-card:${input.provider.type}:${input.accountId}:${input.requestId}`)
+    using _ = await Lock.write(registrationLockKey(key))
 
     const existing = await Storage.read<unknown>(key).catch(() => undefined)
     const parsedExisting = Registration.safeParse(existing)
@@ -189,22 +216,16 @@ export namespace ResponseCardRuntime {
     }
     await Storage.write(key, pending)
 
-    try {
-      const sent = await input.provider.sendResponseCard!({
-        accountId: input.accountId,
-        chatId: input.chatId,
-        replyToMessageId: input.replyToMessageId,
-        requestId: input.requestId,
-        card: input.card,
-      })
-      if (!sent.messageId.trim()) throw new Error("Response card provider returned no message ID")
-      const active: ActiveRegistration = { ...pending, status: "active", messageId: sent.messageId }
-      await Storage.write(key, active)
-      return
-    } catch (error) {
-      await Storage.remove(key)
-      throw error
-    }
+    const sent = await input.provider.sendResponseCard!({
+      accountId: input.accountId,
+      chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
+      requestId: input.requestId,
+      card: input.card,
+    })
+    if (!sent.messageId.trim()) throw new Error("Response card provider returned no message ID")
+    const active: ActiveRegistration = { ...pending, status: "active", messageId: sent.messageId }
+    await Storage.write(key, active)
   }
 
   function matchesOwner(

@@ -203,6 +203,7 @@ describe("Feishu response cards", () => {
     ).toEqual({ legacy: true })
     expect(pluginCalls).toEqual([{ data: unrelated, accountId: "acct_test" }])
   })
+
   test("creates a CardKit card and replies with its interactive message reference", async () => {
     const originalFetch = globalThis.fetch
     const requests: Array<{ url: string; body: Record<string, unknown> }> = []
@@ -249,6 +250,56 @@ describe("Feishu response cards", () => {
         reply_in_thread: true,
         content: JSON.stringify({ type: "card", data: { card_id: "card_123" } }),
       })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("rejects schema-valid card that renders above the safe CardKit size limit before any fetch call", async () => {
+    const bigText = "x".repeat(2_000)
+    const oversizedCard: ResponseCard = {
+      title: "Oversized",
+      elements: Array.from({ length: 20 }, (_, i) => ({
+        type: "text" as const,
+        format: "markdown" as const,
+        text: `${bigText}[${i}]`,
+      })),
+    }
+
+    const rendered = renderFeishuResponseCard(oversizedCard)
+    const byteLength = new TextEncoder().encode(JSON.stringify(rendered)).length
+    expect(byteLength).toBeGreaterThan(30_000)
+
+    const originalFetch = globalThis.fetch
+    const fetchCalls: unknown[] = []
+    globalThis.fetch = (async (...args) => {
+      fetchCalls.push(args)
+      return new Response(JSON.stringify({ code: 0, data: { card_id: "card_123" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_test", {
+        config: accountConfig(),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await expect(
+        provider.sendResponseCard!({
+          accountId: "acct_test",
+          chatId: "oc_chat",
+          replyToMessageId: "om_topic",
+          requestId: "part_response_card",
+          card: oversizedCard,
+        }),
+      ).rejects.toThrow(/too large|exceed|size/i)
+
+      expect(fetchCalls).toEqual([])
     } finally {
       globalThis.fetch = originalFetch
     }
