@@ -102,7 +102,7 @@ Exact assignment replay reuses the Session and delivery key. Clarus assignment d
 
 ## Native Clarus Task Flow
 
-Clarus account configuration lives in the Channel domain and uses the active Holos agent credentials. The configured account ID must equal the active Holos agent ID. Server startup initializes Holos before Channels; while the Agent Tunnel is still connecting or reconnecting, the Clarus account remains in `waiting_for_transport` until the matching authenticated transport becomes ready.
+Clarus account configuration lives in the Channel domain and uses the active Holos agent credentials. Holos login provisions a disabled matching account, and the Holos migration runner backfills that account for existing active identities. The configured account ID must equal the active Holos agent ID. Server startup initializes Holos before Channels; while the Agent Tunnel is still connecting or reconnecting, the Clarus account remains in `waiting_for_transport` until the matching authenticated transport becomes ready.
 
 On connect or manual refresh, Clarus:
 

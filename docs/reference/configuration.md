@@ -59,7 +59,7 @@ Clarus accounts live in the Channel domain and reuse Holos credentials:
 }
 ```
 
-Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. There is no top-level `clarus` domain or Clarus workspace-root setting.
+Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. A versioned Holos migration provisions the same disabled account for an existing active identity. There is no top-level `clarus` domain or Clarus workspace-root setting.
 
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
 
