@@ -1,8 +1,8 @@
 import { For, Show, createSignal } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import type { BasicAccountToggle } from "../types"
-import { SettingRow } from "./SettingRow"
 import {
   channelAccountActionKey,
   isChannelAccountActionPending,
@@ -10,14 +10,18 @@ import {
 } from "../channel-account-model"
 
 export function BasicAccountToggleCard(props: {
-  title: string
-  description: string
   accounts: BasicAccountToggle[]
   emptyLabel: string
   accountDescription: (account: BasicAccountToggle) => string
   accountName: (account: BasicAccountToggle) => string
+  enableLabel: string
+  enableAccountLabel: (accountName: string) => string
+  maintenanceLabel: string
+  maintenanceAccountLabel: (accountName: string) => string
   refreshLabel: string
+  refreshingLabel: string
   diagnosticsLabel: string
+  preparingDiagnosticsLabel: string
   onToggle: (index: number, value: boolean) => void
   onRefresh: (account: BasicAccountToggle) => Promise<void>
   onDiagnostics: (account: BasicAccountToggle) => Promise<void>
@@ -42,40 +46,66 @@ export function BasicAccountToggleCard(props: {
     }
   }
   return (
-    <div class="ds-setting-subsection">
-      <h3 class="ds-subsection-title">{props.title}</h3>
-      <p class="ds-section-hint mb-2">{props.description}</p>
+    <div class="settings-channel-account-list">
       <Show when={props.accounts.length > 0} fallback={<div class="settings-row-description">{props.emptyLabel}</div>}>
         <For each={props.accounts}>
-          {(account, index) => (
-            <SettingRow
-              title={props.accountName(account)}
-              description={props.accountDescription(account)}
-              trailing={
-                <div class="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="small"
-                    disabled={isChannelAccountActionPending(pending(), "refresh", account.key)}
-                    onClick={() => runAction("refresh", account, props.onRefresh)}
-                  >
-                    {props.refreshLabel}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="small"
-                    disabled={isChannelAccountActionPending(pending(), "diagnostics", account.key)}
-                    onClick={() => runAction("diagnostics", account, props.onDiagnostics)}
-                  >
-                    {props.diagnosticsLabel}
-                  </Button>
-                  <Switch checked={account.enabled} onChange={(value) => props.onToggle(index(), value)} />
+          {(account, index) => {
+            const accountName = () => props.accountName(account)
+            const refreshing = () => isChannelAccountActionPending(pending(), "refresh", account.key)
+            const preparingDiagnostics = () => isChannelAccountActionPending(pending(), "diagnostics", account.key)
+
+            return (
+              <article class="settings-channel-account" data-channel-account={account.key} aria-label={accountName()}>
+                <div class="settings-channel-account-header">
+                  <div class="settings-channel-account-identity">
+                    <span class="settings-row-title">{accountName()}</span>
+                    <span class="ds-inline-badge ds-inline-badge-muted" aria-live="polite">
+                      {props.accountDescription(account)}
+                    </span>
+                  </div>
+                  <div class="settings-channel-account-toggle">
+                    <span class="settings-channel-account-toggle-label" aria-hidden="true">
+                      {props.enableLabel}
+                    </span>
+                    <Switch hideLabel checked={account.enabled} onChange={(value) => props.onToggle(index(), value)}>
+                      {props.enableAccountLabel(accountName())}
+                    </Switch>
+                  </div>
                 </div>
-              }
-            />
-          )}
+                <div
+                  class="settings-channel-account-maintenance"
+                  role="group"
+                  aria-label={props.maintenanceAccountLabel(accountName())}
+                >
+                  <span class="settings-channel-account-maintenance-label">{props.maintenanceLabel}</span>
+                  <div class="settings-channel-account-actions">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="small"
+                      icon={getSemanticIcon("action.refresh")}
+                      disabled={refreshing()}
+                      aria-busy={refreshing()}
+                      onClick={() => runAction("refresh", account, props.onRefresh)}
+                    >
+                      {refreshing() ? props.refreshingLabel : props.refreshLabel}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="small"
+                      icon={getSemanticIcon("action.download")}
+                      disabled={preparingDiagnostics()}
+                      aria-busy={preparingDiagnostics()}
+                      onClick={() => runAction("diagnostics", account, props.onDiagnostics)}
+                    >
+                      {preparingDiagnostics() ? props.preparingDiagnosticsLabel : props.diagnosticsLabel}
+                    </Button>
+                  </div>
+                </div>
+              </article>
+            )
+          }}
         </For>
       </Show>
     </div>

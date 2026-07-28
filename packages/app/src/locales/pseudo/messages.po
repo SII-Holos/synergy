@@ -13742,10 +13742,6 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.channels.clarus.accounts"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.channels.clarus.description"
 msgstr ""
 
@@ -13762,11 +13758,35 @@ msgid "settings.channels.clarus.empty"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.enable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.enableAccount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.maintenance"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.maintenanceAccount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.preparingDiagnostics"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.channels.clarus.refresh"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.channels.clarus.refreshFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshing"
 msgstr ""
 
 #. js-lingui-explicit-id

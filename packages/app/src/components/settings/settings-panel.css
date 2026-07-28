@@ -379,6 +379,94 @@
   padding: 8px 0;
 }
 
+.settings-channel-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-channel-account {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  background: var(--settings-card-bg);
+}
+
+.settings-channel-account-header,
+.settings-channel-account-maintenance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-channel-account-identity,
+.settings-channel-account-toggle,
+.settings-channel-account-actions {
+  display: flex;
+  align-items: center;
+}
+
+.settings-channel-account-identity {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-channel-account-toggle {
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.settings-channel-account-toggle-label,
+.settings-channel-account-maintenance-label {
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
+.settings-channel-account-toggle [data-component="switch"] {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  margin: -10px;
+}
+
+.settings-channel-account-maintenance {
+  min-height: 30px;
+}
+
+.settings-channel-account-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+@media (max-width: 840px) {
+  .settings-channel-account-header,
+  .settings-channel-account-maintenance {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .settings-channel-account-toggle {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+
+  .settings-channel-account-actions {
+    justify-content: flex-start;
+  }
+
+  .settings-channel-account-actions [data-component="button"] {
+    min-height: 36px;
+  }
+}
+
 /* ===== Personalize settings ===== */
 
 .personalize-loading-state {

@@ -13742,12 +13742,8 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr "worktree | git | checkout | branch | delete | project"
 
 #. js-lingui-explicit-id
-msgid "settings.channels.clarus.accounts"
-msgstr "Clarus accounts"
-
-#. js-lingui-explicit-id
 msgid "settings.channels.clarus.description"
-msgstr "Enable or disable Clarus task execution for Holos Agent accounts."
+msgstr "Allow each Holos Agent account to receive and run Clarus tasks."
 
 #. js-lingui-explicit-id
 msgid "settings.channels.clarus.diagnostics"
@@ -13762,12 +13758,36 @@ msgid "settings.channels.clarus.empty"
 msgstr "No Clarus accounts configured yet."
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.enable"
+msgstr "Clarus task execution"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.enableAccount"
+msgstr "Enable Clarus task execution for {accountName}"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.maintenance"
+msgstr "Account maintenance"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.maintenanceAccount"
+msgstr "Account maintenance for {accountName}"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.preparingDiagnostics"
+msgstr "Preparing diagnostics…"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.clarus.refresh"
 msgstr "Refresh projects"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.clarus.refreshFailed"
 msgstr "Failed to refresh Clarus projects"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshing"
+msgstr "Refreshing…"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.clarus.title"
@@ -13791,7 +13811,7 @@ msgstr "Feishu"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.page.description"
-msgstr "External messaging channel accounts."
+msgstr "Messaging and task channel accounts."
 
 #. js-lingui-explicit-id
 msgid "settings.channels.page.title"

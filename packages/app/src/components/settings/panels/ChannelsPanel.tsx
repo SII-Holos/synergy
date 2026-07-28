@@ -7,7 +7,7 @@ import type { ChannelSettings, ProviderGroup } from "../types"
 const pageTitle = { id: "settings.channels.page.title", message: "Channels" }
 const pageDescription = {
   id: "settings.channels.page.description",
-  message: "External messaging channel accounts.",
+  message: "Messaging and task channel accounts.",
 }
 const feishuSectionTitle = { id: "settings.channels.feishu.title", message: "Feishu" }
 const feishuAccountsTitle = { id: "settings.channels.feishu.accounts", message: "Feishu accounts" }
@@ -17,14 +17,34 @@ const feishuAccountsDescription = {
 }
 const emptyFeishuLabel = { id: "settings.channels.feishu.empty", message: "No Feishu accounts configured yet." }
 const clarusSectionTitle = { id: "settings.channels.clarus.title", message: "Clarus" }
-const clarusAccountsTitle = { id: "settings.channels.clarus.accounts", message: "Clarus accounts" }
 const clarusAccountsDescription = {
   id: "settings.channels.clarus.description",
-  message: "Enable or disable Clarus task execution for Holos Agent accounts.",
+  message: "Allow each Holos Agent account to receive and run Clarus tasks.",
 }
 const emptyClarusLabel = { id: "settings.channels.clarus.empty", message: "No Clarus accounts configured yet." }
+const clarusEnableLabel = { id: "settings.channels.clarus.enable", message: "Clarus task execution" }
+function clarusEnableAccountLabel(accountName: string) {
+  return {
+    id: "settings.channels.clarus.enableAccount",
+    message: "Enable Clarus task execution for {accountName}",
+    values: { accountName },
+  }
+}
+const clarusMaintenanceLabel = { id: "settings.channels.clarus.maintenance", message: "Account maintenance" }
+function clarusMaintenanceAccountLabel(accountName: string) {
+  return {
+    id: "settings.channels.clarus.maintenanceAccount",
+    message: "Account maintenance for {accountName}",
+    values: { accountName },
+  }
+}
 const clarusRefreshLabel = { id: "settings.channels.clarus.refresh", message: "Refresh projects" }
+const clarusRefreshingLabel = { id: "settings.channels.clarus.refreshing", message: "Refreshing…" }
 const clarusDiagnosticsLabel = { id: "settings.channels.clarus.diagnostics", message: "Download diagnostics" }
+const clarusPreparingDiagnosticsLabel = {
+  id: "settings.channels.clarus.preparingDiagnostics",
+  message: "Preparing diagnostics…",
+}
 
 export function ChannelsPanel(props: {
   channels: ChannelSettings
@@ -55,16 +75,20 @@ export function ChannelsPanel(props: {
           onVariantChange={props.onFeishuVariantChange}
         />
       </SettingsSection>
-      <SettingsSection title={_(clarusSectionTitle)}>
+      <SettingsSection title={_(clarusSectionTitle)} description={_(clarusAccountsDescription)}>
         <BasicAccountToggleCard
-          title={_(clarusAccountsTitle)}
-          description={_(clarusAccountsDescription)}
           accounts={props.channels.clarusAccounts}
           emptyLabel={_(emptyClarusLabel)}
           accountDescription={(account) => props.clarusAccountDescription(account.key)}
           accountName={(account) => props.clarusAccountName(account.key)}
+          enableLabel={_(clarusEnableLabel)}
+          enableAccountLabel={(accountName) => _(clarusEnableAccountLabel(accountName))}
+          maintenanceLabel={_(clarusMaintenanceLabel)}
+          maintenanceAccountLabel={(accountName) => _(clarusMaintenanceAccountLabel(accountName))}
           refreshLabel={_(clarusRefreshLabel)}
+          refreshingLabel={_(clarusRefreshingLabel)}
           diagnosticsLabel={_(clarusDiagnosticsLabel)}
+          preparingDiagnosticsLabel={_(clarusPreparingDiagnosticsLabel)}
           onToggle={props.onClarusToggle}
           onRefresh={(account) => props.onClarusRefresh(account.key)}
           onDiagnostics={(account) => props.onClarusDiagnostics(account.key)}
