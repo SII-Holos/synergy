@@ -291,34 +291,43 @@ export namespace ContextUsage {
   }
 
   function boundedSamples(contributions: Contribution[]): ContextUsageEstimator.Contribution[] {
-    const indexes = sampleIndexes(contributions.length)
-    let remainingCharacters: number = ContextUsageEstimator.LIMITS.sampleCharactersPerCategory
-    const result: ContextUsageEstimator.Contribution[] = []
-    for (const index of indexes) {
-      if (remainingCharacters === 0) break
-      const text = contributions[index]?.text
-      if (!text) continue
-      const limit = Math.min(ContextUsageEstimator.LIMITS.sampleCharactersPerContribution, remainingCharacters)
-      const sample = sampleText(text, limit)
-      if (!sample) continue
-      result.push({ sample, sourceCharacters: text.length })
-      remainingCharacters -= sample.length
-    }
-    return result
-  }
-
-  function sampleIndexes(length: number): number[] {
-    const count = Math.min(length, ContextUsageEstimator.LIMITS.contributionsPerCategory)
+    const populated = contributions.filter((contribution) => contribution.text.length > 0)
+    const count = Math.min(populated.length, ContextUsageEstimator.LIMITS.contributionsPerCategory)
     if (count === 0) return []
-    if (count === 1) return [0]
-    if (count === length) return Array.from({ length }, (_, index) => index)
-    return Array.from({ length: count }, (_, index) => Math.floor((index * (length - 1)) / (count - 1)))
+
+    const baseLimit = Math.floor(ContextUsageEstimator.LIMITS.sampleCharactersPerCategory / count)
+    const remainder = ContextUsageEstimator.LIMITS.sampleCharactersPerCategory % count
+    return Array.from({ length: count }, (_, index) => {
+      const start = Math.floor((index * populated.length) / count)
+      const end = Math.floor(((index + 1) * populated.length) / count)
+      const bucket = populated.slice(start, end)
+      const sourceCharacters = bucket.reduce((sum, contribution) => sum + contribution.text.length, 0)
+      const limit = Math.min(
+        ContextUsageEstimator.LIMITS.sampleCharactersPerContribution,
+        baseLimit + (index < remainder ? 1 : 0),
+      )
+      return {
+        sample: sampleBucket(bucket, sourceCharacters, limit),
+        sourceCharacters,
+      }
+    })
   }
 
-  function sampleText(text: string, limit: number): string {
-    if (text.length <= limit) return text
-    const head = Math.ceil(limit / 2)
-    return text.slice(0, head) + text.slice(text.length - (limit - head))
+  function sampleBucket(contributions: Contribution[], sourceCharacters: number, limit: number): string {
+    if (sourceCharacters <= limit) return contributions.map((contribution) => contribution.text).join("")
+
+    const sample: string[] = []
+    let contributionIndex = 0
+    let contributionStart = 0
+    for (let index = 0; index < limit; index++) {
+      const position = Math.floor(((index + 0.5) * sourceCharacters) / limit)
+      while (position >= contributionStart + contributions[contributionIndex].text.length) {
+        contributionStart += contributions[contributionIndex].text.length
+        contributionIndex++
+      }
+      sample.push(contributions[contributionIndex].text[position - contributionStart])
+    }
+    return sample.join("")
   }
 
   function largestRemainder(estimates: number[], total: number): number[] {

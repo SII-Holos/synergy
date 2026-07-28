@@ -318,6 +318,85 @@ describe("ContextUsage provenance and measurement", () => {
     })
   })
 
+  test("spreads the category sample budget across selected multilingual contributions", async () => {
+    const contributions = Array.from({ length: 64 }, (_, index) => ({
+      text: (index < 32 ? "a" : "答").repeat(4_000),
+    }))
+
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test-model",
+      providerID: "test",
+      instructions: [],
+      provenance: {
+        categories: {
+          conversation: contributions,
+          toolActivity: [],
+          filesReferences: [],
+          instructions: [],
+        },
+        items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+      },
+    })
+
+    expect(draft?.categories.conversation.estimatedTokens).toBe(
+      contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
+    )
+    expect(draft?.estimator).toEqual({
+      kind: "bounded-utf8",
+      sampledCharacters: ContextUsageEstimator.LIMITS.sampleCharactersPerCategory,
+      truncated: true,
+    })
+  })
+
+  test("extrapolates sampled contributions over the complete category population", async () => {
+    const contributions = Array.from({ length: 128 }, () => ({ text: "a".repeat(4_000) }))
+
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test-model",
+      providerID: "test",
+      instructions: [],
+      provenance: {
+        categories: {
+          conversation: contributions,
+          toolActivity: [],
+          filesReferences: [],
+          instructions: [],
+        },
+        items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+      },
+    })
+
+    expect(draft?.categories.conversation.estimatedTokens).toBe(
+      contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
+    )
+    expect(draft?.categories.conversation.items).toBe(contributions.length)
+  })
+
+  test("samples mixed UTF-8 content across unsampled contributions", async () => {
+    const contributions = Array.from({ length: 128 }, (_, index) => ({
+      text: (index % 2 === 0 ? "a" : "答").repeat(4_000),
+    }))
+
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test-model",
+      providerID: "test",
+      instructions: [],
+      provenance: {
+        categories: {
+          conversation: contributions,
+          toolActivity: [],
+          filesReferences: [],
+          instructions: [],
+        },
+        items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+      },
+    })
+
+    expect(draft?.categories.conversation.estimatedTokens).toBe(
+      contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
+    )
+  })
+
   test("fails open when the isolated estimator is unavailable", async () => {
     ;(ContextUsageEstimator.estimate as any) = mock(async () => undefined)
 

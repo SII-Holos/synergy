@@ -88,9 +88,8 @@ export namespace AgentTurn {
       ...turnInput,
       tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
     })
-    const stream = pool.run({ ...turnInput, prepared })
+    const result = await pool.run({ ...turnInput, prepared })
     const contextUsageDraft = startContextUsageDraft(input, prepared.system, contextUsageProvenance)
-    const result = await stream
     return { ...result, contextUsageDraft }
   }
 
