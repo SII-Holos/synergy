@@ -11,6 +11,7 @@ export function isTextPartTerminal(input: { partEnd?: number; messageCompleted?:
 
 interface IncrementalTransform {
   write(chunk: string): string
+  end?(): string
 }
 
 function createTrimTransform(): IncrementalTransform {
@@ -35,7 +36,13 @@ function createTrimTransform(): IncrementalTransform {
   }
 }
 
-function createRemoveTransform(pattern?: string): IncrementalTransform {
+const pathBoundaryCharacters = new Set(["`", '"', "'", "<", ">", "[", "]", "(", ")", "{", "}", ":", ";", ",", "!", "?"])
+
+function isPathBoundary(character: string) {
+  return character.trim().length === 0 || pathBoundaryCharacters.has(character)
+}
+
+function createRelativizePathTransform(pattern?: string): IncrementalTransform {
   if (!pattern) return { write: (chunk) => chunk }
 
   let pending = ""
@@ -43,22 +50,31 @@ function createRemoveTransform(pattern?: string): IncrementalTransform {
     write(chunk) {
       let output = ""
       for (const character of chunk) {
+        if (pending === pattern) {
+          if (isPathBoundary(character)) output += "."
+          else if (character !== "/" && character !== "\\") output += pattern
+          pending = ""
+        }
+
         pending += character
         while (pending && !pattern.startsWith(pending)) {
           output += pending[0]
           pending = pending.slice(1)
         }
-        if (pending === pattern) pending = ""
       }
+      return output
+    },
+    end() {
+      const output = pending === pattern ? "." : pending
+      pending = ""
       return output
     },
   }
 }
 
 function projectCompleteText(source: string, remove?: string) {
-  const trimmed = source.trim()
-  if (!remove) return trimmed
-  return trimmed.split(remove).join("")
+  const transform = createRelativizePathTransform(remove)
+  return transform.write(source.trim()) + (transform.end?.() ?? "")
 }
 
 export function createTextPartProjection() {
@@ -68,7 +84,7 @@ export function createTextPartProjection() {
   let completed = false
   let output = ""
   let trim = createTrimTransform()
-  let strip = createRemoveTransform()
+  let strip = createRelativizePathTransform()
 
   const reset = (input: TextPartProjectionInput) => {
     key = input.key
@@ -76,7 +92,7 @@ export function createTextPartProjection() {
     sourceLength = input.source.length
     completed = input.completed
     trim = createTrimTransform()
-    strip = createRemoveTransform(remove)
+    strip = createRelativizePathTransform(remove)
     output = input.completed ? projectCompleteText(input.source, remove) : strip.write(trim.write(input.source))
     return output
   }

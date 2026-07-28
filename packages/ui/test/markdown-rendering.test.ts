@@ -37,7 +37,7 @@ describe("createTextPartProjection", () => {
     expect(projection.project({ key: "part_1", source: "  hello  \nworld", completed: false })).toBe("hello  \nworld")
   })
 
-  test("removes a project path split across stream updates", () => {
+  test("relativizes a project path split across stream updates", () => {
     const projection = createTextPartProjection()
     const remove = "/workspace/project"
 
@@ -50,6 +50,23 @@ describe("createTextPartProjection", () => {
         remove,
       }),
     ).toBe("/src/index.ts")
+  })
+
+  test("keeps the project root visible inside inline code", () => {
+    const projection = createTextPartProjection()
+    const source = "我当前的工作目录是：\n\n`/workspace/project`"
+    const expected = "我当前的工作目录是：\n\n`.`"
+
+    expect(projection.project({ key: "part_1", source, completed: false, remove: "/workspace/project" })).toBe(expected)
+    expect(projection.project({ key: "part_1", source, completed: true, remove: "/workspace/project" })).toBe(expected)
+  })
+
+  test("does not relativize a matching prefix inside ordinary text", () => {
+    const projection = createTextPartProjection()
+    const source = "Package: `/workspace/projectile`"
+
+    expect(projection.project({ key: "part_1", source, completed: false, remove: "/workspace/project" })).toBe(source)
+    expect(projection.project({ key: "part_1", source, completed: true, remove: "/workspace/project" })).toBe(source)
   })
 
   test("rebuilds once for terminal or rewritten source", () => {
