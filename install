@@ -90,13 +90,35 @@ has_complete_bundle() {
     has_bundled_assets && has_required_sandbox_asset
 }
 
+install_bin_contents() {
+    local bundle_bin="$1"
+    local source name destination staged
+
+    for source in "$bundle_bin"/* "$bundle_bin"/.[!.]* "$bundle_bin"/..?*; do
+        [ -e "$source" ] || [ -L "$source" ] || continue
+        name=$(basename "$source")
+        destination="$INSTALL_DIR/$name"
+
+        if [ -d "$source" ]; then
+            mkdir -p "$destination"
+            cp -R "$source/." "$destination/"
+            continue
+        fi
+
+        staged="$INSTALL_DIR/.${name}.install.$$"
+        rm -f "$staged"
+        cp -P "$source" "$staged"
+        mv -f "$staged" "$destination"
+    done
+}
+
 install_bundle_contents() {
     local bundle_root="$1"
 
     mkdir -p "$ROOT_DIR" "$INSTALL_DIR" "$ROOT_DIR/schema"
 
     if [ -d "$bundle_root/bin" ]; then
-        cp -R "$bundle_root/bin/." "$INSTALL_DIR/"
+        install_bin_contents "$bundle_root/bin"
     fi
 
     if [ -d "$bundle_root/app" ]; then
