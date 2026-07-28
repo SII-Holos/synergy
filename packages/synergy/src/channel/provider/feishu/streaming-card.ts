@@ -7,6 +7,11 @@ const log = Log.create({ service: "channel.feishu.streaming-card" })
 const STATUS_ELEMENT_ID = "status_content"
 const ANSWER_ELEMENT_ID = "answer_content"
 const TOOL_ELEMENT_ID = "tool_content"
+const ACTIONS = [
+  { id: "action_new", label: "新对话", action: "new", type: "primary" },
+  { id: "action_status", label: "状态", action: "status", type: "default" },
+  { id: "action_help", label: "帮助", action: "help", type: "default" },
+] as const
 const BLANK_MARKDOWN = " "
 
 type StreamingCardOptions = FeishuApiContext & {
@@ -15,6 +20,7 @@ type StreamingCardOptions = FeishuApiContext & {
   replyInThread?: boolean
   throttleMs?: number
   sendFallback?: (text: string) => Promise<void>
+  onInteractive?: (messageId: string) => void
 }
 
 type RenderedSections = {
@@ -354,6 +360,13 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
         }),
       })
       await assertFeishuSuccess(response, "Close streaming card")
+
+      try {
+        await this.appendActions(token)
+        this.opts.onInteractive?.(this.state.messageId)
+      } catch (cause) {
+        log.warn("failed to append streaming card actions", { error: cause, cardId: this.state.cardId })
+      }
     } catch (cause) {
       log.error("streaming card settings update failed", { error: cause, cardId: this.state.cardId })
       if (!text || !this.opts.sendFallback) return
@@ -431,6 +444,41 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
       },
     )
     await assertFeishuSuccess(response, `Update streaming card element ${elementId}`)
+  }
+
+  private async appendActions(token: string): Promise<void> {
+    if (!this.state) return
+
+    const elements = ACTIONS.map((action) => ({
+      tag: "button",
+      element_id: action.id,
+      type: action.type,
+      size: "medium",
+      text: {
+        tag: "plain_text",
+        content: action.label,
+      },
+      behaviors: [
+        {
+          type: "callback",
+          value: { synergy_builtin_action: action.action },
+        },
+      ],
+    }))
+    const response = await fetch(`${this.opts.apiBase}/cardkit/v1/cards/${this.state.cardId}/elements`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify({
+        type: "append",
+        sequence: this.nextSequence(),
+        uuid: `a_${this.state.cardId}_${this.state.sequence}`,
+        elements: JSON.stringify(elements),
+      }),
+    })
+    await assertFeishuSuccess(response, "Append streaming card actions")
   }
 
   private nextSequence(): number {

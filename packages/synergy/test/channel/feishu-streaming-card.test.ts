@@ -187,3 +187,114 @@ describe("Feishu streaming card finalization", () => {
     }
   })
 })
+
+describe("Feishu streaming card actions", () => {
+  test("appends JSON 2.0 command buttons only after streaming mode closes", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; method?: string; body?: Record<string, unknown> }> = []
+
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({
+        url,
+        method: init?.method,
+        body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined,
+      })
+      if (url.endsWith("/cardkit/v1/cards")) {
+        return response({ data: { card_id: "card_test" } })
+      }
+      if (url.endsWith("/im/v1/messages/message_root/reply")) {
+        return response({ data: { message_id: "message_card" } })
+      }
+      return response()
+    }) as typeof fetch
+
+    try {
+      const interactiveMessages: string[] = []
+      const card = new FeishuStreamingCard({
+        apiBase: "https://open.feishu.test/open-apis",
+        getAccessToken: async () => "token_test",
+        chatId: "chat_test",
+        replyToMessageId: "message_root",
+        throttleMs: 0,
+        onInteractive: (messageId) => {
+          interactiveMessages.push(messageId)
+        },
+      })
+
+      await card.start()
+      await card.close("final answer")
+
+      const settingsIndex = requests.findIndex((item) => item.url.endsWith("/cardkit/v1/cards/card_test/settings"))
+      const appendIndex = requests.findIndex(
+        (item) => item.url.endsWith("/cardkit/v1/cards/card_test/elements") && item.method === "POST",
+      )
+      expect(settingsIndex).toBeGreaterThan(-1)
+      expect(appendIndex).toBeGreaterThan(settingsIndex)
+
+      const appendBody = requests[appendIndex]?.body
+      expect(appendBody?.type).toBe("append")
+      expect(typeof appendBody?.sequence).toBe("number")
+      const elements = JSON.parse(String(appendBody?.elements)) as Array<Record<string, unknown>>
+      expect(elements).toHaveLength(3)
+      expect(elements.map((item) => item.tag)).toEqual(["button", "button", "button"])
+      expect(elements.map((item) => item.element_id)).toEqual(["action_new", "action_status", "action_help"])
+      expect(
+        elements.map((item) => {
+          const behavior = (item.behaviors as Array<{ value: unknown }>)[0]
+          return behavior.value
+        }),
+      ).toEqual([
+        { synergy_builtin_action: "new" },
+        { synergy_builtin_action: "status" },
+        { synergy_builtin_action: "help" },
+      ])
+      expect(interactiveMessages).toEqual(["message_card"])
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("does not append actions or register the card when streaming mode cannot close", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: string[] = []
+    const interactiveMessages: string[] = []
+
+    globalThis.fetch = (async (input) => {
+      const url = String(input)
+      requests.push(url)
+      if (url.endsWith("/cardkit/v1/cards")) {
+        return response({ data: { card_id: "card_test" } })
+      }
+      if (url.endsWith("/im/v1/messages/message_root/reply")) {
+        return response({ data: { message_id: "message_card" } })
+      }
+      if (url.endsWith("/cardkit/v1/cards/card_test/settings")) {
+        return response({ code: 300309, msg: "cannot close" })
+      }
+      return response()
+    }) as typeof fetch
+
+    try {
+      const card = new FeishuStreamingCard({
+        apiBase: "https://open.feishu.test/open-apis",
+        getAccessToken: async () => "token_test",
+        chatId: "chat_test",
+        replyToMessageId: "message_root",
+        throttleMs: 0,
+        sendFallback: async () => {},
+        onInteractive: (messageId) => {
+          interactiveMessages.push(messageId)
+        },
+      })
+
+      await card.start()
+      await card.close("final answer")
+
+      expect(requests.some((url) => url.endsWith("/cardkit/v1/cards/card_test/elements"))).toBe(false)
+      expect(interactiveMessages).toEqual([])
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})

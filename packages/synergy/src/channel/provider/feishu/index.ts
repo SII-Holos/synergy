@@ -5,6 +5,9 @@ import { Log } from "../../../util/log"
 import { Config } from "../../../config/config"
 import * as ChannelTypes from "../../types"
 import { FeishuStreamingCard } from "./streaming-card"
+import { FeishuCardActionRouter } from "./card-action"
+import { resolveGroupScopeKey } from "./session-scope"
+export { resolveGroupScopeKey } from "./session-scope"
 import { feishuDedup } from "./dedup"
 import { senderNameCache, chatNameCache } from "./sender"
 import { InboundDebouncer } from "./debounce"
@@ -35,29 +38,6 @@ type AccountState = {
   tokenCache: { token: string; expiresAt: number } | null
   botOpenId?: string
   missingBotOpenIdWarned?: boolean
-}
-
-export function resolveGroupScopeKey(input: {
-  chatId: string
-  senderId: string
-  rootId?: string
-  threadId?: string
-  scope: Config.FeishuGroupSessionScope
-}): string {
-  const { chatId, senderId, rootId, threadId, scope } = input
-  const topicId = rootId ?? threadId
-
-  switch (scope) {
-    case "group_sender":
-      return `${chatId}:sender:${senderId}`
-    case "group_topic":
-      return topicId ? `${chatId}:topic:${topicId}` : chatId
-    case "group_topic_sender":
-      return topicId ? `${chatId}:topic:${topicId}:sender:${senderId}` : `${chatId}:sender:${senderId}`
-    case "group":
-    default:
-      return chatId
-  }
 }
 
 export function isSelfSender(senderType?: string): boolean {
@@ -169,6 +149,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
   readonly type = "feishu"
 
   private accounts = new Map<string, AccountState>()
+  private cardActionRouter = new FeishuCardActionRouter()
 
   private static cardActionHandlers: Array<(data: unknown, accountId: string) => Promise<unknown>> = []
 
@@ -364,6 +345,24 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       },
       "card.action.trigger": async (data: unknown) => {
         log.info("feishu card action received", { accountId })
+        const builtinResult = this.cardActionRouter.handle(data, accountId, async (action) => {
+          await enqueueChatTask(action.chatId, () =>
+            onMessage({
+              channelType: action.channelType,
+              accountId: action.accountId,
+              chatId: action.chatId,
+              chatType: action.chatType,
+              senderId: action.senderId,
+              text: `/${action.command}`,
+              messageId: action.messageId,
+              timestamp: Date.now(),
+              rootId: action.rootId,
+              threadId: action.threadId,
+              scopeKey: action.scopeKey,
+            }),
+          )
+        })
+        if (builtinResult !== undefined) return builtinResult
         for (const handler of FeishuProvider.cardActionHandlers) {
           try {
             const result = await handler(data, accountId)
@@ -731,11 +730,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     }
   }
 
-  createStreamingSession(input: {
-    accountId: string
-    chatId: string
-    replyToMessageId?: string
-  }): ChannelTypes.StreamingSession {
+  createStreamingSession(input: ChannelTypes.StreamingSessionInput): ChannelTypes.StreamingSession {
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
 
@@ -764,6 +759,17 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       replyInThread: account.config.replyInThread,
       throttleMs: account.config.streamingThrottleMs,
       sendFallback: sendText,
+      onInteractive: (messageId) => {
+        this.cardActionRouter.register(messageId, {
+          accountId: input.accountId,
+          chatId: input.chatId,
+          chatType: input.chatType,
+          senderId: input.senderId,
+          rootId: input.rootId,
+          threadId: input.threadId,
+          groupSessionScope: account.config.groupSessionScope,
+        })
+      },
     })
   }
 }

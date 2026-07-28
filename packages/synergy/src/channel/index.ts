@@ -471,7 +471,11 @@ export namespace Channel {
         const streaming = provider.createStreamingSession({
           accountId: ctx.accountId,
           chatId: ctx.chatId,
+          chatType: ctx.chatType,
+          senderId: ctx.senderId,
           replyToMessageId: ctx.messageId,
+          rootId: ctx.rootId,
+          threadId: ctx.threadId,
         })
 
         const endpoint = SessionEndpoint.fromChannel({

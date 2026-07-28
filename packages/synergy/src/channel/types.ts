@@ -131,6 +131,16 @@ export interface StreamingSession {
   isActive(): boolean
 }
 
+export type StreamingSessionInput = {
+  accountId: string
+  chatId: string
+  chatType: "dm" | "group"
+  senderId: string
+  replyToMessageId?: string
+  rootId?: string
+  threadId?: string
+}
+
 export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   readonly type: string
 
@@ -151,5 +161,5 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
 
   removeReaction?(input: { accountId: string; messageId: string; reactionId: string }): Promise<void>
 
-  createStreamingSession(input: { accountId: string; chatId: string; replyToMessageId?: string }): StreamingSession
+  createStreamingSession(input: StreamingSessionInput): StreamingSession
 }
