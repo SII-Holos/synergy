@@ -637,19 +637,39 @@ export namespace ToolResolver {
         reject(signal.reason ?? new DOMException("Tool execution aborted", "AbortError"))
       }
       signal.addEventListener("abort", abort, { once: true })
-      Promise.resolve()
-        .then(execute)
-        .then(
-          (result) => {
-            cleanup()
-            resolve(result)
-          },
-          (error) => {
-            cleanup()
-            reject(error)
-          },
-        )
+      if (signal.aborted) {
+        abort()
+        return
+      }
+
+      let execution: Promise<T>
+      try {
+        execution = execute()
+      } catch (error) {
+        cleanup()
+        reject(error)
+        return
+      }
+      execution.then(
+        (result) => {
+          cleanup()
+          resolve(result)
+        },
+        (error) => {
+          cleanup()
+          reject(error)
+        },
+      )
     })
+  }
+
+  function triggerToolHook<Input, Output>(
+    point: "tool.execute.before" | "tool.execute.after",
+    input: Input,
+    output: Output,
+    signal: AbortSignal,
+  ) {
+    return settleExecutionOnAbort(() => Plugin.trigger(point, input, output, { signal }), signal)
   }
 
   function disposeToolTimeout(ctx: Tool.Context) {
@@ -1607,7 +1627,7 @@ export namespace ToolResolver {
 
                 // ── Plugin: tool.execute.before ────────────────────────
                 await toolTrace.phase("plugin.runtime.before.start", "plugin before start")
-                await Plugin.trigger(
+                await triggerToolHook(
                   "tool.execute.before",
                   {
                     tool: item.id,
@@ -1617,6 +1637,7 @@ export namespace ToolResolver {
                   {
                     args,
                   },
+                  combinedAbort,
                 )
                 await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
                 await toolTrace.phase("tool.execute.start", "tool execute start")
@@ -1627,7 +1648,7 @@ export namespace ToolResolver {
                   attachmentCount: result.attachments?.length ?? 0,
                 })
                 await toolTrace.phase("plugin.runtime.after.start", "plugin after start")
-                await Plugin.trigger(
+                await triggerToolHook(
                   "tool.execute.after",
                   {
                     tool: item.id,
@@ -1635,6 +1656,7 @@ export namespace ToolResolver {
                     callID: ctx.callID,
                   },
                   result,
+                  combinedAbort,
                 )
                 await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
                 slot.complete(args, {
@@ -1815,7 +1837,7 @@ export namespace ToolResolver {
                   using toolTimer = log.time("tool.execute", { tool: key, callID: opts.toolCallId })
 
                   await toolTrace.phase("plugin.runtime.before.start", "plugin before start")
-                  await Plugin.trigger(
+                  await triggerToolHook(
                     "tool.execute.before",
                     {
                       tool: key,
@@ -1825,6 +1847,7 @@ export namespace ToolResolver {
                     {
                       args,
                     },
+                    combinedAbort,
                   )
                   await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
 
@@ -1838,7 +1861,7 @@ export namespace ToolResolver {
                   })
 
                   await toolTrace.phase("plugin.runtime.after.start", "plugin after start")
-                  await Plugin.trigger(
+                  await triggerToolHook(
                     "tool.execute.after",
                     {
                       tool: key,
@@ -1846,6 +1869,7 @@ export namespace ToolResolver {
                       callID: opts.toolCallId,
                     },
                     result,
+                    combinedAbort,
                   )
                   await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
 
