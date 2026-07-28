@@ -22,6 +22,7 @@ import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
+import { replyChannelTaskAttachments } from "./outbound-parts"
 import {
   Info as InfoSchema,
   Status as StatusSchema,
@@ -580,6 +581,13 @@ export namespace Channel {
           // degraded fallback so the user still receives tool outputs.
           const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
           await streaming.close(responseText || fallbackText, hasError)
+          await replyChannelTaskAttachments({
+            provider,
+            accountId: ctx.accountId,
+            messageId: ctx.rootId ?? ctx.messageId,
+            sessionID,
+            terminal: result,
+          }).catch((err) => log.warn("channel task attachments delivery failed", { sessionID, error: err }))
 
           await reactionController.setDone()
         } catch (err) {

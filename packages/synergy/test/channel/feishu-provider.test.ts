@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { Asset } from "../../src/asset/asset"
 import {
   FeishuProvider,
   filterInboundMessage,
@@ -354,6 +355,73 @@ describe("Feishu replies", () => {
       expect(requestBody).toMatchObject({
         msg_type: "text",
         reply_in_thread: true,
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("uploads SVG attachments as files instead of unsupported Feishu images", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; body: unknown }> = []
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: init?.body })
+      if (url.endsWith("/im/v1/files")) {
+        return new Response(JSON.stringify({ code: 0, data: { file_key: "file_svg" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const assetID = await Asset.write(
+        Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"></svg>'),
+        "image/svg+xml",
+        "meme.svg",
+      )
+      const provider = new FeishuProvider()
+      const accounts = (
+        provider as unknown as {
+          accounts: Map<string, unknown>
+        }
+      ).accounts
+      accounts.set("acct_test", {
+        config: accountConfig(),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_test",
+        messageId: "msg_topic_root",
+        parts: [
+          {
+            type: "file",
+            path: Asset.resolvePath(assetID),
+            filename: "meme.svg",
+            contentType: "image/svg+xml",
+          },
+        ],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/files",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_topic_root/reply",
+      ])
+      expect(requests.some((request) => request.url.endsWith("/im/v1/images"))).toBe(false)
+      const upload = requests[0]?.body
+      expect(upload).toBeInstanceOf(FormData)
+      expect((upload as FormData).get("file_type")).toBe("stream")
+      expect((upload as FormData).get("file_name")).toBe("meme.svg")
+      const reply = JSON.parse(String(requests[1]?.body)) as Record<string, unknown>
+      expect(reply).toMatchObject({
+        msg_type: "file",
+        content: JSON.stringify({ file_key: "file_svg" }),
       })
     } finally {
       globalThis.fetch = originalFetch

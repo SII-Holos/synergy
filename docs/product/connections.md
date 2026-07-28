@@ -52,6 +52,8 @@ assistant it:
 5. records `channelOutboundSent: true` on the assistant after successful
    provider delivery so repeated terminal events do not send it again
 
+The delivered payload includes the terminal assistant text together with completed tool-generated attachments from the same task root. Foreground invocations send those attachments as a separate reply after the streaming response closes. Attachments marked `presentation.hidden` are excluded, repeated URLs are sent once, and only files materialized in Synergy's asset store are eligible for delivery. Assets larger than 25 MiB are skipped before provider upload. Image formats unsupported by Channel providers, such as SVG on Feishu/Lark, are delivered as files.
+
 ### Reply in Thread
 
 The Feishu/Lark provider supports per-account `replyInThread: true` in account
