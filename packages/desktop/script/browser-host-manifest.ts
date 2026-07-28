@@ -3,8 +3,10 @@ import { createHash, createPrivateKey, sign } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
+import { assertBrowserHostArchive } from "./browser-host-archive.js"
 import {
   browserHostArtifactName,
+  browserHostExecutablePath,
   browserHostManifestName,
   browserHostManifestSignatureName,
   type DesktopReleaseArch,
@@ -26,12 +28,8 @@ for (const arch of ["x64", "arm64"] satisfies DesktopReleaseArch[]) {
   const name = browserHostArtifactName(version, platform, arch)
   const filepath = path.join(releaseDir, name)
   const data = await fs.readFile(filepath)
-  const executable =
-    platform === "darwin"
-      ? "Synergy Browser Host.app/Contents/MacOS/Synergy Browser Host"
-      : platform === "win32"
-        ? "Synergy Browser Host.exe"
-        : "synergy-browser-host"
+  const executable = browserHostExecutablePath(platform)
+  await assertBrowserHostArchive(data, executable)
   const manifest = {
     version,
     protocolVersion: BROWSER_PROTOCOL_VERSION,

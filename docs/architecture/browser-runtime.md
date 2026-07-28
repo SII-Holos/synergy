@@ -67,6 +67,8 @@ Signaling only pairs those peers. Media carries the live page and the WebRTC dat
 
 During page creation, the broker reservation and its one-shot Host ticket form a creation lease. The Host signaling socket may attach under that lease before the new page is committed as canonical session state. Viewer signaling still requires the committed active page, so pending Host construction cannot expose an uncommitted page to a Web client.
 
+Viewer signaling requires an Origin header. HTTP(S) viewers are accepted only when their Origin matches the backend request, both sides are loopback peers, or the Origin appears in the server-authorized viewer allowlist. Explicit server CORS origins populate that allowlist; the startup-snapshotted `SYNERGY_ALLOWED_ORIGINS` environment variable remains a compatibility source. Automatically detected LAN CORS origins and proxy forwarding headers do not authorize Browser viewer sockets. The Origin check supplements, but never replaces, the one-shot owner/page/role-bound viewer ticket.
+
 The Electron Host controller runs from a generated local file, so its WebSocket handshake may carry the exact `file://` Origin. Host signaling permits that local-file Origin or no Origin, rejects HTTP(S) page Origins, and always requires the one-shot owner/page/role-bound ticket.
 
 The registered socket from signaling `onOpen` remains the peer identity for later message and close events; transport adapters may expose a different wrapper object to each callback. Relaying against a callback-local wrapper would incorrectly discard valid viewer offers as stale.
