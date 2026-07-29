@@ -66,6 +66,7 @@ import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } fr
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 import { promptSubmitFailure } from "./submit-failure"
 import { runComposerPreflight } from "./composer-preflight"
+import { createOptimisticUserMessage } from "./optimistic-user-message"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -946,16 +947,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
 
     const optimisticMessage: Message | undefined = messageID
-      ? {
+      ? createOptimisticUserMessage({
           id: messageID,
           sessionID: activeSession.id,
-          role: "user",
-          time: { created: Date.now() },
+          created: Date.now(),
           agent,
           model,
           variant,
           metadata: userMessageMetadata,
-        }
+        })
       : undefined
 
     const [syncStore, setSyncStore] =
