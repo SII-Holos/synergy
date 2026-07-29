@@ -406,6 +406,19 @@ describe("runtime.reload", () => {
     })
   })
 
+  test("ensures channel providers are registered when channel target reloads", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await RuntimeReload.reload({ targets: ["channel"], scope: "global", reason: "provider registration" })
+
+        expect(Channel.getProvider("clarus")).toBeDefined()
+        expect(Channel.getProvider("feishu")).toBeDefined()
+      },
+    })
+  })
+
   test("uses writer old values for transition-dependent live apply", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

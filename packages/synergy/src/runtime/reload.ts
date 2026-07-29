@@ -401,6 +401,8 @@ export namespace RuntimeReload {
         return
       }
       case "channel": {
+        const { registerProviders } = await import("../channel/provider/index")
+        registerProviders()
         const { Channel } = await import("../channel")
         await Channel.reload()
         return
