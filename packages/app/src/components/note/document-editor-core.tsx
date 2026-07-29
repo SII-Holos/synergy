@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, Show, untrack } from "solid-js"
-import { Editor } from "@tiptap/core"
+import { Editor, type AnyExtension } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
 import Link from "@tiptap/extension-link"
@@ -418,7 +418,7 @@ export interface DocumentEditorExtensionsConfig {
   lingui: ReturnType<typeof useLingui>
 }
 
-export function createDocumentEditorExtensions(config: DocumentEditorExtensionsConfig) {
+export function createDocumentEditorExtensions(config: DocumentEditorExtensionsConfig): AnyExtension[] {
   return [
     StarterKit.configure({
       codeBlock: false,
