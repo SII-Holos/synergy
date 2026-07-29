@@ -230,6 +230,8 @@
   height: 100%;
   overflow: auto;
   padding: 24px clamp(20px, 5vw, 64px) 80px;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .file-markdown-preview > [data-component="markdown"] {

@@ -24,10 +24,17 @@ export const ContextUsageSchema = z.object({
   overhead: z.object({
     attributedTokens: NonNegativeInteger,
   }),
-  estimator: z.object({
-    kind: z.literal("model-tokenizer"),
-    encoding: z.string().optional(),
-  }),
+  estimator: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("model-tokenizer"),
+      encoding: z.string().optional(),
+    }),
+    z.object({
+      kind: z.literal("bounded-utf8"),
+      sampledCharacters: NonNegativeInteger,
+      truncated: z.boolean(),
+    }),
+  ]),
   reconciliation: z.object({
     mode: z.enum(["residual", "scaled-down"]),
     factor: z.number().nonnegative(),

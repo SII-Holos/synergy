@@ -7,6 +7,7 @@ export interface PluginSkill {
 }
 
 export interface PluginAgent {
+  /** Public registry name used by Agent.get(), delegation, and Agent Host Services. */
   name: string
   description: string
   prompt: string

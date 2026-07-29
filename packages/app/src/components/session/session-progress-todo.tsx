@@ -90,7 +90,7 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
   }
 
   return (
-    <div class={`flex flex-col min-h-0 ${props.class ?? ""}`}>
+    <div class={`session-progress-todo ${props.class ?? ""}`}>
       <Show
         when={summaryParts().length > 0}
         fallback={<div class="text-text-weaker text-xs px-2.5 py-1">{_(S.progressNoActiveTasks)}</div>}
@@ -98,7 +98,7 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
         <div class="text-xs text-text-weaker px-2.5 py-1 shrink-0">{summaryParts().join(" · ")}</div>
       </Show>
       <Show when={todos().length > 0}>
-        <div class="flex flex-col divide-y divide-border-weak-base/60 overflow-y-auto min-h-0">
+        <div class="session-progress-todo-list divide-y divide-border-weak-base/60">
           <For each={todos()}>
             {(todo) => {
               const isActive = () => todo.status === "in_progress"

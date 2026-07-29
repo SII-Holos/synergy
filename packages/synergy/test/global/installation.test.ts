@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Installation } from "../../src/global/installation"
+import { StandaloneInstallation } from "../../src/global/standalone-installation"
 
 const env = {}
 
@@ -60,5 +61,74 @@ describe("Installation desktop detection", () => {
     const err = await Installation.upgrade("desktop", "999.0.0").catch((error) => error)
     expect(err).toBeInstanceOf(Installation.DesktopManagedUpdateError)
     expect(err.data.message).toContain("Desktop updates are managed from the Synergy app")
+  })
+})
+
+describe("standalone installation", () => {
+  test("detects curl-installed runtime paths", () => {
+    expect(
+      StandaloneInstallation.detectStandaloneInstall({
+        platform: "linux",
+        execPath: "/root/.synergy/bin/synergy",
+        realExecPath: "/root/.synergy/bin/synergy",
+        env,
+      }),
+    ).toBe(true)
+
+    expect(
+      StandaloneInstallation.detectStandaloneInstall({
+        platform: "linux",
+        execPath: "/usr/local/bin/synergy",
+        realExecPath: "/opt/synergy/bin/synergy",
+        env,
+      }),
+    ).toBe(false)
+  })
+
+  test("reports curl-installed executables as standalone", async () => {
+    const originalExecPath = process.execPath
+    Object.defineProperty(process, "execPath", { value: "/root/.synergy/bin/synergy" })
+    try {
+      expect(await Installation.method()).toBe("standalone")
+    } finally {
+      Object.defineProperty(process, "execPath", { value: originalExecPath })
+    }
+  })
+
+  test("runs the current installer against the requested standalone version and home", async () => {
+    const fetched: string[] = []
+    const invocations: StandaloneInstallation.InstallerInvocation[] = []
+
+    const result = await StandaloneInstallation.upgrade(
+      {
+        target: "3.0.9",
+        context: {
+          platform: "linux",
+          execPath: "/root/.synergy/bin/synergy",
+          realExecPath: "/root/.synergy/bin/synergy",
+          env: { PATH: "/usr/bin" },
+        },
+      },
+      {
+        fetch: async (url) => {
+          fetched.push(String(url))
+          return new Response("#!/usr/bin/env bash\n")
+        },
+        run: async (invocation) => {
+          invocations.push(invocation)
+          return { exitCode: 0, stdout: "installed", stderr: "" }
+        },
+      },
+    )
+
+    expect(fetched).toEqual(["https://raw.githubusercontent.com/SII-Holos/synergy/main/install"])
+    expect(invocations).toEqual([
+      {
+        command: ["bash", "-s", "--", "--version", "3.0.9", "--no-modify-path"],
+        env: { PATH: "/usr/bin", HOME: "/root" },
+        stdin: "#!/usr/bin/env bash\n",
+      },
+    ])
+    expect(result).toEqual({ exitCode: 0, stdout: "installed", stderr: "" })
   })
 })

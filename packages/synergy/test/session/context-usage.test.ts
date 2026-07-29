@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import type { ModelMessage } from "ai"
 import { ContextUsage } from "../../src/session/context-usage"
+import { ContextUsageEstimator } from "../../src/session/context-usage-estimator"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Token } from "../../src/util/token"
 
 const originalCountModel = Token.countModel
+const originalEstimate = ContextUsageEstimator.estimate
 
 function userMessage(parts: MessageV2.Part[], includeInContext = true): MessageV2.WithParts {
   return {
@@ -51,18 +53,17 @@ function part<T extends Omit<MessageV2.Part, "id" | "sessionID" | "messageID">>(
   } as MessageV2.Part
 }
 
+function boundedUtf8Tokens(text: string) {
+  return Math.ceil(Buffer.byteLength(text, "utf8") / 4)
+}
+
 afterEach(() => {
   ;(Token.countModel as any) = originalCountModel
+  ;(ContextUsageEstimator.estimate as any) = originalEstimate
 })
 
 describe("ContextUsage provenance and measurement", () => {
-  test("classifies mutually exclusive prompt contributions with model-aware tokenization", async () => {
-    const measured: string[] = []
-    ;(Token.countModel as any) = mock(async (_modelID: string, text: string) => {
-      measured.push(text)
-      return text.length
-    })
-
+  test("classifies mutually exclusive prompt contributions with bounded UTF-8 estimation", async () => {
     const history = MessageV2.projectModelMessages([
       userMessage([
         part({ type: "text", text: "pasted code", origin: "user" }),
@@ -114,19 +115,28 @@ describe("ContextUsage provenance and measurement", () => {
     if (!draft) throw new Error("Expected context usage draft")
 
     expect(draft.categories.conversation).toEqual({
-      estimatedTokens: "pasted code".length + "assistant reply".length + "reasoning".length,
+      estimatedTokens:
+        boundedUtf8Tokens("pasted code") + boundedUtf8Tokens("assistant reply") + boundedUtf8Tokens("reasoning"),
       items: 3,
     })
     expect(draft.categories.instructions).toEqual({
-      estimatedTokens: "base instructions".length + "runtime guidance".length + "max-step guard".length,
+      estimatedTokens:
+        boundedUtf8Tokens("base instructions") +
+        boundedUtf8Tokens("runtime guidance") +
+        boundedUtf8Tokens("max-step guard"),
       items: 3,
     })
-    expect(draft.categories.filesReferences).toEqual({ estimatedTokens: "file contents".length, items: 1 })
+    expect(draft.categories.filesReferences).toEqual({
+      estimatedTokens: boundedUtf8Tokens("file contents"),
+      items: 1,
+    })
     expect(draft.categories.toolActivity.items).toBe(3)
-    expect(draft.categories.toolActivity.estimatedTokens).toBeGreaterThan("file read result".length)
-    expect(measured).toContain("pasted code")
-    expect(measured).toContain("base instructions")
-    expect(measured).toContain("max-step guard")
+    expect(draft.categories.toolActivity.estimatedTokens).toBeGreaterThan(boundedUtf8Tokens("file read result"))
+    expect(draft.estimator).toEqual({
+      kind: "bounded-utf8",
+      sampledCharacters: expect.any(Number),
+      truncated: false,
+    })
     expect(JSON.stringify(draft)).not.toContain("pasted code")
     expect(JSON.stringify(draft)).not.toContain("file read result")
   })
@@ -219,7 +229,7 @@ describe("ContextUsage provenance and measurement", () => {
 
     expect(draft.categories.conversation).toEqual({ estimatedTokens: 0, items: 0 })
     expect(draft.categories.filesReferences).toEqual({
-      estimatedTokens: "[Attachment: summary text]".length,
+      estimatedTokens: boundedUtf8Tokens("[Attachment: summary text]"),
       items: 2,
     })
     expect(JSON.stringify(draft)).not.toContain("excluded")
@@ -247,7 +257,7 @@ describe("ContextUsage provenance and measurement", () => {
     })
   })
 
-  test("does not fall back to character heuristics when tokenizer measurement is unavailable", async () => {
+  test("does not depend on model tokenizer availability", async () => {
     ;(Token.countModel as any) = mock(async () => undefined)
 
     const draft = await ContextUsage.measureDraft({
@@ -261,7 +271,185 @@ describe("ContextUsage provenance and measurement", () => {
       }),
     })
 
+    expect(draft?.estimator.kind).toBe("bounded-utf8")
+    expect(draft?.categories.conversation.estimatedTokens).toBeGreaterThan(0)
+    expect(draft?.categories.instructions.estimatedTokens).toBeGreaterThan(0)
+  })
+
+  test("keeps pathological multilingual estimation off the main event loop", async () => {
+    let tokenizerCalled = false
+    ;(Token.countModel as any) = mock(async () => {
+      tokenizerCalled = true
+      const deadline = Date.now() + 100
+      while (Date.now() < deadline) {}
+      return 11_000
+    })
+    let mainLoopAdvanced = false
+    const pulse = setTimeout(() => {
+      mainLoopAdvanced = true
+    }, 0)
+
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test-model",
+      providerID: "test",
+      instructions: [],
+      provenance: ContextUsage.buildProvenance({
+        history: {
+          categories: {
+            conversation: [],
+            toolActivity: [{ text: "答".repeat(11_000) }],
+            filesReferences: [],
+            instructions: [],
+          },
+          items: { conversation: 0, toolActivity: 1, filesReferences: 0, instructions: 0 },
+        },
+        toolDefinitions: [],
+      }),
+    })
+    clearTimeout(pulse)
+
+    expect(mainLoopAdvanced).toBe(true)
+    expect(tokenizerCalled).toBe(false)
+    expect(draft?.categories.toolActivity.estimatedTokens).toBeGreaterThan(0)
+    expect(draft?.estimator).toEqual({
+      kind: "bounded-utf8",
+      sampledCharacters: 256,
+      truncated: true,
+    })
+  })
+
+  test("spreads the category sample budget across selected multilingual contributions", async () => {
+    const contributions = Array.from({ length: 64 }, (_, index) => ({
+      text: (index < 32 ? "a" : "答").repeat(4_000),
+    }))
+
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test-model",
+      providerID: "test",
+      instructions: [],
+      provenance: {
+        categories: {
+          conversation: contributions,
+          toolActivity: [],
+          filesReferences: [],
+          instructions: [],
+        },
+        items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+      },
+    })
+
+    expect(draft?.categories.conversation.estimatedTokens).toBe(
+      contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
+    )
+    expect(draft?.estimator).toEqual({
+      kind: "bounded-utf8",
+      sampledCharacters: ContextUsageEstimator.LIMITS.sampleCharactersPerCategory,
+      truncated: true,
+    })
+  })
+
+  test("extrapolates sampled contributions over the complete category population", async () => {
+    const contributions = Array.from({ length: 128 }, () => ({ text: "a".repeat(4_000) }))
+
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test-model",
+      providerID: "test",
+      instructions: [],
+      provenance: {
+        categories: {
+          conversation: contributions,
+          toolActivity: [],
+          filesReferences: [],
+          instructions: [],
+        },
+        items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+      },
+    })
+
+    expect(draft?.categories.conversation.estimatedTokens).toBe(
+      contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
+    )
+    expect(draft?.categories.conversation.items).toBe(contributions.length)
+  })
+
+  test("samples mixed UTF-8 content across unsampled contributions", async () => {
+    const contributions = Array.from({ length: 128 }, (_, index) => ({
+      text: (index % 2 === 0 ? "a" : "答").repeat(4_000),
+    }))
+
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test-model",
+      providerID: "test",
+      instructions: [],
+      provenance: {
+        categories: {
+          conversation: contributions,
+          toolActivity: [],
+          filesReferences: [],
+          instructions: [],
+        },
+        items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+      },
+    })
+
+    expect(draft?.categories.conversation.estimatedTokens).toBe(
+      contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
+    )
+  })
+
+  test("fails open when the isolated estimator is unavailable", async () => {
+    ;(ContextUsageEstimator.estimate as any) = mock(async () => undefined)
+
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test-model",
+      providerID: "test",
+      instructions: ["instructions"],
+      provenance: ContextUsage.buildProvenance({
+        history: MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "conversation" })])])
+          .provenance,
+        toolDefinitions: [],
+      }),
+    })
+
     expect(draft).toBeUndefined()
+  })
+})
+
+describe("ContextUsageEstimator isolation", () => {
+  test("rejects input outside the hard sample bound before dispatch", async () => {
+    const oversized = "x".repeat(ContextUsageEstimator.LIMITS.sampleCharactersPerContribution + 1)
+    const request: ContextUsageEstimator.Request = {
+      categories: {
+        conversation: [{ sample: oversized, sourceCharacters: oversized.length }],
+        toolActivity: [],
+        filesReferences: [],
+        instructions: [],
+      },
+      sampledCharacters: oversized.length,
+      truncated: false,
+    }
+
+    expect(await ContextUsageEstimator.estimate(request)).toBeUndefined()
+  })
+
+  test("drops excess work instead of queueing behind the bounded worker limit", async () => {
+    const request: ContextUsageEstimator.Request = {
+      categories: {
+        conversation: [{ sample: "conversation", sourceCharacters: 12 }],
+        toolActivity: [],
+        filesReferences: [],
+        instructions: [],
+      },
+      sampledCharacters: 12,
+      truncated: false,
+    }
+
+    const first = ContextUsageEstimator.estimate(request)
+    const second = ContextUsageEstimator.estimate(request)
+    const excess = ContextUsageEstimator.estimate(request)
+
+    expect(await excess).toBeUndefined()
+    expect(await Promise.all([first, second])).toEqual([expect.any(Object), expect.any(Object)])
   })
 })
 

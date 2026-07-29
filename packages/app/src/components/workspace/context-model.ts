@@ -283,7 +283,7 @@ export function buildContextPanelModel(input: {
       createdAt: input.session?.time.created,
       updatedAt: input.session?.time.updated,
       estimatorKind: snapshot?.estimator.kind ?? null,
-      estimatorEncoding: snapshot?.estimator.encoding ?? null,
+      estimatorEncoding: snapshot?.estimator.kind === "model-tokenizer" ? (snapshot.estimator.encoding ?? null) : null,
       reconciliationMode: snapshot?.reconciliation.mode ?? null,
       reconciliationFactor: snapshot?.reconciliation.factor ?? null,
       rawEstimatedTotal,

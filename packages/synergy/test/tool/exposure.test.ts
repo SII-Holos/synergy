@@ -10,6 +10,7 @@ import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
+import { SessionEndpoint } from "../../src/session/endpoint"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { ExpandToolsTool } from "../../src/tool/expand-tools"
 import { ToolDiscovery } from "../../src/tool/discovery"
@@ -171,6 +172,27 @@ describe("tool exposure", () => {
     expect(ToolExposure.normalize("browser_navigation")).toEqual({ mode: "group", group: "browser" })
     expect(explicit.exposure).toEqual({ mode: "search", title: "Explicit Search Tool", keywords: ["needle"] })
     expect(internal.exposure).toEqual({ mode: "internal" })
+  })
+  test("response_card is resident only for Channel sessions and cannot be force-enabled elsewhere", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const ordinary = await Session.create({})
+        const channel = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type: "feishu",
+            accountId: "account_test",
+            chatId: "chat_test",
+          }),
+        })
+
+        expect((await definitionIDs(ordinary)).has("response_card")).toBe(false)
+        expect((await definitionIDs(ordinary, { userTools: { response_card: true } })).has("response_card")).toBe(false)
+        expect((await definitionIDs(channel)).has("response_card")).toBe(true)
+        expect((await definitionIDs(channel, { userTools: { response_card: false } })).has("response_card")).toBe(false)
+      },
+    })
   })
 
   test("text-only model with no vision_model exposes neither look_at nor view_image", async () => {

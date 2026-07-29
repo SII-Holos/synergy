@@ -14,10 +14,12 @@
     "entitlementsInherit": "build/entitlements.mac.plist"
   },
   "win": {
+    "executableName": "Synergy Browser Host",
     "artifactName": "synergy-browser-host-win32-${arch}-${version}.zip",
     "target": [{ "target": "zip", "arch": ["x64", "arm64"] }]
   },
   "linux": {
+    "executableName": "synergy-browser-host",
     "artifactName": "synergy-browser-host-linux-${arch}-${version}.zip",
     "target": [{ "target": "zip", "arch": ["x64", "arm64"] }]
   }
