@@ -1,7 +1,7 @@
 import z from "zod"
 import path from "path"
 import { randomUUID } from "node:crypto"
-import { open, rename, rm, type FileHandle } from "node:fs/promises"
+import { lstat, open, rename, rm, type FileHandle } from "node:fs/promises"
 import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
 import { ScopeContext } from "../scope/context"
@@ -40,6 +40,8 @@ export async function downloadArxivPdf(input: {
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   let complete = false
   let committed = false
+  let size = 0
+  let failure: unknown
 
   const cancelReader = () => {
     if (!reader) return
@@ -69,9 +71,7 @@ export async function downloadArxivPdf(input: {
     reader = response.body.getReader()
     signal.addEventListener("abort", cancelReader, { once: true })
     if (signal.aborted) signal.throwIfAborted()
-    file = await open(tempPath, "wx")
-
-    let size = 0
+    file = await open(tempPath, "wx", 0o600)
     while (true) {
       const chunk = await reader.read()
       if (chunk.done) {
@@ -91,30 +91,56 @@ export async function downloadArxivPdf(input: {
         offset += result.bytesWritten
       }
     }
-
+    const destination = await lstat(input.filepath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined
+      throw error
+    })
+    if (destination?.isSymbolicLink()) throw new Error("Output path must not be a symbolic link")
+    if (destination && (!destination.isFile() || destination.nlink > 1)) {
+      throw new Error("Output path must be a regular file with a single hard link")
+    }
+    await file.chmod(destination ? destination.mode & 0o777 : 0o666 & ~process.umask())
     signal.throwIfAborted()
     await file.sync()
     signal.throwIfAborted()
     await file.close()
     file = undefined
     signal.throwIfAborted()
-    clearTimeout(timer)
     await rename(tempPath, input.filepath)
     committed = true
-    return size
   } catch (error) {
-    if (timedOut) throw new Error("Download timed out", { cause: error })
-    throw error
+    failure = timedOut
+      ? new Error("Download timed out", { cause: error })
+      : input.signal.aborted
+        ? (input.signal.reason ?? error)
+        : error
   } finally {
     clearTimeout(timer)
     signal.removeEventListener("abort", cancelReader)
+    const cleanupErrors: unknown[] = []
     if (reader) {
-      if (!complete) await reader.cancel().catch(() => {})
-      reader.releaseLock()
+      if (!complete) await reader.cancel().catch((error) => cleanupErrors.push(error))
+      try {
+        reader.releaseLock()
+      } catch (error) {
+        cleanupErrors.push(error)
+      }
     }
-    await file?.close().catch(() => {})
-    if (!committed) await rm(tempPath, { force: true }).catch(() => {})
+    await file?.close().catch((error) => cleanupErrors.push(error))
+    if (!committed) await rm(tempPath, { force: true }).catch((error) => cleanupErrors.push(error))
+    if (!committed && cleanupErrors.length) {
+      const cleanupFailure =
+        cleanupErrors.length === 1
+          ? cleanupErrors[0]
+          : new AggregateError(cleanupErrors, "Multiple arXiv download cleanup operations failed.")
+      failure = failure
+        ? new AggregateError([failure, cleanupFailure], "The arXiv download and its cleanup both failed.")
+        : cleanupFailure
+    }
   }
+
+  if (failure) throw failure
+  return size
 }
 
 interface Paper {
