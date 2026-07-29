@@ -2,9 +2,14 @@ import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 
 export function sessionActionVisibility(input: { sessionID?: string; scopeKey: string }) {
   const menu = !!input.sessionID
+  const project = menu && !isHomeScope(input.scopeKey)
   return {
     menu,
-    scopeSpecific: menu && !isHomeScope(input.scopeKey),
+    rename: project,
+    worktree: project,
+    export: menu,
+    import: menu,
+    archive: menu,
   }
 }
 
