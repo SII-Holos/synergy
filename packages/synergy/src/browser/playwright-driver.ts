@@ -29,6 +29,7 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   private _browserType: string
   private _browser: Browser | null = null
   private launchPromise: Promise<void> | null = null
+  private retirementPromise: Promise<void> | null = null
   private pendingContexts = 0
 
   constructor(private options: PlaywrightBrowserDriverOptions = {}) {
@@ -36,6 +37,7 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   }
 
   async ensure(): Promise<BrowserDriver.DriverState> {
+    if (this.retirementPromise) await this.retirementPromise.catch(() => undefined)
     if (this._running) return { running: true, browserType: this._browserType, activeOwners: this.contexts.size }
 
     if (!this.launchPromise) {
@@ -56,6 +58,13 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
         failures.push(error)
       }
     }
+    if (this.retirementPromise) {
+      try {
+        await this.retirementPromise
+      } catch (error) {
+        failures.push(error)
+      }
+    }
     for (const ctx of this.contexts.values()) {
       if (!ctx.browserContext) continue
       try {
@@ -67,10 +76,10 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
     if (this._browser) {
       try {
         await this._browser.close()
+        this._browser = null
       } catch (error) {
         failures.push(error)
       }
-      this._browser = null
     }
     this.contexts.clear()
     this._running = false
@@ -208,9 +217,19 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
 
   private async retireBrowserIfIdle(): Promise<void> {
     if (this.contexts.size > 0 || this.pendingContexts > 0 || !this._browser) return
+    if (this.retirementPromise) return this.retirementPromise
     const browser = this._browser
-    this._browser = null
-    this._running = false
-    await browser.close()
+    const operation = (async () => {
+      await browser.close()
+      if (this._browser !== browser) return
+      this._browser = null
+      this._running = false
+    })()
+    this.retirementPromise = operation
+    try {
+      await operation
+    } finally {
+      if (this.retirementPromise === operation) this.retirementPromise = null
+    }
   }
 }
