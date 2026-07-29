@@ -20174,7 +20174,7 @@
           }
         ],
         "summary": "Refresh channel account projects",
-        "description": "Discover and reconcile projects for one channel account, then return when this refresh completes.",
+        "description": "Discover and reconcile projects for one connected channel account. Connecting accounts return a retryable conflict; connected refreshes return only after completion.",
         "responses": {
           "200": {
             "description": "Refresh completed",
@@ -20189,6 +20189,16 @@
                     }
                   },
                   "required": ["completed"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Channel account is still connecting and cannot refresh projects yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelRefreshUnavailable"
                 }
               }
             }
@@ -28165,7 +28175,6 @@
           },
           "streaming": {
             "description": "Enable streaming card updates",
-            "default": true,
             "type": "boolean"
           },
           "streamingThrottleMs": {
@@ -41143,6 +41152,38 @@
             "required": ["status", "error"]
           }
         ]
+      },
+      "ChannelRefreshUnavailable": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ChannelRefreshUnavailable"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "currentStatus": {
+                "$ref": "#/components/schemas/ChannelStatus"
+              },
+              "retryable": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": ["message", "channelType", "accountId", "currentStatus", "retryable"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "ChannelRefreshError": {
         "type": "object",

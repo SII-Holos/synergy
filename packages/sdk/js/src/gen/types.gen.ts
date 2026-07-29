@@ -7717,6 +7717,17 @@ export type ChannelStatus =
       error: string
     }
 
+export type ChannelRefreshUnavailable = {
+  name: "ChannelRefreshUnavailable"
+  data: {
+    message: string
+    channelType: string
+    accountId: string
+    currentStatus: ChannelStatus
+    retryable: true
+  }
+}
+
 export type ChannelRefreshError = {
   name: "ChannelRefreshError"
   data: {
@@ -17849,6 +17860,10 @@ export type ChannelRefreshProjectsData = {
 }
 
 export type ChannelRefreshProjectsErrors = {
+  /**
+   * Channel account is still connecting and cannot refresh projects yet
+   */
+  409: ChannelRefreshUnavailable
   /**
    * Refresh failed
    */

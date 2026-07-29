@@ -10745,7 +10745,7 @@ export class Channel extends HeyApiClient {
   /**
    * Refresh channel account projects
    *
-   * Discover and reconcile projects for one channel account, then return when this refresh completes.
+   * Discover and reconcile projects for one connected channel account. Connecting accounts return a retryable conflict; connected refreshes return only after completion.
    */
   public refreshProjects<ThrowOnError extends boolean = false>(
     parameters: {

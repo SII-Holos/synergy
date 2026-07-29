@@ -188,7 +188,8 @@ export const ChannelRoute = new Hono()
     "/:channelType/:accountId/projects/refresh",
     describeRoute({
       summary: "Refresh channel account projects",
-      description: "Discover and reconcile projects for one channel account, then return when this refresh completes.",
+      description:
+        "Discover and reconcile projects for one connected channel account. Connecting accounts return a retryable conflict; connected refreshes return only after completion.",
       operationId: "channel.refreshProjects",
       responses: {
         200: {
@@ -196,6 +197,14 @@ export const ChannelRoute = new Hono()
           content: {
             "application/json": {
               schema: resolver(z.object({ completed: z.literal(true) })),
+            },
+          },
+        },
+        409: {
+          description: "Channel account is still connecting and cannot refresh projects yet",
+          content: {
+            "application/json": {
+              schema: resolver(Channel.RefreshUnavailableError.Schema),
             },
           },
         },
@@ -212,8 +221,13 @@ export const ChannelRoute = new Hono()
     channelKeyParam,
     async (c) => {
       const { channelType, accountId } = c.req.valid("param")
-      await Channel.refreshProjects(channelType, accountId)
-      return c.json({ completed: true as const })
+      try {
+        await Channel.refreshProjects(channelType, accountId)
+        return c.json({ completed: true as const })
+      } catch (error) {
+        if (error instanceof Channel.RefreshUnavailableError) return c.json(error.toObject(), 409)
+        throw error
+      }
     },
   )
   .get(

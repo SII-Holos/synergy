@@ -37,6 +37,35 @@ function diagnosticProvider(input: {
   }
 }
 
+function pendingProvider(input: { type: string; readiness: "waiting_for_transport" | "connecting" }) {
+  let releaseTransport: (() => void) | undefined
+  const transport = new Promise<void>((resolve) => {
+    releaseTransport = resolve
+  })
+  let releaseConnect: (() => void) | undefined
+  const connect = new Promise<void>((resolve) => {
+    releaseConnect = resolve
+  })
+  return {
+    value: {
+      type: input.type,
+      lifecycle: "borrowed_transport",
+      waitForTransport: input.readiness === "waiting_for_transport" ? async () => transport : undefined,
+      async connect() {
+        await connect
+      },
+      async refreshProjects() {},
+    } satisfies Provider,
+    releaseTransport() {
+      releaseTransport?.()
+    },
+    cleanup() {
+      releaseTransport?.()
+      releaseConnect?.()
+    },
+  }
+}
+
 async function configureChannel(type: string, accountId = "account") {
   ConfigRuntime.current = mock(async () => {
     return {
@@ -121,6 +150,37 @@ describe("Channel project refresh route", () => {
       },
     })
   })
+
+  for (const readiness of ["waiting_for_transport", "connecting"] as const) {
+    test(`returns a retryable conflict while the account is ${readiness}`, async () => {
+      const type = `refresh-route-${readiness}-${crypto.randomUUID()}`
+      const fake = pendingProvider({ type, readiness })
+      Channel.registerProvider(fake.value)
+      try {
+        await configureChannel(type)
+        if (readiness === "connecting") {
+          fake.releaseTransport()
+          await Bun.sleep(5)
+        }
+
+        const result = await Server.App().request(`/channel/${type}/account/projects/refresh`, { method: "POST" })
+
+        expect(result.status).toBe(409)
+        expect(await result.json()).toEqual({
+          name: "ChannelRefreshUnavailable",
+          data: {
+            message: `Channel account refresh is not available while the account is ${readiness}`,
+            channelType: type,
+            accountId: "account",
+            currentStatus: { status: readiness },
+            retryable: true,
+          },
+        })
+      } finally {
+        fake.cleanup()
+      }
+    })
+  }
 })
 
 describe("Channel diagnostics NDJSON route", () => {
