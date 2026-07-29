@@ -6,7 +6,7 @@ Synergy can connect to model and tool services through providers and MCP, messag
 
 Channels adapt an external messaging account into persistent Synergy sessions. A provider connects one or more configured accounts and normalizes each incoming message into a common context containing account, chat, sender, thread, mention, quote, attachment, and Scope information.
 
-Synergy derives a stable endpoint key from the provider, account, chat, and optional Scope key. Messages for that endpoint reuse its unattended session instead of creating an unrelated conversation for every inbound message. Incoming commands are handled before ordinary agent invocation.
+Synergy derives a stable endpoint key from the provider, account, chat, and optional Scope key. Messages for that endpoint reuse its session instead of creating an unrelated conversation for every inbound message. Incoming commands are handled before ordinary agent invocation.
 
 The provider contract supports:
 
@@ -17,6 +17,7 @@ The provider contract supports:
 - streaming text and tool progress
 - reconnect and account status
 - provider-native response cards with buttons and bounded static selects
+- provider-native question forms for interactive sessions
 
 Feishu/Lark is the current built-in provider. It owns Feishu-specific deduplication, mentions, group behavior, media transfer, cards, and reconnect handling while the Channel core owns endpoint/session routing and outbound delivery.
 
@@ -60,6 +61,18 @@ Feishu/Lark renders response cards with CardKit v2. Callback envelopes use the b
 An accepted callback never treats its opaque ID or value as a command, tool name, URL, or executable instruction. Synergy creates a fresh Channel user task whose visible text is synthesized only from the registered card title and labels. The raw callback fields remain in structured message metadata for audit and routing. Callback event IDs use durable inbox delivery keys, so retries enqueue one task and return a duplicate acknowledgement without invoking the model twice.
 
 Response-card registration writes a pending record before the provider send and activates it only after receiving the sent message ID. If a process stops while the provider outcome is unknown, the surviving pending record blocks resend until its expiry rather than risk issuing a duplicate interactive card. Expired and malformed registrations are pruned at global runtime startup.
+
+### Question Cards
+
+Question Cards are a dedicated interactive surface for Feishu/Lark Channel sessions. When the agent asks a question during a channel invocation, the runtime delivers a CardKit 2.0 form message instead of blocking on an unattended response. The form renders each question prompt with single-select or multi-select options and an optional free-text input.
+
+Feishu/Lark is the current built-in provider that implements the optional `sendQuestionCard` provider method. Delivery renders the card from the same `Question.Request` that produced the blocking promise.
+
+The callback envelope uses a distinct `synergy_question_card` namespace — separate from `response_card:` and plugin callback namespaces. The runtime validates the channel type, account ID, chat ID, original requester open ID, and the sent card message ID against the registration before accepting the callback. Registration is Scope-local through the provider's `onQuestionCardAction` callback, so the callback executes in the account's bound Scope. Mismatched or expired registrations are rejected.
+
+An accepted callback maps opaque option indices back to the registered labels and resolves the original pending Question with the user's form selections. The runtime remembers the accepted callback event for the active session so an immediate provider retry returns a duplicate acknowledgement instead of resolving the Question again.
+
+Provider delivery failure rejects the Question. Channels without a native question surface remain unattended and reject before delivery. Reply, reject, timeout, or session cleanup removes the registration. Serialized CardKit JSON plus a 2 KiB safety reserve must stay within the 30 KiB card budget.
 
 ### Outbound Delivery Anchoring
 

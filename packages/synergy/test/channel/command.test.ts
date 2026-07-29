@@ -106,6 +106,7 @@ describe("ChannelCommand", () => {
           text: "Design the release",
         })
         expect((await workflowSession()).workflow).toEqual({ kind: "plan" })
+        expect((await workflowSession()).interaction).toEqual({ mode: "interactive", source: "channel:feishu" })
 
         expect(await ChannelCommand.execute("/lattice Ship the feature", baseContext)).toEqual({
           action: "handled",

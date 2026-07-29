@@ -24,8 +24,15 @@ import type { FeishuEventPayload, FeishuMessage, FeishuMention, FeishuSender } f
 import type { FeishuApiContext } from "./api-context"
 import { FeishuOutboundMedia } from "./outbound-media"
 import { parseFeishuResponseCardAction, renderFeishuResponseCard, sendFeishuResponseCard } from "./response-card"
+import { parseFeishuQuestionCardAction, renderFeishuQuestionCard, sendFeishuQuestionCard } from "./question-card"
 
-export { parseFeishuResponseCardAction, renderFeishuResponseCard }
+export {
+  parseFeishuQuestionCardAction,
+  parseFeishuResponseCardAction,
+  renderFeishuQuestionCard,
+  renderFeishuResponseCard,
+  sendFeishuQuestionCard,
+}
 
 const log = Log.create({ service: "channel.feishu" })
 
@@ -44,6 +51,7 @@ export async function routeFeishuCardAction(input: {
   data: unknown
   accountId: string
   onResponseCardAction?: (callback: ChannelTypes.ResponseCardCallback) => Promise<ChannelTypes.ResponseCardActionResult>
+  onQuestionCardAction?: (callback: ChannelTypes.QuestionCardCallback) => Promise<ChannelTypes.QuestionCardActionResult>
   pluginHandlers?: readonly FeishuCardActionHandler[]
 }): Promise<unknown> {
   const parsed = parseFeishuResponseCardAction(input.data)
@@ -62,6 +70,24 @@ export async function routeFeishuCardAction(input: {
       return { toast: { type: "info", content: "操作已接收" } }
     }
     return { toast: { type: "warning", content: "此操作已失效，请使用最新卡片重试" } }
+  }
+
+  const question = parseFeishuQuestionCardAction(input.data)
+  if (question.status === "invalid") {
+    return { toast: { type: "warning", content: "此问题已失效，请使用最新卡片重试" } }
+  }
+  if (question.status === "valid") {
+    if (!input.onQuestionCardAction) {
+      return { toast: { type: "warning", content: "此问题已失效，请使用最新卡片重试" } }
+    }
+    const result = await input.onQuestionCardAction(question.callback)
+    if (result.status === "accepted") {
+      return { toast: { type: "success", content: "回答已提交" } }
+    }
+    if (result.status === "duplicate") {
+      return { toast: { type: "info", content: "回答已提交" } }
+    }
+    return { toast: { type: "warning", content: "此问题已失效，请使用最新卡片重试" } }
   }
 
   for (const handler of input.pluginHandlers ?? []) {
@@ -402,8 +428,12 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     onResponseCardAction?: (
       callback: ChannelTypes.ResponseCardCallback,
     ) => Promise<ChannelTypes.ResponseCardActionResult>
+    onQuestionCardAction?: (
+      callback: ChannelTypes.QuestionCardCallback,
+    ) => Promise<ChannelTypes.QuestionCardActionResult>
   }): Promise<void> {
-    const { accountId, accountConfig, channelConfig, onMessage, onResponseCardAction, signal } = input
+    const { accountId, accountConfig, channelConfig, onMessage, onResponseCardAction, onQuestionCardAction, signal } =
+      input
 
     const domain = accountConfig.domain ?? channelConfig.domain
     const larkDomain = domain === "lark" ? Lark.Domain.Lark : Lark.Domain.Feishu
@@ -501,6 +531,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
           data,
           accountId,
           onResponseCardAction,
+          onQuestionCardAction,
           pluginHandlers: FeishuProvider.cardActionHandlers,
         })
       },
@@ -759,6 +790,26 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       replyInThread: account.config.replyInThread,
       requestId: input.requestId,
       card: input.card,
+    })
+  }
+
+  async sendQuestionCard(input: {
+    accountId: string
+    chatId: string
+    replyToMessageId?: string
+    requestId: string
+    questions: import("@/question").Question.Info[]
+  }): Promise<ChannelTypes.SendResult> {
+    const account = this.accounts.get(input.accountId)
+    if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
+    return sendFeishuQuestionCard({
+      apiBase: account.apiBase,
+      getAccessToken: () => this.getAccessToken(input.accountId),
+      chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
+      replyInThread: account.config.replyInThread,
+      requestId: input.requestId,
+      questions: input.questions,
     })
   }
 

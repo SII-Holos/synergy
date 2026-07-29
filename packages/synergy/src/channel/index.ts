@@ -15,15 +15,17 @@ import { BusEvent } from "../bus/bus-event"
 import { MessageV2 } from "../session/message-v2"
 import { Session } from "../session"
 import { SessionEndpoint } from "../session/endpoint"
-import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
 
+import { Question } from "../question"
 import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
 import { loadChannelTaskMessages, replyChannelTaskAttachments } from "./outbound-parts"
 import { ResponseCardRuntime } from "./response-card"
+import { QuestionCardRuntime } from "./question-card"
+import { ChannelInteraction } from "./interaction"
 import {
   Info as InfoSchema,
   Status as StatusSchema,
@@ -285,10 +287,24 @@ export namespace Channel {
       channelConfig,
       onMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
       onResponseCardAction: (callback) =>
-        ResponseCardRuntime.acceptAction({
-          channelType,
-          accountId,
-          callback,
+        ScopeContext.provide({
+          scope,
+          fn: () =>
+            ResponseCardRuntime.acceptAction({
+              channelType,
+              accountId,
+              callback,
+            }),
+        }),
+      onQuestionCardAction: (callback) =>
+        ScopeContext.provide({
+          scope,
+          fn: () =>
+            QuestionCardRuntime.acceptAction({
+              channelType,
+              accountId,
+              callback,
+            }),
         }),
       signal: abort.signal,
       onDisconnect: (reason) => {
@@ -500,7 +516,7 @@ export namespace Channel {
           const session = await Session.getOrCreateForEndpoint(
             endpoint,
             undefined,
-            SessionInteraction.unattended(`channel:${ctx.channelType}`),
+            ChannelInteraction.forType(ctx.channelType),
           )
           await streaming.start()
           const sessionID = session.id
@@ -513,6 +529,31 @@ export namespace Channel {
           const messageRoles = new Map<string, MessageV2.Info["role"]>()
           const toolProgress = new Map<string, StreamingToolProgressType>()
 
+          const settleQuestionCard = (event: { properties: { sessionID: string; requestID: string } }) => {
+            if (event.properties.sessionID !== sessionID) return
+            void QuestionCardRuntime.settle(event.properties.requestID).catch((error) =>
+              log.warn("question card settlement failed", {
+                sessionID,
+                requestID: event.properties.requestID,
+                error,
+              }),
+            )
+          }
+          const unsubQuestionAsked = Bus.subscribe(Question.Event.Asked, (event) => {
+            if (event.properties.sessionID !== sessionID) return
+            void QuestionCardRuntime.deliver({
+              provider,
+              accountId: ctx.accountId,
+              chatId: ctx.chatId,
+              replyToMessageId: ctx.rootId ?? ctx.messageId,
+              requesterId: ctx.senderId,
+              sessionID,
+              request: event.properties,
+            })
+          })
+          const unsubQuestionReplied = Bus.subscribe(Question.Event.Replied, settleQuestionCard)
+          const unsubQuestionRejected = Bus.subscribe(Question.Event.Rejected, settleQuestionCard)
+          const unsubQuestionTimedOut = Bus.subscribe(Question.Event.TimedOut, settleQuestionCard)
           const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
             if (event.properties.info.sessionID !== sessionID) return
             messageRoles.set(event.properties.info.id, event.properties.info.role)
@@ -615,6 +656,11 @@ export namespace Channel {
           } finally {
             unsubMessage()
             unsubPart()
+            unsubQuestionAsked()
+            unsubQuestionReplied()
+            unsubQuestionRejected()
+            unsubQuestionTimedOut()
+            await QuestionCardRuntime.clearSession(sessionID)
           }
         },
       })

@@ -7,7 +7,7 @@ import { SessionEndpoint } from "../session/endpoint"
 import { Provider } from "../provider/provider"
 import { LatticeError } from "../lattice/error"
 import { BusyError } from "../session/error"
-import { SessionInteraction } from "../session/interaction"
+import { ChannelInteraction } from "./interaction"
 import { SessionWorkflowService, WorkflowConflictError } from "../session/workflow"
 
 export namespace ChannelCommand {
@@ -72,7 +72,7 @@ export namespace ChannelCommand {
     return Session.getOrCreateForEndpoint(
       endpointForContext(ctx),
       undefined,
-      SessionInteraction.unattended(`channel:${ctx.channelType}`),
+      ChannelInteraction.forType(ctx.channelType),
     )
   }
 

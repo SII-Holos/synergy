@@ -2,9 +2,13 @@ import z from "zod"
 import { sha256Content } from "@/util/crypto"
 import { ResponseCardCallback, type ResponseCard } from "../../types"
 import type { FeishuApiContext } from "./api-context"
+import {
+  normalizeFeishuCallbackString as normalize,
+  sanitizeFeishuCardMarkdown as sanitizeMarkdown,
+  sendFeishuCard,
+} from "./send-card"
 
 const ACTION_PREFIX = "response_card:"
-const REQUEST_TIMEOUT_MS = 15_000
 const MAX_RESPONSE_CARD_BYTES = 30 * 1024
 const RESPONSE_CARD_SIZE_RESERVE_BYTES = 2 * 1024
 
@@ -178,60 +182,7 @@ export async function sendFeishuResponseCard(
     )
   }
 
-  const token = await input.getAccessToken()
-  const createResponse = await fetch(`${input.apiBase}/cardkit/v1/cards`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "card_json", data: JSON.stringify(cardJson) }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  })
-  const createResult = (await createResponse.json()) as {
-    code?: number
-    msg?: string
-    data?: { card_id?: string }
-  }
-  if (!createResponse.ok || createResult.code !== 0) {
-    throw new Error(
-      `Failed to create response card: ${createResult.msg ?? `code ${createResult.code ?? createResponse.status}`}`,
-    )
-  }
-  const cardId = createResult.data?.card_id
-  if (!cardId) throw new Error("Failed to create response card: no card_id returned")
-
-  const content = JSON.stringify({ type: "card", data: { card_id: cardId } })
-  const response = input.replyToMessageId
-    ? await fetch(`${input.apiBase}/im/v1/messages/${input.replyToMessageId}/reply`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content,
-          msg_type: "interactive",
-          ...(input.replyInThread ? { reply_in_thread: true } : {}),
-        }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      })
-    : await fetch(`${input.apiBase}/im/v1/messages?receive_id_type=chat_id`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ receive_id: input.chatId, content, msg_type: "interactive" }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      })
-  const result = (await response.json()) as { code?: number; msg?: string; data?: { message_id?: string } }
-  if (!response.ok || result.code !== 0) {
-    throw new Error(`Failed to send response card: ${result.msg ?? `code ${result.code ?? response.status}`}`)
-  }
-  const messageId = result.data?.message_id
-  if (!messageId) throw new Error("Failed to send response card: no message_id returned")
-  return { messageId }
-}
-
-function sanitizeMarkdown(text: string): string {
-  return text
-    .replace(/<[^>]*>/g, "")
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/\b(?:https?|file|data):\/\/\S+/gi, "")
-    .trim()
+  return sendFeishuCard({ ...input, cardJson, kind: "response card" })
 }
 
 function extractMarker(value: unknown): { present: boolean; value?: unknown } {
@@ -247,10 +198,4 @@ function mergePayloads(outer: CallbackPayload, event: CallbackPayload): Callback
     header: outer.header,
     event_id: outer.event_id ?? event.event_id,
   }
-}
-
-function normalize(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined
-  const normalized = value.trim()
-  return normalized || undefined
 }

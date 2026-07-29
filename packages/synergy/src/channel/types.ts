@@ -1,4 +1,5 @@
 import z from "zod"
+import type { Question } from "@/question"
 
 export const Info = z
   .object({
@@ -167,6 +168,33 @@ export type ResponseCardActionResult = {
   status: "accepted" | "duplicate" | "expired" | "rejected"
 }
 
+export const QuestionCardCallbackFormValue = z
+  .object({
+    name: z
+      .string()
+      .regex(/^question_\d+$/)
+      .max(32),
+    selected: z.array(z.string().regex(/^\d+$/).max(10)).max(100),
+    custom: z.string().trim().max(1_000).optional(),
+  })
+  .strict()
+export type QuestionCardCallbackFormValue = z.infer<typeof QuestionCardCallbackFormValue>
+
+export const QuestionCardCallback = z
+  .object({
+    eventId: z.string().trim().min(1).max(200),
+    requestId: z.string().trim().min(1).max(200),
+    messageId: z.string().trim().min(1).max(200),
+    chatId: z.string().trim().min(1).max(200),
+    requesterId: z.string().trim().min(1).max(200),
+    formValues: z.array(QuestionCardCallbackFormValue).max(100),
+  })
+  .strict()
+  .meta({ ref: "ChannelQuestionCardCallback" })
+export type QuestionCardCallback = z.infer<typeof QuestionCardCallback>
+
+export type QuestionCardActionResult = ResponseCardActionResult
+
 export const OutboundPart = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
   z.object({
@@ -258,6 +286,7 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
     signal: AbortSignal
     onDisconnect?: (reason?: string) => void
     onResponseCardAction?: (callback: ResponseCardCallback) => Promise<ResponseCardActionResult>
+    onQuestionCardAction?: (callback: QuestionCardCallback) => Promise<QuestionCardActionResult>
   }): Promise<void>
 
   replyMessage(input: { accountId: string; messageId: string; parts: OutboundPart[] }): Promise<SendResult>
@@ -270,6 +299,14 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
     replyToMessageId?: string
     requestId: string
     card: ResponseCard
+  }): Promise<SendResult>
+
+  sendQuestionCard?(input: {
+    accountId: string
+    chatId: string
+    replyToMessageId?: string
+    requestId: string
+    questions: Question.Info[]
   }): Promise<SendResult>
 
   addReaction(input: { accountId: string; messageId: string; emoji: string }): Promise<{ reactionId: string } | void>
