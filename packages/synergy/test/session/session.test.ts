@@ -75,6 +75,43 @@ describe("session lifecycle events", () => {
     })
   })
 
+  test("serializes completion notice events with their durable mutations", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const firstEventStarted = Promise.withResolvers<void>()
+        const releaseFirstEvent = Promise.withResolvers<void>()
+        const events: number[] = []
+        const unsub = Bus.subscribe(SessionEvent.Completion, async (event) => {
+          events.push(event.properties.unreadCount)
+          if (event.properties.unreadCount !== 1) return
+          firstEventStarted.resolve()
+          await releaseFirstEvent.promise
+        })
+        const session = await Session.create({})
+        let second: Promise<Session.Info> | undefined
+
+        try {
+          const first = Session.recordCompletionNotice(session.id)
+          await firstEventStarted.promise
+          second = Session.recordCompletionNotice(session.id)
+          await Bun.sleep(25)
+
+          expect(events).toEqual([1])
+          releaseFirstEvent.resolve()
+          await Promise.all([first, second])
+          expect(events).toEqual([1, 2])
+        } finally {
+          releaseFirstEvent.resolve()
+          await second?.catch(() => undefined)
+          unsub()
+          await Session.remove(session.id)
+        }
+      },
+    })
+  })
+
   test("acknowledges only the completion count captured by the caller", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

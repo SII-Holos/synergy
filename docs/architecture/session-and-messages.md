@@ -14,6 +14,16 @@ Session state includes, when applicable:
 - Agenda, Cortex, BlueprintLoop, SuperPlan, or workflow metadata
 - inbox, todo, DAG, history, completion, and recovery state
 
+## Session Mutation and Index Projection
+
+Runtime mutation of an existing session is serialized per Scope and session. The mutation writes canonical session info once through `Storage.update()`, then projects the resulting state into the session, page, child, navigation, and endpoint indexes before the next mutation for that session can begin. Activity updates, completion acknowledgements, last-exchange updates, and removal participate in the same boundary, so a projection cannot rewrite canonical metadata from an older snapshot.
+
+Page and navigation indexes are shared by every session in a Scope, while a child index is shared by siblings under one parent. Their read-modify-write operations use separate domain locks so mutations for different sessions remain concurrent without overwriting one another's entries. Session update events are started in mutation order after canonical state and projections are durable; local subscriber work is not awaited inside the critical section, so an event handler may safely request a later mutation of the same session.
+
+Completion notice record and acknowledgement operations also use a per-session operation queue outside the canonical mutation lock. This keeps completion events ordered with their durable unread-count changes without recursively acquiring the session mutation boundary.
+
+These locks coordinate the single runtime process that owns a local Scope. Storage atomic writes remain the durability boundary, but the JSON indexes are derived state rather than a cross-process transaction; startup migrations and rebuild paths recover them from canonical session records when required.
+
 ## Completion Notice and the `session.completion` Event
 
 Each session stores a durable `completionNotice` with three fields:
