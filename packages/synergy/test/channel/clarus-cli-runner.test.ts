@@ -31,7 +31,8 @@ describe("Clarus CLI runner", () => {
     await fs.writeFile(executable, "")
     copyHolosCliAsset(runtime)
 
-    expect(resolveClarusCliEntry(executable)).toBe(path.join(runtime, HOLOS_CLI_RUNTIME_PATH, "index.js"))
+    const expected = await fs.realpath(path.join(runtime, HOLOS_CLI_RUNTIME_PATH, "index.js"))
+    expect(await fs.realpath(resolveClarusCliEntry(executable)!)).toBe(expected)
   })
 
   test("resolves the package dependency while running from source", () => {

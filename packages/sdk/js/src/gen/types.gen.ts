@@ -5328,10 +5328,16 @@ export type AssistantMessage = {
     overhead: {
       attributedTokens: number
     }
-    estimator: {
-      kind: "model-tokenizer"
-      encoding?: string
-    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
     reconciliation: {
       mode: "residual" | "scaled-down"
       factor: number

@@ -91,6 +91,41 @@ describe.serial("Holos Clarus Channel account migration", () => {
     expect(config.holos).toBeUndefined()
   })
 
+  test("does not persist resolved Channel config from nonlocal sources", async () => {
+    const externalFeishu = Config.ChannelFeishu.parse({
+      type: "feishu",
+      accounts: {
+        external: {
+          appId: "external-app",
+          appSecret: "external-secret",
+        },
+      },
+    })
+    const originalGlobalResolved = Config.globalResolved
+    Config.globalResolved = async () =>
+      ({
+        channel: { feishu: externalFeishu },
+      }) as Config.Info
+
+    try {
+      const { HolosAuth } = await import("../../src/holos/auth")
+      expect(await HolosAuth.ensureClarusChannelAccount("agent_external")).toBe(true)
+    } finally {
+      Config.globalResolved = originalGlobalResolved
+    }
+
+    expect(await Config.domainGet("channels")).toEqual({
+      channel: {
+        clarus: {
+          type: "clarus",
+          accounts: {
+            agent_external: { enabled: false },
+          },
+        },
+      },
+    })
+  })
+
   test("leaves fresh state unchanged when there is no active Holos identity", async () => {
     await seedFeishuChannel()
 

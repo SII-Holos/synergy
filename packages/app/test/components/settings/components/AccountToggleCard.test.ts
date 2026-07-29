@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  canRefreshChannelAccount,
   channelAccountActionKey,
   channelAccountVariantKeys,
   channelRuntimeStatusLabel,
@@ -55,6 +56,15 @@ describe("Clarus account presentation", () => {
     expect(channelRuntimeStatusLabel({ status: "syncing" }).message).toBe("Syncing…")
     expect(channelRuntimeStatusLabel({ status: "failed", error: "transport failed" }).message).toBe("Connection failed")
     expect(channelRuntimeStatusLabel(undefined).message).toBe("Status unavailable")
+  })
+
+  test("allows project refresh only for connected accounts", () => {
+    expect(canRefreshChannelAccount({ status: "connected" })).toBe(true)
+    expect(canRefreshChannelAccount({ status: "syncing" })).toBe(false)
+    expect(canRefreshChannelAccount({ status: "disabled" })).toBe(false)
+    expect(canRefreshChannelAccount({ status: "disconnected" })).toBe(false)
+    expect(canRefreshChannelAccount({ status: "failed", error: "transport failed" })).toBe(false)
+    expect(canRefreshChannelAccount(undefined)).toBe(false)
   })
 
   test("isolates pending state by account and action", () => {

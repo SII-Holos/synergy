@@ -90,12 +90,11 @@ export namespace HolosAuth {
   }
 
   export async function ensureClarusChannelAccount(agentId: string): Promise<boolean> {
-    const current = await Config.globalResolved()
-    const existing = current.channel?.clarus
+    const stored = await Config.domainGet("channels")
+    const existing = stored.channel?.clarus
     if (existing?.type === "clarus" && existing.accounts[agentId]) return false
     await Config.domainUpdate("channels", {
       channel: {
-        ...current.channel,
         clarus: {
           type: "clarus",
           accounts: {

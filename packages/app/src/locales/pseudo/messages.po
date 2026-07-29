@@ -17194,6 +17194,10 @@ msgid "tool.label.changes"
 msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.elements"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.files"
 msgstr ""
 
@@ -17831,6 +17835,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.response-card"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

@@ -43,6 +43,7 @@ data/channel/workspaces/<identity-hash>/workspace/
 data/channel/diagnostics/
 data/channel/providers/clarus/accounts/
 data/permissions/
+data/channel/response_cards/<channel-type>/<account-id>/<request-id>.json
 data/permission-rules.json
 data/notes/<scope>/
 data/agenda/items/<scope>/
@@ -68,6 +69,8 @@ Channel-managed Project ownership uses a hashed forward record under `managed_ow
 Channel diagnostics store bounded, redacted, independently addressable records below `data/channel/diagnostics/accounts/<account-hash>/records/`. Account-level NDJSON downloads first scan the bounded set of at most 10,000 retained record IDs, then read, validate, and encode one record per response pull instead of materializing record payloads. Obsolete pre-release per-account array files directly under `data/channel/diagnostics/` are left untouched and ignored. Clarus provider-private state is isolated below each hashed account root: `assignments/`, `assignment_session_index/`, `dedup/`, `outbox/results/`, and `outbox/extensions/`. Result and extension outboxes are durable-before-send recovery state; pending records recovered after an interrupted process become ambiguous rather than being retried blindly.
 
 GitHub integration deliveries, CI failure state, runtime anchors, and per-repository poll state live under `data/github/`. Each delivery is keyed by its synthetic delivery GUID. Poll state files use URI-encoded repository names.
+
+Channel response-card registrations live under `data/channel/response_cards/`. Each provider-neutral record is keyed by channel type, account, and response-card tool-part ID. A pending record is written before the provider side effect and becomes active only after the provider returns a sent message ID. Both states retain the original chat, requester, session, card contract, and a 14-day expiry. An active registration additionally binds the provider message ID used to validate callbacks. A surviving pending record blocks resend until its expiry. Expired and malformed registrations are pruned at global runtime startup.
 
 Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
 

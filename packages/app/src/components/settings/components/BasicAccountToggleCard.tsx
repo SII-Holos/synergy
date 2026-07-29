@@ -14,6 +14,7 @@ export function BasicAccountToggleCard(props: {
   emptyLabel: string
   accountDescription: (account: BasicAccountToggle) => string
   accountName: (account: BasicAccountToggle) => string
+  canRefresh: (account: BasicAccountToggle) => boolean
   enableLabel: string
   enableAccountLabel: (accountName: string) => string
   maintenanceLabel: string
@@ -84,7 +85,7 @@ export function BasicAccountToggleCard(props: {
                       variant="ghost"
                       size="small"
                       icon={getSemanticIcon("action.refresh")}
-                      disabled={refreshing()}
+                      disabled={refreshing() || !props.canRefresh(account)}
                       aria-busy={refreshing()}
                       onClick={() => runAction("refresh", account, props.onRefresh)}
                     >

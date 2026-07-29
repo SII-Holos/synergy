@@ -29,6 +29,10 @@ export function isChannelAccountActionPending(
   return pending.has(channelAccountActionKey(action, accountKey))
 }
 
+export function canRefreshChannelAccount(status: ChannelStatus | undefined): boolean {
+  return status?.status === "connected"
+}
+
 const runtimeStatusCopy = {
   connected: { id: "settings.channels.status.connected", message: "Connected" },
   connecting: { id: "settings.channels.status.connecting", message: "Connecting…" },

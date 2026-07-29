@@ -7,6 +7,10 @@ import { SessionEndpoint } from "../session/endpoint"
 import { Provider } from "../provider/provider"
 import type { Scope } from "@/scope"
 import { externalIdentityHash } from "./identity"
+import { LatticeError } from "../lattice/error"
+import { BusyError } from "../session/error"
+import { ChannelInteraction } from "./interaction"
+import { SessionWorkflowService, WorkflowConflictError } from "../session/workflow"
 
 export namespace ChannelCommand {
   const log = Log.create({ service: "channel.command" })
@@ -28,10 +32,12 @@ export namespace ChannelCommand {
     channelType: string
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    chatName?: string
     senderId?: string
+    senderName?: string
     scopeKey?: string
     messageId: string
-    senderName?: string
     mentions?: Array<{ key: string; id?: string; name?: string }>
     wasMentioned?: boolean
     remainder: string
@@ -45,14 +51,77 @@ export namespace ChannelCommand {
     execute: (ctx: Context, scope: Scope) => Promise<Result>
   }
 
-  function endpointForContext(ctx: Pick<Context, "channelType" | "accountId" | "chatId" | "senderId" | "scopeKey">) {
+  function endpointForContext(
+    ctx: Pick<
+      Context,
+      "channelType" | "accountId" | "chatId" | "chatType" | "chatName" | "senderId" | "senderName" | "scopeKey"
+    >,
+  ) {
     return SessionEndpoint.fromChannel({
       type: ctx.channelType,
       accountId: ctx.accountId,
       chatId: ctx.chatId,
+      chatType: ctx.chatType,
+      chatName: ctx.chatName,
       senderId: ctx.senderId,
+      senderName: ctx.senderName,
       scopeKey: ctx.scopeKey,
+      createdAt: Date.now(),
     })
+  }
+
+  async function workflowSession(ctx: Context, scope: Scope) {
+    return Session.getOrCreateForEndpoint(endpointForContext(ctx), {
+      scope,
+      interaction: ChannelInteraction.forType(ctx.channelType),
+    })
+  }
+
+  function workflowFailure(error: unknown): Result {
+    if (error instanceof BusyError) {
+      return {
+        action: "handled",
+        reply: "⚠️ Wait for the current response to finish before switching workflows.",
+      }
+    }
+    if (error instanceof WorkflowConflictError) {
+      return {
+        action: "handled",
+        reply: `⚠️ ${error.message} Use /chat first to exit the current workflow.`,
+      }
+    }
+    if (error instanceof LatticeError.StateConflict) {
+      return {
+        action: "handled",
+        reply: `⚠️ ${error.data.reason} Use /chat first to exit the current workflow.`,
+      }
+    }
+    throw error
+  }
+
+  async function setWorkflow(
+    ctx: Context,
+    input: SessionWorkflowService.SetInput,
+    confirmation: string,
+    scope: Scope,
+  ): Promise<Result> {
+    try {
+      const session = await workflowSession(ctx, scope)
+      const current = session.workflow
+      const planAlreadyActive = input.kind === "plan" && current?.kind === "plan"
+      if (input.kind === "none" && current?.kind === "lightloop") {
+        await SessionWorkflowService.cancelLightloop(session.id)
+      } else if (input.kind === "lightloop" && current?.kind === "lightloop") {
+        await SessionWorkflowService.updateLightloopInstructions(session.id, input.instructions)
+      } else if (!planAlreadyActive) {
+        await SessionWorkflowService.set(session.id, input)
+      }
+    } catch (error) {
+      return workflowFailure(error)
+    }
+
+    if (ctx.remainder) return { action: "continue", text: ctx.remainder }
+    return { action: "handled", reply: confirmation }
   }
 
   const commands: CommandDef[] = [
@@ -71,6 +140,41 @@ export namespace ChannelCommand {
           reply: "✅ Started a new conversation. Send your next message when ready.",
         }
       },
+    },
+    {
+      name: "chat",
+      triggers: ["/chat"],
+      execute: (ctx, scope) => setWorkflow(ctx, { kind: "none" }, "✅ Switched to normal chat.", scope),
+    },
+    {
+      name: "blueprint",
+      triggers: ["/blueprint", "/plan"],
+      execute: (ctx, scope) =>
+        setWorkflow(
+          ctx,
+          { kind: "plan" },
+          "✅ Blueprint planning enabled. Send the request you want turned into a Blueprint.",
+          scope,
+        ),
+    },
+    {
+      name: "lightloop",
+      triggers: ["/lightloop"],
+      async execute(ctx, scope) {
+        if (!ctx.remainder) return { action: "handled", reply: "Usage: /lightloop <task>" }
+        return setWorkflow(ctx, { kind: "lightloop", instructions: ctx.remainder }, "✅ Light Loop enabled.", scope)
+      },
+    },
+    {
+      name: "lattice",
+      triggers: ["/lattice"],
+      execute: (ctx, scope) =>
+        setWorkflow(
+          ctx,
+          { kind: "lattice", mode: "auto" },
+          "✅ Lattice enabled. Send the goal you want decomposed and executed.",
+          scope,
+        ),
     },
     {
       name: "status",
@@ -133,6 +237,10 @@ export namespace ChannelCommand {
           action: "handled",
           reply: [
             "Available commands:",
+            "/chat [message] — use normal chat for this conversation",
+            "/blueprint [request] (/plan) — use Plan to author a Blueprint",
+            "/lightloop <task> — keep working until the task passes independent review",
+            "/lattice [goal] — decompose and execute a larger goal",
             "/model <providerID/modelID> — change the model for this conversation",
             "/new — start a new conversation",
             "/status — show the current conversation status",

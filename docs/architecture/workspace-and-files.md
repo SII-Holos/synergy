@@ -43,6 +43,8 @@ Search has three independent modes:
 
 File-index scans consume and retain at most 50,000 complete paths, deduplicate retained paths, preserve results collected before a subprocess output limit or scan timeout, and mark the search response as truncated whenever a bound is reached. A workspace that is too large for one bounded index scan therefore returns partial file matches instead of failing the route with a 500 response or retaining an output-sized object graph indefinitely.
 
+File-result path enrichment has its own finite timeout and races caller cancellation. A stalled shared VCS status lookup therefore cannot keep a canceled file search pending indefinitely.
+
 The classic debug file search is lazy and reuses this same bounded project index. Starting a project Scope does not launch a second fire-and-forget repository scan.
 
 The current public workspace-file routes are read/browse/search/status contracts. Agent write operations use the governed tool pipeline rather than an unguarded file-service write route.

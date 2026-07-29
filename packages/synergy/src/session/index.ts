@@ -1011,6 +1011,28 @@ export namespace Session {
     return canonical
   })
 
+  export async function updateAssistantContextUsage(input: {
+    sessionID: string
+    messageID: string
+    contextUsage: NonNullable<MessageV2.Assistant["contextUsage"]>
+  }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const scopeID = asScopeID((session.scope as Scope).id)
+    const result = await Storage.update<MessageV2.Info>(
+      StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
+      (draft) => {
+        if (draft.role !== "assistant") throw new Error("Context Usage can only be attached to assistant messages")
+        draft.contextUsage = input.contextUsage
+      },
+    )
+    const canonical = MessageV2.canonicalMessage(result)
+    SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
+    Bus.publish(MessageV2.Event.Updated, {
+      info: canonical,
+    })
+    return canonical as MessageV2.Assistant
+  }
+
   export const mergeMessageMetadata = fn(
     z.object({
       sessionID: Identifier.schema("session"),

@@ -388,6 +388,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   diagram: "analyze",
   render: "analyze",
   attach: "communication",
+  response_card: "communication",
 
   // qzcli / MCP tools
   qzcli_qz_auth_login: "config",
@@ -523,7 +524,9 @@ export function classifyTool(
   const subtitle =
     toolName === "lattice_submit" && typeof input.action === "string"
       ? input.action
-      : (extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys))
+      : toolName === "response_card" && typeof input.title === "string"
+        ? input.title
+        : (extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys))
 
   const args = buildArgs(input, metadata, spec)
   const count = classifyCount(toolName, category, metadata)

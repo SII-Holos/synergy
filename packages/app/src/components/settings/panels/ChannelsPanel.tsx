@@ -52,6 +52,7 @@ export function ChannelsPanel(props: {
   popoverLayer?: HTMLElement
   clarusAccountName: (accountID: string) => string
   clarusAccountDescription: (accountID: string) => string
+  canRefreshClarusAccount: (accountID: string) => boolean
   onFeishuToggle: (index: number, value: boolean) => void
   onFeishuModelChange: (index: number, model: string) => void
   onFeishuVariantChange: (index: number, variant: string) => void
@@ -81,6 +82,7 @@ export function ChannelsPanel(props: {
           emptyLabel={_(emptyClarusLabel)}
           accountDescription={(account) => props.clarusAccountDescription(account.key)}
           accountName={(account) => props.clarusAccountName(account.key)}
+          canRefresh={(account) => props.canRefreshClarusAccount(account.key)}
           enableLabel={_(clarusEnableLabel)}
           enableAccountLabel={(accountName) => _(clarusEnableAccountLabel(accountName))}
           maintenanceLabel={_(clarusMaintenanceLabel)}

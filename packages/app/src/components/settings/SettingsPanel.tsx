@@ -76,7 +76,12 @@ import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./s
 import { SaveIndicator } from "./components/SaveIndicator"
 import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
 import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
-import { channelRuntimeStatusLabel, clarusAccountDisplayName, clarusDiagnosticsFilename } from "./channel-account-model"
+import {
+  canRefreshChannelAccount,
+  channelRuntimeStatusLabel,
+  clarusAccountDisplayName,
+  clarusDiagnosticsFilename,
+} from "./channel-account-model"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -483,7 +488,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (save.explicitDirty() || personalizeController.dirty()) return "dirty"
     return "idle"
   })
+  const canRefreshClarusProjects = (accountID: string) =>
+    canRefreshChannelAccount(channelStatuses()?.[`clarus:${accountID}`])
   const refreshClarusProjects = async (accountID: string) => {
+    if (!canRefreshClarusProjects(accountID)) return
     try {
       await globalSDK.client.channel.refreshProjects(
         { channelType: "clarus", accountId: accountID },
@@ -614,6 +622,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         clarusAccountDescription={(accountID) =>
           translateDescriptor(channelRuntimeStatusLabel(channelStatuses()?.[`clarus:${accountID}`]), i18n())
         }
+        canRefreshClarusAccount={canRefreshClarusProjects}
         onFeishuToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
         onFeishuModelChange={(index, model) => setSettings("channels", "feishuAccounts", index, "model", model)}
         onFeishuVariantChange={(index, variant) => setSettings("channels", "feishuAccounts", index, "variant", variant)}

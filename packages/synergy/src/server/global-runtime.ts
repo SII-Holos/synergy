@@ -1,6 +1,7 @@
 import { Agenda, AgendaBootstrap } from "@/agenda"
 import { ChannelOutbound } from "@/channel/outbound"
 import { registerProviders } from "@/channel/provider"
+import { ResponseCardRuntime } from "@/channel/response-card"
 import { Channel } from "@/channel"
 import { Config } from "@/config/config"
 import { CortexConcurrency } from "@/cortex/concurrency"
@@ -103,8 +104,11 @@ export namespace GlobalRuntime {
           })
           await LatticeRuntime.init()
           await SessionInvoke.resumePending({ scopeID: Scope.home().id })
-          await HolosRuntime.init()
+          await ResponseCardRuntime.pruneExpired().catch((error) => {
+            log.warn("response-card expired registration cleanup failed", { error })
+          })
           await startChannels(config)
+          await HolosRuntime.init()
           FileWatcher.init()
           MCP.ensureStarted()
           PluginMarketplaceRegistry.prefetchRegistry()
@@ -139,10 +143,10 @@ export namespace GlobalRuntime {
   }
 
   async function startChannels(cfg: Config.Info) {
+    registerProviders()
+    ChannelOutbound.init()
     const channels = cfg.channel ?? {}
     if (Object.keys(channels).length === 0) return
-    registerProviders()
     await Channel.init()
-    ChannelOutbound.init()
   }
 }

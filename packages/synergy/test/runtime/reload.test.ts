@@ -379,7 +379,7 @@ describe("runtime.reload", () => {
     })
   })
 
-  test("preserves Channel cascades when persistence already invalidated the config cache", async () => {
+  test("initializes built-in Channel providers during a config cascade", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -400,6 +400,7 @@ describe("runtime.reload", () => {
         expect(result.changedFields).toEqual(["channel"])
         expect(result.cascaded).toContain("channel")
         expect(channelReload).toHaveBeenCalledTimes(1)
+        expect(Channel.getProvider("clarus")).toBeDefined()
         const reloadedEvent = events.find((event) => event.payload?.type === RuntimeReload.Event.Reloaded.type)
         expect(reloadedEvent?.payload?.properties?.changedFields).toEqual(["channel"])
       },

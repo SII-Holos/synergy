@@ -164,7 +164,6 @@ async function executeTurn(turn: ActiveTurn, envelope: AgentTurnProtocol.TurnEnv
         send({
           type: "started",
           requestId: turn.requestId,
-          contextUsageDraft: stream.contextUsageDraft,
         })
         ownedStream = LLM.takeFullStream(stream)
         await streamEvents(turn, ownedStream.stream)

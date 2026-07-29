@@ -1,4 +1,5 @@
 import os from "os"
+import fs from "fs/promises"
 import path from "path"
 import * as Lark from "@larksuiteoapi/node-sdk"
 import { Log } from "../../../util/log"
@@ -12,22 +13,175 @@ import { InboundDebouncer } from "./debounce"
 import {
   parseMessageContent,
   normalizeMentions,
-  fetchQuotedContent,
+  fetchQuotedMessage,
   downloadMessageMedia,
   extractPostImageKeys,
   downloadImageByKey,
+  MAX_FEISHU_ATTACHMENT_BYTES,
+  type DownloadedMedia,
+  type QuotedMessage,
 } from "./message"
 import type { FeishuEventPayload, FeishuMessage, FeishuMention, FeishuSender } from "./feishu-types"
 import type { FeishuApiContext } from "./api-context"
 import { FeishuOutboundMedia } from "./outbound-media"
+import { parseFeishuResponseCardAction, renderFeishuResponseCard, sendFeishuResponseCard } from "./response-card"
+import { parseFeishuQuestionCardAction, renderFeishuQuestionCard, sendFeishuQuestionCard } from "./question-card"
+
+export {
+  parseFeishuQuestionCardAction,
+  parseFeishuResponseCardAction,
+  renderFeishuQuestionCard,
+  renderFeishuResponseCard,
+  sendFeishuQuestionCard,
+}
 
 const log = Log.create({ service: "channel.feishu" })
 
 const FEISHU_API_BASE = "https://open.feishu.cn/open-apis"
 const LARK_API_BASE = "https://open.larksuite.com/open-apis"
 const TEXT_MESSAGE_TYPES = new Set(["text", "post"])
-const MEDIA_MESSAGE_TYPES = new Set(["image", "file", "audio", "video", "sticker"])
+const MEDIA_MESSAGE_TYPES = new Set(["image", "file", "audio", "media", "video", "sticker"])
 const SELF_SENDER_TYPES = new Set(["app", "bot", "app_bot"])
+const MAX_FEISHU_ATTACHMENTS = 8
+const API_REQUEST_TIMEOUT_MS = 15_000
+const TOKEN_REQUEST_TIMEOUT_MS = 10_000
+
+type FeishuCardActionHandler = (data: unknown, accountId: string) => Promise<unknown>
+
+export async function routeFeishuCardAction(input: {
+  data: unknown
+  accountId: string
+  onResponseCardAction?: (callback: ChannelTypes.ResponseCardCallback) => Promise<ChannelTypes.ResponseCardActionResult>
+  onQuestionCardAction?: (callback: ChannelTypes.QuestionCardCallback) => Promise<ChannelTypes.QuestionCardActionResult>
+  pluginHandlers?: readonly FeishuCardActionHandler[]
+}): Promise<unknown> {
+  const parsed = parseFeishuResponseCardAction(input.data)
+  if (parsed.status === "invalid") {
+    return { toast: { type: "warning", content: "此操作无效，请使用最新卡片重试" } }
+  }
+  if (parsed.status === "valid") {
+    if (!input.onResponseCardAction) {
+      return { toast: { type: "warning", content: "此操作已失效，请使用最新卡片重试" } }
+    }
+    const result = await input.onResponseCardAction(parsed.callback)
+    if (result.status === "accepted") {
+      return { toast: { type: "success", content: "操作已接收" } }
+    }
+    if (result.status === "duplicate") {
+      return { toast: { type: "info", content: "操作已接收" } }
+    }
+    return { toast: { type: "warning", content: "此操作已失效，请使用最新卡片重试" } }
+  }
+
+  const question = parseFeishuQuestionCardAction(input.data)
+  if (question.status === "invalid") {
+    return { toast: { type: "warning", content: "此问题已失效，请使用最新卡片重试" } }
+  }
+  if (question.status === "valid") {
+    if (!input.onQuestionCardAction) {
+      return { toast: { type: "warning", content: "此问题已失效，请使用最新卡片重试" } }
+    }
+    const result = await input.onQuestionCardAction(question.callback)
+    if (result.status === "accepted") {
+      return { toast: { type: "success", content: "回答已提交" } }
+    }
+    if (result.status === "duplicate") {
+      return { toast: { type: "info", content: "回答已提交" } }
+    }
+    return { toast: { type: "warning", content: "此问题已失效，请使用最新卡片重试" } }
+  }
+
+  for (const handler of input.pluginHandlers ?? []) {
+    try {
+      const result = await handler(input.data, input.accountId)
+      if (result !== undefined) return result
+    } catch (err) {
+      log.error("card action handler error", { accountId: input.accountId, error: err })
+    }
+  }
+}
+
+type InboundAttachmentSource = {
+  messageId: string
+  messageType: string
+  content: string
+  quoted: boolean
+}
+
+async function materializeInboundAttachments(input: {
+  ctx: FeishuApiContext
+  current: InboundAttachmentSource
+  quoted?: QuotedMessage
+}): Promise<ChannelTypes.Attachment[] | undefined> {
+  const attachments: ChannelTypes.Attachment[] = []
+  const materializedPaths: string[] = []
+  let remainingBytes = MAX_FEISHU_ATTACHMENT_BYTES
+
+  const addMedia = async (
+    media: DownloadedMedia | undefined,
+    source: InboundAttachmentSource,
+    fallbackName?: string,
+  ) => {
+    if (!media || attachments.length >= MAX_FEISHU_ATTACHMENTS || media.size > remainingBytes) return
+
+    const filename = media.fileName ?? fallbackName
+    const tmpPath = path.join(os.tmpdir(), `synergy-feishu-${crypto.randomUUID()}`)
+    materializedPaths.push(tmpPath)
+    await Bun.write(tmpPath, media.buffer)
+    attachments.push({
+      path: tmpPath,
+      contentType: media.contentType,
+      filename,
+      placeholder: source.quoted ? `Quoted attachment${filename ? `: ${filename}` : ""}` : undefined,
+    })
+    remainingBytes -= media.size
+  }
+
+  const materializeSource = async (source: InboundAttachmentSource) => {
+    if (attachments.length >= MAX_FEISHU_ATTACHMENTS || remainingBytes <= 0) return
+
+    if (MEDIA_MESSAGE_TYPES.has(source.messageType)) {
+      const media = await downloadMessageMedia({
+        ctx: input.ctx,
+        messageId: source.messageId,
+        messageType: source.messageType,
+        content: source.content,
+        maxBytes: remainingBytes,
+      })
+      await addMedia(media, source)
+      return
+    }
+
+    if (source.messageType !== "post") return
+    const imageKeys = extractPostImageKeys(source.content)
+    for (let index = 0; index < imageKeys.length; index++) {
+      if (attachments.length >= MAX_FEISHU_ATTACHMENTS || remainingBytes <= 0) break
+      const image = await downloadImageByKey({
+        ctx: input.ctx,
+        messageId: source.messageId,
+        imageKey: imageKeys[index],
+        maxBytes: remainingBytes,
+      })
+      await addMedia(image, source, `image-${index + 1}.png`)
+    }
+  }
+
+  try {
+    await materializeSource(input.current)
+    if (input.quoted) {
+      await materializeSource({
+        messageId: input.quoted.messageId,
+        messageType: input.quoted.messageType,
+        content: input.quoted.content,
+        quoted: true,
+      })
+    }
+    return attachments.length > 0 ? attachments : undefined
+  } catch (error) {
+    await Promise.all(materializedPaths.map((filePath) => fs.unlink(filePath).catch(() => {})))
+    throw error
+  }
+}
 
 type AccountState = {
   config: Config.ChannelFeishuAccount
@@ -180,7 +334,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
 
   private accounts = new Map<string, AccountState>()
 
-  private static cardActionHandlers: Array<(data: unknown, accountId: string) => Promise<unknown>> = []
+  private static cardActionHandlers: FeishuCardActionHandler[] = []
 
   static onCardAction(handler: (data: unknown, accountId: string) => Promise<unknown>): () => void {
     FeishuProvider.cardActionHandlers.push(handler)
@@ -208,6 +362,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
         app_id: account.config.appId,
         app_secret: account.config.appSecret,
       }),
+      signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
     })
 
     const result = (await response.json()) as {
@@ -248,6 +403,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
+        signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
       })
       const result = (await response.json()) as {
         code?: number
@@ -258,18 +414,12 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       if (result.code === 0 && botOpenId) {
         account.botOpenId = botOpenId
         account.missingBotOpenIdWarned = false
-        log.info("resolved feishu bot open_id from bot info", { accountId, botOpenId })
         return botOpenId
       }
-      log.warn("failed to resolve feishu bot open_id from bot info", {
-        accountId,
-        code: result.code,
-        msg: result.msg,
-      })
+      log.warn("failed to resolve feishu bot open_id", { accountId, code: result.code })
     } catch (error) {
-      log.warn("error resolving feishu bot open_id from bot info", { accountId, error })
+      log.warn("error resolving feishu bot open_id", { accountId, error })
     }
-
     return account.botOpenId
   }
 
@@ -279,8 +429,15 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     channelConfig: Config.ChannelFeishu
     signal: AbortSignal
     host: ChannelHost.Instance
+    onDisconnect?: (reason?: string) => void
+    onResponseCardAction?: (
+      callback: ChannelTypes.ResponseCardCallback,
+    ) => Promise<ChannelTypes.ResponseCardActionResult>
+    onQuestionCardAction?: (
+      callback: ChannelTypes.QuestionCardCallback,
+    ) => Promise<ChannelTypes.QuestionCardActionResult>
   }): Promise<void> {
-    const { accountId, accountConfig, channelConfig, signal, host } = input
+    const { accountId, accountConfig, channelConfig, signal, host, onResponseCardAction, onQuestionCardAction } = input
 
     const domain = accountConfig.domain ?? channelConfig.domain
     const larkDomain = domain === "lark" ? Lark.Domain.Lark : Lark.Domain.Feishu
@@ -374,55 +531,47 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       },
       "card.action.trigger": async (data: unknown) => {
         log.info("feishu card action received", { accountId })
-        for (const handler of FeishuProvider.cardActionHandlers) {
-          try {
-            const result = await handler(data, accountId)
-            if (result !== undefined) return result
-          } catch (err) {
-            log.error("card action handler error", { accountId, error: err })
-          }
-        }
+        return routeFeishuCardAction({
+          data,
+          accountId,
+          onResponseCardAction,
+          onQuestionCardAction,
+          pluginHandlers: FeishuProvider.cardActionHandlers,
+        })
       },
     })
 
-    const wsClient = new Lark.WSClient({
+    let ws: Lark.WSClient | undefined
+    let closed = false
+    const close = () => {
+      if (closed) return
+      closed = true
+      log.info("feishu channel closed", { accountId })
+      void debouncer.flush().catch(() => {})
+      this.accounts.delete(accountId)
+      ws?.close()
+    }
+    ws = new Lark.WSClient({
       appId: accountConfig.appId,
       appSecret: accountConfig.appSecret,
       domain: larkDomain,
       logger,
     })
 
-    // The Lark SDK's WSClient.handleEventData only processes messages where
-    // the header type is "event". Card action callbacks arrive as type "card"
-    // and are silently dropped. Monkey-patch handleEventData to rewrite
-    // "card" → "event" so the EventDispatcher can route card.action.trigger.
-    const wsClientAny = wsClient as any
-    const origHandleEventData = wsClientAny.handleEventData.bind(wsClientAny)
-    wsClientAny.handleEventData = (data: any) => {
-      const msgType = data.headers?.find?.((h: any) => h.key === "type")?.value
-      if (msgType === "card") {
-        const patchedData = {
-          ...data,
-          headers: data.headers.map((h: any) => (h.key === "type" ? { ...h, value: "event" } : h)),
-        }
-        return origHandleEventData(patchedData)
-      }
-      return origHandleEventData(data)
+    signal.addEventListener("abort", close, { once: true })
+    if (signal.aborted) {
+      close()
+      return
     }
 
-    signal.addEventListener(
-      "abort",
-      () => {
-        log.info("feishu channel aborted", { accountId })
-        debouncer.flush().catch(() => {})
-        this.accounts.delete(accountId)
-      },
-      { once: true },
-    )
-
-    log.info("starting feishu websocket", { accountId, domain })
-    await wsClient.start({ eventDispatcher })
-    log.info("feishu websocket connected", { accountId })
+    try {
+      await ws.start({ eventDispatcher })
+    } catch (error) {
+      signal.removeEventListener("abort", close)
+      close()
+      log.error("feishu ws start failed", { accountId, error })
+      throw error
+    }
   }
 
   private async buildMessageContext(
@@ -433,16 +582,8 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
   ): Promise<ChannelTypes.MessageContext | null> {
     const message = payload.message ?? payload.event?.message
     const sender = payload.sender ?? payload.event?.sender
+
     const account = this.accounts.get(accountId)
-
-    log.info("feishu buildMessageContext entered", {
-      accountId,
-      messageId: message?.message_id,
-      chatId: message?.chat_id,
-      messageType: message?.message_type,
-      senderType: sender?.sender_type,
-    })
-
     const isGroup = message?.chat_type === "group"
     const botOpenId =
       isGroup && accountConfig.requireMention ? await this.ensureBotOpenId(accountId) : account?.botOpenId
@@ -507,58 +648,36 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       ? { apiBase: account.apiBase, getAccessToken: () => this.getAccessToken(accountId) }
       : undefined
 
-    const quotedContentPromise =
-      msg.parent_id && apiCtx ? fetchQuotedContent(apiCtx, msg.parent_id) : Promise.resolve(undefined)
+    const quotedMessagePromise: Promise<QuotedMessage | undefined> =
+      msg.parent_id && apiCtx ? fetchQuotedMessage(apiCtx, msg.parent_id) : Promise.resolve(undefined)
 
-    const attachmentsPromise = (async (): Promise<ChannelTypes.Attachment[] | undefined> => {
-      if (!apiCtx) return undefined
-      const msgId = msg.message_id ?? ""
-      const results: ChannelTypes.Attachment[] = []
-
-      if (MEDIA_MESSAGE_TYPES.has(messageType)) {
-        const media = await downloadMessageMedia({
-          ctx: apiCtx,
-          messageId: msgId,
-          messageType,
-          content: rawContent,
-        })
-        if (media) {
-          const tmpPath = path.join(os.tmpdir(), `synergy-feishu-${Date.now()}-${msgId}`)
-          await Bun.write(tmpPath, media.buffer)
-          results.push({ path: tmpPath, contentType: media.contentType, filename: media.fileName })
-        }
-      }
-
-      if (messageType === "post") {
-        const imageKeys = extractPostImageKeys(rawContent)
-        if (imageKeys.length > 0) {
-          const downloads = await Promise.all(
-            imageKeys.map((imageKey) => downloadImageByKey({ ctx: apiCtx, messageId: msgId, imageKey })),
-          )
-          for (let i = 0; i < downloads.length; i++) {
-            const img = downloads[i]
-            if (!img) continue
-            const tmpPath = path.join(os.tmpdir(), `synergy-feishu-${Date.now()}-${msgId}-img${i}`)
-            await Bun.write(tmpPath, img.buffer)
-            results.push({ path: tmpPath, contentType: img.contentType })
-          }
-        }
-      }
-
-      return results.length > 0 ? results : undefined
-    })()
+    const attachmentsPromise = apiCtx
+      ? quotedMessagePromise.then((quotedMessage) =>
+          materializeInboundAttachments({
+            ctx: apiCtx,
+            current: {
+              messageId: msg.message_id ?? "",
+              messageType,
+              content: rawContent,
+              quoted: false,
+            },
+            quoted: quotedMessage,
+          }),
+        )
+      : Promise.resolve(undefined)
 
     const chatNamePromise =
       account && filterResult.isGroup && msg.chat_id
         ? chatNameCache.resolve(apiCtx!, msg.chat_id!).catch(() => undefined)
         : Promise.resolve(undefined)
 
-    const [senderName, quotedContent, attachments, resolvedChatName] = await Promise.all([
+    const [senderName, quotedMessage, attachments, resolvedChatName] = await Promise.all([
       senderNamePromise,
-      quotedContentPromise,
+      quotedMessagePromise,
       attachmentsPromise,
       chatNamePromise,
     ])
+    const quotedContent = quotedMessage?.text
 
     const chatName = resolvedChatName ?? senderName
 
@@ -643,6 +762,46 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     })
   }
 
+  async sendResponseCard(input: {
+    accountId: string
+    chatId: string
+    replyToMessageId?: string
+    requestId: string
+    card: ChannelTypes.ResponseCard
+  }): Promise<ChannelTypes.SendResult> {
+    const account = this.accounts.get(input.accountId)
+    if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
+    return sendFeishuResponseCard({
+      apiBase: account.apiBase,
+      getAccessToken: () => this.getAccessToken(input.accountId),
+      chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
+      replyInThread: account.config.replyInThread,
+      requestId: input.requestId,
+      card: input.card,
+    })
+  }
+
+  async sendQuestionCard(input: {
+    accountId: string
+    chatId: string
+    replyToMessageId?: string
+    requestId: string
+    questions: import("@/question").Question.Info[]
+  }): Promise<ChannelTypes.SendResult> {
+    const account = this.accounts.get(input.accountId)
+    if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
+    return sendFeishuQuestionCard({
+      apiBase: account.apiBase,
+      getAccessToken: () => this.getAccessToken(input.accountId),
+      chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
+      replyInThread: account.config.replyInThread,
+      requestId: input.requestId,
+      questions: input.questions,
+    })
+  }
+
   private async sendCreateMessage(accountId: string, chatId: string, payload: FeishuMessagePayload) {
     const account = this.accounts.get(accountId)
     if (!account) throw new Error(`Feishu account not found: ${accountId}`)
@@ -659,6 +818,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
         content: payload.content,
         msg_type: payload.msgType,
       }),
+      signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     })
 
     const result = (await response.json()) as { code?: number; msg?: string; data?: { message_id?: string } }
@@ -685,6 +845,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
         msg_type: payload.msgType,
         ...(account.config.replyInThread ? { reply_in_thread: true } : {}),
       }),
+      signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     })
 
     const result = (await response.json()) as { code?: number; msg?: string; data?: { message_id?: string } }
@@ -713,6 +874,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       body: JSON.stringify({
         reaction_type: { emoji_type: input.emoji },
       }),
+      signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     })
 
     const result = (await response.json()) as { code?: number; msg?: string; data?: { reaction_id?: string } }
@@ -733,6 +895,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     })
 
     const result = (await response.json()) as { code?: number; msg?: string }

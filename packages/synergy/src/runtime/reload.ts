@@ -401,7 +401,13 @@ export namespace RuntimeReload {
         return
       }
       case "channel": {
-        const { Channel } = await import("../channel")
+        const [{ Channel }, { registerProviders }, { ChannelOutbound }] = await Promise.all([
+          import("../channel"),
+          import("../channel/provider"),
+          import("../channel/outbound"),
+        ])
+        registerProviders()
+        ChannelOutbound.init()
         await Channel.reload()
         return
       }

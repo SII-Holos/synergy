@@ -74,7 +74,7 @@ describe("Channel managed Project ownership", () => {
       })
 
       const topLevel = (await $`git rev-parse --show-toplevel`.cwd(record.directory).text()).trim()
-      expect(path.resolve(topLevel)).toBe(path.resolve(record.directory))
+      expect(await fs.realpath(topLevel)).toBe(await fs.realpath(record.directory))
     } finally {
       await fs.rm(ancestorGit, { recursive: true, force: true })
     }

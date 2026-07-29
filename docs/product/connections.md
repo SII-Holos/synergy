@@ -6,23 +6,76 @@ Synergy can connect to model and tool services through providers and MCP, messag
 
 Channels connect external accounts to the same durable Scope, Session, inbox, and permission model used by interactive clients. Channel core owns account lifecycle, endpoint target identity, Scope and Session routing, managed Project ownership, and diagnostics. Each provider owns its remote protocol and provider-private state.
 
-A provider reports typed ingress facts through the account-bound Channel host:
+A provider reports typed ingress facts through the account-bound Channel host. Synergy derives a stable endpoint key from the provider, account, chat, and optional Scope key. Messages for that endpoint reuse its session instead of creating an unrelated conversation for every inbound message. Incoming commands are handled before ordinary agent invocation.
 
 - Conversation ingress maps remote messages to stable unattended Sessions through `host.conversations`. Provider conversation capabilities may support replies, proactive pushes, media, reactions, and streaming progress.
 - Project and Task ingress reports discovery and assignments through `host.projects` and `host.tasks`. Discovery never creates a Project conversation Session, and Project-level protocol events never invoke a model.
 
-These ingress families are capabilities rather than exclusive provider kinds, so one provider may support both.
+These ingress families are capabilities rather than exclusive provider kinds, so one provider may support both. Each provider capability may include:
+
+- direct messages and groups
+- replies and proactive pushes
+- text, image, file, audio, and video parts
+- reactions and delivery-status reactions
+- streaming text and tool progress
+- reconnect and account status
+- provider-native response cards with buttons and bounded static selects
+- provider-native question forms for interactive sessions
 
 Feishu/Lark is the built-in conversation provider. It retains its existing chat endpoint keys, default Home Scope, configured project Scope routing, media and mention handling, cards, and self-connected lifecycle while Channel core owns endpoint and Session routing.
 
 Feishu streaming cards replace accumulated progress with the terminal assistant answer when the run completes. CardKit writes are successful only when both the HTTP response and Feishu response code succeed. If the final card cannot be updated and closed successfully, the provider sends the terminal answer through the ordinary message API instead of leaving the user with a stale progress card.
 
-Feishu/Lark distinguishes Synergy's own bot messages from messages sent by other bots using the authenticated account's `botOpenId`. The provider resolves that identity from account configuration or the Feishu bot-info API and fails closed for bot senders while it is unknown. With `requireMention: true`, an external bot message is accepted only when it contains a real mention whose open ID matches Synergy; the Feishu app also needs the bot-to-bot group mention event permission. Set `groupSessionScope` to `group_topic` when each Feishu topic should reuse an independent Synergy session.
-Each Feishu/Lark account can optionally set `projectDir` to bind its sessions to a project Scope. The directory is resolved relative to the Synergy home directory unless absolute. It must exist, be readable, and resolve to a project Scope (as determined by `Scope.fromDirectory()`). A missing, unreadable, or non-project directory fails the account connection at startup. When `projectDir` is omitted, the account uses the home Scope. All endpoint sessions for that account are scoped to the resolved Scope, so session lookup and reuse stay within that Scope and do not intersect sessions belonging to other Scopes.
+Feishu/Lark distinguishes Synergy's own bot messages from messages sent by other bots using the authenticated account's `botOpenId`. The provider resolves that identity from account configuration or the Feishu bot-info API and fails closed for bot senders while it is unknown. With `requireMention: true`, an external bot message is accepted only when it contains a real mention whose open ID matches Synergy; the Feishu app also needs the bot-to-bot group mention event permission. Set `groupSessionScope` to `group_topic_sender` to isolate bot-bot interactions per topic per sender.
+
+`groupSessionScope` accepts four strategies: `group` shares one session across the chat; `group_sender` isolates each sender; `group_topic` isolates each topic or thread; and `group_topic_sender` isolates each sender within a topic or thread. Topic-aware modes fall back to their non-topic equivalent when the message has no topic identifier.
+
+Each Feishu/Lark account can optionally set `projectDir` to bind its sessions to a project Scope. The directory is resolved relative to the Synergy home directory unless absolute. It must exist, be readable, and resolve to a project Scope (as determined by `Scope.fromDirectory()`). A missing, unreadable, or non-project directory fails the account connection at startup. When `projectDir` is omitted, the account uses the home Scope. All endpoint sessions for that account are scoped to the resolved Scope, so session history, notes, Library, and files are consistent per account.
 
 Each Feishu/Lark account can set a default model and one of that model's exposed variants. The account selection is written onto each inbound root message so the session header and provider request agree. A conversation-level `/model` override takes precedence over the account default; because that override selects a different model, it does not inherit the account model's variant.
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
+
+### Channel Commands
+
+Channel commands are handled before ordinary agent invocation. Commands that accept trailing text can switch or reset the conversation and immediately continue that text as the next user request.
+
+| Command                       | Aliases                               | Behavior                                                                                                         |
+| ----------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/chat [message]`             | —                                     | Switches the conversation to normal chat; optional trailing text continues immediately.                          |
+| `/blueprint [request]`        | `/plan`                               | Enables Blueprint planning; optional trailing text is handled as the planning request.                           |
+| `/lightloop <task>`           | —                                     | Starts or updates Light Loop with the required task text and continues that task immediately.                    |
+| `/lattice [goal]`             | —                                     | Enables automatic Lattice decomposition; optional trailing text continues as the goal.                           |
+| `/model <providerID/modelID>` | —                                     | Changes the model override for an existing conversation.                                                         |
+| `/new [message]`              | `/reset`, `/重置`, `/清空`, `/新对话` | Archives the endpoint's current session; optional trailing text starts the replacement conversation immediately. |
+| `/status`                     | `/状态`                               | Reports whether a conversation exists and, when it does, its message count and timestamps.                       |
+| `/help`                       | `/commands`                           | Displays the command list in the Channel conversation.                                                           |
+
+### Response Cards
+
+Response cards let the agent present ordered text, buttons, and bounded static selects when structured presentation is clearer than plain text. In Feishu/Lark they appear as interactive CardKit messages; choosing a registered control starts a fresh Channel task after identity, message, action, value, deduplication, and expiry checks succeed.
+
+The provider-neutral card intent is limited to 28 KiB. It does not support raw provider JSON, URLs, free-form inputs, commands, or arbitrary tool calls.
+
+The Channel-only `response_card` tool produces a provider-neutral card intent; it does not send a message or execute an action itself. Channel delivery renders each completed intent through the active provider and durably registers it against the original task requester. Foreground and unattended delivery share the same registration, so a terminal task sends each card at most once even when both paths observe it.
+
+Feishu/Lark renders response cards with CardKit v2. Callback envelopes use the built-in `response_card:` namespace. Synergy validates the account, chat, original requester, sent card message, registered control, submitted value, and 14-day expiry before accepting a callback. Invalid or expired built-in callbacks fail closed; unrelated callback namespaces continue to the existing plugin callback handlers.
+
+An accepted callback never treats its opaque ID or value as a command, tool name, URL, or executable instruction. Synergy creates a fresh Channel user task whose visible text is synthesized only from the registered card title and labels. The raw callback fields remain in structured message metadata for audit and routing. Callback event IDs use durable inbox delivery keys, so retries enqueue one task and return a duplicate acknowledgement without invoking the model twice.
+
+Response-card registration writes a pending record before the provider send and activates it only after receiving the sent message ID. If a process stops while the provider outcome is unknown, the surviving pending record blocks resend until its expiry rather than risk issuing a duplicate interactive card. Expired and malformed registrations are pruned at global runtime startup.
+
+### Question Cards
+
+Question Cards are a dedicated interactive surface for Feishu/Lark Channel sessions. When the agent asks a question during a channel invocation, the runtime delivers a CardKit 2.0 form message instead of blocking on an unattended response. The form renders each question prompt with single-select or multi-select options and an optional free-text input.
+
+Feishu/Lark is the current built-in provider that implements the optional `sendQuestionCard` provider method. Delivery renders the card from the same `Question.Request` that produced the blocking promise.
+
+The callback envelope uses a distinct `synergy_question_card` namespace — separate from `response_card:` and plugin callback namespaces. The runtime validates the channel type, account ID, chat ID, original requester open ID, and the sent card message ID against the registration before accepting the callback. Registration is Scope-local through the provider's `onQuestionCardAction` callback, so the callback executes in the account's bound Scope. Mismatched or expired registrations are rejected.
+
+An accepted callback maps opaque option indices back to the registered labels and resolves the original pending Question with the user's form selections. The runtime remembers the accepted callback event for the active session so an immediate provider retry returns a duplicate acknowledgement instead of resolving the Question again.
+
+Provider delivery failure rejects the Question. Channels without a native question surface remain unattended and reject before delivery. Reply, reject, timeout, or session cleanup removes the registration. Serialized CardKit JSON plus a 2 KiB safety reserve must stay within the 30 KiB card budget.
 
 ### Outbound Delivery Anchoring
 
@@ -43,10 +96,8 @@ assistant it:
 3. when `channelReply` is true and no `channelReplyToMessageId` exists on that
    assistant, logs a warning and drops the message instead of pushing to the
    chat
-4. calls `provider.replyMessage()` when replying, or `provider.pushMessage()`
-   for a regular push
-5. records `channelOutboundSent: true` on the assistant after successful
-   provider delivery so repeated terminal events do not send it again
+4. delivers provider-native response cards and ordinary text/media parts; card-only terminal responses are valid outbound results. Tool-produced file, image, audio, and video attachments found across the completed task thread are projected into the same delivery, so attachment-only terminal responses are valid too
+5. records `channelOutboundSent: true` after all matching cards are durably handled and ordinary provider delivery succeeds, so repeated terminal events do not send the result again
 
 ### Reply in Thread
 
@@ -68,7 +119,7 @@ wrong topic.
 
 ### Native Clarus tasks
 
-Clarus is the built-in Project and Task provider and does not emit conversation ingress. A Holos identity creates its matching Channel account disabled by default; existing active identities receive the same account through the Holos migration runner. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity. While Holos is connecting or reconnecting, Clarus waits passively in `waiting_for_transport` until the matching authenticated transport becomes ready.
+Clarus is the built-in Project and Task provider and does not emit conversation ingress. A Holos identity creates its matching Channel account disabled by default; existing active identities receive the same account through the Holos migration runner. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity. While Holos is connecting or reconnecting, Clarus reports `waiting_for_transport` and waits without failing the Channel start.
 
 Project refresh discovers all visible non-archived remote Projects and provisions one deterministic managed Project Scope per `(provider, account, external Project)` identity, including Projects that currently have no Tasks. These are normal Project Scopes with files, Git, LSP, configuration, and Sessions, but the Sidebar shows them only under their Channel account rather than duplicating them in the generic Projects section.
 
@@ -88,7 +139,7 @@ Holos is an optional identity and agent-network layer. Synergy can create or imp
 
 The agent's public profile is read from and written to Holos. Local storage retains only the credentials and account metadata needed to reconnect; switching identities reloads the runtime around the newly active account.
 
-Authentication and network readiness are separate states. A valid saved identity can exist while its tunnel is connecting, disconnected, or failed. Product surfaces should check readiness before offering a network action rather than treating “logged in” as equivalent to “connected.”
+Authentication and network readiness are separate states. A valid saved identity can exist while its tunnel is connecting, disconnected, or failed. Product surfaces should check readiness before offering a network action rather than treating "logged in" as equivalent to "connected."
 
 ## Holos Connection Lifecycle
 
@@ -128,7 +179,7 @@ The protocol currently distinguishes:
 - remote Bash execution
 - remote process execution and process control
 
-Bash and process calls require an active Link session ID. Every request carries a protocol version, request ID, Link ID, target agent, tool/action, and typed payload. Responses are correlated to the request, schema-validated, and normalized into typed remote or transport errors. A transport request times out after 30 seconds. Any supplied remote selector is classified through the non-bypassable remote-execution capability, and invalid, disconnected, or sessionless selectors fail closed instead of running the command locally.
+Bash and process calls require an active Link session ID. Every request carries a protocol version, request ID, Link ID, target agent, tool/action, and typed payload. Responses are correlated to the request, schema-validated, and normalized into typed remote or transport errors. A transport request times out after 30 seconds. Any supplied remote selector is classified through the non-bypassable remote-execution capability, and invalid, disconnected, or sessionless selectors fail closed instead of running the requested operation.
 
 Synergy Link does not make the remote filesystem part of the local Scope. It is an explicit execution boundary with its own session lifecycle, transport failures, and remote error semantics. When the Holos connection is disposed, pending requests fail and active local Link-session state is cleared.
 
@@ -136,7 +187,7 @@ Synergy Link does not make the remote filesystem part of the local Scope. It is 
 
 MCP connections add external tools and resources to the agent runtime; model providers supply language and embedding models. Both are configured independently of Holos and Channels. A Holos identity does not provide model billing or API credentials, and a Channel account is not a model provider.
 
-Provider authentication health changes only in response to real model, usage, or model-discovery requests; Synergy does not periodically probe third-party accounts. A rejected OAuth request can refresh and retry once, with concurrent refreshes coalesced. Rate limits remain quota state, while timeouts, network failures, server failures, and unclassified forbidden responses leave credential health unchanged. When an account needs intervention, Sidebar, Providers, Usage, and related Settings surfaces present one shared recovery state appropriate to stored or environment-backed credentials.
+Provider authentication health changes only in response to real model, usage, or model-discovery requests; Synergy does not periodically probe third-party accounts. A rejected OAuth request can refresh and retry once, with concurrent refreshes coalesced. Rate limits remain quota state, while timeouts, network failures, server failures, and unclassified forbidden responses leave credential health unchanged. When an account needs intervention, Sidebar, Providers, Usage, and related Settings surfaces present only the fact that action is required without exposing credential contents or third-party account identifiers.
 
 When credential health is `action_required`, stored provider credentials can be cleared through Disconnect. Disconnect removes the Synergy-managed stored credential entry but preserves the provider catalog, model catalog, and configuration; the provider remains visible and can be reconnected. Environment and plugin-supplied credentials are unaffected because they are not stored by Synergy and remain active.
 

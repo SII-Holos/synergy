@@ -19,7 +19,6 @@ import { PromptCachePolicy } from "@/provider/prompt-cache-policy"
 import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "@/observability/spans"
-import { ContextUsage } from "./context-usage"
 import type { LLMTurnMemory } from "./llm-memory"
 import { SessionRootVariant } from "./root-variant"
 
@@ -185,7 +184,6 @@ export namespace LLM {
     tools: Record<string, Tool>
     activeToolIDs?: string[]
     retries?: number
-    contextUsageProvenance?: ContextUsage.Provenance
     maxOutputTokens?: number
     memoryTurn?: LLMTurnMemory.Handle
     prepared?: PreparedTurn
@@ -265,9 +263,7 @@ export namespace LLM {
     ].join("\n")
   }
 
-  export type StreamOutput = StreamTextResult<ToolSet, unknown> & {
-    contextUsageDraft?: ContextUsage.Draft
-  }
+  export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function prepare(input: StreamInput): Promise<PreparedTurn> {
     const [{ Config }, { withPreambleSection }, { SystemPrompt }, { trigger }, { TimeoutConfig }] = await Promise.all([
@@ -452,16 +448,6 @@ export namespace LLM {
     const maxOutputTokens = Math.min(providerMaxOutputTokens, input.maxOutputTokens ?? providerMaxOutputTokens)
 
     const tools = input.tools
-    const contextUsageDraft = input.contextUsageProvenance
-      ? await ContextUsage.measureDraft({
-          modelID: input.model.id,
-          providerID: input.model.providerID,
-          limits: input.model.limit,
-          instructions: [...system, ...(input.lateSystem ?? [])],
-          provenance: input.contextUsageProvenance,
-        })
-      : undefined
-
     const llmSpan = ObservabilitySpans.start({
       name: "llm.stream.initialization",
       module: "llm",
@@ -547,7 +533,6 @@ export namespace LLM {
       })
       streamTextTimer.stop()
       ObservabilitySpans.end(llmSpan, { attributes: { provider: input.model.providerID, model: input.model.id } })
-      if (contextUsageDraft) Object.assign(result, { contextUsageDraft })
       return result as StreamOutput
     } catch (error) {
       streamTextTimer.stop()

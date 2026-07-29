@@ -4,12 +4,30 @@ import type { FeishuApiContext } from "./api-context"
 
 const log = Log.create({ service: "channel.feishu.message" })
 
+export const MAX_FEISHU_ATTACHMENT_BYTES = 25 * 1024 * 1024
+const MEDIA_DOWNLOAD_TIMEOUT_MS = 30_000
+
+export type QuotedMessage = {
+  messageId: string
+  messageType: string
+  content: string
+  text: string
+}
+
+export type DownloadedMedia = {
+  buffer: Uint8Array
+  contentType: string
+  fileName?: string
+  size: number
+}
+
 export function parseMessageContent(content: string, messageType: string): string {
   const placeholders: Record<string, string> = {
     merge_forward: "[Merged and Forwarded Message]",
     image: "[Image]",
     file: "[File]",
     audio: "[Audio]",
+    media: "[Video]",
     video: "[Video]",
     sticker: "[Sticker]",
   }
@@ -59,9 +77,7 @@ export function extractPostImageKeys(content: string): string[] {
       for (const element of paragraph) {
         if (!element || typeof element !== "object") continue
         const el = element as { tag?: string; image_key?: string }
-        if (el.tag === "img" && el.image_key) {
-          keys.push(el.image_key)
-        }
+        if (el.tag === "img" && el.image_key) keys.push(el.image_key)
       }
     }
     return keys
@@ -90,9 +106,7 @@ export function normalizeMentions(text: string, mentions: FeishuMention[]): stri
   if (mentions.length === 0) return text
 
   let result = text
-  for (const mention of mentions) {
-    result = result.split(mention.key).join(`@${mention.name}`)
-  }
+  for (const mention of mentions) result = result.split(mention.key).join(`@${mention.name}`)
   return result.trim()
 }
 
@@ -109,9 +123,10 @@ function parseMediaKeys(
         return { fileKey: parsed.file_key, fileName: parsed.file_name }
       case "audio":
       case "sticker":
-        return { fileKey: parsed.file_key }
+        return { fileKey: parsed.file_key, fileName: parsed.file_name }
+      case "media":
       case "video":
-        return { fileKey: parsed.file_key, imageKey: parsed.image_key }
+        return { fileKey: parsed.file_key, imageKey: parsed.image_key, fileName: parsed.file_name }
       default:
         return {}
     }
@@ -120,38 +135,44 @@ function parseMediaKeys(
   }
 }
 
-export async function fetchQuotedContent(ctx: FeishuApiContext, parentId: string): Promise<string | undefined> {
+export async function fetchQuotedMessage(ctx: FeishuApiContext, parentId: string): Promise<QuotedMessage | undefined> {
   try {
     const token = await ctx.getAccessToken()
     const response = await fetch(`${ctx.apiBase}/im/v1/messages/${parentId}`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(10_000),
     })
+    if (!response.ok) return undefined
 
     const result = (await response.json()) as {
       code?: number
-      data?: { items?: Array<{ msg_type?: string; body?: { content?: string } }> }
+      data?: {
+        items?: Array<{ message_id?: string; msg_type?: string; body?: { content?: string }; deleted?: boolean }>
+      }
     }
     if (result.code !== 0) return undefined
 
     const item = result.data?.items?.[0]
-    if (!item?.body?.content || !item.msg_type) return undefined
-
-    return parseMessageContent(item.body.content, item.msg_type)
+    if (item?.deleted || !item?.body?.content || !item.msg_type) return undefined
+    return {
+      messageId: item.message_id ?? parentId,
+      messageType: item.msg_type,
+      content: item.body.content,
+      text: parseMessageContent(item.body.content, item.msg_type),
+    }
   } catch (err) {
     log.warn("failed to fetch quoted message", { parentId, error: String(err) })
     return undefined
   }
 }
 
-const MEDIA_DOWNLOAD_TIMEOUT_MS = 30_000
-
 export async function downloadMessageMedia(params: {
   ctx: FeishuApiContext
   messageId: string
   messageType: string
   content: string
-}): Promise<{ buffer: Uint8Array; contentType: string; fileName?: string } | undefined> {
+  maxBytes?: number
+}): Promise<DownloadedMedia | undefined> {
   const keys = parseMediaKeys(params.content, params.messageType)
   const fileKey = keys.fileKey || keys.imageKey
   if (!fileKey) {
@@ -164,14 +185,6 @@ export async function downloadMessageMedia(params: {
   }
 
   const resourceType = params.messageType === "image" ? "image" : "file"
-
-  log.info("feishu media download start", {
-    messageId: params.messageId,
-    messageType: params.messageType,
-    fileKey,
-    resourceType,
-  })
-
   try {
     const token = await params.ctx.getAccessToken()
     const response = await fetch(
@@ -191,18 +204,16 @@ export async function downloadMessageMedia(params: {
       return undefined
     }
 
-    const buffer = new Uint8Array(await response.arrayBuffer())
-    if (buffer.length === 0) {
-      log.warn("feishu media download empty", {
-        messageId: params.messageId,
-        messageType: params.messageType,
-        fileKey,
-      })
-      return undefined
-    }
+    const maxBytes = params.maxBytes ?? MAX_FEISHU_ATTACHMENT_BYTES
+    const buffer = await readBoundedResponse(response, maxBytes)
+    if (!buffer || buffer.length === 0) return undefined
 
-    const contentType = response.headers.get("content-type") || inferContentType(params.messageType)
-    return { buffer, contentType, fileName: keys.fileName }
+    return {
+      buffer,
+      contentType: response.headers.get("content-type") || inferContentType(params.messageType),
+      fileName: keys.fileName,
+      size: buffer.length,
+    }
   } catch (err) {
     log.warn("failed to download message media", { messageId: params.messageId, fileKey, error: String(err) })
     return undefined
@@ -214,6 +225,7 @@ function inferContentType(messageType: string): string {
     image: "image/png",
     sticker: "image/png",
     audio: "audio/ogg",
+    media: "video/mp4",
     video: "video/mp4",
   }
   return types[messageType] ?? "application/octet-stream"
@@ -223,7 +235,8 @@ export async function downloadImageByKey(params: {
   ctx: FeishuApiContext
   messageId: string
   imageKey: string
-}): Promise<{ buffer: Uint8Array; contentType: string } | undefined> {
+  maxBytes?: number
+}): Promise<DownloadedMedia | undefined> {
   try {
     const token = await params.ctx.getAccessToken()
     const response = await fetch(
@@ -243,11 +256,13 @@ export async function downloadImageByKey(params: {
       return undefined
     }
 
-    const buffer = new Uint8Array(await response.arrayBuffer())
-    if (buffer.length === 0) return undefined
-
-    const contentType = response.headers.get("content-type") || "image/png"
-    return { buffer, contentType }
+    const buffer = await readBoundedResponse(response, params.maxBytes ?? MAX_FEISHU_ATTACHMENT_BYTES)
+    if (!buffer || buffer.length === 0) return undefined
+    return {
+      buffer,
+      contentType: response.headers.get("content-type") || "image/png",
+      size: buffer.length,
+    }
   } catch (err) {
     log.warn("failed to download image by key", {
       messageId: params.messageId,
@@ -256,4 +271,39 @@ export async function downloadImageByKey(params: {
     })
     return undefined
   }
+}
+
+async function readBoundedResponse(response: Response, maxBytes: number): Promise<Uint8Array | undefined> {
+  const declared = Number(response.headers.get("content-length"))
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => {})
+    return undefined
+  }
+  if (!response.body) return undefined
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    while (true) {
+      const item = await reader.read()
+      if (item.done) break
+      size += item.value.byteLength
+      if (size > maxBytes) {
+        await reader.cancel().catch(() => {})
+        return undefined
+      }
+      chunks.push(item.value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const joined = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    joined.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return joined
 }
