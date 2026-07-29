@@ -171,9 +171,11 @@ async function filterNewestFirst(messages: MessageV2.WithParts[]) {
 }
 
 async function runCompactionProcessCase(input: {
+  auto?: boolean
   error?: MessageV2.Assistant["error"]
   text?: string
   thrownError?: Error
+  variant?: string
 }) {
   await using tmp = await tmpdir({ git: true })
 
@@ -188,6 +190,7 @@ async function runCompactionProcessCase(input: {
   let initialIncludeInContext: boolean | undefined
   let initialVisible: boolean | undefined
   const attemptStates: Array<unknown> = []
+  let processUserVariant: string | undefined
 
   try {
     ;(Provider.getModel as any) = mock(async () => testModel())
@@ -211,7 +214,8 @@ async function runCompactionProcessCase(input: {
         message: processorInput.assistantMessage,
         partFromToolCall: () => undefined,
         trackExecution: () => {},
-        process: mock(async () => {
+        process: mock(async (processInput: SessionProcessor.ProcessInput) => {
+          processUserVariant = processInput.user.variant
           if (input.thrownError) throw input.thrownError
           if (input.text) {
             const now = Date.now()
@@ -244,6 +248,7 @@ async function runCompactionProcessCase(input: {
           agent: "synergy",
           model: { providerID: "test-provider", modelID: "test-model" },
           time: { created: Date.now() },
+          ...(input.variant ? { variant: input.variant } : {}),
         })
         await Session.updatePart({
           id: Identifier.ascending("part"),
@@ -257,7 +262,7 @@ async function runCompactionProcessCase(input: {
           messageID: user.id,
           sessionID: session.id,
           type: "compaction",
-          auto: false,
+          auto: input.auto ?? false,
         })
 
         const before = await Session.messages({ sessionID: session.id })
@@ -269,7 +274,7 @@ async function runCompactionProcessCase(input: {
             messages: before,
             sessionID: session.id,
             abort: new AbortController().signal,
-            auto: false,
+            auto: input.auto ?? false,
           })
         } catch (error) {
           thrown = error
@@ -283,7 +288,17 @@ async function runCompactionProcessCase(input: {
         const root = after.find((message) => message.info.id === user.id)
         if (!root) throw new Error("compaction root was not persisted")
 
-        return { result, thrown, attempt, root, initialSummary, initialIncludeInContext, initialVisible, attemptStates }
+        return {
+          result,
+          thrown,
+          attempt,
+          root,
+          initialSummary,
+          initialIncludeInContext,
+          initialVisible,
+          processUserVariant,
+          attemptStates,
+        }
       },
     })
   } finally {
@@ -989,6 +1004,17 @@ describe.serial("SessionInvoke preflight compaction", () => {
       sourceMessageID: realUser.info.id,
     })
   })
+  test("isolates auto-compaction from the task root variant", async () => {
+    const observed = await runCompactionProcessCase({
+      auto: true,
+      text: "## Goal\n\nContinue the implementation.",
+      variant: "high",
+    })
+
+    expect(observed.root.info.role === "user" && observed.root.info.variant).toBe("high")
+    expect(observed.processUserVariant).toBeUndefined()
+  })
+
   test("keeps provider failures as uncommitted compaction attempts", async () => {
     const apiKey = ["s", "k-test-secret-12345678"].join("")
     const responseApiKey = ["s", "k-body-secret-12345678"].join("")

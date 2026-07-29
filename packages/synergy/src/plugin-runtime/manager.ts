@@ -504,20 +504,20 @@ export class PluginRuntimeManager {
   }
 
   #logger(pluginId: string) {
-    const append = (level: string, message: string) =>
-      this.logs.append(pluginId, { timestamp: Date.now(), level, message })
+    const append = (level: string, message: string, details?: Record<string, unknown>) =>
+      this.logs.append(pluginId, { timestamp: Date.now(), level, message, details })
     return {
-      debug: (message: string) => {
-        append("debug", message)
+      debug: (message: string, details?: Record<string, unknown>) => {
+        append("debug", message, details)
       },
-      info: (message: string) => {
-        append("info", message)
+      info: (message: string, details?: Record<string, unknown>) => {
+        append("info", message, details)
       },
-      warn: (message: string) => {
-        append("warn", message)
+      warn: (message: string, details?: Record<string, unknown>) => {
+        append("warn", message, details)
       },
-      error: (message: string) => {
-        append("error", message)
+      error: (message: string, details?: Record<string, unknown>) => {
+        append("error", message, details)
       },
     }
   }

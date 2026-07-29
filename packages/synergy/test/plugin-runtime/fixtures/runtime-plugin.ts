@@ -39,6 +39,35 @@ export default definePlugin({
       },
     }),
     operation({
+      id: "log.details",
+      type: "command",
+      input: z.object({}),
+      output: z.object({ logged: z.boolean() }),
+      handler: async (_input, context) => {
+        context.log.error("fixture failure", { code: "FIXTURE_ERROR", reason: "expected failure" })
+        return { logged: true }
+      },
+    }),
+    operation({
+      id: "log.message",
+      type: "command",
+      input: z.object({}),
+      output: z.object({ logged: z.boolean() }),
+      handler: async (_input, context) => {
+        context.log.info("fixture message")
+        return { logged: true }
+      },
+    }),
+    operation({
+      id: "runtime.error",
+      type: "command",
+      input: z.object({}),
+      output: z.never(),
+      handler: async () => {
+        throw Object.assign(new Error("fixture runtime failure"), { code: "FIXTURE_RUNTIME_ERROR" })
+      },
+    }),
+    operation({
       id: "runtime.crash",
       type: "command",
       input: z.object({}),
