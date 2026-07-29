@@ -60,16 +60,6 @@ import {
   type PlanBlueprintOfferState,
 } from "./plan-blueprint-offer"
 import {
-  browserRollbackDialogStorage,
-  emptyRollbackDialogPresentationState,
-  isEmptyRollbackDialogPresentationState,
-  removePersistedRollbackDialogSeenKey,
-  reduceRollbackDialogPresentationState,
-  type RollbackDialogPresentationEvent,
-  type RollbackDialogPresentationState,
-  writePersistedRollbackDialogSeenKey,
-} from "./rollback-dialog"
-import {
   createSessionContextProjectionRevision,
   invalidateLatestSessionContextUsageMessage,
   reduceLatestSessionContextUsageMessage,
@@ -149,9 +139,6 @@ type State = {
   planBlueprintOffer: {
     [sessionID: string]: PlanBlueprintOfferState
   }
-  rollbackDialogPresentation: {
-    [sessionID: string]: RollbackDialogPresentationState
-  }
   inbox: {
     [sessionID: string]: SessionInboxItem[]
   }
@@ -203,42 +190,6 @@ export function updatePlanBlueprintOfferState(
 ) {
   const current = store.planBlueprintOffer[sessionID] ?? emptyPlanBlueprintOfferState
   setPlanBlueprintOfferState(store, setStore, sessionID, reducePlanBlueprintOfferState(current, event))
-}
-
-function setRollbackDialogPresentationState(
-  store: State,
-  setStore: SetStoreFunction<State>,
-  sessionID: string,
-  state: RollbackDialogPresentationState,
-) {
-  if (isEmptyRollbackDialogPresentationState(state)) {
-    if (!store.rollbackDialogPresentation[sessionID]) return
-    setStore(
-      "rollbackDialogPresentation",
-      produce((draft) => {
-        delete draft[sessionID]
-      }),
-    )
-    return
-  }
-
-  setStore("rollbackDialogPresentation", sessionID, reconcile(state))
-}
-
-export function updateRollbackDialogPresentationState(
-  store: State,
-  setStore: SetStoreFunction<State>,
-  sessionID: string,
-  event: RollbackDialogPresentationEvent,
-) {
-  const current = store.rollbackDialogPresentation[sessionID] ?? emptyRollbackDialogPresentationState
-  setRollbackDialogPresentationState(store, setStore, sessionID, reduceRollbackDialogPresentationState(current, event))
-  const storage = browserRollbackDialogStorage()
-  if (event.type === "presented") {
-    writePersistedRollbackDialogSeenKey(storage, sessionID, event.key)
-    return
-  }
-  removePersistedRollbackDialogSeenKey(storage, sessionID)
 }
 
 function capturePlanBlueprintOfferFromPart(store: State, setStore: SetStoreFunction<State>, part: Part) {
@@ -488,7 +439,6 @@ function createGlobalSync() {
         permission: {},
         question: {},
         planBlueprintOffer: {},
-        rollbackDialogPresentation: {},
         inbox: {},
         mcp: {},
         lsp: [],
@@ -1269,7 +1219,6 @@ function createGlobalSync() {
             setStore("sessionTotal", Math.max(0, store.sessionTotal - 1))
           }
           updatePlanBlueprintOfferState(store, setStore, info.id, { type: "session_removed" })
-          updateRollbackDialogPresentationState(store, setStore, info.id, { type: "session_removed" })
           break
         }
         if (index !== -1) {

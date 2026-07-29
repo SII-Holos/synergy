@@ -307,6 +307,197 @@ describe("session rollback history", () => {
   })
 })
 
+describe("rollback acknowledgment", () => {
+  test("acknowledge current rollback persists rollbackAck and survives history re-derivation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+
+        const rollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+
+        const result = await Session.acknowledgeRollback(session.id, rollback.id)
+        expect(result.rollbackID).toBe(rollback.id)
+        expect(typeof result.acknowledgedAt).toBe("number")
+
+        const info = await Session.get(session.id)
+        expect(info.rollbackAck?.rollbackID).toBe(rollback.id)
+        expect(info.rollbackAck?.acknowledgedAt).toBe(result.acknowledgedAt)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("repeated ack of same current rollback preserves original acknowledgedAt", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+
+        const rollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+
+        const first = await Session.acknowledgeRollback(session.id, rollback.id)
+        const second = await Session.acknowledgeRollback(session.id, rollback.id)
+
+        expect(second.acknowledgedAt).toBe(first.acknowledgedAt)
+        expect(second.rollbackID).toBe(first.rollbackID)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("concurrent session metadata update preserves rollback acknowledgment", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        const rollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+
+        let acknowledgment: Promise<Session.RollbackAck> | undefined
+        await Session.update(session.id, (draft) => {
+          draft.title = "Updated title"
+          acknowledgment = Session.acknowledgeRollback(session.id, rollback.id)
+        })
+        await acknowledgment
+
+        const info = await Session.get(session.id)
+        expect(info.title).toBe("Updated title")
+        expect(info.rollbackAck?.rollbackID).toBe(rollback.id)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("acknowledgeRollback rejects when no rollback is active", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+
+        let error: unknown
+        try {
+          await Session.acknowledgeRollback(session.id, Identifier.ascending("history"))
+        } catch (err) {
+          error = err
+        }
+        expect(error).toBeDefined()
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("acknowledgeRollback rejects a stale rollback ID when a newer rollback is active", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+        await writeTurn(session.id, tmp.path, "third", "three")
+
+        const firstRollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 2,
+        })) as SessionHistory.RollbackEvent
+
+        // Undo first rollback so it's no longer active
+        await Session.unrollback({ sessionID: session.id })
+        // Perform a second rollback (the active one)
+        const secondRollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+
+        // Acknowledge current (second) rollback should succeed
+        const result = await Session.acknowledgeRollback(session.id, secondRollback.id)
+        expect(result.rollbackID).toBe(secondRollback.id)
+
+        // Acknowledging stale (first, unrolled) rollback should reject
+        let error: unknown
+        try {
+          await Session.acknowledgeRollback(session.id, firstRollback.id)
+        } catch (err) {
+          error = err
+        }
+        expect(error).toBeDefined()
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("new rollback after ack leaves old ack mismatched so a new ack is eligible", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+        await writeTurn(session.id, tmp.path, "third", "three")
+
+        const firstRollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+
+        // Ack the first rollback
+        const firstAck = await Session.acknowledgeRollback(session.id, firstRollback.id)
+        expect(firstAck.rollbackID).toBe(firstRollback.id)
+
+        // Unrollback and do a new, different rollback
+        await Session.unrollback({ sessionID: session.id })
+        const secondRollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 2,
+        })) as SessionHistory.RollbackEvent
+
+        // Old ack no longer matches current rollback
+        const info = await Session.get(session.id)
+        expect(info.rollbackAck?.rollbackID).toBe(firstRollback.id)
+        expect(info.rollbackAck?.rollbackID).not.toBe(secondRollback.id)
+
+        // Acknowledge new rollback should succeed with a different ID
+        const secondAck = await Session.acknowledgeRollback(session.id, secondRollback.id)
+        expect(secondAck.rollbackID).toBe(secondRollback.id)
+
+        const updatedInfo = await Session.get(session.id)
+        expect(updatedInfo.rollbackAck?.rollbackID).toBe(secondRollback.id)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+})
+
 async function writeTurn(sessionID: string, cwd: string, userText: string, assistantText: string) {
   const user = await writeUser(sessionID, userText)
   const assistant = await writeAssistant(sessionID, cwd, user.info.id, assistantText)

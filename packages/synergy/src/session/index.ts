@@ -4,6 +4,7 @@ import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Identifier } from "../id/id"
 import { Installation } from "../global/installation"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
 
 import { Bus } from "../bus"
 import { Storage } from "../storage/storage"
@@ -28,9 +29,10 @@ import { SessionInteraction } from "./interaction"
 import { SessionManager } from "./manager"
 import { SessionMessageCache } from "./message-cache"
 import { SessionEvent } from "./event"
-import { Info as InfoSchema, StatusInfo as StatusInfoSchema } from "./types"
+import { Info as InfoSchema, RollbackAck as RollbackAckSchema, StatusInfo as StatusInfoSchema } from "./types"
 import type {
   Info as InfoType,
+  RollbackAck as RollbackAckType,
   StatusInfo as StatusInfoType,
   WorkingInfo as WorkingInfoType,
   CortexDelegationInfo as CortexDelegationInfoType,
@@ -44,6 +46,17 @@ import * as SessionWorking from "./working"
 export namespace Session {
   export const Info = InfoSchema
   export const StatusInfo = StatusInfoSchema
+  export const RollbackAck = RollbackAckSchema
+  export type RollbackAck = RollbackAckType
+
+  export const RollbackAckConflictError = NamedError.create(
+    "SessionRollbackAckConflictError",
+    z.object({
+      message: z.string(),
+      rollbackID: Identifier.schema("history"),
+      currentRollbackID: Identifier.schema("history").optional(),
+    }),
+  )
   export type Info = InfoType
   export type StatusInfo = StatusInfoType
 
@@ -642,6 +655,42 @@ export namespace Session {
       if (completionNoticeMutations.get(id) === settled) completionNoticeMutations.delete(id)
     })
     return current
+  }
+
+  export async function acknowledgeRollback(id: string, rollbackID: string): Promise<RollbackAck> {
+    const session = await SessionManager.requireSession(id)
+    const scope = session.scope as Scope
+    const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
+    let conflict: { rollbackID: string; currentRollbackID?: string } | undefined
+    let changed = false
+    const result = await Storage.update<Info>(key, (draft) => {
+      const currentRollbackID = draft.history?.rollback?.id
+      if (currentRollbackID !== rollbackID) {
+        conflict = { rollbackID, currentRollbackID }
+        return
+      }
+      if (draft.rollbackAck?.rollbackID === rollbackID) return
+      draft.rollbackAck = { rollbackID, acknowledgedAt: Date.now() }
+      changed = true
+    })
+    if (conflict) {
+      throw new RollbackAckConflictError({
+        message: conflict.currentRollbackID
+          ? "Only the current rollback can be acknowledged."
+          : "No active rollback can be acknowledged.",
+        rollbackID: conflict.rollbackID,
+        currentRollbackID: conflict.currentRollbackID,
+      })
+    }
+    const rollbackAck = result.rollbackAck
+    if (!rollbackAck) {
+      throw new RollbackAckConflictError({
+        message: "No active rollback can be acknowledged.",
+        rollbackID,
+      })
+    }
+    if (changed) await publishInfo(SessionEvent.Updated, result)
+    return rollbackAck
   }
 
   async function acknowledgeCompletionNoticeResult(

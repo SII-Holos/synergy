@@ -7657,6 +7657,102 @@
         ]
       }
     },
+    "/session/{sessionID}/rollback/ack": {
+      "post": {
+        "operationId": "session.rollbackAck",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Acknowledge rollback feedback",
+        "description": "Persist that the current rollback feedback has been presented to a client.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRollbackAckInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Persisted rollback acknowledgment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rollbackAck": {
+                      "$ref": "#/components/schemas/SessionRollbackAck"
+                    }
+                  },
+                  "required": ["rollbackAck"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rollback acknowledgment conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRollbackAckConflictError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.rollbackAck({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/unrollback": {
       "post": {
         "operationId": "session.unrollback",
@@ -29505,6 +29601,19 @@
           }
         }
       },
+      "SessionRollbackAck": {
+        "type": "object",
+        "properties": {
+          "rollbackID": {
+            "type": "string",
+            "pattern": "^hst.*"
+          },
+          "acknowledgedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["rollbackID", "acknowledgedAt"]
+      },
       "SessionCortexDelegation": {
         "type": "object",
         "properties": {
@@ -30154,6 +30263,9 @@
           },
           "history": {
             "$ref": "#/components/schemas/SessionHistoryInfo"
+          },
+          "rollbackAck": {
+            "$ref": "#/components/schemas/SessionRollbackAck"
           },
           "cortex": {
             "$ref": "#/components/schemas/SessionCortexDelegation"
@@ -34235,6 +34347,43 @@
           "files",
           "patchPartIDs"
         ]
+      },
+      "SessionRollbackAckConflictError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionRollbackAckConflictError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "rollbackID": {
+                "type": "string",
+                "pattern": "^hst.*"
+              },
+              "currentRollbackID": {
+                "type": "string",
+                "pattern": "^hst.*"
+              }
+            },
+            "required": ["message", "rollbackID"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SessionRollbackAckInput": {
+        "type": "object",
+        "properties": {
+          "rollbackID": {
+            "type": "string",
+            "pattern": "^hst.*"
+          }
+        },
+        "required": ["rollbackID"]
       },
       "SessionUnrollbackEvent": {
         "type": "object",

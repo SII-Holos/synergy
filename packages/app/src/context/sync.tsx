@@ -6,11 +6,7 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
-import {
-  refreshPlanBlueprintOfferFromLoadedParts,
-  updatePlanBlueprintOfferState,
-  updateRollbackDialogPresentationState,
-} from "./global-sync"
+import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
 import {
@@ -24,7 +20,6 @@ import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
 import { findSessionByID, findSessionIndex } from "./session-collection"
-import { browserRollbackDialogStorage, readPersistedRollbackDialogSeenKey } from "./rollback-dialog"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean; trigger?: SessionSyncTrigger }
@@ -353,14 +348,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
       },
       rollbackDialog: {
-        seenKey(sessionID: string) {
-          return (
-            store.rollbackDialogPresentation[sessionID]?.seenKey ??
-            readPersistedRollbackDialogSeenKey(browserRollbackDialogStorage(), sessionID)
+        async markPresented(sessionID: string, rollbackID: string) {
+          await retry(() =>
+            sdk.client.session.rollbackAck(
+              { sessionID, sessionRollbackAckInput: { rollbackID } },
+              { throwOnError: true },
+            ),
           )
-        },
-        markPresented(sessionID: string, key: string) {
-          updateRollbackDialogPresentationState(store, setStore, sessionID, { type: "presented", key })
         },
       },
       session: {
