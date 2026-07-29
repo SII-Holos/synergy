@@ -7,6 +7,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useData } from "@ericsanchezok/synergy-ui/context"
+import { useWorkbenchPanels } from "@/context/workbench"
 
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
@@ -941,12 +942,15 @@ function ScopeSection(props: {
   )
 }
 
+const NOTES_LIST_RESOURCE = "notes:list"
+
 export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const params = useParams()
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
   const lingui = useLingui()
+  const workbench = useWorkbenchPanels()
 
   const [view, setView] = createSignal<"list" | "editor">("list")
   const [selectedNoteId, setSelectedNoteId] = createSignal<string | null>(null)
@@ -1235,13 +1239,19 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     setSelectedNoteId(id)
     setSelectedNoteDir(dir)
     setView("editor")
+    if (props.tab) workbench.updateTab(props.tab.id, { resourceId: id, source: dir })
+  }
+
+  function showNoteList() {
+    setView("list")
+    if (props.tab) workbench.updateTab(props.tab.id, { resourceId: NOTES_LIST_RESOURCE })
   }
 
   createEffect(
     on(
       () => [props.tab?.resourceId, props.tab?.source] as const,
       ([id, source]) => {
-        if (!id) return
+        if (!id || id === NOTES_LIST_RESOURCE) return
         openNote(id, source || directory() || HOME_SCOPE_KEY)
       },
     ),
@@ -1590,12 +1600,8 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         <NoteEditor
           id={selectedNoteId()!}
           directory={selectedNoteDir() ?? directory() ?? "home"}
-          onBack={() => {
-            setView("list")
-          }}
-          onDelete={() => {
-            setView("list")
-          }}
+          onBack={showNoteList}
+          onDelete={showNoteList}
           loops={loopsByNote().get(selectedNoteId()!) ?? []}
         />
       </Show>
