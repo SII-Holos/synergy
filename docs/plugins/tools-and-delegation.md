@@ -55,11 +55,11 @@ Synergy also emits generic `plugin.task.started`, `plugin.task.queued`, `plugin.
 
 A non-agent handler may call `start()` only when it supplies an explicit parent Session/message in the active Scope. This supports hook-driven continuations and trusted plugin UI commands using a previously bound control Session. Agent tool handlers may omit `parent`; the current invocation supplies it.
 
-The capability constrains allowed subagents and maximum runtime. Targets use Synergy's existing Agent registry and Cortex:
+The capability constrains allowed subagents and maximum runtime. Targets use Synergy's existing Agent registry and Cortex. An Agent contribution's `id` identifies its manifest declaration only; `agent.name` is the public registry lookup key used by `Agent.get(name)`, delegation inputs, and `context.agent.call({ agent })`. Callers pass the public `agent.name`, not the contribution `id`.
 
 - A plugin-contributed Agent may be `hidden: true`. It stays out of every primary Agent prompt and cannot be selected through the native `task` tool. The owner plugin may start it through `context.task` only when the resolved Agent belongs to the same plugin ID and generation and the capability allowlist includes it.
 - A target not contributed by the plugin follows ordinary Synergy delegation visibility. This permits an approved public Agent such as `explore`, but not a hidden built-in Agent or another plugin's private Agent.
-- A contribution name collision or stale generation is rejected. The Host never falls through to a different registered Agent under the same name.
+- Agent name collisions fail closed. Built-in and configured Agents take priority. Plugin contributions follow stable discovery order: the first contribution for a public `agent.name` wins, and later contributions with the same name are skipped without replacing the registered Agent.
 
 After target authorization, the normal control profile, permission policy, Scope ownership, cancellation, task ownership, Session loop, and Cortex lifecycle apply. A plugin must not implement a second Agent registry or task runner.
 
@@ -163,7 +163,7 @@ const current = await context.lightloop.get(loop.sessionID)
 const cancelled = await context.lightloop.cancel(loop.sessionID)
 ```
 
-`start()` atomically creates a dedicated execution Session, records the plugin owner and instructions in its LightLoop workflow, delivers the first prompt, and returns a `LightLoopInfo` snapshot. The execution and review agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. Optional `model`, `executionTools`, and `reviewTools` fields select the execution model and role-specific tool visibility. `reviewTools` is persisted by the Host and applied only when the delayed reviewer Session launches.
+`start()` atomically creates a dedicated execution Session, records the plugin owner and instructions in its LightLoop workflow, delivers the first prompt, and returns a `LightLoopInfo` snapshot. The execution and review agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. Agent fields and capability allowlists use public `agent.name` values, not Agent contribution IDs. Optional `model`, `executionTools`, and `reviewTools` fields select the execution model and role-specific tool visibility. `reviewTools` is persisted by the Host and applied only when the delayed reviewer Session launches.
 
 Tool maps are visibility toggles, not capability grants. They do not override agent or Session permissions, and unspecified tools keep their normal visibility unless the caller uses explicit wildcard semantics.
 
