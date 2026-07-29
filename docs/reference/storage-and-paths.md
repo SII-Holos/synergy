@@ -38,6 +38,7 @@ data/sessions/<scope>/<session>/
 data/session_message_order_v1/<scope>/<session>/
 data/endpoint_session/
 data/permissions/
+data/channel/response_cards/<channel-type>/<account-id>/<request-id>.json
 data/permission-rules.json
 data/notes/<scope>/
 data/agenda/items/<scope>/
@@ -59,6 +60,8 @@ data/github/poll-state/
 ```
 
 GitHub integration deliveries, CI failure state, runtime anchors, and per-repository poll state live under `data/github/`. Each delivery is keyed by its synthetic delivery GUID. Poll state files use URI-encoded repository names.
+
+Channel response-card registrations live under `data/channel/response_cards/`. Each provider-neutral record is keyed by channel type, account, and response-card tool-part ID. A pending record is written before the provider side effect and becomes active only after the provider returns a sent message ID. Both states retain the original chat, requester, session, card contract, and a 14-day expiry. An active registration additionally binds the provider message ID used to validate callbacks. A surviving pending record blocks resend until its expiry. Expired and malformed registrations are pruned at global runtime startup.
 
 Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
 

@@ -32,6 +32,31 @@ describe("SessionModePolicy Plan visibility", () => {
   })
 })
 
+describe("SessionModePolicy Channel visibility", () => {
+  test("exposes response_card only to Channel sessions", () => {
+    const diagnostic = SessionModePolicy.visibility({ toolName: "response_card", session: {} })
+    expect(diagnostic).toMatchObject({
+      code: "tool_unavailable",
+      toolName: "response_card",
+      metadata: { requiredEndpoint: "channel" },
+    })
+    expect(diagnostic?.message).toContain("only available in Channel sessions")
+
+    expect(
+      SessionModePolicy.visibility({
+        toolName: "response_card",
+        session: {
+          endpoint: {
+            kind: "channel",
+            channel: { type: "feishu", accountId: "account_test", chatId: "chat_test" },
+          },
+        } as any,
+      }),
+    ).toBeUndefined()
+    expect(SessionModePolicy.visibility({ toolName: "read", session: {} })).toBeUndefined()
+  })
+})
+
 describe("SessionModePolicy Plan bash calls", () => {
   test("does not add a Plan-only bash restriction", async () => {
     await expect(bashDiagnostic('rg "ToolResolver" packages/synergy/src')).resolves.toBeUndefined()

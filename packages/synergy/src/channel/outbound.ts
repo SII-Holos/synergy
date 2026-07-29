@@ -6,6 +6,8 @@ import { SessionManager } from "@/session/manager"
 import { SessionProgress } from "@/session/progress"
 import { Session } from "@/session"
 import { Channel } from "."
+import { loadChannelTaskMessages, projectChannelTaskParts } from "./outbound-parts"
+import { ResponseCardRuntime } from "./response-card"
 
 const log = Log.create({ service: "channel.outbound" })
 
@@ -65,22 +67,44 @@ export namespace ChannelOutbound {
         return
       }
 
-      const text = MessageV2.extractText(current.parts, { includeSynthetic: false })
-      if (!text) return
+      const rootID = currentAssistant.rootID ?? currentAssistant.parentID
+      const messages = await loadChannelTaskMessages({
+        sessionID: msg.sessionID,
+        rootID,
+        terminal: current,
+      })
+      const parts = await projectChannelTaskParts({
+        messages,
+        rootID,
+        terminalMessageID: currentAssistant.id,
+        includeText: true,
+      })
 
       try {
-        if (replyRequired && replyToMessageId) {
-          await provider.replyMessage({
-            accountId: channelInfo.accountId,
-            messageId: replyToMessageId,
-            parts: [{ type: "text", text }],
-          })
-        } else {
-          await provider.pushMessage({
-            accountId: channelInfo.accountId,
-            chatId: channelInfo.chatId,
-            parts: [{ type: "text", text }],
-          })
+        const cardsHandled = await ResponseCardRuntime.deliverTaskCards({
+          provider,
+          accountId: channelInfo.accountId,
+          chatId: channelInfo.chatId,
+          replyToMessageId,
+          sessionID: msg.sessionID,
+          terminal: current,
+          messages,
+        })
+        if (parts.length === 0 && !cardsHandled) return
+        if (parts.length > 0) {
+          if (replyRequired && replyToMessageId) {
+            await provider.replyMessage({
+              accountId: channelInfo.accountId,
+              messageId: replyToMessageId,
+              parts,
+            })
+          } else {
+            await provider.pushMessage({
+              accountId: channelInfo.accountId,
+              chatId: channelInfo.chatId,
+              parts,
+            })
+          }
         }
 
         await Session.mergeMessageMetadata({

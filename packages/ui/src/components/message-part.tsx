@@ -721,6 +721,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["attach"],
         subtitle: input.filename || input.file_path,
       }
+    case "response_card":
+      return {
+        icon: "message-square-more",
+        title: TOOL_TITLE_DESC["response_card"],
+        subtitle: input.title,
+      }
     case "openai_image_gen":
       return {
         icon: "image",
