@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { BlueprintLoopService, BlueprintLoopStore } from "../../src/blueprint"
 import { Identifier } from "../../src/id/id"
+import { LatticeMachine } from "../../src/lattice/machine"
+import { LatticeRunService } from "../../src/lattice/run-service"
 import { LatticeStore } from "../../src/lattice/store"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
@@ -230,6 +232,63 @@ describe("SessionWorkflowService", () => {
       expect(second.workflow?.kind).toBe("lattice")
       if (second.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
       expect(second.workflow.runID).not.toBe(first.workflow.runID)
+    })
+  })
+  test("preserves an existing active run when workflow projection fails", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const enabled = await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      if (enabled.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+      const update = spyOn(Session, "update").mockRejectedValueOnce(new Error("projection failed"))
+
+      try {
+        await expect(
+          SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" }),
+        ).rejects.toThrow("projection failed")
+      } finally {
+        update.mockRestore()
+      }
+
+      const current = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
+      expect(current).toMatchObject({ id: enabled.workflow.runID, status: "active", mode: "collaborative" })
+
+      const retried = await SessionWorkflowService.enableLattice(session.id, {
+        kind: "lattice",
+        mode: "collaborative",
+      })
+      expect(retried.workflow).toEqual({ kind: "lattice", runID: current.id, mode: "collaborative" })
+    })
+  })
+
+  test("retries after replacement workflow projection fails", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const first = await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      if (first.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+      const scopeID = ScopeContext.current.scope.id
+      await LatticeStore.updateByRunID(scopeID, first.workflow.runID, (draft) =>
+        LatticeMachine.pause(draft, "user_exit"),
+      )
+      const update = spyOn(Session, "update").mockRejectedValueOnce(new Error("projection failed"))
+
+      try {
+        await expect(
+          SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" }),
+        ).rejects.toThrow("projection failed")
+      } finally {
+        update.mockRestore()
+      }
+
+      const retry = await SessionWorkflowService.enableLattice(session.id, {
+        kind: "lattice",
+        mode: "collaborative",
+      })
+      if (retry.workflow?.kind !== "lattice") throw new Error("expected lattice workflow")
+      const current = await LatticeStore.get(scopeID, session.id)
+
+      expect(current).toMatchObject({ id: retry.workflow.runID, status: "active", mode: "collaborative" })
+      expect(current.id).not.toBe(first.workflow.runID)
+      await expect(LatticeRunService.resume(first.workflow.runID)).rejects.toThrow()
     })
   })
 })

@@ -26,6 +26,11 @@ export namespace LatticeRunService {
     goal?: string
   }
 
+  export type EnableOutcome = {
+    run: LatticeTypes.Run
+    created: boolean
+  }
+
   type DirectReason = "enable" | "resume" | "action" | "note_change"
 
   async function reconcileDirect(scopeID: string, sessionID: string, reason: DirectReason): Promise<void> {
@@ -307,16 +312,22 @@ export namespace LatticeRunService {
   }
 
   export async function enable(input: EnableInput): Promise<LatticeTypes.Run> {
+    return (await enableForProjection(input)).run
+  }
+
+  /** @internal Reports whether this call created the Run that needs projection. */
+  export async function enableForProjection(input: EnableInput): Promise<EnableOutcome> {
     const scopeID = ScopeContext.current.scope.id
     const session = await currentScopeSession(input.sessionID)
     using _ = await LatticeLock.write(scopeID, input.sessionID)
     let existing = await LatticeStore.getOrUndefined(scopeID, input.sessionID)
 
     if (existing?.status === "active") {
-      return LatticeStore.updateByRunID(scopeID, existing.id, (draft) => {
+      const run = await LatticeStore.updateByRunID(scopeID, existing.id, (draft) => {
         draft.mode = input.mode
         if (input.maxModelCalls !== undefined) draft.maxModelCalls = input.maxModelCalls
       })
+      return { run, created: false }
     }
 
     if (existing?.status === "paused") {
@@ -336,19 +347,14 @@ export namespace LatticeRunService {
     if (existing && LatticeTypes.isTerminalRun(existing.status)) {
       LatticeModelCalls.clear(input.sessionID)
     }
-    let run = await LatticeStore.create({
+    const run = await LatticeStore.create({
       sessionID: input.sessionID,
       mode: input.mode,
       maxModelCalls: input.maxModelCalls,
       goal: input.goal,
+      promptOnCreate: Boolean(input.goal?.trim()),
     })
-
-    if (input.goal?.trim()) {
-      run = await LatticeStore.updateByRunID(scopeID, run.id, (draft) =>
-        LatticeMachine.setPromptEffect(draft, { promptType: "state_entry" }),
-      )
-    }
-    return run
+    return { run, created: true }
   }
 
   async function pauseRunUnderLock(scopeID: string, run: LatticeTypes.Run, reason: string): Promise<LatticeTypes.Run> {
@@ -394,7 +400,7 @@ export namespace LatticeRunService {
     return (
       run.state === "clarifying" &&
       run.pathwayRevision === 0 &&
-      run.modelCallCount === 0 &&
+      run.modelCallCount + LatticeModelCalls.peek(run.sessionID) === 0 &&
       run.pathway.length === 0 &&
       run.currentStepID === undefined &&
       run.pendingAction === undefined &&
@@ -422,6 +428,19 @@ export namespace LatticeRunService {
     if (!run || LatticeTypes.isTerminalRun(run.status)) return run
     if (isPristineRun(run)) return cancelRunUnderLock(scopeID, run)
     return pauseRunUnderLock(scopeID, run, "user_exit")
+  }
+
+  /** Cancel only the exact current pristine Run whose workflow projection failed. */
+  export async function cancelUnprojected(runID: string): Promise<LatticeTypes.Run | undefined> {
+    const scopeID = ScopeContext.current.scope.id
+    const snapshot = await LatticeStore.getByRunID(scopeID, runID)
+    if (!snapshot) return undefined
+    using _ = await LatticeLock.write(scopeID, snapshot.sessionID)
+    const current = await LatticeStore.getOrUndefined(scopeID, snapshot.sessionID)
+    if (current?.id !== runID) return undefined
+    const run = await LatticeStore.getByRunID(scopeID, runID)
+    if (!run || run.status !== "active" || !isPristineRun(run)) return undefined
+    return cancelRunUnderLock(scopeID, run)
   }
 
   function actionMatchesState(action: LatticeTypes.PendingAction, state: LatticeTypes.State): boolean {

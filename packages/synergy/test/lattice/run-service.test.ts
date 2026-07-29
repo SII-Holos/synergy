@@ -206,6 +206,40 @@ describe("LatticeRunService v2", () => {
     })
   })
 
+  test("disable preserves a run with an unflushed model call", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const run = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
+      LatticeModelCalls.record(session.id)
+
+      const disabled = await LatticeRunService.disable(session.id)
+
+      expect(disabled).toMatchObject({
+        id: run.id,
+        status: "paused",
+        statusReason: "user_exit",
+        modelCallCount: 1,
+      })
+    })
+  })
+
+  test("enable requires resume when a paused run has an unflushed model call", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const run = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
+      await LatticeStore.updateByRunID(run.scopeID, run.id, (draft) => LatticeMachine.pause(draft, "user_exit"))
+      LatticeModelCalls.record(session.id)
+
+      await expect(LatticeRunService.enable({ sessionID: session.id, mode: "collaborative" })).rejects.toMatchObject({
+        data: { reason: expect.stringContaining("explicit resume") },
+      })
+      expect(await LatticeStore.getByRunID(run.scopeID, run.id)).toMatchObject({
+        status: "paused",
+        modelCallCount: 0,
+      })
+    })
+  })
+
   test("a pristine paused run self-heals on enable and creates a replacement", async () => {
     await withScope(async () => {
       const session = await Session.create({})
@@ -246,6 +280,29 @@ describe("LatticeRunService v2", () => {
       })
       expect(persisted.effect?.kind).toBe("deliver_prompt")
       expect(await SessionInbox.list(directSession.id)).toEqual([])
+
+      const crashSession = await Session.create({})
+      const scopeID = ScopeContext.current.scope.id
+      const pointerPath = StoragePath.latticeCurrent(Identifier.asScopeID(scopeID), crashSession.id)
+      const write = Storage.write
+      const pointerWrite = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+        if (key.join("/") === pointerPath.join("/")) throw new Error("pointer write failed")
+        return write(key, content, options)
+      })
+      try {
+        await expect(
+          LatticeRunService.enable({ sessionID: crashSession.id, mode: "auto", goal: "Crash-safe seed" }),
+        ).rejects.toThrow("pointer write failed")
+      } finally {
+        pointerWrite.mockRestore()
+      }
+      expect(await LatticeStore.listBySession(scopeID, crashSession.id)).toMatchObject([
+        {
+          revision: 0,
+          goalSeed: "Crash-safe seed",
+          effect: { kind: "deliver_prompt", promptType: "state_entry" },
+        },
+      ])
 
       const session = await Session.create({})
       const projected = await SessionWorkflowService.enableLattice(session.id, {
