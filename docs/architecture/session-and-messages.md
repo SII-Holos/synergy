@@ -342,7 +342,7 @@ Typical mappings:
 - passive information intended for the next natural model call uses `context`;
 - assistant-role cross-session delivery materializes immediately against the latest root.
 
-Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
+Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. After that durable write, acceptance makes a best-effort attempt to advance the session's navigation activity so an existing session returns to the top of recent lists before asynchronous execution starts; a navigation update failure is logged without rejecting the persisted input. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
 
 The loop peeks the next task without deleting it, materializes its pre-allocated message ID as a root, and commits the inbox item only after that root write succeeds. A failure before materialization therefore leaves the task available for explicit retry or restart recovery. A read taken during startup always sees either the pending inbox item, the materialized root, or both; consumers deduplicate the overlap by message ID.
 
