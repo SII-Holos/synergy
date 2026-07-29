@@ -464,11 +464,17 @@ export namespace Channel {
         error,
       })
       input.statuses.set(key, { status: "failed", error })
-      scheduleReconnect({ ...input, reconnectAttempt: input.reconnectAttempt ?? 0 })
+      scheduleReconnect({
+        ...input,
+        reconnectAttempt: input.reconnectAttempt ?? 0,
+        retryBorrowedInitialization: true,
+      })
     })
   }
 
-  function scheduleReconnect(input: ConnectContext & { reconnectAttempt: number }): void {
+  function scheduleReconnect(
+    input: ConnectContext & { reconnectAttempt: number; retryBorrowedInitialization?: boolean },
+  ): void {
     const {
       channelType,
       accountId,
@@ -483,7 +489,7 @@ export namespace Channel {
       reconnectAttempt,
     } = input
     if (attempt.abort.signal.aborted) return
-    if (provider.lifecycle !== "self_connected") return
+    if (provider.lifecycle !== "self_connected" && !input.retryBorrowedInitialization) return
 
     const key = connectionKey(channelType, accountId)
 

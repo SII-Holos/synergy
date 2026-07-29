@@ -7,7 +7,6 @@ import { Scope } from "@/scope"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Lock } from "@/util/lock"
-import { Vcs } from "@/project/vcs"
 import { ObservabilityIssues } from "@/observability/issues"
 
 const RemoteState = z.enum(["active", "paused", "stale", "archived"])
@@ -145,9 +144,7 @@ function validateReverseIndex(hash: string, record: OwnershipRecord): void {
   }
 }
 
-async function resolveScope(directory: string, hash: string): Promise<Scope.Project> {
-  await Vcs.initIfNeeded(directory, { searchParents: false })
-  await Bun.write(path.join(directory, ".git", "synergy"), `d_${hash.slice(0, 16)}`)
+async function resolveScope(directory: string): Promise<Scope.Project> {
   const resolved = await Scope.fromDirectory(directory)
   if (resolved.scope.type !== "project") {
     throw new Error("Channel managed project workspace did not resolve to a project Scope")
@@ -164,7 +161,7 @@ export namespace ManagedProjectOwnership {
 
     const directory = workspaceDirectory(hash)
     await validateDirectoryChain(directory, true)
-    const scope = await resolveScope(directory, hash)
+    const scope = await resolveScope(directory)
 
     const reverseIdentity = await readReverse(scope.id)
     if (reverseIdentity && identityHash(reverseIdentity) !== hash) {

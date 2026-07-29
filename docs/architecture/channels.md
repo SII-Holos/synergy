@@ -38,6 +38,7 @@ Every provider declares one lifecycle:
 
 - `self_connected` providers own their transport and use Channel's bounded exponential reconnect loop.
 - `borrowed_transport` providers observe a transport owned by another runtime and never install a second reconnect loop. When such a provider exposes `waitForTransport`, Channel reports `waiting_for_transport`, waits on the owner's readiness signal without polling, and calls `connect` once for each ready generation. Each pending or connected attempt owns a distinct abort generation; transport replacement invalidates that generation before Channel waits for the next owner-provided transport, so an old initial sync cannot publish connected or failed state over its successor.
+  Provider initialization failures after readiness may retry through Channel's bounded backoff without creating or reconnecting the borrowed transport.
 
 Clarus borrows the one authenticated Holos Agent Tunnel WebSocket through `HolosRuntime.getNativeTunnel()`. Clarus operations and events use their `clarus.*` operation name as the top-level wire `type`; they are not wrapped in a second `native` envelope. Agent identity, tunnel epoch, and monotonic connection generation are attached from the current local Holos provider after receipt rather than trusted from frame metadata. The port owns request validation, correlation, observer isolation and cleanup, and transport disposition:
 
@@ -56,8 +57,8 @@ The owner:
 1. hashes the complete external identity;
 2. creates a deterministic workspace under `data/channel/workspaces/<identity-hash>/workspace`;
 3. rejects path escape, non-directory components, and symbolic links;
-4. initializes that workspace as an independent Git repository without inheriting an ancestor `.git`;
-5. resolves the workspace into a normal Project Scope;
+4. keeps that workspace as an ordinary non-Git directory without inheriting an ancestor `.git`;
+5. resolves the workspace into a normal Project Scope with directory-based identity;
 6. writes both a forward ownership record and a reverse Scope index.
 
 Ownership records retain only Channel identity, Scope ID, deterministic directory, remote state, and timestamps. Providers do not store a second Scope model and do not directly create or move Sessions.
@@ -149,13 +150,15 @@ Channel diagnostics are durable per-account bounded records. Secret-like values 
 
 The Sidebar groups managed Projects under Channel account rows. Account state distinguishes disabled, waiting for borrowed transport, disconnected, syncing, connected, failed sync, and degraded operation. Provider capabilities determine whether refresh and diagnostic download actions are visible.
 
+Settings refetches canonical Channel status on `channel.connected` and `channel.disconnected`, so an open account panel converges without requiring the user to reopen it or trigger Project refresh.
+
 ## Invariants
 
 - Channel core owns Scope and Session integration; providers own remote protocol state.
 - A managed external Project maps to one deterministic real Project Scope and never to a synthetic Project conversation Session.
 - A remote Task maps to one ordinary unattended Session inside its managed Project Scope, and that Session appears beneath the managed Project even though its navigation category is `channel`.
 - New endpoint identities use typed Channel targets; existing Feishu chat keys remain byte-for-byte compatible.
-- Borrowed providers never create a second transport or reconnect loop.
+- Borrowed providers never create or reconnect their borrowed transport; provider initialization failures may use Channel's bounded retry backoff.
 - Durable outbound state is written before send, and ambiguous dispatch is never retried automatically.
 - Remote archive preserves local Scope data but blocks new Task delivery.
 - An expired assignment creates no Session or assignment binding; an archived owning Session blocks replay without replacement.

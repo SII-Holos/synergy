@@ -39,6 +39,7 @@ function makeProvider(input: {
   type: string
   lifecycle: "self_connected" | "borrowed_transport"
   waitForTransport?: boolean
+  failConnectAttempts?: number
   onConnected?: (callbacks: { onDisconnect?: (reason?: string) => void; signal: AbortSignal }) => void
 }) {
   let connectCount = 0
@@ -61,6 +62,7 @@ function makeProvider(input: {
     async connect(connectInput: { onDisconnect?: (reason?: string) => void; signal: AbortSignal }) {
       connectCount += 1
       callbacks = connectInput
+      if (connectCount <= (input.failConnectAttempts ?? 0)) throw new Error("provider initialization failed")
       input.onConnected?.(connectInput)
     },
   } as Provider & {
@@ -93,8 +95,8 @@ function inHome<T>(fn: () => T | Promise<T>) {
   return ScopeContext.provide({ scope: Scope.home(), fn })
 }
 
-async function waitFor(predicate: () => boolean | Promise<boolean>): Promise<void> {
-  const timeoutAt = Date.now() + 3_000
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 3_000): Promise<void> {
+  const timeoutAt = Date.now() + timeoutMs
   while (!(await predicate()) && Date.now() < timeoutAt) await Bun.sleep(5)
   if (!(await predicate())) throw new Error("Timed out waiting for Channel lifecycle state")
 }
@@ -172,6 +174,32 @@ describe("Channel provider lifecycle capability", () => {
     fake.readyTransport()
     await waitFor(() => fake.connectCount() === 2)
     expect(fake.connectCount()).toBe(2)
+  })
+
+  test("borrowed_transport providers retry initialization after the next readiness cycle", async () => {
+    const fake = makeProvider({
+      type: `borrowed-init-${crypto.randomUUID()}`,
+      lifecycle: "borrowed_transport",
+      waitForTransport: true,
+      failConnectAttempts: 1,
+    })
+    Channel.registerProvider(fake.value)
+    await configure(fake.value.type, true)
+
+    await waitFor(() => fake.transportWaitCount() === 1)
+    fake.readyTransport()
+    await waitFor(() => fake.connectCount() === 1)
+    expect(await inHome(() => Channel.status())).toMatchObject({
+      [`${fake.value.type}:account`]: { status: "connecting" },
+    })
+
+    await waitFor(() => fake.transportWaitCount() === 2, 5_000)
+    expect(fake.connectCount()).toBe(1)
+    fake.readyTransport()
+    await waitFor(() => fake.connectCount() === 2)
+    expect(await inHome(() => Channel.status())).toMatchObject({
+      [`${fake.value.type}:account`]: { status: "connected" },
+    })
   })
 
   test("borrowed_transport providers recover when transport disconnects during initial connect", async () => {

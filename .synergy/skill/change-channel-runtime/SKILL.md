@@ -17,12 +17,12 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 1. Keep Scope and Session creation in Channel core. A project/task-capable provider reports remote facts through `ChannelHost`; it does not call Scope, Session, or model execution directly.
 2. Use typed `ChannelTarget` identity for new chat, Project, and Task endpoints. Preserve existing Feishu legacy endpoint keys, default Home-Scope behavior, and configured project Scope routing byte-for-byte.
 3. Keep Project targets as ownership/navigation identity only. Discovery and Project-level events must not create a Project conversation Session or invoke a model.
-4. Map each external Project identity to one canonical managed Project Scope with hashed forward and reverse ownership indexes. Keep raw external IDs out of path components, reject path escape and symbolic links, initialize an independent Git repository, and never remove a Scope in response to remote archive.
+4. Map each external Project identity to one canonical managed Project Scope with hashed forward and reverse ownership indexes. Keep raw external IDs out of path components, reject path escape and symbolic links, keep the managed workspace non-Git, and never remove a Scope in response to remote archive.
 5. Map one external Task ID to one stable unattended Session in its managed Project Scope. Deliver assignments and updates through the persistent inbox with deterministic delivery keys; keep participation and deadline guidance hidden and system-authored.
 
 ## Preserve Native Clarus Semantics
 
-1. Borrow the existing authenticated Holos Agent Tunnel through `HolosRuntime.getNativeTunnel()`. Do not add another WebSocket, reconnect loop, credential owner, daemon, or Holos server change.
+1. Borrow the existing authenticated Holos Agent Tunnel through `HolosRuntime.getNativeTunnel()`. Do not add another WebSocket, transport reconnect loop, credential owner, daemon, or Holos server change. Provider initialization may retry through Channel's bounded backoff after borrowed transport readiness.
 2. Validate account identity, process epoch, connection generation, event schemas, request correlation, and acknowledgement identity at the transport boundary. Dispose observers and in-flight work on account stop or transport replacement.
 3. Clarus emits only Project and Task ingress. Accept subscription state and runtime Task events; classify legacy Project message, file, system, and notary events as unknown without Session delivery.
 4. Persist result and extension outbox records before dispatch. Only `not_dispatched` may retry automatically with a fresh request ID and lineage; `rejected`, `ambiguous`, and `acknowledged` are terminal for automatic retry. Recovered `pending` records become `ambiguous`.

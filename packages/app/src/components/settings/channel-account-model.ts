@@ -33,6 +33,10 @@ export function canRefreshChannelAccount(status: ChannelStatus | undefined): boo
   return status?.status === "connected"
 }
 
+export function shouldRefreshChannelStatuses(eventType: string | undefined): boolean {
+  return eventType === "channel.connected" || eventType === "channel.disconnected"
+}
+
 const runtimeStatusCopy = {
   connected: { id: "settings.channels.status.connected", message: "Connected" },
   connecting: { id: "settings.channels.status.connecting", message: "Connecting…" },

@@ -7,6 +7,7 @@ import {
   clarusAccountDisplayName,
   clarusDiagnosticsFilename,
   isChannelAccountActionPending,
+  shouldRefreshChannelStatuses,
 } from "../../../../src/components/settings/channel-account-model"
 
 describe("Feishu account model selection", () => {
@@ -65,6 +66,13 @@ describe("Clarus account presentation", () => {
     expect(canRefreshChannelAccount({ status: "disconnected" })).toBe(false)
     expect(canRefreshChannelAccount({ status: "failed", error: "transport failed" })).toBe(false)
     expect(canRefreshChannelAccount(undefined)).toBe(false)
+  })
+
+  test("refreshes runtime status only for Channel lifecycle events", () => {
+    expect(shouldRefreshChannelStatuses("channel.connected")).toBe(true)
+    expect(shouldRefreshChannelStatuses("channel.disconnected")).toBe(true)
+    expect(shouldRefreshChannelStatuses("holos.connection.status_changed")).toBe(false)
+    expect(shouldRefreshChannelStatuses(undefined)).toBe(false)
   })
 
   test("isolates pending state by account and action", () => {

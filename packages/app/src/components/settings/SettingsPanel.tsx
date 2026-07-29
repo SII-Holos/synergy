@@ -5,6 +5,7 @@ import {
   createResource,
   createSignal,
   For,
+  onCleanup,
   onMount,
   Show,
   type Component,
@@ -81,6 +82,7 @@ import {
   channelRuntimeStatusLabel,
   clarusAccountDisplayName,
   clarusDiagnosticsFilename,
+  shouldRefreshChannelStatuses,
 } from "./channel-account-model"
 
 const legacyInitialTabs: Record<string, string> = {
@@ -213,6 +215,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const res = await globalSDK.client.channel.status()
     return (res.data ?? {}) as Record<string, ChannelStatus>
   })
+
+  const unsubscribeChannelStatuses = globalSDK.event.listen((event) => {
+    if (shouldRefreshChannelStatuses(event.details?.type)) void refetchChannelStatuses()
+  })
+  onCleanup(unsubscribeChannelStatuses)
 
   const [cortexConcurrencyStatus, { refetch: refetchCortexConcurrencyStatus }] = createResource(async () => {
     const res = await globalSDK.client.cortex.concurrency()

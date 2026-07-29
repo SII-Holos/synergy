@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
 import { Global } from "../../src/global"
@@ -54,17 +53,20 @@ describe("Channel managed Project ownership", () => {
     })
   })
 
-  test("initializes Git and refreshes lastSeenAt for repeated authoritative discovery", async () => {
+  test("keeps managed workspaces non-Git and refreshes lastSeenAt", async () => {
     const input = identity(crypto.randomUUID())
     const first = await ManagedProjectOwnership.ensure({ ...input, remoteState: "active" })
     await Bun.sleep(2)
 
     const second = await ManagedProjectOwnership.ensure({ ...input, remoteState: "active" })
+    const scope = await Scope.fromID(second.scopeID)
 
-    expect((await fs.stat(path.join(second.directory, ".git"))).isDirectory()).toBe(true)
+    expect(await fs.stat(path.join(second.directory, ".git")).catch(() => undefined)).toBeUndefined()
+    expect(scope).toMatchObject({ type: "project", id: second.scopeID, vcs: undefined })
     expect(second.lastSeenAt).toBeGreaterThan(first.lastSeenAt)
   })
-  test("initializes an independent Git repository even below an ancestor .git directory", async () => {
+
+  test("does not inherit an ancestor Git repository", async () => {
     const ancestorGit = path.join(Global.Path.data, "channel", "workspaces", ".git")
     await fs.mkdir(ancestorGit, { recursive: true })
     try {
@@ -73,8 +75,9 @@ describe("Channel managed Project ownership", () => {
         remoteState: "active",
       })
 
-      const topLevel = (await $`git rev-parse --show-toplevel`.cwd(record.directory).text()).trim()
-      expect(await fs.realpath(topLevel)).toBe(await fs.realpath(record.directory))
+      const scope = await Scope.fromID(record.scopeID)
+      expect(await fs.stat(path.join(record.directory, ".git")).catch(() => undefined)).toBeUndefined()
+      expect(scope).toMatchObject({ type: "project", id: record.scopeID, vcs: undefined })
     } finally {
       await fs.rm(ancestorGit, { recursive: true, force: true })
     }
