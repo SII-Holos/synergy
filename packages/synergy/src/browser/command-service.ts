@@ -9,6 +9,7 @@ import { BrowserOwner } from "./owner.js"
 import { BrowserPolicy } from "./policy.js"
 import { BrowserRuntime } from "./runtime.js"
 import type { BrowserSession } from "./types.js"
+import { Log } from "../util/log.js"
 
 interface ExecuteRequest {
   commandId: string
@@ -25,8 +26,14 @@ interface OwnerQueue {
 
 const MAX_REPLAY_RESULTS = 256
 const MAX_REPLAY_BYTES = 128 * 1024 * 1024
+const DEFAULT_OWNER_IDLE_MS = 10 * 60 * 1_000
 const queues = new Map<string, OwnerQueue>()
-let runtime: Pick<typeof BrowserRuntime, "getOrCreateSession"> = BrowserRuntime
+const idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const log = Log.create({ service: "browser.command" })
+type RuntimeAdapter = Pick<typeof BrowserRuntime, "getOrCreateSession"> &
+  Partial<Pick<typeof BrowserRuntime, "disposeSession">>
+let runtime: RuntimeAdapter = BrowserRuntime
+let ownerIdleMs = DEFAULT_OWNER_IDLE_MS
 
 export namespace BrowserCommandService {
   export async function session(owner: BrowserOwner.Info): Promise<BrowserSession> {
@@ -70,7 +77,10 @@ export namespace BrowserCommandService {
       })
     }
     const replay = queue.results.get(request.commandId)
-    if (replay) return replayResult(replay, fingerprint, request.commandId)
+    if (replay) {
+      updateIdleDeadline(owner, command.type)
+      return replayResult(replay, fingerprint, request.commandId)
+    }
 
     const run = queue.tail.then(async () => {
       throwIfAborted(request.signal, request.commandId)
@@ -86,19 +96,33 @@ export namespace BrowserCommandService {
         throw normalized
       }
     })
-    queue.tail = run.then(
+    const settled = run.then(
+      (result) => {
+        updateIdleDeadline(owner, command.type)
+        return result
+      },
+      (error) => {
+        if (command.type === "close") cancelIdleDeadline(key)
+        else scheduleIdleDisposal(owner)
+        throw error
+      },
+    )
+    queue.tail = settled.then(
       () => undefined,
       () => undefined,
     )
-    return run
+    return settled
   }
 
   export function clear(): void {
+    for (const timer of idleTimers.values()) clearTimeout(timer)
+    idleTimers.clear()
     queues.clear()
   }
 
   export async function disposeOwner(owner: BrowserOwner.Info, dispose: () => Promise<void>): Promise<void> {
     const key = BrowserOwner.key(owner)
+    cancelIdleDeadline(key)
     const queue = queues.get(key) ?? { tail: Promise.resolve(), results: new Map(), resultBytes: 0, closing: false }
     queues.set(key, queue)
     queue.closing = true
@@ -114,14 +138,49 @@ export namespace BrowserCommandService {
     }
   }
 
-  export function useRuntimeForTest(adapter: Pick<typeof BrowserRuntime, "getOrCreateSession">): () => void {
+  export function useRuntimeForTest(adapter: RuntimeAdapter, options?: { ownerIdleMs?: number }): () => void {
     const previous = runtime
+    const previousIdleMs = ownerIdleMs
     runtime = adapter
+    ownerIdleMs = options?.ownerIdleMs ?? DEFAULT_OWNER_IDLE_MS
     return () => {
       runtime = previous
-      queues.clear()
+      ownerIdleMs = previousIdleMs
+      clear()
     }
   }
+}
+
+function updateIdleDeadline(owner: BrowserOwner.Info, commandType: BrowserBackendCommand["type"]): void {
+  const key = BrowserOwner.key(owner)
+  if (commandType === "close") {
+    cancelIdleDeadline(key)
+    return
+  }
+  scheduleIdleDisposal(owner)
+}
+
+function scheduleIdleDisposal(owner: BrowserOwner.Info): void {
+  const disposeSession = runtime.disposeSession
+  if (!disposeSession || ownerIdleMs <= 0) return
+  const key = BrowserOwner.key(owner)
+  cancelIdleDeadline(key)
+  const timer = setTimeout(() => {
+    idleTimers.delete(key)
+    void disposeSession(owner).catch((error) => {
+      log.warn("failed to dispose idle browser owner", { owner: key, error })
+    })
+  }, ownerIdleMs)
+  const unref = (timer as { unref?: () => void }).unref
+  unref?.call(timer)
+  idleTimers.set(key, timer)
+}
+
+function cancelIdleDeadline(key: string): void {
+  const timer = idleTimers.get(key)
+  if (!timer) return
+  clearTimeout(timer)
+  idleTimers.delete(key)
 }
 
 function replayResult(

@@ -28,6 +28,8 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   private _running = false
   private _browserType: string
   private _browser: Browser | null = null
+  private launchPromise: Promise<void> | null = null
+  private pendingContexts = 0
 
   constructor(private options: PlaywrightBrowserDriverOptions = {}) {
     this._browserType = options.browserType ?? "chromium"
@@ -36,34 +38,24 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   async ensure(): Promise<BrowserDriver.DriverState> {
     if (this._running) return { running: true, browserType: this._browserType, activeOwners: this.contexts.size }
 
-    try {
-      if (this.options.launchBrowser) {
-        this._browser = await this.options.launchBrowser()
-      } else {
-        const playwright = PlaywrightRuntime.load()
-        if (!playwright.chromium) throw new Error("Playwright chromium is unavailable")
-
-        const executablePath = await BrowserInstall.discoverChromium()
-        this._browser = await playwright.chromium.launch({
-          headless: true,
-          timeout: 10_000,
-          ...(executablePath ? { executablePath } : {}),
-          args: BrowserInstall.chromiumLaunchArgs(),
-        })
-      }
-    } catch (error) {
-      throw new Error(
-        `Unable to launch Playwright Chromium. Run "synergy browser install" to install verified managed Chromium, run "synergy browser doctor" for diagnostics, or set CHROMIUM_PATH to a usable executable. ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
-      )
+    if (!this.launchPromise) {
+      this.launchPromise = this.launch().finally(() => {
+        this.launchPromise = null
+      })
     }
-
-    this._running = true
+    await this.launchPromise
     return { running: true, browserType: this._browserType, activeOwners: this.contexts.size }
   }
 
   async stop(): Promise<void> {
     const failures: unknown[] = []
+    if (this.launchPromise) {
+      try {
+        await this.launchPromise
+      } catch (error) {
+        failures.push(error)
+      }
+    }
     for (const ctx of this.contexts.values()) {
       if (!ctx.browserContext) continue
       try {
@@ -87,42 +79,48 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
 
   async contextFor(owner: BrowserOwner.Info): Promise<BrowserDriver.BrowserContextHandle> {
     BrowserOwner.assertValid(owner)
-    await this.ensure()
-    const key = BrowserOwner.key(owner)
-    let ctx = this.contexts.get(key)
-    if (!ctx) {
-      ctx = { owner: { ...owner }, browserContextId: nextContextId() }
-      if (!this._browser) throw new Error("Browser is not running")
+    this.pendingContexts++
+    try {
+      await this.ensure()
+      const key = BrowserOwner.key(owner)
+      let ctx = this.contexts.get(key)
+      if (!ctx) {
+        ctx = { owner: { ...owner }, browserContextId: nextContextId() }
+        if (!this._browser) throw new Error("Browser is not running")
 
-      await BrowserStorage.ensureOwnerDirs(owner)
-      const storageState = BrowserStorage.storageStatePath(owner)
-      let storageStateOption: string | undefined
-      try {
-        const info = await fs.lstat(storageState)
-        const real = await fs.realpath(storageState)
-        const realProfile = await fs.realpath(BrowserStorage.profileDir(owner))
-        if (
-          info.isFile() &&
-          !info.isSymbolicLink() &&
-          info.size <= 32 * 1024 * 1024 &&
-          real.startsWith(`${realProfile}${path.sep}`)
-        ) {
-          storageStateOption = storageState
+        await BrowserStorage.ensureOwnerDirs(owner)
+        const storageState = BrowserStorage.storageStatePath(owner)
+        let storageStateOption: string | undefined
+        try {
+          const info = await fs.lstat(storageState)
+          const real = await fs.realpath(storageState)
+          const realProfile = await fs.realpath(BrowserStorage.profileDir(owner))
+          if (
+            info.isFile() &&
+            !info.isSymbolicLink() &&
+            info.size <= 32 * 1024 * 1024 &&
+            real.startsWith(`${realProfile}${path.sep}`)
+          ) {
+            storageStateOption = storageState
+          }
+        } catch {
+          storageStateOption = undefined
         }
-      } catch {
-        storageStateOption = undefined
-      }
 
-      const proxy = await BrowserNetworkGateway.proxyFor(owner)
-      ctx.browserContext = await this._browser.newContext({
-        viewport: { width: 1280, height: 720 },
-        acceptDownloads: true,
-        storageState: storageStateOption,
-        proxy,
-      })
-      this.contexts.set(key, ctx)
+        const proxy = await BrowserNetworkGateway.proxyFor(owner)
+        ctx.browserContext = await this._browser.newContext({
+          viewport: { width: 1280, height: 720 },
+          acceptDownloads: true,
+          storageState: storageStateOption,
+          proxy,
+        })
+        this.contexts.set(key, ctx)
+      }
+      return { browserContextId: ctx.browserContextId }
+    } finally {
+      this.pendingContexts--
+      await this.retireBrowserIfIdle()
     }
-    return { browserContextId: ctx.browserContextId }
   }
 
   async newPage(owner: BrowserOwner.Info): Promise<Page> {
@@ -165,11 +163,13 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
     const context = this.contexts.get(key)?.browserContext
     if (!context) {
       this.contexts.delete(key)
+      await this.retireBrowserIfIdle()
       return
     }
     try {
       await context.close()
       this.contexts.delete(key)
+      await this.retireBrowserIfIdle()
     } catch (error) {
       throw new AggregateError([error], "Playwright Browser owner context did not close cleanly.")
     }
@@ -177,5 +177,40 @@ export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
 
   listOwners(): BrowserOwner.Info[] {
     return Array.from(this.contexts.values()).map((ctx) => ctx.owner)
+  }
+
+  private async launch(): Promise<void> {
+    try {
+      if (this.options.launchBrowser) {
+        this._browser = await this.options.launchBrowser()
+      } else {
+        const playwright = PlaywrightRuntime.load()
+        if (!playwright.chromium) throw new Error("Playwright chromium is unavailable")
+
+        const executablePath = await BrowserInstall.discoverChromium()
+        this._browser = await playwright.chromium.launch({
+          headless: true,
+          timeout: 10_000,
+          ...(executablePath ? { executablePath } : {}),
+          args: BrowserInstall.chromiumLaunchArgs(),
+        })
+      }
+      this._running = true
+    } catch (error) {
+      this._browser = null
+      this._running = false
+      throw new Error(
+        `Unable to launch Playwright Chromium. Run "synergy browser install" to install verified managed Chromium, run "synergy browser doctor" for diagnostics, or set CHROMIUM_PATH to a usable executable. ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      )
+    }
+  }
+
+  private async retireBrowserIfIdle(): Promise<void> {
+    if (this.contexts.size > 0 || this.pendingContexts > 0 || !this._browser) return
+    const browser = this._browser
+    this._browser = null
+    this._running = false
+    await browser.close()
   }
 }

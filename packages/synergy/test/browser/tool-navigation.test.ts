@@ -105,6 +105,74 @@ afterEach(() => {
 })
 
 describe("BrowserCommandService", () => {
+  test("disposes an owner after browser command activity becomes idle", async () => {
+    const session = fakeSession(fakePage([]))
+    let disposals = 0
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+        async disposeSession() {
+          disposals++
+        },
+      },
+      { ownerIdleMs: 20 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "idle-reload", command: { type: "reload" } })
+    await Bun.sleep(50)
+
+    expect(disposals).toBe(1)
+  })
+
+  test("refreshes the owner idle deadline after each browser command", async () => {
+    const session = fakeSession(fakePage([]))
+    let disposals = 0
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+        async disposeSession() {
+          disposals++
+        },
+      },
+      { ownerIdleMs: 40 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "first-activity", command: { type: "reload" } })
+    await Bun.sleep(25)
+    await BrowserCommandService.execute(owner, { commandId: "second-activity", command: { type: "stop" } })
+    await Bun.sleep(25)
+    expect(disposals).toBe(0)
+
+    await Bun.sleep(30)
+    expect(disposals).toBe(1)
+  })
+
+  test("does not schedule idle disposal after an explicit close", async () => {
+    const session = fakeSession(fakePage([]))
+    let disposals = 0
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+        async disposeSession() {
+          disposals++
+        },
+      },
+      { ownerIdleMs: 20 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "close-page", command: { type: "close" } })
+    await Bun.sleep(50)
+
+    expect(session.status).toBe("empty")
+    expect(disposals).toBe(0)
+  })
+
   test("replays a commandId without repeating its side effect", async () => {
     const executions: string[] = []
     const session = fakeSession(fakePage(executions))
