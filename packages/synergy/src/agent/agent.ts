@@ -280,9 +280,13 @@ export namespace Agent {
 
     // Merge plugin-contributed agents (lower priority than config agents)
     const pluginAgents = await Plugin.agentEntries()
-    for (const [key, agent] of Object.entries(pluginAgents)) {
-      if (result[key]) {
-        log.info("plugin agent skipped, name already exists", { name: key })
+    for (const agent of pluginAgents) {
+      if (result[agent.name]) {
+        log.info("plugin agent skipped, name already exists", {
+          name: agent.name,
+          contributionId: agent.contributionId,
+          pluginId: agent.pluginId,
+        })
         continue
       }
       const registered: Info = {
@@ -306,7 +310,7 @@ export namespace Agent {
         delegationGroups: agent.delegationGroups,
         color: agent.color,
       }
-      result[key] = registered
+      result[agent.name] = registered
       pluginOwners.set(registered, {
         pluginId: agent.pluginId,
         pluginGeneration: agent.pluginGeneration,

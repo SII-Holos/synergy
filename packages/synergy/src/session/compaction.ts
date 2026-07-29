@@ -512,7 +512,7 @@ export namespace SessionCompaction {
 
     try {
       await processor.process({
-        user: userMessage,
+        user: { ...userMessage, variant: undefined },
         agent,
         abort: input.abort,
         sessionID: input.sessionID,

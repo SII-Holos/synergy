@@ -577,7 +577,7 @@ async function assertTaskPermission(pluginDir: string, request: PluginTaskStartI
     throw new Error(`Delegated task timeout exceeds manifest maxRuntimeMs (${maxRuntimeMs}ms)`)
   }
   const declaredByPlugin = manifest.contributions.some(
-    (contribution) => contribution.kind === "agent" && contribution.id === request.subagent,
+    (contribution) => contribution.kind === "agent" && contribution.agent.name === request.subagent,
   )
   return { maxRuntimeMs, declaredByPlugin }
 }

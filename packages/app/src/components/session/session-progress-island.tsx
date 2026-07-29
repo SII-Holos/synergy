@@ -29,6 +29,7 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
   const [measureRef, setMeasureRef] = createSignal<HTMLDivElement | undefined>(undefined)
   const [collapsedWidth, setCollapsedWidth] = createSignal<number | undefined>(undefined)
   const [panelHeight, setPanelHeight] = createSignal<number | undefined>(undefined)
+  const [expandedWidth, setExpandedWidth] = createSignal<number | undefined>(undefined)
 
   const label = createMemo(() => formatProgressLabel(props.snapshot, props.activeLabel, i18n))
   const percentage = createMemo(() => Math.round(props.snapshot.progressRatio * 100))
@@ -47,10 +48,22 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
       const width = Math.ceil(measure.getBoundingClientRect().width)
       if (width > 0) setCollapsedWidth(width)
     }
+    const measureExpandedWidth = () => {
+      if (!rootRef) return
+      const style = getComputedStyle(rootRef)
+      const horizontalPadding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight)
+      const width = Math.min(Math.floor(rootRef.clientWidth - horizontalPadding), 900)
+      if (width > 0) setExpandedWidth(width)
+    }
     const measureElement = measureRef()
-    const measureFrame = requestAnimationFrame(measureCollapsedWidth)
-    const resizeObserver = measureElement ? new ResizeObserver(measureCollapsedWidth) : undefined
-    if (measureElement) resizeObserver?.observe(measureElement)
+    const measureFrame = requestAnimationFrame(() => {
+      measureCollapsedWidth()
+      measureExpandedWidth()
+    })
+    const measureResizeObserver = measureElement ? new ResizeObserver(measureCollapsedWidth) : undefined
+    const rootResizeObserver = rootRef ? new ResizeObserver(measureExpandedWidth) : undefined
+    if (measureElement) measureResizeObserver?.observe(measureElement)
+    if (rootRef) rootResizeObserver?.observe(rootRef)
 
     const keyHandler = (event: KeyboardEvent) => {
       if (event.key === "Escape" && props.expanded) setExpanded(false)
@@ -65,7 +78,8 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
     document.addEventListener("click", clickHandler)
     onCleanup(() => {
       cancelAnimationFrame(measureFrame)
-      resizeObserver?.disconnect()
+      measureResizeObserver?.disconnect()
+      rootResizeObserver?.disconnect()
       document.removeEventListener("keydown", keyHandler)
       document.removeEventListener("click", clickHandler)
     })
@@ -121,6 +135,7 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
         rootRef = el
       }}
       class={`session-progress-island ${props.class ?? ""}`}
+      style={expandedWidth() == null ? undefined : `--session-progress-island-expanded-width: ${expandedWidth()}px`}
       data-expanded={props.expanded ? "true" : "false"}
       data-collapsed-width={collapsedWidth() == null ? "pending" : "measured"}
       data-status={props.snapshot.status}
