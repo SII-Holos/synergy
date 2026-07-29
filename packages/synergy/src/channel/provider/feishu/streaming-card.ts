@@ -1,6 +1,7 @@
 import { Log } from "../../../util/log"
 import type * as ChannelTypes from "../../types"
 import type { FeishuApiContext } from "./api-context"
+import { FeishuStreamingState } from "./streaming-state"
 
 const log = Log.create({ service: "channel.feishu.streaming-card" })
 
@@ -21,6 +22,7 @@ type StreamingCardOptions = FeishuApiContext & {
   throttleMs?: number
   requestTimeoutMs?: number
   sendFallback?: (text: string) => Promise<void>
+  persistence?: { accountId: string; sessionID: string }
 }
 
 type RenderedSections = {
@@ -285,6 +287,13 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
 
     const cardContent = JSON.stringify({ type: "card", data: { card_id: cardId } })
     const messageId = await this.sendCardMessage(token, cardContent)
+    if (this.opts.persistence) {
+      await FeishuStreamingState.persist({
+        ...this.opts.persistence,
+        cardId,
+        messageId,
+      })
+    }
     this.state = {
       cardId,
       messageId,
@@ -408,10 +417,13 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
       if (!this.terminalCause) {
         try {
           await this.closeStreamingMode(text)
+          await this.removePersistedState()
         } catch (cause) {
           deliveryFailure ??= cause
           log.error("streaming card settings update failed", { error: cause, cardId: this.state.cardId })
         }
+      } else if (this.terminalCause instanceof FeishuRequestError && this.terminalCause.terminal) {
+        await this.removePersistedState()
       }
 
       if (tooLarge || deliveryFailure) {
@@ -545,6 +557,13 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     const waitMs = CARD_MUTATION_INTERVAL_MS - (Date.now() - this.lastMutationTime)
     if (waitMs > 0) await Bun.sleep(waitMs)
     this.lastMutationTime = Date.now()
+  }
+
+  private async removePersistedState(): Promise<void> {
+    if (!this.opts.persistence) return
+    await FeishuStreamingState.remove(this.opts.persistence).catch((error) =>
+      log.warn("failed to clear streaming card state", { cardId: this.state?.cardId, error }),
+    )
   }
 
   private isCardTooLarge(rendered: RenderedSections): boolean {

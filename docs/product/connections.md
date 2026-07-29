@@ -15,13 +15,15 @@ The provider contract supports:
 - text, image, file, audio, and video parts
 - reactions and delivery-status reactions
 - streaming text and tool progress
-- reconnect and account status
+- reconnect, account status, and awaitable account shutdown
 - provider-native response cards with buttons and bounded static selects
-- provider-native question forms for interactive sessions
+- provider-native question forms for interactive sessions and continuations
 
 Feishu/Lark is the current built-in provider. It owns Feishu-specific deduplication, mentions, group behavior, media transfer, cards, and reconnect handling while the Channel core owns endpoint/session routing and outbound delivery.
 
-Feishu streaming cards replace accumulated progress with the terminal assistant answer when the run completes. CardKit writes are successful only when both the HTTP response and Feishu response code succeed. If the final card cannot be updated and closed successfully, the provider sends the terminal answer through the ordinary message API instead of leaving the user with a stale progress card.
+Feishu streaming cards replace accumulated progress with the terminal assistant answer when the run completes. CardKit writes are successful only when both the HTTP response and Feishu response code succeed. If card startup fails, the Channel turn continues and sends its terminal answer through the ordinary reply API. Active card IDs are persisted per account and session; reconnect closes cards orphaned by a prior process before accepting new events. If terminal card finalization fails, the provider also sends the terminal answer through the ordinary message API instead of leaving the user with a stale progress card.
+
+Stopping or replacing a Feishu/Lark account first stops new inbound admission, closes the websocket, flushes pending debounce groups, and drains accepted inbound work plus per-chat tasks to a fixed point. Channel lifecycle operations await that provider drain, bounded by a 30-second provider timeout, before publishing the disconnected state.
 
 Feishu/Lark distinguishes Synergy's own bot messages from messages sent by other bots using the authenticated account's `botOpenId`. The provider resolves that identity from account configuration or the Feishu bot-info API and fails closed for bot senders while it is unknown. With `requireMention: true`, an external bot message is accepted only when it contains a real mention whose open ID matches Synergy; the Feishu app also needs the bot-to-bot group mention event permission. Set `groupSessionScope` to `group_topic` when each Feishu topic should reuse an independent Synergy session.
 
@@ -64,15 +66,15 @@ Response-card registration writes a pending record before the provider send and 
 
 ### Question Cards
 
-Question Cards are a dedicated interactive surface for Feishu/Lark Channel sessions. When the agent asks a question during a channel invocation, the runtime delivers a CardKit 2.0 form message instead of blocking on an unattended response. The form renders each question prompt with single-select or multi-select options and an optional free-text input.
+Question Cards are a dedicated interactive surface for Feishu/Lark Channel sessions. When the agent asks a question during an inbound task or a later continuation, the runtime delivers a CardKit 2.0 form message instead of blocking on an unattended response. The form renders each question prompt with single-select or multi-select options and an optional free-text input.
 
-Feishu/Lark is the current built-in provider that implements the optional `sendQuestionCard` provider method. Delivery renders the card from the same `Question.Request` that produced the blocking promise.
+Feishu/Lark is the current built-in provider that implements the optional `sendQuestionCard` provider method. Delivery renders the card from the same `Question.Request` that produced the blocking promise. A Scope-local Channel bridge remains subscribed after the inbound handler returns and resolves the account, chat, requester, and reply anchor from durable session endpoint and root-message metadata.
 
 The callback envelope uses a distinct `synergy_question_card` namespace — separate from `response_card:` and plugin callback namespaces. The runtime validates the channel type, account ID, chat ID, original requester open ID, and the sent card message ID against the registration before accepting the callback. Registration is Scope-local through the provider's `onQuestionCardAction` callback, so the callback executes in the account's bound Scope. Mismatched or expired registrations are rejected.
 
 An accepted callback maps opaque option indices back to the registered labels and resolves the original pending Question with the user's form selections. The runtime remembers the accepted callback event for the active session so an immediate provider retry returns a duplicate acknowledgement instead of resolving the Question again.
 
-Provider delivery failure rejects the Question. Channels without a native question surface remain unattended and reject before delivery. Reply, reject, timeout, or session cleanup removes the registration. Serialized CardKit JSON plus a 2 KiB safety reserve must stay within the 30 KiB card budget.
+Provider delivery failure rejects the Question. Channels without a native question surface remain unattended and reject before delivery. Reply, reject, or timeout settles the active registration while the Scope-local bridge remains available for later questions in the same session. Serialized CardKit JSON plus a 2 KiB safety reserve must stay within the 30 KiB card budget.
 
 ### Outbound Delivery Anchoring
 

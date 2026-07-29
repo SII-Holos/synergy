@@ -130,6 +130,15 @@ export namespace StoragePath {
     ...channelResponseCardAccountRoot(channelType, accountId),
     encodeURIComponent(requestId),
   ]
+  export const channelFeishuStreamingCardsRoot = () => ["channel", "feishu", "streaming_cards"]
+  export const channelFeishuStreamingCardAccountRoot = (accountId: string) => [
+    ...channelFeishuStreamingCardsRoot(),
+    encodeURIComponent(accountId),
+  ]
+  export const channelFeishuStreamingCard = (accountId: string, sessionID: string) => [
+    ...channelFeishuStreamingCardAccountRoot(accountId),
+    encodeURIComponent(sessionID),
+  ]
 
   export const agendaItemsRoot = (scopeID: ScopeID) => ["agenda", "items", scopeID as string]
   export const agendaItem = (scopeID: ScopeID, itemID: string) => ["agenda", "items", scopeID as string, itemID]

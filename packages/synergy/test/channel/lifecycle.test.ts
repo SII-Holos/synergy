@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, mock, test } from "bun:test"
 import path from "path"
 import { Channel } from "../../src/channel"
 import { FeishuProvider } from "../../src/channel/provider/feishu"
@@ -8,6 +8,7 @@ import { ChannelInteraction } from "../../src/channel/interaction"
 import { Question } from "../../src/question"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
+import { SessionInvoke } from "../../src/session/invoke"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
@@ -30,7 +31,7 @@ async function waitForQuestionCardAction(
   return read()!
 }
 
-test("cleans inbound attachments across command and streaming startup exits", async () => {
+test("cleans inbound attachments and falls back when streaming startup fails", async () => {
   await using tmp = await tmpdir({
     git: true,
     config: {
@@ -67,14 +68,17 @@ test("cleans inbound attachments across command and streaming startup exits", as
 
   let onMessage: MessageHandler | undefined
   let failStreamingStart = false
-  const replies: string[] = []
+  const replies: Array<{ messageId: string; text?: string }> = []
   const provider: Provider = {
     type: "feishu",
     async connect(input) {
       onMessage = input.onMessage
     },
     async replyMessage(input) {
-      replies.push(input.messageId)
+      replies.push({
+        messageId: input.messageId,
+        text: input.parts.find((part) => part.type === "text")?.text,
+      })
       return { messageId: "reply_sent" }
     },
     async pushMessage() {
@@ -118,14 +122,31 @@ test("cleans inbound attachments across command and streaming startup exits", as
             timestamp: Date.now(),
             attachments: [{ path: commandAttachment, contentType: "text/plain" }],
           })
-          expect(replies).toEqual(["msg_command"])
+          expect(replies).toEqual([{ messageId: "msg_command", text: expect.any(String) }])
           expect(await Bun.file(commandAttachment).exists()).toBe(false)
 
           failStreamingStart = true
+          const originalInvoke = SessionInvoke.invoke
+          ;(SessionInvoke.invoke as unknown) = mock(async (input: Parameters<typeof SessionInvoke.invoke>[0]) => {
+            const rootID = `root_${crypto.randomUUID()}`
+            const assistantID = `assistant_${crypto.randomUUID()}`
+            return {
+              info: {
+                id: assistantID,
+                sessionID: input.sessionID,
+                role: "assistant",
+                parentID: rootID,
+                rootID,
+                time: { created: Date.now(), completed: Date.now() },
+                finish: "stop",
+              },
+              parts: [{ type: "text", text: "durable final answer" }],
+            }
+          })
           const startupAttachment = path.join(tmp.path, "startup-attachment.txt")
           await Bun.write(startupAttachment, "startup")
-          await expect(
-            handleMessage({
+          try {
+            await handleMessage({
               channelType: "feishu",
               accountId: "cleanup",
               chatId: "chat_test",
@@ -135,8 +156,11 @@ test("cleans inbound attachments across command and streaming startup exits", as
               messageId: "msg_startup",
               timestamp: Date.now(),
               attachments: [{ path: startupAttachment, contentType: "text/plain" }],
-            }),
-          ).rejects.toThrow("streaming start failed")
+            })
+          } finally {
+            ;(SessionInvoke.invoke as unknown) = originalInvoke
+          }
+          expect(replies.at(-1)).toEqual({ messageId: "msg_startup", text: "durable final answer" })
           expect(await Bun.file(startupAttachment).exists()).toBe(false)
         } finally {
           await Channel.stopAll()
@@ -144,6 +168,91 @@ test("cleans inbound attachments across command and streaming startup exits", as
       },
     })
   } finally {
+    Channel.registerProvider(new FeishuProvider())
+  }
+})
+
+test("waits for provider drain before stopping a channel account", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    config: {
+      channel: {
+        feishu: {
+          type: "feishu",
+          accounts: {
+            drain: {
+              enabled: true,
+              appId: "app",
+              appSecret: "secret",
+              allowDM: true,
+              allowGroup: true,
+              requireMention: false,
+              projectDir: "placeholder",
+              streaming: true,
+              streamingThrottleMs: 100,
+              groupSessionScope: "group",
+              inboundDebounceMs: 0,
+              resolveSenderNames: false,
+              replyInThread: false,
+            },
+          },
+          streaming: true,
+        },
+      },
+    },
+  })
+  const configPath = path.join(tmp.path, ".synergy", "synergy.d", "90-channels.jsonc")
+  const config = await Bun.file(configPath).json()
+  config.channel.feishu.accounts.drain.projectDir = tmp.path
+  await Bun.write(configPath, JSON.stringify(config, null, 2))
+
+  const drain = Promise.withResolvers<void>()
+  let disconnected = false
+  const provider: Provider = {
+    type: "feishu",
+    async connect() {},
+    async disconnect() {
+      await drain.promise
+      disconnected = true
+    },
+    async replyMessage() {
+      return { messageId: "reply_sent" }
+    },
+    async pushMessage() {
+      return { messageId: "push_sent" }
+    },
+    async addReaction() {},
+    createStreamingSession() {
+      return {
+        async start() {},
+        async update() {},
+        async updateToolProgress() {},
+        async close() {},
+        isActive: () => false,
+      }
+    },
+  }
+
+  Channel.registerProvider(provider)
+  try {
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Channel.reload()
+        await Channel.status()
+        let stopped = false
+        const stop = Channel.stopAll().then(() => {
+          stopped = true
+        })
+        await Bun.sleep(10)
+        expect(stopped).toBe(false)
+        drain.resolve()
+        await stop
+        expect(disconnected).toBe(true)
+      },
+    })
+  } finally {
+    drain.resolve()
     Channel.registerProvider(new FeishuProvider())
   }
 })
