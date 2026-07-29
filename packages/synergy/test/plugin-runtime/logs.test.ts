@@ -222,4 +222,63 @@ describe("PluginLogBuffer", () => {
       expect(buffer.droppedCount("plugin-a")).toBe(1)
     })
   })
+
+  describe("structured details", () => {
+    test("preserves nested details through append and list", () => {
+      buffer = new PluginLogBuffer(100)
+      const entry = {
+        timestamp: Date.now(),
+        level: "error",
+        message: "something failed",
+        details: { code: "ERR_CONNECTION", reason: "connection refused" },
+      }
+      buffer.append("plugin-a", entry)
+      const entries = buffer.list("plugin-a")
+      expect(entries).toHaveLength(1)
+      expect(entries[0].timestamp).toBe(entry.timestamp)
+      expect(entries[0].level).toBe("error")
+      expect(entries[0].message).toBe("something failed")
+      expect(entries[0].details).toEqual({ code: "ERR_CONNECTION", reason: "connection refused" })
+    })
+
+    test("preserves details on retained entries after eviction", () => {
+      buffer = new PluginLogBuffer(2)
+      buffer.append("plugin-a", { timestamp: 1, level: "info", message: "1", details: { id: 1 } })
+      buffer.append("plugin-a", { timestamp: 2, level: "info", message: "2", details: { id: 2 } })
+      buffer.append("plugin-a", { timestamp: 3, level: "info", message: "3", details: { id: 3 } })
+      const entries = buffer.list("plugin-a")
+      expect(entries).toHaveLength(2)
+      expect(entries[0].details).toEqual({ id: 2 })
+      expect(entries[1].details).toEqual({ id: 3 })
+    })
+
+    test("rate limiter byte budget accounts for details", () => {
+      const limiter = new LogRateLimiter(100)
+      buffer = new PluginLogBuffer(100, limiter)
+      const ok1 = buffer.append("plugin-a", { timestamp: 1, level: "info", message: "x" })
+      expect(ok1).toBe(true)
+      const ok2 = buffer.append("plugin-a", {
+        timestamp: 2,
+        level: "error",
+        message: "y",
+        details: { code: "ERR", reason: "a".repeat(100) },
+      })
+      expect(ok2).toBe(false)
+      expect(buffer.list("plugin-a")).toHaveLength(1)
+    })
+
+    test("still stores entry with details when no limiter is provided", () => {
+      buffer = new PluginLogBuffer(100)
+      const entry = {
+        timestamp: Date.now(),
+        level: "debug",
+        message: "trace",
+        details: { traceId: "abc-123", spanId: "def-456" },
+      }
+      buffer.append("plugin-a", entry)
+      const entries = buffer.list("plugin-a")
+      expect(entries).toHaveLength(1)
+      expect(entries[0].details).toEqual({ traceId: "abc-123", spanId: "def-456" })
+    })
+  })
 })
