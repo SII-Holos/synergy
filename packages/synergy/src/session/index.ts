@@ -9,6 +9,7 @@ import { Bus } from "../bus"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
+import { Lock } from "../util/lock"
 import { MessageV2 } from "./message-v2"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
@@ -40,6 +41,7 @@ import { SessionNav, type SessionNavEntry } from "./nav"
 import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
 import * as SessionWorking from "./working"
+import { SessionMutation } from "./mutation"
 
 export namespace Session {
   export const Info = InfoSchema
@@ -141,6 +143,7 @@ export namespace Session {
   }
 
   export async function upsertPageIndexEntry(scopeID: string, entry: PageIndex["entries"][number]) {
+    using _ = await Lock.write(`session-page-index:${scopeID}`)
     const index = await readPageIndex(scopeID)
     const existing = index.entries.findIndex((e) => e.id === entry.id)
     if (existing >= 0) index.entries.splice(existing, 1)
@@ -151,6 +154,7 @@ export namespace Session {
   }
 
   export async function removePageIndexEntry(scopeID: string, sessionID: string) {
+    using _ = await Lock.write(`session-page-index:${scopeID}`)
     const index = await readPageIndex(scopeID)
     index.entries = index.entries.filter((e) => e.id !== sessionID)
     await writePageIndex(scopeID, index)
@@ -202,6 +206,7 @@ export namespace Session {
   }
 
   export async function upsertChildIndexEntry(scopeID: string, parentID: string, entry: ChildIndexEntry) {
+    using _ = await Lock.write(`session-child-index:${scopeID}:${parentID}`)
     const index = await readChildIndex(scopeID, parentID)
     const existing = index.entries.findIndex((e) => e.id === entry.id)
     if (existing >= 0) index.entries.splice(existing, 1)
@@ -210,6 +215,7 @@ export namespace Session {
   }
 
   export async function removeChildIndexEntry(scopeID: string, parentID: string, sessionID: string) {
+    using _ = await Lock.write(`session-child-index:${scopeID}:${parentID}`)
     const index = await readChildIndex(scopeID, parentID)
     const nextEntries = index.entries.filter((e) => e.id !== sessionID)
     if (nextEntries.length === index.entries.length) return
@@ -218,6 +224,7 @@ export namespace Session {
   }
 
   export async function removeChildIndex(scopeID: string, parentID: string) {
+    using _ = await Lock.write(`session-child-index:${scopeID}:${parentID}`)
     await Storage.remove(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
   }
 
@@ -297,12 +304,18 @@ export namespace Session {
   const lastPublish = new Map<string, { key: string; at: number }>()
   const PUBLISH_DEDUP_THROTTLE_MS = 1000
 
-  async function publishInfo(event: typeof SessionEvent.Updated, session: Info, navEntry?: SessionNavEntry) {
+  async function publishInfo(
+    event: typeof SessionEvent.Updated,
+    session: Info,
+    navEntry?: SessionNavEntry,
+    options?: { force?: boolean },
+  ) {
     const info = await withRuntimeInfo(session)
     const key = publishCompareKey(info)
     const now = Date.now()
     const prev = lastPublish.get(session.id)
     if (
+      options?.force !== true &&
       !decideSessionPublish({
         prevKey: prev?.key,
         prevAt: prev?.at,
@@ -628,6 +641,7 @@ export namespace Session {
     return withClientInfo(info)
   })
 
+  // This queue orders completion mutations with their completion events. Canonical writes still use SessionMutation.
   const completionNoticeMutations = new Map<string, Promise<void>>()
 
   function serializeCompletionNoticeMutation<T>(id: string, mutation: () => Promise<T>): Promise<T> {
@@ -656,9 +670,11 @@ export namespace Session {
     return serializeCompletionNoticeMutation(id, async () => {
       const session = await SessionManager.requireSession(id)
       const scope = session.scope as Scope
-      const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
+      const scopeID = asScopeID(scope.id)
+      const sessionID = asSessionID(id)
+      using _ = await SessionMutation.write(scopeID, sessionID)
       let actualAcknowledgedCount = 0
-      const result = await Storage.update<Info>(key, (draft) => {
+      const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
         const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
         const next = Math.max(0, current - acknowledgedCount)
         actualAcknowledgedCount = current - next
@@ -721,19 +737,24 @@ export namespace Session {
     })
   }
 
-  export async function update(id: string, editor: (session: Info) => void) {
+  async function updateInternal(
+    id: string,
+    editor: (session: Info) => void,
+    options?: { preserveActivityAt?: boolean; forcePublish?: boolean },
+  ) {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
-    const before = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
-    const result = await Storage.update<Info>(
-      StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)),
-      (draft) => {
-        editor(draft)
-        draft.time.updated = Date.now()
-      },
-    )
+    const scopeID = asScopeID(scope.id)
+    const sessionID = asSessionID(id)
+    using _ = await SessionMutation.write(scopeID, sessionID)
+    let before: Info | undefined
+    const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
+      before = structuredClone(draft)
+      editor(draft)
+      draft.time.updated = Date.now()
+    })
+    if (!before) throw new Error(`Session ${id} was not available before mutation`)
 
-    await Storage.write(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)), withoutRuntimeInfo(result))
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
     if (before.parentID && before.parentID !== result.parentID) {
@@ -742,8 +763,10 @@ export namespace Session {
     if (result.parentID) {
       await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
     }
+    const shouldPreserveActivityAt =
+      options?.preserveActivityAt ?? (before.pendingReply === true && result.pendingReply === true)
     const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result), {
-      preserveActivityAt: before.pendingReply === true && result.pendingReply === true,
+      preserveActivityAt: shouldPreserveActivityAt,
     })
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
@@ -761,8 +784,16 @@ export namespace Session {
         log.warn("failed to detach worktree during session archive", { sessionID: result.id, error })
       })
     }
-    await publishInfo(SessionEvent.Updated, result, navEntry)
+    await publishInfo(SessionEvent.Updated, result, navEntry, { force: options?.forcePublish })
     return withRuntimeInfo(result)
+  }
+
+  export async function update(id: string, editor: (session: Info) => void) {
+    return updateInternal(id, editor)
+  }
+
+  export async function recordActivity(id: string) {
+    return updateInternal(id, () => {}, { preserveActivityAt: false, forcePublish: true })
   }
 
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {
@@ -927,13 +958,16 @@ export namespace Session {
     return page.items
   })
 
-  export const remove = fn(Identifier.schema("session"), async (sessionID) => {
+  async function removeInternal(sessionID: string, removed: Info[]): Promise<void> {
     try {
-      const session = await get(sessionID)
-      const scope = session.scope as Scope
+      const indexed = await SessionManager.requireSession(sessionID)
+      const scope = indexed.scope as Scope
       const scopeID = asScopeID(scope.id)
+      const canonicalSessionID = asSessionID(sessionID)
+      using _ = await SessionMutation.write(scopeID, canonicalSessionID)
+      const session = await Storage.read<Info>(StoragePath.sessionInfo(scopeID, canonicalSessionID))
       for (const child of await children(sessionID)) {
-        await remove(child.id)
+        await removeInternal(child.id, removed)
       }
       const { Worktree } = await import("../project/worktree")
       await Worktree.detachSession(sessionID).catch((error) => {
@@ -943,16 +977,26 @@ export namespace Session {
       SessionManager.forgetSession(sessionID)
       SessionMessageCache.disable(sessionID)
       await removeEndpointIndex(session)
-      await MessageV2.removeOrderIndex(scopeID, asSessionID(sessionID))
-      await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
-      await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
+      await MessageV2.removeOrderIndex(scopeID, canonicalSessionID)
+      await Storage.removeTree(StoragePath.sessionRoot(scopeID, canonicalSessionID))
+      await Storage.remove(StoragePath.sessionIndex(canonicalSessionID))
       await removePageIndexEntry(scope.id, sessionID)
       if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
       await removeChildIndex(scope.id, sessionID)
       await SessionNav.removeNavEntry(scope.id, sessionID)
-      await Bus.publish(SessionEvent.Deleted, {
-        info: session,
-      })
+      removed.push(session)
+    } catch (e) {
+      log.error(e)
+    }
+  }
+
+  export const remove = fn(Identifier.schema("session"), async (sessionID) => {
+    const removed: Info[] = []
+    await removeInternal(sessionID, removed)
+    try {
+      for (const info of removed) {
+        await Bus.publish(SessionEvent.Deleted, { info })
+      }
     } catch (e) {
       log.error(e)
     }
@@ -977,6 +1021,7 @@ export namespace Session {
     }
     // Write lastExchange directly without bumping time.updated or republishing,
     // since the caller (processor) already performs a proper Session.update().
+    using _ = await SessionMutation.write(scopeID, asSessionID(sessionID))
     const infoPath = StoragePath.sessionInfo(scopeID, asSessionID(sessionID))
     await Storage.update<Info>(infoPath, (draft) => {
       draft.lastExchange = lastExchange
