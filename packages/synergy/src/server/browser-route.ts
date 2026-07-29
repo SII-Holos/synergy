@@ -42,6 +42,8 @@ const MAX_BROKER_BYTES = 80 * 1024 * 1024
 const MAX_TICKET_BYTES = 16 * 1024
 const MAX_ANNOTATION_BYTES = 256 * 1024
 const MAX_DIAGNOSTICS_BYTES = 64 * 1024
+
+let browserViewerOrigins = new Set<string>()
 const payloadTooLargeResponse = {
   description: "Browser request payload is too large",
   content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
@@ -605,18 +607,37 @@ function assertWebSocketRequest(c: any, role: "viewer" | "host"): void {
     return
   }
   if (!origin) throw new Error("Browser viewer connections require an Origin header.")
-  if (origin === "file://") return
-  const requestURL = new URL(c.req.url)
-  if (origin === requestURL.origin) return
-  const parsed = new URL(origin)
-  if (isLoopback(parsed.hostname) && isLoopback(requestURL.hostname)) return
-  const allowed = new Set(
-    (process.env.SYNERGY_ALLOWED_ORIGINS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
-  )
-  if (!allowed.has(origin)) throw new Error(`Browser viewer Origin is not allowed: ${origin}`)
+  if (!browserViewerOriginAllowed({ origin, requestURL: c.req.url })) {
+    throw new Error(`Browser viewer Origin is not allowed: ${origin}`)
+  }
+}
+
+export function configureBrowserViewerOrigins(origins: Iterable<string>): void {
+  const compatibilityOrigins = (process.env.SYNERGY_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+  browserViewerOrigins = new Set([...origins, ...compatibilityOrigins].map((origin) => origin.trim()).filter(Boolean))
+}
+
+export function browserViewerOriginAllowed(input: { origin: string; requestURL: string }): boolean {
+  if (input.origin === "file://") return true
+  const origin = httpOrigin(input.origin)
+  const request = httpOrigin(input.requestURL)
+  if (!origin || !request) return false
+  if (origin.origin === request.origin) return true
+  if (isLoopback(origin.hostname) && isLoopback(request.hostname)) return true
+  return browserViewerOrigins.has(origin.origin)
+}
+
+function httpOrigin(value: string): URL | undefined {
+  try {
+    const parsed = new URL(value)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return
+    return parsed
+  } catch {
+    return
+  }
 }
 
 export function browserHostOriginAllowed(origin: string | undefined): boolean {

@@ -1231,7 +1231,7 @@ msgstr "约 {tokens}"
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.estimateNote"
-msgstr "各分类用量由模型分词器估算，并按提供商报告的实际输入总量进行校准。"
+msgstr "各分类用量采用有界 UTF-8 估算，并按提供商报告的精确输入总量进行校准。"
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.exactInputShare"
@@ -17070,6 +17070,10 @@ msgid "tool.label.changes"
 msgstr "{count} 项变更"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.elements"
+msgstr "{count} 个元素"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.files"
 msgstr "{count} 个文件"
 
@@ -17700,6 +17704,10 @@ msgstr "管理研究状态"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "查找软件库"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.response-card"
+msgstr "准备回复卡片"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.revise-file"

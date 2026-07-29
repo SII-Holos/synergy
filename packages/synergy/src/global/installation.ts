@@ -4,6 +4,7 @@ import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import fs from "fs/promises"
 import { DesktopInstallation } from "./desktop-installation"
+import { StandaloneInstallation } from "./standalone-installation"
 import { Log } from "../util/log"
 import { Flag } from "../flag/flag"
 
@@ -17,7 +18,7 @@ export namespace Installation {
   const log = Log.create({ service: "installation" })
   const NPM_REGISTRY = "https://registry.npmjs.org"
 
-  export type Method = "npm" | "yarn" | "pnpm" | "bun" | "brew" | "desktop" | "unknown"
+  export type Method = "npm" | "yarn" | "pnpm" | "bun" | "brew" | "desktop" | "standalone" | "unknown"
 
   export const Event = {
     Updated: BusEvent.define(
@@ -60,12 +61,23 @@ export namespace Installation {
   }
 
   export const detectDesktopInstall = DesktopInstallation.detectDesktopInstall
+  export const detectStandaloneInstall = StandaloneInstallation.detectStandaloneInstall
 
   export async function method(): Promise<Method> {
     const execPath = process.execPath
     const realExecPath = await fs.realpath(execPath).catch(() => execPath)
     if (DesktopInstallation.isRuntimePath(process.platform, realExecPath)) {
       return "desktop"
+    }
+    if (
+      StandaloneInstallation.detectStandaloneInstall({
+        platform: process.platform,
+        execPath,
+        realExecPath,
+        env: process.env,
+      })
+    ) {
+      return "standalone"
     }
 
     const exec = execPath.toLowerCase()
@@ -130,6 +142,25 @@ export namespace Installation {
   }
 
   export async function upgrade(method: Method, target: string) {
+    if (method === "standalone") {
+      const realExecPath = await fs.realpath(process.execPath).catch(() => process.execPath)
+      const result = await StandaloneInstallation.upgrade({
+        target,
+        context: {
+          platform: process.platform,
+          execPath: process.execPath,
+          realExecPath,
+          env: process.env,
+        },
+      })
+      log.info("upgraded", { method, target, stdout: result.stdout, stderr: result.stderr })
+      if (result.exitCode !== 0) {
+        throw new UpgradeFailedError({ stderr: result.stderr || result.stdout })
+      }
+      await $`${process.execPath} --version`.nothrow().quiet().text()
+      return
+    }
+
     let cmd
     switch (method) {
       case "npm":

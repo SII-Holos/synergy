@@ -70,7 +70,7 @@ import { GlobalNavRoute } from "./global-nav"
 import { GitHubConfiguredRoute } from "./github-configured"
 import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
-import { BrowserRoute } from "./browser-route"
+import { BrowserRoute, configureBrowserViewerOrigins } from "./browser-route"
 import { BlueprintRoute } from "./blueprint"
 import { LatticeRoute } from "./lattice"
 import { WorkflowRoute } from "./workflow"
@@ -1601,6 +1601,7 @@ export namespace Server {
   export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
     const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
     _corsWhitelist = new Set([...(opts.cors ?? []), ...(isExternalHost ? lanOrigins() : [])])
+    configureBrowserViewerOrigins(opts.cors ?? [])
 
     const args = {
       hostname: opts.hostname,

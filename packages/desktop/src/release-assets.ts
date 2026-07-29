@@ -60,6 +60,12 @@ export function browserHostArtifactName(
   return `synergy-browser-host-${platform}-${arch}-${version}.zip`
 }
 
+export function browserHostExecutablePath(platform: DesktopReleasePlatform): string {
+  if (platform === "darwin") return "Synergy Browser Host.app/Contents/MacOS/Synergy Browser Host"
+  if (platform === "win32") return "Synergy Browser Host.exe"
+  return "synergy-browser-host"
+}
+
 export function browserHostManifestName(
   version: string,
   platform: DesktopReleasePlatform,

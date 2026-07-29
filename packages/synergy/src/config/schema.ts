@@ -70,7 +70,7 @@ export const ChannelFeishuAccount = z
       .min(1)
       .optional()
       .describe("Project directory whose Scope owns sessions for this Feishu account"),
-    streaming: z.boolean().optional().default(true).describe("Enable streaming card updates"),
+    streaming: z.boolean().optional().describe("Enable streaming card updates"),
     streamingThrottleMs: z
       .number()
       .int()
@@ -693,7 +693,7 @@ export const Server = z
     port: z.number().int().positive().optional().describe("Port to listen on"),
     hostname: z.string().optional().describe("Hostname to listen on"),
     mdns: z.boolean().optional().describe("Enable mDNS service discovery"),
-    cors: z.array(z.string()).optional().describe("Additional domains to allow for CORS"),
+    cors: z.array(z.string()).optional().describe("Additional origins allowed for CORS and Browser viewer WebSockets"),
   })
   .strict()
   .meta({

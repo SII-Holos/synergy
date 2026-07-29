@@ -4,6 +4,7 @@ import * as ChannelTypes from "../../types"
 
 type UploadImageResult = { imageKey: string }
 type UploadFileResult = { fileKey: string }
+const MEDIA_REQUEST_TIMEOUT_MS = 30_000
 
 type PreparedMediaMessage =
   | { msgType: "image"; content: string }
@@ -77,6 +78,7 @@ export namespace FeishuOutboundMedia {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body,
+      signal: AbortSignal.timeout(MEDIA_REQUEST_TIMEOUT_MS),
     })
 
     const result = (await response.json()) as { code?: number; msg?: string; data?: { image_key?: string } }
@@ -105,6 +107,7 @@ export namespace FeishuOutboundMedia {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body,
+      signal: AbortSignal.timeout(MEDIA_REQUEST_TIMEOUT_MS),
     })
 
     const result = (await response.json()) as { code?: number; msg?: string; data?: { file_key?: string } }
@@ -134,7 +137,7 @@ async function loadAsset(part: Exclude<ChannelTypes.OutboundPart, { type: "text"
   }
 
   if (part.url) {
-    const response = await fetch(part.url)
+    const response = await fetch(part.url, { signal: AbortSignal.timeout(MEDIA_REQUEST_TIMEOUT_MS) })
     if (!response.ok) {
       throw new Error(`Failed to fetch outbound media: HTTP ${response.status}`)
     }

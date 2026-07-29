@@ -63,7 +63,11 @@ Todo and DAG are coordination aids inside one session. They are not durable work
 
 Questions are blocking decision requests associated with a session and optional tool call. Each request contains one or more short prompts, labeled options, an optional multi-select rule, creation time, and timeout. Web and protocol clients reply or reject through the shared question API.
 
-The configured timeout can be disabled or changed. A timeout returns an explicit empty/timed-out result so the agent can continue with judgment; a dismissal rejects the tool call. Unattended sessions reject questions immediately because Agenda, Channel, and other autonomous work cannot wait on an interactive surface.
+The configured timeout can be disabled or changed. A timeout returns an explicit empty/timed-out result so the agent can continue with judgment; a dismissal rejects the tool call.
+
+Unattended sessions — Agenda accounts and non-Feishu/Lark Channel accounts — reject questions immediately because autonomous work cannot wait on an interactive surface.
+
+Feishu/Lark Channel sessions use `interactive` mode. When the agent asks a question during a channel invocation, the runtime delivers a provider-native CardKit 2.0 interactive form instead of rejecting the question. See the [Question Cards section in Connections](connections.md#question-cards) for details.
 
 ## Skills
 

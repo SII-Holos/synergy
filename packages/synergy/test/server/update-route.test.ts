@@ -143,28 +143,31 @@ describe("server update route", () => {
     expect(script).toContain("--registry=https://registry.npmjs.org")
   })
 
-  test("does not offer managed daemon updates for unsupported install methods", async () => {
-    process.env.SYNERGY_DAEMON = "1"
-    await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
-    setServerUpdateWorkerControlsForTest({
-      latestVersion: async () => "999.0.0",
-      installMethod: async () => "unknown",
-      spawn(command) {
-        spawned.push(command)
-      },
-    })
+  test.each(["unknown", "standalone"] as const)(
+    "does not offer managed daemon updates for %s install methods",
+    async (installMethod) => {
+      process.env.SYNERGY_DAEMON = "1"
+      await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
+      setServerUpdateWorkerControlsForTest({
+        latestVersion: async () => "999.0.0",
+        installMethod: async () => installMethod,
+        spawn(command) {
+          spawned.push(command)
+        },
+      })
 
-    const app = testApp()
-    const response = await app.request("/global/update/check", { method: "POST" })
+      const app = testApp()
+      const response = await app.request("/global/update/check", { method: "POST" })
 
-    expect(response.status).toBe(200)
-    const body = await response.json()
-    expect(body.capability).toBe("managed")
-    expect(body.phase).toBe("error")
-    expect(body.updateAvailable).toBe(true)
-    expect(body.error).toBe("Managed service install method cannot be updated from Web.")
-    expect(spawned).toEqual([])
-  })
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.capability).toBe("managed")
+      expect(body.phase).toBe("error")
+      expect(body.updateAvailable).toBe(true)
+      expect(body.error).toBe("Managed service install method cannot be updated from Web.")
+      expect(spawned).toEqual([])
+    },
+  )
 
   test("reports Desktop-managed updater guidance for desktop install methods", async () => {
     process.env.SYNERGY_DAEMON = "1"
@@ -194,30 +197,33 @@ describe("server update route", () => {
     expect(spawned).toEqual([])
   })
 
-  test("does not start a worker for unsupported managed install methods", async () => {
-    process.env.SYNERGY_DAEMON = "1"
-    await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
-    setServerUpdateWorkerControlsForTest({
-      latestVersion: async () => "999.0.0",
-      installMethod: async () => "unknown",
-      spawn(command) {
-        spawned.push(command)
-      },
-    })
+  test.each(["unknown", "standalone"] as const)(
+    "does not start a worker for %s managed install methods",
+    async (installMethod) => {
+      process.env.SYNERGY_DAEMON = "1"
+      await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
+      setServerUpdateWorkerControlsForTest({
+        latestVersion: async () => "999.0.0",
+        installMethod: async () => installMethod,
+        spawn(command) {
+          spawned.push(command)
+        },
+      })
 
-    const app = testApp()
-    const response = await app.request("/global/update/start", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ version: "999.0.0" }),
-    })
+      const app = testApp()
+      const response = await app.request("/global/update/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ version: "999.0.0" }),
+      })
 
-    expect(response.status).toBe(400)
-    const body = await response.json()
-    expect(body.phase).toBe("error")
-    expect(body.error).toBe("Managed service install method cannot be updated from Web.")
-    expect(spawned).toEqual([])
-  })
+      expect(response.status).toBe(400)
+      const body = await response.json()
+      expect(body.phase).toBe("error")
+      expect(body.error).toBe("Managed service install method cannot be updated from Web.")
+      expect(spawned).toEqual([])
+    },
+  )
 
   test("does not start a worker for Desktop-managed install methods", async () => {
     process.env.SYNERGY_DAEMON = "1"

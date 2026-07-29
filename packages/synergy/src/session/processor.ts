@@ -820,6 +820,12 @@ export namespace SessionProcessor {
         try {
           while (true) {
             let streamAborted = false
+            let contextUsageEnrichment:
+              | {
+                  draft: Promise<ContextUsage.Draft | undefined>
+                  totalInput: number
+                }
+              | undefined
             try {
               input.abort.throwIfAborted()
               let currentText: MessageV2.TextPart | undefined
@@ -1308,10 +1314,10 @@ export namespace SessionProcessor {
                       input.assistantMessage.cost += usage.cost
                       input.assistantMessage.tokens = usage.tokens
                       if (hasProviderInputUsage(value.usage) && stream.contextUsageDraft) {
-                        input.assistantMessage.contextUsage = ContextUsage.reconcile(
-                          stream.contextUsageDraft,
-                          ModelLimit.actualInput(usage.tokens),
-                        )
+                        contextUsageEnrichment = {
+                          draft: stream.contextUsageDraft,
+                          totalInput: ModelLimit.actualInput(usage.tokens),
+                        }
                       }
                       await Session.updatePart({
                         id: Identifier.ascending("part"),
@@ -1623,6 +1629,13 @@ export namespace SessionProcessor {
             await resolveUnsettledParts(parts, fastAbort)
             input.assistantMessage.time.completed = Date.now()
             await Session.updateMessage(input.assistantMessage)
+            if (contextUsageEnrichment) {
+              persistContextUsage({
+                sessionID: input.assistantMessage.sessionID,
+                messageID: input.assistantMessage.id,
+                ...contextUsageEnrichment,
+              })
+            }
             Session.updateLastExchange(input.sessionID).catch((e) =>
               log.warn("failed to update lastExchange", { sessionID: input.sessionID, error: e }),
             )
@@ -1675,5 +1688,29 @@ export namespace SessionProcessor {
     if (!usage || typeof usage !== "object") return false
     const inputTokens = (usage as { inputTokens?: unknown }).inputTokens
     return typeof inputTokens === "number" && Number.isFinite(inputTokens)
+  }
+
+  function persistContextUsage(input: {
+    sessionID: string
+    messageID: string
+    draft: Promise<ContextUsage.Draft | undefined>
+    totalInput: number
+  }) {
+    void input.draft
+      .then(async (draft) => {
+        if (!draft) return
+        await Session.updateAssistantContextUsage({
+          sessionID: input.sessionID,
+          messageID: input.messageID,
+          contextUsage: ContextUsage.reconcile(draft, input.totalInput),
+        })
+      })
+      .catch((error) => {
+        log.warn("context usage enrichment failed", {
+          sessionID: input.sessionID,
+          messageID: input.messageID,
+          error,
+        })
+      })
   }
 }

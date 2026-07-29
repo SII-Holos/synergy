@@ -95,7 +95,12 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
       if (parsed.type === "ready") options.onReady(parsed)
       else if (parsed.type === "heartbeat") options.onHeartbeat(parsed)
       else if (parsed.type === "log") {
-        options.onLog({ timestamp: Date.now(), level: parsed.level, message: parsed.message })
+        options.onLog({
+          timestamp: Date.now(),
+          level: parsed.level,
+          message: parsed.message,
+          details: parsed.details,
+        })
       } else if (parsed.type === "response") {
         if (parsed.ok) pending.resolve(parsed.requestId, { generation: parsed.generation, value: parsed.value })
         else pending.reject(parsed.requestId, deserializePluginRuntimeError(parsed.error))
