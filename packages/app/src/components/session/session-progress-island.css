@@ -242,6 +242,21 @@
   padding: 0 6px;
 }
 
+.session-progress-todo {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.session-progress-todo-list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 @keyframes session-progress-island-enter {
   from {
     opacity: 0;
