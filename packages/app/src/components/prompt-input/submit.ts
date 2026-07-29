@@ -67,6 +67,7 @@ import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/co
 import { promptSubmitFailure } from "./submit-failure"
 import { runComposerPreflight } from "./composer-preflight"
 import { createOptimisticUserMessage } from "./optimistic-user-message"
+import { handoffOptimisticMessage } from "@/context/session-optimistic-message"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -1000,6 +1001,42 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       )
     }
 
+    const handoffAcceptedOptimisticMessage = (canonicalID: string) => {
+      if (!messageID) return
+      const messages = syncStore.message[activeSession.id]
+      if (!messages) return
+      const metadata = syncStore.messageWindow[activeSession.id]
+      const result = handoffOptimisticMessage({
+        current: {
+          messages,
+          mode: metadata?.mode ?? "latest",
+          pendingLatest: metadata?.pendingLatest ?? false,
+          pendingLatestIds: metadata?.pendingLatestIds ?? [],
+        },
+        optimisticParts: syncStore.part[messageID],
+        canonicalParts: syncStore.part[canonicalID],
+        optimisticID: messageID,
+        canonicalID,
+        total: metadata?.total ?? messages.length,
+      })
+      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
+      setSyncStore(
+        produce((draft) => {
+          draft.message[activeSession.id] = result.window.messages
+          delete draft.part[messageID]
+          if (result.canonicalParts) draft.part[canonicalID] = result.canonicalParts
+          if (metadata) {
+            draft.messageWindow[activeSession.id] = {
+              ...metadata,
+              total: result.total,
+              pendingLatest: result.window.pendingLatest,
+              pendingLatestIds: result.window.pendingLatestIds,
+            }
+          }
+        }),
+      )
+    }
+
     const removeOptimisticMessage = () => {
       if (!messageID) return
       const messages = syncStore.message[activeSession.id]
@@ -1076,7 +1113,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
         if (armedLightLoop) input.clearPendingLightLoop()
         if (accepted.status === "queued" && optimisticAdded) {
-          removeOptimisticMessage()
+          handoffAcceptedOptimisticMessage(accepted.item.messageID)
           optimisticAdded = false
         }
         handoffNewSessionMessage(

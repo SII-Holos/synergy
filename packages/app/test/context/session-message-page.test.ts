@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { planMessagePageApply } from "../../src/context/session-message-page"
 import type { MessageWindowState } from "../../src/context/session-message-window"
+import { withOptimisticMessagePending } from "../../src/context/session-optimistic-message"
 
 type TestMessage = {
   id: string
@@ -11,6 +12,10 @@ type TestMessage = {
   mode?: string
   tokens?: { input: number; output: number; reasoning: number }
   label?: string
+  rootID?: string
+  isRoot?: boolean
+  visible?: boolean
+  metadata?: Record<string, unknown>
 }
 type TestPart = { id: string }
 
@@ -201,6 +206,100 @@ describe("planMessagePageApply", () => {
     const plan = planMessagePageApply<TestMessage, TestPart>({ page: page({ items: [message("user", 1)] }) })
 
     expect(plan.latestContextMessage).toBeNull()
+  })
+
+  test("preserves an accepted optimistic root until the latest page contains it", () => {
+    const pending: TestMessage = {
+      id: "pending",
+      time: { created: 2 },
+      role: "user",
+      isRoot: true,
+      rootID: "pending",
+      visible: true,
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [message("canonical", 1)], total: 1 }),
+      current: window([message("canonical", 1).info, pending]),
+    })
+
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["canonical", "pending"])
+    expect(plan.droppedIds).not.toContain("pending")
+    expect(plan.metadata.total).toBe(2)
+  })
+
+  test("keeps an accepted optimistic root when the authoritative latest page fills the cap", () => {
+    const canonical = Array.from({ length: 500 }, (_, index) =>
+      message(`canonical-${index.toString().padStart(3, "0")}`, index),
+    )
+    const pending: TestMessage = {
+      id: "pending",
+      time: { created: 500 },
+      role: "user",
+      isRoot: true,
+      rootID: "pending",
+      visible: true,
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: canonical, total: 500 }),
+      current: window([...canonical.map((item) => item.info), pending]),
+      cap: 500,
+    })
+
+    expect(plan.window.messages).toHaveLength(500)
+    expect(plan.window.messages.some((item) => item.id === "pending")).toBe(true)
+    expect(plan.droppedIds).toContain("canonical-000")
+    expect(plan.droppedIds).not.toContain("pending")
+    expect(plan.metadata.total).toBe(501)
+  })
+
+  test("counts only optimistic roots retained after full-window reconciliation", () => {
+    const firstPending: TestMessage = {
+      id: "pending-first",
+      time: { created: 15 },
+      role: "user",
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const secondPending: TestMessage = {
+      id: "pending-second",
+      time: { created: 30 },
+      role: "user",
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const canonical = [message("canonical-old", 10), message("canonical-new", 20)]
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: canonical, total: 2 }),
+      current: window([...canonical.map((item) => item.info), firstPending, secondPending]),
+      cap: 2,
+    })
+
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["canonical-new", "pending-second"])
+    expect(plan.metadata.total).toBe(3)
+  })
+
+  test("replaces an accepted optimistic root when the latest page contains the canonical message", () => {
+    const pending: TestMessage = {
+      id: "canonical",
+      time: { created: 2 },
+      role: "user",
+      isRoot: true,
+      rootID: "canonical",
+      visible: true,
+      label: "pending",
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const canonical = message("canonical", 2)
+    canonical.info.label = "canonical"
+    canonical.info.metadata = { promptDraft: { text: "saved" } }
+
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [canonical], total: 1 }),
+      current: window([pending]),
+    })
+
+    expect(plan.window.messages).toEqual([canonical.info])
+    expect(plan.metadata.total).toBe(1)
   })
 
   test("drops every previous message and part bucket on an empty latest page", () => {

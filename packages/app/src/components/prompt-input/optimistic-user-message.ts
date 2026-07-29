@@ -1,4 +1,5 @@
 import type { UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import { withOptimisticMessagePending } from "@/context/session-optimistic-message"
 
 export function createOptimisticUserMessage(input: {
   id: string
@@ -21,6 +22,6 @@ export function createOptimisticUserMessage(input: {
     agent: input.agent,
     model: input.model,
     variant: input.variant,
-    metadata: input.metadata,
+    metadata: withOptimisticMessagePending(input.metadata),
   }
 }

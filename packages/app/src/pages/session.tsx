@@ -96,6 +96,7 @@ import {
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
+import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
 
 const handoff = {
   prompt: "",
@@ -392,6 +393,7 @@ function SessionPageContent() {
   })
   const openRewindConfirm = (message: UserMessage | undefined) => {
     if (!message?.id) return
+    if (!messageAllowsCanonicalActions(message)) return
     const targetMsg = message
     const targetID = targetMsg.id
     const sessionID = params.id

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { createOptimisticUserMessage } from "../../../src/components/prompt-input/optimistic-user-message"
 import { DEFAULT_CAP, reconcileMessage } from "../../../src/context/session-message-window"
+import { isOptimisticMessagePending } from "../../../src/context/session-optimistic-message"
 
 describe("optimistic user message", () => {
   test("is immediately renderable as the canonical root while awaiting the server event", () => {
@@ -25,6 +26,7 @@ describe("optimistic user message", () => {
       time: { created: 123 },
     })
     expect(message.isRoot === true && message.visible !== false).toBe(true)
+    expect(isOptimisticMessagePending(message)).toBe(true)
   })
 
   test("stays in the rendered latest turns when a long-session window is full", () => {
