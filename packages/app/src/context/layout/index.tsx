@@ -31,6 +31,7 @@ import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { planMessagePageApply } from "../session-message-page"
 import { findSessionIndex } from "../session-collection"
+import { classifyScopeEvent } from "./event-routing"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -638,18 +639,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const event = e.details as { type?: string; properties?: unknown }
         const eventProperties = isRecord(event.properties) ? event.properties : undefined
         const eventDirectory = typeof eventProperties?.directory === "string" ? eventProperties.directory : undefined
-        if (event.type === "scope.removed") {
-          const scopeID = typeof eventProperties?.id === "string" ? eventProperties.id : undefined
-          if (scopeID) applyScopeRemoval(scopeID, eventDirectory)
-          return
-        }
         const eventTime = isRecord(eventProperties?.time) ? eventProperties.time : undefined
-        if (event.type === "scope.updated" && eventTime?.archived) {
+        const route = classifyScopeEvent(event.type, !!eventTime?.archived)
+        if (route === "scopeRemoval") {
           const scopeID = typeof eventProperties?.id === "string" ? eventProperties.id : undefined
           if (scopeID) applyScopeRemoval(scopeID, eventDirectory)
           return
         }
-        if (event.type !== "session.updated") return
+        if (route === "scopeIndexRefresh") {
+          scheduleScopeIndexRefresh()
+          return
+        }
+        if (route === "ignore") return
         const properties = (
           event as {
             properties?: {
