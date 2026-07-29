@@ -15,8 +15,11 @@ import { createSessionMessageLoader, type SessionMessageLoadState } from "./sess
 import { requestErrorMessage } from "@/utils/error"
 import {
   planSessionSyncReload,
+  queueSessionSync,
   refreshSessionAfterPending,
   trackSessionSync,
+  type SessionSyncTarget,
+  type TrackedSessionSync,
   type SessionSyncTrigger,
 } from "./session-sync-plan"
 import { hasMessageWindowSnapshot, type MessageWindowState } from "./session-message-window"
@@ -37,7 +40,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const [store, setStore] = globalSync.ensureScopeState(sdk.scopeKey)
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
-    const inflight = new Map<string, Promise<void>>()
+    const inflight = new Map<string, TrackedSessionSync>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightInbox = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
@@ -103,8 +106,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       })
     }
 
-    const markSessionSynced = (sessionID: string) => {
-      sessionReconnectVersions.set(sessionID, globalSync.reconnectVersion())
+    const markSessionSynced = (sessionID: string, reconnectVersion: number) => {
+      const current = sessionReconnectVersions.get(sessionID) ?? -1
+      if (reconnectVersion > current) sessionReconnectVersions.set(sessionID, reconnectVersion)
     }
 
     type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["messagePage"]>>
@@ -117,6 +121,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     type MessagePageLoadInput = {
       mode: "latest" | "history"
       cursor?: string
+      reconnectVersion?: number
       limit: number
     }
     const messageLoader = createSessionMessageLoader<SessionMessagePageLoadResult, MessagePageLoadInput>({
@@ -191,6 +196,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             result.response.response?.headers,
             apply,
           )
+          if (accepted && input.reconnectVersion !== undefined) {
+            markSessionSynced(sessionID, input.reconnectVersion)
+          }
           return accepted ? "applied" : "superseded"
         }
         // A history prepend changes the window outside latest-page ordering;
@@ -203,18 +211,18 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       onState: (sessionID, state) => setMeta("messageLoad", sessionID, state),
     })
 
-    const loadMessagePage = (sessionID: string, input: MessagePageLoadInput, options?: { force?: boolean }) =>
-      messageLoader
-        .load(sessionID, {
-          force: options?.force,
-          hasSnapshot: hasMessageSnapshot(sessionID),
-          input,
-        })
-        .then(() => {
-          markSessionSynced(sessionID)
-        })
+    const loadMessagePage = (
+      sessionID: string,
+      input: MessagePageLoadInput,
+      options?: { force?: boolean; reconnectVersion?: number },
+    ) =>
+      messageLoader.load(sessionID, {
+        force: options?.force,
+        hasSnapshot: hasMessageSnapshot(sessionID),
+        input: { ...input, reconnectVersion: options?.reconnectVersion },
+      })
 
-    const loadLatestMessages = (sessionID: string, options?: { force?: boolean }) =>
+    const loadLatestMessages = (sessionID: string, options?: { force?: boolean; reconnectVersion?: number }) =>
       loadMessagePage(sessionID, { mode: "latest", limit: chunk }, options)
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
@@ -334,7 +342,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         return store.status !== "loading"
       },
       get reconnectVersion() {
-        return globalSync.reconnectVersion()
+        return globalSync.scopeReconnectVersion(sdk.scopeKey)
       },
       get scope() {
         const match = Binary.search(globalSync.data.scope, store.scopeID, (p) => p.id)
@@ -392,7 +400,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           // Session metadata alone is not enough: tool parts publish as
           // unsequenced streaming events, so reconnect recovery must re-fetch
           // durable message/part snapshots too (issue #509 / #331).
-          const currentReconnectVersion = globalSync.reconnectVersion()
+          const currentReconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
           const session = getSession(sessionID)
           const plan = planSessionSyncReload({
             hasSessionRecord: session !== undefined,
@@ -402,32 +410,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             canUnrollback: session?.history?.rollback?.canUnrollback === true,
             trigger: options?.trigger,
           })
-          const pending = plan.ready ? undefined : inflight.get(sessionID)
-          const baseReq =
-            pending && options?.trigger
-              ? trackSessionSync(
-                  inflight,
-                  sessionID,
-                  refreshSessionAfterPending(pending, async () => {
-                    await loadSession(sessionID, { force: true })
-                    markSessionSynced(sessionID)
-                  }),
-                )
-              : (pending ??
-                (plan.ready
-                  ? Promise.resolve()
-                  : trackSessionSync(
-                      inflight,
-                      sessionID,
-                      Promise.all([
-                        plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
-                        plan.forceMessages ? loadLatestMessages(sessionID, { force: true }) : Promise.resolve(),
-                      ]).then(() => {
-                        // Session-only reloads (no message fetch) still advance the
-                        // reconnect watermark so later sync() calls can short-circuit.
-                        if (!plan.forceMessages) markSessionSynced(sessionID)
-                      }),
-                    )))
+          const target: SessionSyncTarget = {
+            reconnectVersion: currentReconnectVersion,
+            forceSession: plan.forceSession,
+            forceMessages: plan.forceMessages,
+          }
+          const runBaseSync = async () => {
+            await Promise.all([
+              plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
+              plan.forceMessages
+                ? loadLatestMessages(sessionID, { force: true, reconnectVersion: currentReconnectVersion })
+                : Promise.resolve(),
+            ])
+            if (!plan.forceMessages) markSessionSynced(sessionID, currentReconnectVersion)
+          }
+          const active = plan.ready ? undefined : inflight.get(sessionID)
+          const baseReq = plan.ready
+            ? Promise.resolve()
+            : active && options?.trigger
+              ? trackSessionSync(inflight, sessionID, target, refreshSessionAfterPending(active.request, runBaseSync))
+              : queueSessionSync(inflight, sessionID, target, runBaseSync)
 
           const requests = [baseReq, syncPermissions()]
           if (options?.refreshVolatile) {
@@ -446,9 +448,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         // messages or session metadata such as derived rollback state (issue
         // #328 / #316).
         async refresh(sessionID: string) {
+          const reconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
           await Promise.all([
             loadSession(sessionID, { force: true }).catch(() => {}),
-            loadLatestMessages(sessionID, { force: true }),
+            loadLatestMessages(sessionID, { force: true, reconnectVersion }),
             refreshVolatile(sessionID),
           ])
         },
@@ -498,11 +501,18 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   cursor: metadata.nextCursor!,
                   limit: count,
                 }),
-              loadLatest: () => loadLatestMessages(sessionID, { force: true }),
+              loadLatest: () =>
+                loadLatestMessages(sessionID, {
+                  force: true,
+                  reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
+                }),
             })
           },
           async returnLatest(sessionID: string) {
-            await loadLatestMessages(sessionID, { force: true })
+            await loadLatestMessages(sessionID, {
+              force: true,
+              reconnectVersion: globalSync.scopeReconnectVersion(sdk.scopeKey),
+            })
           },
         },
       },
