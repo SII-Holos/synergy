@@ -112,6 +112,51 @@ describe("session progress island motion", () => {
     }
   })
 
+  test("keeps the expanded panel inside the prompt dock surface", async () => {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 600 } })
+    try {
+      await page.setContent(`
+        <style>
+          *, ::before, ::after { box-sizing: border-box; }
+          ${css}
+          .prompt-dock { width: 54rem; margin: 0 auto; }
+          .session-progress-island-surface { animation: none !important; }
+        </style>
+        <div class="prompt-dock">
+          <div class="session-progress-island" data-expanded="true" data-collapsed-width="measured" style="--session-progress-island-expanded-width: 840px">
+            <div class="session-progress-island-surface" style="--session-progress-island-collapsed-width: 282px">
+              <button class="session-progress-island-header"></button>
+              <div class="session-progress-island-panel-wrap" data-expanded="true">
+                <div class="session-progress-island-panel">
+                  <div class="session-progress-island-panel-topline">Current work</div>
+                  <div class="session-progress-island-body">Todo content</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `)
+      await settleLayout(page)
+
+      const layout = await page.evaluate(() => {
+        const surface = document.querySelector<HTMLElement>(".session-progress-island-surface")!
+        const panel = document.querySelector<HTMLElement>(".session-progress-island-panel")!
+        const surfaceRect = surface.getBoundingClientRect()
+        const panelRect = panel.getBoundingClientRect()
+        return {
+          surfaceLeft: surfaceRect.left,
+          surfaceRight: surfaceRect.right,
+          panelLeft: panelRect.left,
+          panelRight: panelRect.right,
+        }
+      })
+      expect(layout.panelLeft).toBeGreaterThanOrEqual(layout.surfaceLeft)
+      expect(layout.panelRight).toBeLessThanOrEqual(layout.surfaceRight)
+    } finally {
+      await page.close()
+    }
+  })
+
   test("keeps the measured compact shell inside a narrow viewport", async () => {
     const page = await browser.newPage({ viewport: { width: 375, height: 600 } })
     try {
