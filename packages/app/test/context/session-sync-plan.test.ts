@@ -3,8 +3,26 @@ import {
   describeToolPartApply,
   planSessionSyncReload,
   refreshSessionAfterPending,
+  sessionSyncWatchKey,
   trackSessionSync,
 } from "../../src/context/session-sync-plan"
+
+test("session sync watch key changes when reconnect generation advances", () => {
+  const before = sessionSyncWatchKey({
+    sessionID: "ses_1",
+    connected: true,
+    reconnectVersion: 4,
+  })
+  const after = sessionSyncWatchKey({
+    sessionID: "ses_1",
+    connected: true,
+    reconnectVersion: 5,
+  })
+
+  expect(before).toEqual(["ses_1", true, 4])
+  expect(after).toEqual(["ses_1", true, 5])
+  expect(after).not.toEqual(before)
+})
 
 describe("planSessionSyncReload (#509)", () => {
   test("short-circuits when session and messages are current", () => {

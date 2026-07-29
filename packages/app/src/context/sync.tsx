@@ -333,6 +333,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       get ready() {
         return store.status !== "loading"
       },
+      get reconnectVersion() {
+        return globalSync.reconnectVersion()
+      },
       get scope() {
         const match = Binary.search(globalSync.data.scope, store.scopeID, (p) => p.id)
         if (match.found) return globalSync.data.scope[match.index]

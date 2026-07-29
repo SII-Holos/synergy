@@ -17,6 +17,14 @@ export type SessionSyncPlan = {
   ready: boolean
 }
 
+export function sessionSyncWatchKey(input: {
+  sessionID: string | undefined
+  connected: boolean
+  reconnectVersion: number
+}) {
+  return [input.sessionID, input.connected, input.reconnectVersion] as const
+}
+
 export async function refreshSessionAfterPending(
   pending: Promise<unknown>,
   refresh: () => Promise<unknown>,

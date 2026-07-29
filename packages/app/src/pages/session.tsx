@@ -96,6 +96,7 @@ import {
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
+import { sessionSyncWatchKey } from "@/context/session-sync-plan"
 
 const handoff = {
   prompt: "",
@@ -787,7 +788,12 @@ function SessionPageContent() {
   // params.id, one on sdk.connected) and double-fetched on mount.
   createEffect(
     on(
-      () => [params.id, sdk.connected()] as const,
+      () =>
+        sessionSyncWatchKey({
+          sessionID: params.id,
+          connected: sdk.connected(),
+          reconnectVersion: sync.reconnectVersion,
+        }),
       ([id, connected], prev) => {
         const prevId = prev?.[0]
         if (prevId && prevId !== id) {
