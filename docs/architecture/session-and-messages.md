@@ -22,6 +22,8 @@ Page and navigation indexes are shared by every session in a Scope, while a chil
 
 Completion notice record and acknowledgement operations also use a per-session operation queue outside the canonical mutation lock. This keeps completion events ordered with their durable unread-count changes without recursively acquiring the session mutation boundary.
 
+Permanent removal dismantles a session and its descendants under their mutation locks, then releases every lock before publishing child-first `session.deleted` events. `Session.remove()` awaits those publications so subscriber completion or publication failure cannot escape as detached asynchronous work.
+
 These locks coordinate the single runtime process that owns a local Scope. Storage atomic writes remain the durability boundary, but the JSON indexes are derived state rather than a cross-process transaction; startup migrations and rebuild paths recover them from canonical session records when required.
 
 ## Completion Notice and the `session.completion` Event

@@ -5,6 +5,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionEvent } from "../../src/session/event"
 import { SessionNav } from "../../src/session/nav"
+import { SessionMutation } from "../../src/session/mutation"
 import { StoragePath } from "../../src/storage/path"
 import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../fixture/fixture"
@@ -312,6 +313,48 @@ describe("session mutation serialization", () => {
           await Session.remove(second.id)
           await Session.remove(first.id)
           await Session.remove(parent.id)
+        }
+      },
+    })
+  })
+
+  test("awaits deleted subscribers after releasing the session mutation lock", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Remove with subscriber" })
+        const subscriberStarted = Promise.withResolvers<void>()
+        const releaseSubscriber = Promise.withResolvers<void>()
+        let removalFinished = false
+        const unsubscribe = Bus.subscribe(SessionEvent.Deleted, async (event) => {
+          if (event.properties.info.id !== session.id) return
+          using _mutation = await SessionMutation.write(scope.id, session.id)
+          subscriberStarted.resolve()
+          await releaseSubscriber.promise
+        })
+
+        try {
+          const removal = Session.remove(session.id).then(() => {
+            removalFinished = true
+          })
+          await Promise.race([
+            subscriberStarted.promise,
+            Bun.sleep(1000).then(() => {
+              throw new Error("Deleted subscriber did not acquire the released session mutation lock")
+            }),
+          ])
+          await Bun.sleep(25)
+
+          expect(removalFinished).toBe(false)
+          releaseSubscriber.resolve()
+          await removal
+          expect(removalFinished).toBe(true)
+        } finally {
+          releaseSubscriber.resolve()
+          unsubscribe()
         }
       },
     })

@@ -958,7 +958,7 @@ export namespace Session {
     return page.items
   })
 
-  export const remove = fn(Identifier.schema("session"), async (sessionID) => {
+  async function removeInternal(sessionID: string, removed: Info[]): Promise<void> {
     try {
       const indexed = await SessionManager.requireSession(sessionID)
       const scope = indexed.scope as Scope
@@ -967,7 +967,7 @@ export namespace Session {
       using _ = await SessionMutation.write(scopeID, canonicalSessionID)
       const session = await Storage.read<Info>(StoragePath.sessionInfo(scopeID, canonicalSessionID))
       for (const child of await children(sessionID)) {
-        await remove(child.id)
+        await removeInternal(child.id, removed)
       }
       const { Worktree } = await import("../project/worktree")
       await Worktree.detachSession(sessionID).catch((error) => {
@@ -984,10 +984,19 @@ export namespace Session {
       if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
       await removeChildIndex(scope.id, sessionID)
       await SessionNav.removeNavEntry(scope.id, sessionID)
-      // Deleted handlers receive the final snapshot and run asynchronously so they cannot re-enter this session lock.
-      Bus.publish(SessionEvent.Deleted, {
-        info: session,
-      })
+      removed.push(session)
+    } catch (e) {
+      log.error(e)
+    }
+  }
+
+  export const remove = fn(Identifier.schema("session"), async (sessionID) => {
+    const removed: Info[] = []
+    await removeInternal(sessionID, removed)
+    try {
+      for (const info of removed) {
+        await Bus.publish(SessionEvent.Deleted, { info })
+      }
     } catch (e) {
       log.error(e)
     }
