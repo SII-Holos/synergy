@@ -244,6 +244,8 @@ The `summary` flag is the context-boundary commit marker, not an in-progress pla
 
 The compaction agent cannot use tools or continue the user's task. Its built-in permission layer denies every tool subject to normal configuration precedence, while the invocation independently passes an empty tool set so no configured permission can equip the compaction model with tools. Its prompt requires observed facts, completed work, current state, next steps, constraints, and relevant files without inventing progress.
 
+The compaction call may reuse root `R` as its ephemeral user envelope for task identity, but it clears `R.variant` before preparing the dedicated compaction model. The persisted root remains unchanged, while the compaction model uses its own normal provider options without validating or applying a variant owned by a different model execution.
+
 If the summarization call itself exceeds context, Synergy writes a deterministic mechanical fallback and commits it through the same boundary. Other compaction-model failures remain explicit failures.
 
 ### Anchor and continuation
