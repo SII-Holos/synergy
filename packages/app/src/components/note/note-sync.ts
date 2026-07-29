@@ -151,3 +151,11 @@ export function patchBlueprintLoops(
   if (loop.scopeID !== currentScopeID) return withoutLoop
   return [loop, ...withoutLoop].sort((a, b) => b.time.updated - a.time.updated)
 }
+
+export function isNoteNotFoundError(error: unknown) {
+  if (typeof error !== "object" || error === null) return false
+  return (
+    (error as { name?: string }).name === "APIError" &&
+    (error as { data?: { statusCode?: number } }).data?.statusCode === 404
+  )
+}

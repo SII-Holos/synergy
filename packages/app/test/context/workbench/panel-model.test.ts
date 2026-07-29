@@ -7,6 +7,7 @@ import {
   openWorkbenchPanelTab,
   resolveWorkbenchEscapeAction,
   updateWorkbenchPanelTab,
+  workbenchPanelMountKey,
 } from "../../../src/context/workbench/panel-model"
 
 describe("openWorkbenchPanelTab", () => {
@@ -211,6 +212,14 @@ describe("workbench tab updates", () => {
     })
 
     expect(result).toEqual([{ id: "file:a", panelId: "file", resourceId: "src/new.ts", title: "new.ts" }])
+  })
+
+  test("keeps panel content mounted while tab metadata changes", () => {
+    const before = { id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }
+    const after = { ...before, resourceId: "notes:list" }
+
+    expect(workbenchPanelMountKey(after)).toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ id: "notes:2", panelId: "notes" })).not.toBe(workbenchPanelMountKey(before))
   })
 
   test("moves a tab to the requested stable index", () => {

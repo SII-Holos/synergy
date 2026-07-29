@@ -55,6 +55,7 @@ import {
   dirtyConflicts,
   EMPTY_DIRTY_REVISIONS,
   hasDirtyFields,
+  isNoteNotFoundError,
   noteChangedFields,
   patchBlueprintLoops,
   patchNoteGroups,
@@ -1641,6 +1642,15 @@ function NoteEditor(props: {
       return result.data as NoteInfo
     },
   )
+
+  let noteDeleted = false
+  createEffect(() => {
+    const err = note.error
+    if (err && isNoteNotFoundError(err) && !noteDeleted) {
+      noteDeleted = true
+      props.onDelete()
+    }
+  })
 
   const [baseNote, setBaseNote] = createSignal<NoteInfo | null>(null)
   const [title, setTitle] = createSignal("")
