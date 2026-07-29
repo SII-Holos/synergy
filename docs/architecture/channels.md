@@ -123,7 +123,7 @@ Synergy declares an exact `@sii-holos/holos-cli` runtime dependency. Source runs
 
 Every installation also ships `clarus-agent-participation` as a memory-backed builtin Skill. It documents only the native assignment Session workflow and the `clarus_submit_task_result` / `clarus_extend_task` tools; it does not install a standalone listener, open another WebSocket, own credentials, or depend on external scripts.
 
-Each running assignment may have one deterministic deadline Agenda item. The item belongs to the assignment Session's Project Scope and uses `session_guidance` delivery: when it fires, it injects hidden system-origin `steer` guidance into the same Task Session instead of creating a visible user prompt or a second Agenda Session. Authoritative extension events update the assignment deadline and reschedule the same Agenda item. Result acknowledgement or explicit Session abort cancels the reminder.
+Each running assignment may have one deterministic deadline Agenda item. The item belongs to the assignment Session's Project Scope and uses `session_guidance` delivery. It fires once, exactly three minutes before the current deadline; if the assignment arrives or is extended with less than three minutes remaining, it fires as soon as safely possible before the deadline. Once the deadline has passed, Synergy does not create or fire another reminder. When it fires, it injects hidden system-origin `steer` guidance into the same Task Session instead of creating a visible user prompt or a second Agenda Session. An acknowledged or authoritative extension reschedules the same Agenda item for the new deadline. Result acknowledgement or explicit Session abort cancels the reminder.
 
 ## Results and Extensions
 

@@ -110,19 +110,15 @@ export namespace ClarusAssignmentPrompt {
 }
 
 export namespace ClarusDeadline {
-  export const MIN_LEAD_MS = 30_000
-  export const MAX_LEAD_MS = 300_000
-  const LEAD_FRACTION = 0.1
+  export const REMINDER_LEAD_MS = 180_000
   const IMMEDIATE_DELAY_MS = 1_000
 
-  export function leadMs(deadlineAt: number, now = Date.now()): number {
-    const window = deadlineAt - now
-    if (window <= MIN_LEAD_MS) return MIN_LEAD_MS
-    return Math.min(MAX_LEAD_MS, Math.max(MIN_LEAD_MS, Math.round(window * LEAD_FRACTION)))
-  }
-
-  export function triggerAt(deadlineAt: number, now = Date.now()): number {
-    return Math.max(now + IMMEDIATE_DELAY_MS, deadlineAt - leadMs(deadlineAt, now))
+  export function triggerAt(deadlineAt: number, now = Date.now()): number | undefined {
+    if (deadlineAt <= now) return undefined
+    const scheduledAt = deadlineAt - REMINDER_LEAD_MS
+    if (scheduledAt > now) return scheduledAt
+    const immediateAt = Math.min(now + IMMEDIATE_DELAY_MS, deadlineAt - 1)
+    return immediateAt > now ? immediateAt : undefined
   }
 
   export function guidance(): string {

@@ -27,7 +27,7 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 3. Clarus emits only Project and Task ingress. Accept subscription state and runtime Task events; classify legacy Project message, file, system, and notary events as unknown without Session delivery.
 4. Persist result and extension outbox records before dispatch. Only `not_dispatched` may retry automatically with a fresh request ID and lineage; `rejected`, `ambiguous`, and `acknowledged` are terminal for automatic retry. Recovered `pending` records become `ambiguous`.
 5. Keep remote Project pause as display/protocol state for already accepted work. Use the standard Session Abort path for local cancellation, and keep accepted-task result, extension, and deadline behavior available while remotely paused.
-6. Use Agenda `session_guidance` only for durable hidden steering into the owning Task Session. It must not create an Agenda execution Session or a visible fake user prompt.
+6. Use Agenda `session_guidance` only for durable hidden steering into the owning Task Session. Clarus deadline guidance fires once exactly three minutes before the current deadline, fires as soon as safely possible when less time remains, does nothing after expiry, and reuses the same Agenda item after an acknowledged or authoritative extension. It must not create an Agenda execution Session or a visible fake user prompt.
 7. Keep `clarus-agent-participation` available as a memory-backed builtin Skill in a fresh `SYNERGY_HOME`. Its content must describe only the native assignment Session and result/extension tools; do not bundle standalone listener, CLI, daemon, credential, or second-WebSocket workflows.
 
 ## Keep API and Product Projection Complete

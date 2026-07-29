@@ -49,9 +49,17 @@ export namespace ClarusDeadlineAgenda {
           throw new Error(`Invalid Clarus task deadline: ${input.deadlineAt}`)
         }
 
+        const triggerAt = ClarusDeadline.triggerAt(deadlineAt)
+        if (triggerAt === undefined) {
+          if (existing && existing.status !== "cancelled" && existing.status !== "done") {
+            await Agenda.update(id, { status: "cancelled" }, scope.id)
+          }
+          return
+        }
+
         const title = `Clarus deadline: ${input.taskID}`
         const prompt = ClarusDeadline.guidance()
-        const triggers = [{ type: "at" as const, at: ClarusDeadline.triggerAt(deadlineAt) }]
+        const triggers = [{ type: "at" as const, at: triggerAt }]
 
         if (existing) {
           await Agenda.update(

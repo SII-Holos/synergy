@@ -425,53 +425,31 @@ describe("Clarus extension event deduplication", () => {
 })
 
 // =============================================================================
-// 4. Dynamic lead calculation contract
+// 4. Fixed reminder timing contract
 // =============================================================================
 
-describe("ClarusDeadline lead calculation", () => {
-  test("short deadline (< 5 min) gets minimum lead of 30s", () => {
-    const now = Date.now()
-    const deadlineAt = now + 120_000 // 2 minutes from now
-    const lead = ClarusDeadline.leadMs(deadlineAt, now)
-    expect(lead).toBe(30_000) // 10% of 120s = 12s, clamped to 30s min
-  })
-
-  test("medium deadline gets proportional lead capped at 5 min", () => {
-    const now = Date.now()
-    const deadlineAt = now + 3_600_000 // 1 hour
-    const lead = ClarusDeadline.leadMs(deadlineAt, now)
-    expect(lead).toBe(300_000) // 10% of 3600s = 360s, clamped to 300s max
-  })
-
-  test("long deadline gives maximum lead of 5 min", () => {
-    const now = Date.now()
-    const deadlineAt = now + 86_400_000 // 24 hours
-    const lead = ClarusDeadline.leadMs(deadlineAt, now)
-    expect(lead).toBe(300_000) // 10% of 86400s = 8640s, clamped to 300s max
-  })
-
-  test("already-near deadline still gets minimum lead", () => {
-    const now = Date.now()
-    const deadlineAt = now + 15_000 // 15 seconds in the future
-    const lead = ClarusDeadline.leadMs(deadlineAt, now)
-    expect(lead).toBe(30_000) // Minimum lead
-  })
-
-  test("triggerAt places the trigger before the deadline with exactly the lead margin", () => {
+describe("ClarusDeadline reminder timing", () => {
+  test("uses a fixed three-minute lead for future deadlines", () => {
     const now = Date.now()
     const deadlineAt = now + 3_600_000
-    const trigger = ClarusDeadline.triggerAt(deadlineAt, now)
-    expect(trigger).toBe(deadlineAt - ClarusDeadline.leadMs(deadlineAt, now))
+
+    expect(ClarusDeadline.triggerAt(deadlineAt, now)).toBe(deadlineAt - ClarusDeadline.REMINDER_LEAD_MS)
   })
 
-  test("triggerAt never fires in the past", () => {
+  test("schedules immediately when the deadline is less than three minutes away", () => {
     const now = Date.now()
-    const deadlineAt = now - 60_000 // already passed
-    const trigger = ClarusDeadline.triggerAt(deadlineAt, now)
-    expect(trigger).toBeGreaterThanOrEqual(now + 1_000)
+
+    expect(ClarusDeadline.triggerAt(now + 120_000, now)).toBe(now + 1_000)
   })
 
-  test("extension changes the effective deadline but Agenda reschedule uses new deadline", async () => {
+  test("does not schedule after the deadline", () => {
+    const now = Date.now()
+
+    expect(ClarusDeadline.triggerAt(now, now)).toBeUndefined()
+    expect(ClarusDeadline.triggerAt(now - 60_000, now)).toBeUndefined()
+  })
+
+  test("extension reactivates the same reminder three minutes before the new deadline", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -480,20 +458,27 @@ describe("ClarusDeadline lead calculation", () => {
         const projectID = "lead-ext-project"
         const scope = await setupProjectScope(accountId, projectID)
         const taskID = "task-lead-ext"
-
-        const originalDeadline = new Date(Date.now() + 3_600_000).toISOString()
         const event = assignmentFixture({
           agentID: accountId,
           projectID,
           taskID,
           runID: "run-lead-ext",
-          deadlineAt: originalDeadline,
+          deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
         })
-
         const created = await dispatchAssignment(accountId, event)
+        const itemID = ClarusDeadlineAgenda.itemID({ accountId, projectID, taskID })
 
-        // Extend with a much later deadline
-        const newDeadline = new Date(Date.now() + 86_400_000).toISOString() // 24h
+        await ClarusDeadlineAgenda.sync({
+          accountId,
+          projectID,
+          taskID,
+          sessionID: created.assignment.sessionID,
+          deadlineAt: new Date(Date.now() - 1_000).toISOString(),
+          active: true,
+        })
+        expect((await AgendaStore.get(scope.id, itemID)).status).toBe("cancelled")
+
+        const newDeadline = new Date(Date.now() + 86_400_000).toISOString()
         await ClarusDeadlineAgenda.sync({
           accountId,
           projectID,
@@ -503,11 +488,9 @@ describe("ClarusDeadline lead calculation", () => {
           active: true,
         })
 
-        // Verify the Agenda item now reflects the new deadline
-        const items = (await AgendaStore.list(scope.id)).filter((i) => i.tags?.includes("deadline"))
-        expect(items).toHaveLength(1)
-        // The item should remain active with updated triggers
-        expect(items[0]!.status).toBe("active")
+        const item = await AgendaStore.get(scope.id, itemID)
+        expect(item.status).toBe("active")
+        expect(item.triggers).toEqual([{ type: "at", at: Date.parse(newDeadline) - ClarusDeadline.REMINDER_LEAD_MS }])
       },
     })
   })

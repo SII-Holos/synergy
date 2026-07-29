@@ -127,7 +127,7 @@ Remote Project state is displayed separately as active, paused, stale, or archiv
 
 Only a Clarus task assignment creates or wakes a Session. One external Task ID has one stable unattended Session in its managed Project Scope; another run of that Task reuses the Session, while a retry represented by a new Task ID creates a new Session and preserves lineage. Clarus Task Sessions use the `autonomous` control profile so remote work cannot stall on an approval dialog visible only elsewhere.
 
-Task deadlines use durable Agenda guidance in the same Task Session. The reminder is hidden system-authored steering rather than a visible user prompt or a second Agenda Session. An authoritative extension reschedules the reminder, result acknowledgement cancels it, and the standard Session Abort action stops local execution.
+Task deadlines use durable Agenda guidance in the same Task Session. One hidden system-authored reminder steers the agent exactly three minutes before the current deadline, or as soon as safely possible when less than three minutes remain. It is not a visible user prompt or a second Agenda Session, and no reminder is sent after the deadline has passed. An acknowledged or authoritative extension reschedules the same reminder for the new deadline, result acknowledgement cancels it, and the standard Session Abort action stops local execution.
 
 Result submission and deadline extension persist their outbound record before dispatch. Only a request known not to have been sent can retry automatically; rejected or ambiguous requests do not. Account actions expose coalesced **Refresh Projects** and bounded, redacted diagnostics download when the provider supports them.
 

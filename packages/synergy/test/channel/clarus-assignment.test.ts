@@ -564,33 +564,25 @@ describe("Clarus assignment prompt structure", () => {
 // 3. Deadline lead computation
 // =============================================================================
 
-describe("Clarus deadline lead computation", () => {
-  test("computes bounded lead as min(5m, max(30s, 10% window))", () => {
-    const now = 1_000_000_000
-    expect(ClarusDeadline.leadMs(now + 600_000, now)).toBe(60_000)
-    expect(ClarusDeadline.leadMs(now + 1_200_000, now)).toBe(120_000)
-    expect(ClarusDeadline.leadMs(now + 3_600_000, now)).toBe(ClarusDeadline.MAX_LEAD_MS)
-    expect(ClarusDeadline.leadMs(now + 7_200_000, now)).toBe(ClarusDeadline.MAX_LEAD_MS)
-  })
-
-  test("near or past deadlines use the earliest safe immediate trigger", () => {
-    const now = 1_000_000_000
-    expect(ClarusDeadline.leadMs(now + 40_000, now)).toBe(ClarusDeadline.MIN_LEAD_MS)
-    expect(ClarusDeadline.leadMs(now - 3_600_000, now)).toBe(ClarusDeadline.MIN_LEAD_MS)
-    expect(ClarusDeadline.triggerAt(now + 10_000, now)).toBe(now + 1_000)
-    expect(ClarusDeadline.triggerAt(now - 5_000, now)).toBe(now + 1_000)
-  })
-
-  test("far-future deadline caps at five minute lead", () => {
-    const now = 1_000_000_000
-    expect(ClarusDeadline.leadMs(now + 86_400_000, now)).toBe(ClarusDeadline.MAX_LEAD_MS)
-    expect(ClarusDeadline.leadMs(now + 604_800_000, now)).toBe(ClarusDeadline.MAX_LEAD_MS)
-  })
-
-  test("future Agenda trigger time is deadline minus lead", () => {
+describe("Clarus deadline reminder timing", () => {
+  test("schedules one reminder exactly three minutes before the deadline", () => {
     const now = 1_000_000_000
     const deadlineAt = now + 3_600_000
-    expect(ClarusDeadline.triggerAt(deadlineAt, now)).toBe(deadlineAt - ClarusDeadline.MAX_LEAD_MS)
+
+    expect(ClarusDeadline.triggerAt(deadlineAt, now)).toBe(deadlineAt - ClarusDeadline.REMINDER_LEAD_MS)
+  })
+
+  test("schedules an immediate reminder when less than three minutes remain", () => {
+    const now = 1_000_000_000
+
+    expect(ClarusDeadline.triggerAt(now + 120_000, now)).toBe(now + 1_000)
+  })
+
+  test("does not schedule a reminder after the deadline", () => {
+    const now = 1_000_000_000
+
+    expect(ClarusDeadline.triggerAt(now, now)).toBeUndefined()
+    expect(ClarusDeadline.triggerAt(now - 1, now)).toBeUndefined()
   })
 })
 
@@ -628,7 +620,7 @@ describe("Clarus deadline Agenda lifecycle", () => {
         expect(item.triggers).toEqual([
           {
             type: "at",
-            at: new Date(deadlineAt).getTime() - ClarusDeadline.MAX_LEAD_MS,
+            at: new Date(deadlineAt).getTime() - ClarusDeadline.REMINDER_LEAD_MS,
           },
         ])
       },
