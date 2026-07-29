@@ -44,7 +44,7 @@ function fakePage(executions: string[], delayMs = 0): BrowserPageBackend {
   return page
 }
 
-function fakeSession(initialPage: BrowserPageBackend | null): BrowserSession {
+function fakeSession(initialPage: BrowserPageBackend | null): BrowserSession & { suspend(): Promise<void> } {
   let current = initialPage
   return {
     owner,
@@ -93,6 +93,9 @@ function fakeSession(initialPage: BrowserPageBackend | null): BrowserSession {
     async restore() {
       return true
     },
+    async suspend() {
+      current = null
+    },
     async dispose() {},
   }
 }
@@ -105,16 +108,16 @@ afterEach(() => {
 })
 
 describe("BrowserCommandService", () => {
-  test("disposes an owner after browser command activity becomes idle", async () => {
+  test("suspends a headless session owner after browser command activity becomes idle", async () => {
     const session = fakeSession(fakePage([]))
-    let disposals = 0
+    let suspensions = 0
+    session.suspend = async () => {
+      suspensions++
+    }
     restoreRuntime = BrowserCommandService.useRuntimeForTest(
       {
         async getOrCreateSession() {
           return session
-        },
-        async disposeSession() {
-          disposals++
         },
       },
       { ownerIdleMs: 20 },
@@ -123,19 +126,19 @@ describe("BrowserCommandService", () => {
     await BrowserCommandService.execute(owner, { commandId: "idle-reload", command: { type: "reload" } })
     await Bun.sleep(50)
 
-    expect(disposals).toBe(1)
+    expect(suspensions).toBe(1)
   })
 
   test("refreshes the owner idle deadline after each browser command", async () => {
     const session = fakeSession(fakePage([]))
-    let disposals = 0
+    let suspensions = 0
+    session.suspend = async () => {
+      suspensions++
+    }
     restoreRuntime = BrowserCommandService.useRuntimeForTest(
       {
         async getOrCreateSession() {
           return session
-        },
-        async disposeSession() {
-          disposals++
         },
       },
       { ownerIdleMs: 40 },
@@ -145,22 +148,22 @@ describe("BrowserCommandService", () => {
     await Bun.sleep(25)
     await BrowserCommandService.execute(owner, { commandId: "second-activity", command: { type: "stop" } })
     await Bun.sleep(25)
-    expect(disposals).toBe(0)
+    expect(suspensions).toBe(0)
 
     await Bun.sleep(30)
-    expect(disposals).toBe(1)
+    expect(suspensions).toBe(1)
   })
 
-  test("does not schedule idle disposal after an explicit close", async () => {
+  test("does not schedule idle suspension after an explicit close", async () => {
     const session = fakeSession(fakePage([]))
-    let disposals = 0
+    let suspensions = 0
+    session.suspend = async () => {
+      suspensions++
+    }
     restoreRuntime = BrowserCommandService.useRuntimeForTest(
       {
         async getOrCreateSession() {
           return session
-        },
-        async disposeSession() {
-          disposals++
         },
       },
       { ownerIdleMs: 20 },
@@ -170,7 +173,177 @@ describe("BrowserCommandService", () => {
     await Bun.sleep(50)
 
     expect(session.status).toBe("empty")
-    expect(disposals).toBe(0)
+    expect(suspensions).toBe(0)
+  })
+
+  test("does not suspend host pages or scope owners from command inactivity", async () => {
+    const cases: Array<{ testOwner: BrowserOwner.Info; backend: BrowserPageBackend["backend"] }> = [
+      { testOwner: owner, backend: "host" },
+      { testOwner: { ...owner, mode: "scope", sessionID: undefined }, backend: "headless" },
+    ]
+    for (const { testOwner, backend } of cases) {
+      const page = fakePage([])
+      Object.defineProperty(page, "backend", { value: backend })
+      const session = fakeSession(page)
+      let suspensions = 0
+      session.suspend = async () => {
+        suspensions++
+      }
+      restoreRuntime = BrowserCommandService.useRuntimeForTest(
+        {
+          async getOrCreateSession() {
+            return session
+          },
+        },
+        { ownerIdleMs: 10 },
+      )
+      await BrowserCommandService.execute(testOwner, { commandId: `idle-${backend}`, command: { type: "stop" } })
+      await Bun.sleep(30)
+      expect(suspensions).toBe(0)
+      restoreRuntime()
+      restoreRuntime = undefined
+    }
+  })
+
+  test("starts a fresh idle window when a command crosses the prior deadline", async () => {
+    const session = fakeSession(fakePage([], 30))
+    let suspensions = 0
+    session.suspend = async () => {
+      suspensions++
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 40 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "before-deadline", command: { type: "reload" } })
+    await Bun.sleep(25)
+    await BrowserCommandService.execute(owner, { commandId: "crosses-deadline", command: { type: "stop" } })
+    await Bun.sleep(15)
+    expect(suspensions).toBe(0)
+    await Bun.sleep(35)
+    expect(suspensions).toBe(1)
+  })
+
+  test("rearms idle suspension after an explicit close fails", async () => {
+    const session = fakeSession(fakePage([]))
+    session.closePage = async () => {
+      throw new BrowserProtocolError({
+        code: "browser_page_close_failed",
+        message: "close failed",
+        retryable: true,
+      })
+    }
+    let suspensions = 0
+    session.suspend = async () => {
+      suspensions++
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 20 },
+    )
+
+    await expect(
+      BrowserCommandService.execute(owner, { commandId: "failed-close", command: { type: "close" } }),
+    ).rejects.toMatchObject({ code: "browser_page_close_failed" })
+    await Bun.sleep(50)
+    expect(suspensions).toBe(1)
+  })
+
+  test("does not let an earlier successful close clear a newer command deadline", async () => {
+    const session = fakeSession(fakePage([]))
+    const closeStarted = Promise.withResolvers<void>()
+    const releaseClose = Promise.withResolvers<void>()
+    const closePage = session.closePage.bind(session)
+    session.closePage = async () => {
+      closeStarted.resolve()
+      await releaseClose.promise
+      await closePage()
+    }
+    let suspensions = 0
+    session.suspend = async () => {
+      suspensions++
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 10 },
+    )
+
+    const close = BrowserCommandService.execute(owner, { commandId: "stale-close", command: { type: "close" } })
+    await closeStarted.promise
+    const navigate = BrowserCommandService.execute(owner, {
+      commandId: "after-close",
+      command: { type: "navigate", source: "user", url: "https://example.com" },
+    })
+    releaseClose.resolve()
+    await Promise.all([close, navigate])
+    await Bun.sleep(30)
+
+    expect(suspensions).toBe(1)
+  })
+
+  test("queues a new command behind idle suspension instead of rejecting it", async () => {
+    const session = fakeSession(fakePage([]))
+    const suspendStarted = Promise.withResolvers<void>()
+    const releaseSuspend = Promise.withResolvers<void>()
+    const suspend = session.suspend.bind(session)
+    session.suspend = async () => {
+      suspendStarted.resolve()
+      await releaseSuspend.promise
+      await suspend()
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 10 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "arm-idle", command: { type: "stop" } })
+    await suspendStarted.promise
+    const navigate = BrowserCommandService.execute(owner, {
+      commandId: "during-suspend",
+      command: { type: "navigate", source: "user", url: "https://example.com" },
+    })
+    releaseSuspend.resolve()
+
+    await expect(navigate).resolves.toMatchObject({ type: "navigation" })
+    expect(session.page).not.toBeNull()
+  })
+
+  test("retries failed idle suspension with a finite budget", async () => {
+    const session = fakeSession(fakePage([]))
+    let attempts = 0
+    session.suspend = async () => {
+      attempts++
+      throw new Error("suspend failed")
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 10 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "retry-suspend", command: { type: "stop" } })
+    await Bun.sleep(80)
+    expect(attempts).toBe(4)
   })
 
   test("replays a commandId without repeating its side effect", async () => {

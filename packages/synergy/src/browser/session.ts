@@ -43,6 +43,7 @@ export class BrowserSessionImpl implements BrowserSession {
   private _checkpoint: BrowserCheckpoint | null = null
   private _error: BrowserProtocolErrorData | null = null
   private saveTail: Promise<void> = Promise.resolve()
+  private pendingCleanup: BrowserPageBackend | null = null
   get page(): BrowserPageBackend | null {
     return this._page
   }
@@ -183,6 +184,7 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   async ensurePage(url?: string, options: { resume?: boolean } = {}): Promise<BrowserPageBackend> {
+    if (!this._page && this.pendingCleanup) await this.finishSuspension()
     const desired = this.desiredBackend()
     if (this._page) {
       if (!this._page.isAlive()) {
@@ -259,7 +261,8 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   async closePage(): Promise<void> {
-    const page = this._page
+    const page = this._page ?? this.pendingCleanup
+    const wasLive = this._page === page
     const pageID = page?.id ?? this._descriptor?.id
     let closeError: unknown
     try {
@@ -285,13 +288,14 @@ export class BrowserSessionImpl implements BrowserSession {
       throw failure
     }
     this._page = null
+    this.pendingCleanup = closeError ? page : null
     this._descriptor = null
     this._checkpoint = null
     this._error = null
     this._status = "empty"
 
     await this.save()
-    if (pageID) BrowserEvent.publish(this.owner, { type: "page.closed", pageId: pageID })
+    if (wasLive && pageID) BrowserEvent.publish(this.owner, { type: "page.closed", pageId: pageID })
     if (closeError) {
       throw new BrowserProtocolError(
         {
@@ -416,7 +420,22 @@ export class BrowserSessionImpl implements BrowserSession {
     return true
   }
 
+  async suspend(): Promise<void> {
+    const page = this._page
+    if (page?.backend === "host" || this.pendingCleanup?.backend === "host") return
+    if (!page) {
+      if (this.pendingCleanup) await this.finishSuspension()
+      return
+    }
+    try {
+      await this.dispose()
+    } finally {
+      if (!this._page) BrowserEvent.publish(this.owner, { type: "page.closed", pageId: page.id })
+    }
+  }
+
   async dispose(): Promise<void> {
+    if (!this._page && this.pendingCleanup) await this.finishSuspension()
     const failures: unknown[] = []
     let captureFailed = false
     let closeError: unknown
@@ -460,6 +479,7 @@ export class BrowserSessionImpl implements BrowserSession {
       throw new AggregateError(failures, "Browser session disposal did not close its active page.")
     }
     this._page = null
+    this.pendingCleanup = closeError ? page : null
     if (failures.length) {
       this._status = "failed"
       this._error = failureData(new AggregateError(failures, "Browser session disposal was incomplete."), {
@@ -481,6 +501,30 @@ export class BrowserSessionImpl implements BrowserSession {
       failures.push(error)
     }
     if (failures.length) throw new AggregateError(failures, "Browser session disposal did not complete cleanly.")
+  }
+
+  private async finishSuspension(): Promise<void> {
+    const cleanup = this.pendingCleanup
+    if (!cleanup) return
+    try {
+      await cleanup.close()
+      this.pendingCleanup = null
+    } catch (error) {
+      this._status = "failed"
+      this._error = failureData(error, {
+        code: "browser_page_dispose_failed",
+        message: "Browser page resources could not be fully released during suspension.",
+        retryable: true,
+        pageId: cleanup.id,
+        url: cleanup.url,
+        suggestedAction: "Retry Browser suspension after the backend finishes shutting down.",
+      })
+      await this.save()
+      throw error
+    }
+    this._status = this._descriptor ? "suspended" : "empty"
+    this._error = null
+    await this.save()
   }
 
   private async ensureDriver(): Promise<BrowserDriver.Driver> {

@@ -24,15 +24,20 @@ interface OwnerQueue {
   closing: boolean
 }
 
+interface IdleState {
+  generation: number
+  failures: number
+  timer?: ReturnType<typeof setTimeout>
+}
+
 const MAX_REPLAY_RESULTS = 256
 const MAX_REPLAY_BYTES = 128 * 1024 * 1024
+const MAX_IDLE_SUSPEND_RETRIES = 3
 const DEFAULT_OWNER_IDLE_MS = 10 * 60 * 1_000
 const queues = new Map<string, OwnerQueue>()
-const idleTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const idleStates = new Map<string, IdleState>()
 const log = Log.create({ service: "browser.command" })
-type RuntimeAdapter = Pick<typeof BrowserRuntime, "getOrCreateSession"> &
-  Partial<Pick<typeof BrowserRuntime, "disposeSession">>
-let runtime: RuntimeAdapter = BrowserRuntime
+let runtime: Pick<typeof BrowserRuntime, "getOrCreateSession"> = BrowserRuntime
 let ownerIdleMs = DEFAULT_OWNER_IDLE_MS
 
 export namespace BrowserCommandService {
@@ -66,7 +71,7 @@ export namespace BrowserCommandService {
     const command = parsed.data
     const fingerprint = JSON.stringify(command)
     const key = BrowserOwner.key(owner)
-    const queue = queues.get(key) ?? { tail: Promise.resolve(), results: new Map(), resultBytes: 0, closing: false }
+    const queue = queues.get(key) ?? createQueue()
     queues.set(key, queue)
     if (queue.closing) {
       throw new BrowserProtocolError({
@@ -76,10 +81,17 @@ export namespace BrowserCommandService {
         commandId: request.commandId,
       })
     }
+    const idleGeneration = owner.mode === "session" ? beginIdleActivity(key) : 0
     const replay = queue.results.get(request.commandId)
     if (replay) {
-      updateIdleDeadline(owner, command.type)
-      return replayResult(replay, fingerprint, request.commandId)
+      try {
+        const result = replayResult(replay, fingerprint, request.commandId)
+        settleIdleActivity(owner, command.type, idleGeneration, true)
+        return result
+      } catch (error) {
+        settleIdleActivity(owner, command.type, idleGeneration, false)
+        throw error
+      }
     }
 
     const run = queue.tail.then(async () => {
@@ -98,12 +110,11 @@ export namespace BrowserCommandService {
     })
     const settled = run.then(
       (result) => {
-        updateIdleDeadline(owner, command.type)
+        settleIdleActivity(owner, command.type, idleGeneration, true)
         return result
       },
       (error) => {
-        if (command.type === "close") cancelIdleDeadline(key)
-        else scheduleIdleDisposal(owner)
+        settleIdleActivity(owner, command.type, idleGeneration, false)
         throw error
       },
     )
@@ -115,15 +126,17 @@ export namespace BrowserCommandService {
   }
 
   export function clear(): void {
-    for (const timer of idleTimers.values()) clearTimeout(timer)
-    idleTimers.clear()
+    for (const state of idleStates.values()) {
+      if (state.timer) clearTimeout(state.timer)
+    }
+    idleStates.clear()
     queues.clear()
   }
 
   export async function disposeOwner(owner: BrowserOwner.Info, dispose: () => Promise<void>): Promise<void> {
     const key = BrowserOwner.key(owner)
-    cancelIdleDeadline(key)
-    const queue = queues.get(key) ?? { tail: Promise.resolve(), results: new Map(), resultBytes: 0, closing: false }
+    clearIdleState(key)
+    const queue = queues.get(key) ?? createQueue()
     queues.set(key, queue)
     queue.closing = true
     const operation = queue.tail.then(dispose)
@@ -138,7 +151,10 @@ export namespace BrowserCommandService {
     }
   }
 
-  export function useRuntimeForTest(adapter: RuntimeAdapter, options?: { ownerIdleMs?: number }): () => void {
+  export function useRuntimeForTest(
+    adapter: Pick<typeof BrowserRuntime, "getOrCreateSession">,
+    options?: { ownerIdleMs?: number },
+  ): () => void {
     const previous = runtime
     const previousIdleMs = ownerIdleMs
     runtime = adapter
@@ -151,36 +167,91 @@ export namespace BrowserCommandService {
   }
 }
 
-function updateIdleDeadline(owner: BrowserOwner.Info, commandType: BrowserBackendCommand["type"]): void {
-  const key = BrowserOwner.key(owner)
-  if (commandType === "close") {
-    cancelIdleDeadline(key)
+function settleIdleActivity(
+  owner: BrowserOwner.Info,
+  commandType: BrowserBackendCommand["type"],
+  generation: number,
+  succeeded: boolean,
+): void {
+  if (commandType === "close" && succeeded) {
+    clearIdleGeneration(BrowserOwner.key(owner), generation)
     return
   }
-  scheduleIdleDisposal(owner)
+  scheduleIdleSuspension(owner, generation)
 }
 
-function scheduleIdleDisposal(owner: BrowserOwner.Info): void {
-  const disposeSession = runtime.disposeSession
-  if (!disposeSession || ownerIdleMs <= 0) return
+function beginIdleActivity(key: string): number {
+  const state = idleStates.get(key) ?? { generation: 0, failures: 0 }
+  if (state.timer) clearTimeout(state.timer)
+  state.timer = undefined
+  state.generation++
+  state.failures = 0
+  idleStates.set(key, state)
+  return state.generation
+}
+function clearIdleGeneration(key: string, generation: number): void {
+  const state = idleStates.get(key)
+  if (!state || state.generation !== generation) return
+  if (state.timer) clearTimeout(state.timer)
+  idleStates.delete(key)
+}
+
+function scheduleIdleSuspension(owner: BrowserOwner.Info, generation: number): void {
+  if (ownerIdleMs <= 0 || owner.mode !== "session") return
   const key = BrowserOwner.key(owner)
-  cancelIdleDeadline(key)
+  const state = idleStates.get(key)
+  if (!state || state.generation !== generation) return
+  if (state.timer) clearTimeout(state.timer)
   const timer = setTimeout(() => {
-    idleTimers.delete(key)
-    void disposeSession(owner).catch((error) => {
-      log.warn("failed to dispose idle browser owner", { owner: key, error })
-    })
+    if (state.timer === timer) state.timer = undefined
+    void suspendIdleOwner(owner, generation)
   }, ownerIdleMs)
   const unref = (timer as { unref?: () => void }).unref
   unref?.call(timer)
-  idleTimers.set(key, timer)
+  state.timer = timer
 }
 
-function cancelIdleDeadline(key: string): void {
-  const timer = idleTimers.get(key)
-  if (!timer) return
-  clearTimeout(timer)
-  idleTimers.delete(key)
+async function suspendIdleOwner(owner: BrowserOwner.Info, generation: number): Promise<void> {
+  const key = BrowserOwner.key(owner)
+  const state = idleStates.get(key)
+  if (!state || state.generation !== generation) return
+  const queue = queues.get(key) ?? createQueue()
+  queues.set(key, queue)
+  const operation = queue.tail.then(async () => {
+    if (idleStates.get(key)?.generation !== generation) return false
+    const session = await runtime.getOrCreateSession(owner)
+    if (idleStates.get(key)?.generation !== generation) return false
+    if (session.page?.backend === "host") return true
+    await session.suspend()
+    return true
+  })
+  queue.tail = operation.then(
+    () => undefined,
+    () => undefined,
+  )
+  try {
+    const handled = await operation
+    if (handled && idleStates.get(key)?.generation === generation) idleStates.delete(key)
+  } catch (error) {
+    if (idleStates.get(key)?.generation !== generation) return
+    state.failures++
+    if (state.failures <= MAX_IDLE_SUSPEND_RETRIES) {
+      scheduleIdleSuspension(owner, generation)
+    } else {
+      idleStates.delete(key)
+      log.warn("failed to suspend idle browser owner after retries", { ownerMode: owner.mode, error })
+    }
+  }
+}
+
+function clearIdleState(key: string): void {
+  const state = idleStates.get(key)
+  if (state?.timer) clearTimeout(state.timer)
+  idleStates.delete(key)
+}
+
+function createQueue(): OwnerQueue {
+  return { tail: Promise.resolve(), results: new Map(), resultBytes: 0, closing: false }
 }
 
 function replayResult(
