@@ -175,20 +175,48 @@ describe("LatticeRunService v2", () => {
     })
   })
 
-  test("a paused run requires explicit resume and resumes the same run", async () => {
+  test("a non-pristine paused run requires explicit resume", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      const first = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
-      await LatticeRunService.pause(first.id)
+      const scopeID = ScopeContext.current.scope.id
+      const run = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
+      await LatticeActionService.submit({
+        scopeID,
+        sessionID: session.id,
+        source: "panel",
+        input: {
+          action: "submit_requirements",
+          goal: "Ship the feature",
+          successCriteria: ["Tests pass"],
+          constraints: [],
+          nonGoals: [],
+          assumptions: [],
+        },
+      })
+      const paused = await LatticeRunService.disable(session.id)
+      expect(paused).toMatchObject({ status: "paused", statusReason: "user_exit" })
 
       await expect(LatticeRunService.enable({ sessionID: session.id, mode: "auto" })).rejects.toMatchObject({
         data: { reason: expect.stringContaining("explicit resume") },
       })
-      const resumed = await LatticeRunService.resume(first.id)
+      const resumed = await LatticeRunService.resume(run.id)
 
-      expect(resumed.id).toBe(first.id)
+      expect(resumed.id).toBe(run.id)
       expect(resumed.status).toBe("active")
-      expect(await LatticeStore.list(ScopeContext.current.scope.id)).toHaveLength(1)
+    })
+  })
+
+  test("a pristine paused run self-heals on enable and creates a replacement", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const first = await LatticeRunService.enable({ sessionID: session.id, mode: "auto" })
+      await LatticeStore.updateByRunID(first.scopeID, first.id, (draft) => LatticeMachine.pause(draft, "user_exit"))
+
+      const second = await LatticeRunService.enable({ sessionID: session.id, mode: "collaborative" })
+      expect(second.id).not.toBe(first.id)
+      expect(second.status).toBe("active")
+      expect(second.mode).toBe("collaborative")
+      expect((await LatticeStore.getByRunID(ScopeContext.current.scope.id, first.id))?.status).toBe("cancelled")
     })
   })
 
