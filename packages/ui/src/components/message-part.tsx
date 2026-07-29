@@ -2098,7 +2098,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 }
 
 PART_MAPPING["text"] = function TextPartDisplay(props) {
-  const data = useData()
   const part = () => props.part as TextPart
   const isTerminal = createMemo(() =>
     isTextPartTerminal({
@@ -2113,7 +2112,6 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
       key: part().id,
       source: part().text ?? "",
       completed: isTerminal(),
-      remove: data.directory,
     }),
   )
 

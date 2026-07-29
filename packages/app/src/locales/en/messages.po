@@ -1231,7 +1231,7 @@ msgstr "Estimated {tokens}"
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.estimateNote"
-msgstr "Category values are model-tokenizer estimates reconciled to the exact provider input total."
+msgstr "Category values use bounded UTF-8 estimates reconciled to the exact provider input total."
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.exactInputShare"

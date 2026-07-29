@@ -1231,7 +1231,7 @@ msgstr "约 {tokens}"
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.estimateNote"
-msgstr "各分类用量由模型分词器估算，并按提供商报告的实际输入总量进行校准。"
+msgstr "各分类用量采用有界 UTF-8 估算，并按提供商报告的精确输入总量进行校准。"
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.exactInputShare"

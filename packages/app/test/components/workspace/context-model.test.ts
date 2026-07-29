@@ -55,7 +55,7 @@ function contextUsage(input: Partial<ContextUsage> = {}): ContextUsage {
       instructions: { estimatedTokens: 70, attributedTokens: 60, items: 3 },
     },
     overhead: { attributedTokens: 20 },
-    estimator: { kind: "model-tokenizer" as const, encoding: "o200k_base" },
+    estimator: { kind: "bounded-utf8" as const, sampledCharacters: 700, truncated: false },
     reconciliation: { mode: "scaled-down" as const, factor: 0.8 },
     capturedAt: 25,
     ...input,
@@ -146,8 +146,8 @@ describe("buildContextPanelModel", () => {
     expect(model.breakdownRows.slice(0, 4).every((row) => row.estimated)).toBe(true)
     expect(model.breakdownRows.at(-1)?.estimated).toBe(false)
     expect(model.developerDetails).toMatchObject({
-      estimatorKind: "model-tokenizer",
-      estimatorEncoding: "o200k_base",
+      estimatorKind: "bounded-utf8",
+      estimatorEncoding: null,
       reconciliationMode: "scaled-down",
       reconciliationFactor: 0.8,
       rawEstimatedTotal: 700,

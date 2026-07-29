@@ -239,12 +239,6 @@ describe("session lifecycle events", () => {
           123,
         )
         const assistantID = Identifier.ascending("message")
-        const published = Promise.withResolvers<MessageV2.Assistant>()
-        const unsubscribe = Bus.subscribe(MessageV2.Event.Updated, (event) => {
-          if (event.properties.info.id !== assistantID || event.properties.info.role !== "assistant") return
-          published.resolve(event.properties.info)
-        })
-
         await Session.updateMessage({
           id: assistantID,
           sessionID: session.id,
@@ -258,8 +252,19 @@ describe("session lifecycle events", () => {
           path: { cwd: tmp.path, root: tmp.path },
           cost: 0,
           tokens: { input: 12, output: 2, reasoning: 0, cache: { read: 0, write: 0 } },
-          contextUsage,
+          metadata: { preserved: true },
           finish: "stop",
+        })
+
+        const published = Promise.withResolvers<MessageV2.Assistant>()
+        const unsubscribe = Bus.subscribe(MessageV2.Event.Updated, (event) => {
+          if (event.properties.info.id !== assistantID || event.properties.info.role !== "assistant") return
+          published.resolve(event.properties.info)
+        })
+        await Session.updateAssistantContextUsage({
+          sessionID: session.id,
+          messageID: assistantID,
+          contextUsage,
         })
 
         expect((await published.promise).contextUsage).toEqual(contextUsage)
@@ -272,6 +277,7 @@ describe("session lifecycle events", () => {
         expect(stored?.role).toBe("assistant")
         if (!stored || stored.role !== "assistant") throw new Error("expected stored assistant message")
         expect(stored.contextUsage).toEqual(contextUsage)
+        expect(stored.metadata?.preserved).toBe(true)
 
         await Session.remove(session.id)
       },

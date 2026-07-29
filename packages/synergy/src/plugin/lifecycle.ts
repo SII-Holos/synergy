@@ -113,6 +113,11 @@ type PluginHookExecution<Output> = {
   errors: string[]
 }
 
+type PluginTriggerOptions = {
+  sessionId?: string
+  signal?: AbortSignal
+}
+
 function pluginHookHandlerInput<Input, Output>(pointName: string, input: Input, value: Output): Input | Output {
   if (pointName !== "experimental.chat.system.transform") return value
   return { ...(input as Record<string, unknown>), ...(value as Record<string, unknown>) } as Input
@@ -123,7 +128,7 @@ async function executePluginHooks<Input, Output>(
   input: Input,
   initial: Output,
   plugins: LoadedPlugin[],
-  options?: { sessionId?: string },
+  options?: PluginTriggerOptions,
 ): Promise<PluginHookExecution<Output>> {
   const point = PluginHookPointRegistry.get(pointName)
   validateHookValue(point.inputSchema, input, `Invalid input for hook point ${pointName}`)
@@ -143,9 +148,12 @@ async function executePluginHooks<Input, Output>(
         .map((contribution) => ({ plugin, contribution })),
     ),
   )
+  options?.signal?.throwIfAborted()
   for (const { plugin, contribution } of handlers) {
+    options?.signal?.throwIfAborted()
     try {
       await ensureRuntime(plugin)
+      options?.signal?.throwIfAborted()
       const result = await pluginRuntimeManager.invoke({
         pluginId: plugin.id,
         handlerId: `hook:${contribution.id}`,
@@ -159,12 +167,14 @@ async function executePluginHooks<Input, Output>(
         pluginDir: plugin.pluginDir,
         manifest: plugin.manifest,
         timeoutMs: point.timeoutMs,
+        signal: options?.signal,
       })
       value = applyPluginHookResult(point, value, result)
       if (point.mode !== "observer")
         validateHookValue(point.outputSchema, value, `Invalid output for hook point ${pointName}`)
       succeededHandlers++
     } catch (error) {
+      if (options?.signal?.aborted) throw options.signal.reason ?? error
       if (error instanceof PluginHookDeniedError) throw error
       const message = point.redactErrors
         ? "Hook handler failed"
@@ -195,7 +205,7 @@ async function triggerPlugins<Input, Output>(
   input: Input,
   initial: Output,
   plugins: LoadedPlugin[],
-  options?: { sessionId?: string },
+  options?: PluginTriggerOptions,
 ): Promise<Output> {
   return executePluginHooks(pointName, input, initial, plugins, options).then((result) => result.value)
 }
@@ -204,7 +214,7 @@ export async function trigger<Input, Output>(
   pointName: string,
   input: Input,
   initial: Output,
-  options?: { sessionId?: string },
+  options?: PluginTriggerOptions,
 ): Promise<Output> {
   const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
   return triggerPlugins(pointName, input, initial, plugins, options)
