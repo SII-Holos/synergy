@@ -1,5 +1,7 @@
 import z from "zod"
 import path from "path"
+import { randomUUID } from "node:crypto"
+import { open, rename, rm, type FileHandle } from "node:fs/promises"
 import { Tool } from "./tool"
 import { Flag } from "../flag/flag"
 import { ScopeContext } from "../scope/context"
@@ -8,6 +10,112 @@ import { SearchGuard } from "./search-guard"
 
 const DEFAULT_TIMEOUT = ToolTimeout.DEFAULTS.arxivSearchMs
 const ARXIV_PDF_BASE = "https://arxiv.org/pdf"
+const ARXIV_DOWNLOAD_MAX_BYTES = 100 * 1024 * 1024
+
+class ArxivDownloadHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`Failed to download paper: HTTP ${status}`)
+    this.name = "ArxivDownloadHttpError"
+  }
+}
+
+export async function downloadArxivPdf(input: {
+  url: string
+  filepath: string
+  signal: AbortSignal
+  timeoutMs: number
+  maxBytes: number
+}) {
+  const timeout = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    timeout.abort(new DOMException("Download timed out", "TimeoutError"))
+  }, input.timeoutMs)
+  if (typeof timer === "object" && "unref" in timer) timer.unref()
+
+  const signal = AbortSignal.any([input.signal, timeout.signal])
+  const tempPath = path.join(path.dirname(input.filepath), `.synergy-arxiv-${process.pid}-${randomUUID()}.tmp`)
+  let file: FileHandle | undefined
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  let complete = false
+  let committed = false
+
+  const cancelReader = () => {
+    if (!reader) return
+    void reader.cancel(signal.reason).catch(() => {})
+  }
+
+  try {
+    const response = await fetch(input.url, {
+      signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; Synergy/1.0)",
+      },
+    })
+
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {})
+      throw new ArxivDownloadHttpError(response.status)
+    }
+    if (!response.body) throw new Error("Failed to download paper: response body is empty")
+
+    const contentLength = Number(response.headers.get("content-length"))
+    if (Number.isFinite(contentLength) && contentLength > input.maxBytes) {
+      await response.body.cancel().catch(() => {})
+      throw new Error(`Download exceeds the ${input.maxBytes}-byte limit`)
+    }
+
+    reader = response.body.getReader()
+    signal.addEventListener("abort", cancelReader, { once: true })
+    if (signal.aborted) signal.throwIfAborted()
+    file = await open(tempPath, "wx")
+
+    let size = 0
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) {
+        complete = true
+        break
+      }
+
+      size += chunk.value.byteLength
+      if (size > input.maxBytes) {
+        throw new Error(`Download exceeds the ${input.maxBytes}-byte limit`)
+      }
+
+      let offset = 0
+      while (offset < chunk.value.byteLength) {
+        const result = await file.write(chunk.value, offset, chunk.value.byteLength - offset)
+        if (result.bytesWritten === 0) throw new Error("Failed to write downloaded paper")
+        offset += result.bytesWritten
+      }
+    }
+
+    signal.throwIfAborted()
+    await file.sync()
+    signal.throwIfAborted()
+    await file.close()
+    file = undefined
+    signal.throwIfAborted()
+    clearTimeout(timer)
+    await rename(tempPath, input.filepath)
+    committed = true
+    return size
+  } catch (error) {
+    if (timedOut) throw new Error("Download timed out", { cause: error })
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal.removeEventListener("abort", cancelReader)
+    if (reader) {
+      if (!complete) await reader.cancel().catch(() => {})
+      reader.releaseLock()
+    }
+    await file?.close().catch(() => {})
+    if (!committed) await rm(tempPath, { force: true }).catch(() => {})
+  }
+}
 
 interface Paper {
   id: string
@@ -219,33 +327,20 @@ Examples of valid arXiv IDs:
     })
 
     const url = `${ARXIV_PDF_BASE}/${params.arxivId}.pdf`
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), ToolTimeout.DEFAULTS.arxivDownloadMs)
-
-    const response = await fetch(url, {
-      signal: AbortSignal.any([controller.signal, ctx.abort]),
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Synergy/1.0)",
-      },
+    const size = await downloadArxivPdf({
+      url,
+      filepath,
+      signal: ctx.abort,
+      timeoutMs: ToolTimeout.DEFAULTS.arxivDownloadMs,
+      maxBytes: ARXIV_DOWNLOAD_MAX_BYTES,
     }).catch((error) => {
-      clearTimeout(timeoutId)
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("Download timed out")
+      if (error instanceof ArxivDownloadHttpError) {
+        const failureType = SearchGuard.classifyHttpStatus(error.status) ?? "blocked_or_unavailable"
+        throw new Error(`Failed to download paper: HTTP ${error.status} (${failureType})`)
       }
       throw error
     })
 
-    clearTimeout(timeoutId)
-
-    if (!response.ok) {
-      const failureType = SearchGuard.classifyHttpStatus(response.status) ?? "blocked_or_unavailable"
-      throw new Error(`Failed to download paper: HTTP ${response.status} (${failureType})`)
-    }
-
-    const buffer = await response.arrayBuffer()
-    await Bun.write(filepath, buffer)
-
-    const size = buffer.byteLength
     const sizeStr = size > 1024 * 1024 ? `${(size / (1024 * 1024)).toFixed(2)} MB` : `${(size / 1024).toFixed(2)} KB`
 
     return {
