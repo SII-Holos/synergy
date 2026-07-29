@@ -20,6 +20,7 @@ import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { registerSynergyShikiThemes, SYNERGY_SHIKI_DARK, SYNERGY_SHIKI_LIGHT } from "./shiki-theme"
+import Blockquote from "./blockquote-extension"
 
 registerSynergyShikiThemes()
 
@@ -421,9 +422,11 @@ export interface DocumentEditorExtensionsConfig {
 export function createDocumentEditorExtensions(config: DocumentEditorExtensionsConfig): AnyExtension[] {
   return [
     StarterKit.configure({
+      blockquote: false,
       codeBlock: false,
       link: false,
     }),
+    Blockquote,
     Placeholder.configure({
       placeholder: config.lingui._({ id: D.slashHint.id, message: D.slashHint.message }),
     }),

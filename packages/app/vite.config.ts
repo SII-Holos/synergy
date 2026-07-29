@@ -1,4 +1,5 @@
 import { defineConfig, type PluginOption } from "vite"
+import { fileURLToPath } from "node:url"
 import appPlugin from "./vite"
 
 const synergyServerUrl = process.env.VITE_SYNERGY_SERVER_URL ?? "http://localhost:4096"
@@ -31,6 +32,14 @@ async function performanceVisualizer(): Promise<PluginOption[]> {
 export default defineConfig({
   base: "./",
   plugins: [appPlugin, ...(await performanceVisualizer())] as PluginOption[],
+  resolve: {
+    alias: {
+      // Tiptap 3.27.2's blockquote bundle inlines prosemirror-model, creating a second Fragment identity.
+      "@tiptap/extension-blockquote": fileURLToPath(
+        new URL("./src/components/note/blockquote-extension.ts", import.meta.url),
+      ),
+    },
+  },
   server: {
     host: "0.0.0.0",
     allowedHosts: true,
