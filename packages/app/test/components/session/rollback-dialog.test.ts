@@ -17,31 +17,30 @@ describe("rollback dialog presentation", () => {
     ).toBe("show")
   })
 
-  test("shows each rollback once", () => {
+  test("matching seen key suppresses the current rollback", () => {
     expect(
       rollbackDialogAction({
         rollbackKey: "session-a:rollback-a",
         seenKey: "session-a:rollback-a",
       }),
     ).toBe("wait")
+  })
 
+  test("missing seen key shows dialog for an active rollback", () => {
+    expect(
+      rollbackDialogAction({
+        rollbackKey: "session-a:rollback-a",
+      }),
+    ).toBe("show")
+  })
+
+  test("mismatched seen key shows dialog for a new rollback", () => {
     expect(
       rollbackDialogAction({
         rollbackKey: "session-a:rollback-b",
         seenKey: "session-a:rollback-a",
       }),
     ).toBe("show")
-  })
-
-  test("keeps a presented rollback closed after the session page is recreated", () => {
-    const rollbackKey = "session-a:rollback-a"
-
-    expect(
-      rollbackDialogAction({
-        rollbackKey,
-        seenKey: rollbackKey,
-      }),
-    ).toBe("wait")
   })
 
   test("closes an obsolete rollback dialog before presenting newer state", () => {
@@ -57,6 +56,17 @@ describe("rollback dialog presentation", () => {
     expect(
       rollbackDialogAction({
         rollbackKey: "session-b:rollback-b",
+        activeDialogID: "rollback-dialog",
+        rollbackDialogID: "rollback-dialog",
+        activeRollbackKey: "session-a:rollback-a",
+      }),
+    ).toBe("close")
+  })
+
+  test("obsolete active dialog still closes when no rollback is active", () => {
+    expect(
+      rollbackDialogAction({
+        rollbackKey: undefined,
         activeDialogID: "rollback-dialog",
         rollbackDialogID: "rollback-dialog",
         activeRollbackKey: "session-a:rollback-a",

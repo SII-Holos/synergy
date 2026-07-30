@@ -76,6 +76,7 @@ import {
 import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
 import { RollbackDialog } from "@/components/session/rollback-dialog"
 import { rollbackDialogAction } from "@/components/session/rollback-dialog-model"
+import { resolveRollbackDialogSeenKey } from "@/context/rollback-dialog"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 import { createRewindRetryInput } from "@/components/session/rewind-retry"
 import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
@@ -195,9 +196,24 @@ function SessionPageContent() {
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const rollback = createMemo(() => info()?.history?.rollback)
+  const [pendingRollbackDialogKey, setPendingRollbackDialogKey] = createSignal<string>()
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   let activeRollbackKey: string | undefined
   let rollbackDialogID: string | undefined
+  createEffect(
+    on(
+      () => params.id,
+      () => setPendingRollbackDialogKey(undefined),
+      { defer: true },
+    ),
+  )
+  createEffect(() => {
+    const sessionID = params.id
+    const rollbackID = info()?.rollbackAck?.rollbackID
+    if (!sessionID || !rollbackID) return
+    if (pendingRollbackDialogKey() !== `${sessionID}:${rollbackID}`) return
+    setPendingRollbackDialogKey(undefined)
+  })
   const visibleSessionTransitionEntry = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return undefined
@@ -324,11 +340,20 @@ function SessionPageContent() {
     }
     setSessionTransition(input.sessionID, input.progress, input.actions, input.handoff)
   }
+  const markRollbackPresented = (sessionID: string, rollbackID: string) => {
+    setPendingRollbackDialogKey(`${sessionID}:${rollbackID}`)
+    void sync.rollbackDialog.markPresented(sessionID, rollbackID).catch(() => {})
+  }
   createEffect(() => {
     const summary = rollback()
     const sessionID = params.id
     const rollbackKey = summary && sessionID ? `${sessionID}:${summary.id}` : undefined
-    const seenKey = sessionID ? sync.rollbackDialog.seenKey(sessionID) : undefined
+    const seenKey = resolveRollbackDialogSeenKey({
+      sessionID,
+      rollbackID: summary?.id,
+      rollbackAck: info()?.rollbackAck,
+      pendingKey: pendingRollbackDialogKey(),
+    })
     const action = rollbackDialogAction({
       rollbackKey,
       activeDialogID: dialog.active?.id,
@@ -360,7 +385,7 @@ function SessionPageContent() {
     )
     mountedDialogID = dialog.active?.id
     rollbackDialogID = mountedDialogID
-    sync.rollbackDialog.markPresented(sessionID, rollbackKey)
+    markRollbackPresented(sessionID, summary.id)
   })
   onCleanup(() => {
     if (rollbackDialogID && dialog.active?.id === rollbackDialogID) dialog.close()
@@ -418,7 +443,7 @@ function SessionPageContent() {
           const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
           if (action === "retry") {
             if (result.data?.id) {
-              sync.rollbackDialog.markPresented(sessionID, `${sessionID}:${result.data.id}`)
+              markRollbackPresented(sessionID, result.data.id)
             }
             try {
               await sync.session.sync(sessionID, { trigger: { type: "history-transition" } })

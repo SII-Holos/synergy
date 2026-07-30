@@ -6,6 +6,7 @@ import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { Session } from "../../src/session"
 import { MessageV2 } from "../../src/session/message-v2"
+import { SessionHistory } from "../../src/session/history"
 import { Dag } from "../../src/session/dag"
 import { Todo } from "../../src/session/todo"
 import { SessionExport } from "../../src/session/session-export"
@@ -148,6 +149,29 @@ describe("SessionImport", () => {
         expect(list.data.map((item) => item.id)).toContain(importedRoot.id)
         const nav = await SessionNav.queryScope(scope.id)
         expect(nav.items.map((item) => item.id)).toContain(importedRoot.id)
+      },
+    })
+  })
+
+  test("does not import rollback acknowledgment without history events", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Acknowledged Rollback" })
+        await writeExchange(session.id, "rollback prompt")
+        const rollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+        await Session.acknowledgeRollback(session.id, rollback.id)
+
+        const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
+        await Session.remove(session.id)
+
+        const result = await SessionImport.fromReport(report)
+        const imported = await Session.get(result.rootSessionID)
+        expect(imported.rollbackAck).toBeUndefined()
       },
     })
   })

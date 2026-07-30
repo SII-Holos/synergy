@@ -46,6 +46,14 @@ The `session.completion` event is the durable success-notification signal. It is
 
 Legacy persisted records that have `unread === true` and `silent !== true` but lack `unreadCount` are normalized to `unreadCount = 1` at the read boundary and by the persisted `SessionMigration.migrateSessionCompletionNotice` upgrade. Fresh sessions start with `unreadCount = 0`.
 
+## Rollback Feedback Acknowledgment
+
+Rollback history and rollback feedback presentation have separate owners. History events remain the canonical record of rollback and unrollback operations. Optional top-level `Session.Info.rollbackAck` stores only that a client presented feedback for the current rollback, as `{ rollbackID, acknowledgedAt }`.
+
+`POST /session/:sessionID/rollback/ack` accepts only the current active rollback ID. Repeating the same acknowledgment is idempotent and preserves its original timestamp; a stale ID or a session without an active rollback is rejected. A changed `rollbackID` naturally makes a later rollback eligible for feedback without clearing the previous acknowledgment. The write does not require the session to be idle and publishes the normal `session.updated` state event when it changes.
+
+This state is session-global and durable across runtime restart, but it is not imported with a session because history events are not imported. It is presentation state, not a `SessionHistory.Event`, and does not change effective message history or session activity ordering.
+
 Session metadata is not the message transcript. Each has its own storage and events.
 
 ### Global identity and endpoint lookup
