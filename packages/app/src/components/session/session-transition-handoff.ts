@@ -1,3 +1,5 @@
+import { isOptimisticMessagePending } from "@/context/session-optimistic-message"
+
 import type { SessionTransitionProgress } from "./session-transition-progress"
 import type { NewSessionWorkspaceSelection } from "./worktree-session"
 
@@ -8,6 +10,7 @@ type HandoffMessage = {
   role?: string
   isRoot?: boolean
   visible?: boolean
+  metadata?: unknown
 }
 
 type HandoffInboxItem = {
@@ -45,7 +48,11 @@ export function isSessionTransitionHandoffReady(
   if (!messageID) return false
   return messages.some(
     (message) =>
-      message.id === messageID && message.role === "user" && message.isRoot === true && message.visible !== false,
+      message.id === messageID &&
+      message.role === "user" &&
+      message.isRoot === true &&
+      message.visible !== false &&
+      !isOptimisticMessagePending(message),
   )
 }
 
