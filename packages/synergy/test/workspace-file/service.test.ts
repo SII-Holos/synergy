@@ -358,19 +358,19 @@ describe("WorkspaceFileSearch", () => {
     )
   })
 
-  test("aborts path enrichment when git status resolution never settles", async () => {
+  test("aborts path enrichment when node resolution never settles", async () => {
     await withWorkspace(
       async (dir) => {
         await Bun.write(path.join(dir, "run-evidence.json"), "{}")
       },
       async () => {
-        const originalStatusMap = WorkspaceFileStatus.statusMap
-        let markStatusStarted!: () => void
-        const statusStarted = new Promise<void>((resolve) => {
-          markStatusStarted = resolve
+        const originalMaybeNode = WorkspaceFileService.maybeNode
+        let markEnrichmentStarted!: () => void
+        const enrichmentStarted = new Promise<void>((resolve) => {
+          markEnrichmentStarted = resolve
         })
-        WorkspaceFileStatus.statusMap = async () => {
-          markStatusStarted()
+        WorkspaceFileService.maybeNode = async () => {
+          markEnrichmentStarted()
           return await new Promise(() => {})
         }
 
@@ -384,7 +384,7 @@ describe("WorkspaceFileSearch", () => {
 
         try {
           await Promise.race([
-            statusStarted,
+            enrichmentStarted,
             Bun.sleep(1_000).then(() => {
               throw new Error("File search did not begin path enrichment")
             }),
@@ -399,21 +399,21 @@ describe("WorkspaceFileSearch", () => {
             ]),
           ).rejects.toMatchObject({ name: "AbortError" })
         } finally {
-          WorkspaceFileStatus.statusMap = originalStatusMap
+          WorkspaceFileService.maybeNode = originalMaybeNode
           controller.abort()
         }
       },
     )
   })
 
-  test("returns basic truncated results when path enrichment times out", async () => {
+  test("returns complete basic results when path enrichment times out", async () => {
     await withWorkspace(
       async (dir) => {
         await Bun.write(path.join(dir, "run-evidence.json"), "{}")
       },
       async () => {
-        const originalStatusMap = WorkspaceFileStatus.statusMap
-        WorkspaceFileStatus.statusMap = async () => await new Promise(() => {})
+        const originalMaybeNode = WorkspaceFileService.maybeNode
+        WorkspaceFileService.maybeNode = async () => await new Promise(() => {})
 
         try {
           const result = await WorkspaceFileSearch.search({
@@ -430,7 +430,66 @@ describe("WorkspaceFileSearch", () => {
           const item = result.items[0]
           expect(item?.kind).toBe("file")
           if (item?.kind === "file") expect(item.node).toBeUndefined()
-          expect(result.truncated).toBe(true)
+          expect(result.truncated).toBe(false)
+        } finally {
+          WorkspaceFileService.maybeNode = originalMaybeNode
+        }
+      },
+    )
+  })
+
+  test("returns complete basic results when optional path enrichment fails", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "run-evidence.json"), "{}")
+      },
+      async () => {
+        const originalMaybeNode = WorkspaceFileService.maybeNode
+        WorkspaceFileService.maybeNode = async () => {
+          throw new Error("Metadata unavailable")
+        }
+
+        try {
+          const result = await WorkspaceFileSearch.search({
+            kind: "files",
+            query: "run evidence",
+            limit: 10,
+          })
+          expect(result.items).toHaveLength(1)
+          expect(result.items[0]).toMatchObject({
+            kind: "file",
+            path: "run-evidence.json",
+          })
+          expect(result.truncated).toBe(false)
+        } finally {
+          WorkspaceFileService.maybeNode = originalMaybeNode
+        }
+      },
+    )
+  })
+
+  test("skips git status enrichment when file search has no matches", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "run-evidence.json"), "{}")
+      },
+      async () => {
+        const originalStatusMap = WorkspaceFileStatus.statusMap
+        let statusCalls = 0
+        WorkspaceFileStatus.statusMap = async () => {
+          statusCalls += 1
+          return new Map()
+        }
+
+        try {
+          const result = await WorkspaceFileSearch.search({
+            kind: "files",
+            query: "definitely-no-match-xyz",
+            limit: 10,
+          })
+          expect(result.items).toEqual([])
+          expect(result.truncated).toBe(false)
+          expect(statusCalls).toBe(0)
         } finally {
           WorkspaceFileStatus.statusMap = originalStatusMap
         }

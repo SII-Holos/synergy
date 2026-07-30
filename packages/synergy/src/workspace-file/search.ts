@@ -6,7 +6,6 @@ import { LSP } from "../lsp"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileIndexer } from "./indexer"
 import { WorkspaceFileService } from "./service"
-import { WorkspaceFileStatus } from "./status"
 import { ProcessOutput } from "../process/output"
 
 const DEFAULT_LIMIT = 50
@@ -89,28 +88,21 @@ async function searchFiles(input: {
   })
   const enrichmentTimeout = AbortSignal.timeout(input.enrichmentTimeoutMs ?? PATH_ENRICHMENT_TIMEOUT_MS)
   const enrichmentSignal = input.signal ? AbortSignal.any([input.signal, enrichmentTimeout]) : enrichmentTimeout
-  let enrichmentTruncated = false
   const output = await (async () => {
     try {
-      const statusMap = await withSearchAbort(WorkspaceFileStatus.statusMap(), enrichmentSignal)
       return await withSearchAbort(
         Promise.all(
           base.map(async (item) => ({
             ...item,
-            node: await WorkspaceFileService.maybeNode(item.path, {
-              resolveGitStatus: false,
-              gitStatus: statusMap.get(item.path),
-            }),
+            node: await WorkspaceFileService.maybeNode(item.path),
           })),
         ),
         enrichmentSignal,
       )
-    } catch (error) {
+    } catch {
       if (input.signal?.aborted) {
         throw input.signal.reason ?? new DOMException("Search aborted", "AbortError")
       }
-      if (!enrichmentTimeout.aborted) throw error
-      enrichmentTruncated = true
       return base
     }
   })()
@@ -120,7 +112,7 @@ async function searchFiles(input: {
     query: input.query,
     items: output,
     nextCursor: pageLimited ? String(offset + page.length) : undefined,
-    truncated: snapshot.truncated || pageLimited || enrichmentTruncated,
+    truncated: snapshot.truncated || pageLimited,
   }
 }
 

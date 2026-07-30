@@ -36,3 +36,28 @@ test("defers async item loading until the first input", async () => {
     dispose()
   }
 })
+
+test("loads the first non-empty input without a stale empty request", async () => {
+  const calls: string[] = []
+  let dispose = () => {}
+  const list = createRoot((rootDispose) => {
+    dispose = rootDispose
+    return useFilteredList<{ id: string }>({
+      items: async (filter) => {
+        calls.push(filter)
+        return [{ id: filter }]
+      },
+      key: (item) => item.id,
+      deferInitialLoad: true,
+    })
+  })
+
+  try {
+    list.onInput("foo")
+    await waitFor(() => calls.length > 0)
+    await Bun.sleep(10)
+    expect(calls).toEqual(["foo"])
+  } finally {
+    dispose()
+  }
+})

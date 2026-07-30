@@ -14,7 +14,7 @@ async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true })
   const nested = await Promise.all(
     entries.map(async (entry) => {
-      const relative = path.join(directory, entry.name)
+      const relative = path.posix.join(directory, entry.name)
       if (entry.isDirectory()) return collectTests(relative)
       if (/\.test\.tsx?$/.test(entry.name)) return [relative]
       return []

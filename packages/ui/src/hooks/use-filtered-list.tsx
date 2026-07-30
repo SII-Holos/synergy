@@ -98,8 +98,8 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
   )
 
   const onInput = (value: string) => {
-    setActivated(true)
     setStore("filter", value)
+    setActivated(true)
   }
 
   return {
