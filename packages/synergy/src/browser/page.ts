@@ -53,6 +53,7 @@ export interface BrowserPageBackend {
   lastActiveAt: number | null
   isAlive(): boolean
   execute(command: BrowserBackendCommand): Promise<BrowserBackendResult>
+  saveContextStorage?(): Promise<void>
   close(): Promise<void>
 }
 
@@ -80,15 +81,22 @@ export class PlaywrightBrowserPage implements BrowserPageBackend {
   private clipboardText = ""
   private staging = new BrowserStagingLeasePool()
   private releaseOwner?: () => Promise<void>
+  private saveContextStorageCallback?: () => Promise<void>
 
   constructor(
     private page: Page,
     private owner: BrowserOwner.Info,
-    options: { id?: string; events?: BrowserPageEventHandlers; releaseOwner?: () => Promise<void> } = {},
+    options: {
+      id?: string
+      events?: BrowserPageEventHandlers
+      releaseOwner?: () => Promise<void>
+      saveContextStorage?: () => Promise<void>
+    } = {},
   ) {
     this.id = options.id ?? crypto.randomUUID()
     this.events = options.events ?? {}
     this.releaseOwner = options.releaseOwner
+    this.saveContextStorageCallback = options.saveContextStorage
     this.navigation = new BrowserNavigationPolicy({
       allowUserNavigation: (url) => BrowserPolicy.hardCheckNavigation(url, this.owner.directory).decision === "allow",
     })
@@ -137,6 +145,10 @@ export class PlaywrightBrowserPage implements BrowserPageBackend {
     if (this.navigationBlocked) this.throwNavigationBlocked()
     this.sync(result)
     return result
+  }
+
+  async saveContextStorage(): Promise<void> {
+    await this.saveContextStorageCallback?.()
   }
 
   async close(): Promise<void> {

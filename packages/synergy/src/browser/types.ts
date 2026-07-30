@@ -52,6 +52,7 @@ export interface BrowserSession {
   ensurePage(url?: string, options?: { resume?: boolean }): Promise<BrowserPageBackend>
   resumePage(): Promise<BrowserPageBackend>
   closePage(): Promise<void>
+  suspend(): Promise<void>
   getPage(pageID: string): BrowserPageBackend | undefined
 
   addAnnotation(input: BrowserAnnotationInput): Promise<BrowserAnnotation>

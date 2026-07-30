@@ -37,6 +37,7 @@ function suspended(owner: BrowserOwner.Info): BrowserSession {
       throw new Error("A read-only route must not resume a page.")
     },
     async closePage() {},
+    async suspend() {},
     getPage() {
       return undefined
     },
