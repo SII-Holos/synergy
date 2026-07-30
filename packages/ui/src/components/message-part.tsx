@@ -721,6 +721,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["attach"],
         subtitle: input.filename || input.file_path,
       }
+    case "response_card":
+      return {
+        icon: "message-square-more",
+        title: TOOL_TITLE_DESC["response_card"],
+        subtitle: input.title,
+      }
     case "openai_image_gen":
       return {
         icon: "image",
@@ -2092,7 +2098,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 }
 
 PART_MAPPING["text"] = function TextPartDisplay(props) {
-  const data = useData()
   const part = () => props.part as TextPart
   const isTerminal = createMemo(() =>
     isTextPartTerminal({
@@ -2107,7 +2112,6 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
       key: part().id,
       source: part().text ?? "",
       completed: isTerminal(),
-      remove: data.directory,
     }),
   )
 

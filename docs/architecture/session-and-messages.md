@@ -14,6 +14,18 @@ Session state includes, when applicable:
 - Agenda, Cortex, BlueprintLoop, SuperPlan, or workflow metadata
 - inbox, todo, DAG, history, completion, and recovery state
 
+## Session Mutation and Index Projection
+
+Runtime mutation of an existing session is serialized per Scope and session. The mutation writes canonical session info once through `Storage.update()`, then projects the resulting state into the session, page, child, navigation, and endpoint indexes before the next mutation for that session can begin. Activity updates, completion acknowledgements, last-exchange updates, and removal participate in the same boundary, so a projection cannot rewrite canonical metadata from an older snapshot.
+
+Page and navigation indexes are shared by every session in a Scope, while a child index is shared by siblings under one parent. Their read-modify-write operations use separate domain locks so mutations for different sessions remain concurrent without overwriting one another's entries. Session update events are started in mutation order after canonical state and projections are durable; local subscriber work is not awaited inside the critical section, so an event handler may safely request a later mutation of the same session.
+
+Completion notice record and acknowledgement operations also use a per-session operation queue outside the canonical mutation lock. This keeps completion events ordered with their durable unread-count changes without recursively acquiring the session mutation boundary.
+
+Permanent removal dismantles a session and its descendants under their mutation locks, then releases every lock before publishing child-first `session.deleted` events. `Session.remove()` awaits those publications so subscriber completion or publication failure cannot escape as detached asynchronous work.
+
+These locks coordinate the single runtime process that owns a local Scope. Storage atomic writes remain the durability boundary, but the JSON indexes are derived state rather than a cross-process transaction; startup migrations and rebuild paths recover them from canonical session records when required.
+
 ## Completion Notice and the `session.completion` Event
 
 Each session stores a durable `completionNotice` with three fields:
@@ -270,9 +282,9 @@ Inline data and returned tool attachments are externalized to the Asset store as
 
 Assistant messages may include an optional `contextUsage` snapshot for the completed provider call. The snapshot is additive message data, not a separate storage record or session aggregate.
 
-`contextUsage.version` is currently `1`. `totalInput` is the provider-reported exact input token total for that assistant step. The `conversation`, `toolActivity`, `filesReferences`, and `instructions` categories store model-tokenizer `estimatedTokens`, reconciled `attributedTokens`, and an optional item count. `overhead.attributedTokens` accounts for exact input tokens that were not attributed to a category. Provider/model identity, optional context and usable-input limits, estimator metadata, reconciliation mode, factor, and capture timestamp travel with the snapshot so the frontend can render it without recomputing prompt assembly.
+`contextUsage.version` is currently `1`. `totalInput` is the provider-reported exact input token total for that assistant step. The `conversation`, `toolActivity`, `filesReferences`, and `instructions` categories store bounded UTF-8 `estimatedTokens`, reconciled `attributedTokens`, and an optional item count. `overhead.attributedTokens` accounts for exact input tokens that were not attributed to a category. Provider/model identity, optional context and usable-input limits, estimator kind, sampling metadata, reconciliation mode, factor, and capture timestamp travel with the snapshot so the frontend can render it without recomputing prompt assembly.
 
-Older assistant messages that have only `tokens` remain totals-only history. Read-time canonicalization does not invent a category breakdown, and there is no storage migration or historical backfill for `contextUsage`.
+Older assistant messages that have only `tokens` remain totals-only history. Existing version-1 snapshots with the retired `model-tokenizer` estimator remain valid, while new snapshots use `bounded-utf8`. Read-time canonicalization does not invent a category breakdown, and there is no storage migration or historical backfill for `contextUsage`.
 
 The Side Workspace Context panel reads this field from normal message synchronization. It may fall back to existing assistant token totals for exact latest-call usage, but category breakdown is available only when a persisted `contextUsage` snapshot exists.
 
@@ -350,7 +362,7 @@ Typical mappings:
 - passive information intended for the next natural model call uses `context`;
 - assistant-role cross-session delivery materializes immediately against the latest root.
 
-Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
+Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. After that durable write, acceptance makes a best-effort attempt to advance the session's navigation activity so an existing session returns to the top of recent lists before asynchronous execution starts; a navigation update failure is logged without rejecting the persisted input. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
 
 The loop peeks the next task without deleting it, materializes its pre-allocated message ID as a root, and commits the inbox item only after that root write succeeds. A failure before materialization therefore leaves the task available for explicit retry or restart recovery. A read taken during startup always sees either the pending inbox item, the materialized root, or both; consumers deduplicate the overlap by message ID.
 

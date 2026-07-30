@@ -2,7 +2,6 @@ import { Bus } from "@/bus"
 import { Config } from "@/config/config"
 import { BusEvent } from "@/bus/bus-event"
 import { Identifier } from "@/id/id"
-import { SessionManager } from "@/session/manager"
 import { SessionInteraction } from "@/session/interaction"
 import { ScopeContext } from "@/scope/context"
 import { ScopedState } from "@/scope/scoped-state"
@@ -186,24 +185,37 @@ export namespace Question {
       }
     })()
 
-    void SessionManager.getSession(input.sessionID).then((session) => {
-      const interaction = session?.interaction
-      if (!SessionInteraction.isUnattended(interaction)) return
-      const existing = s.pending[id]
-      if (!existing) return
-      delete s.pending[id]
-      existing.reject(new UnattendedError(interaction?.source))
-    })
+    void import("@/session/manager")
+      .then(({ SessionManager }) => SessionManager.getSession(input.sessionID))
+      .then((session) => {
+        const interaction = session?.interaction
+        if (!SessionInteraction.isUnattended(interaction)) return
+        const existing = s.pending[id]
+        if (!existing) return
+        delete s.pending[id]
+        existing.reject(new UnattendedError(interaction?.source))
+      })
+      .catch((error) => {
+        const existing = s.pending[id]
+        if (!existing) return
+        delete s.pending[id]
+        log.error("failed to resolve session interaction", { sessionID: input.sessionID, error })
+        existing.reject(error instanceof Error ? error : new Error(String(error)))
+      })
 
     return promise
   }
 
   export async function reply(input: { requestID: string; answers: Answer[] }): Promise<void> {
+    await tryReply(input)
+  }
+
+  export async function tryReply(input: { requestID: string; answers: Answer[] }): Promise<boolean> {
     const s = await state()
     const existing = s.pending[input.requestID]
     if (!existing) {
       log.warn("reply for unknown request", { requestID: input.requestID })
-      return
+      return false
     }
     delete s.pending[input.requestID]
 
@@ -216,6 +228,7 @@ export namespace Question {
     })
 
     existing.resolve(input.answers)
+    return true
   }
 
   export async function reject(requestID: string): Promise<void> {
@@ -228,12 +241,10 @@ export namespace Question {
     delete s.pending[requestID]
 
     log.info("rejected", { requestID })
-
     Bus.publish(Event.Rejected, {
       sessionID: existing.info.sessionID,
       requestID: existing.info.id,
     })
-
     existing.reject(new RejectedError())
   }
 

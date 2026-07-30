@@ -41,6 +41,10 @@ External plugins use `process`. Trusted built-ins may use `inProcess`. The proce
 
 External runtime generations are sampled by the host memory monitor. `pluginRuntimePolicy.limits.maxMemoryMb` sets the per-generation RSS limit and `memorySampleIntervalMs` sets the polling interval. A limit breach stops and restarts only the exact active registry generation, preserving its manifest and runtime limits, and records the measured recycle effect. A stale callback from a draining generation cannot stop or replace the current generation. Trusted `inProcess` plugins remain part of Control Plane memory and are not double-counted as external plugin processes.
 
+## Runtime Logs
+
+Every `PluginLogger` method accepts a message and optional `details: Record<string, unknown>`. Synergy preserves those structured details for both process and trusted `inProcess` runtimes, including error fields such as `code` and `reason`. The complete log entry, including `details`, counts toward the log rate limit's byte budget.
+
 ## Capabilities and Host Services
 
 Capabilities describe Synergy services the host may inject. A contribution's `requires` must be a subset of the definition's top-level capability list.
@@ -65,7 +69,7 @@ Capabilities describe Synergy services the host may inject. A contribution's `re
 | `selection.read`     | settled non-sensitive selected text and text-action input                           |
 | `agent.call`         | bounded Sessionless calls to owned or explicitly allowed Agents                     |
 
-`task.delegate` may include `agents` and `maxRuntimeMs` constraints. `start()` launches native Cortex work and returns its handle immediately; `run()` waits for the same native Task to reach a terminal state and returns its `PluginTaskSnapshot`, including structured output when requested. Both paths resolve the target from Synergy's Agent registry and preserve plugin/generation/Scope ownership. A plugin's private `hidden` Agent is callable only by the same plugin ID and active generation. Non-owned targets retain ordinary Agent visibility rules.
+`task.delegate` may include `agents` and `maxRuntimeMs` constraints. Agent allowlists use public `agent.name` values, never Agent contribution IDs. `start()` launches native Cortex work and returns its handle immediately; `run()` waits for the same native Task to reach a terminal state and returns its `PluginTaskSnapshot`, including structured output when requested. Both paths resolve the target from Synergy's Agent registry and preserve plugin/generation/Scope ownership. A plugin's private `hidden` Agent is callable only by the same plugin ID and active generation. Non-owned targets retain ordinary Agent visibility rules.
 
 `asset.create()` stores plugin-produced bytes through the host and returns the final host-owned attachment object for a tool result. `shell.run()` accepts only a non-empty argv array, passes through the normal permission and sandbox boundary, honors cancellation and timeout, and returns `stdout`, `stderr`, and `exitCode`.
 

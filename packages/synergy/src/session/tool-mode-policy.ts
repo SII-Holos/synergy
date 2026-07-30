@@ -72,11 +72,19 @@ export namespace SessionModePolicy {
 
   export function visibility(input: {
     toolName: string
-    session?: Pick<SessionInfo, "workflow" | "blueprint">
+    session?: Pick<SessionInfo, "workflow" | "blueprint" | "endpoint">
   }): ToolDiagnostic | undefined {
+    if (input.toolName === "response_card" && input.session?.endpoint?.kind !== "channel") {
+      return {
+        code: "tool_unavailable",
+        toolName: input.toolName,
+        message: `The "${input.toolName}" tool is only available in Channel sessions.`,
+        metadata: { requiredEndpoint: "channel" },
+      }
+    }
+
     const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
     if (latticeDiagnostic) return latticeDiagnostic
-
     if (!isPlan(input.session)) return undefined
     if (PLAN_EXPLICIT_ALLOW.has(input.toolName)) return undefined
 

@@ -17,6 +17,7 @@ export namespace LatticeStore {
     mode: LatticeTypes.Mode
     maxModelCalls?: number
     goal?: string
+    promptOnCreate?: boolean
   }
 
   export type Editor = (draft: LatticeTypes.Run) => LatticeTypes.Run | void
@@ -99,6 +100,7 @@ export namespace LatticeStore {
         pathway: [],
         time: { created: now, updated: now },
       })
+      if (input.promptOnCreate) run = LatticeMachine.setPromptEffect(run, { promptType: "state_entry" }, now)
       await Storage.write(StoragePath.latticeRun(sid, run.id), run)
       await writePointer(scopeID, input.sessionID, run.id, now)
     }

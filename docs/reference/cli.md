@@ -38,6 +38,7 @@ synergy stop
 `start` runs the first-time configuration wizard in an interactive terminal when no config exists. `--non-interactive` skips first-run and Holos prompts. Existing services report config drift; stop and start again to install changed network settings into the service definition.
 
 The managed service defaults to `127.0.0.1:4096`. `--hostname`, `--port`, `--mdns`, and repeatable `--cors` override the corresponding `server` config for the installed service invocation.
+Each explicit `--cors` value authorizes both cross-origin HTTP requests and Browser viewer WebSocket handshakes from that exact HTTP(S) origin. Automatically detected LAN CORS origins and reverse-proxy forwarding headers do not authorize Browser viewer sockets, so pass the public Browser viewer Origin explicitly.
 
 `status --verbose` adds runtime-lock, health, process, listening-port, trace, and local process-registry information. `stop` manages only the installed background service; do not use it as a generic process killer for an unrelated foreground server.
 
@@ -65,6 +66,8 @@ synergy web --attach http://localhost:4097
 
 ```bash
 synergy send "Summarize this project"
+synergy send --scope home "Summarize recent work"
+synergy send --scope <scope-id> "Continue work in that project"
 synergy send --attach http://localhost:4096 "Continue the work"
 synergy send --agent synergy-max --model provider/model "Fix the failing test"
 synergy send --file report.pdf --file src "Review these inputs"
@@ -73,19 +76,22 @@ printf 'extra context' | synergy send "Use stdin too"
 
 Important options:
 
-| Option                           | Meaning                                                                |
-| -------------------------------- | ---------------------------------------------------------------------- |
-| `--attach <url>`                 | Use a running server instead of a private ephemeral server             |
-| `-c`, `--continue`               | Continue the latest top-level session in the current Scope             |
-| `-s`, `--session <id>`           | Continue a specific session                                            |
-| `--agent <name>`                 | Select a primary agent; subagent names are rejected as primary choices |
-| `-m`, `--model <provider/model>` | Override the model                                                     |
-| `--variant <name>`               | Select provider-specific reasoning/model variant                       |
-| `-f`, `--file <path>`            | Attach a file or directory; repeatable                                 |
-| `--command <name>`               | Run a configured Synergy command, using the message as arguments       |
-| `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt   |
-| `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON        |
-| `--port <number>`                | Port for the private local server; omitted means an available port     |
+| Option                           | Meaning                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `--attach <url>`                 | Use a running server instead of a private ephemeral server                                 |
+| `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation |
+| `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                |
+| `-s`, `--session <id>`           | Continue a specific session                                                                |
+| `--agent <name>`                 | Select a primary agent; subagent names are rejected as primary choices                     |
+| `-m`, `--model <provider/model>` | Override the model                                                                         |
+| `--variant <name>`               | Select provider-specific reasoning/model variant                                           |
+| `-f`, `--file <path>`            | Attach a file or directory; repeatable                                                     |
+| `--command <name>`               | Run a configured Synergy command, using the message as arguments                           |
+| `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                       |
+| `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                            |
+| `--port <number>`                | Port for the private local server; omitted means an available port                         |
+
+When `--scope` is omitted, `send` uses the launch directory (or `SYNERGY_CWD`). An existing directory is resolved and registered as a project Scope when needed, even if Synergy has not opened it before; a missing directory resolves to the home Scope. Pass `--scope` to select an already registered Scope without registering the launch directory. With `--attach`, the target runtime owns and validates the Scope ID.
 
 Piped stdin is appended to the prompt. The command subscribes to session events before prompting, renders completed tools and terminal text, and handles interactive `guarded` permission requests with allow-once or reject choices.
 
@@ -217,6 +223,8 @@ Local source builds do not have signed release manifests; use an installed relea
 | `synergy upgrade [target]` | Upgrade the installed release                                                              |
 | `synergy uninstall`        | Remove the installed product after confirmation/options                                    |
 | `synergy generate`         | Generate supported artifacts used by development/release workflows                         |
+
+`synergy upgrade` preserves the detected installation channel. Package-manager installations use their owning manager, Desktop installations defer to the Desktop updater, and standalone CLI installations with the binary at `~/.synergy/bin/synergy` rerun the official installer for the requested release. Override detection with `--method <npm|yarn|pnpm|bun|brew|desktop|standalone>`. If the installation method cannot be determined, the command stops with recovery guidance instead of attempting an unknown upgrade method.
 
 `debug` and migration commands are maintainer-oriented. Prefer stable product commands and APIs for application integrations.
 

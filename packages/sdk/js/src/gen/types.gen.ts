@@ -2050,7 +2050,7 @@ export type ServerConfig = {
    */
   mdns?: boolean
   /**
-   * Additional domains to allow for CORS
+   * Additional origins allowed for CORS and Browser viewer WebSockets
    */
   cors?: Array<string>
 }
@@ -5267,10 +5267,16 @@ export type AssistantMessage = {
     overhead: {
       attributedTokens: number
     }
-    estimator: {
-      kind: "model-tokenizer"
-      encoding?: string
-    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
     reconciliation: {
       mode: "residual" | "scaled-down"
       factor: number

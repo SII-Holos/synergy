@@ -4,6 +4,7 @@ export interface PluginLogEntry {
   timestamp: number
   level: string
   message: string
+  details?: Record<string, unknown>
 }
 
 // ── Plugin log buffer ──────────────────────────────────────────────

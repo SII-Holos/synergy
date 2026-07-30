@@ -97,6 +97,8 @@ import {
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
+import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
+import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
 
 const handoff = {
   prompt: "",
@@ -417,6 +419,7 @@ function SessionPageContent() {
   })
   const openRewindConfirm = (message: UserMessage | undefined) => {
     if (!message?.id) return
+    if (!messageAllowsCanonicalActions(message)) return
     const targetMsg = message
     const targetID = targetMsg.id
     const sessionID = params.id
@@ -806,14 +809,21 @@ function SessionPageContent() {
   const hydratedSessions = new Set<string>()
   const initializedSessions = new Set<string>()
 
-  // Single idempotent entry point for loading a session's data. Runs on session
-  // switch and on (re)connect; sync.session.sync dedups concurrent/ready loads
-  // internally. Replaces two separate effects that both called sync (one on
-  // params.id, one on sdk.connected) and double-fetched on mount.
+  // Single idempotent entry point for loading a session's data. Runs when the
+  // scope is initially ready, on session switch, and after reconnect recovery
+  // publishes its completed generation. sync.session.sync dedups concurrent or
+  // already-ready loads internally.
   createEffect(
     on(
-      () => [params.id, sdk.connected()] as const,
-      ([id, connected], prev) => {
+      () =>
+        sessionSyncWatchKey({
+          sessionID: params.id,
+          connected: sdk.connected(),
+          ready: sync.ready,
+          reconnectVersion: sync.reconnectVersion,
+        }),
+      (current, prev) => {
+        const [id] = current
         const prevId = prev?.[0]
         if (prevId && prevId !== id) {
           hydratedSessions.delete(prevId)
@@ -821,7 +831,8 @@ function SessionPageContent() {
         }
         // Protect the viewed session's buckets from LRU eviction.
         sync.markActiveSession(id)
-        if (connected && id) void sync.session.sync(id, { refreshVolatile: true }).catch(() => undefined)
+        if (!id || !shouldRunSessionSync(current, prev)) return
+        void sync.session.sync(id, { refreshVolatile: true }).catch(() => undefined)
       },
     ),
   )

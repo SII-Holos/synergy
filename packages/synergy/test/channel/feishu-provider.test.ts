@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
+import { Asset } from "../../src/asset/asset"
 import {
   FeishuProvider,
   filterInboundMessage,
@@ -9,10 +11,9 @@ import {
   isBotMentioned,
   resolveGroupScopeKey,
 } from "../../src/channel/provider/feishu"
-import { mergeStreamingText } from "../../src/channel/provider/feishu/streaming-card"
 import { createStatusReactionController } from "../../src/channel/status-reactions"
 import type { StreamingSession } from "../../src/channel/types"
-import type { Config } from "../../src/config/config"
+import { Config } from "../../src/config/config"
 
 function accountConfig(overrides: Partial<Config.ChannelFeishuAccount> = {}): Config.ChannelFeishuAccount {
   return {
@@ -31,6 +32,24 @@ function accountConfig(overrides: Partial<Config.ChannelFeishuAccount> = {}): Co
     ...overrides,
   }
 }
+
+describe("Feishu streaming configuration", () => {
+  test("preserves an omitted account setting so the provider default can apply", () => {
+    const provider = Config.ChannelFeishu.parse({
+      type: "feishu",
+      streaming: false,
+      accounts: {
+        default: {
+          appId: "app",
+          appSecret: "secret",
+        },
+      },
+    })
+
+    expect(provider.streaming).toBe(false)
+    expect(provider.accounts.default?.streaming).toBeUndefined()
+  })
+})
 
 describe("isSelfSender", () => {
   test("returns true for app/bot/app_bot sender types", () => {
@@ -323,9 +342,12 @@ describe("filterInboundMessage", () => {
 describe("Feishu replies", () => {
   test("requests a threaded reply when the account enables replyInThread", async () => {
     const originalFetch = globalThis.fetch
-    let requestBody: Record<string, unknown> | undefined
+    let request: { body?: Record<string, unknown>; signal?: AbortSignal | null } = {}
     globalThis.fetch = (async (_input, init) => {
-      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      request = {
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        signal: init?.signal,
+      }
       return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
         headers: { "Content-Type": "application/json" },
       })
@@ -351,32 +373,166 @@ describe("Feishu replies", () => {
         parts: [{ type: "text", text: "Background work finished" }],
       })
 
-      expect(requestBody).toMatchObject({
+      expect(request.body).toMatchObject({
         msg_type: "text",
         reply_in_thread: true,
       })
+      expect(request.signal).toBeInstanceOf(AbortSignal)
     } finally {
       globalThis.fetch = originalFetch
     }
   })
+
+  test("uploads SVG attachments as files instead of unsupported Feishu images", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; body: unknown; signal?: AbortSignal | null }> = []
+    let assetPath: string | undefined
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: init?.body, signal: init?.signal })
+      if (url.endsWith("/im/v1/files")) {
+        return new Response(JSON.stringify({ code: 0, data: { file_key: "file_svg" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const assetID = await Asset.write(
+        Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"></svg>'),
+        "image/svg+xml",
+        "meme.svg",
+      )
+      assetPath = Asset.resolvePath(assetID)
+      const provider = new FeishuProvider()
+      const accounts = (
+        provider as unknown as {
+          accounts: Map<string, unknown>
+        }
+      ).accounts
+      accounts.set("acct_test", {
+        config: accountConfig(),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_test",
+        messageId: "msg_topic_root",
+        parts: [
+          {
+            type: "file",
+            path: assetPath,
+            filename: "meme.svg",
+            contentType: "image/svg+xml",
+          },
+        ],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/files",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_topic_root/reply",
+      ])
+      expect(requests.every((request) => request.signal instanceof AbortSignal)).toBe(true)
+      expect(requests.some((request) => request.url.endsWith("/im/v1/images"))).toBe(false)
+      const upload = requests[0]?.body
+      expect(upload).toBeInstanceOf(FormData)
+      expect((upload as FormData).get("file_type")).toBe("stream")
+      expect((upload as FormData).get("file_name")).toBe("meme.svg")
+      const reply = JSON.parse(String(requests[1]?.body)) as Record<string, unknown>
+      expect(reply).toMatchObject({
+        msg_type: "file",
+        content: JSON.stringify({ file_key: "file_svg" }),
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+      if (assetPath) await fs.rm(assetPath, { force: true })
+    }
+  })
 })
 
-describe("Feishu streaming merge", () => {
-  test("keeps existing text when a non-prefix rewrite arrives", () => {
-    expect(
-      mergeStreamingText(
-        "不过我需要先确认一下：你所在的城市是哪里？这样我才能为你查询准确的天气预报",
-        "太好了！我来为你设置每天早上八点的上海天气提醒。",
-      ),
-    ).toBe("不过我需要先确认一下：你所在的城市是哪里？这样我才能为你查询准确的天气预报")
-  })
+describe("Feishu account drain", () => {
+  test("closes transport, flushes debounce work, and drains chat tasks to a fixed point", async () => {
+    const provider = new FeishuProvider()
+    const first = Promise.withResolvers<void>()
+    const second = Promise.withResolvers<void>()
+    const calls: string[] = []
+    const perChatQueue = new Map<string, Promise<void>>()
+    const enqueue = (chatId: string, task: Promise<void>) => {
+      perChatQueue.set(chatId, task)
+      void task.finally(() => {
+        if (perChatQueue.get(chatId) === task) perChatQueue.delete(chatId)
+      })
+    }
+    const firstTask = first.promise.then(() => {
+      calls.push("first")
+      enqueue(
+        "chat_second",
+        second.promise.then(() => {
+          calls.push("second")
+        }),
+      )
+    })
+    const accounts = (
+      provider as unknown as {
+        accounts: Map<
+          string,
+          {
+            runtime: {
+              acceptingInbound: boolean
+              inboundTasks: Set<Promise<void>>
+              perChatQueue: Map<string, Promise<void>>
+              debouncer: { flush(): Promise<void> }
+              wsClient: { close(): void }
+              drain?: Promise<void>
+            }
+          }
+        >
+      }
+    ).accounts
+    accounts.set("acct_drain", {
+      runtime: {
+        acceptingInbound: true,
+        inboundTasks: new Set(),
+        perChatQueue,
+        debouncer: {
+          async flush() {
+            calls.push("flush")
+            enqueue("chat_first", firstTask)
+          },
+        },
+        wsClient: {
+          close() {
+            calls.push("close")
+          },
+        },
+      },
+    })
 
-  test("preserves normal incremental streaming growth", () => {
-    expect(mergeStreamingText("太好了！我来", "太好了！我来为你设置天气提醒。")).toBe("太好了！我来为你设置天气提醒。")
-  })
+    let disconnected = false
+    const disconnect = provider.disconnect({ accountId: "acct_drain" }).then(() => {
+      disconnected = true
+    })
+    const concurrentDisconnect = provider.disconnect({ accountId: "acct_drain" })
+    await Bun.sleep(0)
 
-  test("keeps prior content when chunks only overlap but are not a prefix extension", () => {
-    expect(mergeStreamingText("上海天气提醒，", "提醒，包含天气状况、温度和风力。")).toBe("上海天气提醒，")
+    expect(calls).toEqual(["close", "flush"])
+    expect(disconnected).toBe(false)
+    expect(accounts.has("acct_drain")).toBe(true)
+
+    first.resolve()
+    await Bun.sleep(0)
+    expect(calls).toEqual(["close", "flush", "first"])
+    expect(disconnected).toBe(false)
+
+    second.resolve()
+    await Promise.all([disconnect, concurrentDisconnect])
+    expect(calls).toEqual(["close", "flush", "first", "second"])
+    expect(accounts.has("acct_drain")).toBe(false)
   })
 })
 

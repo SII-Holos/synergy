@@ -28,7 +28,7 @@ import { sessionActionVisibility, sessionModelControlVisibility } from "@/compon
 import "./session-top-bar.css"
 
 function SessionActionMenu(props: {
-  scopeSpecific: boolean
+  visibility: ReturnType<typeof sessionActionVisibility>
   isWorktree: () => boolean
   worktreeDisabled: () => boolean
   onRename: () => void
@@ -67,11 +67,13 @@ function SessionActionMenu(props: {
       }
     >
       <div class="stb-menu-list" role="menu">
-        <Show when={props.scopeSpecific}>
+        <Show when={props.visibility.rename}>
           <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
             <Icon name={getSemanticIcon("action.rename")} size="small" />
             <span>{_(topBar.rename)}</span>
           </button>
+        </Show>
+        <Show when={props.visibility.worktree}>
           <button
             type="button"
             class="stb-menu-item"
@@ -87,15 +89,19 @@ function SessionActionMenu(props: {
             <span>{props.isWorktree() ? _(topBar.exitWorktree) : _(topBar.enterWorktree)}</span>
           </button>
         </Show>
-        <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onExport)}>
-          <Icon name={getSemanticIcon("action.export")} size="small" />
-          <span>{_(topBar.exportSessionData)}</span>
-        </button>
-        <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onImport)}>
-          <Icon name={getSemanticIcon("action.import")} size="small" />
-          <span>{_(topBar.importSessionData)}</span>
-        </button>
-        <Show when={props.scopeSpecific}>
+        <Show when={props.visibility.export}>
+          <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onExport)}>
+            <Icon name={getSemanticIcon("action.export")} size="small" />
+            <span>{_(topBar.exportSessionData)}</span>
+          </button>
+        </Show>
+        <Show when={props.visibility.import}>
+          <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onImport)}>
+            <Icon name={getSemanticIcon("action.import")} size="small" />
+            <span>{_(topBar.importSessionData)}</span>
+          </button>
+        </Show>
+        <Show when={props.visibility.archive}>
           <button
             type="button"
             class="stb-menu-item stb-menu-item--danger"
@@ -297,7 +303,7 @@ export function SessionTopBar(props: {
           </button>
           <Show when={actionVisibility().menu}>
             <SessionActionMenu
-              scopeSpecific={actionVisibility().scopeSpecific}
+              visibility={actionVisibility()}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
               onRename={showRenameDialog}
@@ -323,7 +329,7 @@ export function SessionTopBar(props: {
         <div class="stb-right">
           <Show when={actionVisibility().menu}>
             <SessionActionMenu
-              scopeSpecific={actionVisibility().scopeSpecific}
+              visibility={actionVisibility()}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
               onRename={showRenameDialog}

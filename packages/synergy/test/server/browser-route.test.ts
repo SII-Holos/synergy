@@ -6,6 +6,8 @@ import {
   browserHostOriginAllowed,
   browserSignalingEventSocket,
   browserSignalingPageAvailable,
+  browserViewerOriginAllowed,
+  configureBrowserViewerOrigins,
 } from "../../src/server/browser-route"
 import { Server } from "../../src/server/server"
 import { Scope } from "../../src/scope"
@@ -16,6 +18,7 @@ afterEach(() => {
   restoreRuntime?.()
   restoreRuntime = undefined
   BrowserCommandService.clear()
+  configureBrowserViewerOrigins([])
 })
 
 function suspended(owner: BrowserOwner.Info): BrowserSession {
@@ -129,6 +132,28 @@ describe("BrowserRoute protocol v2", () => {
     expect(browserHostOriginAllowed("file://")).toBe(true)
     expect(browserHostOriginAllowed("http://127.0.0.1:3000")).toBe(false)
     expect(browserHostOriginAllowed("https://example.com")).toBe(false)
+  })
+
+  test("requires explicit authorization for non-matching viewer origins", () => {
+    configureBrowserViewerOrigins([])
+
+    expect(
+      browserViewerOriginAllowed({
+        origin: "https://attacker.example.com",
+        requestURL: "http://127.0.0.1:4096/home/browser/events",
+      }),
+    ).toBe(false)
+  })
+
+  test("uses configured server CORS origins for Browser viewer sockets", () => {
+    configureBrowserViewerOrigins(["https://browser.example.com"])
+
+    expect(
+      browserViewerOriginAllowed({
+        origin: "https://browser.example.com",
+        requestURL: "http://127.0.0.1:4096/home/browser/events",
+      }),
+    ).toBe(true)
   })
 
   test("keeps the registered socket identity across websocket event wrappers", () => {

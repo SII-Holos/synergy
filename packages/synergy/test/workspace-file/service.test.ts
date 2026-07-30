@@ -358,6 +358,54 @@ describe("WorkspaceFileSearch", () => {
     )
   })
 
+  test("aborts path enrichment when git status resolution never settles", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "run-evidence.json"), "{}")
+      },
+      async () => {
+        const originalStatusForPath = WorkspaceFileStatus.statusForPath
+        let markStatusStarted!: () => void
+        const statusStarted = new Promise<void>((resolve) => {
+          markStatusStarted = resolve
+        })
+        WorkspaceFileStatus.statusForPath = async () => {
+          markStatusStarted()
+          return await new Promise(() => {})
+        }
+
+        const controller = new AbortController()
+        const search = WorkspaceFileSearch.search({
+          kind: "files",
+          query: "run evidence",
+          limit: 10,
+          signal: controller.signal,
+        })
+
+        try {
+          await Promise.race([
+            statusStarted,
+            Bun.sleep(1_000).then(() => {
+              throw new Error("File search did not begin path enrichment")
+            }),
+          ])
+          controller.abort(new DOMException("Search cancelled", "AbortError"))
+          await expect(
+            Promise.race([
+              search,
+              Bun.sleep(1_000).then(() => {
+                throw new Error("File search did not settle after cancellation")
+              }),
+            ]),
+          ).rejects.toMatchObject({ name: "AbortError" })
+        } finally {
+          WorkspaceFileStatus.statusForPath = originalStatusForPath
+          controller.abort()
+        }
+      },
+    )
+  })
+
   test("deduplicates paths and stops the producer at the index record limit", async () => {
     await withWorkspace(
       async (dir) => {

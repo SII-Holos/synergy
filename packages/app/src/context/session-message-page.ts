@@ -1,12 +1,14 @@
 import {
   applyLatestPage,
   prependOlderPage,
+  reconcileMessage,
   type MessageRef,
   type MessageWindowMetadata,
   type MessageWindowResult,
   type MessageWindowState,
 } from "./session-message-window"
 import { findLatestSessionContextUsageMessage, type SessionContextUsageMessage } from "./session-context-usage"
+import { isOptimisticMessagePending } from "./session-optimistic-message"
 
 type PartRef = { id: string }
 type MessagePageItem<M extends MessageRef, P extends PartRef> = { info: M; parts: P[] }
@@ -34,7 +36,7 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
   const items = input.page.items.filter((item) => !!item?.info?.id)
   const referencedRoots = input.page.referencedRoots.filter((item) => !!item?.info?.id)
   const current = input.current ?? { messages: [], mode: "latest", pendingLatest: false, pendingLatestIds: [] }
-  const result =
+  let result =
     input.mode === "history"
       ? prependOlderPage(
           current,
@@ -46,8 +48,20 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
           referencedRoots.map((item) => item.info),
           input.cap,
         )
-  const keepIds = new Set(result.window.messages.map((message) => message.id))
+  const pageIDs = new Set([...referencedRoots, ...items].map((item) => item.info.id))
   const droppedIds = new Set(result.droppedIds)
+  if (input.mode !== "history") {
+    for (const message of current.messages) {
+      if (pageIDs.has(message.id) || !isOptimisticMessagePending(message)) continue
+      const pending = reconcileMessage(result.window, message, input.cap)
+      result = pending
+      for (const messageID of pending.droppedIds) droppedIds.add(messageID)
+    }
+  }
+  const keepIds = new Set(result.window.messages.map((message) => message.id))
+  const preservedPendingCount = current.messages.filter(
+    (message) => !pageIDs.has(message.id) && isOptimisticMessagePending(message) && keepIds.has(message.id),
+  ).length
   for (const message of current.messages) {
     if (!keepIds.has(message.id)) droppedIds.add(message.id)
   }
@@ -70,7 +84,7 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
       total:
         input.mode === "history"
           ? Math.max(0, input.page.total - result.window.pendingLatestIds.length)
-          : input.page.total,
+          : input.page.total + preservedPendingCount,
       mode: result.window.mode,
       pendingLatest: result.window.pendingLatest,
       pendingLatestIds: result.window.pendingLatestIds,
