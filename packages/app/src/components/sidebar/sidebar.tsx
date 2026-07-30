@@ -1158,7 +1158,7 @@ function ChannelProviderGroup(props: {
           when={props.group.projects.length > 0}
           fallback={<div class="sb-section-empty">{props._(sidebar.noSessions)}</div>}
         >
-          {props.children}
+          <div class="sb-channel-managed-projects">{props.children}</div>
         </Show>
       </Show>
     </div>
