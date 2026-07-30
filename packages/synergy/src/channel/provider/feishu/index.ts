@@ -5,6 +5,7 @@ import * as Lark from "@larksuiteoapi/node-sdk"
 import { Log } from "../../../util/log"
 import { Config } from "../../../config/config"
 import * as ChannelTypes from "../../types"
+import type { ChannelHost } from "../../host"
 import { FeishuStreamingCard } from "./streaming-card"
 import { FeishuStreamingState } from "./streaming-state"
 import { feishuDedup } from "./dedup"
@@ -336,6 +337,15 @@ export function filterInboundMessage(input: MessageFilterInput): MessageFilterRe
 
 export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeishuAccount, Config.ChannelFeishu> {
   readonly type = "feishu"
+  readonly lifecycle = "self_connected" as const
+  readonly conversation = {
+    replyMessage: (input: Parameters<FeishuProvider["replyMessage"]>[0]) => this.replyMessage(input),
+    pushMessage: (input: Parameters<FeishuProvider["pushMessage"]>[0]) => this.pushMessage(input),
+    addReaction: (input: Parameters<FeishuProvider["addReaction"]>[0]) => this.addReaction(input),
+    removeReaction: (input: Parameters<FeishuProvider["removeReaction"]>[0]) => this.removeReaction(input),
+    createStreamingSession: (input: Parameters<FeishuProvider["createStreamingSession"]>[0]) =>
+      this.createStreamingSession(input),
+  } satisfies ChannelTypes.ConversationCapabilities
 
   private accounts = new Map<string, AccountState>()
 
@@ -428,18 +438,12 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       if (result.code === 0 && botOpenId) {
         account.botOpenId = botOpenId
         account.missingBotOpenIdWarned = false
-        log.info("resolved feishu bot open_id from bot info", { accountId, botOpenId })
         return botOpenId
       }
-      log.warn("failed to resolve feishu bot open_id from bot info", {
-        accountId,
-        code: result.code,
-        msg: result.msg,
-      })
+      log.warn("failed to resolve feishu bot open_id", { accountId, code: result.code })
     } catch (error) {
-      log.warn("error resolving feishu bot open_id from bot info", { accountId, error })
+      log.warn("error resolving feishu bot open_id", { accountId, error })
     }
-
     return account.botOpenId
   }
 
@@ -447,8 +451,9 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     accountId: string
     accountConfig: Config.ChannelFeishuAccount
     channelConfig: Config.ChannelFeishu
-    onMessage: ChannelTypes.MessageHandler
     signal: AbortSignal
+    host: ChannelHost.Instance
+    onDisconnect?: (reason?: string) => void
     onResponseCardAction?: (
       callback: ChannelTypes.ResponseCardCallback,
     ) => Promise<ChannelTypes.ResponseCardActionResult>
@@ -456,8 +461,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       callback: ChannelTypes.QuestionCardCallback,
     ) => Promise<ChannelTypes.QuestionCardActionResult>
   }): Promise<void> {
-    const { accountId, accountConfig, channelConfig, onMessage, onResponseCardAction, onQuestionCardAction, signal } =
-      input
+    const { accountId, accountConfig, channelConfig, signal, host, onResponseCardAction, onQuestionCardAction } = input
 
     const domain = accountConfig.domain ?? channelConfig.domain
     const larkDomain = domain === "lark" ? Lark.Domain.Lark : Lark.Domain.Feishu
@@ -529,7 +533,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       resolveText: (event) => event.ctx.text,
       onFlush: async (merged) => {
         const ctx = { ...merged.last.ctx, text: merged.combinedText }
-        await enqueueChatTask(ctx.chatId, () => onMessage(ctx))
+        await enqueueChatTask(ctx.chatId, () => host.conversations.receive(ctx))
       },
       onError: (err) => log.error("debounce flush failed", { accountId, error: err }),
     })
@@ -571,7 +575,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
             if (debounceMs > 0) {
               debouncer.enqueue({ ctx })
             } else {
-              await enqueueChatTask(ctx.chatId, () => onMessage(ctx))
+              await enqueueChatTask(ctx.chatId, () => host.conversations.receive(ctx))
             }
           } catch (err) {
             log.error("failed to process message", { messageId: rawMessageId, error: err })
@@ -600,30 +604,18 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     })
     runtime.wsClient = wsClient
 
-    // The Lark SDK's WSClient.handleEventData only processes messages where
-    // the header type is "event". Card action callbacks arrive as type "card"
-    // and are silently dropped. Monkey-patch handleEventData to rewrite
-    // "card" → "event" so the EventDispatcher can route card.action.trigger.
-    const wsClientAny = wsClient as any
-    const origHandleEventData = wsClientAny.handleEventData.bind(wsClientAny)
-    wsClientAny.handleEventData = (data: any) => {
-      const msgType = data.headers?.find?.((h: any) => h.key === "type")?.value
-      if (msgType === "card") {
-        const patchedData = {
-          ...data,
-          headers: data.headers.map((h: any) => (h.key === "type" ? { ...h, value: "event" } : h)),
-        }
-        return origHandleEventData(patchedData)
-      }
-      return origHandleEventData(data)
-    }
-
     if (signal.aborted || this.accounts.get(accountId) !== account) {
       await this.disconnect({ accountId })
       return
     }
     log.info("starting feishu websocket", { accountId, domain })
-    await wsClient.start({ eventDispatcher })
+    try {
+      await wsClient.start({ eventDispatcher })
+    } catch (error) {
+      await this.disconnect({ accountId })
+      log.error("feishu ws start failed", { accountId, error })
+      throw error
+    }
     if (!signal.aborted && this.accounts.get(accountId) === account) {
       log.info("feishu websocket connected", { accountId })
     }
@@ -701,16 +693,8 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
   ): Promise<ChannelTypes.MessageContext | null> {
     const message = payload.message ?? payload.event?.message
     const sender = payload.sender ?? payload.event?.sender
+
     const account = this.accounts.get(accountId)
-
-    log.info("feishu buildMessageContext entered", {
-      accountId,
-      messageId: message?.message_id,
-      chatId: message?.chat_id,
-      messageType: message?.message_type,
-      senderType: sender?.sender_type,
-    })
-
     const isGroup = message?.chat_type === "group"
     const botOpenId =
       isGroup && accountConfig.requireMention ? await this.ensureBotOpenId(accountId) : account?.botOpenId

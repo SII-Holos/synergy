@@ -38,6 +38,7 @@ type ProviderCalls = {
 function provider(type: string, calls: ProviderCalls): Provider {
   return {
     type,
+    lifecycle: "self_connected",
     async connect() {},
     async replyMessage(input) {
       calls.replies.push(input.messageId)
@@ -233,6 +234,82 @@ test("replies async channel output to the persisted message anchor exactly once"
         ])
         await Bun.sleep(25)
         expect(calls.replies).toEqual(["msg_topic_root"])
+      } finally {
+        dispose()
+      }
+    },
+  })
+})
+
+test("initializes the outbound bridge independently for each Scope", async () => {
+  await using first = await tmpdir({ git: true })
+  await using second = await tmpdir({ git: true })
+  const firstScope = await first.scope()
+  const secondScope = await second.scope()
+  let disposeFirst: (() => void) | undefined
+  let disposeSecond: (() => void) | undefined
+
+  try {
+    await ScopeContext.provide({
+      scope: firstScope,
+      fn: async () => {
+        disposeFirst = ChannelOutbound.init()
+      },
+    })
+
+    const calls = { replies: [] as string[], pushes: [] as string[] }
+    await ScopeContext.provide({
+      scope: secondScope,
+      fn: async () => {
+        const type = `outbound-second-scope-${crypto.randomUUID()}`
+        Channel.registerProvider(provider(type, calls))
+        disposeSecond = ChannelOutbound.init()
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
+        })
+
+        await completedAssistant(session.id, "Second Scope result")
+        await waitFor(() => calls.replies.length > 0)
+      },
+    })
+
+    expect(calls.replies).toEqual(["msg_topic_root"])
+  } finally {
+    disposeSecond?.()
+    disposeFirst?.()
+  }
+})
+
+test("replies through providers that do not support proactive push", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const type = `outbound-reply-only-${crypto.randomUUID()}`
+      const replies: string[] = []
+      Channel.registerProvider({
+        type,
+        lifecycle: "self_connected",
+        async connect() {},
+        async replyMessage(input) {
+          replies.push(input.messageId)
+          return { messageId: "reply_sent" }
+        },
+      })
+      const dispose = ChannelOutbound.init()
+      try {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type,
+            accountId: "acct_test",
+            chatId: "chat_test",
+          }),
+        })
+
+        await completedAssistant(session.id, "Background work finished")
+        await waitFor(() => replies.length > 0)
+
+        expect(replies).toEqual(["msg_topic_root"])
       } finally {
         dispose()
       }

@@ -1,13 +1,19 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { Channel } from "../../src/channel"
 import { Config } from "../../src/config/config"
+import type { Provider, StreamingSession } from "../../src/channel/types"
+import type { ChannelHost } from "../../src/channel/host"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
-import { SessionInteraction } from "../../src/session/interaction"
-import { SessionManager } from "../../src/session/manager"
+import { ManagedProjectOwnership } from "../../src/channel/managed-project-ownership"
 import { tmpdir } from "../fixture/fixture"
+import fs from "fs/promises"
+import path from "path"
+import { Global } from "../../src/global"
+import { StoragePath } from "../../src/storage/path"
+import { Storage } from "../../src/storage/storage"
 
 describe("Channel account project scope", () => {
   test("accepts an optional Feishu project directory", () => {
@@ -76,37 +82,238 @@ describe("Channel account project scope", () => {
     expect(scope).toEqual(Scope.home())
   })
 
-  test("does not reuse a home endpoint session for an explicitly scoped project", async () => {
+  test("routes provider conversation ingress through the resolved account Scope", async () => {
     await using tmp = await tmpdir({ git: true })
-    const projectScope = await tmp.scope()
-    const endpoint = SessionEndpoint.fromChannel({
-      type: "feishu",
-      accountId: "synergy-dev",
-      chatId: "chat-project",
-      scopeKey: "topic-1",
+    const scope = await tmp.scope()
+    const type = `project-scope-${crypto.randomUUID()}`
+    const accountId = "project-account"
+    const chatId = "project-chat"
+    const endpoint = SessionEndpoint.fromChannel({ type, accountId, chatId })
+    await ScopeContext.provide({
+      scope,
+      fn: () => Session.create({ scope, endpoint }),
     })
 
-    const homeSession = await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: () => Session.getOrCreateForEndpoint(endpoint, Scope.home(), SessionInteraction.unattended("channel:feishu")),
+    let host: ChannelHost.Instance | undefined
+    const replies: string[] = []
+    const streaming = (): StreamingSession => ({
+      async start() {},
+      async update() {},
+      async updateToolProgress() {},
+      async close() {},
+      isActive: () => false,
+    })
+    const provider = {
+      type,
+      lifecycle: "self_connected" as const,
+      conversation: {
+        async replyMessage(input) {
+          replies.push(
+            input.parts
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join(""),
+          )
+          return { messageId: "reply" }
+        },
+        async pushMessage() {
+          return { messageId: "push" }
+        },
+        async addReaction() {},
+        createStreamingSession: streaming,
+      },
+      async connect(input: Parameters<Provider["connect"]>[0]) {
+        host = input.host
+      },
+    } satisfies Provider
+    Channel.registerProvider(provider)
+
+    const originalConfigCurrent = Config.current
+    Config.current = mock(async () => {
+      return {
+        channel: {
+          [type]: {
+            type,
+            accounts: { [accountId]: { enabled: true, projectDir: tmp.path } },
+          },
+        },
+      } as unknown as Config.Info
+    }) as typeof Config.current
+
+    try {
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await Channel.reload()
+          await Channel.init()
+        },
+      })
+      const timeoutAt = Date.now() + 2_000
+      while (!host && Date.now() < timeoutAt) await Bun.sleep(5)
+      expect(host).toBeDefined()
+      await host!.conversations.receive({
+        chatId,
+        chatType: "dm",
+        senderId: "sender",
+        text: "/status",
+        messageId: "message",
+        timestamp: Date.now(),
+      })
+
+      expect(replies).toHaveLength(1)
+      expect(replies[0]).toContain("Messages: 0")
+    } finally {
+      Config.current = originalConfigCurrent
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => Channel.stopAll() })
+    }
+  })
+})
+
+function identity(label: string) {
+  return {
+    channelType: "test-channel",
+    accountId: `account-${label}`,
+    externalProjectId: `project-${label}`,
+  }
+}
+
+function ownershipHash(input: { channelType: string; accountId: string; externalProjectId: string }) {
+  const hasher = new Bun.CryptoHasher("sha256")
+  hasher.update(input.channelType)
+  hasher.update("\0")
+  hasher.update(input.accountId)
+  hasher.update("\0")
+  hasher.update(input.externalProjectId)
+  return hasher.digest("hex")
+}
+
+describe("Channel project ownership", () => {
+  test("reuses one real project Scope for the same external project", async () => {
+    const input = identity(crypto.randomUUID())
+
+    const first = await Channel.ensureProjectScope({ ...input, projectName: "First name" })
+    const second = await Channel.ensureProjectScope({ ...input, projectName: "Renamed project" })
+
+    expect(first.type).toBe("project")
+    expect(second.id).toBe(first.id)
+    expect(second.directory).toBe(first.directory)
+    expect(await Scope.fromID(first.id)).toMatchObject({ id: first.id })
+    expect(await Channel.findProjectScope(input)).toMatchObject({ id: first.id })
+  })
+
+  test("separates identical project IDs across accounts and providers", async () => {
+    const suffix = crypto.randomUUID()
+    const externalProjectId = `project-${suffix}`
+
+    const [first, second, third] = await Promise.all([
+      Channel.ensureProjectScope({ channelType: "first", accountId: "one", externalProjectId }),
+      Channel.ensureProjectScope({ channelType: "first", accountId: "two", externalProjectId }),
+      Channel.ensureProjectScope({ channelType: "second", accountId: "one", externalProjectId }),
+    ])
+
+    expect(new Set([first.id, second.id, third.id]).size).toBe(3)
+    expect(new Set([first.directory, second.directory, third.directory]).size).toBe(3)
+  })
+
+  test("serializes concurrent ensure calls", async () => {
+    const input = identity(crypto.randomUUID())
+    const scopes = await Promise.all(Array.from({ length: 8 }, () => Channel.ensureProjectScope(input)))
+
+    expect(new Set(scopes.map((scope) => scope.id))).toEqual(new Set([scopes[0]!.id]))
+  })
+
+  test("archive preserves Scope, files, Sessions, and ownership", async () => {
+    const input = identity(crypto.randomUUID())
+    const created = await Channel.ensureProjectScope(input)
+    const marker = path.join(created.directory, "preserved.txt")
+    await Bun.write(marker, "preserved")
+    const session = await ScopeContext.provide({
+      scope: created,
+      fn: () => Session.create({ scope: created, title: "Project history" }),
     })
 
-    const projectSession = await ScopeContext.provide({
-      scope: projectScope,
-      fn: () => Session.getOrCreateForEndpoint(endpoint, projectScope, SessionInteraction.unattended("channel:feishu")),
+    await Channel.archiveProjectScope(input)
+
+    expect(await Scope.fromID(created.id)).toMatchObject({ id: created.id })
+    expect(await Bun.file(marker).text()).toBe("preserved")
+    expect(await Session.get(session.id)).toMatchObject({ id: session.id, scope: { id: created.id } })
+
+    const ownershipRecord = await ManagedProjectOwnership.find({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+    })
+    expect(ownershipRecord).toBeDefined()
+    expect(ownershipRecord!.remoteState).toBe("archived")
+  })
+
+  test("rebuilds a missing forward record from the stable workspace", async () => {
+    const input = identity(crypto.randomUUID())
+    const created = await Channel.ensureProjectScope(input)
+    const hash = ownershipHash({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+    })
+    await Storage.remove(StoragePath.channelManagedOwnership(hash))
+
+    const restored = await Channel.ensureProjectScope(input)
+
+    expect(restored.id).toBe(created.id)
+    expect(await Channel.findProjectScope(input)).toMatchObject({ id: created.id })
+  })
+
+  test("fails instead of rebinding a conflicting Scope identity", async () => {
+    const input = identity(crypto.randomUUID())
+    const created = await Channel.ensureProjectScope(input)
+    const hash = ownershipHash({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+    })
+    await Storage.write(StoragePath.channelManagedOwnership(hash), {
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+      scopeID: "scope_conflict",
+      directory: created.directory,
+      remoteState: "active",
+      createdAt: Date.now(),
+      lastSeenAt: Date.now(),
     })
 
-    expect(projectSession.id).not.toBe(homeSession.id)
-    expect(projectSession.scope.id).toBe(projectScope.id)
-
-    const reused = await ScopeContext.provide({
-      scope: projectScope,
-      fn: () => Session.getOrCreateForEndpoint(endpoint, projectScope, SessionInteraction.unattended("channel:feishu")),
+    await expect(Channel.ensureProjectScope(input)).rejects.toMatchObject({
+      name: "ManagedProjectOwnershipMismatchError",
     })
+  })
 
-    expect(reused.id).toBe(projectSession.id)
+  test("uses only the identity hash in paths and rejects symbolic-link components", async () => {
+    const suffix = crypto.randomUUID()
+    const input = {
+      channelType: "test-channel",
+      accountId: `../../account-${suffix}`,
+      externalProjectId: `../project-${suffix}`,
+    }
+    const hash = ownershipHash({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+    })
+    const target = path.join(Global.Path.data, "channel", `symlink-target-${suffix}`)
+    const linkDir = path.join(Global.Path.data, "channel", "workspaces", hash)
+    await fs.mkdir(path.dirname(linkDir), { recursive: true })
+    await fs.mkdir(target, { recursive: true })
+    await fs.symlink(target, linkDir, process.platform === "win32" ? "junction" : "dir")
 
-    SessionManager.unregisterRuntime(homeSession.id)
-    SessionManager.unregisterRuntime(projectSession.id)
+    let failure: unknown
+    try {
+      await Channel.ensureProjectScope(input)
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(Error)
+    expect(String(failure)).toContain("symbolic links")
+    expect(String(failure)).not.toContain(input.accountId)
+    expect(String(failure)).not.toContain(input.externalProjectId)
   })
 })

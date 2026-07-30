@@ -15,12 +15,14 @@ import { GitHubStore } from "../../src/github/store"
 import { AgentTurn } from "../../src/session/agent-turn"
 import { Agent } from "../../src/agent/agent"
 import { Provider } from "../../src/provider/provider"
+import { Channel } from "../../src/channel"
 
 const originalConfigReload = Config.reload
 const originalNotifyConfigHooks = Plugin.notifyConfigHooks
 const originalAgentTurnResize = (AgentTurn as any).resize
 const originalAgentReload = Agent.reload
 const originalProviderReload = Provider.reload
+const originalChannelReload = Channel.reload
 
 afterEach(() => {
   Config.reload = originalConfigReload
@@ -28,6 +30,7 @@ afterEach(() => {
   ;(AgentTurn as any).resize = originalAgentTurnResize
   Agent.reload = originalAgentReload
   Provider.reload = originalProviderReload
+  Channel.reload = originalChannelReload
   GlobalBus.removeAllListeners("event")
   CortexConcurrency.reset()
 })
@@ -372,6 +375,47 @@ describe("runtime.reload", () => {
           config,
           changedFields: ["thinking_model"],
         })
+      },
+    })
+  })
+
+  test("initializes built-in Channel providers during a config cascade", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const oldConfig = {} as Config.Info
+        const config = { channel: {} } as Config.Info
+        Config.reload = mock(async () => ({ config, changedFields: [], oldConfig: config })) as typeof Config.reload
+        const channelReload = mock(async () => {})
+        Channel.reload = channelReload as typeof Channel.reload
+
+        const events: Array<{ payload?: { type?: string; properties?: { changedFields?: string[] } } }> = []
+        GlobalBus.on("event", (event) => events.push(event))
+        const result = await RuntimeReload.reload(
+          { targets: ["config"], scope: "global", reason: "known Channel change" },
+          { configChange: { oldConfig, config, changedFields: ["channel"] } },
+        )
+
+        expect(result.changedFields).toEqual(["channel"])
+        expect(result.cascaded).toContain("channel")
+        expect(channelReload).toHaveBeenCalledTimes(1)
+        expect(Channel.getProvider("clarus")).toBeDefined()
+        const reloadedEvent = events.find((event) => event.payload?.type === RuntimeReload.Event.Reloaded.type)
+        expect(reloadedEvent?.payload?.properties?.changedFields).toEqual(["channel"])
+      },
+    })
+  })
+
+  test("ensures channel providers are registered when channel target reloads", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await RuntimeReload.reload({ targets: ["channel"], scope: "global", reason: "provider registration" })
+
+        expect(Channel.getProvider("clarus")).toBeDefined()
+        expect(Channel.getProvider("feishu")).toBeDefined()
       },
     })
   })

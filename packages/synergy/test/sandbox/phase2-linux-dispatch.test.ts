@@ -37,6 +37,8 @@ describe("Phase 2: Linux helper dispatch (default path)", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots: ["/usr/lib"],
       forcePlatform: "linux",
+      forceHelperPath: "/test/synergy-sandbox-linux",
+      forceHelperVerified: false,
     })
 
     // The wrapper command must NOT be "bwrap" — inline bwrap is opt-in only.
@@ -59,6 +61,8 @@ describe("Phase 2: Linux helper dispatch (default path)", () => {
       sandboxMode: "workspace_write",
       runtimeReadRoots: ["/usr/lib"],
       forcePlatform: "linux",
+      forceHelperPath: "/test/synergy-sandbox-linux",
+      forceHelperVerified: false,
     })
 
     // Even when sandbox is skipped, the original command and args are preserved
@@ -79,6 +83,8 @@ describe("Phase 2: Linux helper dispatch (default path)", () => {
       workspace: "/home/user/project",
       sandboxMode: "workspace_write",
       forcePlatform: "linux",
+      forceHelperPath: "/test/synergy-sandbox-linux",
+      forceHelperVerified: false,
     })
 
     // skipReason must NOT mention bwrap.

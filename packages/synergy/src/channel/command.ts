@@ -5,6 +5,8 @@ import { Log } from "../util/log"
 import { Session } from "../session"
 import { SessionEndpoint } from "../session/endpoint"
 import { Provider } from "../provider/provider"
+import type { Scope } from "@/scope"
+import { externalIdentityHash } from "./identity"
 import { LatticeError } from "../lattice/error"
 import { BusyError } from "../session/error"
 import { ChannelInteraction } from "./interaction"
@@ -46,7 +48,7 @@ export namespace ChannelCommand {
   type CommandDef = {
     name: string
     triggers: string[]
-    execute: (ctx: Context) => Promise<Result>
+    execute: (ctx: Context, scope: Scope) => Promise<Result>
   }
 
   function endpointForContext(
@@ -68,12 +70,11 @@ export namespace ChannelCommand {
     })
   }
 
-  async function workflowSession(ctx: Context) {
-    return Session.getOrCreateForEndpoint(
-      endpointForContext(ctx),
-      undefined,
-      ChannelInteraction.forType(ctx.channelType),
-    )
+  async function workflowSession(ctx: Context, scope: Scope) {
+    return Session.getOrCreateForEndpoint(endpointForContext(ctx), {
+      scope,
+      interaction: ChannelInteraction.forType(ctx.channelType),
+    })
   }
 
   function workflowFailure(error: unknown): Result {
@@ -102,9 +103,10 @@ export namespace ChannelCommand {
     ctx: Context,
     input: SessionWorkflowService.SetInput,
     confirmation: string,
+    scope: Scope,
   ): Promise<Result> {
     try {
-      const session = await workflowSession(ctx)
+      const session = await workflowSession(ctx, scope)
       const current = session.workflow
       const planAlreadyActive = input.kind === "plan" && current?.kind === "plan"
       if (input.kind === "none" && current?.kind === "lightloop") {
@@ -126,9 +128,9 @@ export namespace ChannelCommand {
     {
       name: "new",
       triggers: ["/new", "/reset", "/重置", "/清空", "/新对话"],
-      async execute(ctx) {
-        await Session.archiveEndpointSession(endpointForContext(ctx))
-        log.info("session reset", { channelType: ctx.channelType, chatId: ctx.chatId })
+      async execute(ctx, scope) {
+        await Session.archiveForEndpoint(endpointForContext(ctx), { scope })
+        log.info("session reset", { channelType: ctx.channelType, chatHash: externalIdentityHash(ctx.chatId) })
 
         if (ctx.remainder) {
           return { action: "continue", text: ctx.remainder }
@@ -142,41 +144,43 @@ export namespace ChannelCommand {
     {
       name: "chat",
       triggers: ["/chat"],
-      execute: (ctx) => setWorkflow(ctx, { kind: "none" }, "✅ Switched to normal chat."),
+      execute: (ctx, scope) => setWorkflow(ctx, { kind: "none" }, "✅ Switched to normal chat.", scope),
     },
     {
       name: "blueprint",
       triggers: ["/blueprint", "/plan"],
-      execute: (ctx) =>
+      execute: (ctx, scope) =>
         setWorkflow(
           ctx,
           { kind: "plan" },
           "✅ Blueprint planning enabled. Send the request you want turned into a Blueprint.",
+          scope,
         ),
     },
     {
       name: "lightloop",
       triggers: ["/lightloop"],
-      async execute(ctx) {
+      async execute(ctx, scope) {
         if (!ctx.remainder) return { action: "handled", reply: "Usage: /lightloop <task>" }
-        return setWorkflow(ctx, { kind: "lightloop", instructions: ctx.remainder }, "✅ Light Loop enabled.")
+        return setWorkflow(ctx, { kind: "lightloop", instructions: ctx.remainder }, "✅ Light Loop enabled.", scope)
       },
     },
     {
       name: "lattice",
       triggers: ["/lattice"],
-      execute: (ctx) =>
+      execute: (ctx, scope) =>
         setWorkflow(
           ctx,
           { kind: "lattice", mode: "auto" },
           "✅ Lattice enabled. Send the goal you want decomposed and executed.",
+          scope,
         ),
     },
     {
       name: "status",
       triggers: ["/status", "/状态"],
-      async execute(ctx) {
-        const session = await Session.findForEndpoint(endpointForContext(ctx))
+      async execute(ctx, scope) {
+        const session = await Session.findForEndpoint(endpointForContext(ctx), { scope })
         if (!session) {
           return { action: "handled", reply: "📭 No conversation history yet." }
         }
@@ -198,7 +202,7 @@ export namespace ChannelCommand {
     {
       name: "model",
       triggers: ["/model"],
-      async execute(ctx) {
+      async execute(ctx, scope) {
         const remainder = ctx.remainder
         if (!remainder) {
           return { action: "handled", reply: "Usage: /model <providerID/modelID>" }
@@ -212,7 +216,7 @@ export namespace ChannelCommand {
           }
         }
 
-        const session = await Session.findForEndpoint(endpointForContext(ctx))
+        const session = await Session.findForEndpoint(endpointForContext(ctx), { scope })
         if (!session) {
           return { action: "handled", reply: "No active conversation. Send a message first." }
         }
@@ -291,15 +295,18 @@ export namespace ChannelCommand {
     return null
   }
 
-  export async function execute(text: string, ctx: Omit<Context, "remainder">): Promise<Result> {
+  export async function execute(text: string, ctx: Omit<Context, "remainder">, scope: Scope): Promise<Result> {
     const parsed = parse(text, ctx)
 
     if (!parsed) return { action: "skip" }
 
-    const result = await parsed.command.execute({
-      ...ctx,
-      remainder: parsed.remainder,
-    })
+    const result = await parsed.command.execute(
+      {
+        ...ctx,
+        remainder: parsed.remainder,
+      },
+      scope,
+    )
 
     Bus.publish(Event.Executed, {
       name: parsed.command.name,

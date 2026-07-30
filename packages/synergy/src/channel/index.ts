@@ -15,12 +15,22 @@ import { BusEvent } from "../bus/bus-event"
 import { MessageV2 } from "../session/message-v2"
 import { Session } from "../session"
 import { SessionEndpoint } from "../session/endpoint"
+import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
 
 import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
+import { ManagedProjectOwnership } from "./managed-project-ownership"
+import { externalIdentityHash } from "./identity"
+import { ChannelHost } from "./host"
+import {
+  recording as recordDiagnostic,
+  list as listDiagnostics,
+  iterate as iterateDiagnostics,
+  DiagnosticRecord,
+} from "./diagnostics"
 import { loadChannelTaskMessages, replyChannelTaskAttachments } from "./outbound-parts"
 import { ResponseCardRuntime } from "./response-card"
 import { QuestionCardRuntime } from "./question-card"
@@ -32,7 +42,6 @@ import {
   Mention as MentionSchema,
   Attachment as AttachmentSchema,
   MessageContext as MessageContextSchema,
-  toKey as toKeyFn,
 } from "./types"
 import type {
   Info as InfoType,
@@ -40,10 +49,9 @@ import type {
   Mention as MentionType,
   Attachment as AttachmentType,
   MessageContext as MessageContextType,
-  MessageHandler as MessageHandlerType,
+  ConversationCapabilities as ConversationCapabilitiesType,
   SendResult as SendResultType,
   StreamingSession as StreamingSessionType,
-  StreamingToolProgress as StreamingToolProgressType,
   Provider as ProviderType,
 } from "./types"
 
@@ -63,12 +71,59 @@ export namespace Channel {
   export type Mention = MentionType
   export type Attachment = AttachmentType
   export type MessageContext = MessageContextType
-  export type MessageHandler = MessageHandlerType
+  export type ConversationCapabilities = ConversationCapabilitiesType
   export type SendResult = SendResultType
   export type StreamingSession = StreamingSessionType
-  export type Provider = ProviderType
+  export type Provider<TAccountConfig = unknown, TChannelConfig = unknown> = ProviderType<
+    TAccountConfig,
+    TChannelConfig
+  >
 
-  export const toKey = toKeyFn
+  export async function findProjectScope(input: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+  }): Promise<Scope.Project | undefined> {
+    const record = await ManagedProjectOwnership.find({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+    })
+    if (!record) return undefined
+    const scope = await Scope.fromID(record.scopeID)
+    if (scope?.type !== "project") return undefined
+    return scope
+  }
+
+  export async function ensureProjectScope(input: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+    projectName?: string
+  }): Promise<Scope.Project> {
+    const record = await ManagedProjectOwnership.ensure({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+      projectName: input.projectName,
+      remoteState: "active",
+    })
+    const scope = await Scope.fromID(record.scopeID)
+    if (!scope || scope.type !== "project") throw new Error("Channel managed project ownership Scope not found")
+    return scope
+  }
+
+  export async function archiveProjectScope(input: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+  }): Promise<void> {
+    await ManagedProjectOwnership.markArchived({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+    })
+  }
 
   export async function resolveAccountScope(input: {
     channelType: string
@@ -158,11 +213,35 @@ export namespace Channel {
     status: Status
     stopping?: Promise<void>
   }
+  type ConnectionAttempt = {
+    abort: AbortController
+    stopping?: Promise<void>
+    disconnect?: () => Promise<void>
+  }
+  type ProjectRefresh = {
+    connection: Connection
+    promise: Promise<void>
+  }
 
   type State = {
     connections: Map<string, Connection>
     statuses: Map<string, Status>
     reconnects: Map<string, ReturnType<typeof setTimeout>>
+    attempts: Map<string, ConnectionAttempt>
+    projectRefreshes: Map<string, ProjectRefresh>
+  }
+
+  type ConnectContext = {
+    channelType: string
+    accountId: string
+    accountConfig: unknown
+    channelConfig: Config.Channel
+    provider: Provider
+    attempt: ConnectionAttempt
+    connections: Map<string, Connection>
+    statuses: Map<string, Status>
+    reconnects: Map<string, ReturnType<typeof setTimeout>>
+    attempts: Map<string, ConnectionAttempt>
   }
 
   function connectionKey(channelType: string, accountId: string): string {
@@ -186,10 +265,19 @@ export namespace Channel {
     return conn.stopping
   }
 
+  async function stopAttempt(attempt: ConnectionAttempt): Promise<void> {
+    if (attempt.stopping) return attempt.stopping
+    attempt.abort.abort()
+    attempt.stopping = attempt.disconnect?.() ?? Promise.resolve()
+    return attempt.stopping
+  }
+
   const providers = new Map<string, Provider>()
 
-  export function registerProvider(provider: Provider): void {
-    providers.set(provider.type, provider)
+  export function registerProvider<TAccountConfig, TChannelConfig>(
+    provider: Provider<TAccountConfig, TChannelConfig>,
+  ): void {
+    providers.set(provider.type, provider as unknown as Provider)
   }
 
   export function getProvider(type: string): Provider | undefined {
@@ -203,6 +291,8 @@ export namespace Channel {
       const connections = new Map<string, Connection>()
       const statuses = new Map<string, Status>()
       const reconnects = new Map<string, ReturnType<typeof setTimeout>>()
+      const attempts = new Map<string, ConnectionAttempt>()
+      const projectRefreshes = new Map<string, ProjectRefresh>()
 
       for (const [channelType, channelConfig] of Object.entries(channels)) {
         const provider = providers.get(channelType)
@@ -221,30 +311,29 @@ export namespace Channel {
           }
 
           statuses.set(key, { status: "connecting" })
-          const abort = new AbortController()
+          const attempt = { abort: new AbortController() }
 
-          connectAccount({
+          connectInBackground({
             channelType,
             accountId,
             accountConfig,
             channelConfig,
             provider,
-            abort,
+            attempt,
             connections,
             statuses,
             reconnects,
-          }).catch((err) => {
-            const error = err instanceof Error ? err.message : String(err)
-            log.error("channel connection failed", { channelType, accountId, error })
-            statuses.set(key, { status: "failed", error })
+            attempts,
           })
         }
       }
 
-      return { connections, statuses, reconnects }
+      return { connections, statuses, reconnects, attempts, projectRefreshes }
     },
     async (s) => {
       for (const timer of s.reconnects.values()) clearTimeout(timer)
+      await Promise.all(Array.from(s.attempts.values(), (attempt) => stopAttempt(attempt)))
+      s.attempts.clear()
       await Promise.all(
         Array.from(s.connections.values(), async (conn) => {
           await stopConnection(conn)
@@ -255,6 +344,7 @@ export namespace Channel {
           })
         }),
       )
+      s.connections.clear()
     },
   )
 
@@ -268,158 +358,210 @@ export namespace Channel {
     await state.resetAll()
   }
 
-  async function connectAccount(input: {
-    channelType: string
-    accountId: string
-    accountConfig: unknown
-    channelConfig: Config.Channel
-    provider: Provider
-    abort: AbortController
-    connections: Map<string, Connection>
-    statuses: Map<string, Status>
-    reconnects: Map<string, ReturnType<typeof setTimeout>>
-    attempt?: number
-  }): Promise<void> {
+  async function connectAccount(input: ConnectContext & { reconnectAttempt?: number }): Promise<void> {
     const {
       channelType,
       accountId,
       accountConfig,
       channelConfig,
       provider,
-      abort,
+      attempt,
       connections,
       statuses,
       reconnects,
-      attempt = 0,
+      attempts,
     } = input
     const key = connectionKey(channelType, accountId)
-    const connection: Connection = {
+    const currentAttempt = attempts.get(key)
+    if (attempt.abort.signal.aborted || (currentAttempt && currentAttempt !== attempt)) return
+    attempts.set(key, attempt)
+    attempt.disconnect = async () => {
+      try {
+        await provider.disconnect?.({ accountId })
+      } catch (error) {
+        log.warn("channel provider disconnect failed", {
+          channelType,
+          accountHash: externalIdentityHash(accountId),
+          error,
+        })
+      }
+    }
+    const reconnectTimer = reconnects.get(key)
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnects.delete(key)
+    }
+
+    const scope = await resolveAccountScope({ channelType, accountId, accountConfig })
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        QuestionCardBridge.init()
+      },
+    })
+
+    if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
+      statuses.set(key, { status: "waiting_for_transport" })
+      await provider.waitForTransport({ accountId, signal: attempt.abort.signal })
+      if (attempt.abort.signal.aborted || attempts.get(key) !== attempt) return
+    }
+    statuses.set(key, { status: "connecting" })
+
+    const host = ChannelHost.create({
       channelType,
       accountId,
-      provider,
-      abort,
-      status: { status: "connecting" },
-    }
-    connections.set(key, connection)
-
+      activateTasks: true,
+      onConversationMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
+      onDiagnostic: async (record) => {
+        await recordDiagnostic(channelType, accountId, record)
+      },
+    })
     try {
-      const scope = await resolveAccountScope({ channelType, accountId, accountConfig })
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          QuestionCardBridge.init()
-        },
-      })
-
-      const reconnectTimer = reconnects.get(key)
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer)
-        reconnects.delete(key)
-      }
-      if (abort.signal.aborted || connections.get(key) !== connection) return
-
       await provider.connect({
         accountId,
         accountConfig,
         channelConfig,
-        onMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
+        signal: attempt.abort.signal,
+        host,
         onResponseCardAction: (callback) =>
           ScopeContext.provide({
             scope,
-            fn: () =>
-              ResponseCardRuntime.acceptAction({
-                channelType,
-                accountId,
-                callback,
-              }),
+            fn: () => ResponseCardRuntime.acceptAction({ channelType, accountId, callback }),
           }),
         onQuestionCardAction: (callback) =>
           ScopeContext.provide({
             scope,
-            fn: () =>
-              QuestionCardRuntime.acceptAction({
-                channelType,
-                accountId,
-                callback,
-              }),
+            fn: () => QuestionCardRuntime.acceptAction({ channelType, accountId, callback }),
           }),
-        signal: abort.signal,
         onDisconnect: (reason) => {
-          if (abort.signal.aborted || connections.get(key) !== connection) return
-          log.info("channel disconnected", { channelType, accountId, reason })
-          connections.delete(key)
-          statuses.set(key, { status: "disconnected" })
-          Bus.publish(Event.Disconnected, { channelType, accountId, reason })
+          if (attempt.abort.signal.aborted) return
+          const pending = attempts.get(key)
+          const active = connections.get(key)
+          const isPending = pending === attempt
+          const isActive = active?.abort === attempt.abort
+          if (!isPending && !isActive) return
+
+          log.info("channel disconnected", { channelType, accountHash: externalIdentityHash(accountId), reason })
+          attempt.abort.abort()
+          if (isPending) attempts.delete(key)
+          if (isActive) {
+            connections.delete(key)
+            statuses.set(key, { status: "disconnected" })
+            Bus.publish(Event.Disconnected, { channelType, accountId, reason })
+          }
+
+          if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
+            connectInBackground({
+              channelType,
+              accountId,
+              accountConfig,
+              channelConfig,
+              provider,
+              attempt: { abort: new AbortController() },
+              connections,
+              statuses,
+              reconnects,
+              attempts,
+            })
+            return
+          }
           scheduleReconnect({
             channelType,
             accountId,
             accountConfig,
             channelConfig,
             provider,
-            abort,
+            attempt: { abort: new AbortController() },
             connections,
             statuses,
             reconnects,
-            attempt: 0,
+            attempts,
+            reconnectAttempt: 0,
           })
         },
       })
-
-      if (abort.signal.aborted || connections.get(key) !== connection) return
-      connection.status = { status: "connected" }
-      statuses.set(key, connection.status)
-      reconnects.delete(key)
-
-      log.info("channel connected", { channelType, accountId })
-      Bus.publish(Event.Connected, { channelType, accountId })
     } catch (error) {
-      if (abort.signal.aborted || connections.get(key) !== connection) return
-      if (connections.get(key) === connection) connections.delete(key)
-      if (!abort.signal.aborted) {
+      if (!attempt.abort.signal.aborted) {
         try {
           await provider.disconnect?.({ accountId })
         } catch (disconnectError) {
           log.warn("channel provider cleanup failed after connection error", {
             channelType,
-            accountId,
+            accountHash: externalIdentityHash(accountId),
             error: disconnectError,
           })
         }
       }
       throw error
     }
+    if (attempt.abort.signal.aborted || attempts.get(key) !== attempt) return
+
+    connections.set(key, {
+      channelType,
+      accountId,
+      provider,
+      abort: attempt.abort,
+      status: { status: "connected" },
+    })
+    statuses.set(key, { status: "connected" })
+    reconnects.delete(key)
+    attempts.delete(key)
+
+    log.info("channel connected", { channelType, accountHash: externalIdentityHash(accountId) })
+    Bus.publish(Event.Connected, { channelType, accountId })
   }
 
-  function scheduleReconnect(input: {
-    channelType: string
-    accountId: string
-    accountConfig: unknown
-    channelConfig: Config.Channel
-    provider: Provider
-    abort: AbortController
-    connections: Map<string, Connection>
-    statuses: Map<string, Status>
-    reconnects: Map<string, ReturnType<typeof setTimeout>>
-    attempt: number
-  }): void {
+  function connectInBackground(input: ConnectContext & { reconnectAttempt?: number }): void {
+    const key = connectionKey(input.channelType, input.accountId)
+    const current = input.attempts.get(key)
+    if (current && current !== input.attempt) return
+    input.attempts.set(key, input.attempt)
+    void connectAccount(input).catch((err) => {
+      if (input.attempt.abort.signal.aborted || input.attempts.get(key) !== input.attempt) return
+      input.attempts.delete(key)
+      const error = err instanceof Error ? err.message : String(err)
+      log.error("channel connection failed", {
+        channelType: input.channelType,
+        accountHash: externalIdentityHash(input.accountId),
+        attempt: input.reconnectAttempt ?? 0,
+        error,
+      })
+      input.statuses.set(key, { status: "failed", error })
+      scheduleReconnect({
+        ...input,
+        reconnectAttempt: input.reconnectAttempt ?? 0,
+        retryBorrowedInitialization: true,
+      })
+    })
+  }
+
+  function scheduleReconnect(
+    input: ConnectContext & { reconnectAttempt: number; retryBorrowedInitialization?: boolean },
+  ): void {
     const {
       channelType,
       accountId,
       accountConfig,
       channelConfig,
       provider,
-      abort,
+      attempt,
       connections,
       statuses,
       reconnects,
-      attempt,
+      attempts,
+      reconnectAttempt,
     } = input
-    if (abort.signal.aborted) return
+    if (attempt.abort.signal.aborted) return
+    if (provider.lifecycle !== "self_connected" && !input.retryBorrowedInitialization) return
 
     const key = connectionKey(channelType, accountId)
 
-    if (attempt >= MAX_RECONNECT_ATTEMPTS) {
-      log.warn("max reconnect attempts exceeded", { channelType, accountId, attempt })
+    if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      log.warn("max reconnect attempts exceeded", {
+        channelType,
+        accountHash: externalIdentityHash(accountId),
+        attempt: reconnectAttempt,
+      })
       statuses.set(key, { status: "failed", error: "max reconnect attempts exceeded" })
       return
     }
@@ -427,40 +569,25 @@ export namespace Channel {
     const existingTimer = reconnects.get(key)
     if (existingTimer) clearTimeout(existingTimer)
 
-    const delayMs = Math.min(RECONNECT_DELAY_MS * 2 ** attempt, MAX_RECONNECT_DELAY_MS)
+    const delayMs = Math.min(RECONNECT_DELAY_MS * 2 ** reconnectAttempt, MAX_RECONNECT_DELAY_MS)
     statuses.set(key, { status: "connecting" })
 
     const timer = setTimeout(() => {
       reconnects.delete(key)
-      if (abort.signal.aborted) return
+      if (attempt.abort.signal.aborted) return
 
-      connectAccount({
+      connectInBackground({
         channelType,
         accountId,
         accountConfig,
         channelConfig,
         provider,
-        abort,
+        attempt,
         connections,
         statuses,
         reconnects,
-        attempt: attempt + 1,
-      }).catch((err) => {
-        const error = err instanceof Error ? err.message : String(err)
-        log.warn("channel reconnect failed", { channelType, accountId, attempt: attempt + 1, error })
-        statuses.set(key, { status: "failed", error })
-        scheduleReconnect({
-          channelType,
-          accountId,
-          accountConfig,
-          channelConfig,
-          provider,
-          abort,
-          connections,
-          statuses,
-          reconnects,
-          attempt: attempt + 1,
-        })
+        attempts,
+        reconnectAttempt: reconnectAttempt + 1,
       })
     }, delayMs)
 
@@ -474,14 +601,23 @@ export namespace Channel {
     accountConfig: unknown,
   ): Promise<void> {
     try {
+      const conversation = provider.conversation ?? provider
+      const replyMessage = conversation.replyMessage?.bind(conversation)
+      const addReaction = conversation.addReaction?.bind(conversation)
+      const removeReaction = conversation.removeReaction?.bind(conversation)
+      const createStreamingSession = conversation.createStreamingSession?.bind(conversation)
+      if (!replyMessage || !addReaction || !createStreamingSession) {
+        log.warn("channel provider is missing conversation capabilities", { channelType: provider.type })
+        return
+      }
       await ScopeContext.provide({
         scope,
         fn: async () => {
           log.info("message received", {
             channel: ctx.channelType,
-            account: ctx.accountId,
-            chatId: ctx.chatId,
-            from: ctx.senderId,
+            accountHash: externalIdentityHash(ctx.accountId),
+            chatHash: externalIdentityHash(ctx.chatId),
+            senderHash: externalIdentityHash(ctx.senderId),
           })
 
           Bus.publish(Event.MessageReceived, {
@@ -491,23 +627,27 @@ export namespace Channel {
             text: ctx.text,
           })
 
-          const cmdResult = await ChannelCommand.execute(ctx.text, {
-            channelType: ctx.channelType,
-            accountId: ctx.accountId,
-            chatId: ctx.chatId,
-            chatType: ctx.chatType,
-            chatName: ctx.chatName,
-            senderId: ctx.senderId,
-            senderName: ctx.senderName,
-            scopeKey: ctx.scopeKey,
-            messageId: ctx.messageId,
-            wasMentioned: ctx.wasMentioned,
-            mentions: ctx.mentions,
-          })
+          const cmdResult = await ChannelCommand.execute(
+            ctx.text,
+            {
+              channelType: ctx.channelType,
+              accountId: ctx.accountId,
+              chatId: ctx.chatId,
+              chatType: ctx.chatType,
+              chatName: ctx.chatName,
+              senderId: ctx.senderId,
+              senderName: ctx.senderName,
+              scopeKey: ctx.scopeKey,
+              messageId: ctx.messageId,
+              wasMentioned: ctx.wasMentioned,
+              mentions: ctx.mentions,
+            },
+            scope,
+          )
 
           if (cmdResult.action === "handled") {
             if (cmdResult.reply) {
-              await provider.replyMessage({
+              await replyMessage({
                 accountId: ctx.accountId,
                 messageId: ctx.messageId,
                 parts: [{ type: "text", text: cmdResult.reply }],
@@ -523,16 +663,16 @@ export namespace Channel {
           const reactionController = createStatusReactionController({
             adapter: {
               setReaction: async (emoji: string) => {
-                const result = await provider.addReaction({
+                const result = await addReaction({
                   accountId: ctx.accountId,
                   messageId: ctx.messageId,
                   emoji,
                 })
                 return result?.reactionId
               },
-              removeReaction: provider.removeReaction
+              removeReaction: removeReaction
                 ? async (reactionId: string) => {
-                    await provider.removeReaction?.({
+                    await removeReaction({
                       accountId: ctx.accountId,
                       messageId: ctx.messageId,
                       reactionId,
@@ -555,13 +695,12 @@ export namespace Channel {
             scopeKey: ctx.scopeKey,
             createdAt: Date.now(),
           })
-          const session = await Session.getOrCreateForEndpoint(
-            endpoint,
-            undefined,
-            ChannelInteraction.forType(ctx.channelType),
-          )
+          const session = await Session.getOrCreateForEndpoint(endpoint, {
+            scope,
+            interaction: ChannelInteraction.forType(ctx.channelType),
+          })
           const sessionID = session.id
-          let streaming = provider.createStreamingSession({
+          let streaming = createStreamingSession({
             accountId: ctx.accountId,
             chatId: ctx.chatId,
             replyToMessageId: ctx.rootId ?? ctx.messageId,
@@ -572,7 +711,7 @@ export namespace Channel {
           } catch (error) {
             log.warn("streaming session startup failed; using text fallback", { sessionID, error })
             streaming = createTextFallbackSession({
-              provider,
+              replyMessage,
               accountId: ctx.accountId,
               messageId: ctx.rootId ?? ctx.messageId,
             })
@@ -582,9 +721,17 @@ export namespace Channel {
             sessionModelOverride: session.modelOverride,
           })
 
+          let activeTextMessageId: string | null = null
           const assistantTranscript = new Map<string, string>()
           const messageRoles = new Map<string, MessageV2.Info["role"]>()
-          const toolProgress = new Map<string, StreamingToolProgressType>()
+          const toolProgress = new Map<
+            string,
+            StreamingSession["updateToolProgress"] extends (progress: infer P) => Promise<void>
+              ? P extends Array<infer Item>
+                ? Item
+                : never
+              : never
+          >()
 
           const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
             if (event.properties.info.sessionID !== sessionID) return
@@ -697,7 +844,7 @@ export namespace Channel {
   }
 
   function createTextFallbackSession(input: {
-    provider: Provider
+    replyMessage: NonNullable<ConversationCapabilities["replyMessage"]>
     accountId: string
     messageId: string
   }): StreamingSession {
@@ -707,7 +854,7 @@ export namespace Channel {
       async updateToolProgress() {},
       async close(finalText) {
         if (!finalText?.trim()) return
-        await input.provider.replyMessage({
+        await input.replyMessage({
           accountId: input.accountId,
           messageId: input.messageId,
           parts: [{ type: "text", text: finalText }],
@@ -792,6 +939,13 @@ export namespace Channel {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       s.reconnects.delete(key)
+      s.statuses.set(key, { status: "disconnected" })
+    }
+    const attempt = s.attempts.get(key)
+    if (attempt) {
+      await stopAttempt(attempt)
+      s.attempts.delete(key)
+      s.statuses.set(key, { status: "disconnected" })
     }
     const conn = s.connections.get(key)
     if (!conn) return
@@ -804,11 +958,20 @@ export namespace Channel {
 
   export async function disconnectAll(): Promise<void> {
     const s = await state()
-    for (const timer of s.reconnects.values()) clearTimeout(timer)
+    for (const [key, timer] of s.reconnects) {
+      clearTimeout(timer)
+      s.statuses.set(key, { status: "disconnected" })
+    }
     s.reconnects.clear()
-    const connections = Array.from(s.connections.entries())
     await Promise.all(
-      connections.map(async ([key, conn]) => {
+      Array.from(s.attempts.entries(), async ([key, attempt]) => {
+        await stopAttempt(attempt)
+        s.statuses.set(key, { status: "disconnected" })
+      }),
+    )
+    s.attempts.clear()
+    await Promise.all(
+      Array.from(s.connections.entries(), async ([key, conn]) => {
         await stopConnection(conn)
         if (s.connections.get(key) === conn) s.connections.delete(key)
         s.statuses.set(key, { status: "disconnected" })
@@ -828,6 +991,11 @@ export namespace Channel {
     if (existing) {
       await stopConnection(existing)
       if (s.connections.get(key) === existing) s.connections.delete(key)
+    }
+    const activeAttempt = s.attempts.get(key)
+    if (activeAttempt) {
+      await stopAttempt(activeAttempt)
+      s.attempts.delete(key)
     }
     const reconnectTimer = s.reconnects.get(key)
     if (reconnectTimer) {
@@ -872,21 +1040,134 @@ export namespace Channel {
     }
 
     s.statuses.set(key, { status: "connecting" })
-    const abort = new AbortController()
+    const attempt = { abort: new AbortController() }
 
-    await connectAccount({
+    const context = {
       channelType,
       accountId,
       accountConfig,
       channelConfig,
       provider,
-      abort,
+      attempt,
       connections: s.connections,
       statuses: s.statuses,
       reconnects: s.reconnects,
-    })
+      attempts: s.attempts,
+    }
+    if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
+      connectInBackground(context)
+      return
+    }
+    await connectAccount(context)
   }
 
+  export const RefreshError = NamedError.create(
+    "ChannelRefreshError",
+    z.object({
+      message: z.string(),
+      channelType: z.string(),
+      accountId: z.string(),
+    }),
+  )
+
+  export const RefreshUnavailableError = NamedError.create(
+    "ChannelRefreshUnavailable",
+    z.object({
+      message: z.string(),
+      channelType: z.string(),
+      accountId: z.string(),
+      currentStatus: Status,
+      retryable: z.literal(true),
+    }),
+  )
+
+  export async function refreshProjects(channelType: string, accountId: string): Promise<void> {
+    const s = await state()
+    const key = connectionKey(channelType, accountId)
+    const conn = s.connections.get(key)
+    if (!conn) {
+      const currentStatus = s.statuses.get(key)
+      if (currentStatus?.status === "waiting_for_transport" || currentStatus?.status === "connecting") {
+        throw new RefreshUnavailableError({
+          message: `Channel account refresh is not available while the account is ${currentStatus.status}`,
+          channelType,
+          accountId,
+          currentStatus,
+          retryable: true,
+        })
+      }
+      throw new RefreshError({
+        message: "Channel account is not connected",
+        channelType,
+        accountId,
+      })
+    }
+    if (!conn.provider.refreshProjects) {
+      throw new RefreshError({
+        message: "Channel provider does not support project refresh",
+        channelType,
+        accountId,
+      })
+    }
+    const existing = s.projectRefreshes.get(key)
+    if (existing?.connection === conn) return existing.promise
+
+    const promise = Promise.resolve()
+      .then(async () => {
+        const isCurrentConnection = () => s.connections.get(key) === conn && !conn.abort.signal.aborted
+        if (!isCurrentConnection()) {
+          throw new RefreshError({
+            message: "Channel disconnected during project refresh",
+            channelType,
+            accountId,
+          })
+        }
+        s.statuses.set(key, { status: "syncing" })
+        try {
+          await conn.provider.refreshProjects!({
+            accountId,
+            signal: conn.abort.signal,
+            host: ChannelHost.create({
+              channelType,
+              accountId,
+              onDiagnostic: async (record) => {
+                await recordDiagnostic(channelType, accountId, record)
+              },
+            }),
+          })
+          if (!isCurrentConnection()) {
+            throw new RefreshError({
+              message: "Channel disconnected during project refresh",
+              channelType,
+              accountId,
+            })
+          }
+          s.statuses.set(key, { status: "connected" })
+        } catch (err) {
+          const current = isCurrentConnection()
+          const message = current
+            ? err instanceof Error
+              ? err.message
+              : String(err)
+            : "Channel disconnected during project refresh"
+          if (current) s.statuses.set(key, { status: "failed", error: message })
+          throw new RefreshError({ message, channelType, accountId })
+        }
+      })
+      .finally(() => {
+        if (s.projectRefreshes.get(key)?.promise === promise) s.projectRefreshes.delete(key)
+      })
+    s.projectRefreshes.set(key, { connection: conn, promise })
+    return promise
+  }
+
+  export async function getDiagnostics(channelType: string, accountId: string): Promise<DiagnosticRecord[]> {
+    return listDiagnostics(channelType, accountId)
+  }
+
+  export function streamDiagnostics(channelType: string, accountId: string): AsyncGenerator<DiagnosticRecord> {
+    return iterateDiagnostics(channelType, accountId)
+  }
   export async function init(): Promise<void> {
     await state()
   }

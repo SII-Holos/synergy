@@ -1398,6 +1398,14 @@
   padding-left: 12px;
 }
 
+.sb-channel-managed-projects {
+  padding-left: 12px;
+}
+
+.sb-root-section .sb-channel-managed-projects .sb-sessions {
+  padding-left: 20px;
+}
+
 .sb-channel-partner-group .sb-session-group-header {
   padding: 4px 12px 2px;
   font-size: var(--font-size-x-small);

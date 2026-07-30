@@ -40,6 +40,81 @@ describe("settings config patch", () => {
     })
   })
 
+  test("persists Clarus account enablement without adding model fields", () => {
+    const state = defaultSettingsState("enter")
+    state.channels.clarusAccounts = [{ key: "agent-id", enabled: true }]
+
+    const patch = buildPatch({
+      cfg: {
+        channel: {
+          clarus: {
+            type: "clarus",
+            accounts: {
+              "agent-id": {
+                enabled: false,
+                agent: "synergy",
+              },
+            },
+          },
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect((patch.channel as Config["channel"])?.clarus?.accounts["agent-id"]).toEqual({
+      enabled: true,
+      agent: "synergy",
+    })
+  })
+
+  test("preserves Clarus accounts while updating a Feishu model variant", () => {
+    const state = defaultSettingsState("enter")
+    state.channels.feishuAccounts = [
+      {
+        key: "default",
+        enabled: true,
+        model: "openai-codex/gpt-5.6-sol",
+        variant: "high",
+      },
+    ]
+    const clarus = {
+      type: "clarus" as const,
+      accounts: {
+        agent: {
+          enabled: true,
+          agent: "synergy-max",
+        },
+      },
+    }
+
+    const patch = buildPatch({
+      cfg: {
+        channel: {
+          feishu: {
+            type: "feishu",
+            accounts: {
+              default: {
+                appId: "app",
+                appSecret: "secret",
+              },
+            },
+          },
+          clarus,
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    const channel = patch.channel as NonNullable<Config["channel"]>
+    expect(channel.feishu?.accounts.default).toMatchObject({
+      model: "openai-codex/gpt-5.6-sol",
+      variant: "high",
+    })
+    expect(channel.clarus).toEqual(clarus)
+  })
+
   test("model role drafts only materialize as server patch fields", () => {
     const state = defaultSettingsState("enter")
     state.models.model = "openai/gpt-5.5"
