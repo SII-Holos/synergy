@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test"
 import type { NavEntry, NavListState, ScopeNavEntry } from "../../../src/context/layout/index"
 import {
   applySessionToNavList,
+  channelNavQuery,
   githubNavQuery,
+  rootNavRequest,
+  rootNavSectionsForSessionUpdate,
+  loadNavListToDepth,
   managedProjectLocalScope,
   managedProjectScopesByWorktree,
   partitionScopeNavigation,
@@ -10,6 +14,7 @@ import {
   navUpdateFromSession,
   orderNavEntries,
   removeScopeFromIndex,
+  removeScopeFromLoadedNavigation,
 } from "../../../src/context/layout/nav"
 
 function entry(input: Partial<NavEntry> & Pick<NavEntry, "id">): NavEntry {
@@ -97,6 +102,123 @@ describe("managed Project scope projection", () => {
       time: { created: 10, updated: 20 },
       expanded: true,
     })
+  })
+})
+
+describe("channelNavQuery", () => {
+  test("requests Channel sessions across Home and project scopes with cursor pagination", () => {
+    expect(channelNavQuery(100, { lastActivityAt: 456, id: "ses_channel" })).toEqual({
+      category: "channel",
+      channelType: "feishu",
+      parentOnly: true,
+      includeArchived: true,
+      limit: 100,
+      cursorLastActivityAt: 456,
+      cursorId: "ses_channel",
+    })
+  })
+})
+
+describe("rootNavRequest", () => {
+  test("routes Channel through global navigation while Home stays scope-qualified", () => {
+    expect(rootNavRequest("channel", 100)).toEqual({
+      source: "global",
+      query: {
+        category: "channel",
+        channelType: "feishu",
+        parentOnly: true,
+        includeArchived: true,
+        limit: 100,
+      },
+    })
+    expect(rootNavRequest("home", 100)).toEqual({
+      source: "scope",
+      query: {
+        scopeID: "home",
+        category: "home",
+        parentOnly: "true",
+        limit: 100,
+      },
+    })
+  })
+})
+
+describe("loadNavListToDepth", () => {
+  test("refreshes loaded depth through requests bounded by the API page limit", async () => {
+    const source = Array.from({ length: 350 }, (_, index) =>
+      entry({ id: `session-${String(index).padStart(3, "0")}`, lastActivityAt: 350 - index }),
+    )
+    const requests: Array<{ limit: number; cursor?: { lastActivityAt: number; id: string } }> = []
+
+    const result = await loadNavListToDepth({
+      depth: 300,
+      pageLimit: 200,
+      fetchPage: async (limit, cursor) => {
+        requests.push({ limit, cursor })
+        const start = cursor
+          ? source.findIndex(
+              (item) =>
+                item.lastActivityAt < cursor.lastActivityAt ||
+                (item.lastActivityAt === cursor.lastActivityAt && item.id < cursor.id),
+            )
+          : 0
+        const items = source.slice(start, start + limit)
+        const last = items.at(-1)
+        const nextCursor =
+          start + items.length < source.length && last ? { lastActivityAt: last.lastActivityAt, id: last.id } : null
+        return { items, nextCursor, total: source.length }
+      },
+    })
+
+    expect(requests.map((request) => request.limit)).toEqual([200, 100])
+    expect(requests[1]?.cursor).toEqual({ lastActivityAt: 151, id: "session-199" })
+    expect(result?.items).toHaveLength(300)
+    expect(result?.nextCursor).toEqual({ lastActivityAt: 51, id: "session-299" })
+    expect(result?.total).toBe(350)
+  })
+})
+
+describe("rootNavSectionsForSessionUpdate", () => {
+  test("refreshes Channel for project-scoped Channel updates", () => {
+    expect(
+      rootNavSectionsForSessionUpdate({
+        scopeID: "project-scope",
+        navCategory: "channel",
+        channelType: "feishu",
+        channelApplied: false,
+      }),
+    ).toEqual(["channel"])
+  })
+
+  test("keeps Home updates authoritative for every Home root section", () => {
+    expect(
+      rootNavSectionsForSessionUpdate({
+        scopeID: "home",
+        navCategory: "home",
+        channelApplied: false,
+      }),
+    ).toEqual(["home", "channel", "background"])
+  })
+
+  test("ignores unrelated project-scoped updates", () => {
+    expect(
+      rootNavSectionsForSessionUpdate({
+        scopeID: "project-scope",
+        navCategory: "project",
+        channelApplied: false,
+      }),
+    ).toEqual([])
+  })
+
+  test("ignores managed Task updates from other Channel providers", () => {
+    expect(
+      rootNavSectionsForSessionUpdate({
+        scopeID: "project-scope",
+        navCategory: "channel",
+        channelType: "clarus",
+        channelApplied: false,
+      }),
+    ).toEqual([])
   })
 })
 
@@ -300,5 +422,35 @@ describe("removeScopeFromIndex", () => {
     expect(result.removed).toBe(false)
     expect(result.directory).toBe("/repo/missing")
     expect(result.entries).toEqual(entries)
+  })
+})
+
+describe("removeScopeFromLoadedNavigation", () => {
+  test("scope removal immediately evicts every loaded global navigation projection", () => {
+    const archivedChannel = entry({ id: "archived-channel", scopeID: "archived", category: "channel" })
+    const activeChannel = entry({ id: "active-channel", scopeID: "active", category: "channel" })
+    const archivedGitHub = entry({ id: "archived-github", scopeID: "archived", category: "github" })
+    const activeGitHub = entry({ id: "active-github", scopeID: "active", category: "github" })
+    const home = list([entry({ id: "home", scopeID: "home", scopeType: "home", category: "home" })])
+
+    const result = removeScopeFromLoadedNavigation(
+      {
+        recent: list([archivedChannel, activeChannel]),
+        github: list([archivedGitHub, activeGitHub]),
+        root: {
+          home,
+          channel: list([archivedChannel, activeChannel]),
+          background: list([entry({ id: "archived-background", scopeID: "archived", category: "background" })]),
+        },
+      },
+      "archived",
+    )
+
+    expect(result.recent.items.map((item) => item.id)).toEqual(["active-channel"])
+    expect(result.github.items.map((item) => item.id)).toEqual(["active-github"])
+    expect(result.root.channel.items.map((item) => item.id)).toEqual(["active-channel"])
+    expect(result.root.background.items).toEqual([])
+    expect(result.root.home).toBe(home)
+    expect(result.affected).toEqual({ recent: true, github: true, root: ["channel", "background"] })
   })
 })

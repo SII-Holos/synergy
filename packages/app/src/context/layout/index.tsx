@@ -19,13 +19,18 @@ import { createInitialLayoutDefaults } from "./defaults"
 import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
+  rootNavRequest,
+  rootNavSectionsForSessionUpdate,
   githubNavQuery,
   managedProjectScopesByWorktree,
+  loadNavListToDepth,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
   partitionScopeNavigation,
   removeScopeFromIndex,
+  removeScopeFromLoadedNavigation,
+  type RootNavSectionKey,
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
@@ -119,13 +124,13 @@ export interface ScopeNavEntry {
 
 const ROOT_NAV_SECTION_LIMIT = 100
 const ROOT_NAV_SECTION_KEYS = ["home", "channel", "background"] as const
-type RootNavSectionKey = (typeof ROOT_NAV_SECTION_KEYS)[number]
 export type NavListState = { items: NavEntry[]; nextCursor: NavCursor | null; total: number }
 function emptyNavList(): NavListState {
   return { items: [], nextCursor: null, total: 0 }
 }
 const NAV_FIRST_PAGE_LIMIT = 10
 const RECENT_LIMIT = 10
+const NAV_REFRESH_PAGE_LIMIT = 200
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -364,14 +369,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (navPending.has(key)) return
       navPending.add(key)
       try {
-        const res = await globalSdk.client.session.index({
-          scopeID: "home",
-          category,
-          parentOnly: "true",
-          includeArchived: category === "channel" ? "true" : undefined,
-          limit: ROOT_NAV_SECTION_LIMIT,
-          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
-        })
+        const request = rootNavRequest(category, ROOT_NAV_SECTION_LIMIT, cursor)
+        const res =
+          request.source === "global"
+            ? await globalSdk.client.global.nav.recent(request.query)
+            : await globalSdk.client.session.index(request.query)
         if (!res.data) return
         const data = res.data
         if (cursor) {
@@ -543,23 +545,25 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       navPending.add(key)
       try {
         const existing = rootNavStore[category]
-        const res = await globalSdk.client.session.index({
-          scopeID: "home",
-          category,
-          parentOnly: "true",
-          includeArchived: category === "channel" ? "true" : undefined,
-          limit: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
+        const refreshed = await loadNavListToDepth({
+          depth: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
+          pageLimit: NAV_REFRESH_PAGE_LIMIT,
+          fetchPage: async (limit, cursor) => {
+            const request = rootNavRequest(category, limit, cursor)
+            const response =
+              request.source === "global"
+                ? await globalSdk.client.global.nav.recent(request.query)
+                : await globalSdk.client.session.index(request.query)
+            if (!response.data) return undefined
+            return {
+              items: response.data.items as NavEntry[],
+              nextCursor: response.data.nextCursor,
+              total: response.data.total,
+            }
+          },
         })
-        if (!res.data) return
-        const data = res.data
-        setRootNavStore(
-          category,
-          mergeNavListByID(existing, {
-            items: data.items as NavEntry[],
-            nextCursor: data.nextCursor,
-            total: data.total,
-          }),
-        )
+        if (!refreshed) return
+        setRootNavStore(category, mergeNavListByID(existing, refreshed))
       } finally {
         navPending.delete(key)
       }
@@ -628,9 +632,58 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     function applyScopeRemoval(scopeID: string, directory?: string) {
       const removed = removeScopeFromIndex(scopeIndex(), scopeID, directory)
       if (removed.directory) server.scopes.close(removed.directory)
-      if (removed.removed) {
-        setScopeIndex(removed.entries)
+      if (removed.removed) setScopeIndex(removed.entries)
+
+      const navigation = removeScopeFromLoadedNavigation(
+        {
+          recent: recentEntries,
+          github: githubEntries,
+          root: {
+            home: rootNavStore.home,
+            channel: rootNavStore.channel,
+            background: rootNavStore.background,
+          },
+        },
+        scopeID,
+      )
+      if (navigation.affected.recent) {
+        setRecentEntries(navigation.recent)
+        const pending = navRefreshTimers.get("__recent__")
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          "__recent__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__recent__")
+            refreshGlobalRecent()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
       }
+      if (navigation.affected.github) {
+        setGitHubEntries(navigation.github)
+        const pending = navRefreshTimers.get("__github__")
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          "__github__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__github__")
+            refreshGitHubSection()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+      }
+      for (const category of navigation.affected.root) {
+        setRootNavStore(category, navigation.root[category])
+        const key = `__root_${category}`
+        const pending = navRefreshTimers.get(key)
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          key,
+          setTimeout(() => {
+            navRefreshTimers.delete(key)
+            refreshRootNavSection(category)
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+      }
+
       scheduleScopeIndexRefresh()
     }
 
@@ -670,6 +723,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0], properties?.navEntry)
         const githubResult = applySessionToNavList(githubEntries, navUpdate)
         const githubAffected = properties?.navEntry?.category === "github" || githubResult.applied
+        let channelApplied = false
         {
           const recentResult = applySessionToNavList(recentEntries, navUpdate)
           if (recentResult.applied) setRecentEntries(recentResult.list)
@@ -682,6 +736,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           for (const category of ROOT_NAV_SECTION_KEYS) {
             if (!rootNavStore[category]) continue
             const rootResult = applySessionToNavList(rootNavStore[category], navUpdate)
+            if (category === "channel") channelApplied = rootResult.applied
             if (rootResult.applied) setRootNavStore(category, rootResult.list)
           }
         }
@@ -706,21 +761,24 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             }, NAV_REFRESH_DEBOUNCE_MS),
           )
         }
-        if (scope.id === "home") {
-          for (const category of ROOT_NAV_SECTION_KEYS) {
-            if (!rootNavStore[category]) continue
-            const pending = navRefreshTimers.get(`__root_${category}`)
-            if (pending) clearTimeout(pending)
-            navRefreshTimers.set(
-              `__root_${category}`,
-              setTimeout(() => {
-                navRefreshTimers.delete(`__root_${category}`)
-                refreshRootNavSection(category)
-              }, NAV_REFRESH_DEBOUNCE_MS),
-            )
-          }
-          return
+        const affectedRootSections = rootNavSectionsForSessionUpdate({
+          scopeID: scope.id,
+          navCategory: properties?.navEntry?.category,
+          channelType: properties?.navEntry?.channelType,
+          channelApplied,
+        })
+        for (const category of affectedRootSections) {
+          const pending = navRefreshTimers.get(`__root_${category}`)
+          if (pending) clearTimeout(pending)
+          navRefreshTimers.set(
+            `__root_${category}`,
+            setTimeout(() => {
+              navRefreshTimers.delete(`__root_${category}`)
+              refreshRootNavSection(category)
+            }, NAV_REFRESH_DEBOUNCE_MS),
+          )
         }
+        if (scope.id === "home") return
         const dir = scope.directory
         if (!dir || !navEntries[dir]) return
         const pending = navRefreshTimers.get(dir)

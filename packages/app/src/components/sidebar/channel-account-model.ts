@@ -82,10 +82,19 @@ export function managedProjectRouteTarget(entry: ScopeNavEntry): { worktree: str
 
 // ── Session Visibility ─────────────────────────────────────────────────
 
-/** Managed Projects include channel Task Sessions; ordinary Projects remain project-only. */
-export function selectVisibleProjectEntries(entries: readonly NavEntry[], isManaged: boolean): NavEntry[] {
-  if (isManaged) {
-    return entries.filter((entry) => entry.category === "project" || entry.category === "channel")
-  }
-  return entries.filter((entry) => entry.category === "project")
+/** Managed Projects include only Task Sessions owned by that Channel Project. */
+export function selectVisibleProjectEntries(
+  entries: readonly NavEntry[],
+  managedProject?: NonNullable<ScopeNavEntry["managedProject"]>,
+): NavEntry[] {
+  if (!managedProject) return entries.filter((entry) => entry.category === "project")
+  return entries.filter(
+    (entry) =>
+      entry.category === "project" ||
+      (entry.category === "channel" &&
+        entry.channelType === managedProject.channelType &&
+        entry.channelAccountId === managedProject.accountId &&
+        entry.channelTarget?.kind === "task" &&
+        entry.channelTarget.externalProjectId === managedProject.externalProjectId),
+  )
 }

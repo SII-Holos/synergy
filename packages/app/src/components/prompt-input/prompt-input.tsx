@@ -1222,6 +1222,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const paths = await files.searchFilesAndDirectories(query)
       return paths.map((path): AtOption => ({ type: "file", path, display: path }))
     },
+    deferInitialLoad: true,
     key: atKey,
     filterKeys: ["display"],
     onSelect: handleAtSelect,
