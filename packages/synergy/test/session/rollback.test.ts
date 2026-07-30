@@ -392,13 +392,19 @@ describe("rollback acknowledgment", () => {
           draft.title = "Updated title"
         })
         await metadataPersisted.promise
-        const acknowledgment = await Session.acknowledgeRollback(session.id, rollback.id)
+        let acknowledgmentSettled = false
+        const acknowledgment = Session.acknowledgeRollback(session.id, rollback.id).then((result) => {
+          acknowledgmentSettled = true
+          return result
+        })
+        await Bun.sleep(0)
+        expect(acknowledgmentSettled).toBe(false)
         releaseMetadataUpdate.resolve()
-        await metadataUpdate
+        const [, result] = await Promise.all([metadataUpdate, acknowledgment])
 
         const info = await Session.get(session.id)
         expect(info.title).toBe("Updated title")
-        expect(info.rollbackAck).toEqual(acknowledgment)
+        expect(info.rollbackAck).toEqual(result)
 
         await Session.remove(session.id)
       },

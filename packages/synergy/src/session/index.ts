@@ -42,6 +42,7 @@ import { SessionNav, type SessionNavEntry } from "./nav"
 import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
 import * as SessionWorking from "./working"
+import { SessionMutation } from "./mutation"
 
 export namespace Session {
   export const Info = InfoSchema
@@ -310,12 +311,18 @@ export namespace Session {
   const lastPublish = new Map<string, { key: string; at: number }>()
   const PUBLISH_DEDUP_THROTTLE_MS = 1000
 
-  async function publishInfo(event: typeof SessionEvent.Updated, session: Info, navEntry?: SessionNavEntry) {
+  async function publishInfo(
+    event: typeof SessionEvent.Updated,
+    session: Info,
+    navEntry?: SessionNavEntry,
+    options?: { force?: boolean },
+  ) {
     const info = await withRuntimeInfo(session)
     const key = publishCompareKey(info)
     const now = Date.now()
     const prev = lastPublish.get(session.id)
     if (
+      options?.force !== true &&
       !decideSessionPublish({
         prevKey: prev?.key,
         prevAt: prev?.at,
@@ -660,7 +667,9 @@ export namespace Session {
   export async function acknowledgeRollback(id: string, rollbackID: string): Promise<RollbackAck> {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
-    const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
+    const scopeID = asScopeID(scope.id)
+    const sessionID = asSessionID(id)
+    using _ = await SessionMutation.write(scopeID, sessionID)
     const currentRollbackID = (await SessionHistory.storedInfo(id))?.rollback?.id
     if (currentRollbackID !== rollbackID) {
       throw new RollbackAckConflictError({
@@ -673,7 +682,7 @@ export namespace Session {
     }
 
     let changed = false
-    const result = await Storage.update<Info>(key, (draft) => {
+    const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
       if (draft.rollbackAck?.rollbackID === rollbackID) return
       draft.rollbackAck = { rollbackID, acknowledgedAt: Date.now() }
       changed = true
@@ -766,18 +775,25 @@ export namespace Session {
     })
   }
 
-  export async function update(id: string, editor: (session: Info) => void) {
+  async function updateInternal(
+    id: string,
+    editor: (session: Info) => void,
+    options?: { preserveActivityAt?: boolean; forcePublish?: boolean },
+  ) {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
-    const before = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
-    const result = await Storage.update<Info>(
-      StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)),
-      (draft) => {
-        editor(draft)
-        draft.time.updated = Date.now()
-        delete draft.working
-      },
-    )
+    const scopeID = asScopeID(scope.id)
+    const sessionID = asSessionID(id)
+    using _ = await SessionMutation.write(scopeID, sessionID)
+    let before: Info | undefined
+    const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
+      before = structuredClone(draft)
+      editor(draft)
+      draft.time.updated = Date.now()
+      delete draft.working
+    })
+    if (!before) throw new Error(`Session ${id} was not available before mutation`)
+
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
     if (before.parentID && before.parentID !== result.parentID) {
@@ -786,8 +802,10 @@ export namespace Session {
     if (result.parentID) {
       await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
     }
+    const shouldPreserveActivityAt =
+      options?.preserveActivityAt ?? (before.pendingReply === true && result.pendingReply === true)
     const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result), {
-      preserveActivityAt: before.pendingReply === true && result.pendingReply === true,
+      preserveActivityAt: shouldPreserveActivityAt,
     })
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
@@ -805,8 +823,16 @@ export namespace Session {
         log.warn("failed to detach worktree during session archive", { sessionID: result.id, error })
       })
     }
-    await publishInfo(SessionEvent.Updated, result, navEntry)
+    await publishInfo(SessionEvent.Updated, result, navEntry, { force: options?.forcePublish })
     return withRuntimeInfo(result)
+  }
+
+  export async function update(id: string, editor: (session: Info) => void) {
+    return updateInternal(id, editor)
+  }
+
+  export async function recordActivity(id: string) {
+    return updateInternal(id, () => {}, { preserveActivityAt: false, forcePublish: true })
   }
 
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {
