@@ -1,4 +1,4 @@
-import type { LocalScope, NavEntry, NavListState, ScopeNavEntry } from "./index"
+import type { LocalScope, NavCursor, NavEntry, NavListState, ScopeNavEntry } from "./index"
 
 // Instant in-place projection of a session.updated event onto a nav list
 // (frontend sync redesign, P3). Applying the event directly gives the sidebar
@@ -74,6 +74,13 @@ export function applySessionToNavList(
   return { list: { ...list, items }, applied: true }
 }
 
+export function removeScopeFromNavList(list: NavListState, scopeID: string): NavListState {
+  const items = list.items.filter((entry) => entry.scopeID !== scopeID)
+  const removedCount = list.items.length - items.length
+  if (removedCount === 0) return list
+  return { ...list, items, total: Math.max(0, list.total - removedCount) }
+}
+
 export function channelNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
   return {
     category: "channel" as const,
@@ -86,6 +93,33 @@ export function channelNavQuery(limit: number, cursor?: { lastActivityAt: number
 }
 
 export type RootNavSectionKey = "home" | "channel" | "background"
+export function removeScopeFromLoadedNavigation(
+  input: {
+    recent: NavListState
+    github: NavListState
+    root: Record<RootNavSectionKey, NavListState>
+  },
+  scopeID: string,
+) {
+  const recent = removeScopeFromNavList(input.recent, scopeID)
+  const github = removeScopeFromNavList(input.github, scopeID)
+  const root = {
+    home: removeScopeFromNavList(input.root.home, scopeID),
+    channel: removeScopeFromNavList(input.root.channel, scopeID),
+    background: removeScopeFromNavList(input.root.background, scopeID),
+  }
+  const affectedRoot = (Object.keys(root) as RootNavSectionKey[]).filter((key) => root[key] !== input.root[key])
+  return {
+    recent,
+    github,
+    root,
+    affected: {
+      recent: recent !== input.recent,
+      github: github !== input.github,
+      root: affectedRoot,
+    },
+  }
+}
 
 export function rootNavRequest(
   category: RootNavSectionKey,
@@ -125,6 +159,29 @@ export function githubNavQuery(limit: number, cursor?: { lastActivityAt: number;
     limit,
     ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
   }
+}
+
+export async function loadNavListToDepth(input: {
+  depth: number
+  pageLimit: number
+  fetchPage: (limit: number, cursor?: NavCursor) => Promise<NavListState | undefined>
+}): Promise<NavListState | undefined> {
+  const items: NavEntry[] = []
+  let cursor: NavCursor | undefined
+  let nextCursor: NavCursor | null = null
+  let total = 0
+
+  while (items.length < input.depth) {
+    const page = await input.fetchPage(Math.min(input.pageLimit, input.depth - items.length), cursor)
+    if (!page) return undefined
+    items.push(...page.items)
+    total = page.total
+    nextCursor = page.nextCursor
+    if (!nextCursor || page.items.length === 0) break
+    cursor = nextCursor
+  }
+
+  return { items, nextCursor, total }
 }
 
 export function orderNavEntries(entries: readonly NavEntry[]): NavEntry[] {

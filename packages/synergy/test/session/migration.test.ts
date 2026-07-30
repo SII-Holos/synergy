@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
@@ -164,6 +164,42 @@ describe("session migrations", () => {
         await Session.remove(session.id)
       },
     })
+  })
+
+  test("fails Channel nav migration when any scope index cannot be rebuilt", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+    const session = await ScopeContext.provide({
+      scope: tmpScope,
+      fn: () =>
+        Session.create({
+          title: "Unwritable Feishu Channel Session",
+          endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "migration", chatId: "unwritable" }),
+        }),
+    })
+    const target = StoragePath.sessionNavIndex(Identifier.asScopeID(tmpScope.id))
+    const originalWrite = Storage.write
+    {
+      using _write = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+        if (key.length === target.length && key.every((part, index) => part === target[index])) {
+          throw new Error("nav index write failed")
+        }
+        return originalWrite(key, content, options)
+      })
+
+      const migration = migrations.find((entry) => entry.id === "20260730-session-nav-channel-provider-fields")
+      expect(migration).toBeDefined()
+      await expect(migration!.up(() => {})).rejects.toThrow("nav index write failed")
+    }
+
+    const migration = migrations.find((entry) => entry.id === "20260730-session-nav-channel-provider-fields")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+    expect(
+      (await SessionNav.queryScope(tmpScope.id, { category: "channel" })).items.map((entry) => entry.id),
+    ).toContain(session.id)
+
+    await Session.remove(session.id)
   })
 
   test("builds child session indexes from existing session info files", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { ScopeContext } from "../../src/scope/context"
+import { Scope } from "../../src/scope"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionNav } from "../../src/session/nav"
@@ -72,6 +73,31 @@ describe("SessionNav.queryGlobal", () => {
         await Session.remove(feishu.id)
       },
     })
+  })
+
+  test("excludes sessions owned by archived project scopes", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const token = `archived-scope-${crypto.randomUUID()}`
+    const session = await ScopeContext.provide({
+      scope,
+      fn: () =>
+        Session.create({
+          title: token,
+          endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "nav", chatId: token }),
+        }),
+    })
+
+    await Scope.remove(scope.id)
+
+    const result = await SessionNav.queryGlobal({
+      category: "channel",
+      channelType: "feishu",
+      search: token,
+    })
+    expect(result).toMatchObject({ items: [], total: 0 })
+
+    await ScopeContext.provide({ scope, fn: () => Session.remove(session.id) })
   })
 
   test("persists GitHub provenance and queries GitHub sessions across parent and child entries", async () => {

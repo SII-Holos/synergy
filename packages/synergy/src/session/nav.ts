@@ -272,11 +272,7 @@ export namespace SessionNav {
     const total = allScopeIDs.length
     let done = 0
     for (const scopeID of allScopeIDs) {
-      try {
-        await buildNavIndex(scopeID)
-      } catch (err) {
-        log.warn("failed to build nav index for scope", { scopeID, error: String(err) })
-      }
+      await buildNavIndex(scopeID)
       done++
       progress?.(done, total)
     }
@@ -285,8 +281,7 @@ export namespace SessionNav {
   async function getAllScopeIDs(): Promise<string[]> {
     const { Scope } = await import("../scope")
     const projects = await Scope.list()
-    const sessionScopeIDs = await Storage.scan(["sessions"])
-    return [...new Set(["home", ...projects.map((p) => p.id), ...sessionScopeIDs])]
+    return ["home", ...projects.map((project) => project.id)]
   }
 
   export async function listUnreadCompletionEntries(): Promise<SessionNavEntry[]> {

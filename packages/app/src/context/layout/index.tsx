@@ -23,11 +23,13 @@ import {
   rootNavSectionsForSessionUpdate,
   githubNavQuery,
   managedProjectScopesByWorktree,
+  loadNavListToDepth,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
   partitionScopeNavigation,
   removeScopeFromIndex,
+  removeScopeFromLoadedNavigation,
   type RootNavSectionKey,
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
@@ -128,6 +130,7 @@ function emptyNavList(): NavListState {
 }
 const NAV_FIRST_PAGE_LIMIT = 10
 const RECENT_LIMIT = 10
+const NAV_REFRESH_PAGE_LIMIT = 200
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -542,21 +545,25 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       navPending.add(key)
       try {
         const existing = rootNavStore[category]
-        const request = rootNavRequest(category, Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0))
-        const res =
-          request.source === "global"
-            ? await globalSdk.client.global.nav.recent(request.query)
-            : await globalSdk.client.session.index(request.query)
-        if (!res.data) return
-        const data = res.data
-        setRootNavStore(
-          category,
-          mergeNavListByID(existing, {
-            items: data.items as NavEntry[],
-            nextCursor: data.nextCursor,
-            total: data.total,
-          }),
-        )
+        const refreshed = await loadNavListToDepth({
+          depth: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
+          pageLimit: NAV_REFRESH_PAGE_LIMIT,
+          fetchPage: async (limit, cursor) => {
+            const request = rootNavRequest(category, limit, cursor)
+            const response =
+              request.source === "global"
+                ? await globalSdk.client.global.nav.recent(request.query)
+                : await globalSdk.client.session.index(request.query)
+            if (!response.data) return undefined
+            return {
+              items: response.data.items as NavEntry[],
+              nextCursor: response.data.nextCursor,
+              total: response.data.total,
+            }
+          },
+        })
+        if (!refreshed) return
+        setRootNavStore(category, mergeNavListByID(existing, refreshed))
       } finally {
         navPending.delete(key)
       }
@@ -625,9 +632,58 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     function applyScopeRemoval(scopeID: string, directory?: string) {
       const removed = removeScopeFromIndex(scopeIndex(), scopeID, directory)
       if (removed.directory) server.scopes.close(removed.directory)
-      if (removed.removed) {
-        setScopeIndex(removed.entries)
+      if (removed.removed) setScopeIndex(removed.entries)
+
+      const navigation = removeScopeFromLoadedNavigation(
+        {
+          recent: recentEntries,
+          github: githubEntries,
+          root: {
+            home: rootNavStore.home,
+            channel: rootNavStore.channel,
+            background: rootNavStore.background,
+          },
+        },
+        scopeID,
+      )
+      if (navigation.affected.recent) {
+        setRecentEntries(navigation.recent)
+        const pending = navRefreshTimers.get("__recent__")
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          "__recent__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__recent__")
+            refreshGlobalRecent()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
       }
+      if (navigation.affected.github) {
+        setGitHubEntries(navigation.github)
+        const pending = navRefreshTimers.get("__github__")
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          "__github__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__github__")
+            refreshGitHubSection()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+      }
+      for (const category of navigation.affected.root) {
+        setRootNavStore(category, navigation.root[category])
+        const key = `__root_${category}`
+        const pending = navRefreshTimers.get(key)
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          key,
+          setTimeout(() => {
+            navRefreshTimers.delete(key)
+            refreshRootNavSection(category)
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+      }
+
       scheduleScopeIndexRefresh()
     }
 
