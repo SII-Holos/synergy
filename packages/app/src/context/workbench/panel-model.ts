@@ -161,3 +161,7 @@ export function closeWorkbenchPanelTab(
     active: next[index - 1]?.id ?? next[index]?.id,
   }
 }
+
+export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {
+  return tab?.id
+}

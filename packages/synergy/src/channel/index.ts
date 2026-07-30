@@ -18,7 +18,6 @@ import { SessionEndpoint } from "../session/endpoint"
 import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
 
-import { Question } from "../question"
 import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
@@ -35,6 +34,7 @@ import {
 import { loadChannelTaskMessages, replyChannelTaskAttachments } from "./outbound-parts"
 import { ResponseCardRuntime } from "./response-card"
 import { QuestionCardRuntime } from "./question-card"
+import { QuestionCardBridge } from "./question-card-bridge"
 import { ChannelInteraction } from "./interaction"
 import {
   Info as InfoSchema,
@@ -211,9 +211,12 @@ export namespace Channel {
     provider: Provider
     abort: AbortController
     status: Status
+    stopping?: Promise<void>
   }
   type ConnectionAttempt = {
     abort: AbortController
+    stopping?: Promise<void>
+    disconnect?: () => Promise<void>
   }
   type ProjectRefresh = {
     connection: Connection
@@ -243,6 +246,30 @@ export namespace Channel {
 
   function connectionKey(channelType: string, accountId: string): string {
     return `${channelType}:${accountId}`
+  }
+
+  async function stopConnection(conn: Connection): Promise<void> {
+    if (conn.stopping) return conn.stopping
+    conn.abort.abort()
+    conn.stopping = (async () => {
+      try {
+        await conn.provider.disconnect?.({ accountId: conn.accountId })
+      } catch (error) {
+        log.warn("channel provider disconnect failed", {
+          channelType: conn.channelType,
+          accountId: conn.accountId,
+          error,
+        })
+      }
+    })()
+    return conn.stopping
+  }
+
+  async function stopAttempt(attempt: ConnectionAttempt): Promise<void> {
+    if (attempt.stopping) return attempt.stopping
+    attempt.abort.abort()
+    attempt.stopping = attempt.disconnect?.() ?? Promise.resolve()
+    return attempt.stopping
   }
 
   const providers = new Map<string, Provider>()
@@ -305,15 +332,19 @@ export namespace Channel {
     },
     async (s) => {
       for (const timer of s.reconnects.values()) clearTimeout(timer)
-      for (const attempt of s.attempts.values()) attempt.abort.abort()
-      for (const conn of s.connections.values()) {
-        conn.abort.abort()
-        Bus.publish(Event.Disconnected, {
-          channelType: conn.channelType,
-          accountId: conn.accountId,
-          reason: "shutdown",
-        })
-      }
+      await Promise.all(Array.from(s.attempts.values(), (attempt) => stopAttempt(attempt)))
+      s.attempts.clear()
+      await Promise.all(
+        Array.from(s.connections.values(), async (conn) => {
+          await stopConnection(conn)
+          Bus.publish(Event.Disconnected, {
+            channelType: conn.channelType,
+            accountId: conn.accountId,
+            reason: "shutdown",
+          })
+        }),
+      )
+      s.connections.clear()
     },
   )
 
@@ -344,6 +375,17 @@ export namespace Channel {
     const currentAttempt = attempts.get(key)
     if (attempt.abort.signal.aborted || (currentAttempt && currentAttempt !== attempt)) return
     attempts.set(key, attempt)
+    attempt.disconnect = async () => {
+      try {
+        await provider.disconnect?.({ accountId })
+      } catch (error) {
+        log.warn("channel provider disconnect failed", {
+          channelType,
+          accountHash: externalIdentityHash(accountId),
+          error,
+        })
+      }
+    }
     const reconnectTimer = reconnects.get(key)
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
@@ -351,6 +393,12 @@ export namespace Channel {
     }
 
     const scope = await resolveAccountScope({ channelType, accountId, accountConfig })
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        QuestionCardBridge.init()
+      },
+    })
 
     if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
       statuses.set(key, { status: "waiting_for_transport" })
@@ -368,41 +416,56 @@ export namespace Channel {
         await recordDiagnostic(channelType, accountId, record)
       },
     })
-    await provider.connect({
-      accountId,
-      accountConfig,
-      channelConfig,
-      signal: attempt.abort.signal,
-      host,
-      onResponseCardAction: (callback) =>
-        ScopeContext.provide({
-          scope,
-          fn: () => ResponseCardRuntime.acceptAction({ channelType, accountId, callback }),
-        }),
-      onQuestionCardAction: (callback) =>
-        ScopeContext.provide({
-          scope,
-          fn: () => QuestionCardRuntime.acceptAction({ channelType, accountId, callback }),
-        }),
-      onDisconnect: (reason) => {
-        if (attempt.abort.signal.aborted) return
-        const pending = attempts.get(key)
-        const active = connections.get(key)
-        const isPending = pending === attempt
-        const isActive = active?.abort === attempt.abort
-        if (!isPending && !isActive) return
+    try {
+      await provider.connect({
+        accountId,
+        accountConfig,
+        channelConfig,
+        signal: attempt.abort.signal,
+        host,
+        onResponseCardAction: (callback) =>
+          ScopeContext.provide({
+            scope,
+            fn: () => ResponseCardRuntime.acceptAction({ channelType, accountId, callback }),
+          }),
+        onQuestionCardAction: (callback) =>
+          ScopeContext.provide({
+            scope,
+            fn: () => QuestionCardRuntime.acceptAction({ channelType, accountId, callback }),
+          }),
+        onDisconnect: (reason) => {
+          if (attempt.abort.signal.aborted) return
+          const pending = attempts.get(key)
+          const active = connections.get(key)
+          const isPending = pending === attempt
+          const isActive = active?.abort === attempt.abort
+          if (!isPending && !isActive) return
 
-        log.info("channel disconnected", { channelType, accountHash: externalIdentityHash(accountId), reason })
-        attempt.abort.abort()
-        if (isPending) attempts.delete(key)
-        if (isActive) {
-          connections.delete(key)
-          statuses.set(key, { status: "disconnected" })
-          Bus.publish(Event.Disconnected, { channelType, accountId, reason })
-        }
+          log.info("channel disconnected", { channelType, accountHash: externalIdentityHash(accountId), reason })
+          attempt.abort.abort()
+          if (isPending) attempts.delete(key)
+          if (isActive) {
+            connections.delete(key)
+            statuses.set(key, { status: "disconnected" })
+            Bus.publish(Event.Disconnected, { channelType, accountId, reason })
+          }
 
-        if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
-          connectInBackground({
+          if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
+            connectInBackground({
+              channelType,
+              accountId,
+              accountConfig,
+              channelConfig,
+              provider,
+              attempt: { abort: new AbortController() },
+              connections,
+              statuses,
+              reconnects,
+              attempts,
+            })
+            return
+          }
+          scheduleReconnect({
             channelType,
             accountId,
             accountConfig,
@@ -413,24 +476,24 @@ export namespace Channel {
             statuses,
             reconnects,
             attempts,
+            reconnectAttempt: 0,
           })
-          return
+        },
+      })
+    } catch (error) {
+      if (!attempt.abort.signal.aborted) {
+        try {
+          await provider.disconnect?.({ accountId })
+        } catch (disconnectError) {
+          log.warn("channel provider cleanup failed after connection error", {
+            channelType,
+            accountHash: externalIdentityHash(accountId),
+            error: disconnectError,
+          })
         }
-        scheduleReconnect({
-          channelType,
-          accountId,
-          accountConfig,
-          channelConfig,
-          provider,
-          attempt: { abort: new AbortController() },
-          connections,
-          statuses,
-          reconnects,
-          attempts,
-          reconnectAttempt: 0,
-        })
-      },
-    })
+      }
+      throw error
+    }
     if (attempt.abort.signal.aborted || attempts.get(key) !== attempt) return
 
     connections.set(key, {
@@ -621,12 +684,6 @@ export namespace Channel {
           })
           void reactionController.setQueued()
 
-          const streaming = createStreamingSession({
-            accountId: ctx.accountId,
-            chatId: ctx.chatId,
-            replyToMessageId: ctx.messageId,
-          })
-
           const endpoint = SessionEndpoint.fromChannel({
             type: ctx.channelType,
             accountId: ctx.accountId,
@@ -638,14 +695,27 @@ export namespace Channel {
             scopeKey: ctx.scopeKey,
             createdAt: Date.now(),
           })
-          const [session] = await Promise.all([
-            Session.getOrCreateForEndpoint(endpoint, {
-              scope,
-              interaction: ChannelInteraction.forType(ctx.channelType),
-            }),
-            streaming.start(),
-          ])
+          const session = await Session.getOrCreateForEndpoint(endpoint, {
+            scope,
+            interaction: ChannelInteraction.forType(ctx.channelType),
+          })
           const sessionID = session.id
+          let streaming = createStreamingSession({
+            accountId: ctx.accountId,
+            chatId: ctx.chatId,
+            replyToMessageId: ctx.rootId ?? ctx.messageId,
+            sessionID,
+          })
+          try {
+            await streaming.start()
+          } catch (error) {
+            log.warn("streaming session startup failed; using text fallback", { sessionID, error })
+            streaming = createTextFallbackSession({
+              replyMessage,
+              accountId: ctx.accountId,
+              messageId: ctx.rootId ?? ctx.messageId,
+            })
+          }
           const accountInvocation = resolveChannelAccountInvocation({
             accountConfig,
             sessionModelOverride: session.modelOverride,
@@ -663,27 +733,6 @@ export namespace Channel {
               : never
           >()
 
-          const unsubQuestionAsked = Bus.subscribe(Question.Event.Asked, (event) => {
-            if (event.properties.sessionID !== sessionID) return
-            void QuestionCardRuntime.deliver({
-              provider,
-              accountId: ctx.accountId,
-              chatId: ctx.chatId,
-              replyToMessageId: ctx.messageId,
-              requesterId: ctx.senderId,
-              sessionID,
-              request: event.properties,
-            }).catch((err: unknown) => log.warn("question card delivery failed", { sessionID, error: err }))
-          })
-          const settleQuestionCard = (event: { properties: { sessionID: string } }) => {
-            if (event.properties.sessionID !== sessionID) return
-            void QuestionCardRuntime.settle(event.properties.sessionID).catch((err: unknown) =>
-              log.warn("question card settlement failed", { sessionID, error: err }),
-            )
-          }
-          const unsubQuestionReplied = Bus.subscribe(Question.Event.Replied, settleQuestionCard)
-          const unsubQuestionRejected = Bus.subscribe(Question.Event.Rejected, settleQuestionCard)
-          const unsubQuestionTimedOut = Bus.subscribe(Question.Event.TimedOut, settleQuestionCard)
           const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
             if (event.properties.info.sessionID !== sessionID) return
             messageRoles.set(event.properties.info.id, event.properties.info.role)
@@ -786,16 +835,32 @@ export namespace Channel {
           } finally {
             unsubMessage()
             unsubPart()
-            unsubQuestionAsked()
-            unsubQuestionReplied()
-            unsubQuestionRejected()
-            unsubQuestionTimedOut()
-            await QuestionCardRuntime.clearSession(sessionID)
           }
         },
       })
     } finally {
       await cleanupAttachments(ctx.attachments)
+    }
+  }
+
+  function createTextFallbackSession(input: {
+    replyMessage: NonNullable<ConversationCapabilities["replyMessage"]>
+    accountId: string
+    messageId: string
+  }): StreamingSession {
+    return {
+      async start() {},
+      async update() {},
+      async updateToolProgress() {},
+      async close(finalText) {
+        if (!finalText?.trim()) return
+        await input.replyMessage({
+          accountId: input.accountId,
+          messageId: input.messageId,
+          parts: [{ type: "text", text: finalText }],
+        })
+      },
+      isActive: () => false,
     }
   }
 
@@ -877,52 +942,55 @@ export namespace Channel {
     }
     const attempt = s.attempts.get(key)
     if (attempt) {
-      attempt.abort.abort()
+      await stopAttempt(attempt)
       s.attempts.delete(key)
       s.statuses.set(key, { status: "disconnected" })
     }
     const conn = s.connections.get(key)
-    if (conn) {
-      conn.abort.abort()
-      s.connections.delete(key)
-      s.statuses.set(key, { status: "disconnected" })
-      Bus.publish(Event.Disconnected, { channelType, accountId })
-    }
+    if (!conn) return
+
+    await stopConnection(conn)
+    if (s.connections.get(key) === conn) s.connections.delete(key)
+    s.statuses.set(key, { status: "disconnected" })
+    Bus.publish(Event.Disconnected, { channelType, accountId })
   }
 
   export async function disconnectAll(): Promise<void> {
     const s = await state()
     for (const timer of s.reconnects.values()) clearTimeout(timer)
     s.reconnects.clear()
-    for (const [key, attempt] of s.attempts) {
-      attempt.abort.abort()
-      s.statuses.set(key, { status: "disconnected" })
-    }
+    await Promise.all(
+      Array.from(s.attempts.entries(), async ([key, attempt]) => {
+        await stopAttempt(attempt)
+        s.statuses.set(key, { status: "disconnected" })
+      }),
+    )
     s.attempts.clear()
-    for (const [key, conn] of s.connections) {
-      conn.abort.abort()
-      s.statuses.set(key, { status: "disconnected" })
-      Bus.publish(Event.Disconnected, {
-        channelType: conn.channelType,
-        accountId: conn.accountId,
-      })
-    }
-    s.connections.clear()
+    await Promise.all(
+      Array.from(s.connections.entries(), async ([key, conn]) => {
+        await stopConnection(conn)
+        if (s.connections.get(key) === conn) s.connections.delete(key)
+        s.statuses.set(key, { status: "disconnected" })
+        Bus.publish(Event.Disconnected, {
+          channelType: conn.channelType,
+          accountId: conn.accountId,
+        })
+      }),
+    )
   }
 
   export async function start(channelType: string, accountId: string): Promise<void> {
     const s = await state()
     const key = connectionKey(channelType, accountId)
 
-    // Disconnect existing connection first
     const existing = s.connections.get(key)
     if (existing) {
-      existing.abort.abort()
-      s.connections.delete(key)
+      await stopConnection(existing)
+      if (s.connections.get(key) === existing) s.connections.delete(key)
     }
     const activeAttempt = s.attempts.get(key)
     if (activeAttempt) {
-      activeAttempt.abort.abort()
+      await stopAttempt(activeAttempt)
       s.attempts.delete(key)
     }
     const reconnectTimer = s.reconnects.get(key)

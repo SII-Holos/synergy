@@ -250,12 +250,13 @@ export namespace SessionWorkflowService {
         })
       }
 
-      run = await LatticeRunService.enable({
+      const outcome = await LatticeRunService.enableForProjection({
         sessionID,
         mode: input.mode,
         maxModelCalls: input.maxModelCalls,
         goal: input.goal,
       })
+      run = outcome.run
       try {
         projected = await Session.update(sessionID, (draft) => {
           if (draft.workflow && draft.workflow.kind !== "lattice") {
@@ -271,7 +272,18 @@ export namespace SessionWorkflowService {
           }
         })
       } catch (error) {
-        await LatticeRunService.pause(run.id).catch(() => undefined)
+        if (outcome.created) {
+          await LatticeRunService.cancelUnprojected(run.id).catch(() => undefined)
+          const previousRunID = session.workflow?.kind === "lattice" ? session.workflow.runID : undefined
+          await Session.update(sessionID, (draft) => {
+            if (
+              draft.workflow?.kind === "lattice" &&
+              (draft.workflow.runID === run.id || draft.workflow.runID === previousRunID)
+            ) {
+              draft.workflow = undefined
+            }
+          }).catch(() => undefined)
+        }
         throw error
       }
     }

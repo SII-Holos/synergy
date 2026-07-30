@@ -314,7 +314,12 @@ export interface ConversationCapabilities {
 
   removeReaction?(input: { accountId: string; messageId: string; reactionId: string }): Promise<void>
 
-  createStreamingSession?(input: { accountId: string; chatId: string; replyToMessageId?: string }): StreamingSession
+  createStreamingSession?(input: {
+    accountId: string
+    chatId: string
+    replyToMessageId?: string
+    sessionID: string
+  }): StreamingSession
 }
 
 export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
@@ -334,6 +339,7 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
     onResponseCardAction?: (callback: ResponseCardCallback) => Promise<ResponseCardActionResult>
     onQuestionCardAction?: (callback: QuestionCardCallback) => Promise<QuestionCardActionResult>
   }): Promise<void>
+  disconnect?(input: { accountId: string }): Promise<void>
 
   refreshProjects?(input: { accountId: string; signal: AbortSignal; host: ChannelHost.Instance }): Promise<void>
 
@@ -361,5 +367,10 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
 
   removeReaction?(input: { accountId: string; messageId: string; reactionId: string }): Promise<void>
 
-  createStreamingSession?(input: { accountId: string; chatId: string; replyToMessageId?: string }): StreamingSession
+  createStreamingSession?(input: {
+    accountId: string
+    chatId: string
+    replyToMessageId?: string
+    sessionID: string
+  }): StreamingSession
 }

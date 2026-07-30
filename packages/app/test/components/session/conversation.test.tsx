@@ -57,5 +57,10 @@ describe("pending timeline item presentation", () => {
 
     expect(selectPendingTimelineItems([pending], [])).toEqual([pending])
     expect(selectPendingTimelineItems([pending], [{ id: "msg_first" }])).toEqual([])
+    const renderedOptimisticMessage: { id: string; metadata?: unknown } = {
+      id: "msg_first",
+      metadata: { synergyClientOptimistic: { pending: true } },
+    }
+    expect(selectPendingTimelineItems([pending], [renderedOptimisticMessage])).toEqual([])
   })
 })

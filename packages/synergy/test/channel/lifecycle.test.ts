@@ -170,7 +170,7 @@ describe("Channel provider lifecycle capability", () => {
     expect(fake.connectCount()).toBe(1)
 
     await fake.disconnect()
-    expect(fake.transportWaitCount()).toBe(2)
+    await waitFor(() => fake.transportWaitCount() === 2)
     fake.readyTransport()
     await waitFor(() => fake.connectCount() === 2)
     expect(fake.connectCount()).toBe(2)
@@ -378,6 +378,92 @@ describe("Channel provider lifecycle capability", () => {
       [`${fake.value.type}:account`]: { status: "disabled" },
     })
   })
+})
+
+test("waits for provider drain before stopping a channel account", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    config: {
+      channel: {
+        feishu: {
+          type: "feishu",
+          accounts: {
+            drain: {
+              enabled: true,
+              appId: "app",
+              appSecret: "secret",
+              allowDM: true,
+              allowGroup: true,
+              requireMention: false,
+              projectDir: "placeholder",
+              streaming: true,
+              streamingThrottleMs: 100,
+              groupSessionScope: "group",
+              inboundDebounceMs: 0,
+              resolveSenderNames: false,
+              replyInThread: false,
+            },
+          },
+          streaming: true,
+        },
+      },
+    },
+  })
+  const configPath = path.join(tmp.path, ".synergy", "synergy.d", "90-channels.jsonc")
+  const config = await Bun.file(configPath).json()
+  config.channel.feishu.accounts.drain.projectDir = tmp.path
+  await Bun.write(configPath, JSON.stringify(config, null, 2))
+
+  const drain = Promise.withResolvers<void>()
+  let disconnected = false
+  const provider: Provider = {
+    type: "feishu",
+    lifecycle: "self_connected",
+    async connect() {},
+    async disconnect() {
+      await drain.promise
+      disconnected = true
+    },
+    async replyMessage() {
+      return { messageId: "reply_sent" }
+    },
+    async pushMessage() {
+      return { messageId: "push_sent" }
+    },
+    async addReaction() {},
+    createStreamingSession() {
+      return {
+        async start() {},
+        async update() {},
+        async updateToolProgress() {},
+        async close() {},
+        isActive: () => false,
+      }
+    },
+  }
+
+  Channel.registerProvider(provider)
+  try {
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Channel.reload()
+        await Channel.status()
+        let stopped = false
+        const stop = Channel.stopAll().then(() => {
+          stopped = true
+        })
+        await Bun.sleep(10)
+        expect(stopped).toBe(false)
+        drain.resolve()
+        await stop
+        expect(disconnected).toBe(true)
+      },
+    })
+  } finally {
+    drain.resolve()
+    Channel.registerProvider(new FeishuProvider())
+  }
 })
 
 test("routes question card callbacks into the account project Scope", async () => {
