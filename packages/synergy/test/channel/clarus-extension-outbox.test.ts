@@ -880,3 +880,97 @@ describe("Clarus extension ACK deduplication", () => {
     })
   })
 })
+
+// =============================================================================
+// 5. Durable error metadata safety
+// =============================================================================
+
+describe("Clarus extension outbox error safety", () => {
+  test("sanitizes and bounds rejected error metadata before durable write", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "ext-err-code-account"
+        const projectID = "ext-err-code-project"
+        const scope = await setupProjectScope(accountId, projectID)
+        const event = assignmentFixture({
+          agentID: accountId,
+          projectID,
+          taskID: "task-ext-err-code",
+          runID: "run-ext-err-code",
+        })
+
+        const created = await dispatchAssignment(accountId, event)
+        const { ClarusExtensionOutbox } = await import("../../src/channel/provider/clarus/extension-outbox")
+
+        const rawSecret = "super-secret-token"
+        const longCode = `INVALID CODE ${"E".repeat(200)}`
+        const failure = {
+          disposition: "rejected" as const,
+          requestID: "err-code",
+          code: longCode,
+          message: `Bearer ${rawSecret} token=${rawSecret} ${"M".repeat(1_000)}`,
+        }
+
+        await expect(
+          ClarusExtensionOutbox.submit({
+            sessionID: created.assignment.sessionID,
+            payload: extendPayload(),
+            send: async () => {
+              throw failure
+            },
+          }),
+        ).rejects.toEqual(failure)
+
+        const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
+        const hashes = await Storage.scan(StoragePath.clarusProviderExtensionOutboxRoot(located!.accountHash))
+        expect(hashes.length).toBeGreaterThan(0)
+        const record = await Storage.read<{ error?: { code?: string; message: string } }>(
+          StoragePath.clarusProviderExtensionOutbox(located!.accountHash, hashes[0]!),
+        )
+        expect(record.error?.code).toMatch(/^INVALID_CODE_/)
+        expect(record.error!.code!.length).toBeLessThanOrEqual(128)
+        expect(record.error!.message).toContain("Bearer [redacted]")
+        expect(record.error!.message).toContain("token=[redacted]")
+        expect(record.error!.message).not.toContain(rawSecret)
+        expect(record.error!.message.length).toBeLessThanOrEqual(500)
+      },
+    })
+  })
+
+  test("treats malformed rejected failures as ambiguous", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "ext-malformed-failure-account"
+        const projectID = "ext-malformed-failure-project"
+        await setupProjectScope(accountId, projectID)
+        const created = await dispatchAssignment(
+          accountId,
+          assignmentFixture({ agentID: accountId, projectID, taskID: "task-ext-malformed" }),
+        )
+        const { ClarusExtensionOutbox } = await import("../../src/channel/provider/clarus/extension-outbox")
+        const failure = {
+          disposition: "rejected" as const,
+          requestID: "malformed-rejected",
+          message: "missing required rejection code",
+        }
+
+        await expect(
+          ClarusExtensionOutbox.submit({
+            sessionID: created.assignment.sessionID,
+            payload: extendPayload(),
+            send: async () => {
+              throw failure
+            },
+          }),
+        ).rejects.toEqual(failure)
+
+        const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
+        expect(located?.assignment.extensionState).toBe("ambiguous")
+      },
+    })
+  })
+})

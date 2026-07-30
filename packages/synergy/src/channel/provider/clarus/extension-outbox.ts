@@ -2,8 +2,11 @@ import z from "zod"
 import { StoragePath } from "@/storage/path"
 import { Storage } from "@/storage/storage"
 import { Lock } from "@/util/lock"
+import { parseClarusRequestFailure } from "./agent-tunnel-port"
 import { ClarusAssignmentStore, type ClarusAssignment } from "./assignment-store"
 
+const MAX_REJECTION_CODE_LENGTH = 128
+const MAX_REJECTION_MESSAGE_LENGTH = 500
 const MAX_PAYLOAD_KEYS = 50
 const MAX_PAYLOAD_STRING_LENGTH = 2_000
 const MAX_PAYLOAD_BYTES = 64 * 1024
@@ -56,8 +59,8 @@ const ExtensionRecord = z.object({
   deadlineAt: z.string().nullable().optional(),
   error: z
     .object({
-      code: z.string().optional(),
-      message: z.string(),
+      code: z.string().max(MAX_REJECTION_CODE_LENGTH).optional(),
+      message: z.string().max(MAX_REJECTION_MESSAGE_LENGTH),
     })
     .optional(),
   createdAt: z.number(),
@@ -80,25 +83,41 @@ function lockKey(accountHash: string): string {
   return `channel:clarus:extension-outbox:${accountHash}`
 }
 
+export function safeRejectionCode(code: string): string {
+  const normalized = code.replaceAll(/[^A-Za-z0-9_.-]/g, "_").slice(0, MAX_REJECTION_CODE_LENGTH)
+  return normalized || "CLARUS_EXTENSION_REJECTED"
+}
+
+export function safeRejectionMessage(message: string): string {
+  const redacted = message
+    .replaceAll(
+      /[\u0000-\u001f\u007f-\u009f\u00ad\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060\u2066-\u2069\ufeff]+/g,
+      " ",
+    )
+    .replaceAll(/\bBearer\s+[A-Za-z0-9._\-+/=]{8,}\b/gi, "Bearer [redacted]")
+    .replaceAll(
+      /\b(api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|refresh[_-]?token|credential|secret|token|password)\s*[=:]\s*\S+/gi,
+      "$1=[redacted]",
+    )
+    .replaceAll(/\s+/g, " ")
+    .trim()
+  if (!redacted) return "The upstream service did not provide a rejection message."
+  return redacted.length <= MAX_REJECTION_MESSAGE_LENGTH
+    ? redacted
+    : `${redacted.slice(0, MAX_REJECTION_MESSAGE_LENGTH - 1)}…`
+}
+
 function errorInfo(error: unknown): ExtensionRecord["error"] {
   if (error && typeof error === "object") {
     const value = error as { code?: unknown; message?: unknown }
+    const rawCode = typeof value.code === "string" ? value.code : undefined
+    const rawMessage = typeof value.message === "string" ? value.message : String(error)
     return {
-      ...(typeof value.code === "string" ? { code: value.code } : {}),
-      message: typeof value.message === "string" ? value.message : String(error),
+      ...(rawCode === undefined ? {} : { code: safeRejectionCode(rawCode) }),
+      message: safeRejectionMessage(rawMessage),
     }
   }
-  return { message: String(error) }
-}
-
-function failureState(error: unknown): z.infer<typeof ExtensionState> {
-  if (error && typeof error === "object" && "disposition" in error) {
-    const disposition = (error as { disposition?: unknown }).disposition
-    if (disposition === "not_dispatched" || disposition === "rejected" || disposition === "ambiguous") {
-      return disposition
-    }
-  }
-  return "ambiguous"
+  return { message: safeRejectionMessage(String(error)) }
 }
 
 async function writeRecord(accountHash: string, record: ExtensionRecord): Promise<void> {
@@ -133,7 +152,7 @@ async function settleFailure(input: {
   record: ExtensionRecord
   error: unknown
 }): Promise<void> {
-  const state = failureState(input.error)
+  const state = parseClarusRequestFailure(input.error)?.disposition ?? "ambiguous"
   await writeRecord(
     input.accountHash,
     ExtensionRecord.parse({

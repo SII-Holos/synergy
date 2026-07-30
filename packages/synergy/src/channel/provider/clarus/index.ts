@@ -17,6 +17,8 @@ import { ClarusResultOutbox, type ClarusResultPayload, type ClarusResultSend } f
 import { ClarusExtensionOutbox, type ClarusExtendPayload, type ClarusExtensionSend } from "./extension-outbox"
 import { createClarusAgentTunnelAdapter } from "./tunnel-adapter"
 import { createClarusCliRunner } from "./cli-runner"
+const RESULT_TIMEOUT_MS = 60_000
+const EXTENSION_TIMEOUT_MS = 30_000
 const PROJECT_REFRESH_TIMEOUT_MS = 60_000
 const PROJECT_SUBSCRIBE_TIMEOUT_MS = 15_000
 const INVALID_EVENT_MAX_ISSUES = 20
@@ -235,6 +237,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     try {
       await connection.tunnel.recordTaskResult({
         requestID: input.requestID,
+        timeoutMs: RESULT_TIMEOUT_MS,
         runID: input.assignment.runID,
         taskID: input.assignment.taskID,
         subtaskID: input.assignment.subtaskID,
@@ -272,6 +275,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     try {
       const event = await connection.tunnel.extendTask({
         requestID: input.requestID,
+        timeoutMs: EXTENSION_TIMEOUT_MS,
         runID: input.assignment.runID,
         taskID: input.assignment.taskID,
         subtaskID: input.assignment.subtaskID,

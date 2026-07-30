@@ -245,3 +245,300 @@ describe("Clarus Channel provider", () => {
     })
   })
 })
+
+// =============================================================================
+// 5. Tunnel timeout — provider passes bounded timeoutMs
+// =============================================================================
+
+describe("Clarus provider tunnel timeout", () => {
+  test("recordTaskResult receives timeoutMs: 60000", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "timeout-result-account"
+        const projectID = "timeout-result-project"
+        const scope = await Channel.ensureProjectScope({
+          channelType: "clarus",
+          accountId,
+          externalProjectId: projectID,
+          projectName: `Project ${projectID}`,
+        })
+        const event = { ...assignment(projectID), agentID: accountId }
+        const created = await dispatchAssignment(accountId, event)
+
+        const { ClarusProvider } = await import("../../src/channel/provider/clarus/index")
+        const provider = new ClarusProvider()
+
+        let receivedTimeoutMs: number | undefined
+        const stubConnection = {
+          accountId,
+          config: {} as any,
+          tunnel: {
+            recordTaskResult: (input: any) => {
+              receivedTimeoutMs = input.timeoutMs
+              return { requestID: input.requestID, response: Promise.resolve({}) }
+            },
+            extendTask: () => ({ requestID: "", response: Promise.resolve({} as any) }),
+            subscribeProject: () => ({ requestID: "", response: Promise.resolve({} as any) }),
+            unsubscribeProject: () => ({ requestID: "", response: Promise.resolve({} as any) }),
+            registerEventHandler: () => () => {},
+            registerConnectionHandler: () => () => {},
+          },
+          signal: new AbortController().signal,
+          host: ChannelHost.create({ channelType: "clarus", accountId }),
+          projects: new Map(),
+          outboundRequests: new Set(),
+        }
+
+        const payload = {
+          success: true,
+          output: "done",
+          artifacts: [],
+          evidenceRefs: [],
+          notaryRefs: [],
+          error: null,
+          submittedBy: "synergy",
+        }
+        const createdAssignment = created.assignment
+
+        await (provider as any).sendTaskResult(stubConnection, {
+          requestID: crypto.randomUUID(),
+          assignment: createdAssignment,
+          payload,
+        })
+
+        expect(receivedTimeoutMs).toBe(60_000)
+      },
+    })
+  })
+
+  test("extendTask receives timeoutMs: 30000", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "timeout-ext-account"
+        const projectID = "timeout-ext-project"
+        const scope = await Channel.ensureProjectScope({
+          channelType: "clarus",
+          accountId,
+          externalProjectId: projectID,
+          projectName: `Project ${projectID}`,
+        })
+        const event = { ...assignment(projectID), agentID: accountId }
+        const created = await dispatchAssignment(accountId, event)
+
+        const { ClarusProvider } = await import("../../src/channel/provider/clarus/index")
+        const provider = new ClarusProvider()
+
+        let receivedTimeoutMs: number | undefined
+        const stubConnection = {
+          accountId,
+          config: {} as any,
+          tunnel: {
+            extendTask: (input: any) => {
+              receivedTimeoutMs = input.timeoutMs
+              return {
+                requestID: input.requestID,
+                response: Promise.resolve({ task: { taskID: "t", deadlineAt: null, status: "running" } }),
+              }
+            },
+            recordTaskResult: () => ({ requestID: "", response: Promise.resolve({}) }),
+            subscribeProject: () => ({ requestID: "", response: Promise.resolve({} as any) }),
+            unsubscribeProject: () => ({ requestID: "", response: Promise.resolve({} as any) }),
+            registerEventHandler: () => () => {},
+            registerConnectionHandler: () => () => {},
+          },
+          signal: new AbortController().signal,
+          host: ChannelHost.create({ channelType: "clarus", accountId }),
+          projects: new Map(),
+          outboundRequests: new Set(),
+        }
+
+        const createdAssignment = created.assignment
+
+        await (provider as any).sendTaskExtension(stubConnection, {
+          requestID: crypto.randomUUID(),
+          assignment: createdAssignment,
+          payload: { extend_seconds: 3600 },
+        })
+
+        expect(receivedTimeoutMs).toBe(30_000)
+      },
+    })
+  })
+})
+
+// =============================================================================
+// 6. Result payload validation before outbox/assignment mutation
+// =============================================================================
+
+describe("Clarus result outbox payload validation", () => {
+  test("part content exceeding NATIVE_MAX_STRING_LENGTH is rejected before any write", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "validate-part-account"
+        const projectID = "validate-part-project"
+        const scope = await Channel.ensureProjectScope({
+          channelType: "clarus",
+          accountId,
+          externalProjectId: projectID,
+          projectName: `Project ${projectID}`,
+        })
+        const event = { ...assignment(projectID), agentID: accountId }
+        const created = await dispatchAssignment(accountId, event)
+        const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
+        expect(located).toBeDefined()
+        const beforeHashes = await Storage.scan(StoragePath.clarusProviderResultOutboxRoot(located!.accountHash))
+
+        const { NATIVE_MAX_STRING_LENGTH } = await import("../../src/holos/native")
+        const longContent = "x".repeat(NATIVE_MAX_STRING_LENGTH + 1)
+
+        await expect(
+          ClarusResultOutbox.submit({
+            sessionID: created.assignment.sessionID,
+            payload: {
+              success: true,
+              output: "done",
+              artifacts: [
+                {
+                  artifactID: "art-1",
+                  name: "oversized",
+                  parts: [
+                    {
+                      type: "text" as const,
+                      format: "markdown" as const,
+                      role: "output",
+                      contentKind: "text",
+                      name: "part",
+                      content: longContent,
+                    },
+                  ],
+                },
+              ],
+              evidenceRefs: [],
+              notaryRefs: [],
+              error: null,
+              submittedBy: "synergy",
+            },
+            send: async () => {},
+          }),
+        ).rejects.toMatchObject({ code: "CLARUS_TOOL_RESULT_PART_TOO_LARGE" })
+
+        const afterHashes = await Storage.scan(StoragePath.clarusProviderResultOutboxRoot(located!.accountHash))
+        expect(afterHashes.length).toBe(beforeHashes.length)
+      },
+    })
+  })
+
+  test("parts count exceeding NATIVE_MAX_ARRAY_LENGTH is rejected before any write", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "validate-parts-account"
+        const projectID = "validate-parts-project"
+        const scope = await Channel.ensureProjectScope({
+          channelType: "clarus",
+          accountId,
+          externalProjectId: projectID,
+          projectName: `Project ${projectID}`,
+        })
+        const event = { ...assignment(projectID), agentID: accountId }
+        const created = await dispatchAssignment(accountId, event)
+        const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
+        expect(located).toBeDefined()
+        const beforeHashes = await Storage.scan(StoragePath.clarusProviderResultOutboxRoot(located!.accountHash))
+
+        const { NATIVE_MAX_ARRAY_LENGTH } = await import("../../src/holos/native")
+        const manyParts = Array.from({ length: NATIVE_MAX_ARRAY_LENGTH + 1 }, (_, i) => ({
+          type: "text" as const,
+          format: "markdown" as const,
+          role: "output",
+          contentKind: "text",
+          name: `part-${i}`,
+          content: `content-${i}`,
+        }))
+
+        await expect(
+          ClarusResultOutbox.submit({
+            sessionID: created.assignment.sessionID,
+            payload: {
+              success: true,
+              output: "done",
+              artifacts: [{ artifactID: "art-1", name: "many-parts", parts: manyParts }],
+              evidenceRefs: [],
+              notaryRefs: [],
+              error: null,
+              submittedBy: "synergy",
+            },
+            send: async () => {},
+          }),
+        ).rejects.toMatchObject({ code: "CLARUS_TOOL_RESULT_PARTS_EXCEEDED" })
+
+        const afterHashes = await Storage.scan(StoragePath.clarusProviderResultOutboxRoot(located!.accountHash))
+        expect(afterHashes.length).toBe(beforeHashes.length)
+      },
+    })
+  })
+
+  test("aggregate payload exceeding NATIVE_MAX_PAYLOAD_BYTES is rejected before any write", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const accountId = "validate-bytes-account"
+        const projectID = "validate-bytes-project"
+        const scope = await Channel.ensureProjectScope({
+          channelType: "clarus",
+          accountId,
+          externalProjectId: projectID,
+          projectName: `Project ${projectID}`,
+        })
+        const event = { ...assignment(projectID), agentID: accountId }
+        const created = await dispatchAssignment(accountId, event)
+        const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
+        expect(located).toBeDefined()
+        const beforeHashes = await Storage.scan(StoragePath.clarusProviderResultOutboxRoot(located!.accountHash))
+
+        const { NATIVE_MAX_STRING_LENGTH } = await import("../../src/holos/native")
+        const largePart = "x".repeat(NATIVE_MAX_STRING_LENGTH)
+
+        await expect(
+          ClarusResultOutbox.submit({
+            sessionID: created.assignment.sessionID,
+            payload: {
+              success: true,
+              output: "done",
+              artifacts: [
+                {
+                  artifactID: "art-1",
+                  name: "aggregate",
+                  parts: Array.from({ length: 5 }, (_, index) => ({
+                    type: "text" as const,
+                    format: "markdown" as const,
+                    role: "output",
+                    contentKind: "text",
+                    name: `part-${index}`,
+                    content: largePart,
+                  })),
+                },
+              ],
+              evidenceRefs: [],
+              notaryRefs: [],
+              error: null,
+              submittedBy: "synergy",
+            },
+            send: async () => {},
+          }),
+        ).rejects.toMatchObject({ code: "CLARUS_TOOL_RESULT_PAYLOAD_TOO_LARGE" })
+
+        const afterHashes = await Storage.scan(StoragePath.clarusProviderResultOutboxRoot(located!.accountHash))
+        expect(afterHashes.length).toBe(beforeHashes.length)
+      },
+    })
+  })
+})

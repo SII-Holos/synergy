@@ -3,6 +3,7 @@ import { Channel } from "@/channel"
 import { ClarusProvider } from "@/channel/provider/clarus"
 import { parseClarusRequestFailure } from "@/channel/provider/clarus/agent-tunnel-port"
 import { ClarusAssignmentStore } from "@/channel/provider/clarus/assignment-store"
+import { safeRejectionCode } from "@/channel/provider/clarus/extension-outbox"
 import { Tool } from "./tool"
 
 const ArtifactPart = z.object({
@@ -95,10 +96,14 @@ export const ClarusSubmitTaskResultTool = Tool.define(
           )
         }
         if (failure?.disposition === "rejected") {
-          throw toolError(failure.code, "Clarus rejected the result. Do not retry unless the assignment is renewed.", {
-            disposition: failure.disposition,
-            requestID: failure.requestID,
-          })
+          throw toolError(
+            safeRejectionCode(failure.code),
+            "Clarus rejected the result. Do not retry unless the assignment is renewed.",
+            {
+              disposition: failure.disposition,
+              requestID: failure.requestID,
+            },
+          )
         }
         if (failure?.disposition === "ambiguous") {
           throw toolError(

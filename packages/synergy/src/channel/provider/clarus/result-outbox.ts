@@ -2,6 +2,7 @@ import z from "zod"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Lock } from "@/util/lock"
+import { NATIVE_MAX_ARRAY_LENGTH, NATIVE_MAX_PAYLOAD_BYTES, NATIVE_MAX_STRING_LENGTH } from "@/holos/native"
 import { parseClarusRequestFailure } from "./agent-tunnel-port"
 import { ClarusAssignmentStore, type ClarusAssignment } from "./assignment-store"
 
@@ -60,6 +61,35 @@ async function readRecord(accountHash: string, recordHash: string): Promise<Clar
     .catch(() => undefined)
 }
 
+function validateResultPayload(payload: ClarusResultPayload): void {
+  for (const artifact of payload.artifacts) {
+    if (artifact.parts.length > NATIVE_MAX_ARRAY_LENGTH) {
+      throw Object.assign(
+        new Error(
+          `Artifact "${artifact.name}" has ${artifact.parts.length} parts; maximum is ${NATIVE_MAX_ARRAY_LENGTH}`,
+        ),
+        { code: "CLARUS_TOOL_RESULT_PARTS_EXCEEDED" },
+      )
+    }
+    for (const part of artifact.parts) {
+      if (part.content.length > NATIVE_MAX_STRING_LENGTH) {
+        throw Object.assign(
+          new Error(
+            `Artifact "${artifact.name}" part "${part.name}" content length ${part.content.length} exceeds maximum ${NATIVE_MAX_STRING_LENGTH}`,
+          ),
+          { code: "CLARUS_TOOL_RESULT_PART_TOO_LARGE" },
+        )
+      }
+    }
+  }
+  const serialized = JSON.stringify(payload)
+  if (new TextEncoder().encode(serialized).length > NATIVE_MAX_PAYLOAD_BYTES) {
+    throw Object.assign(new Error(`Result payload serialized size exceeds maximum ${NATIVE_MAX_PAYLOAD_BYTES} bytes`), {
+      code: "CLARUS_TOOL_RESULT_PAYLOAD_TOO_LARGE",
+    })
+  }
+}
+
 export namespace ClarusResultOutbox {
   export async function submit(input: {
     sessionID: string
@@ -73,6 +103,7 @@ export namespace ClarusResultOutbox {
       })
     }
 
+    validateResultPayload(input.payload)
     const requestID = crypto.randomUUID()
     const now = Date.now()
     const key = StoragePath.clarusProviderResultOutbox(located.accountHash, hash(requestID))
