@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
-import { capability, compilePluginManifest, definePlugin, operation } from "@ericsanchezok/synergy-plugin"
+import { agent, capability, compilePluginManifest, definePlugin, operation } from "@ericsanchezok/synergy-plugin"
 import { z } from "zod"
 import { Agent } from "@/agent/agent"
 import { AgentCall } from "@/agent/call"
 import { executePluginHostService } from "@/plugin/host-services-runtime"
+import { Plugin } from "@/plugin"
 import { ScopeContext } from "@/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
@@ -77,5 +78,79 @@ describe("plugin agent.call Host Service", () => {
         await expect(invoke("missing")).rejects.toMatchObject({ code: "PLUGIN_AGENT_NOT_FOUND" })
       },
     })
+  })
+
+  test("calls owned hidden Agent by public name when contribution id differs", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const manifest = compilePluginManifest(
+      definePlugin({
+        id: "agent-call-id-diff-name",
+        version: "1.0.0",
+        description: "Agent call id != name",
+        capabilities: [capability("agent.call", { maxRuntimeMs: 1000 })],
+        contributions: [
+          agent({
+            id: "contribution-id-name",
+            agent: {
+              name: "public_name",
+              description: "Owned hidden Agent",
+              prompt: "Answer the request.",
+              mode: "subagent",
+              hidden: true,
+            },
+          }),
+          operation({
+            id: "call",
+            type: "command",
+            requires: ["agent.call"],
+            input: z.object({}),
+            output: z.object({}),
+            handler: async () => ({}),
+          }),
+        ],
+      }),
+      { generation: "generation-one" },
+    )
+    const originalAgentEntries = Plugin.agentEntries
+    ;(Plugin as any).agentEntries = async () => [
+      {
+        contributionId: "contribution-id-name",
+        pluginId: manifest.id,
+        pluginGeneration: manifest.artifacts.generation,
+        name: "public_name",
+        description: "Owned hidden Agent",
+        prompt: "Answer the request.",
+        mode: "subagent",
+        hidden: true,
+      },
+    ]
+    ;(AgentCall.text as any) = mock(async (_input: AgentCall.TextInput) => ({ text: "answer" }))
+
+    const invoke = (agentName: string) =>
+      executePluginHostService({
+        pluginId: manifest.id,
+        pluginDir: tmp.path,
+        manifest,
+        handlerId: "operation:call",
+        invocation: { scopeId: scope.id, directory: tmp.path, actor: { type: "ui" } },
+        method: "agent.call",
+        params: { agent: agentName, text: "hello" },
+        signal: new AbortController().signal,
+      })
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          await Agent.reload()
+          await expect(invoke("public_name")).resolves.toEqual({ text: "answer" })
+          await expect(invoke("contribution-id-name")).rejects.toMatchObject({ code: "PLUGIN_AGENT_NOT_FOUND" })
+        },
+      })
+    } finally {
+      ;(Plugin as any).agentEntries = originalAgentEntries
+      await Agent.reload()
+    }
   })
 })

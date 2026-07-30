@@ -481,6 +481,9 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionRollbackAckErrors,
+  SessionRollbackAckInput,
+  SessionRollbackAckResponses,
   SessionRollbackErrors,
   SessionRollbackResponses,
   SessionShellErrors,
@@ -2768,6 +2771,45 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionRollbackResponses, SessionRollbackErrors, ThrowOnError>({
       url: "/session/{sessionID}/rollback",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Acknowledge rollback feedback
+   *
+   * Persist that the current rollback feedback has been presented to a client.
+   */
+  public rollbackAck<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionRollbackAckInput: SessionRollbackAckInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionRollbackAckInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionRollbackAckResponses, SessionRollbackAckErrors, ThrowOnError>({
+      url: "/session/{sessionID}/rollback/ack",
       ...options,
       ...params,
       headers: {

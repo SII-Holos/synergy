@@ -14,6 +14,18 @@ Session state includes, when applicable:
 - Agenda, Cortex, BlueprintLoop, SuperPlan, or workflow metadata
 - inbox, todo, DAG, history, completion, and recovery state
 
+## Session Mutation and Index Projection
+
+Runtime mutation of an existing session is serialized per Scope and session. The mutation writes canonical session info once through `Storage.update()`, then projects the resulting state into the session, page, child, navigation, and endpoint indexes before the next mutation for that session can begin. Activity updates, completion acknowledgements, last-exchange updates, and removal participate in the same boundary, so a projection cannot rewrite canonical metadata from an older snapshot.
+
+Page and navigation indexes are shared by every session in a Scope, while a child index is shared by siblings under one parent. Their read-modify-write operations use separate domain locks so mutations for different sessions remain concurrent without overwriting one another's entries. Session update events are started in mutation order after canonical state and projections are durable; local subscriber work is not awaited inside the critical section, so an event handler may safely request a later mutation of the same session.
+
+Completion notice record and acknowledgement operations also use a per-session operation queue outside the canonical mutation lock. This keeps completion events ordered with their durable unread-count changes without recursively acquiring the session mutation boundary.
+
+Permanent removal dismantles a session and its descendants under their mutation locks, then releases every lock before publishing child-first `session.deleted` events. `Session.remove()` awaits those publications so subscriber completion or publication failure cannot escape as detached asynchronous work.
+
+These locks coordinate the single runtime process that owns a local Scope. Storage atomic writes remain the durability boundary, but the JSON indexes are derived state rather than a cross-process transaction; startup migrations and rebuild paths recover them from canonical session records when required.
+
 ## Completion Notice and the `session.completion` Event
 
 Each session stores a durable `completionNotice` with three fields:
@@ -33,6 +45,14 @@ The frontend clears one session through `Session.clearCompletionNotice()`, which
 The `session.completion` event is the durable success-notification signal. It is emitted once per successfully completed root task, independently of the lifecycle `session.idle` event. A session that completes a task, remains busy for additional work, and then finally idles will fire `session.completion` for each successful root task and `session.idle` once when the loop releases ownership.
 
 Legacy persisted records that have `unread === true` and `silent !== true` but lack `unreadCount` are normalized to `unreadCount = 1` at the read boundary and by the persisted `SessionMigration.migrateSessionCompletionNotice` upgrade. Fresh sessions start with `unreadCount = 0`.
+
+## Rollback Feedback Acknowledgment
+
+Rollback history and rollback feedback presentation have separate owners. History events remain the canonical record of rollback and unrollback operations. Optional top-level `Session.Info.rollbackAck` stores only that a client presented feedback for the current rollback, as `{ rollbackID, acknowledgedAt }`.
+
+`POST /session/:sessionID/rollback/ack` accepts only the current active rollback ID. Repeating the same acknowledgment is idempotent and preserves its original timestamp; a stale ID or a session without an active rollback is rejected. A changed `rollbackID` naturally makes a later rollback eligible for feedback without clearing the previous acknowledgment. The write does not require the session to be idle and publishes the normal `session.updated` state event when it changes.
+
+This state is session-global and durable across runtime restart, but it is not imported with a session because history events are not imported. It is presentation state, not a `SessionHistory.Event`, and does not change effective message history or session activity ordering.
 
 Session metadata is not the message transcript. Each has its own storage and events.
 
@@ -342,7 +362,7 @@ Typical mappings:
 - passive information intended for the next natural model call uses `context`;
 - assistant-role cross-session delivery materializes immediately against the latest root.
 
-Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
+Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. After that durable write, acceptance makes a best-effort attempt to advance the session's navigation activity so an existing session returns to the top of recent lists before asynchronous execution starts; a navigation update failure is logged without rejecting the persisted input. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
 
 The loop peeks the next task without deleting it, materializes its pre-allocated message ID as a root, and commits the inbox item only after that root write succeeds. A failure before materialization therefore leaves the task available for explicit retry or restart recovery. A read taken during startup always sees either the pending inbox item, the materialized root, or both; consumers deduplicate the overlap by message ID.
 

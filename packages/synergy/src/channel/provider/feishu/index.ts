@@ -6,6 +6,7 @@ import { Log } from "../../../util/log"
 import { Config } from "../../../config/config"
 import * as ChannelTypes from "../../types"
 import { FeishuStreamingCard } from "./streaming-card"
+import { FeishuStreamingState } from "./streaming-state"
 import { feishuDedup } from "./dedup"
 import { senderNameCache, chatNameCache } from "./sender"
 import { InboundDebouncer } from "./debounce"
@@ -44,6 +45,7 @@ const SELF_SENDER_TYPES = new Set(["app", "bot", "app_bot"])
 const MAX_FEISHU_ATTACHMENTS = 8
 const API_REQUEST_TIMEOUT_MS = 15_000
 const TOKEN_REQUEST_TIMEOUT_MS = 10_000
+const ACCOUNT_DRAIN_TIMEOUT_MS = 30_000
 
 type FeishuCardActionHandler = (data: unknown, accountId: string) => Promise<unknown>
 
@@ -182,6 +184,18 @@ async function materializeInboundAttachments(input: {
   }
 }
 
+type FeishuInboundEvent = { ctx: ChannelTypes.MessageContext }
+
+type AccountRuntime = {
+  acceptingInbound: boolean
+  inboundTasks: Set<Promise<void>>
+  perChatQueue: Map<string, Promise<void>>
+  debouncer?: InboundDebouncer<FeishuInboundEvent>
+  wsClient?: Lark.WSClient
+  tokenRefreshTimer?: ReturnType<typeof setTimeout>
+  drain?: Promise<void>
+}
+
 type AccountState = {
   config: Config.ChannelFeishuAccount
   channelConfig: Config.ChannelFeishu
@@ -189,6 +203,7 @@ type AccountState = {
   tokenCache: { token: string; expiresAt: number } | null
   botOpenId?: string
   missingBotOpenIdWarned?: boolean
+  runtime: AccountRuntime
 }
 
 export function resolveGroupScopeKey(input: {
@@ -334,10 +349,15 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
   }
 
   private scheduleTokenRefresh(accountId: string, expiresInMs: number) {
+    const account = this.accounts.get(accountId)
+    if (!account) return
+    if (account.runtime.tokenRefreshTimer) clearTimeout(account.runtime.tokenRefreshTimer)
     const refreshIn = Math.max(expiresInMs - 120_000, 30_000)
     const timer = setTimeout(() => {
+      account.runtime.tokenRefreshTimer = undefined
       this.refreshToken(accountId).catch(() => {})
     }, refreshIn)
+    account.runtime.tokenRefreshTimer = timer
     timer.unref()
   }
 
@@ -360,6 +380,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       expire: number
     }
 
+    if (this.accounts.get(accountId) !== account) return
     account.tokenCache = {
       token: result.tenant_access_token,
       expiresAt: Date.now() + result.expire * 1000,
@@ -377,7 +398,10 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     }
 
     await this.refreshToken(accountId)
-    return account.tokenCache!.token
+    const refreshed = this.accounts.get(accountId)
+    if (refreshed !== account) throw new Error(`Feishu account not found: ${accountId}`)
+    if (!refreshed.tokenCache) throw new Error(`Feishu access token unavailable: ${accountId}`)
+    return refreshed.tokenCache.token
   }
 
   private async ensureBotOpenId(accountId: string): Promise<string | undefined> {
@@ -446,32 +470,57 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       trace: (...args: unknown[]) => log.debug(args.join(" ")),
     }
 
-    this.accounts.set(accountId, {
+    const runtime: AccountRuntime = {
+      acceptingInbound: true,
+      inboundTasks: new Set(),
+      perChatQueue: new Map(),
+    }
+    const account: AccountState = {
       config: accountConfig,
       channelConfig,
       apiBase,
       tokenCache: null,
       botOpenId: normalizeBotOpenId(accountConfig.botOpenId),
       missingBotOpenIdWarned: false,
-    })
+      runtime,
+    }
+    this.accounts.set(accountId, account)
+
+    signal.addEventListener(
+      "abort",
+      () => {
+        log.info("feishu channel aborted", { accountId })
+        void this.disconnect({ accountId })
+      },
+      { once: true },
+    )
+    if (signal.aborted) {
+      await this.disconnect({ accountId })
+      return
+    }
 
     await feishuDedup.warmup(accountId).catch((err) => log.warn("dedup warmup failed", { accountId, error: err }))
+    await FeishuStreamingState.reconcileAccount({
+      accountId,
+      apiBase,
+      getAccessToken: () => this.getAccessToken(accountId),
+    }).catch((error) => log.warn("streaming card recovery failed", { accountId, error }))
+    if (signal.aborted || this.accounts.get(accountId) !== account) return
 
-    const perChatQueue = new Map<string, Promise<void>>()
     const enqueueChatTask = (chatId: string, task: () => Promise<void>) => {
-      const prev = perChatQueue.get(chatId) ?? Promise.resolve()
+      const prev = runtime.perChatQueue.get(chatId) ?? Promise.resolve()
       const next = prev.then(task, task).catch((err) => {
         log.error("chat task failed", { chatId, error: err })
       })
-      perChatQueue.set(chatId, next)
+      runtime.perChatQueue.set(chatId, next)
       void next.finally(() => {
-        if (perChatQueue.get(chatId) === next) perChatQueue.delete(chatId)
+        if (runtime.perChatQueue.get(chatId) === next) runtime.perChatQueue.delete(chatId)
       })
       return next
     }
 
     const debounceMs = accountConfig.inboundDebounceMs ?? 0
-    const debouncer = new InboundDebouncer<{ ctx: ChannelTypes.MessageContext }>({
+    const debouncer = new InboundDebouncer<FeishuInboundEvent>({
       debounceMs,
       buildKey: (event) => {
         if (debounceMs <= 0) return null
@@ -484,6 +533,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       },
       onError: (err) => log.error("debounce flush failed", { accountId, error: err }),
     })
+    runtime.debouncer = debouncer
 
     const eventDispatcher = new Lark.EventDispatcher({ logger }).register<{
       "card.action.trigger"?: (data: unknown) => Promise<unknown> | unknown
@@ -500,8 +550,12 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
           chatType: message?.chat_type,
         })
 
-        void (async () => {
+        const processing = (async () => {
           try {
+            if (!runtime.acceptingInbound || signal.aborted || this.accounts.get(accountId) !== account) {
+              log.warn("feishu message ignored during account drain", { accountId, messageId: rawMessageId })
+              return
+            }
             if (await feishuDedup.isDuplicate(accountId, rawMessageId)) {
               log.warn("duplicate message ignored", { messageId: rawMessageId })
               return
@@ -514,7 +568,6 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
             }
 
             log.debug("queued message", { messageId: ctx.messageId, text: ctx.text.slice(0, 100) })
-
             if (debounceMs > 0) {
               debouncer.enqueue({ ctx })
             } else {
@@ -524,6 +577,8 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
             log.error("failed to process message", { messageId: rawMessageId, error: err })
           }
         })()
+        runtime.inboundTasks.add(processing)
+        void processing.finally(() => runtime.inboundTasks.delete(processing))
       },
       "card.action.trigger": async (data: unknown) => {
         log.info("feishu card action received", { accountId })
@@ -543,6 +598,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       domain: larkDomain,
       logger,
     })
+    runtime.wsClient = wsClient
 
     // The Lark SDK's WSClient.handleEventData only processes messages where
     // the header type is "event". Card action callbacks arrive as type "card"
@@ -562,19 +618,79 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       return origHandleEventData(data)
     }
 
-    signal.addEventListener(
-      "abort",
-      () => {
-        log.info("feishu channel aborted", { accountId })
-        debouncer.flush().catch(() => {})
-        this.accounts.delete(accountId)
-      },
-      { once: true },
-    )
-
+    if (signal.aborted || this.accounts.get(accountId) !== account) {
+      await this.disconnect({ accountId })
+      return
+    }
     log.info("starting feishu websocket", { accountId, domain })
     await wsClient.start({ eventDispatcher })
-    log.info("feishu websocket connected", { accountId })
+    if (!signal.aborted && this.accounts.get(accountId) === account) {
+      log.info("feishu websocket connected", { accountId })
+    }
+  }
+
+  async disconnect(input: { accountId: string }): Promise<void> {
+    const account = this.accounts.get(input.accountId)
+    if (!account) return
+    const runtime = account.runtime
+    if (runtime.drain) return runtime.drain
+
+    runtime.acceptingInbound = false
+    runtime.drain = (async () => {
+      if (runtime.tokenRefreshTimer) {
+        clearTimeout(runtime.tokenRefreshTimer)
+        runtime.tokenRefreshTimer = undefined
+      }
+      try {
+        runtime.wsClient?.close()
+      } catch (error) {
+        log.warn("failed to close feishu websocket", { accountId: input.accountId, error })
+      } finally {
+        runtime.wsClient = undefined
+      }
+
+      const drainTasks = async (tasks: Set<Promise<void>>) => {
+        while (tasks.size > 0) {
+          const pending = Array.from(tasks)
+          if (pending.length === 0) break
+          await Promise.allSettled(pending)
+          await Promise.resolve()
+        }
+      }
+      const drain = async () => {
+        await drainTasks(runtime.inboundTasks)
+        await runtime.debouncer?.flush()
+        while (runtime.perChatQueue.size > 0) {
+          const pending = Array.from(new Set(runtime.perChatQueue.values()))
+          if (pending.length === 0) break
+          await Promise.allSettled(pending)
+          await Promise.resolve()
+        }
+      }
+
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      const timedOut = new Promise<true>((resolve) => {
+        timeout = setTimeout(() => resolve(true), ACCOUNT_DRAIN_TIMEOUT_MS)
+        timeout.unref()
+      })
+      try {
+        const result = await Promise.race([drain().then(() => false as const), timedOut])
+        if (result) {
+          log.warn("feishu account drain timed out", {
+            accountId: input.accountId,
+            timeoutMs: ACCOUNT_DRAIN_TIMEOUT_MS,
+            pendingChats: runtime.perChatQueue.size,
+          })
+        }
+      } catch (error) {
+        log.warn("feishu account drain failed", { accountId: input.accountId, error })
+      } finally {
+        if (timeout) clearTimeout(timeout)
+        if (this.accounts.get(input.accountId) === account) this.accounts.delete(input.accountId)
+      }
+    })()
+
+    return runtime.drain
   }
 
   private async buildMessageContext(
@@ -919,6 +1035,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     accountId: string
     chatId: string
     replyToMessageId?: string
+    sessionID: string
   }): ChannelTypes.StreamingSession {
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
@@ -948,6 +1065,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       replyInThread: account.config.replyInThread,
       throttleMs: account.config.streamingThrottleMs,
       sendFallback: sendText,
+      persistence: { accountId: input.accountId, sessionID: input.sessionID },
     })
   }
 }

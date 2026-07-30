@@ -170,6 +170,14 @@ export const WorkingInfo = z
   .meta({ ref: "SessionWorkingInfo" })
 export type WorkingInfo = z.infer<typeof WorkingInfo>
 
+export const RollbackAck = z
+  .object({
+    rollbackID: Identifier.schema("history"),
+    acknowledgedAt: z.number(),
+  })
+  .meta({ ref: "SessionRollbackAck" })
+export type RollbackAck = z.infer<typeof RollbackAck>
+
 export const CompletionNotice = z
   .object({
     unread: z.boolean(),
@@ -264,6 +272,7 @@ export const Info = z
         })
         .optional(),
       history: HistoryInfo.optional(),
+      rollbackAck: RollbackAck.optional(),
       cortex: CortexDelegationInfo.optional(),
       superplan: SuperPlanSessionInfo.optional(),
       working: WorkingInfo.optional(),

@@ -3920,6 +3920,11 @@ export type SessionHistoryInfo = {
   }
 }
 
+export type SessionRollbackAck = {
+  rollbackID: string
+  acknowledgedAt: number
+}
+
 export type SessionCortexDelegation = {
   taskID: string
   parentSessionID: string
@@ -4124,6 +4129,7 @@ export type Session = {
     assistant?: string
   }
   history?: SessionHistoryInfo
+  rollbackAck?: SessionRollbackAck
   cortex?: SessionCortexDelegation
   superplan?: SessionSuperPlanInfo
   working?: SessionWorkingInfo
@@ -5551,6 +5557,19 @@ export type SessionRollbackEvent = {
   cutMessageID?: string
   files: Array<string>
   patchPartIDs: Array<string>
+}
+
+export type SessionRollbackAckConflictError = {
+  name: "SessionRollbackAckConflictError"
+  data: {
+    message: string
+    rollbackID: string
+    currentRollbackID?: string
+  }
+}
+
+export type SessionRollbackAckInput = {
+  rollbackID: string
 }
 
 export type SessionUnrollbackEvent = {
@@ -11947,6 +11966,46 @@ export type SessionRollbackResponses = {
 }
 
 export type SessionRollbackResponse = SessionRollbackResponses[keyof SessionRollbackResponses]
+
+export type SessionRollbackAckData = {
+  body: SessionRollbackAckInput
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/rollback/ack"
+}
+
+export type SessionRollbackAckErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Rollback acknowledgment conflict
+   */
+  409: SessionRollbackAckConflictError
+}
+
+export type SessionRollbackAckError = SessionRollbackAckErrors[keyof SessionRollbackAckErrors]
+
+export type SessionRollbackAckResponses = {
+  /**
+   * Persisted rollback acknowledgment
+   */
+  200: {
+    rollbackAck: SessionRollbackAck
+  }
+}
+
+export type SessionRollbackAckResponse = SessionRollbackAckResponses[keyof SessionRollbackAckResponses]
 
 export type SessionUnrollbackData = {
   body?: never

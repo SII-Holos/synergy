@@ -1,9 +1,12 @@
 import { $ } from "bun"
 import { describe, expect, mock, test } from "bun:test"
+import { Bus } from "../../src/bus"
 import { Worktree } from "../../src/project/worktree"
 import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
 import { Session } from "../../src/session"
+import { SessionEvent } from "../../src/session/event"
+import { SessionNav } from "../../src/session/nav"
 import { SessionDrive } from "../../src/session/drive"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionInvoke } from "../../src/session/invoke"
@@ -55,6 +58,69 @@ describe("session input acceptance", () => {
       finishRequest(true)
       ;(SessionDrive.request as any) = originalRequest
       if (sessionID) SessionManager.unregisterRuntime(sessionID)
+    }
+  })
+
+  test("moves accepted input to the top of recent navigation before the session drive starts", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const originalRequest = SessionDrive.request
+    let finishRequest: (handled: boolean) => void = () => {}
+    const blockedRequest = new Promise<boolean>((resolve) => {
+      finishRequest = resolve
+    })
+    ;(SessionDrive.request as any) = mock(() => blockedRequest)
+
+    const sessionIDs: string[] = []
+    let stopUpdated = () => {}
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const older = await Session.create({ title: "Older Session" })
+          sessionIDs.push(older.id)
+          await Bun.sleep(5)
+          const newer = await Session.create({ title: "Newer Session" })
+          sessionIDs.push(newer.id)
+
+          const initialEntries = (await SessionNav.queryScope(scope.id, { limit: 2 })).items
+          expect(initialEntries.map((entry) => entry.id)).toEqual([newer.id, older.id])
+          const olderActivityAt = initialEntries.find((entry) => entry.id === older.id)?.lastActivityAt
+          if (olderActivityAt === undefined) throw new Error("Expected the older session in recent navigation")
+          const updates: Array<{
+            info: Session.Info
+            navEntry?: { id: string; lastActivityAt: number }
+          }> = []
+          stopUpdated = Bus.subscribe(SessionEvent.Updated, (event) => {
+            if (event.properties.info.id !== older.id) return
+            updates.push(event.properties as (typeof updates)[number])
+          })
+
+          await Bun.sleep(5)
+          const response = await Server.App().request(
+            `/session/${older.id}/input?directory=${encodeURIComponent(scope.worktree)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ parts: [{ type: "text", text: "Bring this session forward" }] }),
+            },
+          )
+
+          expect(response.status).toBe(200)
+          expect((await response.json()) as { status: string }).toMatchObject({ status: "queued" })
+          const reordered = (await SessionNav.queryScope(scope.id, { limit: 2 })).items
+          expect(reordered.map((entry) => entry.id)).toEqual([older.id, newer.id])
+          expect(updates.at(-1)?.navEntry?.id).toBe(older.id)
+          expect(updates.at(-1)?.navEntry?.lastActivityAt).toBe(reordered[0]?.lastActivityAt)
+          expect(updates.at(-1)?.navEntry?.lastActivityAt).toBeGreaterThan(olderActivityAt)
+          finishRequest(true)
+        },
+      })
+    } finally {
+      stopUpdated()
+      finishRequest(true)
+      ;(SessionDrive.request as any) = originalRequest
+      for (const sessionID of sessionIDs) SessionManager.unregisterRuntime(sessionID)
     }
   })
 
@@ -156,7 +222,7 @@ describe("session input acceptance", () => {
     })
   })
 
-  test("keeps running-session input in the same durable queue", async () => {
+  test("advances recent activity when input is queued behind a running session", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -166,6 +232,12 @@ describe("session input acceptance", () => {
         const session = await Session.create({ title: "Running Input" })
         const lease = SessionManager.acquire(session.id)
         if (!lease) throw new Error("Expected to acquire the session")
+        await Session.update(session.id, (draft) => {
+          draft.pendingReply = true
+        })
+        const activityBeforeInput = (await SessionNav.queryScope(scope.id, { limit: 1 })).items[0]?.lastActivityAt
+        if (activityBeforeInput === undefined) throw new Error("Expected running session navigation activity")
+        await Bun.sleep(5)
 
         try {
           const response = await Server.App().request(
@@ -182,6 +254,8 @@ describe("session input acceptance", () => {
           const item = result.item
           if (!item) throw new Error("Expected a queued inbox item")
           expect((await SessionInbox.list(session.id)).map((entry) => entry.id)).toEqual([item.id])
+          const activityAfterInput = (await SessionNav.queryScope(scope.id, { limit: 1 })).items[0]?.lastActivityAt
+          expect(activityAfterInput).toBeGreaterThan(activityBeforeInput)
         } finally {
           await SessionManager.release(lease, { requestNextWork: false })
           SessionManager.unregisterRuntime(session.id)

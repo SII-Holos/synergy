@@ -16,6 +16,8 @@ type Registration = {
   messageId?: string
 }
 
+const MAX_ACCEPTED_CALLBACKS = 256
+
 const state = ScopedState.create(() => ({
   registrations: new Map<string, Registration>(),
   accepted: new Map<string, { eventId: string; sessionID: string }>(),
@@ -24,6 +26,17 @@ const log = Log.create({ service: "channel.question-card" })
 
 function lockKey(requestId: string): string {
   return `channel-question-card:${requestId}`
+}
+
+function rememberAccepted(input: { requestId: string; eventId: string; sessionID: string }): void {
+  const accepted = state().accepted
+  accepted.delete(input.requestId)
+  accepted.set(input.requestId, { eventId: input.eventId, sessionID: input.sessionID })
+  while (accepted.size > MAX_ACCEPTED_CALLBACKS) {
+    const oldest = accepted.keys().next().value
+    if (!oldest) break
+    accepted.delete(oldest)
+  }
 }
 
 export namespace QuestionCardRuntime {
@@ -124,7 +137,7 @@ export namespace QuestionCardRuntime {
       return { status: "expired" }
     }
     runtime.registrations.delete(callback.requestId)
-    runtime.accepted.set(callback.requestId, { eventId: callback.eventId, sessionID: registration.sessionID })
+    rememberAccepted({ requestId: callback.requestId, eventId: callback.eventId, sessionID: registration.sessionID })
     return { status: "accepted" }
   }
 
