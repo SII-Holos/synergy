@@ -6,7 +6,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { Lock } from "../util/lock"
-import type { Info as SessionInfo } from "./types"
+import { Info as SessionInfo } from "./types"
 
 export type NavCategory = "project" | "home" | "channel" | "background" | "github"
 export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
@@ -185,12 +185,14 @@ export namespace SessionNav {
     const entries: SessionNavEntry[] = []
     if (sessionIDs.length > 0) {
       const keys = sessionIDs.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
-      const sessions = await Storage.readMany<SessionInfo>(keys)
-      for (const session of sessions) {
-        if (!session || !session.scope) {
+      const storedSessions = await Storage.readMany<unknown>(keys)
+      for (const storedSession of storedSessions) {
+        const parsed = SessionInfo.safeParse(storedSession)
+        if (!parsed.success) {
           log.warn("skipping malformed session info", { scopeID })
           continue
         }
+        const session = parsed.data
         const scopeType: "home" | "project" = scopeID === "home" ? "home" : "project"
         const category = deriveCategory({
           scopeType,
