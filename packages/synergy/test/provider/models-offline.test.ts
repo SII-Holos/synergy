@@ -27,6 +27,20 @@ function catalog(providerID: string, name: string) {
     },
   }
 }
+function catalogWithModelProvider(providerID: string, name: string, provider: { npm?: string }) {
+  const result = catalog(providerID, name)
+  return {
+    [providerID]: {
+      ...result[providerID],
+      models: {
+        "test-model": {
+          ...result[providerID].models["test-model"],
+          provider,
+        },
+      },
+    },
+  }
+}
 
 function completeCatalog(...catalogs: Array<ReturnType<typeof catalog>>) {
   return Object.assign(
@@ -301,6 +315,28 @@ test("fresh offline provider routes remain available without a models cache", as
   expect(result.bootstrapStatus).toBe(200)
   expect(result.providerCount).toBeGreaterThan(0)
   expect(result.bootstrapProviderCount).toBe(result.providerCount)
+  expect(result.requests).toBe(0)
+})
+
+test("fresh provider routes load the configured catalog on cold start", async () => {
+  const home = await tempdir("models-routes-configured-home")
+  const project = await tempdir("models-routes-configured-project")
+  const source = path.join(await tempdir("models-routes-configured-source"), "models.json")
+  await Bun.write(
+    source,
+    JSON.stringify(completeCatalog(catalogWithModelProvider("cold-start-provider", "Cold start provider", {}))),
+  )
+  const env = isolatedEnv(home)
+  env.MODELS_DEV_API_JSON = source
+  env.MODELS_OFFLINE_PROJECT = project
+
+  const result = await runJSON(
+    [process.execPath, "run", path.join(fixtures, "models-runtime-offline.ts"), "routes"],
+    env,
+  )
+
+  expect(result.providerIDs).toContain("cold-start-provider")
+  expect(result.bootstrapProviderIDs).toContain("cold-start-provider")
   expect(result.requests).toBe(0)
 })
 

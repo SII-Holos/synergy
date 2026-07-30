@@ -59,7 +59,7 @@ export namespace ModelsDev {
     catalog_state: z.enum(["active", "retained"]).optional(),
     options: z.record(z.string(), z.any()).optional().default({}),
     headers: z.record(z.string(), z.string()).optional(),
-    provider: z.object({ npm: z.string() }).optional(),
+    provider: z.object({ npm: z.string().optional() }).optional(),
     variants: z.record(z.string(), z.record(z.string(), z.any())).optional(),
   })
   export type Model = z.infer<typeof Model>

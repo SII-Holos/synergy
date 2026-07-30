@@ -93,7 +93,11 @@ if (action === "refresh") {
       providerStatus: providerResponse.status,
       bootstrapStatus: bootstrapResponse.status,
       providerCount: Array.isArray(provider.all) ? provider.all.length : 0,
+      providerIDs: Array.isArray(provider.all) ? provider.all.map((item: { id: string }) => item.id) : [],
       bootstrapProviderCount: Array.isArray(bootstrap.provider?.all) ? bootstrap.provider.all.length : 0,
+      bootstrapProviderIDs: Array.isArray(bootstrap.provider?.all)
+        ? bootstrap.provider.all.map((item: { id: string }) => item.id)
+        : [],
       requests,
     }),
     () => process.exit(0),
