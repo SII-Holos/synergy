@@ -258,6 +258,7 @@ export namespace Session {
   function toNavEntry(session: Info): SessionNavEntry {
     const scope = session.scope as Scope
     const scopeType = scope.type === "home" ? "home" : "project"
+    const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
     const category =
       session.category ??
       SessionNav.deriveCategory({
@@ -278,10 +279,13 @@ export namespace Session {
       pinned: session.pinned ?? 0,
       archived: !!session.time.archived,
       parentID: session.parentID,
-      endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
-      chatId: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatId : undefined,
-      chatName: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatName : undefined,
-      chatType: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatType : undefined,
+      endpointKind: channelEndpoint ? "channel" : undefined,
+      chatId: channelEndpoint?.chatId,
+      chatName: channelEndpoint?.chatName,
+      chatType: channelEndpoint?.chatType,
+      channelType: channelEndpoint?.type,
+      channelAccountId: channelEndpoint?.accountId,
+      channelTarget: channelEndpoint?.target,
       completionNotice: {
         unread: session.completionNotice.unread,
         unreadCount: session.completionNotice.unreadCount,

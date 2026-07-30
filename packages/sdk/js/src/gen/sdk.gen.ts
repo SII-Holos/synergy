@@ -3105,6 +3105,7 @@ export class Nav extends HeyApiClient {
       parentOnly?: boolean
       includeArchived?: boolean
       category?: "project" | "home" | "channel" | "background" | "github"
+      channelType?: string
       search?: string
       limit?: number
       cursorLastActivityAt?: number
@@ -3120,6 +3121,7 @@ export class Nav extends HeyApiClient {
             { in: "query", key: "parentOnly" },
             { in: "query", key: "includeArchived" },
             { in: "query", key: "category" },
+            { in: "query", key: "channelType" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursorLastActivityAt" },

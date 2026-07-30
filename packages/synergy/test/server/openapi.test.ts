@@ -119,7 +119,9 @@ describe("OpenAPI spec generation", () => {
     expect(path!.get).toBeDefined()
     expect(path!.get!.operationId).toBe("global.nav.recent")
     const parameters = path!.get!.parameters ?? []
-    expect(parameters.map((parameter) => ("name" in parameter ? parameter.name : undefined))).toContain("category")
+    expect(parameters.map((parameter) => ("name" in parameter ? parameter.name : undefined))).toEqual(
+      expect.arrayContaining(["category", "channelType"]),
+    )
     const parentOnly = parameters.find((parameter) => "name" in parameter && parameter.name === "parentOnly")
     expect(parentOnly && "schema" in parentOnly ? parentOnly.schema : undefined).toMatchObject({ type: "boolean" })
   })
