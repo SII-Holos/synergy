@@ -65,6 +65,8 @@ const bootstrapGraph = await collect(bootstrapEntrypoint)
 const inputs = [...runnerGraph.visited].map((file) => path.relative(workspaceRoot, file))
 const forbidden = inputs.filter(
   (input) =>
+    input === "packages/synergy/src/provider/models.ts" ||
+    input === "packages/synergy/src/provider/models-macro.ts" ||
     input.startsWith("packages/synergy/src/browser/") ||
     input.startsWith("packages/synergy/src/plugin/") ||
     input.startsWith("packages/synergy/src/plugin-runtime/") ||
