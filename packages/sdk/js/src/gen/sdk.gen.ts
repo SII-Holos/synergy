@@ -103,6 +103,9 @@ import type {
   ChannelAppResetResponses,
   ChannelAppSessionResponses,
   ChannelDisconnectResponses,
+  ChannelDownloadDiagnosticsResponses,
+  ChannelRefreshProjectsErrors,
+  ChannelRefreshProjectsResponses,
   ChannelStartOneResponses,
   ChannelStartResponses,
   ChannelStatusResponses,
@@ -424,6 +427,7 @@ import type {
   ScopeCurrentResponses,
   ScopeIndexResponses,
   ScopeListResponses,
+  ScopeRemoveErrors,
   ScopeRemoveResponses,
   ScopeRuntimeDisposeResponses,
   ScopeUpdateErrors,
@@ -4995,7 +4999,7 @@ export class Scope extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).delete<ScopeRemoveResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).delete<ScopeRemoveResponses, ScopeRemoveErrors, ThrowOnError>({
       url: "/scope/{scopeID}",
       ...options,
       ...params,
@@ -10775,6 +10779,78 @@ export class Channel extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<ChannelDisconnectResponses, unknown, ThrowOnError>({
       url: "/channel/{channelType}/{accountId}/disconnect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Refresh channel account projects
+   *
+   * Discover and reconcile projects for one connected channel account. Connecting accounts return a retryable conflict; connected refreshes return only after completion.
+   */
+  public refreshProjects<ThrowOnError extends boolean = false>(
+    parameters: {
+      channelType: string
+      accountId: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "channelType" },
+            { in: "path", key: "accountId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ChannelRefreshProjectsResponses,
+      ChannelRefreshProjectsErrors,
+      ThrowOnError
+    >({
+      url: "/channel/{channelType}/{accountId}/projects/refresh",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download channel account diagnostics
+   *
+   * Stream the retained diagnostics window as bounded NDJSON. Each line is a valid JSON record.
+   */
+  public downloadDiagnostics<ThrowOnError extends boolean = false>(
+    parameters: {
+      channelType: string
+      accountId: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "channelType" },
+            { in: "path", key: "accountId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ChannelDownloadDiagnosticsResponses, unknown, ThrowOnError>({
+      url: "/channel/{channelType}/{accountId}/diagnostics.ndjson",
       ...options,
       ...params,
     })

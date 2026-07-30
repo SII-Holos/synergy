@@ -29,6 +29,7 @@ function provider(
 ): Provider {
   return {
     type,
+    lifecycle: "self_connected",
     async connect() {},
     async replyMessage() {
       return { messageId: "reply_sent" }

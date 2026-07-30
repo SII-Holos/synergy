@@ -132,7 +132,6 @@ export namespace ResponseCardRuntime {
           channelReply: true,
           channelReplyToMessageId: registration.messageId,
           channelRequesterId: callback.requesterId,
-          responseCardAction: callback,
         },
       },
     })

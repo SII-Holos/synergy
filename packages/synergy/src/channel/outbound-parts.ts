@@ -1,7 +1,7 @@
 import path from "path"
 import { Asset } from "@/asset/asset"
 import { MessageV2 } from "@/session/message-v2"
-import { SessionHistory } from "@/session/history"
+import { Session } from "@/session"
 import { Log } from "@/util/log"
 import type { OutboundPart, Provider } from "./types"
 
@@ -58,7 +58,7 @@ export async function loadChannelTaskMessages(input: {
   rootID: string
   terminal: MessageV2.WithParts
 }): Promise<MessageV2.WithParts[]> {
-  const messages = await SessionHistory.messages({ sessionID: input.sessionID })
+  const messages = await Session.messages({ sessionID: input.sessionID })
   const hydrated = messages.map((message) => (message.info.id === input.terminal.info.id ? input.terminal : message))
   return MessageV2.deriveSemantics(hydrated)
 }
@@ -87,7 +87,11 @@ export async function replyChannelTaskAttachments(input: {
     includeText: false,
   })
   if (parts.length === 0) return false
-  await input.provider.replyMessage({
+  const conversation = input.provider.conversation
+  const replyMessage =
+    conversation?.replyMessage?.bind(conversation) ?? input.provider.replyMessage?.bind(input.provider)
+  if (!replyMessage) return false
+  await replyMessage({
     accountId: input.accountId,
     messageId: input.messageId,
     parts,

@@ -65,7 +65,11 @@ function providerWithAccount(): FeishuProvider {
 async function buildMessageContext(
   provider: FeishuProvider,
   message: Record<string, unknown>,
+  config = accountConfig(),
 ): Promise<{
+  chatType: "dm" | "group"
+  text: string
+  wasMentioned?: boolean
   quotedContent?: string
   attachments?: Array<{ path: string; filename?: string; placeholder?: string }>
 }> {
@@ -77,11 +81,14 @@ async function buildMessageContext(
         channelConfig: Config.ChannelFeishu,
         payload: unknown,
       ): Promise<{
+        chatType: "dm" | "group"
+        text: string
+        wasMentioned?: boolean
         quotedContent?: string
         attachments?: Array<{ path: string; filename?: string; placeholder?: string }>
       }>
     }
-  ).buildMessageContext("acct_test", accountConfig(), channelConfig(), {
+  ).buildMessageContext("acct_test", config, channelConfig(), {
     message,
     sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
   })
@@ -90,6 +97,45 @@ async function buildMessageContext(
 async function cleanupContextAttachments(context: { attachments?: Array<{ path: string }> }): Promise<void> {
   await Promise.all(context.attachments?.map((attachment) => fs.unlink(attachment.path)) ?? [])
 }
+
+describe("Feishu bot identity resolution", () => {
+  test("resolves and caches the bot open_id before filtering required group mentions", async () => {
+    const requests: string[] = []
+    globalThis.fetch = (async (input) => {
+      const url = String(input)
+      requests.push(url)
+      if (url.endsWith("/bot/v3/info")) {
+        return new Response(JSON.stringify({ code: 0, bot: { open_id: "ou_synergy" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      if (url.endsWith("/im/v1/chats/chat_test")) {
+        return new Response(JSON.stringify({ code: 0, data: { name: "Release room" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    }) as typeof fetch
+
+    const provider = providerWithAccount()
+    const config = accountConfig({ requireMention: true })
+    const message = {
+      message_id: "msg_group",
+      chat_id: "chat_test",
+      chat_type: "group",
+      message_type: "text",
+      content: JSON.stringify({ text: "@_user_1 deploy" }),
+      mentions: [{ key: "@_user_1", id: { open_id: "ou_synergy" }, name: "Synergy" }],
+    }
+
+    const first = await buildMessageContext(provider, message, config)
+    const second = await buildMessageContext(provider, { ...message, message_id: "msg_group_2" }, config)
+
+    expect(first).toMatchObject({ chatType: "group", wasMentioned: true })
+    expect(second).toMatchObject({ chatType: "group", wasMentioned: true })
+    expect(requests.filter((url) => url.endsWith("/bot/v3/info"))).toHaveLength(1)
+  })
+})
 
 describe("Feishu message media", () => {
   test("recognizes Feishu media messages as video", () => {

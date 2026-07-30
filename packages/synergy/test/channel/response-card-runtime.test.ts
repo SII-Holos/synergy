@@ -32,6 +32,7 @@ const card: ResponseCard = {
 function provider(type: string, sent: Array<Record<string, unknown>>): Provider {
   return {
     type,
+    lifecycle: "self_connected",
     async connect() {},
     async replyMessage() {
       return { messageId: "reply_sent" }
@@ -370,7 +371,6 @@ describe("ResponseCardRuntime", () => {
               channelReply: true,
               channelReplyToMessageId: "om_response_card",
               channelRequesterId: "ou_requester",
-              responseCardAction: callback,
             },
           },
         })

@@ -86,6 +86,22 @@ export const migrations: Migration[] = [
     },
   },
   {
+    id: "20260728-provision-clarus-channel-account",
+    description: "Provision a disabled Clarus Channel account for the active Holos identity.",
+    domain: "holos",
+    dependsOn: ["20260620-migrate-holos-legacy-credentials"],
+    async up(progress) {
+      progress(0, 1)
+      const account = await HolosAccounts.getActiveAccount()
+      if (account) {
+        const { HolosAuth } = await import("./auth")
+        const provisioned = await HolosAuth.ensureClarusChannelAccount(account.agentId)
+        if (provisioned) log.info("provisioned clarus channel account for active holos identity")
+      }
+      progress(1, 1)
+    },
+  },
+  {
     id: "20260619-holos-mailbox-cleanup",
     description:
       "Simplify contacts schema and delete legacy subsystems (friend_requests, message_queue, friend_reply, auto_turns)",

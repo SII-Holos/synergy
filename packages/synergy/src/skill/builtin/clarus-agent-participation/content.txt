@@ -1,0 +1,56 @@
+# Native Clarus Task Participation
+
+Use this workflow only inside the Synergy Session that received a native Clarus assignment.
+
+## Runtime Boundary
+
+- Treat the visible assignment and hidden participation guidance as authoritative task context.
+- The current Session already owns the Clarus account, Project, run, task, subtask, and retry identity. Never ask for or pass those IDs to a Clarus tool.
+- Synergy owns Project discovery, subscription, task delivery, result recovery, and the existing authenticated Holos Agent Tunnel.
+- Do not open another WebSocket, start a listener or daemon, install `holos-cli`, call Clarus REST directly, or read/write standalone `.clarus` state.
+- Never request, expose, copy, or reuse an agent secret, bearer token, or tunnel URL.
+- Project messages are not a task-control or result-delivery channel.
+
+## Work From Current Context
+
+1. Read the complete assignment before acting: goal, instructions, input, context, dependency results, attempt mode, retry lineage, and deadline.
+2. Reuse valid dependency artifacts and prior phase output from the supplied context. Do not redo completed upstream work unless this assignment explicitly requires it.
+3. Resolve referenced workspace files with ordinary Synergy file tools when needed. Keep work inside the managed Project Scope.
+4. Produce the smallest complete result for this task. Keep secrets, credentials, raw local paths, full logs, and unrelated context out of outbound material.
+
+## Deadline Extension
+
+Call `clarus_extend_task` before the current deadline only when additional time is genuinely required.
+
+- `extend_seconds` must be between 60 and 3600.
+- Keep `progress` concise and factual; it is limited to 500 characters.
+- Use the optional bounded `payload` only for small structured progress metadata.
+- Acknowledged means the deadline was extended.
+- A `not_dispatched` extension is persisted for Channel recovery; do not create duplicate extension requests while recovery is pending.
+- Never retry a rejected or ambiguous extension unless the assignment is renewed or externally reconciled.
+- Tunnel heartbeat and ordinary Session activity do not extend the task deadline.
+
+## Result Submission
+
+Every completed assignment must end with one `clarus_submit_task_result` call.
+
+- Set `success` to the actual outcome.
+- Keep `output` to a concise summary of at most 2000 characters.
+- Put reusable reports, code summaries, tables, JSON, CSV, Markdown, or LaTeX in `artifacts[].parts[].content`.
+- Every artifact needs a non-empty `artifact_id`, `name`, and at least one non-empty text part.
+- Each part needs `format`, `role`, `content_kind`, `name`, and `content`.
+- Use `evidence_refs` and `notary_refs` only for existing references; they never replace artifact body content.
+- When `success` is false, provide a concise non-empty `error` explaining the blocker.
+- Do not include account, Project, run, task, or subtask IDs; the Session supplies them.
+
+## Settlement Rules
+
+- After acknowledgement, do not submit again.
+- Only a clearly `not_dispatched` result is retryable, and only after the Clarus connection recovers. Avoid duplicate manual retries while Channel recovery is pending.
+- A rejected result is terminal for the current assignment unless it is renewed.
+- An ambiguous result may already have been recorded. Never retry it automatically; wait for renewal or authoritative reconciliation.
+- If the user aborts this Session, stop local execution. Do not invent a completion result after abort.
+
+## Completion Check
+
+Before finishing the Session, confirm that the result call either succeeded or produced a disposition handled exactly as above. A normal assistant reply is not a Clarus result submission.

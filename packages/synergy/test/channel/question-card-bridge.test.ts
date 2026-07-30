@@ -31,6 +31,7 @@ test("delivers continuation questions from durable channel root metadata after t
       const sent = Promise.withResolvers<Parameters<NonNullable<Provider["sendQuestionCard"]>>[0]>()
       const provider: Provider = {
         type,
+        lifecycle: "self_connected",
         async connect() {},
         async replyMessage() {
           return { messageId: "reply_sent" }

@@ -357,13 +357,22 @@ function buildEmailPatch(cfg: Config, state: SettingsState, patch: Record<string
 function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   const currentChannel = cfg.channel ?? {}
   const newChannel = structuredClone(currentChannel) as NonNullable<Config["channel"]> | {}
-  if ("feishu" in newChannel && newChannel.feishu?.accounts) {
+  const feishu = "feishu" in newChannel && newChannel.feishu?.type === "feishu" ? newChannel.feishu : undefined
+  if (feishu) {
     for (const entry of state.channels.feishuAccounts) {
-      const account = newChannel.feishu.accounts[entry.key]
+      const account = feishu.accounts[entry.key]
       if (!account) continue
       account.enabled = entry.enabled
       account.model = entry.model || undefined
       account.variant = entry.model ? entry.variant || undefined : undefined
+    }
+  }
+  const clarus = "clarus" in newChannel && newChannel.clarus?.type === "clarus" ? newChannel.clarus : undefined
+  if (clarus) {
+    for (const entry of state.channels.clarusAccounts) {
+      const account = clarus.accounts[entry.key]
+      if (!account) continue
+      account.enabled = entry.enabled
     }
   }
   if (JSON.stringify(newChannel) !== JSON.stringify(currentChannel)) patch.channel = newChannel

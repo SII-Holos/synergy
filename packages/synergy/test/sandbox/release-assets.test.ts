@@ -9,6 +9,7 @@ import {
   sandboxAssetKey,
   type SandboxRuntimeTarget,
 } from "../../script/sandbox-assets"
+import { assertPackagedHolosCliAsset, copyHolosCliAsset, HOLOS_CLI_RUNTIME_PATH } from "../../script/holos-cli-assets"
 
 const temporaryDirectories: string[] = []
 
@@ -90,5 +91,30 @@ describe("sandbox release assets", () => {
 
   test("does not require a helper for macOS", () => {
     expect(resolveSandboxAsset({ os: "darwin", arch: "arm64" }, { required: true })).toBeUndefined()
+  })
+})
+
+describe("Holos CLI release assets", () => {
+  test("copies an executable CLI and its runtime dependencies", async () => {
+    const output = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-holos-cli-output-"))
+    temporaryDirectories.push(output)
+
+    copyHolosCliAsset(output)
+    assertPackagedHolosCliAsset(output)
+
+    const entry = path.join(output, HOLOS_CLI_RUNTIME_PATH, "index.js")
+    const proc = Bun.spawn([process.execPath, entry, "--help"], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, BUN_BE_BUN: "1" },
+    })
+    const [code, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+
+    expect(code, stderr).toBe(0)
+    expect(stdout).toContain("holos clarus file download")
   })
 })

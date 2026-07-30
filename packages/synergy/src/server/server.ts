@@ -15,6 +15,7 @@ import { Provider } from "../provider/provider"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
 import { ConfigImport } from "../config/import"
+import { ManagedProjectArchiveError } from "../channel/managed-project-ownership"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
 import { ScopeContext } from "../scope/context"
@@ -377,7 +378,8 @@ export namespace Server {
             if (
               err instanceof ConfigImport.RevisionConflictError ||
               err instanceof ConfigImport.LockedError ||
-              err instanceof Worktree.UnavailableError
+              err instanceof Worktree.UnavailableError ||
+              err instanceof ManagedProjectArchiveError
             )
               status = 409
             else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
