@@ -819,7 +819,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       chatType: filterResult.isGroup ? "group" : "dm",
       chatName,
       senderId,
-      senderName: senderName ?? sender?.sender_id?.user_id,
+      senderName: senderName ?? senderId,
       text,
       messageId: msg.message_id || "",
       timestamp: Number(msg.create_time) || Date.now(),
