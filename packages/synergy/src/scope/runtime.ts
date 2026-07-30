@@ -14,8 +14,16 @@ import { ScopeContext } from "./context"
 import { ScopedState } from "./scoped-state"
 
 export namespace ScopeRuntime {
+  type StartedListener = (scope: Scope.Project) => void
+
   const log = Log.create({ service: "scope-runtime" })
   const started = new Map<string, Promise<void>>()
+  const startedListeners = new Set<StartedListener>()
+
+  export function onStarted(listener: StartedListener): () => void {
+    startedListeners.add(listener)
+    return () => startedListeners.delete(listener)
+  }
 
   export async function ensure(scope: Scope): Promise<void> {
     if (scope.type !== "project") return
@@ -48,6 +56,7 @@ export namespace ScopeRuntime {
               async (s) => s.unsub(),
             )
             void commandState()
+            for (const listener of startedListeners) listener(scope)
           },
         }),
       )

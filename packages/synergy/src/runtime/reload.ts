@@ -407,7 +407,7 @@ export namespace RuntimeReload {
           import("../channel/outbound"),
         ])
         registerProviders()
-        ChannelOutbound.init()
+        ChannelOutbound.init({ getProvider: Channel.getProvider })
         await Channel.reload()
         return
       }
