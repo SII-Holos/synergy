@@ -2484,6 +2484,13 @@ export const migrations: Migration[] = [
       await migrateSessionRootVariants(progress)
     },
   },
+  {
+    id: "20260730-session-nav-channel-provider-fields",
+    description: "Rebuild session nav indexes to backfill Channel provider metadata",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {

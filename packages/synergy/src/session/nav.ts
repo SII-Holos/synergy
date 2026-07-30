@@ -322,6 +322,7 @@ export namespace SessionNav {
   export async function queryGlobal(opts?: {
     parentOnly?: boolean
     category?: NavCategory
+    channelType?: string
     includeArchived?: boolean
     search?: string
     cursor?: NavCursor
@@ -343,6 +344,7 @@ export namespace SessionNav {
     let entries = allEntries
     if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
     if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
+    if (opts?.channelType) entries = entries.filter((e) => e.channelType === opts.channelType)
     if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
     if (opts?.search) {
       const term = opts.search.toLowerCase()

@@ -74,6 +74,50 @@ export function applySessionToNavList(
   return { list: { ...list, items }, applied: true }
 }
 
+export function channelNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
+  return {
+    category: "channel" as const,
+    channelType: "feishu",
+    parentOnly: true,
+    includeArchived: true,
+    limit,
+    ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+  }
+}
+
+export type RootNavSectionKey = "home" | "channel" | "background"
+
+export function rootNavRequest(
+  category: RootNavSectionKey,
+  limit: number,
+  cursor?: { lastActivityAt: number; id: string },
+) {
+  if (category === "channel") return { source: "global" as const, query: channelNavQuery(limit, cursor) }
+  return {
+    source: "scope" as const,
+    query: {
+      scopeID: "home",
+      category,
+      parentOnly: "true" as const,
+      limit,
+      ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+    },
+  }
+}
+
+export function rootNavSectionsForSessionUpdate(input: {
+  scopeID?: string
+  navCategory?: NavEntry["category"]
+  channelType?: string
+  channelApplied: boolean
+}): RootNavSectionKey[] {
+  if (input.scopeID === "home") return ["home", "channel", "background"]
+  if ((input.navCategory === "channel" && input.channelType === "feishu") || input.channelApplied) {
+    return ["channel"]
+  }
+  return []
+}
+
 export function githubNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
   return {
     category: "github" as const,

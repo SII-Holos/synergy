@@ -6,6 +6,8 @@ import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { Identifier } from "../../src/id/id"
 import { migrations } from "../../src/session/migration"
+import { SessionEndpoint } from "../../src/session/endpoint"
+import { SessionNav } from "../../src/session/nav"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { SnapshotSchema } from "../../src/session/snapshot-schema"
@@ -109,6 +111,59 @@ describe("session migrations", () => {
       ),
     )
     expect(stored.variant).toBe("high")
+  })
+
+  test("rebuilds legacy Channel nav entries with provider metadata", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const target = { kind: "chat" as const, chatId: `migration-${crypto.randomUUID()}` }
+        const session = await Session.create({
+          title: "Legacy Feishu Channel Session",
+          endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "legacy-account", target }),
+        })
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const current = await Storage.read<any>(StoragePath.sessionNavIndex(scope))
+        const legacyEntry = current.entries.find((entry: any) => entry.id === session.id)
+        delete legacyEntry.channelType
+        delete legacyEntry.channelAccountId
+        delete legacyEntry.channelTarget
+        await Storage.write(StoragePath.sessionNavIndex(scope), current)
+
+        expect(
+          await SessionNav.queryGlobal({
+            category: "channel",
+            channelType: "feishu",
+            search: session.title,
+          }),
+        ).toMatchObject({ items: [], total: 0 })
+
+        const migration = migrations.find((entry) => entry.id === "20260730-session-nav-channel-provider-fields")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+        await migration!.up(() => {})
+
+        const migrated = await SessionNav.queryGlobal({
+          category: "channel",
+          channelType: "feishu",
+          search: session.title,
+        })
+        expect(migrated.total).toBe(1)
+        expect(migrated.items).toEqual([
+          expect.objectContaining({
+            id: session.id,
+            channelType: "feishu",
+            channelAccountId: "legacy-account",
+            channelTarget: target,
+          }),
+        ])
+
+        await Session.remove(session.id)
+      },
+    })
   })
 
   test("builds child session indexes from existing session info files", async () => {

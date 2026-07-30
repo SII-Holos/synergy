@@ -36,6 +36,44 @@ describe("SessionNav.queryGlobal", () => {
     })
   })
 
+  test("filters Channel provider before pagination", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const token = `channel-provider-before-pagination-${crypto.randomUUID()}`
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const feishu = await Session.create({
+          title: `${token} feishu`,
+          endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "nav", chatId: token }),
+        })
+        await Bun.sleep(5)
+        const clarus = await Session.create({
+          title: `${token} clarus`,
+          endpoint: SessionEndpoint.fromChannel({
+            type: "clarus",
+            accountId: "nav",
+            target: { kind: "task", externalProjectId: token, externalTaskId: token },
+          }),
+        })
+
+        const result = await SessionNav.queryGlobal({
+          category: "channel",
+          channelType: "feishu",
+          search: token,
+          limit: 1,
+        })
+
+        expect(result.total).toBe(1)
+        expect(result.items.map((entry) => entry.id)).toEqual([feishu.id])
+
+        await Session.remove(clarus.id)
+        await Session.remove(feishu.id)
+      },
+    })
+  })
+
   test("persists GitHub provenance and queries GitHub sessions across parent and child entries", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()

@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test"
 import type { NavEntry, NavListState, ScopeNavEntry } from "../../../src/context/layout/index"
 import {
   applySessionToNavList,
+  channelNavQuery,
   githubNavQuery,
+  rootNavRequest,
+  rootNavSectionsForSessionUpdate,
   managedProjectLocalScope,
   managedProjectScopesByWorktree,
   partitionScopeNavigation,
@@ -97,6 +100,88 @@ describe("managed Project scope projection", () => {
       time: { created: 10, updated: 20 },
       expanded: true,
     })
+  })
+})
+
+describe("channelNavQuery", () => {
+  test("requests Channel sessions across Home and project scopes with cursor pagination", () => {
+    expect(channelNavQuery(100, { lastActivityAt: 456, id: "ses_channel" })).toEqual({
+      category: "channel",
+      channelType: "feishu",
+      parentOnly: true,
+      includeArchived: true,
+      limit: 100,
+      cursorLastActivityAt: 456,
+      cursorId: "ses_channel",
+    })
+  })
+})
+
+describe("rootNavRequest", () => {
+  test("routes Channel through global navigation while Home stays scope-qualified", () => {
+    expect(rootNavRequest("channel", 100)).toEqual({
+      source: "global",
+      query: {
+        category: "channel",
+        channelType: "feishu",
+        parentOnly: true,
+        includeArchived: true,
+        limit: 100,
+      },
+    })
+    expect(rootNavRequest("home", 100)).toEqual({
+      source: "scope",
+      query: {
+        scopeID: "home",
+        category: "home",
+        parentOnly: "true",
+        limit: 100,
+      },
+    })
+  })
+})
+
+describe("rootNavSectionsForSessionUpdate", () => {
+  test("refreshes Channel for project-scoped Channel updates", () => {
+    expect(
+      rootNavSectionsForSessionUpdate({
+        scopeID: "project-scope",
+        navCategory: "channel",
+        channelType: "feishu",
+        channelApplied: false,
+      }),
+    ).toEqual(["channel"])
+  })
+
+  test("keeps Home updates authoritative for every Home root section", () => {
+    expect(
+      rootNavSectionsForSessionUpdate({
+        scopeID: "home",
+        navCategory: "home",
+        channelApplied: false,
+      }),
+    ).toEqual(["home", "channel", "background"])
+  })
+
+  test("ignores unrelated project-scoped updates", () => {
+    expect(
+      rootNavSectionsForSessionUpdate({
+        scopeID: "project-scope",
+        navCategory: "project",
+        channelApplied: false,
+      }),
+    ).toEqual([])
+  })
+
+  test("ignores managed Task updates from other Channel providers", () => {
+    expect(
+      rootNavSectionsForSessionUpdate({
+        scopeID: "project-scope",
+        navCategory: "channel",
+        channelType: "clarus",
+        channelApplied: false,
+      }),
+    ).toEqual([])
   })
 })
 
