@@ -3,6 +3,7 @@
   --session-progress-island-collapsed-gap: 8px;
   --session-progress-island-collapsed-padding-inline: 12px;
   --session-progress-island-collapsed-max-width: min(620px, calc(100vw - 24px));
+  --session-progress-island-expanded-width: min(900px, calc(100vw - 24px));
   /* Now a normal-flow flex child inside the shared absolute wrapper at
      prompt-dock.tsx:67 (absolute inset-x-0 bottom-full). The wrapper
      guarantees that expanding the island never changes --prompt-height.
@@ -34,8 +35,8 @@
 }
 
 .session-progress-island[data-expanded="true"] .session-progress-island-surface {
-  width: 100%;
-  max-width: min(900px, calc(100vw - 24px));
+  width: var(--session-progress-island-expanded-width);
+  max-width: 100%;
   border-radius: 22px;
   transition:
     width 380ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -175,7 +176,7 @@
   top: 0;
   left: 50%;
   display: flex;
-  width: min(900px, calc(100vw - 24px));
+  width: var(--session-progress-island-expanded-width);
   height: min(52vh, 560px);
   flex-direction: column;
   overflow: hidden;
@@ -240,6 +241,21 @@
   flex: 1 1 auto;
   overflow: hidden;
   padding: 0 6px;
+}
+
+.session-progress-todo {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.session-progress-todo-list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow-y: auto;
 }
 
 @keyframes session-progress-island-enter {

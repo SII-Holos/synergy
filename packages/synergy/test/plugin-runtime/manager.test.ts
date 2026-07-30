@@ -173,6 +173,94 @@ describe("PluginRuntimeManager", () => {
     }
   })
 
+  for (const mode of ["process", "inProcess"] as const) {
+    test(`preserves structured log details in ${mode} mode`, async () => {
+      const manager = new PluginRuntimeManager()
+      const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+      const manifest = compilePluginManifest(definition, {
+        generation: `log-details-${mode}`,
+        runtime: { entry: "runtime/index.js", sha256: "test" },
+      })
+      await manager.start({
+        manifest,
+        pluginDir: path.dirname(entryPath),
+        entryPath,
+        mode,
+        trustedBuiltin: mode === "inProcess",
+      })
+      try {
+        await manager.invoke({
+          pluginId: manifest.id,
+          handlerId: "operation:log.details",
+          value: {},
+          context: { scopeId: "log-scope", directory: import.meta.dir, actor: { type: "sdk" } },
+          pluginDir: path.dirname(entryPath),
+          manifest,
+        })
+        await manager.invoke({
+          pluginId: manifest.id,
+          handlerId: "operation:log.message",
+          value: {},
+          context: { scopeId: "log-scope", directory: import.meta.dir, actor: { type: "sdk" } },
+          pluginDir: path.dirname(entryPath),
+          manifest,
+        })
+        expect(manager.logs.list(manifest.id)).toEqual([
+          {
+            timestamp: expect.any(Number),
+            level: "error",
+            message: "fixture failure",
+            details: { code: "FIXTURE_ERROR", reason: "expected failure" },
+          },
+          {
+            timestamp: expect.any(Number),
+            level: "info",
+            message: "fixture message",
+            details: undefined,
+          },
+        ])
+      } finally {
+        await manager.stop(manifest.id)
+      }
+    })
+  }
+
+  test("preserves structured details for process runtime errors", async () => {
+    const manager = new PluginRuntimeManager()
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const manifest = compilePluginManifest(definition, {
+      generation: "runtime-error-details",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    await manager.start({ manifest, pluginDir: path.dirname(entryPath), entryPath })
+    try {
+      await expect(
+        manager.invoke({
+          pluginId: manifest.id,
+          handlerId: "operation:runtime.error",
+          value: {},
+          context: { scopeId: "log-scope", directory: import.meta.dir, actor: { type: "sdk" } },
+          pluginDir: path.dirname(entryPath),
+          manifest,
+        }),
+      ).rejects.toMatchObject({ code: "RUNTIME_ERROR", message: "fixture runtime failure" })
+      expect(manager.logs.list(manifest.id)).toEqual([
+        {
+          timestamp: expect.any(Number),
+          level: "error",
+          message: "fixture runtime failure",
+          details: {
+            name: "Error",
+            code: "FIXTURE_RUNTIME_ERROR",
+            reason: "fixture runtime failure",
+          },
+        },
+      ])
+    } finally {
+      await manager.stop(manifest.id)
+    }
+  })
+
   test("rejects in-process execution for installed plugins", async () => {
     const manager = new PluginRuntimeManager()
     const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")

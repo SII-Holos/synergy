@@ -2,9 +2,60 @@ import { describe, expect, test } from "bun:test"
 import {
   describeToolPartApply,
   planSessionSyncReload,
+  queueSessionSync,
   refreshSessionAfterPending,
+  sessionSyncWatchKey,
+  shouldRunSessionSync,
+  sessionSyncTargetSatisfiedBy,
   trackSessionSync,
 } from "../../src/context/session-sync-plan"
+
+describe("session sync watch key", () => {
+  const key = (input: { sessionID?: string; connected?: boolean; ready?: boolean; reconnectVersion?: number }) =>
+    sessionSyncWatchKey({
+      sessionID: input.sessionID ?? "ses_1",
+      connected: input.connected ?? true,
+      ready: input.ready ?? true,
+      reconnectVersion: input.reconnectVersion ?? 4,
+    })
+
+  test("includes connection, readiness, and recovered reconnect generation", () => {
+    const before = key({})
+    const after = key({ reconnectVersion: 5 })
+
+    expect(before).toEqual(["ses_1", true, true, 4])
+    expect(after).toEqual(["ses_1", true, true, 5])
+    expect(after).not.toEqual(before)
+  })
+
+  test("runs for an initially ready session", () => {
+    expect(shouldRunSessionSync(key({}))).toBe(true)
+  })
+
+  test("waits until the scope is connected and ready", () => {
+    expect(shouldRunSessionSync(key({ connected: false }))).toBe(false)
+    expect(shouldRunSessionSync(key({ ready: false }))).toBe(false)
+    expect(shouldRunSessionSync(key({ sessionID: "" }))).toBe(false)
+  })
+
+  test("does not run on raw reconnect before recovery completes", () => {
+    const disconnected = key({ connected: false })
+    const reconnected = key({ connected: true })
+
+    expect(shouldRunSessionSync(reconnected, disconnected)).toBe(false)
+  })
+
+  test("runs after the completed reconnect generation advances", () => {
+    const reconnected = key({ reconnectVersion: 4 })
+    const recovered = key({ reconnectVersion: 5 })
+
+    expect(shouldRunSessionSync(recovered, reconnected)).toBe(true)
+  })
+
+  test("runs when navigating to another ready session", () => {
+    expect(shouldRunSessionSync(key({ sessionID: "ses_2" }), key({ sessionID: "ses_1" }))).toBe(true)
+  })
+})
 
 describe("planSessionSyncReload (#509)", () => {
   test("short-circuits when session and messages are current", () => {
@@ -170,14 +221,72 @@ describe("refreshSessionAfterPending", () => {
   })
 })
 
+describe("queueSessionSync", () => {
+  const generation = (reconnectVersion: number) => ({ reconnectVersion, forceSession: true, forceMessages: true })
+
+  test("queues a new reconnect generation behind an older inflight request", async () => {
+    const inflight = new Map<string, import("../../src/context/session-sync-plan").TrackedSessionSync>()
+    let releaseOlder!: () => void
+    const calls: number[] = []
+    const older = queueSessionSync(inflight, "ses_1", generation(4), async () => {
+      calls.push(4)
+      await new Promise<void>((resolve) => {
+        releaseOlder = resolve
+      })
+    })
+    const newer = queueSessionSync(inflight, "ses_1", generation(5), async () => {
+      calls.push(5)
+    })
+    const duplicate = queueSessionSync(inflight, "ses_1", generation(5), async () => {
+      calls.push(50)
+    })
+
+    expect(calls).toEqual([4])
+    expect(duplicate).toBe(newer)
+    releaseOlder()
+    await older
+    await newer
+    expect(calls).toEqual([4, 5])
+  })
+
+  test("queues a stronger request within the same generation", async () => {
+    const inflight = new Map<string, import("../../src/context/session-sync-plan").TrackedSessionSync>()
+    let releaseMetadata!: () => void
+    const calls: string[] = []
+    const metadata = queueSessionSync(
+      inflight,
+      "ses_1",
+      { reconnectVersion: 2, forceSession: true, forceMessages: false },
+      async () => {
+        calls.push("metadata")
+        await new Promise<void>((resolve) => {
+          releaseMetadata = resolve
+        })
+      },
+    )
+    const snapshot = queueSessionSync(inflight, "ses_1", generation(2), async () => {
+      calls.push("snapshot")
+    })
+
+    expect(sessionSyncTargetSatisfiedBy(generation(2), generation(2))).toBe(true)
+    expect(calls).toEqual(["metadata"])
+    releaseMetadata()
+    await metadata
+    await snapshot
+    expect(calls).toEqual(["metadata", "snapshot"])
+  })
+})
+
 describe("trackSessionSync", () => {
   test("keeps the replacement request tracked until it settles", async () => {
-    const inflight = new Map<string, Promise<void>>()
+    const inflight = new Map<string, import("../../src/context/session-sync-plan").TrackedSessionSync>()
+    const target = { reconnectVersion: 1, forceSession: true, forceMessages: true }
     let releaseFirst!: () => void
     let releaseReplacement!: () => void
     const first = trackSessionSync(
       inflight,
       "ses_1",
+      target,
       new Promise<void>((resolve) => {
         releaseFirst = resolve
       }),
@@ -185,6 +294,7 @@ describe("trackSessionSync", () => {
     const replacement = trackSessionSync(
       inflight,
       "ses_1",
+      target,
       first.then(
         () =>
           new Promise<void>((resolve) => {
@@ -196,7 +306,7 @@ describe("trackSessionSync", () => {
     releaseFirst()
     await first
     await Promise.resolve()
-    expect(inflight.get("ses_1")).toBe(replacement)
+    expect(inflight.get("ses_1")?.request).toBe(replacement)
 
     releaseReplacement()
     await replacement
