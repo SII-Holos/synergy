@@ -66,9 +66,12 @@ async function buildMessageContext(
   provider: FeishuProvider,
   message: Record<string, unknown>,
   config = accountConfig(),
+  sender: Record<string, unknown> = { sender_id: { open_id: "ou_user" }, sender_type: "user" },
 ): Promise<{
   chatType: "dm" | "group"
   text: string
+  senderId: string
+  senderName?: string
   wasMentioned?: boolean
   quotedContent?: string
   attachments?: Array<{ path: string; filename?: string; placeholder?: string }>
@@ -83,6 +86,8 @@ async function buildMessageContext(
       ): Promise<{
         chatType: "dm" | "group"
         text: string
+        senderId: string
+        senderName?: string
         wasMentioned?: boolean
         quotedContent?: string
         attachments?: Array<{ path: string; filename?: string; placeholder?: string }>
@@ -90,13 +95,66 @@ async function buildMessageContext(
     }
   ).buildMessageContext("acct_test", config, channelConfig(), {
     message,
-    sender: { sender_id: { open_id: "ou_user" }, sender_type: "user" },
+    sender,
   })
 }
 
 async function cleanupContextAttachments(context: { attachments?: Array<{ path: string }> }): Promise<void> {
   await Promise.all(context.attachments?.map((attachment) => fs.unlink(attachment.path)) ?? [])
 }
+
+describe("Feishu sender identity", () => {
+  test("falls back to senderId when sender name lookup fails and optional sender fields are null", async () => {
+    globalThis.fetch = (async (input) => {
+      const url = String(input)
+      if (url.includes("/contact/v3/users/ou_sender")) {
+        return new Response(JSON.stringify({ code: 41050, msg: "no user authority error" }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    }) as typeof fetch
+
+    const context = await buildMessageContext(
+      providerWithAccount(),
+      {
+        message_id: "msg_sender",
+        chat_id: "chat_test",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text: "hello" }),
+      },
+      accountConfig({ resolveSenderNames: true }),
+      { sender_id: { open_id: "ou_sender", user_id: null }, sender_type: "user" },
+    )
+
+    expect(context).toMatchObject({ senderId: "ou_sender", senderName: "ou_sender" })
+  })
+
+  test("uses alternate stable sender identifiers when open_id is unavailable", async () => {
+    const message = {
+      message_id: "msg_sender",
+      chat_id: "chat_test",
+      chat_type: "p2p",
+      message_type: "text",
+      content: JSON.stringify({ text: "hello" }),
+    }
+
+    const userContext = await buildMessageContext(providerWithAccount(), message, accountConfig(), {
+      sender_id: { user_id: "user_sender" },
+      sender_type: "user",
+    })
+    const unionContext = await buildMessageContext(
+      providerWithAccount(),
+      { ...message, message_id: "msg_union_sender" },
+      accountConfig(),
+      { sender_id: { union_id: "on_sender", user_id: "user_sender" }, sender_type: "user" },
+    )
+
+    expect(userContext).toMatchObject({ senderId: "user_sender", senderName: "user_sender" })
+    expect(unionContext).toMatchObject({ senderId: "on_sender", senderName: "on_sender" })
+  })
+})
 
 describe("Feishu bot identity resolution", () => {
   test("resolves and caches the bot open_id before filtering required group mentions", async () => {

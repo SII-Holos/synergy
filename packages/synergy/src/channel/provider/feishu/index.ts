@@ -731,7 +731,8 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       chatId: msg.chat_id,
       contentPreview: rawContent.slice(0, 800),
     })
-    const senderId = sender?.sender_id?.open_id || "unknown"
+    const senderId =
+      sender?.sender_id?.open_id || sender?.sender_id?.union_id || sender?.sender_id?.user_id || "unknown"
 
     let text = parseMessageContent(rawContent, messageType)
     if (TEXT_MESSAGE_TYPES.has(messageType)) {
@@ -819,7 +820,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       chatType: filterResult.isGroup ? "group" : "dm",
       chatName,
       senderId,
-      senderName: senderName ?? sender?.sender_id?.user_id,
+      senderName: senderName ?? senderId,
       text,
       messageId: msg.message_id || "",
       timestamp: Number(msg.create_time) || Date.now(),
