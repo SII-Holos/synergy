@@ -134,7 +134,7 @@ Workspace transitions update session state; they do not create a new Scope merel
 - project file watching and file services
 - VCS state
 - the listener that records project initialization after the built-in init command
-- lifecycle listeners that rebind services owned by an active global subsystem, including Scope-local Channel question and outbound bridges for connected accounts
+- startup listeners that rebind services owned by an active global subsystem before recovery can publish Scope-local events, including Channel question and outbound bridges for connected accounts
 
 Home does not start a second project runtime because its installation-wide services are owned by `GlobalRuntime`.
 
@@ -145,7 +145,7 @@ Scope-local state uses `ScopedState`, keyed by Scope ID. Disposing a Scope runti
 3. publishes `scope.runtime.disposed`, and
 4. causes subscribed clients to resynchronize that Scope if they still display it.
 
-An active Channel connection keeps its account-to-Scope ownership in the home runtime. When a disposable project runtime starts or restarts, Channel synchronously rebinds its Scope-local bridges before `ScopeRuntime.ensure()` completes. This preserves continuation replies and interactive cards across project configuration reloads without moving Channel connection ownership into the project runtime.
+An active Channel connection keeps its account-to-Scope ownership in the home runtime. When a disposable project runtime starts or restarts, Channel synchronously rebinds its Scope-local bridges before startup recovery can terminalize pending messages or publish their events. This preserves continuation replies and interactive cards across project configuration reloads without moving Channel connection ownership into the project runtime.
 
 Failed asynchronous state initialization is evicted rather than cached permanently, so a later access can retry.
 

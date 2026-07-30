@@ -231,7 +231,7 @@ export namespace Channel {
     statuses: Map<string, Status>
     reconnects: Map<string, ReturnType<typeof setTimeout>>
     attempts: Map<string, ConnectionAttempt>
-    unsubscribeScopeRuntimeStarted: () => void
+    unsubscribeScopeRuntimeStarting: () => void
     projectRefreshes: Map<string, ProjectRefresh>
   }
 
@@ -297,7 +297,7 @@ export namespace Channel {
       const reconnects = new Map<string, ReturnType<typeof setTimeout>>()
       const attempts = new Map<string, ConnectionAttempt>()
       const projectRefreshes = new Map<string, ProjectRefresh>()
-      const unsubscribeScopeRuntimeStarted = ScopeRuntime.onStarted((scope) => {
+      const unsubscribeScopeRuntimeStarting = ScopeRuntime.onStarting((scope) => {
         const ownsScope = Array.from(connections.values()).some((connection) => connection.scope.id === scope.id)
         if (ownsScope) initializeScopeBridges()
       })
@@ -342,11 +342,11 @@ export namespace Channel {
         reconnects,
         attempts,
         projectRefreshes,
-        unsubscribeScopeRuntimeStarted,
+        unsubscribeScopeRuntimeStarting,
       }
     },
     async (s) => {
-      s.unsubscribeScopeRuntimeStarted()
+      s.unsubscribeScopeRuntimeStarting()
       for (const timer of s.reconnects.values()) clearTimeout(timer)
       await Promise.all(Array.from(s.attempts.values(), (attempt) => stopAttempt(attempt)))
       s.attempts.clear()

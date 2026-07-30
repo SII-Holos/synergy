@@ -170,7 +170,7 @@ describe("Channel account project scope", () => {
       await ScopeContext.provide({ scope: Scope.home(), fn: () => Channel.stopAll() })
     }
   })
-  test("delivers async channel output after the resolved account Scope runtime restarts", async () => {
+  test("delivers recovered pending channel output while the resolved account Scope runtime restarts", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
     const type = `project-outbound-${crypto.randomUUID()}`
@@ -229,9 +229,6 @@ describe("Channel account project scope", () => {
       while (!connected && Date.now() < connectionDeadline) await Bun.sleep(5)
       expect(connected).toBe(true)
 
-      await ScopeRuntime.dispose(scope.id)
-      await ScopeRuntime.ensure(scope)
-
       await ScopeContext.provide({
         scope,
         fn: async () => {
@@ -239,10 +236,22 @@ describe("Channel account project scope", () => {
             scope,
             endpoint: SessionEndpoint.fromChannel({ type, accountId, chatId }),
           })
+          const rootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: rootID,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+            isRoot: true,
+            rootID,
+            sessionID: session.id,
+          })
           const assistant = (await Session.updateMessage({
             id: Identifier.ascending("message"),
             role: "assistant",
-            parentID: Identifier.ascending("message"),
+            parentID: rootID,
+            rootID,
             mode: "synergy",
             agent: "synergy",
             path: { cwd: scope.directory, root: scope.directory },
@@ -263,15 +272,16 @@ describe("Channel account project scope", () => {
             messageID: assistant.id,
             sessionID: session.id,
             type: "text",
-            text: "Background work finished",
+            text: "Interrupted background work",
           })
-          await Session.updateMessage({
-            ...assistant,
-            finish: "stop",
-            time: { ...assistant.time, completed: Date.now() },
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
           })
         },
       })
+
+      await ScopeRuntime.dispose(scope.id)
+      await ScopeRuntime.ensure(scope)
 
       const deliveryDeadline = Date.now() + 1_000
       while (replies.length === 0 && Date.now() < deliveryDeadline) await Bun.sleep(5)
