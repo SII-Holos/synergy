@@ -26,6 +26,11 @@ export namespace LatticeRunService {
     goal?: string
   }
 
+  export type EnableOutcome = {
+    run: LatticeTypes.Run
+    created: boolean
+  }
+
   type DirectReason = "enable" | "resume" | "action" | "note_change"
 
   async function reconcileDirect(scopeID: string, sessionID: string, reason: DirectReason): Promise<void> {
@@ -307,23 +312,32 @@ export namespace LatticeRunService {
   }
 
   export async function enable(input: EnableInput): Promise<LatticeTypes.Run> {
+    return (await enableForProjection(input)).run
+  }
+
+  /** @internal Reports whether this call created the Run that needs projection. */
+  export async function enableForProjection(input: EnableInput): Promise<EnableOutcome> {
     const scopeID = ScopeContext.current.scope.id
     const session = await currentScopeSession(input.sessionID)
     using _ = await LatticeLock.write(scopeID, input.sessionID)
-    const existing = await LatticeStore.getOrUndefined(scopeID, input.sessionID)
+    let existing = await LatticeStore.getOrUndefined(scopeID, input.sessionID)
 
     if (existing?.status === "active") {
-      return LatticeStore.updateByRunID(scopeID, existing.id, (draft) => {
+      const run = await LatticeStore.updateByRunID(scopeID, existing.id, (draft) => {
         draft.mode = input.mode
         if (input.maxModelCalls !== undefined) draft.maxModelCalls = input.maxModelCalls
       })
+      return { run, created: false }
     }
 
     if (existing?.status === "paused") {
-      throw new LatticeError.StateConflict({
-        state: existing.state,
-        reason: "A paused Lattice Run requires explicit resume; workflow configuration cannot advance or replace it.",
-      })
+      if (existing.statusReason !== "user_exit" || !isPristineRun(existing)) {
+        throw new LatticeError.StateConflict({
+          state: existing.state,
+          reason: "A paused Lattice Run requires explicit resume; workflow configuration cannot advance or replace it.",
+        })
+      }
+      existing = await cancelRunUnderLock(scopeID, existing)
     }
 
     await assertNoForeignLoop(session)
@@ -333,24 +347,17 @@ export namespace LatticeRunService {
     if (existing && LatticeTypes.isTerminalRun(existing.status)) {
       LatticeModelCalls.clear(input.sessionID)
     }
-    let run = await LatticeStore.create({
+    const run = await LatticeStore.create({
       sessionID: input.sessionID,
       mode: input.mode,
       maxModelCalls: input.maxModelCalls,
       goal: input.goal,
+      promptOnCreate: Boolean(input.goal?.trim()),
     })
-
-    if (input.goal?.trim()) {
-      run = await LatticeStore.updateByRunID(scopeID, run.id, (draft) =>
-        LatticeMachine.setPromptEffect(draft, { promptType: "state_entry" }),
-      )
-    }
-    return run
+    return { run, created: true }
   }
 
-  async function pauseRun(run: LatticeTypes.Run, reason: string): Promise<LatticeTypes.Run> {
-    const scopeID = ScopeContext.current.scope.id
-    using _ = await LatticeLock.write(scopeID, run.sessionID)
+  async function pauseRunUnderLock(scopeID: string, run: LatticeTypes.Run, reason: string): Promise<LatticeTypes.Run> {
     await LatticeModelCalls.flush(scopeID, run.sessionID)
     let paused = await LatticeStore.updateByRunID(scopeID, run.id, (draft) => LatticeMachine.pause(draft, reason))
 
@@ -380,18 +387,60 @@ export namespace LatticeRunService {
 
   export async function pause(runID: string): Promise<LatticeTypes.Run> {
     const scopeID = ScopeContext.current.scope.id
+    const snapshot = await LatticeStore.getByRunID(scopeID, runID)
+    if (!snapshot) throw new LatticeError.NotFound({ runID })
+    using _ = await LatticeLock.write(scopeID, snapshot.sessionID)
     const run = await LatticeStore.getByRunID(scopeID, runID)
     if (!run) throw new LatticeError.NotFound({ runID })
     await assertCurrentRun(scopeID, run)
-    return pauseRun(run, "user_paused")
+    return pauseRunUnderLock(scopeID, run, "user_paused")
   }
 
-  /** Pause the current Run before SessionWorkflowService clears its projection. */
+  function isPristineRun(run: LatticeTypes.Run): boolean {
+    return (
+      run.state === "clarifying" &&
+      run.pathwayRevision === 0 &&
+      run.modelCallCount + LatticeModelCalls.peek(run.sessionID) === 0 &&
+      run.pathway.length === 0 &&
+      run.currentStepID === undefined &&
+      run.pendingAction === undefined &&
+      run.requirements === undefined
+    )
+  }
+
+  async function cancelRunUnderLock(scopeID: string, run: LatticeTypes.Run): Promise<LatticeTypes.Run> {
+    await LatticeModelCalls.flush(scopeID, run.sessionID)
+    let cancelled = await LatticeStore.updateByRunID(scopeID, run.id, (draft) => LatticeMachine.cancel(draft))
+    const currentAfterPersistence = await LatticeStore.getOrUndefined(scopeID, run.sessionID)
+    if (currentAfterPersistence?.id === run.id) await SessionAbort.abort(run.sessionID)
+    await removeRunInbox(cancelled)
+    await cancelRunLoops(scopeID, cancelled, "Lattice Run cancelled")
+    cancelled = await completeCreateCleanupEffect(scopeID, cancelled)
+    await appendLifecycleEvent(scopeID, cancelled, "run_cancelled", "Lattice Run cancelled")
+    return cancelled
+  }
+
+  /** Disable the current Run before SessionWorkflowService clears its projection. */
   export async function disable(sessionID: string): Promise<LatticeTypes.Run | undefined> {
     const scopeID = ScopeContext.current.scope.id
+    using _ = await LatticeLock.write(scopeID, sessionID)
     const run = await LatticeStore.getOrUndefined(scopeID, sessionID)
     if (!run || LatticeTypes.isTerminalRun(run.status)) return run
-    return pauseRun(run, "user_exit")
+    if (isPristineRun(run)) return cancelRunUnderLock(scopeID, run)
+    return pauseRunUnderLock(scopeID, run, "user_exit")
+  }
+
+  /** Cancel only the exact current pristine Run whose workflow projection failed. */
+  export async function cancelUnprojected(runID: string): Promise<LatticeTypes.Run | undefined> {
+    const scopeID = ScopeContext.current.scope.id
+    const snapshot = await LatticeStore.getByRunID(scopeID, runID)
+    if (!snapshot) return undefined
+    using _ = await LatticeLock.write(scopeID, snapshot.sessionID)
+    const current = await LatticeStore.getOrUndefined(scopeID, snapshot.sessionID)
+    if (current?.id !== runID) return undefined
+    const run = await LatticeStore.getByRunID(scopeID, runID)
+    if (!run || run.status !== "active" || !isPristineRun(run)) return undefined
+    return cancelRunUnderLock(scopeID, run)
   }
 
   function actionMatchesState(action: LatticeTypes.PendingAction, state: LatticeTypes.State): boolean {
@@ -614,14 +663,7 @@ export namespace LatticeRunService {
             reason: `Lattice Run ${run.id} is historical; current Run is ${current?.id ?? "missing"}.`,
           })
         }
-        await LatticeModelCalls.flush(scopeID, run.sessionID)
-        cancelled = await LatticeStore.updateByRunID(scopeID, run.id, (draft) => LatticeMachine.cancel(draft))
-        const currentAfterPersistence = await LatticeStore.getOrUndefined(scopeID, run.sessionID)
-        if (currentAfterPersistence?.id === run.id) await SessionAbort.abort(run.sessionID)
-        await removeRunInbox(cancelled)
-        await cancelRunLoops(scopeID, cancelled, "Lattice Run cancelled")
-        cancelled = await completeCreateCleanupEffect(scopeID, cancelled)
-        await appendLifecycleEvent(scopeID, cancelled, "run_cancelled", "Lattice Run cancelled")
+        cancelled = await cancelRunUnderLock(scopeID, run)
       }
     }
     const { SessionWorkflowService } = await import("../session/workflow")
