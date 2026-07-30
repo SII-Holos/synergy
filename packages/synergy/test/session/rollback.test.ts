@@ -1,5 +1,5 @@
 import { $, sleep } from "bun"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import path from "path"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
@@ -361,7 +361,7 @@ describe("rollback acknowledgment", () => {
     })
   })
 
-  test("concurrent session metadata update preserves rollback acknowledgment", async () => {
+  test("concurrent session metadata update cannot overwrite rollback acknowledgment", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
     await ScopeContext.provide({
@@ -373,17 +373,67 @@ describe("rollback acknowledgment", () => {
           sessionID: session.id,
           numTurns: 1,
         })) as SessionHistory.RollbackEvent
-
-        let acknowledgment: Promise<Session.RollbackAck> | undefined
-        await Session.update(session.id, (draft) => {
-          draft.title = "Updated title"
-          acknowledgment = Session.acknowledgeRollback(session.id, rollback.id)
+        const infoPath = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id))
+        const metadataPersisted = Promise.withResolvers<void>()
+        const releaseMetadataUpdate = Promise.withResolvers<void>()
+        const originalUpdate = Storage.update
+        let pauseNextInfoUpdate = true
+        using _update = spyOn(Storage, "update").mockImplementation(async (key, editor, options) => {
+          const result = await originalUpdate(key, editor, options)
+          if (pauseNextInfoUpdate && key.join("/") === infoPath.join("/")) {
+            pauseNextInfoUpdate = false
+            metadataPersisted.resolve()
+            await releaseMetadataUpdate.promise
+          }
+          return result
         })
-        await acknowledgment
+
+        const metadataUpdate = Session.update(session.id, (draft) => {
+          draft.title = "Updated title"
+        })
+        await metadataPersisted.promise
+        const acknowledgment = await Session.acknowledgeRollback(session.id, rollback.id)
+        releaseMetadataUpdate.resolve()
+        await metadataUpdate
 
         const info = await Session.get(session.id)
         expect(info.title).toBe("Updated title")
-        expect(info.rollbackAck?.rollbackID).toBe(rollback.id)
+        expect(info.rollbackAck).toEqual(acknowledgment)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("acknowledges the canonical rollback when the stored projection is stale", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+        await writeTurn(session.id, tmp.path, "third", "three")
+        const infoPath = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id))
+        const firstRollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+        const firstProjection = (await Storage.read<Session.Info>(infoPath)).history
+        const secondRollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+        await Storage.update<Session.Info>(infoPath, (draft) => {
+          draft.history = firstProjection
+        })
+
+        expect(firstProjection?.rollback?.id).toBe(firstRollback.id)
+        expect((await Session.get(session.id)).history?.rollback?.id).toBe(secondRollback.id)
+        const acknowledgment = await Session.acknowledgeRollback(session.id, secondRollback.id)
+        expect(acknowledgment.rollbackID).toBe(secondRollback.id)
+        expect((await Storage.read<Session.Info>(infoPath)).rollbackAck).toEqual(acknowledgment)
 
         await Session.remove(session.id)
       },

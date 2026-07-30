@@ -661,27 +661,23 @@ export namespace Session {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
     const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
-    let conflict: { rollbackID: string; currentRollbackID?: string } | undefined
+    const currentRollbackID = (await SessionHistory.storedInfo(id))?.rollback?.id
+    if (currentRollbackID !== rollbackID) {
+      throw new RollbackAckConflictError({
+        message: currentRollbackID
+          ? "Only the current rollback can be acknowledged."
+          : "No active rollback can be acknowledged.",
+        rollbackID,
+        currentRollbackID,
+      })
+    }
+
     let changed = false
     const result = await Storage.update<Info>(key, (draft) => {
-      const currentRollbackID = draft.history?.rollback?.id
-      if (currentRollbackID !== rollbackID) {
-        conflict = { rollbackID, currentRollbackID }
-        return
-      }
       if (draft.rollbackAck?.rollbackID === rollbackID) return
       draft.rollbackAck = { rollbackID, acknowledgedAt: Date.now() }
       changed = true
     })
-    if (conflict) {
-      throw new RollbackAckConflictError({
-        message: conflict.currentRollbackID
-          ? "Only the current rollback can be acknowledged."
-          : "No active rollback can be acknowledged.",
-        rollbackID: conflict.rollbackID,
-        currentRollbackID: conflict.currentRollbackID,
-      })
-    }
     const rollbackAck = result.rollbackAck
     if (!rollbackAck) {
       throw new RollbackAckConflictError({
@@ -779,10 +775,9 @@ export namespace Session {
       (draft) => {
         editor(draft)
         draft.time.updated = Date.now()
+        delete draft.working
       },
     )
-
-    await Storage.write(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)), withoutRuntimeInfo(result))
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
     if (before.parentID && before.parentID !== result.parentID) {
