@@ -37,10 +37,13 @@ describe("Feishu streaming lifecycle", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const originalFetch = globalThis.fetch
+        let persistedBeforeSend: unknown
+        const key = StoragePath.channelFeishuStreamingCard("acct_test", "session_test", "card_persisted")
         globalThis.fetch = (async (input) => {
           const url = String(input)
           if (url.endsWith("/cardkit/v1/cards")) return response({ data: { card_id: "card_persisted" } })
           if (url.endsWith("/im/v1/messages/message_root/reply")) {
+            persistedBeforeSend = await Storage.read(key).catch(() => undefined)
             return response({ data: { message_id: "message_card" } })
           }
           return response()
@@ -50,14 +53,55 @@ describe("Feishu streaming lifecycle", () => {
           const card = createCard({ accountId: "acct_test", sessionID: "session_test" })
           await card.start()
 
-          expect(await Storage.read(StoragePath.channelFeishuStreamingCard("acct_test", "session_test"))).toMatchObject(
-            { version: 1, cardId: "card_persisted" },
-          )
+          expect(persistedBeforeSend).toMatchObject({ version: 1, cardId: "card_persisted" })
+          expect(await Storage.read(key)).toMatchObject({
+            version: 1,
+            cardId: "card_persisted",
+            messageId: "message_card",
+          })
 
           await card.close("final answer")
-          await expect(
-            Storage.read(StoragePath.channelFeishuStreamingCard("acct_test", "session_test")),
-          ).rejects.toBeInstanceOf(Storage.NotFoundError)
+          await expect(Storage.read(key)).rejects.toBeInstanceOf(Storage.NotFoundError)
+        } finally {
+          globalThis.fetch = originalFetch
+        }
+      },
+    })
+  })
+
+  test("keeps unresolved orphan cards distinct from newer cards in the same session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const oldKey = StoragePath.channelFeishuStreamingCard("acct_multiple", "session_test", "card_old")
+        const newKey = StoragePath.channelFeishuStreamingCard("acct_multiple", "session_test", "card_new")
+        await FeishuStreamingState.persist({
+          accountId: "acct_multiple",
+          sessionID: "session_test",
+          cardId: "card_old",
+          messageId: "message_old",
+        })
+        const originalFetch = globalThis.fetch
+        globalThis.fetch = (async (input) => {
+          const url = String(input)
+          if (url.endsWith("/cardkit/v1/cards")) return response({ data: { card_id: "card_new" } })
+          if (url.endsWith("/im/v1/messages/message_root/reply")) {
+            return response({ data: { message_id: "message_new" } })
+          }
+          return response()
+        }) as typeof fetch
+
+        try {
+          const card = createCard({ accountId: "acct_multiple", sessionID: "session_test" })
+          await card.start()
+
+          expect(await Storage.read(oldKey)).toMatchObject({ cardId: "card_old" })
+          expect(await Storage.read(newKey)).toMatchObject({ cardId: "card_new" })
+
+          await card.close("final answer")
+          expect(await Storage.read(oldKey)).toMatchObject({ cardId: "card_old" })
+          await expect(Storage.read(newKey)).rejects.toBeInstanceOf(Storage.NotFoundError)
         } finally {
           globalThis.fetch = originalFetch
         }
@@ -70,7 +114,7 @@ describe("Feishu streaming lifecycle", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        await Storage.write(StoragePath.channelFeishuStreamingCard("acct_test", "session_test"), {
+        await Storage.write(StoragePath.channelFeishuStreamingCard("acct_test", "session_test", "card_orphaned"), {
           version: 1,
           cardId: "card_orphaned",
           messageId: "message_card",
@@ -93,7 +137,7 @@ describe("Feishu streaming lifecycle", () => {
           ).toBe(1)
           expect(sequence).toBe(2_147_483_647)
           await expect(
-            Storage.read(StoragePath.channelFeishuStreamingCard("acct_test", "session_test")),
+            Storage.read(StoragePath.channelFeishuStreamingCard("acct_test", "session_test", "card_orphaned")),
           ).rejects.toBeInstanceOf(Storage.NotFoundError)
         } finally {
           globalThis.fetch = originalFetch
@@ -107,7 +151,7 @@ describe("Feishu streaming lifecycle", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const key = StoragePath.channelFeishuStreamingCard("acct_test", "session_test")
+        const key = StoragePath.channelFeishuStreamingCard("acct_test", "session_test", "card_retry_later")
         await Storage.write(key, {
           version: 1,
           cardId: "card_retry_later",

@@ -285,6 +285,12 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     const cardId = createResult.data?.card_id
     if (!cardId) throw new Error("Failed to create streaming card: no card_id returned")
 
+    if (this.opts.persistence) {
+      await FeishuStreamingState.persist({
+        ...this.opts.persistence,
+        cardId,
+      })
+    }
     const cardContent = JSON.stringify({ type: "card", data: { card_id: cardId } })
     const messageId = await this.sendCardMessage(token, cardContent)
     if (this.opts.persistence) {
@@ -560,8 +566,8 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
   }
 
   private async removePersistedState(): Promise<void> {
-    if (!this.opts.persistence) return
-    await FeishuStreamingState.remove(this.opts.persistence).catch((error) =>
+    if (!this.opts.persistence || !this.state) return
+    await FeishuStreamingState.remove({ ...this.opts.persistence, cardId: this.state.cardId }).catch((error) =>
       log.warn("failed to clear streaming card state", { cardId: this.state?.cardId, error }),
     )
   }

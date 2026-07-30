@@ -12,7 +12,7 @@ const Record = z
   .object({
     version: z.literal(1),
     cardId: z.string().min(1),
-    messageId: z.string().min(1),
+    messageId: z.string().min(1).optional(),
     startedAt: z.number(),
   })
   .strict()
@@ -24,9 +24,9 @@ export namespace FeishuStreamingState {
     accountId: string
     sessionID: string
     cardId: string
-    messageId: string
+    messageId?: string
   }): Promise<void> {
-    await Storage.write(StoragePath.channelFeishuStreamingCard(input.accountId, input.sessionID), {
+    await Storage.write(StoragePath.channelFeishuStreamingCard(input.accountId, input.sessionID, input.cardId), {
       version: 1,
       cardId: input.cardId,
       messageId: input.messageId,
@@ -34,8 +34,8 @@ export namespace FeishuStreamingState {
     } satisfies Record)
   }
 
-  export async function remove(input: { accountId: string; sessionID: string }): Promise<void> {
-    await Storage.remove(StoragePath.channelFeishuStreamingCard(input.accountId, input.sessionID))
+  export async function remove(input: { accountId: string; sessionID: string; cardId: string }): Promise<void> {
+    await Storage.remove(StoragePath.channelFeishuStreamingCard(input.accountId, input.sessionID, input.cardId))
   }
 
   export async function reconcileAccount(input: {
@@ -44,11 +44,10 @@ export namespace FeishuStreamingState {
     getAccessToken: () => Promise<string>
   }): Promise<number> {
     const root = StoragePath.channelFeishuStreamingCardAccountRoot(input.accountId)
-    const entries = await Storage.scan(root)
+    const keys = await Storage.list(root)
     let reconciled = 0
 
-    for (const entry of entries) {
-      const key = [...root, entry]
+    for (const key of keys) {
       const stored = await Storage.read<unknown>(key).catch(() => undefined)
       const parsed = Record.safeParse(stored)
       if (!parsed.success) {

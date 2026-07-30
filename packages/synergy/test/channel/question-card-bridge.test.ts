@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { Channel } from "../../src/channel"
+import { QuestionCardRuntime } from "../../src/channel/question-card"
 import { QuestionCardBridge } from "../../src/channel/question-card-bridge"
 import type { Provider } from "../../src/channel/types"
 import { Question } from "../../src/question"
@@ -93,6 +94,21 @@ test("delivers continuation questions from durable channel root metadata after t
         time: { created: Date.now() },
         sessionID: session.id,
       } as MessageV2.Assistant)
+      const newerRootID = Identifier.ascending("message")
+      await Session.updateMessage({
+        id: newerRootID,
+        sessionID: session.id,
+        role: "user",
+        isRoot: true,
+        rootID: newerRootID,
+        agent: "synergy",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        time: { created: Date.now() + 1 },
+        metadata: {
+          channelReplyToMessageId: "om_newer_topic",
+          channelRequesterId: "ou_newer_requester",
+        },
+      } as MessageV2.User)
 
       const answer = Question.ask({
         sessionID: session.id,
@@ -108,8 +124,29 @@ test("delivers continuation questions from durable channel root metadata after t
         questions,
       })
 
-      await Question.reject(delivery.requestId)
-      await expect(answer).rejects.toBeInstanceOf(Question.RejectedError)
+      const callback = {
+        eventId: "evt_original_requester",
+        requestId: delivery.requestId,
+        messageId: "om_question_card",
+        chatId: "oc_chat",
+        requesterId: "ou_original_requester",
+        formValues: [{ name: "question_0", selected: ["0"] }],
+      }
+      expect(
+        await QuestionCardRuntime.acceptAction({
+          channelType: type,
+          accountId: "acct_test",
+          callback: { ...callback, requesterId: "ou_newer_requester" },
+        }),
+      ).toEqual({ status: "rejected" })
+      expect(
+        await QuestionCardRuntime.acceptAction({
+          channelType: type,
+          accountId: "acct_test",
+          callback,
+        }),
+      ).toEqual({ status: "accepted" })
+      expect(await answer).toEqual([["Staging"]])
       dispose()
     },
   })

@@ -2,7 +2,7 @@ import { Bus } from "@/bus"
 import { Question } from "@/question"
 import { ScopedState } from "@/scope/scoped-state"
 import { Session } from "@/session"
-import { SessionProgress } from "@/session/progress"
+import { MessageV2 } from "@/session/message-v2"
 import { Log } from "@/util/log"
 import { Channel } from "."
 import { QuestionCardRuntime } from "./question-card"
@@ -58,18 +58,26 @@ export namespace QuestionCardBridge {
       const provider = Channel.getProvider(channel.type)
       if (!provider?.sendQuestionCard) return
 
-      const messages = await Session.messages({ sessionID: request.sessionID })
-      const root = messages.findLast(
-        (message) => message.info.role === "user" && SessionProgress.isReplyRequiredUser(message.info),
-      )
+      const toolMessageID = request.tool?.messageID
+      if (!toolMessageID) {
+        await rejectWithoutBinding(request, channel.type)
+        return
+      }
+      const owner = await MessageV2.get({ sessionID: request.sessionID, messageID: toolMessageID })
+      if (owner.info.role !== "assistant") {
+        await rejectWithoutBinding(request, channel.type)
+        return
+      }
+      const rootID = owner.info.rootID ?? owner.info.parentID
+      const root = await MessageV2.get({ sessionID: request.sessionID, messageID: rootID })
+      if (root.info.role !== "user" || root.info.isRoot !== true) {
+        await rejectWithoutBinding(request, channel.type)
+        return
+      }
       const replyToMessageId = normalize(root?.info.metadata?.channelReplyToMessageId)
       const requesterId = normalize(root?.info.metadata?.channelRequesterId)
       if (!replyToMessageId || !requesterId) {
-        log.warn("question card skipped without durable channel binding", {
-          sessionID: request.sessionID,
-          channelType: channel.type,
-        })
-        await Question.reject(request.id)
+        await rejectWithoutBinding(request, channel.type)
         return
       }
 
@@ -86,6 +94,14 @@ export namespace QuestionCardBridge {
       log.warn("question card bridge delivery failed", { sessionID: request.sessionID, requestID: request.id, error })
       await Question.reject(request.id).catch(() => {})
     }
+  }
+
+  async function rejectWithoutBinding(request: Question.Request, channelType: string): Promise<void> {
+    log.warn("question card skipped without durable channel binding", {
+      sessionID: request.sessionID,
+      channelType,
+    })
+    await Question.reject(request.id)
   }
 
   function normalize(value: unknown): string | undefined {
