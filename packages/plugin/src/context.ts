@@ -3,7 +3,7 @@ import type { ToolResult } from "./tool.js"
 export type PluginActor =
   | { type: "ui" }
   | { type: "sdk"; subject?: string }
-  | { type: "agent"; agent: string; messageId: string; callId: string }
+  | { type: "agent"; agent: string; messageId: string; callId: string; userMessageId?: string }
   | { type: "cli" }
   | { type: "lifecycle" }
 
@@ -79,6 +79,8 @@ export const PluginHostServiceErrorCode = {
   AGENT_OUTPUT_TOO_LARGE: "PLUGIN_AGENT_OUTPUT_TOO_LARGE",
   AGENT_TIMEOUT: "PLUGIN_AGENT_TIMEOUT",
   AGENT_CANCELLED: "PLUGIN_AGENT_CANCELLED",
+  AGENT_CALL_CAPACITY: "PLUGIN_AGENT_CALL_CAPACITY",
+  AGENT_CALL_CONFLICT: "PLUGIN_AGENT_CALL_CONFLICT",
 } as const
 export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
 
@@ -239,6 +241,34 @@ export interface PluginToolHostService {
 
 export interface PluginAgentHostService {
   call(input: { agent: string; text: string; timeoutMs?: number; maxOutputChars?: number }): Promise<{ text: string }>
+  start(input: PluginAgentStartInput): Promise<PluginAgentStartResult>
+}
+
+export type PluginAgentStartInput = {
+  agent: string
+  text: string
+  correlationId: string
+  timeoutMs?: number
+  maxOutputChars?: number
+}
+
+export type PluginAgentStartResult = {
+  callId: string
+}
+
+export type PluginAgentCallAfterInput = {
+  call: {
+    callId: string
+    correlationId: string
+    status: "completed" | "error" | "cancelled"
+    text?: string
+    error?: {
+      code: string
+      message: string
+    }
+    startedAt: number
+    completedAt: number
+  }
 }
 
 export interface SessionUserMessageAfterInput {

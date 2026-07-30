@@ -105,3 +105,14 @@ export interface PluginMessageSurfaceContext extends PluginSurfaceContext {
     role: "user" | "assistant"
   }
 }
+
+export interface PluginToolMessageSurfaceContext extends PluginMessageSurfaceContext {
+  tool: {
+    name: string
+    input: Record<string, unknown>
+    metadata: Record<string, unknown>
+    title?: string
+    output?: string
+    status?: string
+  }
+}

@@ -1,6 +1,7 @@
 import z from "zod"
 import type {
   BlueprintAfterInput,
+  PluginAgentCallAfterInput,
   PluginCortexTaskAfterInput,
   PluginInvocationContext,
   SessionUserMessageAfterInput,
@@ -74,6 +75,7 @@ export type PluginSystemTransformInput = {
 }
 
 export interface PluginHookPointInputs {
+  "agent.call.after": PluginAgentCallAfterInput
   "cortex.task.after": PluginCortexTaskAfterInput
   "blueprint.after": BlueprintAfterInput
   "session.user-message.after": SessionUserMessageAfterInput
@@ -155,6 +157,7 @@ export interface NavigationItemContribution extends UISurfaceContributionBase<"u
 
 export interface MessageRendererContribution extends UISurfaceContributionBase<"ui.messageRenderer"> {
   messageType: string
+  tool?: string
 }
 
 export interface ComposerActionContribution extends UISurfaceContributionBase<"ui.composerAction"> {

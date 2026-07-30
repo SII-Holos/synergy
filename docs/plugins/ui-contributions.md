@@ -4,19 +4,19 @@ Synergy supports two UI paths: host-rendered declarations and user-approved trus
 
 ## Contribution Kinds
 
-| Kind                    | Purpose                                              |
-| ----------------------- | ---------------------------------------------------- |
-| `ui.workbenchPanel`     | side or bottom workbench surface                     |
-| `ui.navigationItem`     | sidebar or plugin page destination                   |
-| `ui.messageRenderer`    | renderer for a declared message type                 |
-| `ui.composerAction`     | component in a declared composer slot                |
-| `ui.settings`           | schema-driven settings and optional custom component |
-| `ui.theme`              | packaged structured JSON theme                       |
-| `ui.icon`               | packaged SVG icon                                    |
-| `ui.composerExtension`  | headless lifecycle for Composer document services    |
-| `ui.selectionExtension` | headless lifecycle for settled selected text         |
-| `ui.textAction`         | host-rendered action for the selected-text menu      |
-| `ui.messageSlot`        | additive content around canonical messages           |
+| Kind                    | Purpose                                                     |
+| ----------------------- | ----------------------------------------------------------- |
+| `ui.workbenchPanel`     | side or bottom workbench surface                            |
+| `ui.navigationItem`     | sidebar or plugin page destination                          |
+| `ui.messageRenderer`    | renderer for a declared message type or one owned Tool card |
+| `ui.composerAction`     | component in a declared composer slot                       |
+| `ui.settings`           | schema-driven settings and optional custom component        |
+| `ui.theme`              | packaged structured JSON theme                              |
+| `ui.icon`               | packaged SVG icon                                           |
+| `ui.composerExtension`  | headless lifecycle for Composer document services           |
+| `ui.selectionExtension` | headless lifecycle for settled selected text                |
+| `ui.textAction`         | host-rendered action for the selected-text menu             |
+| `ui.messageSlot`        | additive content around canonical messages                  |
 
 The host owns placement, lifecycle, Scope/Session binding, accessibility shell, and disposal. Each registration returns one disposer and is removed before reload.
 
@@ -87,7 +87,21 @@ Draft callbacks run in parallel after IME composition settles. Preflight callbac
 
 ## Message Slots
 
-`messageSlot()` adds a lazy trusted component at `message.before`, `message.after`, or `message.actions`, optionally filtered to user or assistant roles. `PluginMessageSurfaceContext` contains only message ID and role; a plugin with `session.read` queries any required content through its own operation. Slots cannot replace the native message renderer, and `ui.messageRenderer` remains reserved for declared custom message types.
+`messageSlot()` adds a lazy trusted component at `message.before`, `message.after`, or `message.actions`, optionally filtered to user or assistant roles. `PluginMessageSurfaceContext` contains only message ID and role; a plugin with `session.read` queries any required content through its own operation. Slots cannot replace the native message renderer.
+
+`messageRenderer()` may render a declared custom message type. For a plugin-owned Tool card, set `messageType: "tool"` and `tool` to the exact generated host tool name:
+
+```ts
+messageRenderer({
+  id: "correction-card",
+  label: "Correction",
+  messageType: "tool",
+  tool: "plugin__language-coach__record-correction",
+  component: { source: "./src/ui/correction-card.tsx" },
+})
+```
+
+The plugin must contribute that Tool itself; a renderer cannot replace another plugin's or a built-in Tool. The component receives `PluginToolMessageSurfaceContext`, which adds assistant message identity and the bounded Tool `name`, `input`, `metadata`, `title`, `output`, and `status`. It should render useful input/output even when a later query or event subscription is unavailable. Unregistered or failed renderers fall back to the normal host Tool card.
 
 ## Resource Tabs
 

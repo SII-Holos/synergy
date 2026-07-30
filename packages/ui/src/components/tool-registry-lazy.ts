@@ -16,6 +16,8 @@ export interface ToolProps {
   hideDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
+  sessionId?: string
+  messageId?: string
 }
 
 export type ToolComponent = Component<ToolProps>

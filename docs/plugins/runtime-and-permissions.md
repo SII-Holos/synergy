@@ -37,6 +37,8 @@ interface PluginInvocationContext {
 
 The context is request state; do not cache it as a current Scope. `runtime` is read-only provenance identity for the active generation. Runtime startup never receives a raw SDK client, server URL, access token, or Scope/Session identity.
 
+For a plugin Tool invoked by an Agent, `actor.messageId` is the assistant message that owns the Tool call and `actor.userMessageId`, when present, is the source user message resolved by the host. Plugins should use these IDs for provenance instead of asking the Agent to copy message identifiers into Tool input.
+
 External plugins use `process`. Trusted built-ins may use `inProcess`. The process boundary isolates crashes, timeouts, and cleanup; it is not an OS security sandbox and does not claim to restrict direct filesystem or network access by plugin code.
 
 External runtime generations are sampled by the host memory monitor. `pluginRuntimePolicy.limits.maxMemoryMb` sets the per-generation RSS limit and `memorySampleIntervalMs` sets the polling interval. A limit breach stops and restarts only the exact active registry generation, preserving its manifest and runtime limits, and records the measured recycle effect. A stale callback from a draining generation cannot stop or replace the current generation. Trusted `inProcess` plugins remain part of Control Plane memory and are not double-counted as external plugin processes.
@@ -76,7 +78,28 @@ Capabilities describe Synergy services the host may inject. A contribution's `re
 Host capability approval and runtime permission evaluation are separate gates. For delegated work, the manifest gate is `task.delegate`; the control-profile permission is `task`. Host Service failures preserve a stable optional `code` across process IPC so plugins can make typed recovery decisions.
 `context.session.get()` and `context.session.abort()` are limited to Sessions in the invocation Scope. Cross-Scope targets fail with `PLUGIN_SESSION_SCOPE_MISMATCH`; delegated start parents use the separate `PLUGIN_TASK_PARENT_SCOPE_MISMATCH` code.
 
-`context.agent.call()` is injected only for an executable contribution whose own `requires` includes the approved `agent.call` capability. It resolves the target through Synergy's Agent registry and uses the Agent's native model/model-role configuration. It always runs with no tools, durable Session, Cortex task, or transcript. The host rechecks the invoking contribution, ownership or an `agents` allowlist, and hard runtime/input/output bounds; plugins cannot select an arbitrary provider or model.
+`context.agent.call()` and `context.agent.start()` are injected only for an executable contribution whose own `requires` includes the approved `agent.call` capability. Both resolve the target through Synergy's Agent registry, use the Agent's native model/model-role configuration, and run with no tools, durable Session, Cortex task, or transcript. The host rechecks the invoking contribution, ownership or an `agents` allowlist, and hard runtime/input/output bounds; plugins cannot select an arbitrary provider or model.
+
+`call()` waits for `{ text }` and is cancelled with its invocation. `start()` accepts an explicit `correlationId`, returns `{ callId }` after the host accepts the work, and continues under a host-owned `AbortController` after the initiating handler returns. A terminal `completed`, `error`, or `cancelled` result is delivered only to the same plugin ID, generation, and Scope through the `agent.call.after` observer. Active identical correlations are idempotent; changed content conflicts. Each plugin may own at most four active lightweight calls, with no waiting queue. Generation replacement, disable, uninstall, and runtime stop cancel the generation's active calls. Inputs, prompts, outputs, and terminal results are memory-only and are not written to the Session store or ordinary plugin logs.
+
+```ts
+const { callId } = await context.agent!.start({
+  agent: "metadata_agent",
+  text: "Bounded transient input",
+  correlationId: "correction:018f…",
+  timeoutMs: 12_000,
+  maxOutputChars: 3_000,
+})
+
+hook({
+  id: "metadata-complete",
+  point: "agent.call.after",
+  requires: ["agent.call"],
+  async handler({ call }) {
+    // Validate call.correlationId and call.text before a short durable write.
+  },
+})
+```
 
 Approval is derived from generated capabilities and trusted UI. Changing the manifest or capability hash requires approval again. Approval never expands the source declaration.
 
@@ -125,6 +148,8 @@ Plugins contribute handlers to host-defined hook points. A plugin cannot define 
 Ordering is priority, plugin ID, then contribution ID. Each hook point owns input/output schema, timeout, and failure policy. A handler failure degrades that contribution. It propagates only when the point's failure policy requires it; a guard denial always propagates as a denial.
 
 `session.user-message.after` is a continuing observer dispatched asynchronously after an ordinary user message and all of its parts are persisted. Its input contains only `{ message: { id, text, createdAt } }`; Scope and Session identity come from `PluginInvocationContext`. It requires `session.read`, does not run for synthetic/internal messages, and cannot delay or roll back the Session loop.
+
+`agent.call.after` is a directed observer, not a broadcast hook. It requires `agent.call` and receives only the terminal metadata for a call started by the same plugin generation in the same Scope. Delivery failure does not recreate or persist the transient Agent input.
 
 ## Generation Changes and Lifecycle
 

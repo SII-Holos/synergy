@@ -12,6 +12,7 @@ import {
   hasUnsupportedSolidRuntimeImport,
   operation,
   messageSlot,
+  messageRenderer,
   hook,
   selectionExtension,
   settings,
@@ -130,6 +131,68 @@ describe("definePlugin", () => {
       kind: "tool",
       enabledWhen: { setting: "diagnosticsEnabled", equals: true },
     })
+  })
+
+  test("targets one host tool with a trusted message renderer", () => {
+    const plugin = definePlugin({
+      id: "correction-card",
+      version: "1.0.0",
+      description: "Targeted correction card",
+      contributions: [
+        tool({
+          id: "record",
+          description: "Record the correction",
+          input: z.object({}),
+          handler: async () => "ok",
+        }),
+        messageRenderer({
+          id: "correction",
+          label: "Correction",
+          messageType: "tool",
+          tool: "plugin__correction-card__record",
+          component: { source: "./src/correction.tsx" },
+        }),
+      ],
+    })
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-one",
+      ui: { entry: "ui/index.js", sha256: "ui-hash" },
+    })
+    expect(manifest.contributions).toEqual([
+      expect.objectContaining({
+        kind: "tool",
+        id: "record",
+      }),
+      expect.objectContaining({
+        kind: "ui.messageRenderer",
+        id: "correction",
+        messageType: "tool",
+        tool: "plugin__correction-card__record",
+        component: {
+          entry: "ui/index.js",
+          exportName: expect.any(String),
+        },
+      }),
+    ])
+  })
+
+  test("rejects a message renderer that tries to replace another tool", () => {
+    expect(() =>
+      definePlugin({
+        id: "correction-card",
+        version: "1.0.0",
+        description: "Unsafe targeted renderer",
+        contributions: [
+          messageRenderer({
+            id: "correction",
+            label: "Correction",
+            messageType: "tool",
+            tool: "plugin__another-plugin__record",
+            component: { source: "./src/correction.tsx" },
+          }),
+        ],
+      }),
+    ).toThrow("must target a Tool contributed by the same plugin")
   })
 
   test("compiles setting-gated MCP servers against a declared setting", () => {

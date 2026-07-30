@@ -8,6 +8,7 @@ import {
 import type { PluginActivationContext } from "./context.js"
 import type { PluginManifest, PluginManifestContribution } from "./manifest.js"
 import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
+import { PluginToolId } from "./ids.js"
 
 export interface PluginDefinitionInput {
   id: string
@@ -113,6 +114,16 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
       !operation.expose.includes("ui")
     ) {
       throw new Error(`Text action "${contribution.id}" must reference a UI-exposed command operation`)
+    }
+  }
+
+  for (const contribution of input.contributions) {
+    if (contribution.kind !== "ui.messageRenderer" || !contribution.tool) continue
+    const ownedTool = input.contributions.some(
+      (item) => item.kind === "tool" && PluginToolId.format(input.id, item.id) === contribution.tool,
+    )
+    if (!ownedTool) {
+      throw new Error(`Message renderer "${contribution.id}" must target a Tool contributed by the same plugin`)
     }
   }
 
@@ -241,6 +252,7 @@ function compileContribution(
         icon: contribution.icon,
         order: contribution.order,
         messageType: contribution.messageType,
+        tool: contribution.tool,
         component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
       }
     case "ui.composerAction":

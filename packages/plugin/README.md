@@ -62,7 +62,7 @@ Capabilities govern Host Services; they do not claim to restrict direct OS acces
 
 `task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
 
-`agent.call` exposes a bounded Sessionless Agent call only to an executable contribution that lists it in `requires`. By default a plugin may call only a hidden Agent owned by its active generation; capability constraints may allow additional Agent names and lower the host runtime/input/output ceilings. The call has no tools, Session history, or Cortex lifecycle.
+`agent.call` exposes bounded Sessionless Agent work only to an executable contribution that lists it in `requires`. `context.agent.call()` waits for text; `context.agent.start()` returns a call ID immediately and reports its memory-only terminal result to the same plugin generation and Scope through `agent.call.after`. By default a plugin may call only a hidden Agent owned by its active generation; capability constraints may allow additional Agent names and lower the host runtime/input/output ceilings. Neither path has tools, Session history, or Cortex lifecycle.
 
 ## Trusted UI
 

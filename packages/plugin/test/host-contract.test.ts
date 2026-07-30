@@ -55,6 +55,7 @@ describe("Plugin API 3 host services", () => {
 import {
   hook,
   type PluginInvocationContext,
+  type PluginAgentStartResult,
   type PluginHookPointInputs,
   type PluginTaskSnapshot,
   type PluginTaskStartInput,
@@ -63,6 +64,13 @@ import {
 } from "../../src/index.ts"
 
 async function useHostServices(context: PluginInvocationContext) {
+  const background: PluginAgentStartResult = await context.agent!.start({
+    agent: "metadata",
+    text: "Classify this correction",
+    correlationId: "correction:one",
+    timeoutMs: 1_000,
+    maxOutputChars: 500,
+  })
   const snapshot: PluginTaskSnapshot = await context.task!.run({
     subagent: "planner",
     description: "Plan the operation",
@@ -84,7 +92,7 @@ async function useHostServices(context: PluginInvocationContext) {
     output: shellResult.stdout,
     attachments: [attachment],
   }
-  return { snapshot, result, stderr: shellResult.stderr, exitCode: shellResult.exitCode }
+  return { background, snapshot, result, stderr: shellResult.stderr, exitCode: shellResult.exitCode }
 }
 
 async function replaceSurfaceSettings(settings: PluginSurfaceContext["settings"]) {
@@ -124,6 +132,20 @@ export const transform = hook({
   id: "system-context",
   point: "experimental.chat.system.transform",
   handler: transformHandler,
+})
+
+export const completion = hook({
+  id: "agent-completion",
+  point: "agent.call.after",
+  requires: ["agent.call"],
+  handler: async ({ call }) => {
+    const status: "completed" | "error" | "cancelled" = call.status
+    const correlationId: string = call.correlationId
+    const text: string | undefined = call.text
+    void status
+    void correlationId
+    void text
+  },
 })
 
 `,

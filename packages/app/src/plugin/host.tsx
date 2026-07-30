@@ -15,8 +15,10 @@ import type {
   PluginManifestContribution,
   PluginSelectionSurfaceContext,
   PluginMessageSurfaceContext,
+  PluginToolMessageSurfaceContext,
   PluginSurfaceContext,
 } from "@ericsanchezok/synergy-plugin"
+import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
 import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -32,6 +34,7 @@ import { registerComposerExtension, type ComposerExtensionProps } from "./regist
 import { registerIcon } from "./registries/icon-registry"
 import { registerNavigation, type NavigationContentProps } from "./registries/navigation-registry"
 import { registerPartRenderer } from "./registries/part-registry"
+import { registerPluginToolRenderer } from "./registries/tool-renderer-registry"
 import { registerSettingsSection } from "./registries/settings-registry"
 import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./registries/workbench-panel-registry"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -300,6 +303,31 @@ function registerPluginSurfaces(input: {
         )
       },
       "ui.messageRenderer": (item: Extract<PluginManifestContribution, { kind: "ui.messageRenderer" }>) => {
+        if (item.tool) {
+          const loader = componentLoader<ToolProps>(
+            item,
+            (props) => props.sessionId ?? currentSessionId(),
+            () => undefined,
+            (context, props) =>
+              ({
+                ...context,
+                message: {
+                  id: props.messageId ?? "",
+                  role: "assistant",
+                },
+                tool: {
+                  name: props.tool,
+                  input: props.input,
+                  metadata: props.metadata,
+                  title: props.title,
+                  output: props.output,
+                  status: props.status,
+                },
+              }) satisfies PluginToolMessageSurfaceContext,
+          )
+          if (loader) disposers.push(registerPluginToolRenderer(item.tool, loader as never))
+          return
+        }
         const loader = componentLoader<{ sessionId?: string }>(item, (props) => props.sessionId ?? currentSessionId())
         if (loader) disposers.push(registerPartRenderer(item.messageType, undefined, loader as never))
       },

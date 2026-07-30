@@ -146,6 +146,7 @@ const NavigationItemContribution = UIBase.extend({
 const MessageRendererContribution = UIBase.extend({
   kind: z.literal("ui.messageRenderer"),
   messageType: z.string().min(1),
+  tool: z.string().min(1).optional(),
 }).strict()
 
 const ComposerActionContribution = UIBase.extend({
