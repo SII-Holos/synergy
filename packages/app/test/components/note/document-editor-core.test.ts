@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { setupI18n } from "@lingui/core"
 import type { I18nContext } from "@lingui/solid"
 import { Editor } from "@tiptap/core"
+import { Fragment as TiptapFragment } from "@tiptap/pm/model"
+import { Fragment as ProseMirrorFragment } from "prosemirror-model"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { createDocumentEditorExtensions } from "../../../src/components/note/document-editor-core"
 
@@ -35,6 +37,10 @@ afterEach(() => {
 })
 
 describe("Note document editor", () => {
+  test("uses one ProseMirror model identity across direct and Tiptap imports", () => {
+    expect(TiptapFragment).toBe(ProseMirrorFragment)
+  })
+
   test("splits ordinary paragraph text when Enter is pressed", () => {
     const element = document.createElement("div")
     document.body.append(element)

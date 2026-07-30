@@ -39,6 +39,7 @@ export default defineConfig({
         new URL("./src/components/note/blockquote-extension.ts", import.meta.url),
       ),
     },
+    dedupe: ["prosemirror-model"],
   },
   server: {
     host: "0.0.0.0",

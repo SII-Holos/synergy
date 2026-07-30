@@ -76,6 +76,7 @@
         "mermaid": "11.13.0",
         "monaco-editor": "0.55.1",
         "pdfjs-dist": "catalog:",
+        "prosemirror-model": "1.25.10",
         "remeda": "catalog:",
         "shiki": "catalog:",
         "solid-chartjs": "1.3.11",
