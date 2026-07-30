@@ -8259,27 +8259,6 @@ export type EventChannelCommandExecuted = {
   }
 }
 
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "added" | "changed" | "deleted" | "renamed"
-    absolute?: string
-    oldPath?: string
-    oldAbsolute?: string
-    parent?: string
-    node?: unknown
-    resync?: boolean
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    branch?: string
-  }
-}
-
 export type EventChannelConnected = {
   type: "channel.connected"
   properties: {
@@ -8397,6 +8376,27 @@ export type EventCommandExecuted = {
   }
 }
 
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: unknown
+    resync?: boolean
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    branch?: string
+  }
+}
+
 export type EventPtyCreated = {
   type: "pty.created"
   properties: {
@@ -8500,8 +8500,6 @@ export type Event =
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
   | EventChannelCommandExecuted
-  | EventFileWatcherUpdated
-  | EventVcsBranchUpdated
   | EventChannelConnected
   | EventChannelDisconnected
   | EventChannelMessageReceived
@@ -8516,6 +8514,8 @@ export type Event =
   | EventCortexTasksUpdated
   | EventPluginEvent
   | EventCommandExecuted
+  | EventFileWatcherUpdated
+  | EventVcsBranchUpdated
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
@@ -9549,6 +9549,7 @@ export type GlobalNavRecentData = {
     parentOnly?: boolean
     includeArchived?: boolean
     category?: "project" | "home" | "channel" | "background" | "github"
+    channelType?: string
     search?: string
     limit?: number
     cursorLastActivityAt?: number

@@ -129,6 +129,32 @@ describe("SessionNav.buildNavIndex", () => {
     })
   })
 
+  test("skips session info with scope but missing required fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const goodSession = await Session.create({ title: "Good" })
+        const malformedID = Identifier.descending("session")
+        const badPath = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(malformedID))
+        await Storage.write(badPath, {
+          id: malformedID,
+          scope: { id: scope.id, directory: scope.directory },
+          title: "Missing time",
+        })
+
+        const index = await SessionNav.buildNavIndex(scope.id)
+        expect(index.entries.map((entry) => entry.id)).toContain(goodSession.id)
+        expect(index.entries.map((entry) => entry.id)).not.toContain(malformedID)
+
+        await Session.remove(goodSession.id)
+        await Storage.remove(badPath)
+      },
+    })
+  })
+
   test("is idempotent: calling twice produces identical output", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
