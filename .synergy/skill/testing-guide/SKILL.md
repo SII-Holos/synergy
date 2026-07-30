@@ -31,7 +31,11 @@ For localized UI behavior, use a real Lingui `I18nProvider` with minimal English
 
 Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. The preload-managed `SYNERGY_TEST_ROOT` contains temporary fixtures for process-level cleanup, so do not move fixtures back to unmanaged operating-system temp paths or delete them while Scope-owned asynchronous work may still reference them. Restore environment variables and singleton state in cleanup hooks. Honor abort signals and dispose processes, Browser pages, servers, and timers.
 
-Provider/model tests use the pinned `test/tool/fixtures/models-api.json` catalog. Update that fixture deliberately; never make deterministic tests depend on the live model catalog or real API keys.
+Provider/model tests rely on `test/preload.ts` to seed the model catalog. The preload writes the pinned `test/tool/fixtures/models-api.json` fixture to `cache/models.json` under `SYNERGY_TEST_HOME` so the runtime disk-cache path resolves deterministically, sets `MODELS_DEV_API_JSON` to that cached path so the build-time macro and direct macro tests resolve the same fixture, and sets `SYNERGY_DISABLE_MODELS_FETCH=true` to suppress background network refresh. Update the fixture deliberately; never make deterministic tests depend on the live model catalog or real API keys.
+
+Core binary builds also default to that pinned fixture. Test build behavior through `script/models-catalog.ts`: the selected catalog must satisfy the runtime schema and contain non-empty OpenAI, Anthropic, and Google providers before compilation. Ordinary local builds may use `MODELS_DEV_API_JSON` as an explicit override; release builds must force the repository-pinned snapshot so network and build-machine cache state cannot alter the artifact.
+
+Tests that exercise the cold-cache path — where no disk or memory cache exists — must spawn a fresh Bun subprocess with a clean isolated home directory. The Bun preloader populates process-global state for the test harness, so the existing process always has a warm cache. A cold-cache test strips `SYNERGY_TEST_HOME` and `MODELS_DEV_API_JSON` from the child environment, sets `SYNERGY_HOME` to a fresh temp directory, and asserts against the child process output.
 
 Use a fake or local boundary only where the external system is not the subject of the test. Do not add Jest/Vitest mocks to the Bun suite without an established package-specific reason.
 

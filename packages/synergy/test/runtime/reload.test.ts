@@ -323,6 +323,28 @@ describe("runtime.reload", () => {
     })
   })
 
+  test("global reload runs without ScopeContext and broadcasts to every client", async () => {
+    const providerReload = mock(async () => {})
+    const agentReload = mock(async () => {})
+    Provider.reload = providerReload
+    Agent.reload = agentReload
+    const events: Array<{ directory?: string; payload: any }> = []
+    GlobalBus.on("event", (event) => events.push(event))
+
+    const result = await RuntimeReload.reloadGlobal({ targets: ["provider"], reason: "background refresh" })
+
+    expect(providerReload).toHaveBeenCalledTimes(1)
+    expect(agentReload).toHaveBeenCalledTimes(1)
+    expect(result.success).toBe(true)
+    expect(result.failed).toEqual([])
+    expect(result.executed).toEqual(expect.arrayContaining(["provider", "agent"]))
+    expect(result.executed).not.toContain("config")
+    expect(result.cascaded).toEqual(["agent"])
+    const event = events.find((candidate) => candidate.payload?.type === RuntimeReload.Event.Reloaded.type)
+    expect(event?.directory).toBeUndefined()
+    expect(event?.payload.properties.executed).toEqual(expect.arrayContaining(["provider", "agent"]))
+  })
+
   test("config reload notifies plugin config hooks with changed fields", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
