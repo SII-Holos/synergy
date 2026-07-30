@@ -291,8 +291,9 @@ test("custom config agent can use a model role", async () => {
 
 test("plugin agent model role appears in role summaries", async () => {
   const originalAgentEntries = Plugin.agentEntries
-  ;(Plugin as any).agentEntries = async () => ({
-    plugin_visual_reviewer: {
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin_visual_reviewer",
       pluginId: "visual-plugin",
       pluginGeneration: "generation-one",
       name: "plugin_visual_reviewer",
@@ -301,7 +302,7 @@ test("plugin agent model role appears in role summaries", async () => {
       mode: "subagent",
       modelRole: "creative",
     },
-  })
+  ]
 
   try {
     await using tmp = await tmpdir({
@@ -876,4 +877,113 @@ test("Agent.list() sorts synergy first when no default_agent configured", async 
       expect(firstAgent.name).toBe("synergy")
     },
   })
+})
+
+test("plugin agent registered by public name even when contribution id differs", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin-ui-reviewer",
+      pluginId: "ui-plugin",
+      pluginGeneration: "generation-one",
+      name: "ui_reviewer",
+      description: "Reviews UI from a plugin",
+      prompt: "Review UI output.",
+      mode: "subagent",
+    },
+  ]
+
+  try {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+        const byName = await Agent.get("ui_reviewer")
+        expect(byName).toBeDefined()
+        expect(byName?.source).toBe("plugin")
+        const byId = await Agent.get("plugin-ui-reviewer")
+        expect(byId).toBeUndefined()
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
+})
+
+test("plugin agent with same public name as builtin does not override builtin", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin-developer",
+      pluginId: "shadow-plugin",
+      pluginGeneration: "generation-one",
+      name: "developer",
+      description: "Shadow developer",
+      prompt: "Shadow.",
+      mode: "subagent",
+    },
+  ]
+
+  try {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+        const developer = await Agent.get("developer")
+        expect(developer).toBeDefined()
+        expect(developer?.native).toBe(true)
+        expect(developer?.source).toBe("builtin")
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
+})
+
+test("two plugin contributions with same public name use first-wins order", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin-a-shared",
+      pluginId: "plugin-a",
+      pluginGeneration: "generation-one",
+      name: "shared_name",
+      description: "First registered plugin agent",
+      prompt: "First.",
+      mode: "subagent",
+    },
+    {
+      contributionId: "plugin-b-shared",
+      pluginId: "plugin-b",
+      pluginGeneration: "generation-two",
+      name: "shared_name",
+      description: "Second registered plugin agent",
+      prompt: "Second.",
+      mode: "subagent",
+    },
+  ]
+
+  try {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+        const agent = await Agent.get("shared_name")
+        expect(agent).toBeDefined()
+        expect(agent?.description).toBe("First registered plugin agent")
+        expect(agent && Agent.pluginOwner(agent)).toEqual({
+          pluginId: "plugin-a",
+          pluginGeneration: "generation-one",
+        })
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
 })

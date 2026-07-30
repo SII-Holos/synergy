@@ -12,7 +12,6 @@ import { createSynergyClient, type ControlProfileId, type SynergyClient } from "
 import { Server } from "../../server/server"
 import { runMigrations } from "../../migration"
 import { Provider } from "../../provider/provider"
-import { Agent } from "../../agent/agent"
 import { readPipedStdin } from "../stdin"
 
 const TOOL: Record<string, [string, string]> = {
@@ -54,6 +53,44 @@ async function createSendSession(sdk: SynergyClient, title?: string) {
   })
 }
 
+async function resolveSendSessionID(input: {
+  sdk: SynergyClient
+  continueLast?: boolean
+  sessionID?: string
+  title?: string
+  message: string
+}) {
+  if (input.continueLast) {
+    const result = await input.sdk.session.list()
+    const sessions = result.data?.data ?? []
+    return sessions.find((session) => !session.parentID)?.id
+  }
+  if (input.sessionID) return input.sessionID
+
+  const title =
+    input.title !== undefined
+      ? input.title === ""
+        ? input.message.slice(0, 50) + (input.message.length > 50 ? "..." : "")
+        : input.title
+      : undefined
+  const result = await createSendSession(input.sdk, title)
+  return result.data?.id
+}
+
+function errorMessage(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("data" in error)) return undefined
+  const data = error.data
+  if (!data || typeof data !== "object" || !("message" in data)) return undefined
+  return typeof data.message === "string" ? data.message : undefined
+}
+
+async function assertAttachedScope(sdk: SynergyClient, scopeID?: string) {
+  if (!scopeID) return
+  const result = await sdk.scope.current()
+  if (result.data) return
+  throw new Error(errorMessage(result.error) ?? `Scope not found: ${scopeID}`)
+}
+
 export const SendCommand = cmd({
   command: "send [message..]",
   describe: "send a message to synergy",
@@ -77,6 +114,10 @@ export const SendCommand = cmd({
       .option("session", {
         alias: ["s"],
         describe: "session id to continue",
+        type: "string",
+      })
+      .option("scope", {
+        describe: "registered scope id (defaults to the current directory, registering it when needed)",
         type: "string",
       })
 
@@ -227,15 +268,7 @@ export const SendCommand = cmd({
             const props = event.properties
             if (props.sessionID !== sessionID || !props.error) continue
             const error = props.error as Record<string, unknown>
-            let err = String(error.name)
-            if (
-              "data" in error &&
-              error.data &&
-              typeof error.data === "object" &&
-              "message" in (error.data as object)
-            ) {
-              err = String((error.data as Record<string, unknown>).message)
-            }
+            const err = errorMessage(error) ?? String(error.name)
             errorMsg = errorMsg ? errorMsg + EOL + err : err
             if (outputJsonEvent("error", { error: props.error })) continue
             UI.error(err)
@@ -269,7 +302,8 @@ export const SendCommand = cmd({
       // Validate agent if specified
       const resolvedAgent = await (async () => {
         if (!args.agent) return undefined
-        const agent = await Agent.get(args.agent)
+        const result = await sdk.app.agents({}, { throwOnError: true })
+        const agent = result.data.find((item) => item.name === args.agent)
         if (!agent) {
           UI.println(
             UI.Style.TEXT_WARNING_BOLD + "!",
@@ -314,80 +348,67 @@ export const SendCommand = cmd({
     }
 
     if (args.attach) {
-      await withScopeContext(directory, async () => {
-        const sdk = createSynergyClient({ baseUrl: args.attach, directory })
-
-        const sessionID = await (async () => {
-          if (args.continue) {
-            const result = await sdk.session.list()
-            const sessions = result.data?.data ?? []
-            return sessions.find((s) => !s.parentID)?.id
-          }
-          if (args.session) return args.session
-
-          const title =
-            args.title !== undefined
-              ? args.title === ""
-                ? message.slice(0, 50) + (message.length > 50 ? "..." : "")
-                : args.title
-              : undefined
-
-          const result = await createSendSession(sdk, title)
-          return result.data?.id
-        })()
-
-        if (!sessionID) {
-          UI.error("Session not found")
-          process.exit(1)
-        }
-
-        await execute(sdk, sessionID)
+      const sdk = createSynergyClient({
+        baseUrl: args.attach,
+        ...(args.scope ? { scopeID: args.scope } : { directory }),
       })
-      process.exit(0)
-    }
+      await assertAttachedScope(sdk, args.scope)
 
-    await withScopeContext(directory, async () => {
-      await runMigrations({ output: "silent" })
-      const server = Server.listen({ port: args.port ?? 0, hostname: "127.0.0.1" })
-      const sdk = createSynergyClient({ baseUrl: `http://${server.hostname}:${server.port}`, directory })
-
-      if (args.command) {
-        const exists = await Command.get(args.command)
-        if (!exists) {
-          server.stop()
-          UI.error(`Command "${args.command}" not found`)
-          process.exit(1)
-        }
-      }
-
-      const sessionID = await (async () => {
-        if (args.continue) {
-          const result = await sdk.session.list()
-          const sessions = result.data?.data ?? []
-          return sessions.find((s) => !s.parentID)?.id
-        }
-        if (args.session) return args.session
-
-        const title =
-          args.title !== undefined
-            ? args.title === ""
-              ? message.slice(0, 50) + (message.length > 50 ? "..." : "")
-              : args.title
-            : undefined
-
-        const result = await createSendSession(sdk, title)
-        return result.data?.id
-      })()
+      const sessionID = await resolveSendSessionID({
+        sdk,
+        continueLast: args.continue,
+        sessionID: args.session,
+        title: args.title,
+        message,
+      })
 
       if (!sessionID) {
-        server.stop()
         UI.error("Session not found")
         process.exit(1)
       }
 
       await execute(sdk, sessionID)
-      server.stop(true)
       process.exit(0)
-    })
+    }
+
+    await withScopeContext(
+      directory,
+      async () => {
+        await runMigrations({ output: "silent" })
+        const server = Server.listen({ port: args.port ?? 0, hostname: "127.0.0.1" })
+        const sdk = createSynergyClient({
+          baseUrl: `http://${server.hostname}:${server.port}`,
+          ...(args.scope ? { scopeID: args.scope } : { directory }),
+        })
+
+        if (args.command) {
+          const exists = await Command.get(args.command)
+          if (!exists) {
+            server.stop()
+            UI.error(`Command "${args.command}" not found`)
+            process.exit(1)
+          }
+        }
+
+        const sessionID = await resolveSendSessionID({
+          sdk,
+          continueLast: args.continue,
+          sessionID: args.session,
+          title: args.title,
+          message,
+        })
+
+        if (!sessionID) {
+          server.stop()
+          UI.error("Session not found")
+          process.exit(1)
+        }
+
+        await execute(sdk, sessionID)
+        server.stop(true)
+        process.exit(0)
+      },
+      args.scope,
+    )
   },
 })

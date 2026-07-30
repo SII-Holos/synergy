@@ -59,6 +59,7 @@ import { AgendaLogsTool } from "./agenda-logs"
 // import { AgoraAcceptTool } from "./agora-accept"
 // import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
+import { ResponseCardTool } from "./response-card"
 import { OpenAIImageGenTool } from "./openai-image-gen"
 import { OpenAIImageEditTool } from "./openai-image-edit"
 
@@ -402,6 +403,7 @@ export namespace ToolRegistry {
       //       AgoraAcceptTool,
       //       AgoraCommentTool,
       AttachTool,
+      ResponseCardTool,
       // 🔇 DiagramTool,  — 已注释，待重构
       RenderTool,
       EmailSendTool,

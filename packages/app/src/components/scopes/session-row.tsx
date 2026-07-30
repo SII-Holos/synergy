@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onCleanup } from "solid-js"
+import { createMemo, createSignal, For, Show, onCleanup } from "solid-js"
 import { useLocale } from "@/context/locale"
 import { AP } from "@/app-i18n"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -6,6 +6,8 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { sessionActionVisibility } from "@/components/session/session-actions"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 export interface SessionRowProps {
   session: Session
@@ -59,6 +61,8 @@ function StatusDot(props: SessionRowProps) {
 
 function ActionMenu(props: {
   isPinned: boolean
+  rename: boolean
+  archive: boolean
   onTogglePin: () => void
   onRename: () => void
   onArchive: () => void
@@ -93,22 +97,26 @@ function ActionMenu(props: {
             <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak-base" />
             {props.isPinned ? i18n._(AP.scopesSessionUnpin.id) : i18n._(AP.scopesSessionPin.id)}
           </button>
-          <button
-            type="button"
-            class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer text-left"
-            onClick={() => handleItemClick(props.onRename)}
-          >
-            <Icon name={getSemanticIcon("action.rename")} size="small" class="text-icon-weak-base" />
-            {i18n._(AP.scopesSessionRename.id)}
-          </button>
-          <button
-            type="button"
-            class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-diff-delete-base hover:bg-text-diff-delete-base/10 transition-colors cursor-pointer text-left"
-            onClick={() => handleItemClick(props.onArchive)}
-          >
-            <Icon name={getSemanticIcon("action.archive")} size="small" />
-            {i18n._(AP.scopesSessionArchive.id)}
-          </button>
+          <Show when={props.rename}>
+            <button
+              type="button"
+              class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer text-left"
+              onClick={() => handleItemClick(props.onRename)}
+            >
+              <Icon name={getSemanticIcon("action.rename")} size="small" class="text-icon-weak-base" />
+              {i18n._(AP.scopesSessionRename.id)}
+            </button>
+          </Show>
+          <Show when={props.archive}>
+            <button
+              type="button"
+              class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-diff-delete-base hover:bg-text-diff-delete-base/10 transition-colors cursor-pointer text-left"
+              onClick={() => handleItemClick(props.onArchive)}
+            >
+              <Icon name={getSemanticIcon("action.archive")} size="small" />
+              {i18n._(AP.scopesSessionArchive.id)}
+            </button>
+          </Show>
         </div>
       </Show>
     </div>
@@ -178,6 +186,12 @@ export function SessionRow(props: SessionRowProps) {
   const isPinned = () => props.session.pinned && props.session.pinned > 0
   const updatedAt = () => props.session.time.updated ?? props.session.time.created
   const lastExchangePreview = () => props.session.lastExchange?.assistant ?? props.session.lastExchange?.user
+  const actionVisibility = createMemo(() =>
+    sessionActionVisibility({
+      sessionID: props.session.id,
+      scopeKey: props.session.scope.type === "home" ? HOME_SCOPE_KEY : (props.session.scope.directory ?? ""),
+    }),
+  )
 
   const [renaming, setRenaming] = createSignal(false)
   const [renameValue, setRenameValue] = createSignal("")
@@ -291,6 +305,8 @@ export function SessionRow(props: SessionRowProps) {
         <div class="shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
           <ActionMenu
             isPinned={!!isPinned()}
+            rename={actionVisibility().rename}
+            archive={actionVisibility().archive}
             onTogglePin={props.onTogglePin}
             onRename={startRename}
             onArchive={props.onArchive}

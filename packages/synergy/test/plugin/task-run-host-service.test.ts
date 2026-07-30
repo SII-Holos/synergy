@@ -9,6 +9,8 @@ import {
   type PluginTaskSnapshot,
   type PluginTaskStartInput,
 } from "@ericsanchezok/synergy-plugin"
+import { Agent } from "../../src/agent/agent"
+import { Plugin } from "../../src/plugin"
 import { createPluginInvocationContext } from "../../src/plugin-runtime/context-factory"
 import { executePluginHostService } from "../../src/plugin/host-services-runtime"
 import { Bus } from "../../src/bus"
@@ -169,7 +171,7 @@ describe("plugin task.run Host Service", () => {
                 scopeId: scope.id,
                 sessionId: parent.id,
                 directory: tmp.path,
-                actor: { type: "agent", agent: "synergy", messageId: "parent-message", callId: "call-one" },
+                actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
               },
               method: "task.run" as never,
               params: { ...request, subagent: "supervisor" },
@@ -178,6 +180,93 @@ describe("plugin task.run Host Service", () => {
           ).rejects.toThrow('Agent "supervisor" is not registered to the invoking plugin generation')
         } finally {
           await Session.remove(parent.id)
+        }
+      },
+    })
+  })
+
+  test("starts an owned hidden Agent by public name when contribution id differs", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    const scope = await tmp.scope()
+    const manifest = compilePluginManifest(
+      definePlugin({
+        id: "task-start-public-name",
+        version: "1.0.0",
+        description: "task.start public Agent name test",
+        capabilities: [capability("task.delegate", { agents: ["public-supervisor"] })],
+        contributions: [
+          agent({
+            id: "private-supervisor-contribution",
+            agent: {
+              name: "public-supervisor",
+              description: "Owned hidden supervisor",
+              prompt: "Supervise the task.",
+              mode: "subagent",
+              hidden: true,
+            },
+          }),
+        ],
+      }),
+      { generation: "generation-one" },
+    )
+    await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(manifest))
+    const originalAgentEntries = Plugin.agentEntries
+    ;(Plugin as any).agentEntries = async () => [
+      {
+        contributionId: "private-supervisor-contribution",
+        pluginId: manifest.id,
+        pluginGeneration: manifest.artifacts.generation,
+        name: "public-supervisor",
+        description: "Owned hidden supervisor",
+        prompt: "Supervise the task.",
+        mode: "subagent",
+        hidden: true,
+      },
+    ]
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const parent = await Session.create({})
+        let handle: { taskId: string; sessionId: string } | undefined
+        try {
+          await Agent.reload()
+          handle = (await executePluginHostService({
+            pluginId: manifest.id,
+            pluginDir: tmp.path,
+            manifest,
+            invocation: {
+              scopeId: scope.id,
+              sessionId: parent.id,
+              directory: tmp.path,
+              actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
+            },
+            method: "task.start",
+            params: {
+              ...request,
+              subagent: "public-supervisor",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              visibility: "hidden",
+            },
+            signal: AbortSignal.timeout(5_000),
+          })) as { taskId: string; sessionId: string }
+          expect(Cortex.get(handle.taskId)).toMatchObject({
+            agent: "public-supervisor",
+            owner: {
+              pluginId: manifest.id,
+              pluginGeneration: manifest.artifacts.generation,
+              scopeId: scope.id,
+            },
+          })
+        } finally {
+          if (handle) {
+            await Cortex.cancel(handle.taskId).catch(() => {})
+            await Session.remove(handle.sessionId).catch(() => {})
+          }
+          await Session.remove(parent.id).catch(() => {})
+          Cortex.reset()
+          ;(Plugin as any).agentEntries = originalAgentEntries
+          await Agent.reload()
         }
       },
     })

@@ -34,8 +34,10 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/unzipper": "0.10.11",
     "electron": "42.5.0",
     "electron-builder": "26.11.1",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "unzipper": "^0.12.3"
   }
 }

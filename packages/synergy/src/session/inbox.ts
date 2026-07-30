@@ -516,7 +516,11 @@ export namespace SessionInbox {
       messageID,
       input: queuedInput,
     }
-    return publicItem(await writeItem(item))
+    const stored = await writeItem(item)
+    await Session.recordActivity(input.sessionID).catch((error) => {
+      log.warn("failed to record session activity after user inbox enqueue", { sessionID: input.sessionID, error })
+    })
+    return publicItem(stored)
   }
 
   function mailItem(

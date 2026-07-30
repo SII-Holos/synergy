@@ -1231,7 +1231,7 @@ msgstr "Estimated {tokens}"
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.estimateNote"
-msgstr "Category values are model-tokenizer estimates reconciled to the exact provider input total."
+msgstr "Category values use bounded UTF-8 estimates reconciled to the exact provider input total."
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.exactInputShare"
@@ -17070,6 +17070,10 @@ msgid "tool.label.changes"
 msgstr "{count, plural, one {# change} other {# changes}}"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.elements"
+msgstr "{count, plural, one {# element} other {# elements}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.files"
 msgstr "{count, plural, one {# file} other {# files}}"
 
@@ -17700,6 +17704,10 @@ msgstr "Manage research state"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "Resolve Library"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.response-card"
+msgstr "Prepare response card"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.revise-file"

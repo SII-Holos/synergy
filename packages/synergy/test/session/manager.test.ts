@@ -210,10 +210,12 @@ describe("SessionManager.getSession", () => {
           const { SessionInvoke } = await import("../../src/session/invoke")
           const originalLoop = SessionInvoke.loop
           const wakes: string[] = []
+          const wake = Promise.withResolvers<string>()
           let parentSessionID = ""
           let parentLease: SessionManager.LoopLease | undefined
           ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
             wakes.push(sessionID)
+            wake.resolve(sessionID)
           })
 
           try {
@@ -257,8 +259,15 @@ describe("SessionManager.getSession", () => {
 
             await SessionManager.release(parentLease!)
             parentLease = undefined
-            for (let i = 0; i < 20 && wakes.length === 0; i++) await Bun.sleep(5)
 
+            expect(
+              await Promise.race([
+                wake.promise,
+                Bun.sleep(1_000).then(() => {
+                  throw new Error("Release did not wake persisted inbox work")
+                }),
+              ]),
+            ).toBe(parentSession.id)
             expect(wakes).toEqual([parentSession.id])
           } finally {
             if (parentLease) await SessionManager.release(parentLease)

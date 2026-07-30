@@ -6,24 +6,36 @@ import {
 } from "../../../src/components/session/session-actions"
 
 describe("session action visibility", () => {
-  test("keeps transfer actions available for open Home sessions", () => {
+  test("limits project-only actions while keeping Home session actions available", () => {
     expect(sessionActionVisibility({ sessionID: "ses_home", scopeKey: "home" })).toEqual({
       menu: true,
-      scopeSpecific: false,
+      rename: false,
+      worktree: false,
+      export: true,
+      import: true,
+      archive: true,
     })
   })
 
   test("keeps all actions available for open project sessions", () => {
     expect(sessionActionVisibility({ sessionID: "ses_project", scopeKey: "/repo" })).toEqual({
       menu: true,
-      scopeSpecific: true,
+      rename: true,
+      worktree: true,
+      export: true,
+      import: true,
+      archive: true,
     })
   })
 
-  test("hides the action menu when no session is open", () => {
+  test("hides every session action when no session is open", () => {
     expect(sessionActionVisibility({ scopeKey: "home" })).toEqual({
       menu: false,
-      scopeSpecific: false,
+      rename: false,
+      worktree: false,
+      export: false,
+      import: false,
+      archive: false,
     })
   })
 })

@@ -37,32 +37,34 @@ describe("createTextPartProjection", () => {
     expect(projection.project({ key: "part_1", source: "  hello  \nworld", completed: false })).toBe("hello  \nworld")
   })
 
-  test("removes a project path split across stream updates", () => {
+  test("preserves an absolute project path split across stream updates", () => {
     const projection = createTextPartProjection()
-    const remove = "/workspace/project"
 
-    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: false, remove })).toBe("")
+    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: false })).toBe("/workspace/pro")
     expect(
       projection.project({
         key: "part_1",
         source: "  /workspace/project/src/index.ts",
         completed: false,
-        remove,
       }),
-    ).toBe("/src/index.ts")
+    ).toBe("/workspace/project/src/index.ts")
+  })
+
+  test("preserves an absolute project root inside inline code", () => {
+    const projection = createTextPartProjection()
+    const source = "我当前的工作目录是：\n\n`/workspace/project`"
+    const expected = source
+
+    expect(projection.project({ key: "part_1", source, completed: false })).toBe(expected)
+    expect(projection.project({ key: "part_1", source, completed: true })).toBe(expected)
   })
 
   test("rebuilds once for terminal or rewritten source", () => {
     const projection = createTextPartProjection()
-    const remove = "/workspace/project"
 
-    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: false, remove })).toBe("")
-    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: true, remove })).toBe(
-      "/workspace/pro",
-    )
-    expect(projection.project({ key: "part_2", source: "  replacement  ", completed: false, remove })).toBe(
-      "replacement",
-    )
+    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: false })).toBe("/workspace/pro")
+    expect(projection.project({ key: "part_1", source: "  /workspace/pro", completed: true })).toBe("/workspace/pro")
+    expect(projection.project({ key: "part_2", source: "  replacement  ", completed: false })).toBe("replacement")
   })
 })
 

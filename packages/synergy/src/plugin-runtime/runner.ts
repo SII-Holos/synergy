@@ -30,6 +30,14 @@ function post(message: PluginToHost) {
   process.send?.(message)
 }
 
+function runtimeErrorDetails(error: ReturnType<typeof serializePluginRuntimeError>): Record<string, unknown> {
+  return {
+    name: error.name,
+    reason: error.message,
+    ...(error.code ? { code: error.code } : {}),
+  }
+}
+
 function memory() {
   const usage = process.memoryUsage()
   return {
@@ -163,7 +171,13 @@ async function shutdown() {
 function handle(message: HostToPlugin) {
   if (message.type === "activate") {
     void activate(message.input).catch((error) => {
-      post({ type: "log", level: "error", message: serializePluginRuntimeError(error).message })
+      const serialized = serializePluginRuntimeError(error)
+      post({
+        type: "log",
+        level: "error",
+        message: serialized.message,
+        details: runtimeErrorDetails(serialized),
+      })
       process.exit(1)
     })
     return
@@ -174,7 +188,12 @@ function handle(message: HostToPlugin) {
         post({ type: "response", requestId: message.requestId, generation: message.generation, ok: true, value }),
       (error) => {
         const serialized = serializePluginRuntimeError(error)
-        post({ type: "log", level: "error", message: serialized.message })
+        post({
+          type: "log",
+          level: "error",
+          message: serialized.message,
+          details: runtimeErrorDetails(serialized),
+        })
         post({
           type: "response",
           requestId: message.requestId,
