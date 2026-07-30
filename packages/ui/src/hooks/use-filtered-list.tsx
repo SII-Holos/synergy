@@ -1,6 +1,6 @@
 import fuzzysort from "fuzzysort"
 import { entries, flatMap, groupBy, map, pipe } from "remeda"
-import { createEffect, createMemo, createResource, on } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, on } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createList } from "solid-list"
 
@@ -13,19 +13,24 @@ export interface FilteredListProps<T> {
   sortBy?: (a: T, b: T) => number
   sortGroupsBy?: (a: { category: string; items: T[] }, b: { category: string; items: T[] }) => number
   onSelect?: (value: T | undefined, index: number) => void
+  deferInitialLoad?: boolean
 }
 
 export function useFilteredList<T>(props: FilteredListProps<T>) {
   const [store, setStore] = createStore<{ filter: string }>({ filter: "" })
+  const [activated, setActivated] = createSignal(!props.deferInitialLoad)
 
   type Group = { category: string; items: [T, ...T[]] }
   const empty: Group[] = []
 
   const [grouped, { refetch }] = createResource(
-    () => ({
-      filter: store.filter,
-      items: typeof props.items === "function" ? undefined : props.items,
-    }),
+    () =>
+      activated()
+        ? {
+            filter: store.filter,
+            items: typeof props.items === "function" ? undefined : props.items,
+          }
+        : undefined,
     async ({ filter, items }) => {
       const needle = filter?.toLowerCase()
       const all = (items ?? (await (props.items as (filter: string) => T[] | Promise<T[]>)(needle))) || []
@@ -93,6 +98,7 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
   )
 
   const onInput = (value: string) => {
+    setActivated(true)
     setStore("filter", value)
   }
 

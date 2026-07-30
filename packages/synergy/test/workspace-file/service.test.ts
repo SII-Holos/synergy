@@ -364,12 +364,12 @@ describe("WorkspaceFileSearch", () => {
         await Bun.write(path.join(dir, "run-evidence.json"), "{}")
       },
       async () => {
-        const originalStatusForPath = WorkspaceFileStatus.statusForPath
+        const originalStatusMap = WorkspaceFileStatus.statusMap
         let markStatusStarted!: () => void
         const statusStarted = new Promise<void>((resolve) => {
           markStatusStarted = resolve
         })
-        WorkspaceFileStatus.statusForPath = async () => {
+        WorkspaceFileStatus.statusMap = async () => {
           markStatusStarted()
           return await new Promise(() => {})
         }
@@ -399,8 +399,40 @@ describe("WorkspaceFileSearch", () => {
             ]),
           ).rejects.toMatchObject({ name: "AbortError" })
         } finally {
-          WorkspaceFileStatus.statusForPath = originalStatusForPath
+          WorkspaceFileStatus.statusMap = originalStatusMap
           controller.abort()
+        }
+      },
+    )
+  })
+
+  test("returns basic truncated results when path enrichment times out", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "run-evidence.json"), "{}")
+      },
+      async () => {
+        const originalStatusMap = WorkspaceFileStatus.statusMap
+        WorkspaceFileStatus.statusMap = async () => await new Promise(() => {})
+
+        try {
+          const result = await WorkspaceFileSearch.search({
+            kind: "files",
+            query: "run evidence",
+            limit: 10,
+            enrichmentTimeoutMs: 10,
+          })
+          expect(result.items).toHaveLength(1)
+          expect(result.items[0]).toMatchObject({
+            kind: "file",
+            path: "run-evidence.json",
+          })
+          const item = result.items[0]
+          expect(item?.kind).toBe("file")
+          if (item?.kind === "file") expect(item.node).toBeUndefined()
+          expect(result.truncated).toBe(true)
+        } finally {
+          WorkspaceFileStatus.statusMap = originalStatusMap
         }
       },
     )

@@ -8,6 +8,7 @@ const isolated = new Set([
   "test/components/session-turn-timeline.test.ts",
   "test/components/tool/renders/task.test.tsx",
 ])
+const browserOnly = new Set(["test/hooks/use-filtered-list.test.tsx"])
 
 async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true })
@@ -22,18 +23,25 @@ async function collectTests(directory: string): Promise<string[]> {
   return nested.flat()
 }
 
-async function run(files: string[]) {
+async function run(files: string[], options: { browser?: boolean } = {}) {
   if (files.length === 0) return
-  const child = Bun.spawn([process.execPath, "test", "--timeout", "30000", ...files], {
-    cwd: root,
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  })
+  const child = Bun.spawn(
+    [process.execPath, "test", "--timeout", "30000", ...(options.browser ? ["--conditions=browser"] : []), ...files],
+    {
+      cwd: root,
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  )
   const exitCode = await child.exited
   if (exitCode !== 0) globalThis.process.exit(exitCode)
 }
 
 const files = (await collectTests("test")).toSorted()
-await run(files.filter((file) => !isolated.has(file)))
+await run(files.filter((file) => !isolated.has(file) && !browserOnly.has(file)))
 for (const file of files.filter((file) => isolated.has(file))) await run([file])
+await run(
+  files.filter((file) => browserOnly.has(file)),
+  { browser: true },
+)

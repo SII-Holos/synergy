@@ -6,6 +6,7 @@ import { LSP } from "../lsp"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileIndexer } from "./indexer"
 import { WorkspaceFileService } from "./service"
+import { WorkspaceFileStatus } from "./status"
 import { ProcessOutput } from "../process/output"
 
 const DEFAULT_LIMIT = 50
@@ -54,6 +55,7 @@ async function searchFiles(input: {
   include?: string[]
   exclude?: string[]
   signal?: AbortSignal
+  enrichmentTimeoutMs?: number
 }): Promise<WorkspaceFile.SearchResponse> {
   const snapshot = await WorkspaceFileIndexer.snapshot({ signal: input.signal })
   const directories = snapshot.dirs.map((item) => (item.endsWith("/") ? item : item + "/"))
@@ -72,35 +74,53 @@ async function searchFiles(input: {
     : filtered.slice(0, searchLimit).map((target, index) => ({ target, score: -index }))
   const page = matches.slice(offset, offset + input.limit)
   const pageLimited = offset + page.length < matches.length
-  const enrichmentTimeout = AbortSignal.timeout(PATH_ENRICHMENT_TIMEOUT_MS)
+  const base = page.map((match) => {
+    const target = match.target
+    const directory = target.endsWith("/")
+    const path = directory ? target.slice(0, -1) : target
+    return {
+      kind: "file" as const,
+      path,
+      name: path.split("/").at(-1) ?? path,
+      type: directory ? ("directory" as const) : ("file" as const),
+      score: match.score,
+      indices: resultIndices(match),
+    }
+  })
+  const enrichmentTimeout = AbortSignal.timeout(input.enrichmentTimeoutMs ?? PATH_ENRICHMENT_TIMEOUT_MS)
   const enrichmentSignal = input.signal ? AbortSignal.any([input.signal, enrichmentTimeout]) : enrichmentTimeout
-  const output = await withSearchAbort(
-    Promise.all(
-      page.map(async (match) => {
-        const target = match.target
-        const directory = target.endsWith("/")
-        const path = directory ? target.slice(0, -1) : target
-        const node = await WorkspaceFileService.maybeNode(path)
-        return {
-          kind: "file" as const,
-          path,
-          name: path.split("/").at(-1) ?? path,
-          type: directory ? ("directory" as const) : ("file" as const),
-          score: match.score,
-          indices: resultIndices(match),
-          node,
-        }
-      }),
-    ),
-    enrichmentSignal,
-  )
+  let enrichmentTruncated = false
+  const output = await (async () => {
+    try {
+      const statusMap = await withSearchAbort(WorkspaceFileStatus.statusMap(), enrichmentSignal)
+      return await withSearchAbort(
+        Promise.all(
+          base.map(async (item) => ({
+            ...item,
+            node: await WorkspaceFileService.maybeNode(item.path, {
+              resolveGitStatus: false,
+              gitStatus: statusMap.get(item.path),
+            }),
+          })),
+        ),
+        enrichmentSignal,
+      )
+    } catch (error) {
+      if (input.signal?.aborted) {
+        throw input.signal.reason ?? new DOMException("Search aborted", "AbortError")
+      }
+      if (!enrichmentTimeout.aborted) throw error
+      enrichmentTruncated = true
+      return base
+    }
+  })()
 
   return {
     kind: "files",
     query: input.query,
     items: output,
     nextCursor: pageLimited ? String(offset + page.length) : undefined,
-    truncated: snapshot.truncated || pageLimited,
+    truncated: snapshot.truncated || pageLimited || enrichmentTruncated,
   }
 }
 
@@ -242,12 +262,21 @@ export namespace WorkspaceFileSearch {
     include?: string | string[]
     exclude?: string | string[]
     signal?: AbortSignal
+    enrichmentTimeoutMs?: number
   }): Promise<WorkspaceFile.SearchResponse> {
     const limit = Math.max(1, Math.min(input.limit ?? DEFAULT_LIMIT, 200))
     const include = normalizeList(input.include)
     const exclude = normalizeList(input.exclude)
     if (input.kind === "files") {
-      return searchFiles({ query: input.query, limit, cursor: input.cursor, include, exclude, signal: input.signal })
+      return searchFiles({
+        query: input.query,
+        limit,
+        cursor: input.cursor,
+        include,
+        exclude,
+        signal: input.signal,
+        enrichmentTimeoutMs: input.enrichmentTimeoutMs,
+      })
     }
     if (input.kind === "content") {
       return searchContent({ query: input.query, limit, cursor: input.cursor, include, exclude, signal: input.signal })
