@@ -334,6 +334,50 @@ describe("QuestionCardRuntime", () => {
     })
     expect(await answer).toEqual([["Staging"]])
   })
+  test("bounds accepted callback history while preserving recent retry deduplication", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await createChannelSession()
+        const adapter = provider("feishu")
+        let oldest: QuestionCardCallback | undefined
+        let newest: QuestionCardCallback | undefined
+
+        for (let index = 0; index <= 256; index++) {
+          const pending = await askAndDeliver({ adapter, sessionID: session.id })
+          const current = callback(pending.requestId, { eventId: `evt_${index}` })
+          expect(
+            await QuestionCardRuntime.acceptAction({
+              channelType: "feishu",
+              accountId: "acct_feishu",
+              callback: current,
+            }),
+          ).toEqual({ status: "accepted" })
+          await pending.answer
+          oldest ??= current
+          newest = current
+        }
+
+        expect(oldest).toBeDefined()
+        expect(newest).toBeDefined()
+        expect(
+          await QuestionCardRuntime.acceptAction({
+            channelType: "feishu",
+            accountId: "acct_feishu",
+            callback: oldest!,
+          }),
+        ).toEqual({ status: "expired" })
+        expect(
+          await QuestionCardRuntime.acceptAction({
+            channelType: "feishu",
+            accountId: "acct_feishu",
+            callback: newest!,
+          }),
+        ).toEqual({ status: "duplicate" })
+      },
+    })
+  })
 })
 
 describe("Channel interaction policy", () => {

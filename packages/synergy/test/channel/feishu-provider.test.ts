@@ -455,6 +455,87 @@ describe("Feishu replies", () => {
   })
 })
 
+describe("Feishu account drain", () => {
+  test("closes transport, flushes debounce work, and drains chat tasks to a fixed point", async () => {
+    const provider = new FeishuProvider()
+    const first = Promise.withResolvers<void>()
+    const second = Promise.withResolvers<void>()
+    const calls: string[] = []
+    const perChatQueue = new Map<string, Promise<void>>()
+    const enqueue = (chatId: string, task: Promise<void>) => {
+      perChatQueue.set(chatId, task)
+      void task.finally(() => {
+        if (perChatQueue.get(chatId) === task) perChatQueue.delete(chatId)
+      })
+    }
+    const firstTask = first.promise.then(() => {
+      calls.push("first")
+      enqueue(
+        "chat_second",
+        second.promise.then(() => {
+          calls.push("second")
+        }),
+      )
+    })
+    const accounts = (
+      provider as unknown as {
+        accounts: Map<
+          string,
+          {
+            runtime: {
+              acceptingInbound: boolean
+              inboundTasks: Set<Promise<void>>
+              perChatQueue: Map<string, Promise<void>>
+              debouncer: { flush(): Promise<void> }
+              wsClient: { close(): void }
+              drain?: Promise<void>
+            }
+          }
+        >
+      }
+    ).accounts
+    accounts.set("acct_drain", {
+      runtime: {
+        acceptingInbound: true,
+        inboundTasks: new Set(),
+        perChatQueue,
+        debouncer: {
+          async flush() {
+            calls.push("flush")
+            enqueue("chat_first", firstTask)
+          },
+        },
+        wsClient: {
+          close() {
+            calls.push("close")
+          },
+        },
+      },
+    })
+
+    let disconnected = false
+    const disconnect = provider.disconnect({ accountId: "acct_drain" }).then(() => {
+      disconnected = true
+    })
+    const concurrentDisconnect = provider.disconnect({ accountId: "acct_drain" })
+    await Bun.sleep(0)
+
+    expect(calls).toEqual(["close", "flush"])
+    expect(disconnected).toBe(false)
+    expect(accounts.has("acct_drain")).toBe(true)
+
+    first.resolve()
+    await Bun.sleep(0)
+    expect(calls).toEqual(["close", "flush", "first"])
+    expect(disconnected).toBe(false)
+
+    second.resolve()
+    await Promise.all([disconnect, concurrentDisconnect])
+    expect(calls).toEqual(["close", "flush", "first", "second"])
+    expect(accounts.has("acct_drain")).toBe(false)
+  })
+})
+
 describe("Streaming session compatibility", () => {
   test("providers expose tool progress update hook", () => {
     const session: StreamingSession = {
