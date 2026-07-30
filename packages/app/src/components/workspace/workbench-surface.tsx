@@ -1,14 +1,4 @@
-import {
-  ErrorBoundary,
-  For,
-  Show,
-  Suspense,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  onMount,
-} from "solid-js"
+import { ErrorBoundary, For, Show, Suspense, createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import type { Component } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -20,8 +10,11 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { resolveWorkbenchEscapeAction } from "@/context/workbench/panel-model"
-import { isWorkbenchPanelLaunchable } from "@/context/workbench/panel-model"
+import {
+  resolveWorkbenchEscapeAction,
+  isWorkbenchPanelLaunchable,
+  workbenchPanelMountKey,
+} from "@/context/workbench/panel-model"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import type {
   WorkbenchPanelContentProps,
@@ -243,6 +236,10 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     if (!tab || !entry) return undefined
     return { tab, entry }
   })
+  const panelMountKey = createMemo(() => {
+    const panel = activePanel()
+    return panel ? workbenchPanelMountKey(panel.tab) : undefined
+  })
   const addablePanels = createMemo(() => {
     const openPanelIds = new Set(
       state()
@@ -443,16 +440,18 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
         </Show>
         <div class="workbench-surface-body">
           <Show
-            when={activePanel()}
+            when={panelMountKey()}
             keyed
             fallback={<Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />}
           >
-            {(panel) => (
+            {(_tabId) => (
               <WorkbenchPanelContent
-                entry={panel.entry}
-                tab={panel.tab}
+                entry={activePanel()!.entry}
+                tab={activePanel()!.tab}
                 onRequestClose={() => {
-                  void workbench.closeTab(panel.tab.id)
+                  const tab = activeTab()
+                  if (!tab) return
+                  void workbench.closeTab(tab.id)
                 }}
               />
             )}

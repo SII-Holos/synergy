@@ -140,7 +140,7 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurface).toContain("addablePanels")
     expect(workbenchSurface).toContain('panel.cardinality === "multi" || !openPanelIds.has(panel.id)')
     expect(workbenchSurface).toContain("const activePanel = createMemo")
-    expect(workbenchSurface).toContain("when={activePanel()}")
+    expect(workbenchSurface).toContain("when={panelMountKey()}")
     expect(workbenchSurface).toContain("keyed")
     expect(workbenchSurface).not.toContain('aria-label={isSide() ? "Close side workspace" : "Close BottomSpace"}')
     expect(workbenchSurfaceCss).toContain(".workbench-surface-tab:hover .workbench-surface-tab-close")

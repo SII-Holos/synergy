@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { WorkbenchPanelTab } from "../../../src/plugin/registries/workbench-panel-registry"
 import {
   closeWorkbenchPanelTab,
   isWorkbenchPanelLaunchable,
@@ -6,6 +7,7 @@ import {
   openWorkbenchPanelTab,
   resolveWorkbenchEscapeAction,
   updateWorkbenchPanelTab,
+  workbenchPanelMountKey,
 } from "../../../src/context/workbench/panel-model"
 
 describe("openWorkbenchPanelTab", () => {
@@ -212,6 +214,14 @@ describe("workbench tab updates", () => {
     expect(result).toEqual([{ id: "file:a", panelId: "file", resourceId: "src/new.ts", title: "new.ts" }])
   })
 
+  test("keeps panel content mounted while tab metadata changes", () => {
+    const before = { id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }
+    const after = { ...before, resourceId: "notes:list" }
+
+    expect(workbenchPanelMountKey(after)).toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ id: "notes:2", panelId: "notes" })).not.toBe(workbenchPanelMountKey(before))
+  })
+
   test("moves a tab to the requested stable index", () => {
     const tabs = [
       { id: "a", panelId: "file" },
@@ -219,6 +229,38 @@ describe("workbench tab updates", () => {
       { id: "c", panelId: "notes" },
     ]
     expect(moveWorkbenchPanelTab(tabs, "a", 2).map((tab) => tab.id)).toEqual(["b", "c", "a"])
+  })
+})
+
+describe("notes workbench tab state", () => {
+  test("tracks the opened note and restores the same target after a session round trip", () => {
+    let tabs: WorkbenchPanelTab[] = [{ id: "notes:1", panelId: "notes" }]
+
+    tabs = updateWorkbenchPanelTab(tabs, "notes:1", { resourceId: "note_a", source: "/repo" })
+    tabs = updateWorkbenchPanelTab(tabs, "notes:1", { resourceId: "note_b", source: "/repo" })
+
+    expect(tabs).toEqual([{ id: "notes:1", panelId: "notes", resourceId: "note_b", source: "/repo" }])
+  })
+
+  test("records the list view as an explicit marker instead of a stale note", () => {
+    const tabs = [{ id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }]
+
+    const result = updateWorkbenchPanelTab(tabs, "notes:1", { resourceId: "notes:list" })
+
+    expect(result[0]!.resourceId).toBe("notes:list")
+  })
+
+  test("reopening the notes panel without a resource keeps the tracked note", () => {
+    const tabs = [{ id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }]
+    const result = openWorkbenchPanelTab({
+      panelId: "notes",
+      cardinality: "singleton",
+      tabs,
+      createId: () => "notes:new",
+    })
+
+    expect(result.tabs).toBe(tabs)
+    expect(result.active).toBe("notes:1")
   })
 })
 
