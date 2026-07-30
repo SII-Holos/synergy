@@ -6,6 +6,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Scope } from "@/scope"
+import { ScopeRuntime } from "@/scope/runtime"
 import { Global } from "@/global"
 
 import { Config } from "../config/config"
@@ -36,6 +37,7 @@ import { ResponseCardRuntime } from "./response-card"
 import { QuestionCardRuntime } from "./question-card"
 import { QuestionCardBridge } from "./question-card-bridge"
 import { ChannelInteraction } from "./interaction"
+import { ChannelOutbound } from "./outbound"
 import {
   Info as InfoSchema,
   Status as StatusSchema,
@@ -209,6 +211,7 @@ export namespace Channel {
     channelType: string
     accountId: string
     provider: Provider
+    scope: Scope
     abort: AbortController
     status: Status
     stopping?: Promise<void>
@@ -228,6 +231,7 @@ export namespace Channel {
     statuses: Map<string, Status>
     reconnects: Map<string, ReturnType<typeof setTimeout>>
     attempts: Map<string, ConnectionAttempt>
+    unsubscribeScopeRuntimeStarting: () => void
     projectRefreshes: Map<string, ProjectRefresh>
   }
 
@@ -293,6 +297,10 @@ export namespace Channel {
       const reconnects = new Map<string, ReturnType<typeof setTimeout>>()
       const attempts = new Map<string, ConnectionAttempt>()
       const projectRefreshes = new Map<string, ProjectRefresh>()
+      const unsubscribeScopeRuntimeStarting = ScopeRuntime.onStarting((scope) => {
+        const ownsScope = Array.from(connections.values()).some((connection) => connection.scope.id === scope.id)
+        if (ownsScope) initializeScopeBridges()
+      })
 
       for (const [channelType, channelConfig] of Object.entries(channels)) {
         const provider = providers.get(channelType)
@@ -328,9 +336,17 @@ export namespace Channel {
         }
       }
 
-      return { connections, statuses, reconnects, attempts, projectRefreshes }
+      return {
+        connections,
+        statuses,
+        reconnects,
+        attempts,
+        projectRefreshes,
+        unsubscribeScopeRuntimeStarting,
+      }
     },
     async (s) => {
+      s.unsubscribeScopeRuntimeStarting()
       for (const timer of s.reconnects.values()) clearTimeout(timer)
       await Promise.all(Array.from(s.attempts.values(), (attempt) => stopAttempt(attempt)))
       s.attempts.clear()
@@ -358,6 +374,10 @@ export namespace Channel {
     await state.resetAll()
   }
 
+  function initializeScopeBridges() {
+    QuestionCardBridge.init()
+    ChannelOutbound.init({ getProvider })
+  }
   async function connectAccount(input: ConnectContext & { reconnectAttempt?: number }): Promise<void> {
     const {
       channelType,
@@ -393,12 +413,7 @@ export namespace Channel {
     }
 
     const scope = await resolveAccountScope({ channelType, accountId, accountConfig })
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        QuestionCardBridge.init()
-      },
-    })
+    await ScopeContext.provide({ scope, fn: initializeScopeBridges })
 
     if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
       statuses.set(key, { status: "waiting_for_transport" })
@@ -500,6 +515,7 @@ export namespace Channel {
       channelType,
       accountId,
       provider,
+      scope,
       abort: attempt.abort,
       status: { status: "connected" },
     })
