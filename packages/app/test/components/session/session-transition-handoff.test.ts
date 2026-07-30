@@ -20,6 +20,14 @@ describe("new session transition handoff", () => {
     expect(
       isSessionTransitionHandoffReady(messageID, [{ id: "msg_other", role: "user", isRoot: true, visible: true }]),
     ).toBe(false)
+    const optimisticMessage = {
+      id: "msg_first",
+      role: "user",
+      isRoot: true,
+      visible: true,
+      metadata: { synergyClientOptimistic: { pending: true } },
+    } as const
+    expect(isSessionTransitionHandoffReady(messageID, [optimisticMessage])).toBe(false)
     expect(
       isSessionTransitionHandoffReady(messageID, [{ id: "msg_first", role: "user", isRoot: true, visible: true }]),
     ).toBe(true)

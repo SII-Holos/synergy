@@ -5,6 +5,7 @@ import {
   dirtyConflicts,
   EMPTY_DIRTY_REVISIONS,
   hasDirtyFields,
+  isNoteNotFoundError,
   noteChangedFields,
   patchBlueprintLoops,
   patchNoteGroups,
@@ -90,6 +91,12 @@ describe("note sync helpers", () => {
 
     expect(dirtyConflicts(dirty, ["blueprint"])).toEqual([])
     expect(dirtyConflicts(dirty, ["content"])).toEqual(["content"])
+  })
+
+  test("recovers only when the persisted note no longer exists", () => {
+    expect(isNoteNotFoundError({ name: "APIError", data: { statusCode: 404 } })).toBe(true)
+    expect(isNoteNotFoundError({ name: "APIError", data: { statusCode: 503 } })).toBe(false)
+    expect(isNoteNotFoundError(new Error("Network unavailable"))).toBe(false)
   })
 
   test("patches note groups locally and removes stale scope rows", () => {

@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, Show, untrack } from "solid-js"
-import { Editor } from "@tiptap/core"
+import { Editor, type AnyExtension } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
 import Link from "@tiptap/extension-link"
@@ -20,6 +20,7 @@ import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { registerSynergyShikiThemes, SYNERGY_SHIKI_DARK, SYNERGY_SHIKI_LIGHT } from "./shiki-theme"
+import Blockquote from "./blockquote-extension"
 
 registerSynergyShikiThemes()
 
@@ -418,12 +419,14 @@ export interface DocumentEditorExtensionsConfig {
   lingui: ReturnType<typeof useLingui>
 }
 
-export function createDocumentEditorExtensions(config: DocumentEditorExtensionsConfig) {
+export function createDocumentEditorExtensions(config: DocumentEditorExtensionsConfig): AnyExtension[] {
   return [
     StarterKit.configure({
+      blockquote: false,
       codeBlock: false,
       link: false,
     }),
+    Blockquote,
     Placeholder.configure({
       placeholder: config.lingui._({ id: D.slashHint.id, message: D.slashHint.message }),
     }),
