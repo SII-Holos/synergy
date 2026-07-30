@@ -113,6 +113,8 @@ Context status and workbench consumers read `sync.session.latestContextMessage(s
 
 Eligible usage snapshots are assistant messages with `includeInContext !== false` and either structured `contextUsage` or a non-zero legacy input, output, or reasoning token total. A completed included compaction assistant is instead an ordered invalidation barrier: it sorts after pre-compaction usage but does not expose the compaction call's own tokens as conversation context usage. Consumers show usage as unknown until the next ordinary assistant snapshot. Canonical chronology is `time.created`, then `id`; a later ineligible zero-usage assistant does not erase an earlier eligible snapshot.
 
+Context Usage category enrichment is asynchronous and fail-open. The terminal assistant update can arrive first with provider token totals only; a later ordinary `message.updated` event atomically adds only the category snapshot when the isolated estimator succeeds. If estimation is unavailable, the totals-only assistant remains authoritative and the frontend does not wait or synthesize a breakdown.
+
 Every no-cursor latest page apply seeds the projection, including normal session loads, navigation prefetch, reconnect/recovery refreshes, return-to-latest, stale-cursor recovery, and compaction reloads. Cursor/history pages never replace it. Latest page loads and background prefetches capture a `message` resource request token before the request. A latest response may replace the visible window only if no newer message event, authoritative part checkpoint/removal, history prepend, or optimistic local message write invalidated that token while it was in flight. Background prefetches additionally run only when no message window exists, so they populate an initially empty bucket rather than displace a loaded conversation.
 
 Latest-page loading treats a freshness rejection as a superseded attempt, not a successful empty apply. The session message loader retries once with new request tokens and reports the bucket ready only after an apply succeeds. Repeated supersession becomes a visible load error while preserving any previously successful snapshot.
@@ -142,6 +144,8 @@ Successful prepend in history mode captures the DOM offset of the first visible 
 
 The generated SDK owns internal HTTP calls. Scope-specific clients carry home `scopeID` or project directory context.
 
+Rollback feedback suppression reads the server-owned `session.rollbackAck` from the synchronized session record. When the rollback dialog is presented, the client immediately records a page-local pending key to prevent duplicate effects while `session.rollbackAck()` and the resulting `session.updated` event complete. The pending key is only a round-trip barrier: it is not persisted in browser storage, and a new rollback ID remains eligible even if an older key or acknowledgment exists.
+
 Scope initialization uses `GET /scope/bootstrap` (`scope.bootstrap()`). The server reads the aggregated fields concurrently. Provider, agent, and config are required; failure in any of them fails the request. Optional field failures keep the response usable and are reported by field in `_errors`. Home snapshots omit project-only LSP and VCS fields.
 
 Session detail loading is split by concern:
@@ -150,8 +154,6 @@ Session detail loading is split by concern:
 - messages load through `session.messagePage()` in page size 200, stored in a bounded window capped at 500;
 - parts are sorted and reconciled under their owning message;
 - inbox, todo, and DAG refresh together through `session.volatileBatch()`, while diff, permissions, and questions retain separate refresh paths.
-
-Rollback feedback suppression reads the server-owned `session.rollbackAck` from the synchronized session record. When the rollback dialog is presented, the client immediately records a page-local pending key to prevent duplicate effects while `session.rollbackAck()` and the resulting `session.updated` event complete. The pending key is only a round-trip barrier: it is not persisted in browser storage, and a new rollback ID remains eligible even if an older key or acknowledgment exists.
 
 An accepted local root remains visible through a client-only optimistic marker when the queued response assigns a different canonical message ID. Acceptance atomically rekeys the message, its part bucket, and any history-mode pending ID instead of deleting the rendered root. Authoritative events and latest pages replace the marked message when the same ID materializes; until then, canonical-only actions and new-session transition completion remain blocked, while Inbox timeline cards still deduplicate by rendered message ID.
 
@@ -214,11 +216,11 @@ For `ok`, the frontend applies replayed events through the same event reducer an
 
 When replay returns `reset`, the frontend also calls `resourceFreshness.resetScope()` before refetching. This advances the Scope generation, invalidates in-flight resource requests, and clears stale per-resource versions so the resync snapshots can establish fresh baselines.
 
-Resources outside the normalized store, including BlueprintLoop feature state, observe `reconnectVersion` and refetch after connection recovery.
+Resources outside the normalized store, including BlueprintLoop feature state, observe the global `reconnectVersion`, which advances when reconnect recovery starts so they can refetch promptly.
 
-Active session message/part snapshots also observe reconnect recovery. Because tool-part updates are published as unsequenced streaming events, reconnect replay alone cannot restore a missed tool card. After a reconnect, `sync.session.sync()` force-reloads the viewed session's durable message/part snapshot in addition to volatile collections.
+Active session message/part snapshots observe a separate completed generation for their owning Scope. The Scope generation advances only after replay or full resync succeeds; failed recovery, stale completion, and a recovery that finishes after Scope release do not publish it. The session page waits for that generation rather than starting durable snapshot requests at the raw connectivity transition. Because tool-part updates are published as unsequenced streaming events, reconnect replay alone cannot restore a missed tool card. Once recovery completes, `sync.session.sync()` force-reloads the viewed session's durable message/part snapshot in addition to volatile collections.
 
-Reconnect replay starts from the watermark retained before the disconnect. Live gap recovery likewise retains the pre-gap watermark as `replayFrom`; it neither advances the Scope watermark nor applies the triggering event until replay or full resync completes. An epoch change also holds the prior watermark and requires authoritative full resync. Duplicate recovery requests for the same Scope are coalesced while replay is pending.
+Reconnect replay starts from the watermark retained before the disconnect. Live gap recovery likewise retains the pre-gap watermark as `replayFrom`; it neither advances the Scope watermark nor applies the triggering event until replay or full resync completes. An epoch change also holds the prior watermark and requires authoritative full resync. Duplicate recovery requests for the same Scope are coalesced while replay is pending. Session snapshot requests capture the exact completed Scope generation when they begin; a newer or stronger request queues behind an insufficient in-flight request, and only an accepted latest message snapshot advances that session's generation watermark.
 
 ## Resource-Level Snapshot Freshness
 
@@ -315,7 +317,7 @@ Encoder checkpoint state is transport-local. The global WebSocket delta clients 
 
 The reconciled `part.text` string remains the authoritative frontend snapshot. Active text and reasoning renderers keep an offset into that snapshot and pass only the appended suffix through the display projection and the streaming Markdown parser. They do not compare, transform, or replay the accumulated prefix on each update, and they do not create a separate character-rate backlog between the event stream and the renderer.
 
-The display projection preserves trim and project-path relativization across chunk boundaries. A part identity change, source shrink, or transition to terminal state rebuilds from the authoritative snapshot once. Terminal state comes only from the part's explicit end marker or the owning message's completion marker; coarse session status and the presence of a later timeline part do not terminate a renderer that can still receive deltas. The terminal Markdown path then performs the complete Marked, syntax, math, and sanitization render once and replaces the streaming tree. Its optional visual transition is one-shot and interrupt-safe: cancellation collapses the staged terminal tree immediately, and activation does not force a synchronous layout read.
+The display projection preserves leading-trim behavior without rewriting model-authored Markdown, including absolute paths, across chunk boundaries. A part identity change, source shrink, or transition to terminal state rebuilds from the authoritative snapshot once. Terminal state comes only from the part's explicit end marker or the owning message's completion marker; coarse session status and the presence of a later timeline part do not terminate a renderer that can still receive deltas. The terminal Markdown path then performs the complete Marked, syntax, math, and sanitization render once and replaces the streaming tree. Its optional visual transition is one-shot and interrupt-safe: cancellation collapses the staged terminal tree immediately, and activation does not force a synchronous layout read.
 
 Streaming Markdown creates a fixed set of token elements through DOM APIs and rejects unsafe link and image URL protocols before setting attributes. Raw model HTML is never assigned to `innerHTML` during streaming. Automatic bottom-following is coalesced so content growth schedules at most one scroll operation per animation frame.
 
@@ -393,7 +395,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 - One global event WebSocket multiplexes events by owning Scope directory.
 - State events are sequenced per Scope epoch; streaming events are unsequenced.
 - Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery. Live gaps replay from the retained pre-gap watermark and do not apply the triggering event before recovery.
-- Scope bootstrap is one aggregated generated-SDK snapshot plus independent permission/question requests; reconnect eagerly refreshes volatile state only for the viewed session.
+- Scope bootstrap is one aggregated generated-SDK snapshot plus independent permission/question requests; reconnect invalidates volatile freshness for all retained sessions, clears inactive volatile buckets, and batch-refreshes only the viewed session.
 - Bounded domain event queues use explicit recovery signals rather than silent loss. For File workspace watcher overflow, `file.watcher.updated` carries `resync: true`, and the File context reloads its root, expanded directories, and active document.
 - Every event passes the Scope epoch pre-filter; DAG, Todo, Inbox, and Message additionally use resource-level snapshot/event freshness (generation + revision tokens and version comparison). Optimistic message writes and authoritative part mutations for messages present in the loaded window invalidate concurrent Message requests; streaming deltas do not. Unversioned snapshots are accepted only when no intervening same-resource write occurred.
 - Store updates reconcile existing leaves and identities.
