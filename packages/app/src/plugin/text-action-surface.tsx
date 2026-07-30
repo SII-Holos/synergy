@@ -78,12 +78,14 @@ function viewportAnchor(event: MouseEvent) {
 }
 
 function widthClass(action?: TextAction) {
+  if (!action) return "sm:w-[18rem]"
   if (action?.presentation?.width === "sm") return "sm:w-[20rem]"
   if (action?.presentation?.width === "lg") return "sm:w-[34rem]"
   return "sm:w-[26rem]"
 }
 
 function widthValue(action?: TextAction) {
+  if (!action) return "18rem"
   if (action?.presentation?.width === "sm") return "20rem"
   if (action?.presentation?.width === "lg") return "34rem"
   return "26rem"
@@ -367,10 +369,7 @@ export function PluginTextActionSurface() {
 
   const Loading = () => (
     <div class="flex min-h-28 items-center justify-center gap-3 px-5 py-6 text-13-regular text-text-weak">
-      <span
-        class="size-4 animate-spin rounded-full border-2 border-border-base border-t-text-strong"
-        aria-hidden="true"
-      />
+      <span class="plugin-text-action-spinner" aria-hidden="true" />
       <span>{i18n._(PII.loading)}</span>
     </div>
   )
@@ -436,7 +435,7 @@ export function PluginTextActionSurface() {
             aria-busy={current().kind === "loading" ? "true" : undefined}
             aria-label={current().kind === "menu" ? i18n._(PII.menu) : action()?.label}
             onKeyDown={onKeyDown}
-            class={`fixed inset-x-2 bottom-2 z-50 max-h-[min(42rem,calc(100vh-1rem))] overflow-y-auto rounded-xl border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg max-sm:!bottom-2 max-sm:!left-2 max-sm:!right-2 max-sm:!top-auto sm:inset-auto sm:bottom-auto sm:max-h-[calc(100vh-1rem)] sm:w-[22rem] ${widthClass(action())}`}
+            class={`fixed inset-x-2 bottom-2 z-50 max-h-[min(42rem,calc(100vh-1rem))] overflow-y-auto rounded-lg border border-border-base bg-surface-raised-stronger-non-alpha shadow-md max-sm:!bottom-2 max-sm:!left-2 max-sm:!right-2 max-sm:!top-auto sm:inset-auto sm:bottom-auto sm:max-h-[calc(100vh-1rem)] ${widthClass(action())}`}
             style={`--text-action-width:${widthValue(action())};left:${position().x}px;top:${position().y}px`}
           >
             <Show when={current().kind !== "menu"}>
@@ -457,7 +456,7 @@ export function PluginTextActionSurface() {
                 <button
                   type="button"
                   role="menuitem"
-                  class="flex w-full rounded-md px-3 py-2 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus"
+                  class="flex min-h-8 w-full rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus max-sm:min-h-11"
                   onClick={() => void nativeAction("copy")}
                 >
                   {i18n._(PII.copy)}
@@ -468,7 +467,7 @@ export function PluginTextActionSurface() {
                       <button
                         type="button"
                         role="menuitem"
-                        class="flex w-full rounded-md px-3 py-2 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus"
+                        class="flex min-h-8 w-full rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus max-sm:min-h-11"
                         onClick={() => void nativeAction(kind)}
                       >
                         {i18n._(kind === "cut" ? PII.cut : kind === "paste" ? PII.paste : PII.selectAll)}
@@ -480,13 +479,13 @@ export function PluginTextActionSurface() {
                 <For each={groups()}>
                   {(group) => (
                     <div role="group" aria-label={group.pluginName}>
-                      <div class="px-3 pb-1 pt-2 text-11-medium text-text-weak">{group.pluginName}</div>
+                      <div class="px-2.5 pb-0.5 pt-1.5 text-11-medium text-text-weak">{group.pluginName}</div>
                       <For each={group.actions}>
                         {(item) => (
                           <button
                             type="button"
                             role="menuitem"
-                            class="flex w-full items-center rounded-md px-3 py-2 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus"
+                            class="flex min-h-8 w-full items-center rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus max-sm:min-h-11"
                             onClick={() =>
                               current().kind === "menu" && void run(item, current().snapshot, current().anchor)
                             }
