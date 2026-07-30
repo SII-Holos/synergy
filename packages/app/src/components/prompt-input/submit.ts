@@ -29,6 +29,7 @@ import {
   formatSessionPreview,
   formatSessionReference,
   inlineLength,
+  inlineText,
   SESSION_PREVIEW_MAX_MESSAGES,
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
@@ -924,7 +925,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const textPart = {
       id: Identifier.ascending("part"),
       type: "text" as const,
-      text,
+      text: inlineText(currentPrompt),
     }
     const requestParts = [
       textPart,

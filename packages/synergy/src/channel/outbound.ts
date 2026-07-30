@@ -6,10 +6,10 @@ import { MessageV2 } from "@/session/message-v2"
 import { SessionManager } from "@/session/manager"
 import { SessionProgress } from "@/session/progress"
 import { Session } from "@/session"
-import { Channel } from "."
 import { externalIdentityHash } from "./identity"
 import { loadChannelTaskMessages, projectChannelTaskParts } from "./outbound-parts"
 import { ResponseCardRuntime } from "./response-card"
+import type { Provider } from "./types"
 
 const log = Log.create({ service: "channel.outbound" })
 
@@ -24,7 +24,7 @@ export namespace ChannelOutbound {
     },
   )
 
-  export function init(): () => void {
+  export function init(input: { getProvider: (type: string) => Provider | undefined }): () => void {
     const bridge = state()
     if (!bridge.unsubscribe) {
       bridge.unsubscribe = Bus.subscribe(MessageV2.Event.Updated, async (event) => {
@@ -70,7 +70,7 @@ export namespace ChannelOutbound {
         const chatId = channelInfo.chatId
         if (!replyRequired && !chatId) return
 
-        const provider = Channel.getProvider(channelInfo.type)
+        const provider = input.getProvider(channelInfo.type)
         if (!provider) {
           log.warn("no provider for channel type", { type: channelInfo.type, sessionID: msg.sessionID })
           return

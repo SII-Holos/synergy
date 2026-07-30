@@ -5,8 +5,11 @@ import type { Provider, StreamingSession } from "../../src/channel/types"
 import type { ChannelHost } from "../../src/channel/host"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
+import { ScopeRuntime } from "../../src/scope/runtime"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
+import { MessageV2 } from "../../src/session/message-v2"
+import { Identifier } from "../../src/id/id"
 import { ManagedProjectOwnership } from "../../src/channel/managed-project-ownership"
 import { tmpdir } from "../fixture/fixture"
 import fs from "fs/promises"
@@ -165,6 +168,128 @@ describe("Channel account project scope", () => {
     } finally {
       Config.current = originalConfigCurrent
       await ScopeContext.provide({ scope: Scope.home(), fn: () => Channel.stopAll() })
+    }
+  })
+  test("delivers recovered pending channel output while the resolved account Scope runtime restarts", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const type = `project-outbound-${crypto.randomUUID()}`
+    const accountId = "project-account"
+    const chatId = "project-chat"
+    const replies: string[] = []
+    let connected = false
+
+    const provider = {
+      type,
+      lifecycle: "self_connected" as const,
+      conversation: {
+        async replyMessage(input) {
+          replies.push(input.messageId)
+          return { messageId: "reply" }
+        },
+        async pushMessage() {
+          return { messageId: "push" }
+        },
+        async addReaction() {},
+        createStreamingSession: () => ({
+          async start() {},
+          async update() {},
+          async updateToolProgress() {},
+          async close() {},
+          isActive: () => false,
+        }),
+      },
+      async connect() {
+        connected = true
+      },
+    } satisfies Provider
+    Channel.registerProvider(provider)
+
+    const originalConfigCurrent = Config.current
+    Config.current = mock(async () => {
+      return {
+        channel: {
+          [type]: {
+            type,
+            accounts: { [accountId]: { enabled: true, projectDir: tmp.path } },
+          },
+        },
+      } as unknown as Config.Info
+    }) as typeof Config.current
+
+    try {
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await Channel.reload()
+          await Channel.init()
+        },
+      })
+      const connectionDeadline = Date.now() + 2_000
+      while (!connected && Date.now() < connectionDeadline) await Bun.sleep(5)
+      expect(connected).toBe(true)
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({
+            scope,
+            endpoint: SessionEndpoint.fromChannel({ type, accountId, chatId }),
+          })
+          const rootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: rootID,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+            isRoot: true,
+            rootID,
+            sessionID: session.id,
+          })
+          const assistant = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "assistant",
+            parentID: rootID,
+            rootID,
+            mode: "synergy",
+            agent: "synergy",
+            path: { cwd: scope.directory, root: scope.directory },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: "test-model",
+            providerID: "test-provider",
+            time: { created: Date.now() },
+            sessionID: session.id,
+            metadata: {
+              channelPush: true,
+              channelReply: true,
+              channelReplyToMessageId: "message-topic-root",
+            },
+          } as MessageV2.Assistant)) as MessageV2.Assistant
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "text",
+            text: "Interrupted background work",
+          })
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+        },
+      })
+
+      await ScopeRuntime.dispose(scope.id)
+      await ScopeRuntime.ensure(scope)
+
+      const deliveryDeadline = Date.now() + 1_000
+      while (replies.length === 0 && Date.now() < deliveryDeadline) await Bun.sleep(5)
+      expect(replies).toEqual(["message-topic-root"])
+    } finally {
+      Config.current = originalConfigCurrent
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => Channel.stopAll() })
+      await ScopeRuntime.dispose(scope.id)
     }
   })
 })

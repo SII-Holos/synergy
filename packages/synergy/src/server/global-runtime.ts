@@ -144,7 +144,7 @@ export namespace GlobalRuntime {
 
   async function startChannels(cfg: Config.Info) {
     registerProviders()
-    ChannelOutbound.init()
+    ChannelOutbound.init({ getProvider: Channel.getProvider })
     const channels = cfg.channel ?? {}
     if (Object.keys(channels).length === 0) return
     await Channel.init()
