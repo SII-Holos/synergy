@@ -43,7 +43,7 @@ function manifestWithCli(contribution: Record<string, unknown>) {
   }
 }
 
-describe("Plugin API 3 host services", () => {
+describe("Plugin API 4 host services", () => {
   test("typechecks the bounded task, asset, shell, attachment, and system-transform contracts", async () => {
     const root = fs.mkdtempSync(path.join(import.meta.dir, "host-contract-fixture-"))
     try {
@@ -249,8 +249,8 @@ describe("cli.command contribution", () => {
     }
   })
 
-  test("collides with every contribution kind in the plugin-wide id namespace", () => {
-    expect(() =>
+  test("allows the same local id across distinct contribution kinds", () => {
+    expect(
       PluginSDK.definePlugin({
         id: "cli-collision",
         version: "1.0.0",
@@ -259,8 +259,8 @@ describe("cli.command contribution", () => {
           cliFixture(),
           PluginSDK.event({ id: "setup", payload: { type: "object", additionalProperties: false } }),
         ],
-      }),
-    ).toThrow('Duplicate plugin contribution id "setup"')
+      }).contributions,
+    ).toHaveLength(2)
   })
 
   test("requires shell.execute to be declared at the plugin top level", () => {

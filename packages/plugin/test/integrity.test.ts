@@ -4,7 +4,7 @@ import { computeManifestHash, computePermissionsHash, permissionsHashPayload, st
 
 const manifest = {
   manifestVersion: 1,
-  apiVersion: "3.0",
+  apiVersion: "4.0",
   id: "integrity-fixture",
   name: "Integrity Fixture",
   version: "1.2.3",
@@ -68,6 +68,6 @@ describe("plugin integrity hashes", () => {
     expect(computePermissionsHash(manifest, ["asset.write"])).toBe(
       "d568047799bb6ecaf0de95fb1661a0d8536075fa1ec04f3b63093dcad2462454",
     )
-    expect(computeManifestHash(manifest)).toBe("77e02aad36c52877d0524cb183a5a6a746711cc57c36e8f9932e43fce8a46622")
+    expect(computeManifestHash(manifest)).toBe("b32a41a1d7feed51cb5acb70e6537f7c62b5b620f5699bc17f8465e60c8682f2")
   })
 })

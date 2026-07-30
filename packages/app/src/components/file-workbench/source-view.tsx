@@ -145,6 +145,7 @@ export function FileSourceView(props: { path: string; content: string }) {
         padding: { top: 12, bottom: 18 },
         scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
       })
+      const activeEditor = editor
       editor.setScrollPosition({
         scrollTop: file.view.sourceScrollTop(props.path) ?? 0,
         scrollLeft: file.view.sourceScrollLeft(props.path) ?? 0,
@@ -167,7 +168,23 @@ export function FileSourceView(props: { path: string; content: string }) {
           start: selection.startLineNumber,
           end: selection.endLineNumber,
         })
-        textSelectionController.update(selection.isEmpty() ? undefined : cached.model.getValueInRange(selection))
+        const rect = host.getBoundingClientRect()
+        const position = activeEditor.getScrolledVisiblePosition(selection.getStartPosition())
+        textSelectionController.update(selection.isEmpty() ? undefined : cached.model.getValueInRange(selection), {
+          source: "code",
+          origin: "editable",
+          editable: false,
+          wholeContainer: false,
+          owner: host,
+          anchor: position
+            ? {
+                x: rect.left + position.left,
+                y: rect.top + position.top,
+                width: 1,
+                height: position.height,
+              }
+            : { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        })
       })
       editor.onDidBlurEditorText(() => textSelectionController.update(undefined))
       pruneFileSourceModels(key)

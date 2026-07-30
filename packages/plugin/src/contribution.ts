@@ -11,7 +11,11 @@ import type { ToolDisplay, ToolResult } from "./tool.js"
 import type { McpServerConfig } from "./mcp.js"
 
 export type PluginJsonSchema = Record<string, unknown>
-export type PluginSchema<T = unknown> = z.ZodType<T> | PluginJsonSchema
+export interface PluginValidationSchema<T = unknown> {
+  readonly _zod: unknown
+  safeParse(input: unknown): { success: true; data: T } | { success: false; error: unknown }
+}
+export type PluginSchema<T = unknown> = PluginValidationSchema<T> | PluginJsonSchema
 
 export interface PluginSettingCondition {
   setting: string
@@ -173,11 +177,40 @@ export interface ComposerExtensionContribution extends HeadlessUIContributionBas
 
 export interface SelectionExtensionContribution extends HeadlessUIContributionBase<"ui.selectionExtension"> {}
 
+export type PluginTextSelectionSource = "document" | "code" | "terminal"
+
+export type PluginTextSelectionOrigin = "user_message" | "assistant_message" | "editable" | "other"
+
+export type PluginTextSelectionSnapshot = {
+  selectionId: string
+  text: string
+  source: PluginTextSelectionSource
+  origin: PluginTextSelectionOrigin
+  editable: boolean
+  wholeContainer: boolean
+}
+
+export type PluginTextActionWhen = {
+  sources?: PluginTextSelectionSource[]
+  origins?: PluginTextSelectionOrigin[]
+  minChars?: number
+  maxChars?: number
+  editable?: boolean
+}
+
+export type PluginTextActionPresentation = {
+  kind: "popover"
+  component: TrustedComponentReference
+  width?: "sm" | "md" | "lg"
+}
+
 export interface TextActionContribution extends ContributionBase<"ui.textAction"> {
   label: string
   icon?: string
   order: number
   operation: string
+  when?: PluginTextActionWhen
+  presentation?: PluginTextActionPresentation
 }
 
 export interface MessageSlotContribution extends HeadlessUIContributionBase<"ui.messageSlot"> {
@@ -375,6 +408,8 @@ export function lifecycleUninstall(
 }
 
 export function schemaToJsonSchema(schema: PluginSchema): PluginJsonSchema {
-  if ("_zod" in schema) return z.toJSONSchema(schema as z.ZodType) as PluginJsonSchema
+  if ("_zod" in schema) {
+    return z.toJSONSchema(schema as unknown as z.ZodType) as PluginJsonSchema
+  }
   return structuredClone(schema)
 }

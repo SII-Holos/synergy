@@ -28,7 +28,14 @@ describe("plugin agent.call Host Service", () => {
         id: "agent-call-test",
         version: "1.0.0",
         description: "Agent call boundary",
-        capabilities: [capability("agent.call", { maxRuntimeMs: 1000, maxInputChars: 20, maxOutputChars: 30 })],
+        capabilities: [
+          capability("agent.call", {
+            maxRuntimeMs: 1000,
+            maxInputChars: 20,
+            maxOutputChars: 30,
+            modelRoles: ["mini", "thinking"],
+          }),
+        ],
         contributions: [
           operation({
             id: "call",
@@ -62,7 +69,14 @@ describe("plugin agent.call Host Service", () => {
         handlerId,
         invocation: { scopeId: scope.id, directory: tmp.path, actor: { type: "ui" } },
         method: "agent.call",
-        params: { agent, text: "hello", timeoutMs: 5000, maxOutputChars: 5000, ...params },
+        params: {
+          agent,
+          text: "hello",
+          modelRole: "thinking",
+          timeoutMs: 5000,
+          maxOutputChars: 5000,
+          ...params,
+        },
         signal: new AbortController().signal,
       })
 
@@ -70,7 +84,19 @@ describe("plugin agent.call Host Service", () => {
       scope,
       fn: async () => {
         await expect(invoke("owned")).resolves.toEqual({ text: "answer" })
-        expect(received).toMatchObject({ timeoutMs: 1000, maxInputChars: 20, maxOutputChars: 30, retries: 1 })
+        expect(received).toMatchObject({
+          modelRole: "thinking",
+          timeoutMs: 1000,
+          maxInputChars: 20,
+          maxOutputChars: 30,
+          retries: 1,
+        })
+        await expect(invoke("owned", { modelRole: "creative" })).rejects.toMatchObject({
+          code: "PLUGIN_AGENT_MODEL_ROLE_DENIED",
+        })
+        await expect(invoke("owned", { modelRole: "invalid-role" })).rejects.toMatchObject({
+          code: "PLUGIN_AGENT_MODEL_ROLE_INVALID",
+        })
         await expect(invoke("owned", {}, "operation:missing")).rejects.toThrow(
           'does not declare capability "agent.call"',
         )
@@ -168,6 +194,7 @@ describe("plugin agent.call Host Service", () => {
             maxRuntimeMs: 1_000,
             maxInputChars: 20,
             maxOutputChars: 30,
+            modelRoles: ["mini", "thinking"],
           }),
         ],
         contributions: [
@@ -220,6 +247,7 @@ describe("plugin agent.call Host Service", () => {
           agent: "metadata_agent",
           text,
           correlationId: "correction:one",
+          modelRole: "mini",
           timeoutMs: 5_000,
           maxOutputChars: 5_000,
         },
@@ -231,6 +259,25 @@ describe("plugin agent.call Host Service", () => {
     expect(pluginAgentCallRuntime.activeCount(manifest.id)).toBe(1)
     expect(await invoke()).toEqual(first)
     await expect(invoke("changed")).rejects.toMatchObject({
+      code: "PLUGIN_AGENT_CALL_CONFLICT",
+    })
+    await expect(
+      executePluginHostService({
+        pluginId: manifest.id,
+        pluginDir: tmp.path,
+        manifest,
+        handlerId: "operation:start",
+        invocation: { scopeId: scope.id, directory: tmp.path, actor: { type: "ui" } },
+        method: "agent.start",
+        params: {
+          agent: "metadata_agent",
+          text: "hello",
+          correlationId: "correction:one",
+          modelRole: "thinking",
+        },
+        signal: invocationController.signal,
+      }),
+    ).rejects.toMatchObject({
       code: "PLUGIN_AGENT_CALL_CONFLICT",
     })
     invocationController.abort()

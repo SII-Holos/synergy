@@ -1,4 +1,5 @@
 import type { ToolResult } from "./tool.js"
+import type { PluginModelRole } from "./plugin-types.js"
 
 export type PluginActor =
   | { type: "ui" }
@@ -81,6 +82,8 @@ export const PluginHostServiceErrorCode = {
   AGENT_CANCELLED: "PLUGIN_AGENT_CANCELLED",
   AGENT_CALL_CAPACITY: "PLUGIN_AGENT_CALL_CAPACITY",
   AGENT_CALL_CONFLICT: "PLUGIN_AGENT_CALL_CONFLICT",
+  AGENT_MODEL_ROLE_INVALID: "PLUGIN_AGENT_MODEL_ROLE_INVALID",
+  AGENT_MODEL_ROLE_DENIED: "PLUGIN_AGENT_MODEL_ROLE_DENIED",
 } as const
 export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
 
@@ -240,16 +243,20 @@ export interface PluginToolHostService {
 }
 
 export interface PluginAgentHostService {
-  call(input: { agent: string; text: string; timeoutMs?: number; maxOutputChars?: number }): Promise<{ text: string }>
+  call(input: PluginAgentCallInput): Promise<{ text: string }>
   start(input: PluginAgentStartInput): Promise<PluginAgentStartResult>
 }
 
-export type PluginAgentStartInput = {
+export type PluginAgentCallInput = {
   agent: string
   text: string
-  correlationId: string
+  modelRole?: PluginModelRole
   timeoutMs?: number
   maxOutputChars?: number
+}
+
+export type PluginAgentStartInput = PluginAgentCallInput & {
+  correlationId: string
 }
 
 export type PluginAgentStartResult = {

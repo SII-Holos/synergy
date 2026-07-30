@@ -1,3 +1,5 @@
+import type { PluginTextSelectionSnapshot } from "./contribution.js"
+
 export interface PluginSurfaceIdentity {
   kind: string
   id: string
@@ -86,9 +88,7 @@ export interface PluginComposerSurfaceContext extends PluginSurfaceContext {
   composer: PluginComposerService
 }
 
-export interface TextSelectionSnapshot {
-  text: string
-}
+export type TextSelectionSnapshot = PluginTextSelectionSnapshot
 
 export interface PluginSelectionService {
   current(): TextSelectionSnapshot | undefined
@@ -97,6 +97,15 @@ export interface PluginSelectionService {
 
 export interface PluginSelectionSurfaceContext extends PluginSurfaceContext {
   selection: PluginSelectionService
+}
+
+export interface PluginTextActionSurfaceContext extends PluginSurfaceContext {
+  textAction: {
+    invocationId: string
+    selection: PluginTextSelectionSnapshot
+    output: unknown
+    close(): void
+  }
 }
 
 export interface PluginMessageSurfaceContext extends PluginSurfaceContext {

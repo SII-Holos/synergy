@@ -6,6 +6,9 @@ export interface PluginSkill {
   dir?: string
 }
 
+export const PLUGIN_MODEL_ROLES = ["vision", "nano", "mini", "mid", "thinking", "long", "creative"] as const
+export type PluginModelRole = (typeof PLUGIN_MODEL_ROLES)[number]
+
 export interface PluginAgent {
   /** Public registry name used by Agent.get(), delegation, and Agent Host Services. */
   name: string
@@ -13,7 +16,7 @@ export interface PluginAgent {
   prompt: string
   mode?: "subagent" | "primary" | "all"
   model?: string
-  modelRole?: "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+  modelRole?: PluginModelRole
   temperature?: number
   topP?: number
   steps?: number

@@ -4,6 +4,8 @@ import { createHash } from "node:crypto"
 import Ajv2020 from "ajv/dist/2020"
 import {
   PluginHostServiceErrorCode,
+  PLUGIN_MODEL_ROLES,
+  type PluginModelRole,
   type PluginAssetCreateInput,
   type PluginManifestType,
   type PluginTaskRunInput,
@@ -129,6 +131,29 @@ async function resolvePluginAgentCall(input: PluginHostServiceInvocationInput, v
     AGENT_CALL_MAX_RUNTIME_MS,
   )
   const timeoutMs = positiveConstraint(value.timeoutMs, maxRuntimeMs, maxRuntimeMs)
+  const requestedRole = value.modelRole
+  let modelRole: PluginModelRole | undefined
+  if (requestedRole !== undefined) {
+    if (typeof requestedRole !== "string" || !(PLUGIN_MODEL_ROLES as readonly string[]).includes(requestedRole)) {
+      throw pluginHostServiceError(
+        PluginHostServiceErrorCode.AGENT_MODEL_ROLE_INVALID,
+        `Invalid plugin Agent model role: ${String(requestedRole)}`,
+      )
+    }
+    const allowedRoles = Array.isArray(constraints.modelRoles)
+      ? constraints.modelRoles.filter(
+          (item): item is PluginModelRole =>
+            typeof item === "string" && (PLUGIN_MODEL_ROLES as readonly string[]).includes(item),
+        )
+      : []
+    if (!allowedRoles.includes(requestedRole as PluginModelRole)) {
+      throw pluginHostServiceError(
+        PluginHostServiceErrorCode.AGENT_MODEL_ROLE_DENIED,
+        `Plugin is not approved to use Agent model role: ${requestedRole}`,
+      )
+    }
+    modelRole = requestedRole as PluginModelRole
+  }
   const agent = await Agent.get(name)
   if (!agent) {
     throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_NOT_FOUND, `Plugin Agent is unavailable: ${name}`)
@@ -150,6 +175,7 @@ async function resolvePluginAgentCall(input: PluginHostServiceInvocationInput, v
   return {
     name,
     text,
+    modelRole,
     timeoutMs,
     maxInputChars,
     maxOutputChars: requestedOutput,
@@ -185,6 +211,7 @@ async function runPluginAgent(resolved: Awaited<ReturnType<typeof resolvePluginA
   try {
     return await AgentCall.text({
       agent: resolved.name,
+      modelRole: resolved.modelRole,
       messages: [{ role: "user", content: resolved.text }],
       signal,
       timeoutMs: resolved.timeoutMs,
@@ -217,6 +244,7 @@ async function startPluginAgent(input: PluginHostServiceInvocationInput, value: 
       JSON.stringify({
         agent: resolved.name,
         text: resolved.text,
+        modelRole: resolved.modelRole,
         timeoutMs: resolved.timeoutMs,
         maxOutputChars: resolved.maxOutputChars,
       }),

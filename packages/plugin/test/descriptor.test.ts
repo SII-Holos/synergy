@@ -295,7 +295,7 @@ describe("definePlugin", () => {
           event({ id: "changed", payload: z.object({}) }),
         ],
       }),
-    ).toThrow('Duplicate plugin contribution id "changed"')
+    ).toThrow('Duplicate plugin contribution id "changed" for kind "event"')
   })
 
   test("rejects undeclared contribution capabilities", () => {
@@ -371,7 +371,16 @@ describe("definePlugin", () => {
           id: "translate",
           type: "command",
           expose: ["ui"],
-          input: z.object({ text: z.string() }),
+          input: z.object({
+            selection: z.object({
+              selectionId: z.string(),
+              text: z.string(),
+              source: z.enum(["document", "code", "terminal"]),
+              origin: z.enum(["user_message", "assistant_message", "editable", "other"]),
+              editable: z.boolean(),
+              wholeContainer: z.boolean(),
+            }),
+          }),
           output: z.object({}),
           handler: async () => ({}),
         }),
@@ -381,7 +390,23 @@ describe("definePlugin", () => {
           component: { source: "src/composer.tsx" },
         }),
         selectionExtension({ id: "selection", component: { source: "src/selection.tsx" } }),
-        textAction({ id: "translate-action", label: "Translate", operation: "translate" }),
+        textAction({
+          id: "translate-action",
+          label: "Translate",
+          operation: "translate",
+          when: {
+            sources: ["document", "code"],
+            origins: ["assistant_message", "other"],
+            minChars: 1,
+            maxChars: 4_000,
+            editable: false,
+          },
+          presentation: {
+            kind: "popover",
+            width: "md",
+            component: { source: "src/translation.tsx" },
+          },
+        }),
         messageSlot({ id: "message", slot: "message.after", component: { source: "src/message.tsx" } }),
       ],
     })
@@ -394,6 +419,7 @@ describe("definePlugin", () => {
         exports: {
           "ui.composerExtension:composer": "Composer",
           "ui.selectionExtension:selection": "Selection",
+          "ui.textAction:translate-action": "Translation",
           "ui.messageSlot:message": "Message",
         },
       },
@@ -402,7 +428,23 @@ describe("definePlugin", () => {
     expect(manifest.contributions.slice(1)).toMatchObject([
       { kind: "ui.composerExtension", order: 1000, component: { exportName: "Composer" } },
       { kind: "ui.selectionExtension", requires: ["selection.read"] },
-      { kind: "ui.textAction", operation: "translate", requires: ["selection.read"] },
+      {
+        kind: "ui.textAction",
+        operation: "translate",
+        requires: ["selection.read"],
+        when: {
+          sources: ["document", "code"],
+          origins: ["assistant_message", "other"],
+          minChars: 1,
+          maxChars: 4_000,
+          editable: false,
+        },
+        presentation: {
+          kind: "popover",
+          width: "md",
+          component: { exportName: "Translation" },
+        },
+      },
       { kind: "ui.messageSlot", slot: "message.after", component: { exportName: "Message" } },
     ])
 
@@ -415,6 +457,49 @@ describe("definePlugin", () => {
         contributions: [textAction({ id: "bad", label: "Bad", operation: "missing" })],
       }),
     ).toThrow("must reference a UI-exposed command operation")
+  })
+
+  test("rejects invalid text-action bounds and Agent role allowlists", () => {
+    expect(() =>
+      definePlugin({
+        id: "bad-bounds",
+        version: "1.0.0",
+        description: "Invalid text action bounds",
+        capabilities: [capability("selection.read")],
+        contributions: [
+          operation({
+            id: "translate",
+            type: "command",
+            expose: ["ui"],
+            input: z.object({}),
+            output: z.object({}),
+            async handler() {
+              return {}
+            },
+          }),
+          textAction({
+            id: "translate",
+            label: "Translate",
+            operation: "translate",
+            when: { minChars: 10, maxChars: 2 },
+          }),
+        ],
+      }),
+    ).toThrow("minChars cannot exceed maxChars")
+
+    expect(() =>
+      definePlugin({
+        id: "bad-roles",
+        version: "1.0.0",
+        description: "Invalid model roles",
+        capabilities: [
+          capability("agent.call", {
+            modelRoles: ["mini", "provider-specific-model"],
+          }),
+        ],
+        contributions: [],
+      }),
+    ).toThrow("unique PluginModelRole values")
   })
 
   test("requires session.read on persisted user message observers", () => {

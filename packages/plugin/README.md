@@ -1,4 +1,4 @@
-# Synergy Plugin API 3
+# Synergy Plugin API 4
 
 `definePlugin()` is the only source of plugin identity, capabilities, contributions, and executable handlers. Authors do not write `plugin.json`; `synergy-plugin build` generates it with runtime/UI bundles and integrity metadata.
 
@@ -37,7 +37,7 @@ export default definePlugin({
 ## Definition Rules
 
 - Plugin IDs use lowercase letters, digits, dots, and hyphens and begin with a letter.
-- Contribution IDs are unique across the whole plugin.
+- Contribution IDs are unique within each contribution kind. A command operation and its `ui.textAction` may intentionally share a local ID; generated runtime handler IDs remain kind-qualified.
 - A contribution's `requires` entries must exist in top-level `capabilities`.
 - `operation()` defaults to `expose: ['ui']`; add `sdk` explicitly for public SDK access.
 - Zod and JSON Schema are accepted for operation, event, and tool schemas.
@@ -62,7 +62,7 @@ Capabilities govern Host Services; they do not claim to restrict direct OS acces
 
 `task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
 
-`agent.call` exposes bounded Sessionless Agent work only to an executable contribution that lists it in `requires`. `context.agent.call()` waits for text; `context.agent.start()` returns a call ID immediately and reports its memory-only terminal result to the same plugin generation and Scope through `agent.call.after`. By default a plugin may call only a hidden Agent owned by its active generation; capability constraints may allow additional Agent names and lower the host runtime/input/output ceilings. Neither path has tools, Session history, or Cortex lifecycle.
+`agent.call` exposes bounded Sessionless Agent work only to an executable contribution that lists it in `requires`. `context.agent.call()` waits for text; `context.agent.start()` returns a call ID immediately and reports its memory-only terminal result to the same plugin generation and Scope through `agent.call.after`. By default a plugin may call only a hidden Agent owned by its active generation; capability constraints may allow additional Agent names, permitted model roles, and lower host runtime/input/output ceilings. Calls may choose an allowed Synergy role but never a concrete provider/model ID. Neither path has tools, Session history, or Cortex lifecycle.
 
 ## Trusted UI
 

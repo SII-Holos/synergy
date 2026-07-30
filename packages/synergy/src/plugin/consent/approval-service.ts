@@ -272,6 +272,15 @@ export async function buildApprovalReview(target: ApprovalTarget): Promise<Appro
     oldCapabilities: resolved.oldCapabilities ?? [],
     newCapabilities: capabilities,
   })
+  const approvedModelRoles = manifest.capabilities.find((capability) => capability.id === "agent.call")?.constraints
+    ?.modelRoles
+  if (Array.isArray(approvedModelRoles)) {
+    const technical = `Allowed model roles: ${approvedModelRoles.join(", ")}`
+    for (const group of [diff.added, diff.unchanged]) {
+      const agentCall = group.find((item) => item.key === "agent.call")
+      if (agentCall) agentCall.technical = technical
+    }
+  }
 
   return {
     target,

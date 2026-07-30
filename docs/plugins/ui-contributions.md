@@ -81,9 +81,13 @@ Draft callbacks run in parallel after IME composition settles. Preflight callbac
 
 ## Selection and Text Actions
 
-`selectionExtension()` receives only `{ text }` after the active selection has remained stable for 250 ms. Password, credential, explicitly excluded, and oversized selections are not distributed. DOM text, the Composer, Notes, Monaco source, and Terminal selection use the same App controller; Browser-page selection remains inside the Browser runtime boundary.
+`selectionExtension()` receives the immutable selected-text snapshot after the active selection has remained stable for 250 ms. The snapshot includes a host-generated `selectionId`, text, `document | code | terminal` source, `user_message | assistant_message | editable | other` origin, and editable/whole-container flags. Password, credential, explicitly excluded, and oversized selections are not distributed. DOM text, inputs, textareas, the Composer, Notes, Monaco source, and Terminal selection use the same App controller; Browser-page selection remains inside the Browser runtime boundary.
 
-`textAction()` declares a label, order, and a same-plugin UI-exposed command operation. The host adds it to the accessible selected-text menu and invokes that existing operation with the exact `{ text }` snapshot. The host owns copy/edit actions, focus, pending/error/cancel state, narrow-screen placement, and theme behavior; operation output remains plugin-owned.
+`textAction()` declares a label, order, a same-plugin UI-exposed command operation, and optional `when` constraints for source, origin, editability, and Unicode character bounds. The host evaluates those constraints against the frozen snapshot and invokes the operation with `{ selection }`.
+
+Actions are qualified by `pluginId + actionId`, so different plugins may use the same local ID or label without replacing each other. Native edit commands appear first; plugin actions follow in stable plugin groups ordered by group order, plugin name, action order, and local ID. Reload, disable, and uninstall remove only the owning plugin's actions.
+
+Without `presentation`, a text action is a command and closes after execution. With `presentation: { kind: "popover", component, width }`, the host replaces the menu with loading state and then mounts the trusted result component beside the selection. `PluginTextActionSurfaceContext` supplies the invocation ID, frozen selection, validated operation output, and `close()`. The host owns anchoring, viewport collision, one-surface-at-a-time behavior, focus restoration, Escape/outside-click handling, retry/error controls, cancellation, ARIA, and the narrow-screen bottom sheet. The plugin owns only result content; one failed operation or renderer does not affect other registered actions.
 
 ## Message Slots
 

@@ -125,7 +125,7 @@ describe("PluginRuntimeManager", () => {
         runtime: {
           pluginVersion: "1.0.0",
           pluginGeneration: "manager-test",
-          protocolVersion: 8,
+          protocolVersion: 9,
         },
       })
       expect(second).toMatchObject({ scopeId: "scope-two", activations: 1 })
@@ -164,7 +164,7 @@ describe("PluginRuntimeManager", () => {
         runtime: {
           pluginVersion: "1.0.0",
           pluginGeneration: "in-process-test",
-          protocolVersion: 8,
+          protocolVersion: 9,
         },
       })
       expect(manager.registry.active(manifest.id)?.mode).toBe("inProcess")

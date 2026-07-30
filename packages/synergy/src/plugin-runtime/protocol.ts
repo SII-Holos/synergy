@@ -117,5 +117,5 @@ export function deserializePluginRuntimeError(error: SerializedPluginRuntimeErro
   })
 }
 
-export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 8
+export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 9
 export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

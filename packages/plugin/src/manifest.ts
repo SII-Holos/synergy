@@ -1,6 +1,7 @@
 import z from "zod"
 import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
 import { McpServerConfig } from "./mcp.js"
+import { PLUGIN_MODEL_ROLES } from "./plugin-types.js"
 
 const Id = z.string().regex(/^[a-z][a-z0-9.-]*$/)
 const ContributionId = z.string().regex(/^[a-z][A-Za-z0-9._-]*$/)
@@ -167,12 +168,33 @@ const SelectionExtensionContribution = HeadlessUIBase.extend({
   kind: z.literal("ui.selectionExtension"),
 }).strict()
 
+const TextSelectionSource = z.enum(["document", "code", "terminal"])
+const TextSelectionOrigin = z.enum(["user_message", "assistant_message", "editable", "other"])
+
 const TextActionContribution = ContributionBase.extend({
   kind: z.literal("ui.textAction"),
   label: z.string().min(1),
   icon: z.string().optional(),
   order: z.number().int(),
   operation: ContributionId,
+  when: z
+    .object({
+      sources: z.array(TextSelectionSource).min(1).optional(),
+      origins: z.array(TextSelectionOrigin).min(1).optional(),
+      minChars: z.number().int().nonnegative().optional(),
+      maxChars: z.number().int().positive().optional(),
+      editable: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
+  presentation: z
+    .object({
+      kind: z.literal("popover"),
+      component: Component,
+      width: z.enum(["sm", "md", "lg"]).optional(),
+    })
+    .strict()
+    .optional(),
 }).strict()
 
 const MessageSlotContribution = HeadlessUIBase.extend({
@@ -262,20 +284,38 @@ export const PluginManifest = z
   .superRefine((manifest, context) => {
     const ids = new Set<string>()
     const capabilities = new Set(manifest.capabilities.map((item) => item.id))
+    const agentCapability = manifest.capabilities.find((item) => item.id === "agent.call")
+    const modelRoles = agentCapability?.constraints?.modelRoles
+    if (
+      modelRoles !== undefined &&
+      (!Array.isArray(modelRoles) ||
+        modelRoles.length === 0 ||
+        new Set(modelRoles).size !== modelRoles.length ||
+        modelRoles.some(
+          (role) => typeof role !== "string" || !(PLUGIN_MODEL_ROLES as readonly string[]).includes(role),
+        ))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["capabilities", "agent.call", "constraints", "modelRoles"],
+        message: "agent.call modelRoles must contain unique PluginModelRole values",
+      })
+    }
     const settings = manifest.contributions.find((item) => item.kind === "ui.settings")
     const settingProperties =
       settings?.formSchema && typeof settings.formSchema.properties === "object" && settings.formSchema.properties
         ? (settings.formSchema.properties as Record<string, unknown>)
         : {}
     for (const contribution of manifest.contributions) {
-      if (ids.has(contribution.id)) {
+      const contributionKey = `${contribution.kind}:${contribution.id}`
+      if (ids.has(contributionKey)) {
         context.addIssue({
           code: "custom",
           path: ["contributions"],
-          message: `Duplicate contribution id ${contribution.id}`,
+          message: `Duplicate ${contribution.kind} contribution id ${contribution.id}`,
         })
       }
-      ids.add(contribution.id)
+      ids.add(contributionKey)
       for (const required of contribution.requires ?? []) {
         if (!capabilities.has(required)) {
           context.addIssue({
@@ -316,6 +356,17 @@ export const PluginManifest = z
         })
       }
       if (contribution.kind === "ui.textAction") {
+        if (
+          contribution.when?.minChars !== undefined &&
+          contribution.when?.maxChars !== undefined &&
+          contribution.when.minChars > contribution.when.maxChars
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "when"],
+            message: "Text action minChars cannot exceed maxChars",
+          })
+        }
         const operation = manifest.contributions.find(
           (item) => item.kind === "operation" && item.id === contribution.operation,
         )

@@ -78,7 +78,9 @@ Capabilities describe Synergy services the host may inject. A contribution's `re
 Host capability approval and runtime permission evaluation are separate gates. For delegated work, the manifest gate is `task.delegate`; the control-profile permission is `task`. Host Service failures preserve a stable optional `code` across process IPC so plugins can make typed recovery decisions.
 `context.session.get()` and `context.session.abort()` are limited to Sessions in the invocation Scope. Cross-Scope targets fail with `PLUGIN_SESSION_SCOPE_MISMATCH`; delegated start parents use the separate `PLUGIN_TASK_PARENT_SCOPE_MISMATCH` code.
 
-`context.agent.call()` and `context.agent.start()` are injected only for an executable contribution whose own `requires` includes the approved `agent.call` capability. Both resolve the target through Synergy's Agent registry, use the Agent's native model/model-role configuration, and run with no tools, durable Session, Cortex task, or transcript. The host rechecks the invoking contribution, ownership or an `agents` allowlist, and hard runtime/input/output bounds; plugins cannot select an arbitrary provider or model.
+`context.agent.call()` and `context.agent.start()` are injected only for an executable contribution whose own `requires` includes the approved `agent.call` capability. Both resolve the target through Synergy's Agent registry and run with no tools, durable Session, Cortex task, or transcript. The host rechecks the invoking contribution, ownership or an `agents` allowlist, and hard runtime/input/output bounds; plugins cannot select an arbitrary provider or model.
+
+An `agent.call` capability may declare a `modelRoles` allowlist using Synergy's public roles: `nano`, `mini`, `mid`, `thinking`, `long`, and `creative`. A call may request one allowed role through `modelRole`; otherwise the contributed Agent's manifest role is used. The host resolves both through the same configured role fallback chain. A concrete provider/model ID is never accepted. Approval shows the permitted role range, and an asynchronous call's idempotency digest includes its effective requested role.
 
 `call()` waits for `{ text }` and is cancelled with its invocation. `start()` accepts an explicit `correlationId`, returns `{ callId }` after the host accepts the work, and continues under a host-owned `AbortController` after the initiating handler returns. A terminal `completed`, `error`, or `cancelled` result is delivered only to the same plugin ID, generation, and Scope through the `agent.call.after` observer. Active identical correlations are idempotent; changed content conflicts. Each plugin may own at most four active lightweight calls, with no waiting queue. Generation replacement, disable, uninstall, and runtime stop cancel the generation's active calls. Inputs, prompts, outputs, and terminal results are memory-only and are not written to the Session store or ordinary plugin logs.
 
@@ -87,6 +89,7 @@ const { callId } = await context.agent!.start({
   agent: "metadata_agent",
   text: "Bounded transient input",
   correlationId: "correction:018f…",
+  modelRole: "mini",
   timeoutMs: 12_000,
   maxOutputChars: 3_000,
 })
