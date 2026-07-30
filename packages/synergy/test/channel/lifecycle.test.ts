@@ -202,6 +202,46 @@ describe("Channel provider lifecycle capability", () => {
     })
   })
 
+  test("stopping a borrowed_transport provider during retry backoff marks it disconnected", async () => {
+    const fake = makeProvider({
+      type: `borrowed-stop-${crypto.randomUUID()}`,
+      lifecycle: "borrowed_transport",
+      waitForTransport: true,
+      failConnectAttempts: 1,
+    })
+    Channel.registerProvider(fake.value)
+    await configure(fake.value.type, true)
+
+    fake.readyTransport()
+    await waitFor(() => fake.connectCount() === 1)
+    await Bun.sleep(10)
+    await inHome(() => Channel.disconnect(fake.value.type, "account"))
+
+    expect(await inHome(() => Channel.status())).toMatchObject({
+      [`${fake.value.type}:account`]: { status: "disconnected" },
+    })
+  })
+
+  test("stopping all channels during borrowed_transport retry backoff marks it disconnected", async () => {
+    const fake = makeProvider({
+      type: `borrowed-stop-all-${crypto.randomUUID()}`,
+      lifecycle: "borrowed_transport",
+      waitForTransport: true,
+      failConnectAttempts: 1,
+    })
+    Channel.registerProvider(fake.value)
+    await configure(fake.value.type, true)
+
+    fake.readyTransport()
+    await waitFor(() => fake.connectCount() === 1)
+    await Bun.sleep(10)
+    await inHome(() => Channel.disconnectAll())
+
+    expect(await inHome(() => Channel.status())).toMatchObject({
+      [`${fake.value.type}:account`]: { status: "disconnected" },
+    })
+  })
+
   test("borrowed_transport providers recover when transport disconnects during initial connect", async () => {
     const type = `borrowed-initial-sync-${crypto.randomUUID()}`
     let transportWaitCount = 0

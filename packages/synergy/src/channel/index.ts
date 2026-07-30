@@ -939,6 +939,7 @@ export namespace Channel {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       s.reconnects.delete(key)
+      s.statuses.set(key, { status: "disconnected" })
     }
     const attempt = s.attempts.get(key)
     if (attempt) {
@@ -957,7 +958,10 @@ export namespace Channel {
 
   export async function disconnectAll(): Promise<void> {
     const s = await state()
-    for (const timer of s.reconnects.values()) clearTimeout(timer)
+    for (const [key, timer] of s.reconnects) {
+      clearTimeout(timer)
+      s.statuses.set(key, { status: "disconnected" })
+    }
     s.reconnects.clear()
     await Promise.all(
       Array.from(s.attempts.entries(), async ([key, attempt]) => {
