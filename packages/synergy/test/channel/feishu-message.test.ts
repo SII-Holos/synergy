@@ -130,6 +130,30 @@ describe("Feishu sender identity", () => {
 
     expect(context).toMatchObject({ senderId: "ou_sender", senderName: "ou_sender" })
   })
+
+  test("uses alternate stable sender identifiers when open_id is unavailable", async () => {
+    const message = {
+      message_id: "msg_sender",
+      chat_id: "chat_test",
+      chat_type: "p2p",
+      message_type: "text",
+      content: JSON.stringify({ text: "hello" }),
+    }
+
+    const userContext = await buildMessageContext(providerWithAccount(), message, accountConfig(), {
+      sender_id: { user_id: "user_sender" },
+      sender_type: "user",
+    })
+    const unionContext = await buildMessageContext(
+      providerWithAccount(),
+      { ...message, message_id: "msg_union_sender" },
+      accountConfig(),
+      { sender_id: { union_id: "on_sender", user_id: "user_sender" }, sender_type: "user" },
+    )
+
+    expect(userContext).toMatchObject({ senderId: "user_sender", senderName: "user_sender" })
+    expect(unionContext).toMatchObject({ senderId: "on_sender", senderName: "on_sender" })
+  })
 })
 
 describe("Feishu bot identity resolution", () => {
