@@ -256,6 +256,67 @@ describe("BrowserSession lazy restore", () => {
     await session.closePage()
   })
 
+  test("saves live context storage before closing a headless page for suspension", async () => {
+    const events: string[] = []
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id }) =>
+        fakePage(
+          "headless",
+          id ?? "page-idle-storage",
+          events,
+          () => undefined,
+          undefined,
+          () => {
+            events.push("save-storage")
+          },
+        ),
+      () => "headless",
+    )
+    await session.ensurePage(undefined, { resume: false })
+    events.length = 0
+
+    await session.suspend()
+
+    expect(events).toEqual(["capture:headless", "save-storage", "close:headless"])
+  })
+
+  test("keeps the live page when suspension storage persistence fails", async () => {
+    const events: string[] = []
+    let failPersistence = false
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id }) =>
+        fakePage(
+          "headless",
+          id ?? "page-idle-storage-failure",
+          events,
+          () => undefined,
+          undefined,
+          () => {
+            events.push("save-storage")
+            if (failPersistence) throw new Error("storage persistence failed")
+          },
+        ),
+      () => "headless",
+    )
+    await session.ensurePage(undefined, { resume: false })
+    events.length = 0
+    failPersistence = true
+
+    await expect(session.suspend()).rejects.toThrow("storage persistence failed")
+
+    expect(events).toEqual(["capture:headless", "save-storage"])
+    expect(session.page?.id).toBe("page-idle-storage-failure")
+    expect(session.status).toBe("active")
+  })
+
   test("retries residual owner cleanup after the headless page has already closed", async () => {
     let closeAttempts = 0
     let alive = true
@@ -353,6 +414,7 @@ function fakePage(
   events: string[],
   closed: () => void,
   beforeRestore?: () => void,
+  saveContextStorage?: () => Promise<void> | void,
 ): BrowserPageBackend {
   let isClosed = false
   return {
@@ -373,6 +435,9 @@ function fakePage(
         return { type: "data", pageId: id, data: { restored: true } }
       }
       return { type: "void" }
+    },
+    async saveContextStorage() {
+      await saveContextStorage?.()
     },
     async close() {
       if (isClosed) return

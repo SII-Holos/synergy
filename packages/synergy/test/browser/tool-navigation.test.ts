@@ -46,32 +46,40 @@ function fakePage(executions: string[], delayMs = 0): BrowserPageBackend {
 
 function fakeSession(initialPage: BrowserPageBackend | null): BrowserSession & { suspend(): Promise<void> } {
   let current = initialPage
+  let descriptor = current
+    ? { id: current.id, url: current.url, title: current.title, lastActiveAt: current.lastActiveAt }
+    : null
+  let status: BrowserSession["status"] = current ? "active" : "empty"
   return {
     owner,
     get page() {
       return current
     },
     get status() {
-      return current ? "active" : "empty"
+      return current ? "active" : status
     },
     get descriptor() {
       return current
         ? { id: current.id, url: current.url, title: current.title, lastActiveAt: current.lastActiveAt }
-        : null
+        : descriptor
     },
     annotations: [],
     checkpoint: null,
     error: null,
     async ensurePage() {
       current ??= fakePage([])
+      status = "active"
       return current
     },
     async resumePage() {
       current ??= fakePage([])
+      status = "active"
       return current
     },
     async closePage() {
       current = null
+      descriptor = null
+      status = "empty"
     },
     getPage(id) {
       return current?.id === id ? current : undefined
@@ -94,7 +102,11 @@ function fakeSession(initialPage: BrowserPageBackend | null): BrowserSession & {
       return true
     },
     async suspend() {
+      if (current) {
+        descriptor = { id: current.id, url: current.url, title: current.title, lastActiveAt: current.lastActiveAt }
+      }
       current = null
+      status = descriptor ? "suspended" : "empty"
     },
     async dispose() {},
   }
@@ -294,7 +306,43 @@ describe("BrowserCommandService", () => {
     expect(suspensions).toBe(1)
   })
 
-  test("queues a new command behind idle suspension instead of rejecting it", async () => {
+  test("cancels idle suspension for activity accepted before suspension starts", async () => {
+    const session = fakeSession(fakePage([]))
+    const suspensionLookupStarted = Promise.withResolvers<void>()
+    const releaseSuspensionLookup = Promise.withResolvers<void>()
+    let lookups = 0
+    let suspensions = 0
+    session.suspend = async () => {
+      suspensions++
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          lookups++
+          if (lookups === 2) {
+            suspensionLookupStarted.resolve()
+            await releaseSuspensionLookup.promise
+          }
+          return session
+        },
+      },
+      { ownerIdleMs: 10 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "arm-pre-suspend", command: { type: "stop" } })
+    await suspensionLookupStarted.promise
+    const reload = BrowserCommandService.execute(owner, {
+      commandId: "before-suspend-start",
+      command: { type: "reload" },
+    })
+    releaseSuspensionLookup.resolve()
+
+    await expect(reload).resolves.toMatchObject({ type: "void" })
+    expect(suspensions).toBe(0)
+    expect(session.page).not.toBeNull()
+  })
+
+  test("restores the page for a command accepted during idle suspension", async () => {
     const session = fakeSession(fakePage([]))
     const suspendStarted = Promise.withResolvers<void>()
     const releaseSuspend = Promise.withResolvers<void>()
@@ -315,14 +363,167 @@ describe("BrowserCommandService", () => {
 
     await BrowserCommandService.execute(owner, { commandId: "arm-idle", command: { type: "stop" } })
     await suspendStarted.promise
-    const navigate = BrowserCommandService.execute(owner, {
+    const reload = BrowserCommandService.execute(owner, {
       commandId: "during-suspend",
-      command: { type: "navigate", source: "user", url: "https://example.com" },
+      command: { type: "reload" },
     })
     releaseSuspend.resolve()
 
-    await expect(navigate).resolves.toMatchObject({ type: "navigation" })
+    await expect(reload).resolves.toMatchObject({ type: "void" })
     expect(session.page).not.toBeNull()
+  })
+
+  test("restores the page after stale idle suspension cleanup fails", async () => {
+    const session = fakeSession(fakePage([]))
+    const suspendStarted = Promise.withResolvers<void>()
+    const releaseSuspend = Promise.withResolvers<void>()
+    const suspend = session.suspend.bind(session)
+    session.suspend = async () => {
+      suspendStarted.resolve()
+      await releaseSuspend.promise
+      await suspend()
+      throw new Error("idle cleanup failed")
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 10 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "arm-failed-idle", command: { type: "stop" } })
+    await suspendStarted.promise
+    const reload = BrowserCommandService.execute(owner, {
+      commandId: "during-failed-suspend",
+      command: { type: "reload" },
+    })
+    releaseSuspend.resolve()
+
+    await expect(reload).resolves.toMatchObject({ type: "void" })
+    expect(session.page).not.toBeNull()
+  })
+
+  test("does not reopen the page for a replay during idle suspension", async () => {
+    const session = fakeSession(fakePage([]))
+    const suspendStarted = Promise.withResolvers<void>()
+    const releaseSuspend = Promise.withResolvers<void>()
+    const suspendFinished = Promise.withResolvers<void>()
+    const suspend = session.suspend.bind(session)
+    session.suspend = async () => {
+      suspendStarted.resolve()
+      await releaseSuspend.promise
+      await suspend()
+      suspendFinished.resolve()
+    }
+    let resumes = 0
+    const resumePage = session.resumePage.bind(session)
+    session.resumePage = async () => {
+      resumes++
+      return resumePage()
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 10 },
+    )
+    const request = { commandId: "replay-during-suspend", command: { type: "stop" } as const }
+
+    await BrowserCommandService.execute(owner, request)
+    await suspendStarted.promise
+    await expect(BrowserCommandService.execute(owner, request)).resolves.toMatchObject({ type: "void" })
+    releaseSuspend.resolve()
+    await suspendFinished.promise
+    await Bun.sleep(0)
+
+    expect(resumes).toBe(0)
+    expect(session.page).toBeNull()
+  })
+
+  test("does not reopen the page for close accepted during idle suspension", async () => {
+    const session = fakeSession(fakePage([]))
+    const suspendStarted = Promise.withResolvers<void>()
+    const releaseSuspend = Promise.withResolvers<void>()
+    const suspend = session.suspend.bind(session)
+    session.suspend = async () => {
+      suspendStarted.resolve()
+      await releaseSuspend.promise
+      await suspend()
+    }
+    let resumes = 0
+    const resumePage = session.resumePage.bind(session)
+    session.resumePage = async () => {
+      resumes++
+      return resumePage()
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 10 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "arm-close-race", command: { type: "stop" } })
+    await suspendStarted.promise
+    const close = BrowserCommandService.execute(owner, {
+      commandId: "close-during-suspend",
+      command: { type: "close" },
+    })
+    releaseSuspend.resolve()
+
+    await expect(close).resolves.toMatchObject({ type: "void" })
+    expect(resumes).toBe(0)
+    expect(session.page).toBeNull()
+  })
+
+  test("does not revive a page closed ahead of a queued command", async () => {
+    const session = fakeSession(fakePage([]))
+    const suspendStarted = Promise.withResolvers<void>()
+    const releaseSuspend = Promise.withResolvers<void>()
+    const suspend = session.suspend.bind(session)
+    session.suspend = async () => {
+      suspendStarted.resolve()
+      await releaseSuspend.promise
+      await suspend()
+    }
+    let resumes = 0
+    const resumePage = session.resumePage.bind(session)
+    session.resumePage = async () => {
+      resumes++
+      return resumePage()
+    }
+    restoreRuntime = BrowserCommandService.useRuntimeForTest(
+      {
+        async getOrCreateSession() {
+          return session
+        },
+      },
+      { ownerIdleMs: 10 },
+    )
+
+    await BrowserCommandService.execute(owner, { commandId: "arm-close-queue", command: { type: "stop" } })
+    await suspendStarted.promise
+    const close = BrowserCommandService.execute(owner, {
+      commandId: "close-before-reload",
+      command: { type: "close" },
+    })
+    const reload = BrowserCommandService.execute(owner, {
+      commandId: "reload-after-close",
+      command: { type: "reload" },
+    })
+    const reloadError = reload.catch((error: unknown) => error)
+    releaseSuspend.resolve()
+
+    await expect(close).resolves.toMatchObject({ type: "void" })
+    expect(await reloadError).toMatchObject({ code: "browser_page_missing" })
+    expect(resumes).toBe(0)
+    expect(session.page).toBeNull()
   })
 
   test("retries failed idle suspension with a finite budget", async () => {

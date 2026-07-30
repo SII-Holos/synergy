@@ -22,6 +22,7 @@ interface OwnerQueue {
   results: Map<string, { fingerprint: string; result?: BrowserBackendResult; error?: unknown; bytes: number }>
   resultBytes: number
   closing: boolean
+  suspending: boolean
 }
 
 interface IdleState {
@@ -81,6 +82,7 @@ export namespace BrowserCommandService {
         commandId: request.commandId,
       })
     }
+    const restoreAfterIdleSuspension = queue.suspending && requiresExistingPage(command)
     const idleGeneration = owner.mode === "session" ? beginIdleActivity(key) : 0
     const replay = queue.results.get(request.commandId)
     if (replay) {
@@ -98,6 +100,12 @@ export namespace BrowserCommandService {
       throwIfAborted(request.signal, request.commandId)
       const repeated = queue.results.get(request.commandId)
       if (repeated) return replayResult(repeated, fingerprint, request.commandId)
+      if (restoreAfterIdleSuspension) {
+        const session = await BrowserCommandService.session(owner)
+        if (!session.page && session.descriptor && (session.status === "suspended" || session.status === "failed")) {
+          await session.resumePage()
+        }
+      }
       try {
         const result = await executeOnce(owner, command, request)
         cache(queue, request.commandId, { fingerprint, result, bytes: encodedBytes(result) })
@@ -222,7 +230,12 @@ async function suspendIdleOwner(owner: BrowserOwner.Info, generation: number): P
     const session = await runtime.getOrCreateSession(owner)
     if (idleStates.get(key)?.generation !== generation) return false
     if (session.page?.backend === "host") return true
-    await session.suspend()
+    queue.suspending = true
+    try {
+      await session.suspend()
+    } finally {
+      queue.suspending = false
+    }
     return true
   })
   queue.tail = operation.then(
@@ -251,7 +264,13 @@ function clearIdleState(key: string): void {
 }
 
 function createQueue(): OwnerQueue {
-  return { tail: Promise.resolve(), results: new Map(), resultBytes: 0, closing: false }
+  return {
+    tail: Promise.resolve(),
+    results: new Map(),
+    resultBytes: 0,
+    closing: false,
+    suspending: false,
+  }
 }
 
 function replayResult(
@@ -383,6 +402,10 @@ async function executePage(
   } finally {
     request.signal?.removeEventListener("abort", onAbort)
   }
+}
+
+function requiresExistingPage(command: BrowserBackendCommand): boolean {
+  return command.type !== "close" && command.type !== "navigate" && command.type !== "resume"
 }
 
 function shouldCheckpoint(command: BrowserBackendCommand): boolean {

@@ -389,7 +389,7 @@ export class BrowserSessionImpl implements BrowserSession {
       ...(this._checkpoint ? { checkpoint: this._checkpoint } : {}),
       ...(this._error ? { error: this._error } : {}),
     }
-    if (this._page && this.driver) await this.driver.saveContextStorage(this.owner)
+    await this._page?.saveContextStorage?.()
     await BrowserStorage.save(this.owner, state)
   }
 
@@ -427,26 +427,33 @@ export class BrowserSessionImpl implements BrowserSession {
       if (this.pendingCleanup) await this.finishSuspension()
       return
     }
+    await this.save({ captureCheckpoint: true })
     try {
-      await this.dispose()
+      await this.closeLivePage(false)
     } finally {
       if (!this._page) BrowserEvent.publish(this.owner, { type: "page.closed", pageId: page.id })
     }
   }
 
   async dispose(): Promise<void> {
+    await this.closeLivePage(true)
+  }
+
+  private async closeLivePage(captureCheckpoint: boolean): Promise<void> {
     if (!this._page && this.pendingCleanup) await this.finishSuspension()
     const failures: unknown[] = []
     let captureFailed = false
     let closeError: unknown
     const page = this._page
     if (page) {
-      try {
-        await this.captureCheckpoint(page)
-      } catch (error) {
-        captureFailed = true
-        failures.push(error)
-        this._checkpoint = null
+      if (captureCheckpoint) {
+        try {
+          await this.captureCheckpoint(page)
+        } catch (error) {
+          captureFailed = true
+          failures.push(error)
+          this._checkpoint = null
+        }
       }
       this._descriptor = {
         id: page.id,
@@ -540,6 +547,7 @@ export class BrowserSessionImpl implements BrowserSession {
         id: input.id,
         events: this.pageEvents(),
         releaseOwner: () => driver.releaseOwner(input.owner),
+        saveContextStorage: () => driver.saveContextStorage(input.owner),
       })
     } catch (error) {
       try {
