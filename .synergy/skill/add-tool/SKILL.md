@@ -21,6 +21,17 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 6. Add persisted-state migrations in the owning domain when the tool changes stored data shape.
 7. Bound subprocess output while reading it: stream records, cap individual records and retained bytes, drain stderr concurrently, honor cancellation, and terminate the child when the consumer has enough results. Never call `text()` on potentially unbounded output and truncate only afterward.
 
+### Channel-owned delivery tools
+
+When a tool prepares an interactive Channel artifact or another provider-owned message:
+
+1. Keep the tool provider-neutral and side-effect free. Return a bounded structured intent in tool metadata instead of provider JSON or a direct provider call.
+2. Expose the tool only in Channel sessions when its contract depends on Channel identity, reply anchors, or provider capabilities.
+3. Let the Channel runtime own rendering, durable registration, provider delivery, retry/deduplication, and original-requester binding. Foreground and unattended paths must share the same durable delivery record.
+4. Treat provider callback IDs and values as opaque metadata. Validate them against the durable registration and synthesize model-visible text only from trusted registered labels.
+5. Route an accepted callback into a fresh user task through the normal session, tool, and permission pipeline; never invoke a model, command, or tool directly from the callback handler.
+6. Test card-only delivery, foreground/background races, provider callback namespace compatibility, identity and expiry rejection, event deduplication, and failure after an external side effect becomes unknowable.
+
 ## Register the Web Presentation
 
 Complete all five first-party registrations:
@@ -30,6 +41,8 @@ Complete all five first-party registrations:
 3. `packages/ui/src/components/tool-renders.tsx` — renderer group registration
 4. `packages/synergy/src/tool/taxonomy.ts` — runtime semantic classification
 5. `packages/ui/src/components/tool/classifier.ts` — fallback semantic category
+
+A renderer may either be registered by the render-group loop or self-register with `ToolRegistry.register()` and be imported for its side effect from the render-group entry point. In both cases, keep the registration reachable from the standard tool-render bundle and cover it with a render test.
 
 The tool icon registry is separate from the product semantic-token registry. Load `develop-frontend` and use semantic product icons for non-tool UI added around the feature. Preserve accessible pending, success, error, and attachment presentation.
 

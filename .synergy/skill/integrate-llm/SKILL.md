@@ -38,6 +38,8 @@ A sessionless call does not create session history, Cortex progress, completion 
 
 Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.
 
+When an in-place internal operation reuses a root user message only for task identity or attribution while selecting a different model, strip root-owned execution settings that do not belong to the target call. Compaction specifically keeps the persisted root unchanged but clears its `variant` from the ephemeral processor envelope, so the compaction model retains normal provider options without validating or applying another model's variant.
+
 Use `Cortex.launch()` for new child-agent work. Cortex owns:
 
 - child session creation and parent lineage
@@ -63,6 +65,8 @@ Automatic reasoning variants are derived from model identity (`model.id`, API mo
 ## Streaming Bounds
 
 Production product inference enters `AgentTurn`: the Control Plane resolves final prompt and parameter plugin hooks plus serializable provider options into a request plan, request snapshots are schema-validated and capped, and the plan is sent as acknowledged chunks; event frames are bounded and acknowledged after consumption. The worker protocol owns its event projection: do not expose raw AI SDK stream objects as IPC types, and strip provider request bodies, response diagnostics, warnings, or other fields the Control Plane does not consume before checking the frame bound. Agent workers reconstruct built-in provider runtime functions without provider-plugin discovery. Keep executable callbacks, plugin runtimes and Host Services, session writers, permission promises, and other Control Plane handles out of the worker input. Model-facing tools are `ToolCatalog.Definition[]` only.
+
+Keep optional prompt diagnostics and Context Usage attribution out of the Agent worker request and provider-start critical path. Start the provider turn first, execute any non-trivial estimation in a separately isolated worker with fixed input, concurrency, and wall-time bounds, and fail open by omitting the enrichment. Do not move synchronous tokenization onto the Control Plane event loop or await optional enrichment before provider streaming or loop completion.
 
 When changing Agent worker capacity, a higher ceiling must admit queued demand immediately without eagerly filling unused capacity. Shrink by releasing idle workers first and retiring excess active workers only after their owned turns terminate. A capacity change must never abort an active turn merely to reach the new target. Test higher-ceiling demand plus idle and fully active shrink paths.
 

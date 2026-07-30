@@ -146,7 +146,6 @@
     "prosemirror-view": "1.42.0"
   },
   "patchedDependencies": {
-    "ghostty-web@0.3.0": "patches/ghostty-web@0.3.0.patch",
-    "follow-redirects@1.15.11": "patches/follow-redirects@1.15.11.patch"
+    "ghostty-web@0.3.0": "patches/ghostty-web@0.3.0.patch"
   }
 }
