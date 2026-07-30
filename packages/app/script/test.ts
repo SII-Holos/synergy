@@ -5,7 +5,11 @@ import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
 const isolated = "test/app-build-css-contract.test.ts"
-const browserOnly = ["test/pages/fatal-error.test.tsx", "test/plugin/builtin-navigation.test.ts"]
+const browserOnly = [
+  "test/components/note/document-editor-core.test.ts",
+  "test/pages/fatal-error.test.tsx",
+  "test/plugin/builtin-navigation.test.ts",
+]
 
 async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true })
