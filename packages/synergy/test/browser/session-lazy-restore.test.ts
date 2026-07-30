@@ -224,6 +224,145 @@ describe("BrowserSession lazy restore", () => {
     expect(session.error).toMatchObject({ code: "browser_checkpoint_capture_failed", pageId: "page-dispose" })
   })
 
+  test("suspends and resumes a headless page without replacing event subscribers", async () => {
+    const protocolEvents: string[] = []
+    const unsubscribe = BrowserEvent.subscribe(owner, (event) => protocolEvents.push(event.type))
+    let livePages = 0
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id }) => {
+        livePages++
+        return fakePage("headless", id ?? "page-idle-suspend", [], () => livePages--)
+      },
+      () => "headless",
+    )
+    const first = await session.ensurePage(undefined, { resume: false })
+
+    await session.suspend()
+    expect(livePages).toBe(0)
+    expect(session.page).toBeNull()
+    expect(session.status).toBe("suspended")
+    expect(session.descriptor?.id).toBe(first.id)
+    expect(protocolEvents.at(-1)).toBe("page.closed")
+
+    const resumed = await session.resumePage()
+    expect(resumed.id).toBe(first.id)
+    expect(livePages).toBe(1)
+    expect(protocolEvents.at(-1)).toBe("page.created")
+    unsubscribe()
+    await session.closePage()
+  })
+
+  test("saves live context storage before closing a headless page for suspension", async () => {
+    const events: string[] = []
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id }) =>
+        fakePage(
+          "headless",
+          id ?? "page-idle-storage",
+          events,
+          () => undefined,
+          undefined,
+          () => {
+            events.push("save-storage")
+          },
+        ),
+      () => "headless",
+    )
+    await session.ensurePage(undefined, { resume: false })
+    events.length = 0
+
+    await session.suspend()
+
+    expect(events).toEqual(["capture:headless", "save-storage", "close:headless"])
+  })
+
+  test("keeps the live page when suspension storage persistence fails", async () => {
+    const events: string[] = []
+    let failPersistence = false
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id }) =>
+        fakePage(
+          "headless",
+          id ?? "page-idle-storage-failure",
+          events,
+          () => undefined,
+          undefined,
+          () => {
+            events.push("save-storage")
+            if (failPersistence) throw new Error("storage persistence failed")
+          },
+        ),
+      () => "headless",
+    )
+    await session.ensurePage(undefined, { resume: false })
+    events.length = 0
+    failPersistence = true
+
+    await expect(session.suspend()).rejects.toThrow("storage persistence failed")
+
+    expect(events).toEqual(["capture:headless", "save-storage"])
+    expect(session.page?.id).toBe("page-idle-storage-failure")
+    expect(session.status).toBe("active")
+  })
+
+  test("retries residual owner cleanup after the headless page has already closed", async () => {
+    let closeAttempts = 0
+    let alive = true
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id }) => ({
+        id: id ?? "page-suspend-cleanup",
+        backend: "headless",
+        url: checkpoint.url,
+        title: "Suspend cleanup",
+        loading: false,
+        lastActiveAt: 1,
+        async execute(command) {
+          if (command.type === "checkpoint" && command.action === "capture") {
+            return { type: "data", pageId: id ?? "page-suspend-cleanup", data: checkpoint }
+          }
+          return { type: "void" }
+        },
+        async close() {
+          closeAttempts++
+          alive = false
+          if (closeAttempts === 1) throw new Error("owner cleanup failed")
+        },
+        isAlive() {
+          return alive
+        },
+      }),
+      () => "headless",
+    )
+    await session.ensurePage(undefined, { resume: false })
+
+    await expect(session.suspend()).rejects.toThrow("Browser session disposal did not complete cleanly")
+    expect(session.page).toBeNull()
+    expect(session.status).toBe("failed")
+    expect(closeAttempts).toBe(1)
+
+    await session.suspend()
+    expect(closeAttempts).toBe(2)
+    expect(session.status).toBe("suspended")
+    expect(session.descriptor?.id).toBe("page-suspend-cleanup")
+    expect(session.error).toBeNull()
+  })
+
   test("removes a dead page reference when close reports a cleanup failure", async () => {
     let closed = false
     const session = new BrowserSessionImpl(
@@ -275,6 +414,7 @@ function fakePage(
   events: string[],
   closed: () => void,
   beforeRestore?: () => void,
+  saveContextStorage?: () => Promise<void> | void,
 ): BrowserPageBackend {
   let isClosed = false
   return {
@@ -295,6 +435,9 @@ function fakePage(
         return { type: "data", pageId: id, data: { restored: true } }
       }
       return { type: "void" }
+    },
+    async saveContextStorage() {
+      await saveContextStorage?.()
     },
     async close() {
       if (isClosed) return
