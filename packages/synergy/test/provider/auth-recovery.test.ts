@@ -16,6 +16,7 @@ const PROVIDERS = [
   "test-status",
   "test-exhausted",
   "test-env",
+  "test-env-mapped",
   "test-missing",
   "test-plugin-with-hooks",
   "test-plugin-without-classifier",
@@ -290,6 +291,43 @@ test("environment credential rejection is process-local and requests an environm
     expect((await Auth.entries())["test-env"]).toBeUndefined()
   } finally {
     delete process.env.SYNERGY_TEST_ENV_TOKEN
+  }
+})
+
+test("mapped multi-name environment credentials retain environment recovery", async () => {
+  ProviderProfile.register({
+    id: "test-env",
+    name: "Test environment provider",
+    origin: "plugin",
+    env: ["SYNERGY_TEST_ENV_TOKEN"],
+    classifyError: ({ status }) =>
+      status === 401 ? { code: "test_env_rejected", retryable: false, reloginRequired: true } : undefined,
+  })
+  process.env.SYNERGY_TEST_MAPPED_ENV_TOKEN = "invalid"
+  try {
+    const transport = ProviderAuthRecovery.wrapFetch(
+      "test-env-mapped",
+      async () => new Response(null, { status: 401 }),
+      "test-env",
+      {
+        effectiveAPIKey: "invalid",
+        environment: ["SYNERGY_TEST_MISSING_ENV_TOKEN", "SYNERGY_TEST_MAPPED_ENV_TOKEN"],
+      },
+    )
+
+    await expect(
+      transport("https://provider.test/v1/messages", {
+        headers: { Authorization: "Bearer invalid" },
+      }),
+    ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
+
+    expect(ProviderAuthHealth.fromEntry("test-env-mapped", undefined)).toMatchObject({
+      status: "action_required",
+      recovery: "update_environment",
+      source: "env",
+    })
+  } finally {
+    delete process.env.SYNERGY_TEST_MAPPED_ENV_TOKEN
   }
 })
 

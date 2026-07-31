@@ -331,6 +331,7 @@ export namespace Provider {
   export interface WorkerPlan {
     profileID?: string
     key?: string
+    env?: string[]
     options: Record<string, unknown>
     baseOptions?: Record<string, unknown>
     explicitOptions?: Record<string, unknown>
@@ -346,6 +347,7 @@ export namespace Provider {
     return {
       ...(provider?.profileID ? { profileID: provider.profileID } : {}),
       key: provider?.key,
+      ...(provider?.env ? { env: provider.env } : {}),
       options: serializableProviderOptions(provider?.options ?? {}),
       ...(runtimeProfile
         ? {
@@ -497,7 +499,7 @@ export namespace Provider {
       profileID: plan.profileID,
       name: model.providerID,
       source: plan.key ? "api" : "custom",
-      env: [],
+      env: plan.env ?? [],
       key: plan.key,
       options,
       models: { [model.id]: model },
@@ -761,6 +763,9 @@ export namespace Provider {
       }
       const providerKey = providers[providerID]?.key
       const configProvider = config.provider?.[providerID]
+      const environmentProviderKey = providers[providerID]?.env
+        .map((name) => env[name]?.trim())
+        .find((value): value is string => !!value)
       const inlineProviderKey =
         typeof configProvider?.options?.apiKey === "string" && configProvider.options.apiKey
           ? configProvider.options.apiKey
@@ -771,6 +776,7 @@ export namespace Provider {
       const connectionAuth =
         (inlineProviderKey ? ({ type: "api", key: inlineProviderKey } satisfies Auth.Info) : undefined) ??
         storedAuth ??
+        (environmentProviderKey ? ({ type: "api", key: environmentProviderKey } satisfies Auth.Info) : undefined) ??
         (providerKey ? ({ type: "api", key: providerKey } satisfies Auth.Info) : undefined)
       const sourceProviderID = configProvider?.modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id
       const profileInput = {
@@ -803,6 +809,7 @@ export namespace Provider {
       mergeProvider(providerID, {
         profileID: profile.id,
         source: "custom",
+        key: auth?.type === "api" ? auth.key : undefined,
         options,
       })
     }
@@ -908,7 +915,7 @@ export namespace Provider {
    */
   export function createSDKFromSpec(
     model: Model,
-    provider: { profileID?: string; options?: Record<string, unknown>; key?: string },
+    provider: { profileID?: string; options?: Record<string, unknown>; key?: string; env?: string[] },
   ): SDK {
     const options: Record<string, any> = { ...provider.options, ...model.options }
 
@@ -939,6 +946,7 @@ export namespace Provider {
 
     const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID, {
       effectiveAPIKey: typeof options["apiKey"] === "string" ? options["apiKey"] : undefined,
+      environment: provider.env,
     })
     const proxyFetch =
       proxyUrl || noProxy
@@ -1054,6 +1062,7 @@ export namespace Provider {
       const customFetch = options["fetch"]
       const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID, {
         effectiveAPIKey: typeof options["apiKey"] === "string" ? options["apiKey"] : undefined,
+        environment: provider.env,
       })
       const proxyUrl = options["proxy"] as string | undefined
       const noProxy = options["noProxy"] === true

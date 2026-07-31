@@ -3,6 +3,7 @@ import { ProviderAuthRecoveryError } from "./auth-recovery-error"
 import { Auth } from "./api-key"
 import { ProviderAuthHealth } from "./auth-health"
 import { ProviderProfile } from "./profile"
+import { Env } from "@/util/env"
 
 export namespace ProviderAuthRecovery {
   type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -20,6 +21,7 @@ export namespace ProviderAuthRecovery {
       body?: unknown
     }) => ProviderProfile.ClassifiedError | undefined
     manageStoredCredential?: boolean
+    environment?: string[]
     reloadOnTransition?: boolean
     throwOnActionRequired?: boolean
   }
@@ -121,9 +123,10 @@ export namespace ProviderAuthRecovery {
     await RuntimeReload.reload({ targets: ["provider"], reason })
   }
 
-  function runtimeCredential(providerID: string, profileID?: string) {
+  function runtimeCredential(providerID: string, profileID?: string, environment?: string[]) {
     const profile = ProviderProfile.resolve(providerID, profileID)
-    const usesEnvironment = profile?.env?.some((name) => !!process.env[name]?.trim()) === true
+    const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+    const usesEnvironment = (environment ?? profile?.env ?? []).some((name) => !!environmentValues[name]?.trim())
     return {
       source: usesEnvironment ? "env" : profile?.origin === "plugin" ? "plugin" : "runtime",
       recovery: usesEnvironment ? ("update_environment" as const) : ("reconnect" as const),
@@ -141,6 +144,7 @@ export namespace ProviderAuthRecovery {
     removalRevision: number,
     profileID?: string,
     manageStoredCredential = true,
+    environment?: string[],
   ) {
     if (!manageStoredCredential) return
     const entry = (await Auth.entries())[providerID]
@@ -149,7 +153,7 @@ export namespace ProviderAuthRecovery {
       await ProviderAuthHealth.clearObservation(providerID, entry)
       return
     }
-    const runtime = runtimeCredential(providerID, profileID)
+    const runtime = runtimeCredential(providerID, profileID, environment)
     await ProviderAuthHealth.observe({
       providerID,
       status: "connected",
@@ -166,7 +170,7 @@ export namespace ProviderAuthRecovery {
   ) {
     if (input.manageStoredCredential === false) return
     if (Auth.removalRevision(input.providerID) !== removalRevision) return
-    const runtime = runtimeCredential(input.providerID, input.profileID)
+    const runtime = runtimeCredential(input.providerID, input.profileID, input.environment)
     if (failure.exhausted) {
       if (selected) {
         await Auth.markExhausted(input.providerID, {
@@ -271,7 +275,13 @@ export namespace ProviderAuthRecovery {
     try {
       const response = await input.request()
       if (response.ok) {
-        await markSuccess(input.providerID, removalRevision, input.profileID, input.manageStoredCredential !== false)
+        await markSuccess(
+          input.providerID,
+          removalRevision,
+          input.profileID,
+          input.manageStoredCredential !== false,
+          input.environment,
+        )
         return response
       }
       const failure = await classify(input, response)
@@ -322,7 +332,13 @@ export namespace ProviderAuthRecovery {
       throw error
     }
     if (first.ok) {
-      await markSuccess(input.providerID, removalRevision, input.profileID, input.manageStoredCredential !== false)
+      await markSuccess(
+        input.providerID,
+        removalRevision,
+        input.profileID,
+        input.manageStoredCredential !== false,
+        input.environment,
+      )
       return first
     }
 
@@ -378,19 +394,25 @@ export namespace ProviderAuthRecovery {
     providerID: string,
     fetchFn: FetchLike = fetch,
     profileID?: string,
-    options?: { effectiveAPIKey?: string },
+    options?: { effectiveAPIKey?: string; environment?: string[] },
   ): FetchLike {
     if (handledFetches.has(fetchFn)) return fetchFn
     const wrapped: FetchLike = async (input, init) => {
       const template = new Request(input, init)
       const selected = await Auth.select(providerID)
+      const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+      const environmentKey = options?.environment
+        ?.map((name) => environmentValues[name]?.trim())
+        .find((value): value is string => !!value)
       const manageStoredCredential =
         options?.effectiveAPIKey === undefined ||
+        environmentKey === options.effectiveAPIKey ||
         (selected?.auth.type === "api" && selected.auth.key === options.effectiveAPIKey)
       return execute({
         providerID,
         profileID,
         manageStoredCredential,
+        environment: options?.environment,
         request: async () => {
           const request = template.clone()
           const headers = new Headers(request.headers)

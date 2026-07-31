@@ -770,7 +770,7 @@ test("mapped OpenRouter usage uses inline and environment connection credentials
       },
       {
         id: `openrouter-environment-${Math.random().toString(36).slice(2)}`,
-        provider: { profile: "openrouter", env: ["MAPPED_OPENROUTER_KEY"] },
+        provider: { profile: "openrouter", env: ["MISSING_MAPPED_OPENROUTER_KEY", "MAPPED_OPENROUTER_KEY"] },
         expected: "environment-openrouter-key",
       },
     ]) {
@@ -794,6 +794,7 @@ test("mapped OpenRouter usage uses inline and environment connection credentials
           if (account.provider.env) Env.set("MAPPED_OPENROUTER_KEY", account.expected)
         },
         fn: async () => {
+          expect((await Provider.list())[account.id].key).toBe(account.expected)
           expect(await ProviderUsage.get(account.id)).toMatchObject({
             providerID: account.id,
             status: "available",
