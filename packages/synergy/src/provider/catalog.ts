@@ -599,11 +599,28 @@ export namespace ProviderCatalog {
         ? configured.options.apiKey
         : undefined
     const inlineAuth = inlineKey ? ({ type: "api", key: inlineKey } satisfies Auth.Info) : undefined
-    const auth = selected?.auth ?? environmentAuth ?? inlineAuth
-    const credentialID =
-      selected?.credentialID ??
-      (environment ? `env:${environment.name}` : inlineAuth ? "config:options.apiKey" : undefined)
-    const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
+    const resolvedCredential = inlineAuth
+      ? {
+          auth: inlineAuth,
+          credentialID: "config:options.apiKey",
+          authUpdatedAt: undefined,
+        }
+      : selected
+        ? {
+            auth: selected.auth,
+            credentialID: selected.credentialID,
+            authUpdatedAt: selected.poolEntry?.updatedAt ?? selected.entry.updatedAt,
+          }
+        : environmentAuth
+          ? {
+              auth: environmentAuth,
+              credentialID: `env:${environment?.name}`,
+              authUpdatedAt: undefined,
+            }
+          : undefined
+    const auth = resolvedCredential?.auth
+    const credentialID = resolvedCredential?.credentialID
+    const authUpdatedAt = resolvedCredential?.authUpdatedAt
     const customIdentity = await profile.modelCatalogIdentity?.({
       providerID,
       auth,

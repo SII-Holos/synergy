@@ -18,6 +18,7 @@ const configuredProfileID = `catalog-configured-profile-${Math.random().toString
 const configuredProviderID = `catalog-configured-provider-${Math.random().toString(36).slice(2)}`
 const environmentProfileID = `catalog-environment-profile-${Math.random().toString(36).slice(2)}`
 const environmentProviderID = `catalog-environment-provider-${Math.random().toString(36).slice(2)}`
+const inlineProviderID = `catalog-inline-credentials-${Math.random().toString(36).slice(2)}`
 const environmentName = "SYNERGY_TEST_CATALOG_ACCOUNT_KEY"
 let alternateFetchCalls = 0
 let environmentDiscoveryAuth: string | undefined
@@ -103,6 +104,7 @@ async function reset() {
     resolveConfiguredDiscovery = resolve
   })
   await Auth.remove(credentialProviderID).catch(() => {})
+  await Auth.remove(inlineProviderID).catch(() => {})
   ProviderCatalog.reset()
   await fs.rm(Global.Path.providerModelCatalogCache, { force: true })
 }
@@ -336,7 +338,6 @@ test("configured environment credentials participate in live discovery", async (
 })
 
 test("configured inline credentials participate in live discovery", async () => {
-  const providerID = "catalog-inline-credentials"
   const configured = {
     profile: environmentProfileID,
     modelsDevProviderID: "openai",
@@ -345,6 +346,10 @@ test("configured inline credentials participate in live discovery", async () => 
     },
   }
   await using tmp = await tmpdir()
+  await Auth.set(inlineProviderID, {
+    type: "api",
+    key: "stored-catalog-key",
+  })
 
   await ScopeContext.provide({
     scope: await tmp.scope(),
@@ -353,14 +358,14 @@ test("configured inline credentials participate in live discovery", async () => 
         config: {
           providerCatalog: { enabled: false, offlineCache: false },
           provider: {
-            [providerID]: configured,
+            [inlineProviderID]: configured,
           },
         },
         includeLive: true,
         forceRefresh: true,
       })
       await environmentDiscovery
-      await ProviderCatalog.refresh(providerID, environmentProfileID, undefined, configured)
+      await ProviderCatalog.refresh(inlineProviderID, environmentProfileID, undefined, configured)
     },
   })
 
