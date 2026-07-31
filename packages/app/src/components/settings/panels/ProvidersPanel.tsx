@@ -39,6 +39,7 @@ import { groupProviderConnections } from "./provider-groups"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { requestErrorMessage } from "@/utils/error"
+import { removeProviderAccount, saveProviderAccount } from "./provider-account-operations"
 
 const SETTINGS_RECOMMENDED_PROVIDER_IDS = [
   "deepseek",
@@ -270,7 +271,7 @@ export function ProvidersPanel(props: {
       confirmLabel: removeAccountAction,
       tone: "danger",
       onConfirm: async () => {
-        await globalSDK.client.provider.connection.remove({ providerID: provider.id }, { throwOnError: true })
+        await removeProviderAccount(globalSDK.client.provider.connection, provider.id)
         await globalSync.refreshProviders()
         setSelectedID(provider.profileID)
       },
@@ -540,31 +541,25 @@ function ProviderAccountDialog(props: {
     if (!ready() || busy()) return
     setBusy(true)
     try {
-      const response = editing()
-        ? await globalSDK.client.provider.connection.update(
-            {
+      const connection = await saveProviderAccount(
+        globalSDK.client.provider.connection,
+        editing()
+          ? {
+              mode: "update",
               providerID: props.connection!.id,
-              providerConnectionUpdateInput: {
-                name: name().trim(),
-                endpoint: endpoint().trim() || null,
-                enabled: enabled(),
-              },
+              name: name().trim(),
+              endpoint: endpoint().trim() || null,
+              enabled: enabled(),
+            }
+          : {
+              mode: "create",
+              profileID: props.profileID,
+              name: name().trim(),
+              ...(endpoint().trim() ? { endpoint: endpoint().trim() } : {}),
+              enabled: enabled(),
             },
-            { throwOnError: true },
-          )
-        : await globalSDK.client.provider.connection.create(
-            {
-              providerConnectionCreateInput: {
-                profileID: props.profileID,
-                name: name().trim(),
-                ...(endpoint().trim() ? { endpoint: endpoint().trim() } : {}),
-                enabled: enabled(),
-              },
-            },
-            { throwOnError: true },
-          )
-      if (!response.data) throw new Error("Provider account response was empty")
-      await props.onSaved(response.data)
+      )
+      await props.onSaved(connection)
       showToast({ type: "success", title: editing() ? _(savedToast) : _(createdToast) })
       dialog.close()
     } catch (error) {

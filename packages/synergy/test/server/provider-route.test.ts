@@ -158,6 +158,22 @@ test("provider connection routes manage a second account without changing its ca
       },
     })
 
+    const configured = await Config.domainGet("providers")
+    await Config.domainUpdate(
+      "providers",
+      {
+        ...configured,
+        provider: {
+          ...configured.provider,
+          [providerID]: {
+            ...configured.provider?.[providerID],
+            whitelist: ["deepseek-chat"],
+          },
+        },
+      },
+      { mode: "replace-domain" },
+    )
+
     const listedResponse = await app.request("/provider")
     const listed = await listedResponse.json()
     expect(listed.connections[providerID]).toMatchObject({
@@ -168,6 +184,7 @@ test("provider connection routes manage a second account without changing its ca
     expect(listed.runtimeAvailability[providerID]).toMatchObject({
       available: false,
       reason: "disabled",
+      modelCount: 1,
     })
     expect(listed.all.some((provider: Provider.Info) => provider.id === providerID)).toBe(false)
 

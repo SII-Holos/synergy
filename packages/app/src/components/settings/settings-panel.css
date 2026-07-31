@@ -3198,6 +3198,17 @@
     flex-direction: column;
   }
 
+  .providers-account-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .providers-connect-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .usage-window-reading {
     justify-self: start;
     align-items: flex-start;

@@ -107,7 +107,11 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
   )
   const runtimeAvailability = mapValues(connections, (connection) => {
     const provider = providers[connection.id]
-    const modelSource = provider?.models ?? allProviders[connection.catalogProviderID]?.models ?? {}
+    const modelSource =
+      provider?.models ??
+      allProviders[connection.id]?.models ??
+      allProviders[connection.catalogProviderID]?.models ??
+      {}
     const disabledProvider = !connection.enabled
     const modelCount = Object.values(modelSource).filter(
       (model) => model.catalogState !== "retained" && model.status !== "deprecated",
