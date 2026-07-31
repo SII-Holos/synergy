@@ -1,5 +1,6 @@
 import { Auth } from "../provider/api-key"
 import { ModelsDev } from "../provider/models"
+import { ProviderCatalog } from "../provider/catalog"
 import { Provider } from "../provider/provider"
 import { ProviderTransform } from "../provider/transform"
 import { Config } from "./config"
@@ -753,12 +754,12 @@ export namespace ConfigSetup {
     ref: string,
   ): Promise<ImportedProviderModelTarget> {
     const { providerID, modelID } = Provider.parseModel(ref)
-    const database = await ModelsDev.get()
+    const database = await ProviderCatalog.resolve({ config, includeLive: false })
     const imported = config.provider?.[providerID]
     const sourceProviderID = imported?.modelsDevProviderID ?? providerID
-    const source = database[sourceProviderID]
+    const source = database[providerID] ?? database[sourceProviderID]
     const base =
-      source && sourceProviderID !== providerID
+      source && source.id !== providerID
         ? {
             ...source,
             id: providerID,

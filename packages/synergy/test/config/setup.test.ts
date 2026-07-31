@@ -63,6 +63,31 @@ test("mapped provider models validate through their configured catalog source", 
   })
 })
 
+test("mapped provider models validate through synthetic profile catalogs", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      const result = await ConfigSetup.validateRequiredCore({
+        model: "codex-secondary/gpt-5.4-mini",
+        provider: {
+          "codex-secondary": {
+            profile: "openai-codex",
+            modelsDevProviderID: "openai-codex",
+            options: { apiKey: "test-api-key" },
+          },
+        },
+      })
+
+      expect(result.fields.model).toMatchObject({
+        valid: true,
+        mode: "static",
+        message: "Default model verified",
+      })
+    },
+  })
+})
+
 test("mapped provider live probes run profile auth, options, and model hooks", async () => {
   const profileID = `setup-probe-profile-${Math.random().toString(36).slice(2)}`
   const providerID = `${profileID}-secondary`
