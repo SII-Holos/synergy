@@ -1593,6 +1593,7 @@ export type Model = {
 
 export type Provider = {
   id: string
+  profileID?: string
   name: string
   source: "env" | "config" | "custom" | "api"
   env: Array<string>
@@ -2459,10 +2460,6 @@ export type ProviderConfig = {
   env?: Array<string>
   id?: string
   npm?: string
-  /**
-   * Models.dev provider id to use as this provider connection's model catalog source
-   */
-  modelsDevProviderID?: string
   models?: {
     [key: string]: {
       id?: string
@@ -2529,6 +2526,14 @@ export type ProviderConfig = {
       }
     }
   }
+  /**
+   * Canonical provider profile whose runtime behavior this account connection uses
+   */
+  profile?: string
+  /**
+   * Models.dev provider id to use as this provider connection's model catalog source
+   */
+  modelsDevProviderID?: string
   whitelist?: Array<string>
   blacklist?: Array<string>
   options?: {
@@ -7841,6 +7846,14 @@ export type EventProviderAuthUpdated = {
   }
 }
 
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -7852,14 +7865,6 @@ export type EventInstallationUpdateAvailable = {
   type: "installation.update-available"
   properties: {
     version: string
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
   }
 }
 
@@ -8449,9 +8454,9 @@ export type Event =
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
   | EventProviderAuthUpdated
+  | EventConfigUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
-  | EventConfigUpdated
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged

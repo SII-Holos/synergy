@@ -346,6 +346,46 @@ test("plugin classifier and refresh hooks run, while an unclassified plugin 401 
   expect(await Auth.get("test-plugin-without-classifier")).toMatchObject({ type: "api", key: "plugin-key" })
 })
 
+test("canonical profile recovery hooks operate on the concrete account connection", async () => {
+  const profileID = `test-profile-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  let refreshedProviderID: string | undefined
+  ProviderProfile.register({
+    id: profileID,
+    name: "Test account profile",
+    origin: "plugin",
+    classifyError: ({ status }) =>
+      status === 401 ? { code: "profile_token_rejected", retryable: false, reloginRequired: true } : undefined,
+    refreshAuth: async ({ providerID, auth }) => {
+      refreshedProviderID = providerID
+      return auth?.type === "oauth" ? { ...auth, access: "secondary-new" } : undefined
+    },
+  })
+  await Auth.set(connectionID, {
+    type: "oauth",
+    access: "secondary-old",
+    refresh: "secondary-refresh",
+    expires: 9999999999,
+  })
+
+  try {
+    const recovered = await ProviderAuthRecovery.execute({
+      providerID: connectionID,
+      profileID,
+      request: async () => {
+        const auth = await Auth.get(connectionID)
+        return new Response(null, { status: auth?.type === "oauth" && auth.access === "secondary-new" ? 200 : 401 })
+      },
+    })
+    expect(recovered.status).toBe(200)
+    expect(refreshedProviderID).toBe(connectionID)
+    expect(await Auth.get(profileID)).toBeUndefined()
+    expect(await Auth.get(connectionID)).toMatchObject({ type: "oauth", access: "secondary-new" })
+  } finally {
+    await Auth.remove(connectionID)
+  }
+})
+
 test("health events contain only public state and ignore connected token rotation", async () => {
   await using tmp = await tmpdir({ git: true })
   await ScopeContext.provide({

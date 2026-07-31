@@ -9,6 +9,7 @@ export namespace ProviderAuthRecovery {
 
   export interface ExecuteInput {
     providerID: string
+    profileID?: string
     request: () => Promise<Response>
     refresh?: (auth: Auth.Info) => Promise<Auth.Info | undefined>
     recoverWithoutCredential?: () => Promise<boolean>
@@ -73,7 +74,7 @@ export namespace ProviderAuthRecovery {
 
   async function classify(input: ExecuteInput, response: Response) {
     const body = await responseBody(response)
-    const profile = ProviderProfile.get(input.providerID)
+    const profile = ProviderProfile.resolve(input.providerID, input.profileID)
     const classified =
       input.classify?.({ providerID: input.providerID, status: response.status, body }) ??
       profile?.classifyError?.({ providerID: input.providerID, status: response.status, body })
@@ -119,8 +120,8 @@ export namespace ProviderAuthRecovery {
     await RuntimeReload.reload({ targets: ["provider"], reason })
   }
 
-  function runtimeCredential(providerID: string) {
-    const profile = ProviderProfile.get(providerID)
+  function runtimeCredential(providerID: string, profileID?: string) {
+    const profile = ProviderProfile.resolve(providerID, profileID)
     const usesEnvironment = profile?.env?.some((name) => !!process.env[name]?.trim()) === true
     return {
       source: usesEnvironment ? "env" : profile?.origin === "plugin" ? "plugin" : "runtime",
@@ -129,14 +130,14 @@ export namespace ProviderAuthRecovery {
     }
   }
 
-  async function markSuccess(providerID: string, removalRevision: number) {
+  async function markSuccess(providerID: string, removalRevision: number, profileID?: string) {
     const entry = (await Auth.entries())[providerID]
     if (Auth.removalRevision(providerID) !== removalRevision) return
     if (entry) {
       await ProviderAuthHealth.clearObservation(providerID, entry)
       return
     }
-    const runtime = runtimeCredential(providerID)
+    const runtime = runtimeCredential(providerID, profileID)
     await ProviderAuthHealth.observe({
       providerID,
       status: "connected",
@@ -152,7 +153,7 @@ export namespace ProviderAuthRecovery {
     removalRevision: number,
   ) {
     if (Auth.removalRevision(input.providerID) !== removalRevision) return
-    const runtime = runtimeCredential(input.providerID)
+    const runtime = runtimeCredential(input.providerID, input.profileID)
     if (failure.exhausted) {
       if (selected) {
         await Auth.markExhausted(input.providerID, {
@@ -192,7 +193,7 @@ export namespace ProviderAuthRecovery {
   }
 
   async function refresh(input: ExecuteInput, selected: NonNullable<Awaited<ReturnType<typeof Auth.select>>>) {
-    const profile = ProviderProfile.get(input.providerID)
+    const profile = ProviderProfile.resolve(input.providerID, input.profileID)
     const refresh =
       input.refresh ??
       (profile?.refreshAuth
@@ -256,7 +257,7 @@ export namespace ProviderAuthRecovery {
     try {
       const response = await input.request()
       if (response.ok) {
-        await markSuccess(input.providerID, removalRevision)
+        await markSuccess(input.providerID, removalRevision, input.profileID)
         return response
       }
       const failure = await classify(input, response)
@@ -306,7 +307,7 @@ export namespace ProviderAuthRecovery {
       throw error
     }
     if (first.ok) {
-      await markSuccess(input.providerID, removalRevision)
+      await markSuccess(input.providerID, removalRevision, input.profileID)
       return first
     }
 
@@ -358,12 +359,13 @@ export namespace ProviderAuthRecovery {
     return retryOnce(input, removalRevision)
   }
 
-  export function wrapFetch(providerID: string, fetchFn: FetchLike = fetch): FetchLike {
+  export function wrapFetch(providerID: string, fetchFn: FetchLike = fetch, profileID?: string): FetchLike {
     if (handledFetches.has(fetchFn)) return fetchFn
     const wrapped: FetchLike = (input, init) => {
       const template = new Request(input, init)
       return execute({
         providerID,
+        profileID,
         request: async () => {
           const selected = await Auth.select(providerID)
           const request = template.clone()

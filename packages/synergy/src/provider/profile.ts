@@ -134,14 +134,25 @@ export namespace ProviderProfile {
     }): ClassifiedError | undefined
     runtimeOptions?(input: RuntimeOptionsInput): Promise<Record<string, any>>
     getModel?(input: ModelFactoryInput): Promise<any>
-    fetchModelCatalog?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<ModelCatalogEntry[]>
-    fetchModels?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<string[]>
+    fetchModelCatalog?(input: {
+      providerID: string
+      auth?: Auth.Info
+      fetch?: FetchLike
+      baseURL?: string
+    }): Promise<ModelCatalogEntry[]>
+    fetchModels?(input: {
+      providerID: string
+      auth?: Auth.Info
+      fetch?: FetchLike
+      baseURL?: string
+    }): Promise<string[]>
     modelCatalogIdentity?(input: {
+      providerID: string
       auth?: Auth.Info
       credentialID?: string
       authUpdatedAt?: number
     }): Promise<string | undefined> | string | undefined
-    fetchUsage?(input?: { fetch?: FetchLike }): Promise<AccountUsage.Snapshot>
+    fetchUsage?(input: { providerID: string; fetch?: FetchLike }): Promise<AccountUsage.Snapshot>
   }
 
   const profiles = new Map<string, Profile>()
@@ -156,6 +167,10 @@ export namespace ProviderProfile {
 
   export function get(providerID: string): Profile | undefined {
     return profiles.get(aliases.get(providerID) ?? providerID)
+  }
+
+  export function resolve(providerID: string, profileID?: string): Profile | undefined {
+    return get(profileID ?? providerID)
   }
 
   export function all(): Profile[] {

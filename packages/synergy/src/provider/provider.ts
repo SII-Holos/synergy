@@ -309,6 +309,7 @@ export namespace Provider {
   export const Info = z
     .object({
       id: z.string(),
+      profileID: z.string().optional(),
       name: z.string(),
       source: z.enum(["env", "config", "custom", "api"]),
       env: z.string().array(),
@@ -322,6 +323,7 @@ export namespace Provider {
   export type Info = z.infer<typeof Info>
 
   export interface WorkerPlan {
+    profileID?: string
     key?: string
     options: Record<string, unknown>
     timeouts: {
@@ -333,6 +335,7 @@ export namespace Provider {
 
   export function workerPlan(provider: Info | undefined, timeouts: WorkerPlan["timeouts"]): WorkerPlan {
     return {
+      ...(provider?.profileID ? { profileID: provider.profileID } : {}),
       key: provider?.key,
       options: serializableProviderOptions(provider?.options ?? {}),
       timeouts,
@@ -440,7 +443,7 @@ export namespace Provider {
     }
     const { registerBuiltinProviderProfiles } = await import("./builtin")
     registerBuiltinProviderProfiles()
-    const profile = ProviderProfile.get(model.providerID)
+    const profile = ProviderProfile.resolve(model.providerID, plan.profileID)
     const storedAuth = await Auth.get(model.providerID)
     const profileInput = {
       providerID: model.providerID,
@@ -453,6 +456,7 @@ export namespace Provider {
     const options = mergeDeep(mergeDeep(plan.options, modelOptions), runtimeOptions)
     workerState.providers[model.providerID] = {
       id: model.providerID,
+      profileID: plan.profileID,
       name: model.providerID,
       source: plan.key ? "api" : "custom",
       env: [],
@@ -523,9 +527,11 @@ export namespace Provider {
     // extend database from config
     for (const [providerID, provider] of configProviders) {
       const sourceProviderID = provider.modelsDevProviderID ?? providerID
-      const sourceCatalog = provider.modelsDevProviderID
-        ? inheritedModelsDev?.[sourceProviderID]
-        : modelsDev[sourceProviderID]
+      const sourceCatalog = provider.profile
+        ? modelsDev[providerID]
+        : provider.modelsDevProviderID
+          ? inheritedModelsDev?.[sourceProviderID]
+          : modelsDev[sourceProviderID]
       if (provider.modelsDevProviderID && !sourceCatalog) {
         log.warn("configured provider model catalog source not found", {
           providerID,
@@ -554,6 +560,7 @@ export namespace Provider {
       }
       const parsed: Info = {
         id: providerID,
+        profileID: provider.profile,
         name: provider.name ?? existing?.name ?? providerID,
         env: provider.env ?? existing?.env ?? [],
         options: mergeDeep(existing?.options ?? {}, provider.options ?? {}),
@@ -687,16 +694,28 @@ export namespace Provider {
       }
     }
 
-    for (const profile of ProviderProfile.all()) {
-      const providerID = profile.id
+    const runtimeProfiles = new Map(ProviderProfile.all().map((profile) => [profile.id, profile]))
+    for (const [providerID, provider] of configProviders) {
+      if (!provider.profile) continue
+      const profile = ProviderProfile.get(provider.profile)
+      if (!profile) {
+        log.warn("configured provider profile not found", { providerID, profileID: provider.profile })
+        continue
+      }
+      runtimeProfiles.set(providerID, profile)
+    }
+
+    for (const [providerID, profile] of runtimeProfiles) {
       if (disabled.has(providerID)) continue
       const base = database[providerID]
       if (!base) continue
       const storedAuth = await Auth.get(providerID)
+      const configProvider = config.provider?.[providerID]
+      const sourceProviderID = configProvider?.modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id
       const profileInput = {
         providerID,
         auth: storedAuth,
-        provider: modelsDev[providerID],
+        provider: modelsDev[providerID] ?? inheritedModelsDev?.[sourceProviderID],
       }
       const auth = (await profile.resolveAuth?.(profileInput)) ?? storedAuth
       const autoload = (await profile.autoload?.({ ...profileInput, auth })) ?? false
@@ -712,6 +731,7 @@ export namespace Provider {
         }
       }
       mergeProvider(providerID, {
+        profileID: profile.id,
         source: "custom",
         options,
       })
@@ -787,7 +807,10 @@ export namespace Provider {
    * Used by both the normal `getSDK` (which wraps this with caching) and
    * the import probe path (which has no scope context).
    */
-  export function createSDKFromSpec(model: Model, provider: { options?: Record<string, unknown>; key?: string }): SDK {
+  export function createSDKFromSpec(
+    model: Model,
+    provider: { profileID?: string; options?: Record<string, unknown>; key?: string },
+  ): SDK {
     const options: Record<string, any> = { ...provider.options, ...model.options }
 
     if (model.api.npm.includes("@ai-sdk/openai-compatible") && options["includeUsage"] !== false) {
@@ -815,7 +838,7 @@ export namespace Provider {
     delete options["proxy"]
     delete options["noProxy"]
 
-    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
+    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID)
     const proxyFetch =
       proxyUrl || noProxy
         ? (input: any, init?: any) => fetchWithProxyOptions(authFetch, input, init, proxyUrl, noProxy)
@@ -871,7 +894,7 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
-      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
+      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID)
       const proxyUrl = options["proxy"] as string | undefined
       const noProxy = options["noProxy"] === true
       delete options["proxy"]

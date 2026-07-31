@@ -1077,6 +1077,11 @@ export type LibraryConfig = z.infer<typeof LibraryConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
+    profile: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Canonical provider profile whose runtime behavior this account connection uses"),
     modelsDevProviderID: z
       .string()
       .min(1)

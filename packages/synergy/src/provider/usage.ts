@@ -96,7 +96,10 @@ export namespace AccountUsage {
     }
   }
 
-  export async function openrouter(providerID = "openrouter", fetchFn: typeof fetch = fetch): Promise<Snapshot> {
+  export async function openrouter(
+    providerID = "openrouter",
+    fetchFn: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> = fetch,
+  ): Promise<Snapshot> {
     const auth = await Auth.get(providerID)
     if (!auth || auth.type !== "api") {
       return unavailable(providerID, "OpenRouter credits are only available for API-key credentials.")

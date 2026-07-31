@@ -56,7 +56,7 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
   const profiles = Object.fromEntries(
     Object.entries(providers).map(([providerID, provider]) => [
       providerID,
-      ProviderCatalog.providerMetadata(filteredProviders[providerID] ?? provider),
+      ProviderCatalog.providerMetadata(filteredProviders[providerID] ?? provider, provider.profileID),
     ]),
   )
   const entries = await Auth.entries()
@@ -66,7 +66,7 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
       const health = ProviderAuthHealth.fromEntry(providerID, entries[providerID])
       if (health.status !== "not_configured") return [providerID, health]
       const provider = providers[providerID]
-      const profile = ProviderProfile.get(providerID)
+      const profile = ProviderProfile.resolve(providerID, provider?.profileID)
       const githubEnvironment =
         providerID === GitHubProvider.PROVIDER_ID &&
         !!(process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim())
@@ -99,7 +99,7 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
       !credentialExhausted &&
       Object.prototype.hasOwnProperty.call(connected, provider.id) &&
       modelCount > 0
-    const profile = ProviderProfile.get(provider.id)
+    const profile = ProviderProfile.resolve(provider.id, provider.profileID)
     return {
       providerID: provider.id,
       available,
@@ -140,7 +140,7 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
     runtimeAvailability,
     modelCatalog: Object.fromEntries(
       Object.entries(providers).flatMap(([providerID, provider]) => {
-        const profile = ProviderProfile.get(providerID)
+        const profile = ProviderProfile.resolve(providerID, provider.profileID)
         if (!profile?.fetchModelCatalog && !profile?.fetchModels) return []
         return [
           [

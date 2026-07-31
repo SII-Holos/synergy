@@ -98,7 +98,7 @@ export function registerBuiltinProviderProfiles() {
       if (!access) return []
       return CodexProvider.fetchModelCatalog(access, input.fetch)
     },
-    fetchUsage: (input) => CodexProvider.fetchUsage(input?.fetch),
+    fetchUsage: (input) => CodexProvider.fetchUsage(input.fetch),
     refreshAuth: (input) => (input.auth ? CodexProvider.refreshAuth(input.auth) : Promise.resolve(undefined)),
     classifyError: CodexProvider.classifyError,
   })
@@ -139,7 +139,7 @@ export function registerBuiltinProviderProfiles() {
         },
       }
     },
-    fetchUsage: (input) => AnthropicOAuthProvider.fetchUsage(input?.fetch),
+    fetchUsage: (input) => AnthropicOAuthProvider.fetchUsage(input.fetch),
     refreshAuth: (input) => (input.auth ? AnthropicOAuthProvider.refreshAuth(input.auth) : Promise.resolve(undefined)),
     classifyError: AnthropicOAuthProvider.classifyError,
   })
@@ -582,6 +582,6 @@ export function registerBuiltinProviderProfiles() {
         "X-OpenRouter-Categories": "cli-agent,personal-agent",
       },
     }),
-    fetchUsage: () => AccountUsage.openrouter("openrouter"),
+    fetchUsage: (input) => AccountUsage.openrouter(input.providerID, input.fetch),
   })
 }

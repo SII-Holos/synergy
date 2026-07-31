@@ -8,6 +8,8 @@ import { ModelsDev } from "../../src/provider/models"
 import { Provider as ProviderConfig } from "../../src/config/schema"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { ProviderProfile } from "../../src/provider/profile"
+import { ProviderUsage } from "../../src/provider/usage-service"
+import { Auth } from "../../src/provider/api-key"
 
 async function provideTestScope(input: {
   scope: Awaited<ReturnType<Awaited<ReturnType<typeof tmpdir>>["scope"]>>
@@ -396,6 +398,75 @@ test("provider config accepts a non-empty models.dev catalog source", () => {
   expect(ProviderConfig.safeParse({ modelsDevProviderID: "" }).success).toBe(false)
 })
 
+test("provider config accepts a non-empty canonical runtime profile", () => {
+  expect(ProviderConfig.parse({ profile: "anthropic" }).profile).toBe("anthropic")
+  expect(ProviderConfig.safeParse({ profile: "" }).success).toBe(false)
+})
+
+test("custom provider resolves runtime behavior through its canonical profile", async () => {
+  const profileID = `runtime-profile-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  ProviderProfile.register({
+    id: profileID,
+    name: "Runtime profile",
+    authKind: "api_key",
+    modelsDevProviderID: "openai",
+    modelFactory: "openaiResponses",
+    runtimeOptions: async ({ providerID, auth }) => ({
+      resolvedProviderID: providerID,
+      resolvedCredential: auth?.type === "api" ? auth.key : undefined,
+    }),
+    fetchUsage: async ({ providerID }) => ({
+      providerID,
+      status: "available",
+      source: "test",
+      fetchedAt: new Date().toISOString(),
+      windows: [],
+      details: [providerID],
+    }),
+  })
+  ProviderCatalog.reset()
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          providerCatalog: { enabled: false, offlineCache: false },
+          provider: {
+            [connectionID]: {
+              profile: profileID,
+              modelsDevProviderID: "openai",
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Auth.set(connectionID, { type: "api", key: "secondary-profile-key" })
+  try {
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const provider = (await Provider.list())[connectionID]
+        expect(provider.profileID).toBe(profileID)
+        expect(provider.key).toBe("secondary-profile-key")
+        expect(provider.options.resolvedProviderID).toBe(connectionID)
+        expect(provider.options.resolvedCredential).toBe("secondary-profile-key")
+        expect(provider.models["gpt-5.5"].providerID).toBe(connectionID)
+        expect(await ProviderUsage.get(connectionID)).toMatchObject({
+          providerID: connectionID,
+          status: "available",
+          details: [connectionID],
+        })
+      },
+    })
+  } finally {
+    await Auth.remove(connectionID)
+  }
+})
+
 test("custom provider inherits a models.dev catalog without sharing account identity", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -499,6 +570,55 @@ test("custom provider inheritance excludes credential-aware live catalog snapsho
       const providers = await Provider.list()
       expect(providers[connectionID].models["primary-account-only-model"]).toBeUndefined()
       expect(providers[connectionID].models["gpt-5.5"]).toBeDefined()
+    },
+  })
+})
+
+test("custom provider live catalogs are discovered and cached per account connection", async () => {
+  const profileID = `live-runtime-profile-${Math.random().toString(36).slice(2)}`
+  const firstConnectionID = `${profileID}-first`
+  const secondConnectionID = `${profileID}-second`
+  ProviderProfile.register({
+    id: profileID,
+    name: "Live runtime profile",
+    authKind: "none",
+    modelsDevProviderID: "openai",
+    fallbackModels: ["gpt-5.5"],
+    fetchModelCatalog: async ({ providerID }) => [{ id: `${providerID}-model` }],
+  })
+  ProviderCatalog.reset()
+  const config = {
+    $schema: "file:///test/config.schema.json",
+    providerCatalog: { enabled: false, offlineCache: false },
+    provider: {
+      [firstConnectionID]: {
+        profile: profileID,
+        modelsDevProviderID: "openai",
+      },
+      [secondConnectionID]: {
+        profile: profileID,
+        modelsDevProviderID: "openai",
+      },
+    },
+  }
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "synergy.json"), JSON.stringify(config))
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await ProviderCatalog.refresh(firstConnectionID)
+      await ProviderCatalog.refresh(secondConnectionID)
+      ProviderCatalog.reset()
+
+      const catalog = await ProviderCatalog.resolve({ config, includeLive: true })
+      expect(catalog[firstConnectionID].models[`${firstConnectionID}-model`]).toBeDefined()
+      expect(catalog[firstConnectionID].models[`${secondConnectionID}-model`]).toBeUndefined()
+      expect(catalog[secondConnectionID].models[`${secondConnectionID}-model`]).toBeDefined()
+      expect(catalog[secondConnectionID].models[`${firstConnectionID}-model`]).toBeUndefined()
     },
   })
 })

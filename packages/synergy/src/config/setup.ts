@@ -973,6 +973,7 @@ export namespace ConfigSetup {
     }
 
     const sdk = Provider.createSDKFromSpec(target.model, {
+      profileID: target.provider.profileID,
       options: { ...providerOptions, ...modelOptions, apiKey },
       key: apiKey,
     })

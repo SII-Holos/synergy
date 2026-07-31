@@ -25640,6 +25640,9 @@
           "id": {
             "type": "string"
           },
+          "profileID": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -27294,11 +27297,6 @@
           "npm": {
             "type": "string"
           },
-          "modelsDevProviderID": {
-            "description": "Models.dev provider id to use as this provider connection's model catalog source",
-            "type": "string",
-            "minLength": 1
-          },
           "models": {
             "type": "object",
             "propertyNames": {
@@ -27342,6 +27340,7 @@
                   }
                 },
                 "temperature": {
+                  "default": false,
                   "type": "boolean"
                 },
                 "tool_call": {
@@ -27452,6 +27451,7 @@
                   "enum": ["active", "retained"]
                 },
                 "options": {
+                  "default": {},
                   "type": "object",
                   "propertyNames": {
                     "type": "string"
@@ -27473,8 +27473,7 @@
                     "npm": {
                       "type": "string"
                     }
-                  },
-                  "required": ["npm"]
+                  }
                 },
                 "variants": {
                   "description": "Variant-specific configuration",
@@ -27495,6 +27494,16 @@
                 }
               }
             }
+          },
+          "profile": {
+            "description": "Canonical provider profile whose runtime behavior this account connection uses",
+            "type": "string",
+            "minLength": 1
+          },
+          "modelsDevProviderID": {
+            "description": "Models.dev provider id to use as this provider connection's model catalog source",
+            "type": "string",
+            "minLength": 1
           },
           "whitelist": {
             "type": "array",
@@ -41598,6 +41607,32 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -41632,32 +41667,6 @@
               }
             },
             "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -43317,13 +43326,13 @@
             "$ref": "#/components/schemas/Event.provider.auth.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.config.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
             "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"

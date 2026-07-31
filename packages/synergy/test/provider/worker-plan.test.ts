@@ -40,6 +40,23 @@ test("Agent worker provider plans retain data options without executable callbac
   expect(provider.options.fetch).toBe(fetch)
 })
 
+test("Agent worker provider plans retain canonical runtime profile identity", () => {
+  const provider = {
+    profileID: "canonical-provider",
+    options: {},
+  } as unknown as Provider.Info
+
+  expect(
+    Provider.workerPlan(provider, {
+      ttfbMs: 10,
+      idleMs: 20,
+      wallMs: false,
+    }),
+  ).toMatchObject({
+    profileID: "canonical-provider",
+  })
+})
+
 test("Agent worker model caches follow provider credential changes", async () => {
   const previousWorker = process.env.SYNERGY_AGENT_WORKER
   process.env.SYNERGY_AGENT_WORKER = "1"

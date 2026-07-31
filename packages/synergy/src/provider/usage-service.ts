@@ -10,11 +10,15 @@ export namespace ProviderUsage {
 
   export async function get(providerID: string): Promise<AccountUsage.Snapshot> {
     registerBuiltinProviderProfiles()
-    const profile = ProviderProfile.get(providerID)
+    const provider = (await Provider.list())[providerID]
+    const profile = ProviderProfile.resolve(providerID, provider?.profileID)
     if (!profile?.fetchUsage) {
       return AccountUsage.unavailable(providerID, "This provider does not expose account usage through Synergy.")
     }
-    return profile.fetchUsage()
+    return {
+      ...(await profile.fetchUsage({ providerID })),
+      providerID,
+    }
   }
 
   export async function all(): Promise<Record<string, AccountUsage.Snapshot>> {
@@ -26,7 +30,7 @@ export namespace ProviderUsage {
     for (const providerID of Object.keys(providers)) {
       if (disabled.has(providerID)) continue
       if (enabled && !enabled.has(providerID)) continue
-      const profile = ProviderProfile.get(providerID)
+      const profile = ProviderProfile.resolve(providerID, providers[providerID]?.profileID)
       if (!profile?.fetchUsage) continue
       try {
         result[providerID] = await get(providerID)
