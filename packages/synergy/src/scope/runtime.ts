@@ -14,9 +14,17 @@ import { ScopeContext } from "./context"
 import { ScopedState } from "./scoped-state"
 
 export namespace ScopeRuntime {
+  type StartingListener = (scope: Scope.Project) => void
+
   const log = Log.create({ service: "scope-runtime" })
   const started = new Map<string, Promise<void>>()
   const disposing = new Map<string, Promise<void>>()
+  const startingListeners = new Set<StartingListener>()
+
+  export function onStarting(listener: StartingListener): () => void {
+    startingListeners.add(listener)
+    return () => startingListeners.delete(listener)
+  }
 
   export async function ensure(scope: Scope): Promise<void> {
     if (scope.type !== "project") return
@@ -29,6 +37,7 @@ export namespace ScopeRuntime {
           fn: async () => {
             Plugin.activateScope(scope.id)
             log.info("starting", { scopeID: scope.id, type: scope.type, directory: scope.directory })
+            for (const listener of startingListeners) listener(scope)
             await Plugin.init()
             await SessionRecovery.reconcileRuntimeState({ scopeID: scope.id, apply: true }).catch((error) => {
               log.warn("session runtime recovery failed", { scopeID: scope.id, error })

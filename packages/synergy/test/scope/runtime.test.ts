@@ -26,6 +26,30 @@ describe("ScopeRuntime", () => {
     }
   })
 
+  test("notifies starting listeners before plugin initialization", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const order: string[] = []
+    const unsubscribe = ScopeRuntime.onStarting((startingScope) => {
+      expect(startingScope.id).toBe(scope.id)
+      order.push("listener")
+    })
+    using _activateScope = spyOn(Plugin, "activateScope").mockImplementation(() => {
+      order.push("activate")
+    })
+    using _init = spyOn(Plugin, "init").mockImplementation(async () => {
+      order.push("init")
+    })
+
+    try {
+      await ScopeRuntime.ensure(scope)
+      expect(order).toEqual(["activate", "listener", "init"])
+    } finally {
+      unsubscribe()
+      await ScopeRuntime.dispose(scope.id)
+    }
+  })
+
   test("waits for in-flight startup before disposal and a later restart", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
