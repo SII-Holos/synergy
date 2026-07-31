@@ -580,33 +580,40 @@ test("inline provider credentials initialize mapped profile auth", async () => {
     },
   })
 
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          providerCatalog: { enabled: false, offlineCache: false },
-          provider: {
-            [connectionID]: {
-              profile: profileID,
-              modelsDevProviderID: "openai",
-              options: {
-                apiKey: "inline-provider-key",
+  await Auth.set(connectionID, { type: "api", key: "stored-provider-key" })
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "synergy.json"),
+          JSON.stringify({
+            providerCatalog: { enabled: false, offlineCache: false },
+            provider: {
+              [connectionID]: {
+                profile: profileID,
+                modelsDevProviderID: "openai",
+                options: {
+                  apiKey: "inline-provider-key",
+                },
               },
             },
-          },
-        }),
-      )
-    },
-  })
+          }),
+        )
+      },
+    })
 
-  await provideTestScope({
-    scope: await tmp.scope(),
-    fn: async () => {
-      expect((await Provider.list())[connectionID].profileID).toBe(profileID)
-      expect(resolvedKey).toBe("inline-provider-key")
-    },
-  })
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const provider = (await Provider.list())[connectionID]
+        expect(provider.profileID).toBe(profileID)
+        expect(provider.key).toBe("inline-provider-key")
+        expect(resolvedKey).toBe("inline-provider-key")
+      },
+    })
+  } finally {
+    await Auth.remove(connectionID)
+  }
 })
 
 test("custom provider resolves runtime behavior through its canonical profile", async () => {

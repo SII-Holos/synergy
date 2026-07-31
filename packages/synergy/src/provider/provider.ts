@@ -458,8 +458,8 @@ export namespace Provider {
     const connectionKey = plan.key ?? inlineProviderKey
     const auth =
       (inlineModelKey ? ({ type: "api", key: inlineModelKey } satisfies Auth.Info) : undefined) ??
-      storedAuth ??
-      (connectionKey ? ({ type: "api", key: connectionKey } satisfies Auth.Info) : undefined)
+      (connectionKey ? ({ type: "api", key: connectionKey } satisfies Auth.Info) : undefined) ??
+      storedAuth
     const profileInput = {
       providerID: model.providerID,
       auth,
@@ -750,12 +750,13 @@ export namespace Provider {
         typeof configProvider?.options?.apiKey === "string" && configProvider.options.apiKey
           ? configProvider.options.apiKey
           : undefined
-      const connectionKey = providerKey ?? inlineProviderKey
       const hasInlineModelKey = Object.values(configProvider?.models ?? {}).some(
         (model) => typeof model.options?.apiKey === "string" && model.options.apiKey.length > 0,
       )
       const connectionAuth =
-        storedAuth ?? (connectionKey ? ({ type: "api", key: connectionKey } satisfies Auth.Info) : undefined)
+        (inlineProviderKey ? ({ type: "api", key: inlineProviderKey } satisfies Auth.Info) : undefined) ??
+        storedAuth ??
+        (providerKey ? ({ type: "api", key: providerKey } satisfies Auth.Info) : undefined)
       const sourceProviderID = configProvider?.modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id
       const profileInput = {
         providerID,
@@ -795,6 +796,9 @@ export namespace Provider {
       const partial: Partial<Info> = { source: "config" }
       if (provider.env) partial.env = provider.env
       if (provider.name) partial.name = provider.name
+      if (typeof provider.options?.apiKey === "string" && provider.options.apiKey) {
+        partial.key = provider.options.apiKey
+      }
       if (provider.api || provider.options) {
         partial.options = mergeDeep(provider.api ? { baseURL: provider.api } : {}, provider.options ?? {})
       }

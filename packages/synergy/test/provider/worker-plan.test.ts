@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { Auth } from "../../src/provider/api-key"
 import { Provider } from "../../src/provider/provider"
 import { ProviderProfile } from "../../src/provider/profile"
 import { Scope } from "../../src/scope"
@@ -101,19 +102,22 @@ test("Agent worker profile hooks receive inline provider and model credentials",
   })
 
   try {
+    await Auth.set(providerID, { type: "api", key: "stored-provider-key" })
     await ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
         await Provider.configureWorkerProvider(model, {
           profileID: providerID,
-          options: { apiKey: "inline-provider-key" },
+          key: "inline-provider-key",
+          options: { apiKey: "profile-placeholder" },
           timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false },
         })
         await Provider.configureWorkerProvider(
           { ...model, options: {} },
           {
             profileID: providerID,
-            options: { apiKey: "inline-provider-key" },
+            key: "inline-provider-key",
+            options: { apiKey: "profile-placeholder" },
             timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false },
           },
         )
@@ -122,6 +126,7 @@ test("Agent worker profile hooks receive inline provider and model credentials",
 
     expect(runtimeAuthKeys).toEqual(["inline-model-key", "inline-provider-key"])
   } finally {
+    await Auth.remove(providerID)
     if (previousWorker === undefined) delete process.env.SYNERGY_AGENT_WORKER
     else process.env.SYNERGY_AGENT_WORKER = previousWorker
   }
