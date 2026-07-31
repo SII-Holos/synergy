@@ -518,7 +518,31 @@ export namespace Provider {
 
     // extend database from config
     for (const [providerID, provider] of configProviders) {
-      const existing = database[providerID]
+      const sourceProviderID = provider.modelsDevProviderID ?? providerID
+      const sourceCatalog = modelsDev[sourceProviderID]
+      if (provider.modelsDevProviderID && !sourceCatalog) {
+        log.warn("configured provider model catalog source not found", {
+          providerID,
+          modelsDevProviderID: provider.modelsDevProviderID,
+        })
+      }
+      const existing = provider.modelsDevProviderID
+        ? sourceCatalog
+          ? fromModelsDevProvider({
+              ...sourceCatalog,
+              id: providerID,
+              env: [],
+              api: provider.api ?? sourceCatalog.api,
+              npm: provider.npm ?? sourceCatalog.npm,
+            })
+          : undefined
+        : database[providerID]
+      if (provider.modelsDevProviderID && existing) {
+        for (const model of Object.values(existing.models)) {
+          if (provider.api) model.api.url = provider.api
+          if (provider.npm) model.api.npm = provider.npm
+        }
+      }
       const parsed: Info = {
         id: providerID,
         name: provider.name ?? existing?.name ?? providerID,
@@ -543,9 +567,9 @@ export namespace Provider {
               model.provider?.npm ??
               provider.npm ??
               existingModel?.api.npm ??
-              modelsDev[providerID]?.npm ??
+              sourceCatalog?.npm ??
               "@ai-sdk/openai-compatible",
-            url: provider?.api ?? existingModel?.api.url ?? modelsDev[providerID]?.api,
+            url: provider?.api ?? existingModel?.api.url ?? sourceCatalog?.api,
           },
           status: model.status ?? existingModel?.status ?? "active",
           name,
