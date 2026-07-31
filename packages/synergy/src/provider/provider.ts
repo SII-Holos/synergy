@@ -884,7 +884,13 @@ export namespace Provider {
           ...model.headers,
         }
 
-      const key = Bun.hash.xxHash32(JSON.stringify({ npm: model.api.npm, options }))
+      const key = Bun.hash.xxHash32(
+        JSON.stringify({
+          providerID: model.providerID,
+          npm: model.api.npm,
+          options,
+        }),
+      )
       const SDK_CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours — prevent stale HTTP client state in long-running processes
       const existing = s.sdk.get(key)
       if (existing) {

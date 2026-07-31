@@ -525,6 +525,71 @@ test("custom provider inherits a models.dev catalog without sharing account iden
   })
 })
 
+test("catalog-only connections are visible before credentials are connected", async () => {
+  const connectionID = `catalog-only-${Math.random().toString(36).slice(2)}`
+  const config = {
+    providerCatalog: { enabled: false, offlineCache: false },
+    provider: {
+      [connectionID]: {
+        modelsDevProviderID: "openai",
+        name: "OpenAI Secondary",
+      },
+    },
+  }
+
+  const catalog = await ProviderCatalog.resolve({ config })
+
+  expect(catalog[connectionID]).toBeDefined()
+  expect(catalog[connectionID].id).toBe(connectionID)
+  expect(catalog[connectionID].name).toBe("OpenAI Secondary")
+  expect(catalog[connectionID].models["gpt-5.5"]).toBeDefined()
+})
+
+test("SDK cache identity includes the concrete account connection", async () => {
+  const firstID = `sdk-account-a-${Math.random().toString(36).slice(2)}`
+  const secondID = `sdk-account-b-${Math.random().toString(36).slice(2)}`
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          provider: {
+            [firstID]: {
+              modelsDevProviderID: "openai",
+              npm: "@ai-sdk/openai-compatible",
+              api: "https://shared.example.test/v1",
+              env: ["SDK_ACCOUNT_A_KEY"],
+            },
+            [secondID]: {
+              modelsDevProviderID: "openai",
+              npm: "@ai-sdk/openai-compatible",
+              api: "https://shared.example.test/v1",
+              env: ["SDK_ACCOUNT_B_KEY"],
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("SDK_ACCOUNT_A_KEY", "shared-test-key")
+      Env.set("SDK_ACCOUNT_B_KEY", "shared-test-key")
+    },
+    fn: async () => {
+      const firstModel = await Provider.getModel(firstID, "gpt-5.5")
+      const secondModel = await Provider.getModel(secondID, "gpt-5.5")
+      const firstSDK = await Provider.getSDK(firstModel)
+      const secondSDK = await Provider.getSDK(secondModel)
+
+      expect(secondSDK).not.toBe(firstSDK)
+    },
+  })
+})
+
 test("custom provider inheritance excludes credential-aware live catalog snapshots", async () => {
   const profileID = `live-catalog-source-${Math.random().toString(36).slice(2)}`
   const connectionID = `${profileID}-secondary`

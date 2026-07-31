@@ -894,15 +894,15 @@ export namespace ProviderCatalog {
     }
 
     for (const [providerID, provider] of Object.entries(configuredProviders(input?.config))) {
-      if (!provider.profile) continue
-      const profile = ProviderProfile.get(provider.profile)
-      if (!profile) continue
-      const sourceID = provider.modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id
+      const profile = provider.profile ? ProviderProfile.get(provider.profile) : undefined
+      if (provider.profile && !profile) continue
+      const sourceID = provider.modelsDevProviderID ?? profile?.modelsDevProviderID ?? profile?.id
+      if (!sourceID) continue
       const source = result[sourceID]
       if (!source) {
-        log.warn("configured provider profile catalog source not found", {
+        log.warn("configured provider catalog source not found", {
           providerID,
-          profileID: profile.id,
+          profileID: profile?.id,
           modelsDevProviderID: sourceID,
         })
         continue

@@ -17,6 +17,8 @@ import { Provider } from "./provider"
 import { RuntimeReload } from "@/runtime/reload"
 import { authHook } from "@/plugin/auth-provider"
 import { ProviderAuthHealth } from "./auth-health"
+import { Config } from "@/config/config"
+import { ProviderProfile } from "./profile"
 
 type AutoOauthResult = Extract<AuthOuathResult, { method: "auto" }>
 type PendingOauthResult =
@@ -26,6 +28,59 @@ type PendingOauthResult =
     })
 
 export namespace ProviderAuth {
+  function retargetResult<T extends AuthImportResult>(result: T, providerID: string): T {
+    if (result.type !== "success") return result
+    return { ...result, provider: providerID }
+  }
+
+  function retargetOauth(result: AuthOuathResult, providerID: string): AuthOuathResult {
+    if (result.method === "code") {
+      return {
+        ...result,
+        callback: async (code) => retargetResult(await result.callback(code), providerID),
+      }
+    }
+    return {
+      ...result,
+      callback: async () => retargetResult(await result.callback(), providerID),
+    }
+  }
+
+  function retargetHook(hook: AuthHook, providerID: string, profileID: string): AuthHook {
+    return {
+      ...hook,
+      provider: providerID,
+      methods: hook.methods.map((method) => {
+        if (method.type === "oauth") {
+          return {
+            ...method,
+            authorize: async (inputs?: Record<string, string>) => {
+              const result =
+                profileID === CopilotProvider.PROVIDER_ID || profileID === CopilotProvider.ENTERPRISE_PROVIDER_ID
+                  ? await CopilotProvider.authorizeDeviceCode(providerID)
+                  : await method.authorize(inputs)
+              return retargetOauth(result, providerID)
+            },
+          }
+        }
+        if (method.type === "api" && method.authorize) {
+          return {
+            ...method,
+            authorize: async (inputs?: Record<string, string>) =>
+              retargetResult(await method.authorize!(inputs), providerID),
+          }
+        }
+        if (method.type === "import") {
+          return {
+            ...method,
+            import: async (inputs?: Record<string, string>) => retargetResult(await method.import(inputs), providerID),
+          }
+        }
+        return method
+      }),
+    }
+  }
+
   async function reloadProvider(reason: string) {
     if (ScopeContext.tryScope()) {
       await RuntimeReload.reload({ targets: ["provider"], reason })
@@ -141,6 +196,15 @@ export namespace ProviderAuth {
       },
     }
     const methods: Record<string, AuthHook> = { ...builtinMethods, ...pluginMethods }
+    const config = await Config.current()
+    for (const [providerID, provider] of Object.entries(config.provider ?? {})) {
+      if (!provider.profile) continue
+      const profile = ProviderProfile.get(provider.profile)
+      if (!profile) continue
+      const source = methods[profile.id]
+      if (!source) continue
+      methods[providerID] = retargetHook(source, providerID, profile.id)
+    }
     return { methods, pending: {} as Record<string, PendingOauthResult> }
   })
 
@@ -164,6 +228,14 @@ export namespace ProviderAuth {
         }),
       ),
     )
+  }
+
+  export async function hook(providerID: string) {
+    return state().then((x) => x.methods[providerID])
+  }
+
+  export async function reload() {
+    await state.resetAll()
   }
 
   export const Authorization = z

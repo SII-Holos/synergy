@@ -16,6 +16,8 @@ const originalGHToken = process.env.GH_TOKEN
 const originalGITHUBToken = process.env.GITHUB_TOKEN
 const secondaryAnthropicProviderID = "anthropic-secondary-test"
 const secondaryMiniMaxProviderID = "minimax-secondary-test"
+const mappedAnthropicProviderID = "anthropic-mapped-auth-test"
+const mappedCopilotProviderID = "copilot-mapped-auth-test"
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -43,6 +45,8 @@ async function reset() {
     MiniMaxProvider.PROVIDER_ID,
     secondaryAnthropicProviderID,
     secondaryMiniMaxProviderID,
+    mappedAnthropicProviderID,
+    mappedCopilotProviderID,
   ]) {
     await Auth.remove(provider).catch(() => {})
   }
@@ -98,6 +102,101 @@ test("anthropic oauth code flow exchanges code and Claude Code fetch headers rep
       "x-api-key": "should-be-removed",
     },
   })
+})
+
+test("mapped Anthropic auth methods persist OAuth credentials under the connection ID", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/synergy.json`,
+        JSON.stringify({
+          provider: {
+            [mappedAnthropicProviderID]: {
+              profile: AnthropicOAuthProvider.PROVIDER_ID,
+              modelsDevProviderID: "anthropic",
+            },
+          },
+        }),
+      )
+    },
+  })
+  globalThis.fetch = asFetch(async () =>
+    jsonResponse({
+      access_token: "mapped-anthropic-access",
+      refresh_token: "mapped-anthropic-refresh",
+      expires_in: 3600,
+    }),
+  )
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      const methods = await ProviderAuth.methods()
+      expect(methods[mappedAnthropicProviderID]).toEqual(methods[AnthropicOAuthProvider.PROVIDER_ID])
+      const authorization = await ProviderAuth.authorize({ providerID: mappedAnthropicProviderID, method: 0 })
+      const state = new URL(authorization!.url).searchParams.get("state")
+      await ProviderAuth.callback({
+        providerID: mappedAnthropicProviderID,
+        method: 0,
+        code: `mapped-code#${state}`,
+      })
+    },
+  })
+
+  expect(await Auth.get(mappedAnthropicProviderID)).toMatchObject({
+    type: "oauth",
+    access: "mapped-anthropic-access",
+    refresh: "mapped-anthropic-refresh",
+  })
+  expect(await Auth.get(AnthropicOAuthProvider.PROVIDER_ID)).toBeUndefined()
+})
+
+test("mapped Copilot device auth binds the concrete connection ID", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/synergy.json`,
+        JSON.stringify({
+          provider: {
+            [mappedCopilotProviderID]: {
+              profile: CopilotProvider.PROVIDER_ID,
+              modelsDevProviderID: CopilotProvider.PROVIDER_ID,
+            },
+          },
+        }),
+      )
+    },
+  })
+  globalThis.fetch = asFetch(async (input) => {
+    const url = String(input)
+    if (url.endsWith("/login/device/code")) {
+      return jsonResponse({
+        device_code: "mapped-copilot-device",
+        user_code: "MAPPED-COPILOT",
+        verification_uri: "https://github.com/login/device",
+        interval: 1,
+        expires_in: 60,
+      })
+    }
+    if (url.endsWith("/login/oauth/access_token")) {
+      return jsonResponse({ access_token: "mapped-copilot-token" })
+    }
+    throw new Error(`unexpected URL ${url}`)
+  })
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      await ProviderAuth.authorize({ providerID: mappedCopilotProviderID, method: 0 })
+      await ProviderAuth.callback({ providerID: mappedCopilotProviderID, method: 0 })
+    },
+  })
+
+  expect(await Auth.get(mappedCopilotProviderID)).toEqual({
+    type: "api",
+    key: "mapped-copilot-token",
+  })
+  expect(await Auth.get(CopilotProvider.PROVIDER_ID)).toBeUndefined()
 })
 
 test("anthropic oauth refresh rotates tokens and marks invalid grants dead", async () => {

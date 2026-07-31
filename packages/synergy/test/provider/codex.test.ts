@@ -614,6 +614,54 @@ test("provider auth registry exposes built-in Codex OAuth method", async () => {
   })
 })
 
+test("provider auth registry exposes mapped Codex methods under the connection ID", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          provider: {
+            [secondaryProviderID]: {
+              profile: CodexProvider.PROVIDER_ID,
+              modelsDevProviderID: CodexProvider.PROVIDER_ID,
+            },
+          },
+        }),
+      )
+      await Bun.write(
+        path.join(dir, "auth.json"),
+        JSON.stringify({
+          tokens: {
+            access_token: token,
+            refresh_token: "refresh-secondary-import",
+          },
+        }),
+      )
+    },
+  })
+  process.env.CODEX_HOME = tmp.path
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      const methods = await ProviderAuth.methods()
+      expect(methods[secondaryProviderID]).toEqual(methods[CodexProvider.PROVIDER_ID])
+      await ProviderAuth.importCredentials({
+        providerID: secondaryProviderID,
+        method: 1,
+      })
+    },
+  })
+
+  expect(await Auth.get(secondaryProviderID)).toMatchObject({
+    type: "oauth",
+    access: token,
+    refresh: "refresh-secondary-import",
+  })
+  expect(await Auth.get(CodexProvider.PROVIDER_ID)).toBeUndefined()
+})
+
 test("provider auth imports Codex CLI credentials into the Synergy auth store", async () => {
   const token = accessToken({ exp: nowSeconds() + 60 * 60 })
   await using tmp = await tmpdir({
