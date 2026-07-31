@@ -99,6 +99,8 @@ Browser routes attach trace IDs, command IDs, owner keys, page IDs, presentation
 
 API errors stay structured through the SDK boundary. WebRTC viewer signaling retries retryable ticket failures and transient socket closure, resets backoff after Host or media readiness, and discards stale ticket, socket, peer, and timer work when a surface is replaced or disposed. If only the Host signaling socket disconnects while the broker-owned page remains alive, the server reports that WebRTC presentation as detached, issues a fresh one-shot Host ticket through the broker, and the Electron controller replaces its signaling socket without recreating the canonical page or losing page state.
 
+Viewer ticket retries also heal an initially missing Host signaling attachment: when the canonical page still belongs to the broker but no Host socket is attached, issuing a viewer ticket renews the one-shot Host ticket through the broker. An already attached Host is left unchanged.
+
 The interactive surface continues to use live native or WebRTC presentation. Screenshots, DOM snapshots, console entries, network records, and accessibility snapshots are inspection products and tool inputs.
 
 Browser page close is asynchronous and idempotent. Desktop detaches diagnostics and CDP control, waits for Electron destruction, clears owner maps and tickets, and only then acknowledges logical closure. A subsequent navigation creates a fresh page for the same owner; cleanup errors cannot leave an active descriptor pointing at destroyed `webContents`.

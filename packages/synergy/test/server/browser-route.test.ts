@@ -76,6 +76,30 @@ function suspended(owner: BrowserOwner.Info): BrowserSession {
   }
 }
 
+function active(owner: BrowserOwner.Info): BrowserSession {
+  const page = {
+    id: "page-1",
+    backend: "host" as const,
+    url: "https://example.com/",
+    title: "Example",
+    loading: false,
+    lastActiveAt: 1,
+    isAlive: () => true,
+    async execute() {
+      return { type: "void" as const }
+    },
+    async close() {},
+  }
+  return {
+    ...suspended(owner),
+    page,
+    status: "active",
+    getPage(pageID: string) {
+      return pageID === page.id ? page : undefined
+    },
+  }
+}
+
 class BrokerSocket implements BrowserBrokerSocket {
   sent: BrowserHostMessage[] = []
 
@@ -184,6 +208,87 @@ describe("BrowserRoute protocol v2", () => {
       expect(response.status).toBe(400)
       expect(await response.json()).toMatchObject({ type: "error", code: "browser_ticket_page_unavailable" })
     })
+  })
+
+  test("renews missing Host signaling when a viewer requests a broker-owned page", async () => {
+    await withRoute(async (app) => {
+      const owner: BrowserOwner.Info = {
+        mode: "session",
+        scopeID: ScopeContext.current.scope.id,
+        sessionID: "session-route",
+        directory: ScopeContext.current.directory,
+      }
+      const broker = new BrokerSocket()
+      BrowserBroker.attach(broker, {
+        type: "host.register",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        hostId: "host-route",
+        token: BrowserBroker.secret(),
+        capabilities: { native: false, webrtc: true },
+      })
+      await BrowserBroker.createPage({
+        owner,
+        routeDirectory: "home",
+        presentation: "webrtc",
+        pageId: "page-1",
+      })
+      broker.sent = []
+
+      const response = await app.request("/home/browser/webrtc/ticket?mode=session&sessionID=session-route", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ protocolVersion: BROWSER_PROTOCOL_VERSION, pageId: "page-1" }),
+      })
+
+      expect(response.status, await response.clone().text()).toBe(200)
+      expect(await response.json()).toMatchObject({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ticket: expect.any(String),
+      })
+      expect(broker.sent).toContainEqual({
+        type: "page.signaling.ticket",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: BrowserOwner.key(owner),
+        pageId: "page-1",
+        signalingTicket: expect.any(String),
+      })
+    }, active)
+  })
+
+  test("does not renew Host signaling when a viewer requests an attached Host page", async () => {
+    await withRoute(async (app) => {
+      const owner: BrowserOwner.Info = {
+        mode: "session",
+        scopeID: ScopeContext.current.scope.id,
+        sessionID: "session-route",
+        directory: ScopeContext.current.directory,
+      }
+      const broker = new BrokerSocket()
+      BrowserBroker.attach(broker, {
+        type: "host.register",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        hostId: "host-route",
+        token: BrowserBroker.secret(),
+        capabilities: { native: false, webrtc: true },
+      })
+      await BrowserBroker.createPage({
+        owner,
+        routeDirectory: "home",
+        presentation: "webrtc",
+        pageId: "page-1",
+      })
+      BrowserWebRTCSignaling.attachHost(owner, "page-1", new SignalingSocket(), { hostReady: true })
+      broker.sent = []
+
+      const response = await app.request("/home/browser/webrtc/ticket?mode=session&sessionID=session-route", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ protocolVersion: BROWSER_PROTOCOL_VERSION, pageId: "page-1" }),
+      })
+
+      expect(response.status, await response.clone().text()).toBe(200)
+      expect(broker.sent).toHaveLength(0)
+    }, active)
   })
 
   test("allows only the Host to attach while its broker page is reserved for creation", () => {

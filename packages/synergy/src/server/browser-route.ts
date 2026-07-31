@@ -205,6 +205,9 @@ export const BrowserRoute = new Hono()
             pageId: body.pageId,
           })
         }
+        if (!BrowserWebRTCSignaling.hasHost(state.owner, body.pageId)) {
+          BrowserBroker.renewHostTicket(state.owner, body.pageId)
+        }
         const issued = BrowserTicket.issue(state.owner, body.pageId, "viewer")
         return c.json({
           protocolVersion: BROWSER_PROTOCOL_VERSION,
