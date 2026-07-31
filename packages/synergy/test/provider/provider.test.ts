@@ -486,6 +486,22 @@ test("mapped Bedrock and SAP profiles consume connection auth and options", asyn
   }
 })
 
+test("Copilot Claude factories honor the merged connection endpoint", async () => {
+  registerBuiltinProviderProfiles()
+  for (const profileID of ["github-copilot", "github-copilot-enterprise"]) {
+    const profile = ProviderProfile.get(profileID)!
+    const model = await profile.getModel!({
+      sdk: {},
+      modelID: "claude-sonnet-4.6",
+      options: {
+        baseURL: "https://copilot-account.invalid",
+        fetch,
+      },
+    })
+    expect((model as any).config.baseURL).toBe("https://copilot-account.invalid")
+  }
+})
+
 test("custom provider resolves runtime behavior through its canonical profile", async () => {
   const profileID = `runtime-profile-${Math.random().toString(36).slice(2)}`
   const connectionID = `${profileID}-secondary`

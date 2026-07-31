@@ -209,7 +209,7 @@ export function registerBuiltinProviderProfiles() {
         return createAnthropic({
           name: "github-copilot",
           apiKey: "synergy-copilot",
-          baseURL: CopilotProvider.BASE_URL,
+          baseURL: (options?.baseURL as string | undefined) ?? CopilotProvider.BASE_URL,
           fetch: options?.fetch as typeof fetch,
         }).languageModel(modelID)
       }
@@ -243,7 +243,7 @@ export function registerBuiltinProviderProfiles() {
         return createAnthropic({
           name: "github-copilot-enterprise",
           apiKey: "synergy-copilot-enterprise",
-          baseURL: CopilotProvider.BASE_URL,
+          baseURL: (options?.baseURL as string | undefined) ?? CopilotProvider.BASE_URL,
           fetch: options?.fetch as typeof fetch,
         }).languageModel(modelID)
       }
