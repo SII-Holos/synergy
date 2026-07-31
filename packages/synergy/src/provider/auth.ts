@@ -47,7 +47,12 @@ export namespace ProviderAuth {
     }
   }
 
-  function retargetHook(hook: AuthHook, providerID: string, profileID: string): AuthHook {
+  function retargetHook(
+    hook: AuthHook,
+    providerID: string,
+    profileID: string,
+    options?: { enterpriseUrl?: string },
+  ): AuthHook {
     return {
       ...hook,
       provider: providerID,
@@ -60,6 +65,7 @@ export namespace ProviderAuth {
                 profileID === CopilotProvider.PROVIDER_ID || profileID === CopilotProvider.ENTERPRISE_PROVIDER_ID
                   ? await CopilotProvider.authorizeDeviceCode(providerID, fetch, {
                       enterprise: profileID === CopilotProvider.ENTERPRISE_PROVIDER_ID,
+                      enterpriseUrl: options?.enterpriseUrl,
                     })
                   : await method.authorize(inputs)
               return retargetOauth(result, providerID)
@@ -206,7 +212,9 @@ export namespace ProviderAuth {
       const profileID = profile?.id ?? provider.profile
       const source = methods[profileID]
       if (!source) continue
-      methods[providerID] = retargetHook(source, providerID, profileID)
+      methods[providerID] = retargetHook(source, providerID, profileID, {
+        enterpriseUrl: provider.options?.enterpriseUrl,
+      })
     }
     return { methods, pending: {} as Record<string, PendingOauthResult> }
   })

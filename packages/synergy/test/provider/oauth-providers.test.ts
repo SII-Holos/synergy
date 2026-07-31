@@ -201,7 +201,7 @@ test("mapped Copilot device auth binds the concrete connection ID", async () => 
 
 test("mapped Copilot enterprise auth preserves the enterprise host", async () => {
   const previousEnterpriseURL = process.env.COPILOT_GITHUB_ENTERPRISE_URL
-  process.env.COPILOT_GITHUB_ENTERPRISE_URL = "https://github.enterprise.invalid"
+  process.env.COPILOT_GITHUB_ENTERPRISE_URL = "https://global.enterprise.invalid"
   try {
     await using tmp = await tmpdir({
       init: async (dir) => {
@@ -212,6 +212,9 @@ test("mapped Copilot enterprise auth preserves the enterprise host", async () =>
               [mappedCopilotProviderID]: {
                 profile: CopilotProvider.ENTERPRISE_PROVIDER_ID,
                 modelsDevProviderID: CopilotProvider.PROVIDER_ID,
+                options: {
+                  enterpriseUrl: "https://connection.enterprise.invalid",
+                },
               },
             },
           }),
@@ -224,7 +227,7 @@ test("mapped Copilot enterprise auth preserves the enterprise host", async () =>
       return jsonResponse({
         device_code: "mapped-enterprise-device",
         user_code: "ENTERPRISE",
-        verification_uri: "https://github.enterprise.invalid/login/device",
+        verification_uri: "https://connection.enterprise.invalid/login/device",
         interval: 1,
         expires_in: 60,
       })
@@ -237,7 +240,7 @@ test("mapped Copilot enterprise auth preserves the enterprise host", async () =>
       },
     })
 
-    expect(deviceCodeURL).toBe("https://github.enterprise.invalid/login/device/code")
+    expect(deviceCodeURL).toBe("https://connection.enterprise.invalid/login/device/code")
   } finally {
     if (previousEnterpriseURL === undefined) delete process.env.COPILOT_GITHUB_ENTERPRISE_URL
     else process.env.COPILOT_GITHUB_ENTERPRISE_URL = previousEnterpriseURL

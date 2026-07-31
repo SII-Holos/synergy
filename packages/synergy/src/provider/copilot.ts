@@ -43,16 +43,21 @@ export namespace CopilotProvider {
     }
   }
 
-  function githubBase(enterprise: boolean) {
-    return enterprise ? process.env.COPILOT_GITHUB_ENTERPRISE_URL || "https://github.com" : "https://github.com"
+  function githubBase(enterprise: boolean, enterpriseUrl?: string) {
+    return enterprise
+      ? enterpriseUrl || process.env.COPILOT_GITHUB_ENTERPRISE_URL || "https://github.com"
+      : "https://github.com"
   }
 
   export async function authorizeDeviceCode(
     providerID = PROVIDER_ID,
     fetchFn: FetchLike = fetch,
-    options: { enterprise?: boolean } = {},
+    options: { enterprise?: boolean; enterpriseUrl?: string } = {},
   ): Promise<AuthOuathResult> {
-    const base = githubBase(options.enterprise ?? providerID === ENTERPRISE_PROVIDER_ID).replace(/\/+$/, "")
+    const base = githubBase(options.enterprise ?? providerID === ENTERPRISE_PROVIDER_ID, options.enterpriseUrl).replace(
+      /\/+$/,
+      "",
+    )
     const response = await fetchFn(`${base}/login/device/code`, {
       method: "POST",
       headers: {
