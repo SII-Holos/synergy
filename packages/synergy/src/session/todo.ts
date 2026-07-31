@@ -5,11 +5,16 @@ import z from "zod"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Identifier } from "../id/id"
-import { SessionManager } from "./manager"
-import { Scope } from "@/scope"
+import type { Scope } from "@/scope"
 
 export namespace Todo {
   const { asSessionID } = Identifier
+
+  async function resolveScopeID(sessionID: string) {
+    const { SessionManager } = await import("./manager")
+    const session = await SessionManager.requireSession(sessionID)
+    return Identifier.asScopeID((session.scope as Scope).id)
+  }
   export const Info = z
     .object({
       content: z.string().describe("Brief description of the task"),
@@ -31,15 +36,13 @@ export namespace Todo {
   }
 
   export async function update(input: { sessionID: string; todos: Info[] }) {
-    const session = await SessionManager.requireSession(input.sessionID)
-    const scopeID = Identifier.asScopeID((session.scope as Scope).id)
+    const scopeID = await resolveScopeID(input.sessionID)
     await Storage.write(StoragePath.sessionTodo(scopeID, asSessionID(input.sessionID)), input.todos)
     Bus.publish(Event.Updated, input)
   }
 
   export async function get(sessionID: string) {
-    const session = await SessionManager.requireSession(sessionID)
-    const scopeID = Identifier.asScopeID((session.scope as Scope).id)
+    const scopeID = await resolveScopeID(sessionID)
     return Storage.read<Info[]>(StoragePath.sessionTodo(scopeID, asSessionID(sessionID)))
       .then((x) => x || [])
       .catch(emptyOnNotFound<Info>)

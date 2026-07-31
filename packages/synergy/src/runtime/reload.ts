@@ -79,6 +79,9 @@ export namespace RuntimeReload {
 
   interface ReloadOptions {
     configChange?: Config.Change
+    eventDirectory?: string
+    includePrerequisites?: boolean
+    useCurrentDirectory?: boolean
   }
 
   // ─── Target dependency map ───────────────────────────────────────────
@@ -110,6 +113,14 @@ export namespace RuntimeReload {
   // ─── Core reload function ────────────────────────────────────────────
 
   export async function reload(input: Input, options: ReloadOptions = {}): Promise<Result> {
+    return reloadInternal(input, { ...options, includePrerequisites: true, useCurrentDirectory: true })
+  }
+
+  export async function reloadGlobal(input: Input, options: ReloadOptions = {}): Promise<Result> {
+    return reloadInternal({ ...input, scope: "global" }, { ...options, includePrerequisites: false })
+  }
+
+  async function reloadInternal(input: Input, options: ReloadOptions): Promise<Result> {
     const params = Input.parse(input)
     const requested = normalizeTargets(params.targets)
     const executed = [] as Target[]
@@ -145,6 +156,7 @@ export namespace RuntimeReload {
       liveApplied,
       warnings,
       configChange: options.configChange,
+      includePrerequisites: options.includePrerequisites !== false,
     }
 
     const targetsToExecute = requested.includes("all")
@@ -191,7 +203,7 @@ export namespace RuntimeReload {
     }
 
     GlobalBus.emit("event", {
-      directory: ScopeContext.current.directory,
+      directory: options.useCurrentDirectory ? ScopeContext.current.directory : options.eventDirectory,
       payload: {
         type: Event.Reloaded.type,
         properties: {
@@ -217,6 +229,7 @@ export namespace RuntimeReload {
     restartRequired: Set<string>
     liveApplied: Set<string>
     warnings: string[]
+    includePrerequisites: boolean
     configChange?: Config.Change
   }
 
@@ -226,11 +239,12 @@ export namespace RuntimeReload {
     if (target === "all") return
     if (ctx.executed.includes(target)) return
 
-    // P8: Ensure prerequisites are executed first (explicit dependency, not array order)
-    const prerequisites = TARGET_PREREQUISITES[target]
-    if (prerequisites) {
-      for (const prereq of prerequisites) {
-        await executeTarget(prereq, ctx)
+    if (ctx.includePrerequisites) {
+      const prerequisites = TARGET_PREREQUISITES[target]
+      if (prerequisites) {
+        for (const prereq of prerequisites) {
+          await executeTarget(prereq, ctx)
+        }
       }
     }
 
@@ -407,7 +421,7 @@ export namespace RuntimeReload {
           import("../channel/outbound"),
         ])
         registerProviders()
-        ChannelOutbound.init()
+        ChannelOutbound.init({ getProvider: Channel.getProvider })
         await Channel.reload()
         return
       }

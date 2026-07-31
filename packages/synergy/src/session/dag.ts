@@ -5,11 +5,16 @@ import z from "zod"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Identifier } from "../id/id"
-import { SessionManager } from "./manager"
-import { Scope } from "@/scope"
+import type { Scope } from "@/scope"
 
 export namespace Dag {
   const { asSessionID } = Identifier
+
+  async function resolveScopeID(sessionID: string) {
+    const { SessionManager } = await import("./manager")
+    const session = await SessionManager.requireSession(sessionID)
+    return Identifier.asScopeID((session.scope as Scope).id)
+  }
   export const VALID_STATUSES = ["pending", "running", "blocked", "completed", "failed", "cancelled"] as const
   export type Status = (typeof VALID_STATUSES)[number]
 
@@ -109,15 +114,13 @@ export namespace Dag {
 
   export async function update(input: { sessionID: string; nodes: Node[] }) {
     const ready = computeReady(input.nodes)
-    const session = await SessionManager.requireSession(input.sessionID)
-    const scopeID = Identifier.asScopeID((session.scope as Scope).id)
+    const scopeID = await resolveScopeID(input.sessionID)
     await Storage.write(StoragePath.sessionDag(scopeID, asSessionID(input.sessionID)), input.nodes)
     Bus.publish(Event.Updated, { sessionID: input.sessionID, nodes: input.nodes, ready })
   }
 
   export async function get(sessionID: string) {
-    const session = await SessionManager.requireSession(sessionID)
-    const scopeID = Identifier.asScopeID((session.scope as Scope).id)
+    const scopeID = await resolveScopeID(sessionID)
     return Storage.read<Node[]>(StoragePath.sessionDag(scopeID, asSessionID(sessionID)))
       .then((x) => x || [])
       .catch(emptyOnNotFound<Node>)

@@ -9549,6 +9549,7 @@ export type GlobalNavRecentData = {
     parentOnly?: boolean
     includeArchived?: boolean
     category?: "project" | "home" | "channel" | "background" | "github"
+    channelType?: string
     search?: string
     limit?: number
     cursorLastActivityAt?: number

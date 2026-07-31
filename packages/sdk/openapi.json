@@ -2130,6 +2130,14 @@
           },
           {
             "in": "query",
+            "name": "channelType",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
             "name": "search",
             "schema": {
               "type": "string"
@@ -42783,63 +42791,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.file.watcher.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.watcher.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              },
-              "event": {
-                "type": "string",
-                "enum": ["added", "changed", "deleted", "renamed"]
-              },
-              "absolute": {
-                "type": "string"
-              },
-              "oldPath": {
-                "type": "string"
-              },
-              "oldAbsolute": {
-                "type": "string"
-              },
-              "parent": {
-                "type": "string"
-              },
-              "node": {},
-              "resync": {
-                "type": "boolean"
-              }
-            },
-            "required": ["file", "event"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.vcs.branch.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "vcs.branch.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "branch": {
-                "type": "string"
-              }
-            }
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.channel.connected": {
         "type": "object",
         "properties": {
@@ -43180,6 +43131,63 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.file.watcher.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.watcher.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "event": {
+                "type": "string",
+                "enum": ["added", "changed", "deleted", "renamed"]
+              },
+              "absolute": {
+                "type": "string"
+              },
+              "oldPath": {
+                "type": "string"
+              },
+              "oldAbsolute": {
+                "type": "string"
+              },
+              "parent": {
+                "type": "string"
+              },
+              "node": {},
+              "resync": {
+                "type": "boolean"
+              }
+            },
+            "required": ["file", "event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.vcs.branch.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "vcs.branch.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.pty.created": {
         "type": "object",
         "properties": {
@@ -43469,12 +43477,6 @@
             "$ref": "#/components/schemas/Event.channel.command.executed"
           },
           {
-            "$ref": "#/components/schemas/Event.file.watcher.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.vcs.branch.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.channel.connected"
           },
           {
@@ -43515,6 +43517,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.vcs.branch.updated"
           },
           {
             "$ref": "#/components/schemas/Event.pty.created"

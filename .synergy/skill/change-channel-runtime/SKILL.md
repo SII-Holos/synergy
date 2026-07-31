@@ -41,10 +41,11 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 ## Verify
 
 1. Write the smallest failing behavioral test first. Use real temporary Scope, Storage, Session, inbox, Agenda, and filesystem state; fake only Holos/Clarus network boundaries.
-2. Run the focused Channel, Holos native tunnel, Session endpoint/navigation, Agenda guidance, tool, server route, and frontend account/navigation tests affected by the change.
-3. Run `bun test test/channel/` and the relevant Holos, Agenda, Session, tool, and server suites from `packages/synergy`; preserve Feishu compatibility coverage.
-4. For route changes, run `./script/generate.ts` twice and confirm generated OpenAPI/SDK output is stable. Run App/UI tests, localization checks, typecheck, build, Skill validation, and `bun run quality:quick` as applicable.
-5. Exercise the protocol in an isolated second runtime with a separate `SYNERGY_HOME` and explicit ports. Verify disabled and zero-Project idle behavior, discovery, one Task Session per Task ID, result/extension settlement, reconnect recovery, diagnostics download, and cleanup without using the active runtime.
+2. When Channel behavior depends on Scope-local subscriptions, cover both the first account connection and `ScopeRuntime.dispose()` followed by `ScopeRuntime.ensure()`; an active account must rebind its bridges exactly once before startup recovery can terminalize pending Channel messages, so recovery-time events are delivered rather than lost.
+3. Run the focused Channel, Holos native tunnel, Session endpoint/navigation, Agenda guidance, tool, server route, and frontend account/navigation tests affected by the change.
+4. Run `bun test test/channel/` and the relevant Holos, Agenda, Session, tool, and server suites from `packages/synergy`; preserve Feishu compatibility coverage.
+5. For route changes, run `./script/generate.ts` twice and confirm generated OpenAPI/SDK output is stable. Run App/UI tests, localization checks, typecheck, build, Skill validation, and `bun run quality:quick` as applicable.
+6. Exercise the protocol in an isolated second runtime with a separate `SYNERGY_HOME` and explicit ports. Verify disabled and zero-Project idle behavior, discovery, one Task Session per Task ID, result/extension settlement, reconnect recovery, diagnostics download, and cleanup without using the active runtime.
 
 ## Handoff
 
