@@ -20,10 +20,10 @@ const environmentProfileID = `catalog-environment-profile-${Math.random().toStri
 const environmentProviderID = `catalog-environment-provider-${Math.random().toString(36).slice(2)}`
 const inlineProviderID = `catalog-inline-credentials-${Math.random().toString(36).slice(2)}`
 const environmentName = "SYNERGY_TEST_CATALOG_ACCOUNT_KEY"
+const mappedEnvironmentName = "SYNERGY_TEST_MAPPED_CATALOG_ACCOUNT_KEY"
 let alternateFetchCalls = 0
 let environmentDiscoveryAuth: string | undefined
-let environmentDiscovery: Promise<void>
-let resolveEnvironmentDiscovery: (() => void) | undefined
+const environmentDiscoveryByProvider = new Map<string, string | undefined>()
 
 ProviderProfile.register({
   id: providerID,
@@ -54,10 +54,11 @@ ProviderProfile.register({
   authKind: "api_key",
   modelsDevProviderID: "openai",
   baseURL: "https://environment-catalog.invalid/v1",
+  env: [environmentName],
   fallbackModels: ["gpt-5.5"],
-  fetchModelCatalog: async ({ auth }) => {
+  fetchModelCatalog: async ({ providerID, auth }) => {
     environmentDiscoveryAuth = auth?.type === "api" ? auth.key : undefined
-    resolveEnvironmentDiscovery?.()
+    environmentDiscoveryByProvider.set(providerID, environmentDiscoveryAuth)
     return [{ id: "environment-model" }]
   },
 })
@@ -96,9 +97,7 @@ async function reset() {
   fetchCatalog = async () => []
   alternateFetchCalls = 0
   environmentDiscoveryAuth = undefined
-  environmentDiscovery = new Promise<void>((resolve) => {
-    resolveEnvironmentDiscovery = resolve
-  })
+  environmentDiscoveryByProvider.clear()
   configuredBaseURL = undefined
   configuredDiscovery = new Promise<void>((resolve) => {
     resolveConfiguredDiscovery = resolve
@@ -107,6 +106,14 @@ async function reset() {
   await Auth.remove(inlineProviderID).catch(() => {})
   ProviderCatalog.reset()
   await fs.rm(Global.Path.providerModelCatalogCache, { force: true })
+}
+
+async function waitForEnvironmentDiscovery(providerID: string) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (environmentDiscoveryByProvider.has(providerID)) return
+    await Bun.sleep(10)
+  }
+  throw new Error(`Timed out waiting for catalog discovery for ${providerID}`)
 }
 
 beforeEach(reset)
@@ -304,7 +311,7 @@ test("configured environment credentials participate in live discovery", async (
             [environmentProviderID]: {
               profile: environmentProfileID,
               modelsDevProviderID: "openai",
-              env: [environmentName],
+              env: [mappedEnvironmentName],
             },
           },
         }),
@@ -315,7 +322,8 @@ test("configured environment credentials participate in live discovery", async (
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      Env.set(environmentName, "environment-account-key")
+      Env.set(environmentName, "canonical-environment-key")
+      Env.set(mappedEnvironmentName, "environment-account-key")
       await ProviderCatalog.resolve({
         config: {
           providerCatalog: { enabled: false, offlineCache: false },
@@ -323,18 +331,66 @@ test("configured environment credentials participate in live discovery", async (
             [environmentProviderID]: {
               profile: environmentProfileID,
               modelsDevProviderID: "openai",
-              env: [environmentName],
+              env: [mappedEnvironmentName],
             },
           },
         },
         includeLive: true,
         forceRefresh: true,
       })
-      await environmentDiscovery
+      await waitForEnvironmentDiscovery(environmentProviderID)
     },
   })
 
-  expect(environmentDiscoveryAuth).toBe("environment-account-key")
+  expect(environmentDiscoveryByProvider.get(environmentProviderID)).toBe("environment-account-key")
+})
+
+test("canonical profile environment credentials participate in live discovery", async () => {
+  await using tmp = await tmpdir()
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      Env.set(environmentName, "canonical-environment-key")
+      await ProviderCatalog.resolve({
+        config,
+        includeLive: true,
+        forceRefresh: true,
+      })
+      await waitForEnvironmentDiscovery(environmentProfileID)
+    },
+  })
+
+  expect(environmentDiscoveryByProvider.get(environmentProfileID)).toBe("canonical-environment-key")
+})
+
+test("mapped connections do not inherit canonical profile environment credentials", async () => {
+  const mappedProviderID = `catalog-unbound-environment-${Math.random().toString(36).slice(2)}`
+  await using tmp = await tmpdir()
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      Env.set(environmentName, "canonical-environment-key")
+      await ProviderCatalog.resolve({
+        config: {
+          providerCatalog: { enabled: false, offlineCache: false },
+          provider: {
+            [mappedProviderID]: {
+              profile: environmentProfileID,
+              modelsDevProviderID: "openai",
+            },
+          },
+        },
+        includeLive: true,
+        forceRefresh: true,
+      })
+      await waitForEnvironmentDiscovery(environmentProfileID)
+      await Bun.sleep(20)
+    },
+  })
+
+  expect(environmentDiscoveryByProvider.has(mappedProviderID)).toBe(false)
 })
 
 test("configured inline credentials participate in live discovery", async () => {
@@ -364,7 +420,7 @@ test("configured inline credentials participate in live discovery", async () => 
         includeLive: true,
         forceRefresh: true,
       })
-      await environmentDiscovery
+      await waitForEnvironmentDiscovery(inlineProviderID)
       await ProviderCatalog.refresh(inlineProviderID, environmentProfileID, undefined, configured)
     },
   })

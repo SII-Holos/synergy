@@ -588,7 +588,8 @@ export namespace ProviderCatalog {
   ): Promise<LiveDiscoveryContext> {
     const selected = await Auth.select(providerID)
     const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
-    const environment = (configured?.env ?? profile.env ?? [])
+    const environmentNames = configured?.env ?? (providerID === profile.id ? (profile.env ?? []) : [])
+    const environment = environmentNames
       .map((name) => ({ name, value: environmentValues[name]?.trim() }))
       .find((entry) => entry.value)
     const environmentAuth = environment?.value
