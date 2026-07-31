@@ -452,6 +452,37 @@ test("mapped Copilot requests prefer the connection credential over global token
   }
 })
 
+test("inline Copilot auth overrides stored credentials without changing their health", async () => {
+  await Auth.set(mappedCopilotProviderID, { type: "api", key: "stored-copilot-token" })
+  CopilotProvider.clearApiToken(mappedCopilotProviderID)
+  const exchanges: string[] = []
+  let requests = 0
+  globalThis.fetch = asFetch(async (input, init) => {
+    const authorization = new Headers(init?.headers).get("authorization")
+    if (String(input) === CopilotProvider.TOKEN_EXCHANGE_URL) {
+      exchanges.push(authorization ?? "")
+      return jsonResponse({
+        token: `inline-copilot-api-token-${exchanges.length}`,
+        expires_at: nowSeconds() + 3600,
+      })
+    }
+    requests++
+    return requests === 1 ? jsonResponse({ error: "invalid_token" }, { status: 401 }) : jsonResponse({ ok: true })
+  })
+
+  const response = await CopilotProvider.copilotFetchFor(mappedCopilotProviderID, {
+    type: "api",
+    key: "inline-copilot-token",
+  })("https://api.githubcopilot.com/chat/completions")
+
+  expect(response.status).toBe(200)
+  expect(exchanges).toEqual(["token inline-copilot-token", "token inline-copilot-token"])
+  expect(await Auth.get(mappedCopilotProviderID)).toMatchObject({
+    type: "api",
+    key: "stored-copilot-token",
+  })
+})
+
 test("mapped Copilot requests reselect a backup credential after failover", async () => {
   await Auth.set(mappedCopilotProviderID, { type: "api", key: "primary-copilot-token" })
   await Auth.addToPool(mappedCopilotProviderID, "backup-copilot", {

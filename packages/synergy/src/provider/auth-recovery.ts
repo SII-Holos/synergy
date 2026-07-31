@@ -19,6 +19,7 @@ export namespace ProviderAuthRecovery {
       error?: unknown
       body?: unknown
     }) => ProviderProfile.ClassifiedError | undefined
+    manageStoredCredential?: boolean
     reloadOnTransition?: boolean
     throwOnActionRequired?: boolean
   }
@@ -130,7 +131,18 @@ export namespace ProviderAuthRecovery {
     }
   }
 
-  async function markSuccess(providerID: string, removalRevision: number, profileID?: string) {
+  async function selectCredential(input: ExecuteInput) {
+    if (input.manageStoredCredential === false) return undefined
+    return Auth.select(input.providerID)
+  }
+
+  async function markSuccess(
+    providerID: string,
+    removalRevision: number,
+    profileID?: string,
+    manageStoredCredential = true,
+  ) {
+    if (!manageStoredCredential) return
     const entry = (await Auth.entries())[providerID]
     if (Auth.removalRevision(providerID) !== removalRevision) return
     if (entry) {
@@ -152,6 +164,7 @@ export namespace ProviderAuthRecovery {
     failure: ProviderProfile.ClassifiedError,
     removalRevision: number,
   ) {
+    if (input.manageStoredCredential === false) return
     if (Auth.removalRevision(input.providerID) !== removalRevision) return
     const runtime = runtimeCredential(input.providerID, input.profileID)
     if (failure.exhausted) {
@@ -254,20 +267,20 @@ export namespace ProviderAuthRecovery {
   }
 
   async function retryOnce(input: ExecuteInput, removalRevision: number) {
-    const selectedBeforeRequest = await Auth.select(input.providerID)
+    const selectedBeforeRequest = await selectCredential(input)
     try {
       const response = await input.request()
       if (response.ok) {
-        await markSuccess(input.providerID, removalRevision, input.profileID)
+        await markSuccess(input.providerID, removalRevision, input.profileID, input.manageStoredCredential !== false)
         return response
       }
       const failure = await classify(input, response)
-      if (failure) await markFailure(input, await Auth.select(input.providerID), failure, removalRevision)
+      if (failure) await markFailure(input, await selectCredential(input), failure, removalRevision)
       return failure ? finishFailure(input, response, failure) : response
     } catch (error) {
       const failure = classifiedThrownError(error)
       if (!failure) throw error
-      const selected = selectedBeforeRequest ?? (await Auth.select(input.providerID))
+      const selected = selectedBeforeRequest ?? (await selectCredential(input))
       const entry = (await Auth.entries())[input.providerID]
       if (isMissingCredentialError(error) && !entry) throw error
       await markFailure(input, selected, failure, removalRevision)
@@ -283,25 +296,25 @@ export namespace ProviderAuthRecovery {
     failure: ProviderProfile.ClassifiedError,
     removalRevision: number,
   ) {
-    const backup = await Auth.select(input.providerID)
+    const backup = await selectCredential(input)
     if (!backup || backup.credentialID === rejectedCredentialID) return finishFailure(input, original, failure)
     return retryOnce(input, removalRevision)
   }
 
   export async function execute(input: ExecuteInput) {
     const removalRevision = Auth.removalRevision(input.providerID)
-    const selectedBeforeRequest = await Auth.select(input.providerID)
+    const selectedBeforeRequest = await selectCredential(input)
     let first: Response
     try {
       first = await input.request()
     } catch (error) {
       const failure = classifiedThrownError(error)
       if (!failure) throw error
-      const selected = selectedBeforeRequest ?? (await Auth.select(input.providerID))
+      const selected = selectedBeforeRequest ?? (await selectCredential(input))
       const entry = (await Auth.entries())[input.providerID]
       if (isMissingCredentialError(error) && !entry) throw error
       await markFailure(input, selected, failure, removalRevision)
-      const backup = await Auth.select(input.providerID)
+      const backup = await selectCredential(input)
       if (selected && backup && backup.credentialID !== selected.credentialID) {
         return retryOnce(input, removalRevision)
       }
@@ -309,19 +322,19 @@ export namespace ProviderAuthRecovery {
       throw error
     }
     if (first.ok) {
-      await markSuccess(input.providerID, removalRevision, input.profileID)
+      await markSuccess(input.providerID, removalRevision, input.profileID, input.manageStoredCredential !== false)
       return first
     }
 
     const firstFailure = await classify(input, first)
     if (!firstFailure) return first
     if (firstFailure.exhausted) {
-      await markFailure(input, await Auth.select(input.providerID), firstFailure, removalRevision)
+      await markFailure(input, await selectCredential(input), firstFailure, removalRevision)
       return first
     }
     if (!firstFailure.reloginRequired) return first
 
-    const selected = await Auth.select(input.providerID)
+    const selected = await selectCredential(input)
     if (!selected) {
       if (input.recoverWithoutCredential) {
         try {

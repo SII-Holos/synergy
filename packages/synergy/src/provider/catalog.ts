@@ -164,6 +164,10 @@ export namespace ProviderCatalog {
       normalized === "auth" ||
       normalized === "cookie" ||
       normalized === "setcookie" ||
+      normalized === "key" ||
+      normalized === "keys" ||
+      normalized === "credential" ||
+      normalized === "credentials" ||
       normalized.endsWith("apikey") ||
       normalized.endsWith("apitoken") ||
       normalized.endsWith("sessiontoken") ||
@@ -175,6 +179,7 @@ export namespace ProviderCatalog {
       normalized === "token" ||
       normalized.endsWith("token") ||
       normalized.endsWith("credential") ||
+      normalized.endsWith("credentials") ||
       normalized.endsWith("authorization")
     )
   }

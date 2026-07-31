@@ -421,6 +421,8 @@ test("catalog-only projections apply model rules without exposing inline credent
                 sessionToken: "must-not-be-projected",
                 accessKeyId: "must-not-be-projected",
                 secretAccessKey: "must-not-be-projected",
+                key: "must-not-be-projected",
+                credentials: "must-not-be-projected",
                 maxTokens: 16_384,
                 reasoningEffort: "high",
               },

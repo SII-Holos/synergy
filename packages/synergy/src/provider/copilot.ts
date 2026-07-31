@@ -155,9 +155,10 @@ export namespace CopilotProvider {
     fetchFn: FetchLike = fetch,
     force = false,
     preferredAuth?: Auth.Info,
+    preferProvidedAuth = false,
   ) {
     const selected = await Auth.select(providerID)
-    const auth = selected?.auth ?? preferredAuth
+    const auth = preferProvidedAuth ? (preferredAuth ?? selected?.auth) : (selected?.auth ?? preferredAuth)
     const metadata = auth?.metadata ?? {}
     if (
       !force &&
@@ -187,7 +188,9 @@ export namespace CopilotProvider {
     }
     return Auth.withLock(`${providerID}:copilot-token`, async () => {
       const latestSelected = await Auth.select(providerID)
-      const latest = latestSelected?.auth ?? preferredAuth
+      const latest = preferProvidedAuth
+        ? (preferredAuth ?? latestSelected?.auth)
+        : (latestSelected?.auth ?? preferredAuth)
       const latestMetadata = latest?.metadata ?? {}
       if (
         !force &&
@@ -243,7 +246,7 @@ export namespace CopilotProvider {
       }
       const expires = Number(payload.expires_at)
       const expiresAt = Number.isFinite(expires) && expires > 0 ? expires : nowSeconds() + 25 * 60
-      if (latestSelected && latest?.type === "api") {
+      if (!preferProvidedAuth && latestSelected && latest?.type === "api") {
         await Auth.replaceSelectedCredential(
           providerID,
           {
@@ -265,11 +268,20 @@ export namespace CopilotProvider {
   }
 
   export function copilotFetchFor(providerID = PROVIDER_ID, auth?: Auth.Info) {
+    let externalPreferredAuth: Promise<boolean> | undefined
+    const usesExternalPreferredAuth = () => {
+      if (!auth) return Promise.resolve(false)
+      externalPreferredAuth ??= Auth.select(providerID).then(
+        (selected) => !(auth.type === "api" && selected?.auth.type === "api" && auth.key === selected.auth.key),
+      )
+      return externalPreferredAuth
+    }
     return async (input: RequestInfo | URL, init?: RequestInit) => {
+      const preferProvidedAuth = await usesExternalPreferredAuth()
       return ProviderAuthRecovery.execute({
         providerID,
         request: async () => {
-          const token = await exchangeToken(providerID, fetch, false, auth)
+          const token = await exchangeToken(providerID, fetch, false, auth, preferProvidedAuth)
           const headers = new Headers(init?.headers)
           headers.set("Authorization", `Bearer ${token}`)
           headers.set("User-Agent", USER_AGENT)
@@ -280,10 +292,11 @@ export namespace CopilotProvider {
         refresh: (auth) => refreshAuth(providerID, auth),
         recoverWithoutCredential: async () => {
           clearApiToken(providerID)
-          await exchangeToken(providerID, fetch, true, auth)
+          await exchangeToken(providerID, fetch, true, auth, preferProvidedAuth)
           return true
         },
         classify: classifyError,
+        manageStoredCredential: !preferProvidedAuth,
       })
     }
   }

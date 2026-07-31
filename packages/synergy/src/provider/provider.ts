@@ -452,7 +452,7 @@ export namespace Provider {
     const profile = ProviderProfile.resolve(model.providerID, plan.profileID)
     const storedAuth = await Auth.get(model.providerID)
     const inlineModelKey =
-      typeof model.options.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
+      typeof model.options?.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
     const inlineProviderKey =
       typeof plan.options.apiKey === "string" && plan.options.apiKey ? plan.options.apiKey : undefined
     const connectionKey = plan.key ?? inlineProviderKey
@@ -853,8 +853,8 @@ export namespace Provider {
     runtimeProfile: RuntimeProfileState | undefined,
   ): Promise<Record<string, any>> {
     const inlineModelKey =
-      typeof model.options.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
-    if (!inlineModelKey || !runtimeProfile) return { ...provider.options, ...model.options }
+      typeof model.options?.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
+    if (!inlineModelKey || !runtimeProfile) return { ...provider.options, ...(model.options ?? {}) }
 
     const profileInput = {
       providerID: model.providerID,
@@ -867,7 +867,7 @@ export namespace Provider {
     const dynamicOptions = mergeDeep(modelOptions, runtimeOptions)
     const withRuntime = mergeDeep(provider.options, dynamicOptions)
     const withExplicitConnection = mergeDeep(withRuntime, runtimeProfile.explicitOptions)
-    return { ...withExplicitConnection, ...model.options }
+    return { ...withExplicitConnection, ...(model.options ?? {}) }
   }
 
   export async function reload() {
