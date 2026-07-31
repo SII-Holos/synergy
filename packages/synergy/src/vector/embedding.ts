@@ -165,8 +165,7 @@ export namespace Embedding {
   function defaultRuntimeControls(): LocalRuntimeControls {
     return {
       async loadRuntime() {
-        const transformersPackage = "@huggingface/transformers"
-        const runtime = await import(transformersPackage)
+        const runtime = await import("@huggingface/transformers")
         return {
           pipeline: runtime.pipeline as unknown as LocalRuntime["pipeline"],
           isCached: (task, model, options) => runtime.ModelRegistry.is_pipeline_cached(task, model, options),
