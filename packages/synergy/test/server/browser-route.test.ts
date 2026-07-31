@@ -1,24 +1,38 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import {
+  BROWSER_PROTOCOL_VERSION,
+  BrowserHostMessageSchema,
+  type BrowserHostMessage,
+} from "@ericsanchezok/synergy-browser"
+import { BrowserBroker, type BrowserBrokerSocket } from "../../src/browser/broker"
 import { BrowserCommandService } from "../../src/browser/command-service"
-import type { BrowserOwner } from "../../src/browser/owner"
+import { BrowserNetworkGateway } from "../../src/browser/network-gateway"
+import { BrowserOwner } from "../../src/browser/owner"
+import { BrowserTicket } from "../../src/browser/ticket"
 import type { BrowserSession } from "../../src/browser/types"
+import { BrowserWebRTCSignaling } from "../../src/browser/webrtc-signaling"
 import {
   browserHostOriginAllowed,
   browserSignalingEventSocket,
   browserSignalingPageAvailable,
   browserViewerOriginAllowed,
   configureBrowserViewerOrigins,
+  createBrowserSignalingSocket,
 } from "../../src/server/browser-route"
 import { Server } from "../../src/server/server"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 
 let restoreRuntime: (() => void) | undefined
-afterEach(() => {
+afterEach(async () => {
   restoreRuntime?.()
   restoreRuntime = undefined
   BrowserCommandService.clear()
+  BrowserWebRTCSignaling.resetForTest()
+  BrowserBroker.resetForTest()
+  BrowserTicket.resetForTest()
   configureBrowserViewerOrigins([])
+  await BrowserNetworkGateway.stop()
 })
 
 function suspended(owner: BrowserOwner.Info): BrowserSession {
@@ -59,6 +73,64 @@ function suspended(owner: BrowserOwner.Info): BrowserSession {
       return true
     },
     async dispose() {},
+  }
+}
+
+class BrokerSocket implements BrowserBrokerSocket {
+  sent: BrowserHostMessage[] = []
+
+  send(data: string): void {
+    const message = BrowserHostMessageSchema.parse(JSON.parse(data))
+    this.sent.push(message)
+    if (message.type !== "page.create" && message.type !== "page.close") return
+    queueMicrotask(() => {
+      BrowserBroker.handle(this, {
+        type: "page.result",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        requestId: message.requestId,
+        result: message.type === "page.create" ? { type: "page", page: message.page } : { type: "void" },
+      })
+    })
+  }
+
+  close(): void {}
+}
+
+class SignalingSocket {
+  sent: unknown[] = []
+  closed: { code?: number; reason?: string } | null = null
+
+  send(data: string): void {
+    this.sent.push(JSON.parse(data))
+  }
+
+  close(code?: number, reason?: string): void {
+    this.closed = { code, reason }
+  }
+}
+
+function signalingContext(ticket: string) {
+  const queries: Record<string, string> = {
+    mode: "session",
+    sessionID: "session-route",
+    presentation: "webrtc",
+    protocolVersion: String(BROWSER_PROTOCOL_VERSION),
+    pageId: "page-1",
+    ticket,
+  }
+  return {
+    req: {
+      url: `http://127.0.0.1:4096/home/browser/webrtc/host?${new URLSearchParams(queries)}`,
+      param(name: string) {
+        return name === "directory" ? "home" : ""
+      },
+      query(name: string) {
+        return queries[name]
+      },
+      header(name: string) {
+        return name.toLowerCase() === "origin" ? "file://" : undefined
+      },
+    },
   }
 }
 
@@ -126,6 +198,73 @@ describe("BrowserRoute protocol v2", () => {
     expect(browserSignalingPageAvailable("host", "page-1", session, true)).toBe(true)
     expect(browserSignalingPageAvailable("viewer", "page-1", session, true)).toBe(false)
     expect(browserSignalingPageAvailable("host", "page-1", session, false)).toBe(false)
+  })
+
+  test("renews signaling only when the current Host socket closes for a broker-owned page", async () => {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const owner: BrowserOwner.Info = {
+          mode: "session",
+          scopeID: ScopeContext.current.scope.id,
+          sessionID: "session-route",
+          directory: ScopeContext.current.directory,
+        }
+        restoreRuntime = BrowserCommandService.useRuntimeForTest({
+          async getOrCreateSession() {
+            return suspended(owner)
+          },
+        })
+        const broker = new BrokerSocket()
+        BrowserBroker.attach(broker, {
+          type: "host.register",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          hostId: "host-route",
+          token: BrowserBroker.secret(),
+          capabilities: { native: false, webrtc: true },
+        })
+        await BrowserBroker.createPage({
+          owner,
+          routeDirectory: "home",
+          presentation: "webrtc",
+          pageId: "page-1",
+        })
+        const created = broker.sent.find(
+          (message): message is Extract<BrowserHostMessage, { type: "page.create" }> => message.type === "page.create",
+        )
+        expect(created?.signalingTicket).toBeDefined()
+
+        const firstHandlers = createBrowserSignalingSocket(signalingContext(created!.signalingTicket!), "host")
+        const firstSocket = new SignalingSocket()
+        await firstHandlers.onOpen(undefined, firstSocket)
+
+        const replacementTicket = BrowserTicket.issue(owner, "page-1", "host")
+        const secondHandlers = createBrowserSignalingSocket(signalingContext(replacementTicket.ticket), "host")
+        const secondSocket = new SignalingSocket()
+        await secondHandlers.onOpen(undefined, secondSocket)
+
+        const renewalMessages = () =>
+          broker.sent.filter(
+            (message): message is Extract<BrowserHostMessage, { type: "page.signaling.ticket" }> =>
+              message.type === "page.signaling.ticket",
+          )
+
+        broker.sent = []
+        firstHandlers.onClose()
+        expect(renewalMessages()).toHaveLength(0)
+
+        secondHandlers.onClose()
+        const renewals = renewalMessages()
+        expect(renewals).toHaveLength(1)
+        expect(renewals[0]).toMatchObject({
+          ownerKey: BrowserOwner.key(owner),
+          pageId: "page-1",
+        })
+        expect(renewals[0].signalingTicket).toBeDefined()
+        expect(() => BrowserTicket.consume(owner, "page-1", "host", renewals[0].signalingTicket)).not.toThrow()
+        expect(() => BrowserTicket.consume(owner, "page-1", "host", renewals[0].signalingTicket)).toThrow(/invalid/i)
+      },
+    })
   })
 
   test("accepts the file controller origin without accepting web-page Host connections", () => {

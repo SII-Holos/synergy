@@ -69,6 +69,7 @@ export class BrowserWebRTCHost {
   private browserWindow: BrowserWindow | null = null
   private rtcWindow: BrowserWindow | null = null
   private inputChannel: string
+  private signalingChannel: string
   private readonly browserWindowTitle: string
   private diagnostics: BrowserHostDiagnostics | null = null
   private control: BrowserWebContentsControl | null = null
@@ -88,7 +89,9 @@ export class BrowserWebRTCHost {
   }
 
   constructor(private options: BrowserWebRTCHostOptions) {
-    this.inputChannel = `browser-host:${browserHostPageHash(options.ownerKey, options.pageId)}:input`
+    const pageHash = browserHostPageHash(options.ownerKey, options.pageId)
+    this.inputChannel = `browser-host:${pageHash}:input`
+    this.signalingChannel = `browser-host:${pageHash}:signaling`
     this.browserWindowTitle = `Synergy Browser Host ${options.pageId}`
   }
 
@@ -229,6 +232,13 @@ export class BrowserWebRTCHost {
     return Boolean(this.browserWindow && !this.browserWindow.isDestroyed())
   }
 
+  updateSignalingTicket(ticket: string): void {
+    this.options = { ...this.options, signalingTicket: ticket }
+    const contents = this.rtcWindow?.webContents
+    if (!contents || contents.isDestroyed()) return
+    contents.send(this.signalingChannel, createHostSignalingUrl(this.options))
+  }
+
   async destroy(): Promise<void> {
     const failures: unknown[] = []
     app.off("login", this.onLogin)
@@ -337,6 +347,7 @@ const { ipcRenderer } = require("electron")
 const signalingUrl = ${JSON.stringify(signalingUrl)}
 const pageId = ${JSON.stringify(this.options.pageId)}
 const inputChannel = ${JSON.stringify(this.inputChannel)}
+const signalingChannel = ${JSON.stringify(this.signalingChannel)}
 const protocolVersion = ${BROWSER_PROTOCOL_VERSION}
 const iceServers = ${JSON.stringify(this.options.iceServers ?? [])}
 const preview = document.getElementById("preview")
@@ -426,9 +437,27 @@ async function handleSignal(message) {
   }
 }
 
-function connect() {
-  ws = new WebSocket(signalingUrl)
-  ws.onmessage = (event) => {
+let connectEpoch = 0
+
+function connect(url) {
+  const epoch = ++connectEpoch
+  const nextSocket = new WebSocket(url)
+  nextSocket.onopen = () => {
+    if (epoch !== connectEpoch) {
+      nextSocket.close(4001, "Browser Host signaling superseded")
+      return
+    }
+    const previousSocket = ws
+    ws = nextSocket
+    if (
+      previousSocket &&
+      (previousSocket.readyState === WebSocket.OPEN || previousSocket.readyState === WebSocket.CONNECTING)
+    ) {
+      previousSocket.close(4001, "Browser Host signaling replaced")
+    }
+  }
+  nextSocket.onmessage = (event) => {
+    if (ws !== nextSocket) return
     try {
       void handleSignal(JSON.parse(event.data)).catch((error) => {
         if (connectionId) send({ type: "webrtc.error", protocolVersion, pageId, connectionId, generation, message: String(error?.message || error) })
@@ -437,10 +466,17 @@ function connect() {
       if (connectionId) send({ type: "webrtc.error", protocolVersion, pageId, connectionId, generation, message: String(error?.message || error) })
     }
   }
-  ws.onclose = () => closePeer({ stopStream: true })
+  nextSocket.onclose = () => {
+    if (ws !== nextSocket) return
+    ws = null
+    closePeer({ stopStream: true })
+  }
 }
 
-connect()
+ipcRenderer.on(signalingChannel, (_event, url) => {
+  if (typeof url === "string" && url.length <= 20_000) connect(url)
+})
+connect(signalingUrl)
 </script>
 </body>
 </html>`

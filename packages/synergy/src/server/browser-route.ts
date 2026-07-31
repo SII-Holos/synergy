@@ -520,8 +520,13 @@ export function createBrowserSignalingSocket(c: any, role: "viewer" | "host") {
           })
         }
         BrowserTicket.consume(state.owner, pageId, role, c.req.query("ticket"))
-        if (role === "viewer") BrowserWebRTCSignaling.attachViewer(state.owner, pageId, ws, { hostReady: true })
-        else BrowserWebRTCSignaling.attachHost(state.owner, pageId, ws, { hostReady: true })
+        if (role === "viewer") {
+          BrowserWebRTCSignaling.attachViewer(state.owner, pageId, ws, {
+            hostReady: BrowserWebRTCSignaling.hasHost(state.owner, pageId),
+          })
+        } else {
+          BrowserWebRTCSignaling.attachHost(state.owner, pageId, ws, { hostReady: brokerHasPage })
+        }
         send(
           ws,
           BrowserWebRTCMessageSchema.parse({
@@ -586,8 +591,13 @@ export function createBrowserSignalingSocket(c: any, role: "viewer" | "host") {
     },
     onClose() {
       if (!pageId || !socket) return
-      if (role === "viewer") BrowserWebRTCSignaling.detachViewer(state.owner, pageId, socket)
-      else BrowserWebRTCSignaling.detachHost(state.owner, pageId, socket)
+      if (role === "viewer") {
+        BrowserWebRTCSignaling.detachViewer(state.owner, pageId, socket)
+        return
+      }
+      if (BrowserWebRTCSignaling.detachHost(state.owner, pageId, socket)) {
+        BrowserBroker.renewHostTicket(state.owner, pageId)
+      }
     },
   }
 }

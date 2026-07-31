@@ -73,6 +73,25 @@ export namespace BrowserBroker {
   export function hasPage(owner: BrowserOwner.Info, pageId: string): boolean {
     return connection?.pages.has(pageKey(owner, pageId)) ?? false
   }
+  export function renewHostTicket(owner: BrowserOwner.Info, pageId: string): boolean {
+    const active = connection
+    if (!active || !active.pages.has(pageKey(owner, pageId))) return false
+    const signalingTicket = BrowserTicket.issue(owner, pageId, "host")
+    try {
+      active.socket.send(
+        JSON.stringify({
+          type: "page.signaling.ticket",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          ownerKey: BrowserOwner.key(owner),
+          pageId,
+          signalingTicket: signalingTicket.ticket,
+        } satisfies BrowserHostMessage),
+      )
+      return true
+    } catch {
+      return false
+    }
+  }
 
   export function onActivity(listener: (hasPages: boolean) => void): () => void {
     activityListeners.add(listener)

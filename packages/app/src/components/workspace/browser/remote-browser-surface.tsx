@@ -8,6 +8,7 @@ import { useSDK } from "@/context/sdk"
 import { useBrowser } from "./browser-store"
 import { BrowserWebRTCClient, createBrowserWebRTCSignalingUrl, type BrowserWebRTCStatus } from "./browser-webrtc"
 import { normalizeBrowserError, toBrowserError } from "./browser-error"
+import { webRTCHostStatus } from "./browser-presentation"
 
 function mouseButton(button: number): "left" | "middle" | "right" {
   if (button === 1) return "middle"
@@ -121,7 +122,8 @@ export function RemoteBrowserSurface(props: {
         if (webrtcClient !== client) return
         setWebrtcStatus(status)
         setWebrtcDetail(detail ?? null)
-        if (status === "host_pending") browser.setHostStatus(pageId, "pending")
+        const hostStatus = webRTCHostStatus(status)
+        if (hostStatus) browser.setHostStatus(pageId, hostStatus)
       },
       onStream: (stream) => {
         if (webrtcClient !== client) return
