@@ -1,23 +1,18 @@
-import { afterEach, expect, mock, test } from "bun:test"
+import { expect, test } from "bun:test"
 import path from "path"
-import { pathToFileURL } from "url"
 
-const catalogModule = pathToFileURL(path.resolve(import.meta.dir, "../../src/provider/catalog.ts")).href
-const modelsModule = pathToFileURL(path.resolve(import.meta.dir, "../../src/provider/models")).href
-const modelsModuleWithExtension = pathToFileURL(path.resolve(import.meta.dir, "../../src/provider/models.ts")).href
-
-afterEach(() => {
-  mock.restore()
-})
+const fixture = path.join(import.meta.dir, "fixtures", "catalog-resilient-load.ts")
 
 test("ProviderCatalog module import does not crash when ModelsDev module export is missing", async () => {
-  mock.module(modelsModuleWithExtension, () => {
-    return {}
+  const child = Bun.spawn([process.execPath, "run", fixture], {
+    stdout: "pipe",
+    stderr: "pipe",
   })
-  mock.module(modelsModule, () => {
-    return {}
-  })
-
-  const catalog = await import(catalogModule)
-  expect(catalog.ProviderCatalog).toBeDefined()
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  if (exitCode !== 0) throw new Error(`catalog resilient load fixture failed (${exitCode}): ${stderr}`)
+  expect(stdout.trim()).toBe("OK")
 })
