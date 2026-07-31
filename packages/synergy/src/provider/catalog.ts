@@ -7,6 +7,7 @@ import z from "zod"
 import { Auth } from "./api-key"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { CodexProvider } from "./codex"
+import { ModelsDev as ModelsDevSchemas } from "./models-schemas"
 import { ModelsDev } from "./models"
 import { ProviderProfile } from "./profile"
 import { normalizeImageMediaTypes } from "./image-capability"
@@ -27,7 +28,7 @@ export namespace ProviderCatalog {
   const ModelCatalogEntry = z.object({
     id: z.string(),
     rank: z.number().optional(),
-    model: ModelsDev.Model.partial().optional(),
+    model: ModelsDevSchemas.Model.partial().optional(),
     inputImage: z.boolean().optional(),
     supportedImageMediaTypes: z.array(z.string()).optional(),
   })
@@ -72,10 +73,10 @@ export namespace ProviderCatalog {
     .meta({ ref: "ProviderCatalogConfig" })
   export type Config = z.infer<typeof Config>
 
-  const RemoteModel = ModelsDev.Model.partial().extend({
+  const RemoteModel = ModelsDevSchemas.Model.partial().extend({
     id: z.string().optional(),
   })
-  const RemoteProvider = ModelsDev.Provider.partial()
+  const RemoteProvider = ModelsDevSchemas.Provider.partial()
     .extend({
       id: z.string(),
       name: z.string(),
