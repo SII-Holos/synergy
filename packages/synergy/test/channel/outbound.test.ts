@@ -21,6 +21,10 @@ async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 1_00
   }
 }
 
+function initOutbound() {
+  return ChannelOutbound.init({ getProvider: Channel.getProvider })
+}
+
 type ProviderCalls = {
   replies: string[]
   pushes: string[]
@@ -213,7 +217,7 @@ test("replies async channel output to the persisted message anchor exactly once"
       const type = `outbound-reply-${crypto.randomUUID()}`
       const calls = { replies: [] as string[], pushes: [] as string[] }
       Channel.registerProvider(provider(type, calls))
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({
@@ -253,7 +257,7 @@ test("initializes the outbound bridge independently for each Scope", async () =>
     await ScopeContext.provide({
       scope: firstScope,
       fn: async () => {
-        disposeFirst = ChannelOutbound.init()
+        disposeFirst = initOutbound()
       },
     })
 
@@ -263,7 +267,7 @@ test("initializes the outbound bridge independently for each Scope", async () =>
       fn: async () => {
         const type = `outbound-second-scope-${crypto.randomUUID()}`
         Channel.registerProvider(provider(type, calls))
-        disposeSecond = ChannelOutbound.init()
+        disposeSecond = initOutbound()
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
         })
@@ -296,7 +300,7 @@ test("replies through providers that do not support proactive push", async () =>
           return { messageId: "reply_sent" }
         },
       })
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({
@@ -325,7 +329,7 @@ test("preserves proactive channel push delivery without a reply intent", async (
       const type = `outbound-push-${crypto.randomUUID()}`
       const calls = { replies: [] as string[], pushes: [] as string[] }
       Channel.registerProvider(provider(type, calls))
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({
@@ -355,7 +359,7 @@ test("does not downgrade async channel output to a chat push without a reply anc
       const type = `outbound-no-anchor-${crypto.randomUUID()}`
       const calls = { replies: [] as string[], pushes: [] as string[] }
       Channel.registerProvider(provider(type, calls))
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({
@@ -387,7 +391,7 @@ test("does not send non-terminal channel assistant steps", async () => {
       const type = `outbound-tool-step-${crypto.randomUUID()}`
       const calls = { replies: [] as string[], pushes: [] as string[] }
       Channel.registerProvider(provider(type, calls))
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({
@@ -416,7 +420,7 @@ test("uses the reply anchor carried by each assistant message", async () => {
       const type = `outbound-message-anchor-${crypto.randomUUID()}`
       const calls = { replies: [] as string[], pushes: [] as string[] }
       Channel.registerProvider(provider(type, calls))
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({
@@ -457,7 +461,7 @@ test("delivers tool attachments from earlier assistant steps in the same channel
       const type = `outbound-tool-attachment-${crypto.randomUUID()}`
       const calls: ProviderCalls = { replies: [], pushes: [], replyParts: [], pushParts: [] }
       Channel.registerProvider(provider(type, calls))
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
@@ -562,7 +566,7 @@ test("delivers a card-only async channel result once and marks the terminal outb
       const type = `outbound-response-card-${crypto.randomUUID()}`
       const calls: ProviderCalls = { replies: [], pushes: [], responseCards: [] }
       Channel.registerProvider(provider(type, calls))
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         const session = await Session.create({
           endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
@@ -643,7 +647,7 @@ test("marks a card-only async result complete when foreground delivery already r
       ).toBe(true)
       expect(calls.responseCards).toHaveLength(1)
 
-      const dispose = ChannelOutbound.init()
+      const dispose = initOutbound()
       try {
         await Bus.publish(MessageV2.Event.Updated, { info: task.terminal.info })
         await waitFor(async () => {

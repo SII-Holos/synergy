@@ -1,4 +1,5 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { PluginRuntimeCommand } from "./plugin-runtime"
 import { PluginTestCommand } from "./plugin-test"
 import { PluginPublishMarketCommand } from "./plugin-publish-market"
@@ -27,7 +28,9 @@ import { EOL } from "os"
 import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
-import { diffPermissions } from "../../plugin/consent/diff"
+import { diffPermissions, evaluatePluginUpdateConsent } from "../../plugin/consent/diff"
+import { buildApprovalRecord } from "../../plugin/consent/approval-service"
+import type { PluginApprovalRecord } from "../../plugin/consent/approval-store"
 import { baseCapabilities } from "../../plugin/capability"
 import { Server } from "../../server/server"
 import { isServerReachable } from "../network"
@@ -234,8 +237,12 @@ export const PluginUpdateCommand = cmd({
           return
         }
 
-        // Resolve new manifests and compute consent diffs
-        let consented: Array<{ current: ConfiguredPluginPackage; resolved: ResolvedPluginPackage }> = []
+        // Resolve candidate manifests and bind each consent decision to their exact hashes.
+        let consented: Array<{
+          current: ConfiguredPluginPackage
+          resolved: ResolvedPluginPackage
+          approval: PluginApprovalRecord
+        }> = []
 
         for (const current of specsToUpdate) {
           const { spec, id } = current
@@ -251,22 +258,43 @@ export const PluginUpdateCommand = cmd({
           // Compute permission diff
           const oldCaps = oldManifest ? baseCapabilities(oldManifest) : []
           const newCaps = baseCapabilities(newManifest)
-          const diff = diffPermissions(id, {
+          const baseDiff = diffPermissions(id, {
             oldVersion: oldManifest?.version,
             newVersion: newManifest.version,
             oldCapabilities: oldCaps,
             newCapabilities: newCaps,
           })
+          const diff = oldManifest
+            ? evaluatePluginUpdateConsent({
+                diff: baseDiff,
+                previous: {
+                  manifestHash: computeManifestHash(oldManifest),
+                  permissionsHash: computePermissionsHash(oldManifest, oldCaps),
+                },
+                candidate: {
+                  manifestHash: computeManifestHash(newManifest),
+                  permissionsHash: computePermissionsHash(newManifest, newCaps),
+                },
+              }).diff
+            : baseDiff
 
           if (!diff.requiresApproval) {
-            consented.push({ current, resolved })
+            consented.push({
+              current,
+              resolved,
+              approval: buildApprovalRecord(id, resolved.source, newManifest, newCaps, "policy"),
+            })
             continue
           }
 
           printPluginPermissionDiff(diff)
 
           if (autoApprove) {
-            consented.push({ current, resolved })
+            consented.push({
+              current,
+              resolved,
+              approval: buildApprovalRecord(id, resolved.source, newManifest, newCaps, "policy"),
+            })
             continue
           }
 
@@ -284,7 +312,11 @@ export const PluginUpdateCommand = cmd({
             message: `Approve permission changes for ${SpecToDisplay(spec)}?`,
           })
           if (approved === true) {
-            consented.push({ current, resolved })
+            consented.push({
+              current,
+              resolved,
+              approval: buildApprovalRecord(id, resolved.source, newManifest, newCaps),
+            })
           } else {
             UI.println(UI.Style.TEXT_DIM + `Skipped ${SpecToDisplay(spec)}.${UI.Style.TEXT_NORMAL}`)
           }
@@ -298,7 +330,7 @@ export const PluginUpdateCommand = cmd({
         let succeeded = 0
         let failed = 0
 
-        for (const { current, resolved } of consented) {
+        for (const { current, resolved, approval } of consented) {
           const { spec } = current
           const spinner = prompts.spinner()
           spinner.start(`Updating ${SpecToDisplay(spec)}`)
@@ -308,7 +340,7 @@ export const PluginUpdateCommand = cmd({
           try {
             oldVersion = current.installedVersion
             newVersion = resolved.manifest.version ?? readPkgVersion(resolved.pluginDir)
-            await Plugin.add(spec, { skipConsent: true })
+            await Plugin.updateReviewed(spec, approval)
 
             const versionInfo =
               oldVersion && newVersion
@@ -561,6 +593,7 @@ interface ResolvedPluginPackage {
   pkg: string
   version: string
   entryPath?: string
+  source: Awaited<ReturnType<typeof resolvePluginSpec>>["source"]
 }
 
 async function readConfiguredPluginPackage(spec: string): Promise<ConfiguredPluginPackage> {
@@ -605,6 +638,7 @@ async function resolveNewManifest(
       pkg: resolved.pkg,
       version: resolved.version,
       entryPath: resolved.entryPath,
+      source: resolved.source,
     }
   } catch {
     return null

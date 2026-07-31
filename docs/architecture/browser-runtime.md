@@ -97,7 +97,9 @@ Navigation accepts HTTP(S), `about:blank`, and explicit workspace-contained `fil
 
 Browser routes attach trace IDs, command IDs, owner keys, page IDs, presentation choices, host state, and durations to structured logs. Page loading failure, host pending, signaling failure, page absence, and control failure are separate error states so clients can decide whether to wait, retry, navigate, or report a terminal error.
 
-API errors stay structured through the SDK boundary. WebRTC retries only retryable ticket failures and transient socket closure, resets backoff after Host or media readiness, and discards stale ticket, socket, peer, and timer work when a surface is replaced or disposed.
+API errors stay structured through the SDK boundary. WebRTC viewer signaling retries retryable ticket failures and transient socket closure, resets backoff after Host or media readiness, and discards stale ticket, socket, peer, and timer work when a surface is replaced or disposed. If only the Host signaling socket disconnects while the broker-owned page remains alive, the server reports that WebRTC presentation as detached, issues a fresh one-shot Host ticket through the broker, and the Electron controller replaces its signaling socket without recreating the canonical page or losing page state.
+
+Viewer ticket retries also heal an initially missing Host signaling attachment: when the canonical page still belongs to the broker but no Host socket is attached, issuing a viewer ticket renews the one-shot Host ticket through the broker. An already attached Host is left unchanged.
 
 The interactive surface continues to use live native or WebRTC presentation. Screenshots, DOM snapshots, console entries, network records, and accessibility snapshots are inspection products and tool inputs.
 

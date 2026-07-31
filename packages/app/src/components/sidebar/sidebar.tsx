@@ -21,7 +21,7 @@ import { useProjectDirectoryPicker } from "@/components/dialog/project-directory
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveProjectConfirm } from "@/components/dialog/confirm-copy"
-import type { LocalScope, NavEntry } from "@/context/layout"
+import type { LocalScope, NavEntry, ScopeNavEntry } from "@/context/layout"
 import type { HolosAccountMeta } from "@ericsanchezok/synergy-sdk/client"
 import { usePlatform } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
@@ -592,7 +592,7 @@ export function Sidebar(props: SidebarProps) {
                               navLoaded={(scope) => !!layout.nav.navEntries()[scope.worktree]}
                               projectNavEntries={(scope) => layout.nav.projectNavEntries(scope)}
                               hasMoreForProject={hasMoreForProject}
-                              managed
+                              managedProject={project.managedProject}
                               onProjectToggle={handleProjectToggle}
                               onProjectClick={handleProjectClick}
                               onProjectPlus={handleProjectPlus}
@@ -764,7 +764,7 @@ function SidebarProjectGroup(props: {
   navLoaded: (scope: LocalScope) => boolean
   projectNavEntries: (scope: LocalScope) => NavEntry[]
   hasMoreForProject: (scope: LocalScope) => boolean
-  managed?: boolean
+  managedProject?: NonNullable<ScopeNavEntry["managedProject"]>
   onProjectToggle: (event: MouseEvent, scope: LocalScope) => void
   onProjectClick: (worktree: string) => void
   onProjectPlus: (event: MouseEvent, scope: LocalScope) => void
@@ -965,7 +965,7 @@ function SidebarProjectGroup(props: {
                   entries={entries()}
                   scope={props.scope()}
                   activeID={props.activeID}
-                  managed={props.managed}
+                  managedProject={props.managedProject}
                   onSessionClick={(entry) => {
                     const scope = props.scope()
                     if (scope) props.onSessionClick(scope, entry)
@@ -1000,7 +1000,7 @@ function SidebarProjectGroup(props: {
                 entries={entries()}
                 scope={props.scope()}
                 activeID={props.activeID}
-                managed={props.managed}
+                managedProject={props.managedProject}
                 onSessionClick={(entry) => {
                   const scope = props.scope()
                   if (scope) props.onSessionClick(scope, entry)
@@ -1103,10 +1103,10 @@ function GroupedSessionList(props: {
   entries: NavEntry[]
   scope?: LocalScope
   activeID?: string
-  managed?: boolean
+  managedProject?: NonNullable<ScopeNavEntry["managedProject"]>
   onSessionClick: (entry: NavEntry) => void
 }) {
-  const entries = createMemo(() => selectVisibleProjectEntries(props.entries, props.managed ?? false))
+  const entries = createMemo(() => selectVisibleProjectEntries(props.entries, props.managedProject))
 
   return (
     <SidebarSessionList

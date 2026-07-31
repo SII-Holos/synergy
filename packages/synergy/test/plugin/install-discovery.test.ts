@@ -5,7 +5,8 @@ import { pathToFileURL } from "url"
 import z from "zod"
 import { compilePluginManifest, definePlugin, mcp, operation } from "@ericsanchezok/synergy-plugin"
 import { resolvePluginSpec } from "../../src/plugin/spec-resolver"
-import { add, PluginApprovalRequiredError, resolveConfiguredPluginId } from "../../src/plugin/install"
+import { PluginApprovalRequiredError, resolveConfiguredPluginId, updateReviewed, add } from "../../src/plugin/install"
+import { buildApprovalRecord } from "../../src/plugin/consent/approval-service"
 import { ScopeContext } from "../../src/scope/context"
 import { sha256File } from "../../src/util/crypto"
 import { tmpdir } from "../fixture/fixture"
@@ -79,6 +80,31 @@ describe("plugin installation discovery", () => {
     await expect(resolvePluginSpec(pathToFileURL(tmp.path).href, { install: false })).rejects.toThrow(
       "MCP remote URL must use http or https",
     )
+  })
+
+  test("rejects an update when the resolved manifest changes after review", async () => {
+    await using tmp = await tmpdir()
+    const definition = definePlugin({
+      id: "review-bound-update",
+      version: "1.0.0",
+      description: "Bind update consent to the reviewed manifest",
+      contributions: [],
+    })
+    const reviewedManifest = compilePluginManifest(definition, { generation: "reviewed-generation" })
+    await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(reviewedManifest))
+    const approval = buildApprovalRecord(definition.id, "local", reviewedManifest, [], "policy")
+    const changedManifest = compilePluginManifest(definition, { generation: "changed-after-review" })
+    await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(changedManifest))
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      async fn() {
+        await expect(updateReviewed(pathToFileURL(tmp.path).href, approval)).rejects.toBeInstanceOf(
+          PluginApprovalRequiredError,
+        )
+      },
+    })
   })
 
   test("resolves configured relative specs from the active Scope", async () => {

@@ -1,6 +1,6 @@
 import { Global } from "../global"
 import { Log } from "../util/log"
-import { ModelsDev as ModelsDevSchemas } from "./models-schemas"
+import { ModelsDev as ModelsDevSchemas, ModelsDevCatalog, missingRequiredModelsDevProviders } from "./models-schemas"
 import { data } from "./models-macro" with { type: "macro" }
 import { Installation } from "../global/installation"
 import { Flag } from "../flag/flag"
@@ -20,23 +20,58 @@ export namespace ModelsDev {
   export const Provider = ModelsDevSchemas.Provider
   export type Provider = ModelsDevSchemas.Provider
 
+  type Catalog = ModelsDevCatalog
+
   let inFlight: Promise<void> | undefined
-  let cache: Record<string, any> | null = null
+  let cache: Catalog | null = null
+  const refreshListeners = new Set<() => void | Promise<void>>()
+
+  export function onRefresh(listener: () => void | Promise<void>) {
+    refreshListeners.add(listener)
+    return () => refreshListeners.delete(listener)
+  }
+
+  async function notifyRefresh() {
+    await Promise.all([...refreshListeners].map((listener) => listener()))
+  }
+
+  function parseCatalog(input: unknown): Catalog | undefined {
+    const parsed = ModelsDevCatalog.safeParse(input)
+    if (!parsed.success) return
+    return missingRequiredModelsDevProviders(parsed.data).length === 0 ? parsed.data : undefined
+  }
+
+  function parseCatalogText(input: string): Catalog | undefined {
+    try {
+      return parseCatalog(JSON.parse(input))
+    } catch {
+      return
+    }
+  }
+
+  function refreshInBackground() {
+    void refresh()?.catch((error) => {
+      log.warn("failed to persist refreshed models catalog", { error })
+    })
+  }
 
   export async function get() {
     if (cache) return cache
-    refresh()
+
     const file = Bun.file(filepath)
-    const result = await file.json().catch(() => {})
-    if (result) {
-      cache = result as Record<string, Provider>
+    const stored = parseCatalog(await file.json().catch(() => undefined))
+    if (stored) {
+      cache = stored
+      refreshInBackground()
       return cache
     }
-    const json =
-      typeof data === "function" ? await data() : await fetch("https://models.dev/api.json").then((x) => x.text())
-    const parsed = JSON.parse(json) as Record<string, Provider>
-    cache = parsed
-    return parsed
+
+    const bundledText = typeof data === "function" ? "{}" : await (data as unknown as () => Promise<string>)()
+    const bundled = parseCatalogText(bundledText)
+    if (!bundled) log.warn("ignored invalid bundled models catalog")
+    cache = bundled ?? {}
+    refreshInBackground()
+    return cache
   }
 
   export function refresh(): Promise<void> | undefined {
@@ -50,28 +85,31 @@ export namespace ModelsDev {
 
   async function doRefresh() {
     const file = Bun.file(filepath)
-    log.info("refreshing", {
-      file,
-    })
+    log.info("refreshing", { file })
     const result = await fetch("https://models.dev/api.json", {
       headers: {
         "User-Agent": Installation.USER_AGENT,
       },
       signal: AbortSignal.timeout(10 * 1000),
-    }).catch((e) => {
-      log.error("Failed to fetch models.dev", {
-        error: e,
-      })
+    }).catch((error) => {
+      log.warn("failed to fetch models catalog", { error })
     })
-    if (result && result.ok) {
-      const text = await result.text()
-      await Bun.write(file, text)
-      try {
-        cache = JSON.parse(text) as Record<string, Provider>
-      } catch {
-        // leave stale cache on parse failure
-      }
+    if (!result) return
+    if (!result.ok) {
+      log.warn("models catalog refresh returned non-success status", { status: result.status })
+      return
     }
+
+    const text = await result.text()
+    const parsed = parseCatalogText(text)
+    if (!parsed) {
+      log.warn("ignored invalid refreshed models catalog")
+      return
+    }
+
+    await Bun.write(file, text)
+    cache = parsed
+    await notifyRefresh()
   }
 }
 

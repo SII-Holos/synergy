@@ -9,7 +9,7 @@ import { useFile, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
 import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special-user-message"
 
-import { WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
+import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 
 import { useSync } from "@/context/sync"
@@ -182,6 +182,7 @@ function SessionPageContent() {
   })
 
   const isDesktop = () => layout.isDesktop()
+  const sideWorkspaceMounts = createMemo(() => sessionSideWorkspaceMounts(isDesktop(), sideOpen()))
 
   const [store, setStore] = createStore({
     messageId: undefined as string | undefined,
@@ -1464,13 +1465,14 @@ function SessionPageContent() {
               rollbackActive={rollbackActive()}
             />
           </div>
-          {/* Desktop side workspace */}
-          <div class="hidden md:block">
-            <WorkbenchSurface surface="side" />
-          </div>
+          <Show when={sideWorkspaceMounts().desktop}>
+            <div class="hidden md:block">
+              <WorkbenchSurface surface="side" />
+            </div>
+          </Show>
 
           {/* Mobile side workspace overlay */}
-          <Show when={!isDesktop() && sideOpen()}>
+          <Show when={sideWorkspaceMounts().mobile}>
             <div class="absolute inset-0 z-50 flex flex-col bg-background-stronger">
               <WorkspaceMobileHeader onClose={() => sideSurface().close()} />
               <div class="mobile-workbench-overlay relative flex-1 min-h-0">

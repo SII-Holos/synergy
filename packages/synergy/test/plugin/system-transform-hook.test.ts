@@ -66,7 +66,7 @@ export default {
   )
   const manifest = {
     manifestVersion: 1,
-    apiVersion: "3.0",
+    apiVersion: "4.0",
     id: "system-transform-plugin",
     name: "system-transform-plugin",
     version: "1.0.0",

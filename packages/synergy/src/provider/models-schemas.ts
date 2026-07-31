@@ -15,7 +15,7 @@ export namespace ModelsDev {
     attachment: z.boolean(),
     reasoning: z.boolean(),
     reasoning_options: z.array(ReasoningOption).optional(),
-    temperature: z.boolean(),
+    temperature: z.boolean().optional().default(false),
     tool_call: z.boolean(),
     interleaved: z
       .union([
@@ -57,9 +57,9 @@ export namespace ModelsDev {
     supported_image_media_types: z.array(z.string()).optional(),
     status: z.enum(["alpha", "beta", "deprecated"]).optional(),
     catalog_state: z.enum(["active", "retained"]).optional(),
-    options: z.record(z.string(), z.any()),
+    options: z.record(z.string(), z.any()).optional().default({}),
     headers: z.record(z.string(), z.string()).optional(),
-    provider: z.object({ npm: z.string() }).optional(),
+    provider: z.object({ npm: z.string().optional() }).optional(),
     variants: z.record(z.string(), z.record(z.string(), z.any())).optional(),
   })
   export type Model = z.infer<typeof Model>
@@ -101,5 +101,20 @@ export namespace ModelsDev {
     models: z.record(z.string(), Model),
   })
 
+  export const Catalog = z.record(z.string(), Provider)
+  export type Catalog = z.infer<typeof Catalog>
+
   export type Provider = z.infer<typeof Provider>
 }
+
+export const ModelsDevCatalog = ModelsDev.Catalog
+
+export const REQUIRED_MODELS_DEV_PROVIDERS = ["openai", "anthropic", "google"] as const
+
+export function missingRequiredModelsDevProviders(catalog: ModelsDevCatalog) {
+  return REQUIRED_MODELS_DEV_PROVIDERS.filter((providerID) => {
+    const provider = catalog[providerID]
+    return !provider || Object.keys(provider.models).length === 0
+  })
+}
+export type ModelsDevCatalog = ModelsDev.Catalog

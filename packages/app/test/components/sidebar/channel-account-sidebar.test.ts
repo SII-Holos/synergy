@@ -401,6 +401,13 @@ function nav(input: PartialNav): NavEntry {
   } as NavEntry
 }
 
+const managedProjectOwner: ManagedProject = {
+  channelType: "clarus",
+  accountId: "agent",
+  externalProjectId: "project",
+  remoteState: "active",
+}
+
 describe("selectVisibleProjectEntries", () => {
   test("ordinary Project shows only project-category entries", () => {
     const entries = [
@@ -408,46 +415,120 @@ describe("selectVisibleProjectEntries", () => {
       nav({ id: "s2", scopeID: "proj", category: "project", title: "Chat 2" }),
       nav({ id: "s3", scopeID: "proj", category: "channel", title: "Task 1" }),
     ]
-    const visible = selectVisibleProjectEntries(entries, false)
+    const visible = selectVisibleProjectEntries(entries)
     expect(visible.map((e) => e.id)).toEqual(["s1", "s2"])
   })
 
   test("managed Project includes both project and channel entries", () => {
     const entries = [
       nav({ id: "s1", scopeID: "managed", category: "project", title: "Chat 1" }),
-      nav({ id: "s2", scopeID: "managed", category: "channel", title: "Task 1" }),
-      nav({ id: "s3", scopeID: "managed", category: "channel", title: "Task 2" }),
+      nav({
+        id: "s2",
+        scopeID: "managed",
+        category: "channel",
+        title: "Task 1",
+        channelType: "clarus",
+        channelAccountId: "agent",
+        channelTarget: { kind: "task", externalProjectId: "project", externalTaskId: "task-1" },
+      }),
+      nav({
+        id: "s3",
+        scopeID: "managed",
+        category: "channel",
+        title: "Task 2",
+        channelType: "clarus",
+        channelAccountId: "agent",
+        channelTarget: { kind: "task", externalProjectId: "project", externalTaskId: "task-2" },
+      }),
     ]
-    const visible = selectVisibleProjectEntries(entries, true)
+    const visible = selectVisibleProjectEntries(entries, managedProjectOwner)
     expect(visible.map((e) => e.id)).toEqual(["s1", "s2", "s3"])
   })
 
   test("managed Project does not include background or github entries", () => {
     const entries = [
       nav({ id: "s1", scopeID: "managed", category: "project" }),
-      nav({ id: "s2", scopeID: "managed", category: "channel" }),
+      nav({
+        id: "s2",
+        scopeID: "managed",
+        category: "channel",
+        channelType: "clarus",
+        channelAccountId: "agent",
+        channelTarget: { kind: "task", externalProjectId: "project", externalTaskId: "task" },
+      }),
       nav({ id: "s3", scopeID: "managed", category: "background" }),
       nav({ id: "s4", scopeID: "managed", category: "github" }),
       nav({ id: "s5", scopeID: "managed", category: "home" }),
     ]
-    const visible = selectVisibleProjectEntries(entries, true)
+    const visible = selectVisibleProjectEntries(entries, managedProjectOwner)
     expect(visible.map((e) => e.id)).toEqual(["s1", "s2"])
   })
 
+  test("managed Project excludes conversation and non-owner Channel entries", () => {
+    const entries = [
+      nav({ id: "project", scopeID: "managed", category: "project" }),
+      nav({
+        id: "clarus-task",
+        scopeID: "managed",
+        category: "channel",
+        channelType: "clarus",
+        channelAccountId: "agent",
+        channelTarget: { kind: "task", externalProjectId: "project", externalTaskId: "task" },
+      }),
+      nav({
+        id: "feishu-chat",
+        scopeID: "managed",
+        category: "channel",
+        channelType: "feishu",
+        channelAccountId: "feishu",
+        channelTarget: { kind: "chat", chatId: "chat" },
+      }),
+      nav({
+        id: "other-task",
+        scopeID: "managed",
+        category: "channel",
+        channelType: "clarus",
+        channelAccountId: "other-agent",
+        channelTarget: { kind: "task", externalProjectId: "project", externalTaskId: "other" },
+      }),
+      nav({
+        id: "other-project-task",
+        scopeID: "managed",
+        category: "channel",
+        channelType: "clarus",
+        channelAccountId: "agent",
+        channelTarget: { kind: "task", externalProjectId: "other-project", externalTaskId: "other" },
+      }),
+    ]
+
+    const visible = selectVisibleProjectEntries(entries, managedProjectOwner)
+    expect(visible.map((entry) => entry.id)).toEqual(["project", "clarus-task"])
+  })
+
   test("empty entries returns empty array for both managed and ordinary", () => {
-    expect(selectVisibleProjectEntries([], false)).toEqual([])
-    expect(selectVisibleProjectEntries([], true)).toEqual([])
+    expect(selectVisibleProjectEntries([])).toEqual([])
+    expect(selectVisibleProjectEntries([], managedProjectOwner)).toEqual([])
   })
 
   test("managed Project with only channel entries shows all", () => {
-    const entries = [nav({ id: "t1", scopeID: "managed", category: "channel", title: "Task Only" })]
-    const visible = selectVisibleProjectEntries(entries, true)
+    const entries = [
+      nav({
+        id: "t1",
+        scopeID: "managed",
+        category: "channel",
+        title: "Task Only",
+        channelType: "clarus",
+        channelAccountId: "agent",
+        channelTarget: { kind: "task", externalProjectId: "project", externalTaskId: "task" },
+      }),
+    ]
+    const visible = selectVisibleProjectEntries(entries, managedProjectOwner)
     expect(visible.map((e) => e.id)).toEqual(["t1"])
   })
 
   test("ordinary Project with only channel entries shows nothing", () => {
     const entries = [nav({ id: "t1", scopeID: "proj", category: "channel", title: "Task" })]
-    const visible = selectVisibleProjectEntries(entries, false)
+    const visible = selectVisibleProjectEntries(entries)
     expect(visible).toEqual([])
   })
 })

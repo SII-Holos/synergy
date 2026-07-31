@@ -21,7 +21,7 @@ const command = {
 function manifest(generation = "generation-one") {
   return {
     manifestVersion: 1,
-    apiVersion: "3.0",
+    apiVersion: "4.0",
     id: "frontend-kit",
     name: "Frontend Kit",
     version: "1.0.0",

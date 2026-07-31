@@ -8,6 +8,7 @@ import { useBrowser } from "./browser-store"
 import { browser as B } from "@/locales/messages"
 import { NativeBrowserSurface } from "./native-browser-surface"
 import { RemoteBrowserSurface } from "./remote-browser-surface"
+import { shouldShowBrowserPresentationSurface } from "./browser-presentation"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
 const MIN_FIT_VIEWPORT_HEIGHT = 240
@@ -128,8 +129,13 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
     browser.setDialogRequest(null)
   }
 
-  function hasInteractiveSurface() {
-    return browser.hostStatus() === "ready" && (nativePresentation() || webrtcPresentation())
+  function hasPresentationSurface() {
+    return shouldShowBrowserPresentationSurface({
+      presentation: browser.presentation()?.kind,
+      hostStatus: browser.hostStatus(),
+      nativeAvailable: Boolean(platform.browserNative),
+      pageId: browser.pageId(),
+    })
   }
 
   return (
@@ -139,7 +145,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       class="browser-surface relative flex h-full w-full items-center justify-center overflow-hidden"
     >
       <Show
-        when={hasInteractiveSurface()}
+        when={hasPresentationSurface()}
         fallback={
           <div class="browser-empty-state">
             <div class="browser-empty-mark">

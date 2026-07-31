@@ -6,7 +6,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { Lock } from "../util/lock"
-import type { Info as SessionInfo } from "./types"
+import { Info as SessionInfo } from "./types"
 
 export type NavCategory = "project" | "home" | "channel" | "background" | "github"
 export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
@@ -185,12 +185,14 @@ export namespace SessionNav {
     const entries: SessionNavEntry[] = []
     if (sessionIDs.length > 0) {
       const keys = sessionIDs.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
-      const sessions = await Storage.readMany<SessionInfo>(keys)
-      for (const session of sessions) {
-        if (!session || !session.scope) {
+      const storedSessions = await Storage.readMany<unknown>(keys)
+      for (const storedSession of storedSessions) {
+        const parsed = SessionInfo.safeParse(storedSession)
+        if (!parsed.success) {
           log.warn("skipping malformed session info", { scopeID })
           continue
         }
+        const session = parsed.data
         const scopeType: "home" | "project" = scopeID === "home" ? "home" : "project"
         const category = deriveCategory({
           scopeType,
@@ -272,11 +274,7 @@ export namespace SessionNav {
     const total = allScopeIDs.length
     let done = 0
     for (const scopeID of allScopeIDs) {
-      try {
-        await buildNavIndex(scopeID)
-      } catch (err) {
-        log.warn("failed to build nav index for scope", { scopeID, error: String(err) })
-      }
+      await buildNavIndex(scopeID)
       done++
       progress?.(done, total)
     }
@@ -285,8 +283,7 @@ export namespace SessionNav {
   async function getAllScopeIDs(): Promise<string[]> {
     const { Scope } = await import("../scope")
     const projects = await Scope.list()
-    const sessionScopeIDs = await Storage.scan(["sessions"])
-    return [...new Set(["home", ...projects.map((p) => p.id), ...sessionScopeIDs])]
+    return ["home", ...projects.map((project) => project.id)]
   }
 
   export async function listUnreadCompletionEntries(): Promise<SessionNavEntry[]> {
@@ -322,6 +319,7 @@ export namespace SessionNav {
   export async function queryGlobal(opts?: {
     parentOnly?: boolean
     category?: NavCategory
+    channelType?: string
     includeArchived?: boolean
     search?: string
     cursor?: NavCursor
@@ -343,6 +341,7 @@ export namespace SessionNav {
     let entries = allEntries
     if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
     if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
+    if (opts?.channelType) entries = entries.filter((e) => e.channelType === opts.channelType)
     if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
     if (opts?.search) {
       const term = opts.search.toLowerCase()

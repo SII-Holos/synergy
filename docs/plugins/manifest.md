@@ -7,7 +7,7 @@
 ```jsonc
 {
   "manifestVersion": 1,
-  "apiVersion": "3.0",
+  "apiVersion": "4.0",
   "id": "my-plugin",
   "name": "My Plugin",
   "version": "1.0.0",
@@ -51,7 +51,7 @@ Identity and descriptive fields come from `definePlugin()`. `capabilities` is th
 | `lifecycle.upgrade`     | yes        | handler identity                                                             |
 | `lifecycle.uninstall`   | yes        | handler identity                                                             |
 
-Contribution IDs are unique across the whole plugin, not only within one kind. Every `requires` entry must name a top-level capability. Executable declarations require a runtime artifact. A trusted component requires a UI artifact.
+Contribution IDs are unique within a contribution kind. This permits a command operation and its declarative UI action to share one meaningful local ID while their kind-qualified identities remain distinct. Every `requires` entry must name a top-level capability. Executable declarations require a runtime artifact. A trusted component requires a UI artifact.
 
 ## Schemas and Handlers
 

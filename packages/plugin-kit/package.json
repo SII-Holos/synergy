@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@ericsanchezok/synergy-plugin-kit",
-  "version": "1.1.26",
+  "version": "4.0.0",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -59,6 +59,7 @@
     "@types/node": "catalog:",
     "@types/yargs": "17.0.33",
     "@typescript/native-preview": "catalog:",
+    "ajv": "8.18.0",
     "solid-js": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"

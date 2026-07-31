@@ -23,7 +23,7 @@ const REGISTRY_URL = "https://registry.test/synergy/plugins/registry.json"
 function buildManifest(displayName: string): PluginManifestType {
   return PluginManifest.parse({
     manifestVersion: 1,
-    apiVersion: "3.0",
+    apiVersion: "4.0",
     id: PLUGIN_ID,
     name: displayName,
     version: PLUGIN_VERSION,

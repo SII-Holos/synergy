@@ -1,5 +1,6 @@
 import {
   EXECUTABLE_CONTRIBUTION_KINDS,
+  hasTrustedUIComponent,
   type PluginManifestContribution,
   type PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
@@ -96,12 +97,7 @@ for (const kind of kinds) {
       ) {
         throw new Error(`${contribution.kind}:${contribution.id} requires a runtime artifact`)
       }
-      if (
-        contribution.kind.startsWith("ui.") &&
-        "component" in contribution &&
-        contribution.component &&
-        !manifest.artifacts.ui
-      ) {
+      if (hasTrustedUIComponent(contribution) && !manifest.artifacts.ui) {
         throw new Error(`${contribution.kind}:${contribution.id} requires a UI artifact`)
       }
     },

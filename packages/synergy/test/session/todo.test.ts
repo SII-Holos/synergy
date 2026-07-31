@@ -28,4 +28,12 @@ describe("Todo.get", () => {
 
     expect(await Todo.get(sessionID)).toEqual(todos)
   })
+
+  test("preserves the missing session error", async () => {
+    const sessionID = Identifier.ascending("session")
+    const error = await Todo.get(sessionID).catch((cause) => cause)
+
+    expect(error).toBeInstanceOf(Storage.NotFoundError)
+    expect(error).toMatchObject({ data: { message: `Session ${sessionID} not found` } })
+  })
 })

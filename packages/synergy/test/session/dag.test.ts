@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Dag } from "../../src/session/dag"
+import { Identifier } from "../../src/id/id"
+import { Storage } from "../../src/storage/storage"
 
 describe("Dag.validate", () => {
   describe("Layer 1: Duplicate IDs", () => {
@@ -300,5 +302,15 @@ describe("Dag.computeReady", () => {
 
   test("returns empty for empty DAG", () => {
     expect(Dag.computeReady([])).toEqual([])
+  })
+})
+
+describe("Dag.get", () => {
+  test("preserves the missing session error", async () => {
+    const sessionID = Identifier.ascending("session")
+    const error = await Dag.get(sessionID).catch((cause) => cause)
+
+    expect(error).toBeInstanceOf(Storage.NotFoundError)
+    expect(error).toMatchObject({ data: { message: `Session ${sessionID} not found` } })
   })
 })

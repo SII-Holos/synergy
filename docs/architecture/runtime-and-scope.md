@@ -134,15 +134,22 @@ Workspace transitions update session state; they do not create a new Scope merel
 - project file watching and file services
 - VCS state
 - the listener that records project initialization after the built-in init command
+- startup listeners that rebind services owned by an active global subsystem before recovery can publish Scope-local events, including Channel question and outbound bridges for connected accounts
 
 Home does not start a second project runtime because its installation-wide services are owned by `GlobalRuntime`.
 
 Scope-local state uses `ScopedState`, keyed by Scope ID. Disposing a Scope runtime:
 
-1. removes its started marker,
-2. disposes registered scoped state,
-3. publishes `scope.runtime.disposed`, and
-4. causes subscribed clients to resynchronize that Scope if they still display it.
+1. removes its started marker and disables new detached plugin Agent calls for that Scope,
+2. synchronously claims and aborts matching calls, releasing admission capacity before terminal delivery completes,
+3. waits for their single `cancelled` delivery while the old scoped plugin state is still available,
+4. disposes registered scoped state,
+5. publishes `scope.runtime.disposed`, and
+6. causes subscribed clients to resynchronize that Scope if they still display it.
+
+Concurrent `ensure()` waits for an in-flight disposal before explicitly reactivating the Scope. Calls owned by another Scope are not cancelled, and a late provider result cannot replace the claimed terminal result.
+
+An active Channel connection keeps its account-to-Scope ownership in the home runtime. When a disposable project runtime starts or restarts, Channel synchronously rebinds its Scope-local bridges before startup recovery can terminalize pending messages or publish their events. This preserves continuation replies and interactive cards across project configuration reloads without moving Channel connection ownership into the project runtime.
 
 Failed asynchronous state initialization is evicted rather than cached permanently, so a later access can retry.
 
@@ -191,4 +198,5 @@ The exact domain files and precedence are defined in the [configuration referenc
 - Production capability classification runs only in Policy worker processes; timeout, crash, and malformed-output paths return a finite conservative classification.
 - Every Agent or Policy IPC frame and Agent/Policy/Tool queue has an explicit byte and item bound.
 - Project runtimes start lazily, once per Scope ID, and are disposable.
+- Project Scope disposal cancels only its detached plugin Agent calls before scoped state is removed; explicit reactivation is required before new calls are admitted.
 - Runtime ownership follows the launch surface; one client must not stop or replace a runtime owned by another surface.
