@@ -4,6 +4,8 @@ import { Global } from "../../src/global"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { ProviderProfile } from "../../src/provider/profile"
 import { Auth } from "../../src/provider/api-key"
+import { ScopeContext } from "../../src/scope/context"
+import { tmpdir } from "../fixture/fixture"
 
 const config = { providerCatalog: { enabled: false, offlineCache: false } }
 const providerID = `catalog-stability-${Math.random().toString(36).slice(2)}`
@@ -13,6 +15,7 @@ const credentialProviderID = `catalog-credentials-${Math.random().toString(36).s
 const alternateProfileID = `catalog-alternate-profile-${Math.random().toString(36).slice(2)}`
 const configuredProfileID = `catalog-configured-profile-${Math.random().toString(36).slice(2)}`
 const configuredProviderID = `catalog-configured-provider-${Math.random().toString(36).slice(2)}`
+let alternateFetchCalls = 0
 
 ProviderProfile.register({
   id: providerID,
@@ -31,7 +34,10 @@ ProviderProfile.register({
   modelsDevProviderID: "openai",
   fallbackModels: ["gpt-5.5"],
   modelCatalogIdentity: () => identity,
-  fetchModelCatalog: async () => [{ id: "alternate-model" }],
+  fetchModelCatalog: async () => {
+    alternateFetchCalls++
+    return [{ id: "alternate-model" }]
+  },
 })
 
 let configuredBaseURL: string | undefined
@@ -66,6 +72,7 @@ ProviderProfile.register({
 async function reset() {
   identity = "account-a"
   fetchCatalog = async () => []
+  alternateFetchCalls = 0
   configuredBaseURL = undefined
   configuredDiscovery = new Promise<void>((resolve) => {
     resolveConfiguredDiscovery = resolve
@@ -231,6 +238,33 @@ test("configured account endpoint is passed to live model discovery", async () =
   await configuredDiscovery
 
   expect(configuredBaseURL).toBe("https://account.invalid/v1")
+})
+
+test("explicit refresh honors a configured profile for a registered provider ID", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/synergy.json`,
+        JSON.stringify({
+          provider: {
+            [providerID]: {
+              profile: alternateProfileID,
+              modelsDevProviderID: "openai",
+            },
+          },
+        }),
+      )
+    },
+  })
+  fetchCatalog = async () => [{ id: "wrong-primary-model" }]
+
+  const result = await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: () => ProviderCatalog.refresh(providerID),
+  })
+
+  expect(alternateFetchCalls).toBe(1)
+  expect(result.modelCount).toBe(1)
 })
 
 test("catalog-only account projections are isolated by configuration", async () => {

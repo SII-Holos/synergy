@@ -10,6 +10,7 @@ import { ProviderCatalog } from "../../src/provider/catalog"
 import { ProviderProfile } from "../../src/provider/profile"
 import { ProviderUsage } from "../../src/provider/usage-service"
 import { Auth } from "../../src/provider/api-key"
+import { registerBuiltinProviderProfiles } from "../../src/provider/builtin"
 
 async function provideTestScope(input: {
   scope: Awaited<ReturnType<Awaited<ReturnType<typeof tmpdir>>["scope"]>>
@@ -401,6 +402,88 @@ test("provider config accepts a non-empty models.dev catalog source", () => {
 test("provider config accepts a non-empty canonical runtime profile", () => {
   expect(ProviderConfig.parse({ profile: "anthropic" }).profile).toBe("anthropic")
   expect(ProviderConfig.safeParse({ profile: "" }).success).toBe(false)
+})
+
+test("mapped Bedrock and SAP profiles consume connection auth and options", async () => {
+  registerBuiltinProviderProfiles()
+  const bedrockConnectionID = `bedrock-account-${Math.random().toString(36).slice(2)}`
+  const sapConnectionID = `sap-account-${Math.random().toString(36).slice(2)}`
+  const envNames = [
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_PROFILE",
+    "AICORE_SERVICE_KEY",
+    "AICORE_DEPLOYMENT_ID",
+    "AICORE_RESOURCE_GROUP",
+  ] as const
+  const previous = Object.fromEntries(envNames.map((name) => [name, process.env[name]]))
+  for (const name of envNames) delete process.env[name]
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          provider: {
+            [bedrockConnectionID]: {
+              profile: "amazon-bedrock",
+              modelsDevProviderID: "amazon-bedrock",
+              options: {
+                region: "eu-west-1",
+                baseURL: "https://bedrock.account.invalid",
+              },
+            },
+            [sapConnectionID]: {
+              profile: "sap-ai-core",
+              modelsDevProviderID: "sap-ai-core",
+              options: {
+                deploymentId: "mapped-deployment",
+                resourceGroup: "mapped-resource-group",
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  try {
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const bedrock = ProviderProfile.get("amazon-bedrock")!
+        const bedrockInput = {
+          providerID: bedrockConnectionID,
+          auth: { type: "api" as const, key: "mapped-bedrock-token" },
+        }
+        expect(await bedrock.autoload!(bedrockInput)).toBe(true)
+        expect(await bedrock.runtimeOptions!(bedrockInput)).toMatchObject({
+          apiKey: "mapped-bedrock-token",
+          region: "eu-west-1",
+          baseURL: "https://bedrock.account.invalid",
+        })
+
+        const sap = ProviderProfile.get("sap-ai-core")!
+        const sapInput = {
+          providerID: sapConnectionID,
+          auth: { type: "api" as const, key: "mapped-sap-service-key" },
+        }
+        expect(await sap.autoload!(sapInput)).toBe(true)
+        expect(await sap.runtimeOptions!(sapInput)).toMatchObject({
+          apiKey: "mapped-sap-service-key",
+          deploymentId: "mapped-deployment",
+          resourceGroup: "mapped-resource-group",
+        })
+        expect(Env.get("AICORE_SERVICE_KEY")).toBeUndefined()
+      },
+    })
+  } finally {
+    for (const name of envNames) {
+      const value = previous[name]
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
 })
 
 test("custom provider resolves runtime behavior through its canonical profile", async () => {

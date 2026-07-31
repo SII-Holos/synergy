@@ -389,6 +389,34 @@ test("anthropicFetchFor binds requests to the selected connection credential", a
   })
 })
 
+test("mapped Copilot requests prefer the connection credential over global tokens", async () => {
+  const previousGitHubToken = process.env.GITHUB_TOKEN
+  process.env.GITHUB_TOKEN = "global-copilot-token"
+  await Auth.set(mappedCopilotProviderID, { type: "api", key: "mapped-copilot-token" })
+  CopilotProvider.clearApiToken(mappedCopilotProviderID)
+  try {
+    globalThis.fetch = asFetch(async (input, init) => {
+      const url = String(input)
+      if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
+        expect(new Headers(init?.headers).get("authorization")).toBe("token mapped-copilot-token")
+        return jsonResponse({ token: "mapped-copilot-api-token", expires_at: nowSeconds() + 3600 })
+      }
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer mapped-copilot-api-token")
+      return jsonResponse({ ok: true })
+    })
+
+    const response = await CopilotProvider.copilotFetchFor(mappedCopilotProviderID)(
+      "https://api.githubcopilot.com/chat/completions",
+    )
+    expect(response.status).toBe(200)
+  } finally {
+    CopilotProvider.clearApiToken(mappedCopilotProviderID)
+    await Auth.remove(mappedCopilotProviderID)
+    if (previousGitHubToken === undefined) delete process.env.GITHUB_TOKEN
+    else process.env.GITHUB_TOKEN = previousGitHubToken
+  }
+})
+
 test("github copilot device login exchanges a GitHub token for Copilot models", async () => {
   const authorize = await CopilotProvider.authorizeDeviceCode(
     CopilotProvider.PROVIDER_ID,

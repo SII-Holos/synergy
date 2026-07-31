@@ -658,11 +658,12 @@ export namespace ProviderCatalog {
     await registerPluginProfiles()
     let profile = ProviderProfile.resolve(providerID, profileID)
     let configured: ConfiguredProvider | undefined
-    if (!profile || (baseURL === undefined && ScopeContext.tryScope())) {
+    if (!profile || ((profileID === undefined || baseURL === undefined) && ScopeContext.tryScope())) {
       const { Config } = await import("@/config/config")
       const config = await Config.current()
       configured = config.provider?.[providerID]
-      if (!profile) profile = ProviderProfile.get(configured?.profile ?? "")
+      if (profileID === undefined && configured?.profile) profile = ProviderProfile.get(configured.profile)
+      else if (!profile) profile = ProviderProfile.get(configured?.profile ?? "")
     }
     if (!profile?.fetchModelCatalog && !profile?.fetchModels) {
       return { source: "bundled", refreshing: false, modelCount: 0 }

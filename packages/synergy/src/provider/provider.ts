@@ -445,14 +445,15 @@ export namespace Provider {
     registerBuiltinProviderProfiles()
     const profile = ProviderProfile.resolve(model.providerID, plan.profileID)
     const storedAuth = await Auth.get(model.providerID)
+    const auth = storedAuth ?? (plan.key ? ({ type: "api", key: plan.key } satisfies Auth.Info) : undefined)
     const profileInput = {
       providerID: model.providerID,
-      auth: storedAuth,
+      auth,
       provider: undefined,
     }
-    const auth = (await profile?.resolveAuth?.(profileInput)) ?? storedAuth
-    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth })) ?? {}
-    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+    const resolvedAuth = (await profile?.resolveAuth?.(profileInput)) ?? auth
+    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
+    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
     const options = mergeDeep(mergeDeep(modelOptions, runtimeOptions), plan.options)
     workerState.providers[model.providerID] = {
       id: model.providerID,
@@ -710,14 +711,17 @@ export namespace Provider {
       const base = database[providerID]
       if (!base) continue
       const storedAuth = await Auth.get(providerID)
+      const providerKey = providers[providerID]?.key
+      const connectionAuth =
+        storedAuth ?? (providerKey ? ({ type: "api", key: providerKey } satisfies Auth.Info) : undefined)
       const configProvider = config.provider?.[providerID]
       const sourceProviderID = configProvider?.modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id
       const profileInput = {
         providerID,
-        auth: storedAuth,
+        auth: connectionAuth,
         provider: modelsDev[providerID] ?? inheritedModelsDev?.[sourceProviderID],
       }
-      const auth = (await profile.resolveAuth?.(profileInput)) ?? storedAuth
+      const auth = (await profile.resolveAuth?.(profileInput)) ?? connectionAuth
       const autoload = (await profile.autoload?.({ ...profileInput, auth })) ?? false
       const shouldMerge = !!auth || !!providers[providerID] || autoload
       if (!shouldMerge) continue

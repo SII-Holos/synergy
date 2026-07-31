@@ -131,13 +131,18 @@ export namespace CopilotProvider {
     return true
   }
 
-  export async function resolveGitHubToken(providerID = PROVIDER_ID): Promise<string | undefined> {
+  export async function resolveGitHubToken(
+    providerID = PROVIDER_ID,
+    preferredAuth?: Auth.Info,
+  ): Promise<string | undefined> {
+    const stored = preferredAuth ?? (await Auth.get(providerID))
+    const mapped = providerID !== PROVIDER_ID && providerID !== ENTERPRISE_PROVIDER_ID
+    if (mapped && stored?.type === "api" && validateGitHubToken(stored.key)) return stored.key
     for (const env of ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]) {
       const value = process.env[env]
       if (value && validateGitHubToken(value)) return value
     }
-    const auth = await Auth.get(providerID)
-    if (auth?.type === "api" && validateGitHubToken(auth.key)) return auth.key
+    if (stored?.type === "api" && validateGitHubToken(stored.key)) return stored.key
     return undefined
   }
 
@@ -145,7 +150,12 @@ export namespace CopilotProvider {
     runtimeTokens.delete(providerID)
   }
 
-  export async function exchangeToken(providerID = PROVIDER_ID, fetchFn: FetchLike = fetch, force = false) {
+  export async function exchangeToken(
+    providerID = PROVIDER_ID,
+    fetchFn: FetchLike = fetch,
+    force = false,
+    preferredAuth?: Auth.Info,
+  ) {
     const selected = await Auth.select(providerID)
     const auth = selected?.auth
     const metadata = auth?.metadata ?? {}
@@ -158,7 +168,7 @@ export namespace CopilotProvider {
     ) {
       return metadata.copilotApiToken
     }
-    const githubToken = await resolveGitHubToken(providerID)
+    const githubToken = await resolveGitHubToken(providerID, preferredAuth)
     if (!githubToken) {
       throw new AuthError({
         providerID,
@@ -245,12 +255,12 @@ export namespace CopilotProvider {
     })
   }
 
-  export function copilotFetchFor(providerID = PROVIDER_ID) {
+  export function copilotFetchFor(providerID = PROVIDER_ID, auth?: Auth.Info) {
     return async (input: RequestInfo | URL, init?: RequestInit) => {
       return ProviderAuthRecovery.execute({
         providerID,
         request: async () => {
-          const token = await exchangeToken(providerID)
+          const token = await exchangeToken(providerID, fetch, false, auth)
           const headers = new Headers(init?.headers)
           headers.set("Authorization", `Bearer ${token}`)
           headers.set("User-Agent", USER_AGENT)
@@ -261,7 +271,7 @@ export namespace CopilotProvider {
         refresh: (auth) => refreshAuth(providerID, auth),
         recoverWithoutCredential: async () => {
           clearApiToken(providerID)
-          await exchangeToken(providerID, fetch, true)
+          await exchangeToken(providerID, fetch, true, auth)
           return true
         },
         classify: classifyError,
@@ -271,11 +281,11 @@ export namespace CopilotProvider {
 
   export const copilotFetch = copilotFetchFor(PROVIDER_ID)
 
-  async function fetchModelPayload(providerID: string, fetchFn: FetchLike) {
+  async function fetchModelPayload(providerID: string, fetchFn: FetchLike, auth?: Auth.Info) {
     const response = await ProviderAuthRecovery.execute({
       providerID,
       request: async () => {
-        const token = await exchangeToken(providerID, fetchFn)
+        const token = await exchangeToken(providerID, fetchFn, false, auth)
         return fetchFn(`${BASE_URL}/models`, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -289,7 +299,7 @@ export namespace CopilotProvider {
       refresh: (auth) => refreshAuth(providerID, auth, fetchFn),
       recoverWithoutCredential: async () => {
         clearApiToken(providerID)
-        await exchangeToken(providerID, fetchFn, true)
+        await exchangeToken(providerID, fetchFn, true, auth)
         return true
       },
       classify: classifyError,
@@ -304,8 +314,9 @@ export namespace CopilotProvider {
   export async function fetchModelCatalog(
     providerID = PROVIDER_ID,
     fetchFn: FetchLike = fetch,
+    auth?: Auth.Info,
   ): Promise<ProviderProfile.ModelCatalogEntry[]> {
-    const entries = await fetchModelPayload(providerID, fetchFn)
+    const entries = await fetchModelPayload(providerID, fetchFn, auth)
     const result: ProviderProfile.ModelCatalogEntry[] = []
     for (const entry of entries) {
       if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || !entry.id.trim()) continue
@@ -327,8 +338,12 @@ export namespace CopilotProvider {
     return result
   }
 
-  export async function fetchModelIDs(providerID = PROVIDER_ID, fetchFn: FetchLike = fetch): Promise<string[]> {
-    return (await fetchModelCatalog(providerID, fetchFn)).map((entry) => entry.id)
+  export async function fetchModelIDs(
+    providerID = PROVIDER_ID,
+    fetchFn: FetchLike = fetch,
+    auth?: Auth.Info,
+  ): Promise<string[]> {
+    return (await fetchModelCatalog(providerID, fetchFn, auth)).map((entry) => entry.id)
   }
 
   export async function refreshAuth(
@@ -338,7 +353,7 @@ export namespace CopilotProvider {
   ): Promise<Auth.Info | undefined> {
     if (auth.type !== "api") return undefined
     clearApiToken(providerID)
-    await exchangeToken(providerID, fetchFn, true)
+    await exchangeToken(providerID, fetchFn, true, auth)
     return (await Auth.select(providerID))?.auth ?? auth
   }
 

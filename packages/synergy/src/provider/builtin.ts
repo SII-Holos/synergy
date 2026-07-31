@@ -202,7 +202,7 @@ export function registerBuiltinProviderProfiles() {
     runtimeOptions: async (input) => ({
       apiKey: "synergy-copilot",
       baseURL: CopilotProvider.BASE_URL,
-      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor(input.providerID)),
+      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor(input.providerID, input.auth)),
     }),
     getModel: async ({ sdk, modelID, options }) => {
       if (modelID.toLowerCase().includes("claude")) {
@@ -216,7 +216,7 @@ export function registerBuiltinProviderProfiles() {
       if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
       return sdk.chat(modelID)
     },
-    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog(input.providerID, input.fetch),
+    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog(input.providerID, input.fetch, input.auth),
     refreshAuth: (input) =>
       input.auth ? CopilotProvider.refreshAuth(input.providerID, input.auth) : Promise.resolve(undefined),
     classifyError: CopilotProvider.classifyError,
@@ -236,7 +236,7 @@ export function registerBuiltinProviderProfiles() {
     runtimeOptions: async (input) => ({
       apiKey: "synergy-copilot-enterprise",
       baseURL: CopilotProvider.BASE_URL,
-      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor(input.providerID)),
+      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor(input.providerID, input.auth)),
     }),
     getModel: async ({ sdk, modelID, options }) => {
       if (modelID.toLowerCase().includes("claude")) {
@@ -250,7 +250,7 @@ export function registerBuiltinProviderProfiles() {
       if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
       return sdk.chat(modelID)
     },
-    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog(input.providerID, input.fetch),
+    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog(input.providerID, input.fetch, input.auth),
     refreshAuth: (input) =>
       input.auth ? CopilotProvider.refreshAuth(input.providerID, input.auth) : Promise.resolve(undefined),
     classifyError: CopilotProvider.classifyError,
@@ -287,38 +287,43 @@ export function registerBuiltinProviderProfiles() {
     aiSdkPackage: "@ai-sdk/amazon-bedrock",
     modelFactory: "languageModel",
     modelsDevProviderID: "amazon-bedrock",
-    autoload: async () => {
+    autoload: async (input) => {
       const { Config } = await import("@/config/config")
       const config = await Config.current()
-      const providerConfig = config.provider?.["amazon-bedrock"]
+      const providerConfig = config.provider?.[input.providerID]
       const profile = providerConfig?.options?.profile ?? Env.get("AWS_PROFILE")
       const awsAccessKeyId = Env.get("AWS_ACCESS_KEY_ID")
-      const auth = await Auth.get("amazon-bedrock")
-      const awsBearerToken = Env.get("AWS_BEARER_TOKEN_BEDROCK") ?? (auth?.type === "api" ? auth.key : undefined)
+      const stored = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = stored?.type === "api" ? stored.key : undefined
+      const awsBearerToken =
+        input.providerID === "amazon-bedrock"
+          ? (Env.get("AWS_BEARER_TOKEN_BEDROCK") ?? authKey)
+          : (authKey ?? Env.get("AWS_BEARER_TOKEN_BEDROCK"))
       return Boolean(profile || awsAccessKeyId || awsBearerToken)
     },
-    runtimeOptions: async () => {
+    runtimeOptions: async (input) => {
       const { Config } = await import("@/config/config")
       const config = await Config.current()
-      const providerConfig = config.provider?.["amazon-bedrock"]
-      const auth = await Auth.get("amazon-bedrock")
+      const providerConfig = config.provider?.[input.providerID]
+      const stored = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = stored?.type === "api" ? stored.key : undefined
       const defaultRegion = providerConfig?.options?.region ?? Env.get("AWS_REGION") ?? "us-east-1"
       const profile = providerConfig?.options?.profile ?? Env.get("AWS_PROFILE")
-      const awsBearerToken = iife(() => {
-        const envToken = Env.get("AWS_BEARER_TOKEN_BEDROCK")
-        if (envToken) return envToken
-        if (auth?.type === "api") {
-          Env.set("AWS_BEARER_TOKEN_BEDROCK", auth.key)
-          return auth.key
-        }
-        return undefined
-      })
+      const awsBearerToken =
+        input.providerID === "amazon-bedrock"
+          ? (Env.get("AWS_BEARER_TOKEN_BEDROCK") ?? authKey)
+          : (authKey ?? Env.get("AWS_BEARER_TOKEN_BEDROCK"))
       if (!profile && !Env.get("AWS_ACCESS_KEY_ID") && !awsBearerToken) return {}
 
-      const { fromNodeProviderChain } = await import((await BunProc.install("@aws-sdk/credential-providers")).entryPath)
       const providerOptions: AmazonBedrockProviderSettings = {
         region: defaultRegion,
-        credentialProvider: fromNodeProviderChain(profile ? { profile } : {}),
+      }
+      if (awsBearerToken) providerOptions.apiKey = awsBearerToken
+      else {
+        const { fromNodeProviderChain } = await import(
+          (await BunProc.install("@aws-sdk/credential-providers")).entryPath
+        )
+        providerOptions.credentialProvider = fromNodeProviderChain(profile ? { profile } : {})
       }
       const endpoint = providerConfig?.options?.endpoint ?? providerConfig?.options?.baseURL
       if (endpoint) providerOptions.baseURL = endpoint
@@ -420,18 +425,23 @@ export function registerBuiltinProviderProfiles() {
     aiSdkPackage: "@ai-sdk/openai-compatible",
     modelFactory: "call",
     modelsDevProviderID: "sap-ai-core",
-    autoload: async () => {
-      const auth = await Auth.get("sap-ai-core")
-      return Boolean(Env.get("AICORE_SERVICE_KEY") ?? (auth?.type === "api" ? auth.key : undefined))
+    autoload: async (input) => {
+      const auth = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = auth?.type === "api" ? auth.key : undefined
+      return Boolean(input.providerID === "sap-ai-core" ? (Env.get("AICORE_SERVICE_KEY") ?? authKey) : authKey)
     },
-    runtimeOptions: async () => {
-      const auth = await Auth.get("sap-ai-core")
-      const envServiceKey = Env.get("AICORE_SERVICE_KEY") ?? (auth?.type === "api" ? auth.key : undefined)
-      if (envServiceKey) Env.set("AICORE_SERVICE_KEY", envServiceKey)
-      return envServiceKey
+    runtimeOptions: async (input) => {
+      const { Config } = await import("@/config/config")
+      const config = await Config.current()
+      const providerConfig = config.provider?.[input.providerID]
+      const auth = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = auth?.type === "api" ? auth.key : undefined
+      const serviceKey = input.providerID === "sap-ai-core" ? (Env.get("AICORE_SERVICE_KEY") ?? authKey) : authKey
+      return serviceKey
         ? {
-            deploymentId: Env.get("AICORE_DEPLOYMENT_ID"),
-            resourceGroup: Env.get("AICORE_RESOURCE_GROUP"),
+            apiKey: serviceKey,
+            deploymentId: providerConfig?.options?.deploymentId ?? Env.get("AICORE_DEPLOYMENT_ID"),
+            resourceGroup: providerConfig?.options?.resourceGroup ?? Env.get("AICORE_RESOURCE_GROUP"),
           }
         : {}
     },
