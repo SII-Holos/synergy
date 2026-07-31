@@ -157,7 +157,7 @@ export namespace CopilotProvider {
     preferredAuth?: Auth.Info,
   ) {
     const selected = await Auth.select(providerID)
-    const auth = selected?.auth
+    const auth = selected?.auth ?? preferredAuth
     const metadata = auth?.metadata ?? {}
     if (
       !force &&
@@ -168,7 +168,7 @@ export namespace CopilotProvider {
     ) {
       return metadata.copilotApiToken
     }
-    const githubToken = await resolveGitHubToken(providerID, preferredAuth)
+    const githubToken = await resolveGitHubToken(providerID, auth)
     if (!githubToken) {
       throw new AuthError({
         providerID,
@@ -187,7 +187,7 @@ export namespace CopilotProvider {
     }
     return Auth.withLock(`${providerID}:copilot-token`, async () => {
       const latestSelected = await Auth.select(providerID)
-      const latest = latestSelected?.auth
+      const latest = latestSelected?.auth ?? preferredAuth
       const latestMetadata = latest?.metadata ?? {}
       if (
         !force &&
@@ -198,17 +198,26 @@ export namespace CopilotProvider {
       ) {
         return latestMetadata.copilotApiToken
       }
+      const latestGitHubToken = await resolveGitHubToken(providerID, latest)
+      if (!latestGitHubToken) {
+        throw new AuthError({
+          providerID,
+          code: "github_token_missing",
+          message: "No GitHub token available for GitHub Copilot.",
+          reloginRequired: true,
+        })
+      }
       const latestRuntime = runtimeTokens.get(providerID)
       if (
         !force &&
-        latestRuntime?.githubToken === githubToken &&
+        latestRuntime?.githubToken === latestGitHubToken &&
         latestRuntime.expiresAt > nowSeconds() + API_TOKEN_REFRESH_MARGIN_SECONDS
       ) {
         return latestRuntime.token
       }
       const response = await fetchFn(TOKEN_EXCHANGE_URL, {
         headers: {
-          Authorization: `token ${githubToken}`,
+          Authorization: `token ${latestGitHubToken}`,
           "User-Agent": USER_AGENT,
           Accept: "application/json",
           "Editor-Version": EDITOR_VERSION,
@@ -239,7 +248,7 @@ export namespace CopilotProvider {
           providerID,
           {
             type: "api",
-            key: githubToken,
+            key: latestGitHubToken,
             metadata: {
               ...(latest.metadata ?? auth?.metadata ?? {}),
               copilotApiToken: payload.token,
@@ -249,7 +258,7 @@ export namespace CopilotProvider {
           { credentialID: latestSelected.credentialID, source: latestSelected.poolEntry?.source ?? "api" },
         )
       } else {
-        runtimeTokens.set(providerID, { githubToken, token: payload.token, expiresAt })
+        runtimeTokens.set(providerID, { githubToken: latestGitHubToken, token: payload.token, expiresAt })
       }
       return payload.token
     })

@@ -417,6 +417,46 @@ test("mapped Copilot requests prefer the connection credential over global token
   }
 })
 
+test("mapped Copilot requests reselect a backup credential after failover", async () => {
+  await Auth.set(mappedCopilotProviderID, { type: "api", key: "primary-copilot-token" })
+  await Auth.addToPool(mappedCopilotProviderID, "backup-copilot", {
+    type: "api",
+    key: "backup-copilot-token",
+  })
+  const initialAuth = await Auth.get(mappedCopilotProviderID)
+  CopilotProvider.clearApiToken(mappedCopilotProviderID)
+  const exchanges: string[] = []
+  globalThis.fetch = asFetch(async (input, init) => {
+    const url = String(input)
+    const authorization = new Headers(init?.headers).get("authorization")
+    if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
+      exchanges.push(authorization ?? "")
+      if (authorization === "token primary-copilot-token" && exchanges.length === 1) {
+        return jsonResponse({ token: "primary-copilot-api-token", expires_at: nowSeconds() + 3600 })
+      }
+      if (authorization === "token backup-copilot-token") {
+        return jsonResponse({ token: "backup-copilot-api-token", expires_at: nowSeconds() + 3600 })
+      }
+      return jsonResponse({ error: "bad_credentials" }, { status: 401 })
+    }
+    if (authorization === "Bearer backup-copilot-api-token") return jsonResponse({ ok: true })
+    return jsonResponse({ error: "invalid_token" }, { status: 401 })
+  })
+
+  const response = await CopilotProvider.copilotFetchFor(
+    mappedCopilotProviderID,
+    initialAuth,
+  )("https://api.githubcopilot.com/chat/completions")
+
+  expect(response.status).toBe(200)
+  expect(exchanges).toEqual([
+    "token primary-copilot-token",
+    "token primary-copilot-token",
+    "token backup-copilot-token",
+  ])
+  expect((await Auth.select(mappedCopilotProviderID))?.credentialID).toBe("backup-copilot")
+})
+
 test("github copilot device login exchanges a GitHub token for Copilot models", async () => {
   const authorize = await CopilotProvider.authorizeDeviceCode(
     CopilotProvider.PROVIDER_ID,
