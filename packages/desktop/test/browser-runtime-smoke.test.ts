@@ -178,6 +178,44 @@ describe("Electron Browser Host broker contract", () => {
           }),
         ).toMatchObject({ type: "evaluation", value: { clicked: "yes", value: "Electron" } })
 
+        const initialSignal = await waitFor(
+          () =>
+            signalingURLs.find(
+              (url) =>
+                url.searchParams.get("pageId") === "electron-contract-page" &&
+                url.searchParams.get("ticket") === "host-signaling-ticket",
+            ),
+          5_000,
+          "initial session-owned Host signaling",
+        )
+        expect(initialSignal.pathname).toBe("/home/browser/webrtc/host")
+        brokerSocket?.send(
+          JSON.stringify({
+            type: "page.signaling.ticket",
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            ownerKey: browserOwnerKey({ mode: "session", scopeID: "scope", sessionID: "desktop-smoke" }),
+            pageId: "electron-contract-page",
+            signalingTicket: "renewed-host-signaling-ticket",
+          } satisfies BrowserHostMessage),
+        )
+        await waitFor(
+          () =>
+            signalingURLs.find(
+              (url) =>
+                url.searchParams.get("pageId") === "electron-contract-page" &&
+                url.searchParams.get("ticket") === "renewed-host-signaling-ticket",
+            ),
+          5_000,
+          "renewed session-owned Host signaling",
+        )
+        expect(
+          await command({
+            type: "evaluate",
+            mode: "readonly",
+            expression: `({ clicked: document.body.dataset.clicked, value: document.querySelector('input').value })`,
+          }),
+        ).toMatchObject({ type: "evaluation", value: { clicked: "yes", value: "Electron" } })
+
         const clipboardBefore = await command({ type: "clipboard", action: "read" })
         const previousClipboard =
           clipboardBefore.type === "data" && typeof (clipboardBefore.data as { text?: unknown }).text === "string"

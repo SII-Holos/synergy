@@ -8,6 +8,8 @@ import {
 import type { PluginActivationContext } from "./context.js"
 import type { PluginManifest, PluginManifestContribution } from "./manifest.js"
 import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
+import { PluginToolId } from "./ids.js"
+import { HOST_OWNED_MESSAGE_TYPES, PLUGIN_MODEL_ROLES } from "./plugin-types.js"
 
 export interface PluginDefinitionInput {
   id: string
@@ -71,16 +73,28 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
     validateId(item.id, "plugin capability")
     if (capabilityIds.has(item.id)) throw new Error(`Duplicate plugin capability "${item.id}"`)
     capabilityIds.add(item.id)
+    if (item.id === "agent.call" && item.constraints?.modelRoles !== undefined) {
+      const roles = item.constraints.modelRoles
+      if (
+        !Array.isArray(roles) ||
+        roles.length === 0 ||
+        new Set(roles).size !== roles.length ||
+        roles.some((role) => typeof role !== "string" || !(PLUGIN_MODEL_ROLES as readonly string[]).includes(role))
+      ) {
+        throw new Error("agent.call modelRoles must be a non-empty list of unique PluginModelRole values")
+      }
+    }
   }
 
   const contributionIds = new Set<string>()
   const handlerIds: string[] = []
   for (const contribution of input.contributions) {
     validateId(contribution.id, "plugin contribution id")
-    if (contributionIds.has(contribution.id)) {
-      throw new Error(`Duplicate plugin contribution id "${contribution.id}"`)
+    const contributionKey = `${contribution.kind}:${contribution.id}`
+    if (contributionIds.has(contributionKey)) {
+      throw new Error(`Duplicate plugin contribution id "${contribution.id}" for kind "${contribution.kind}"`)
     }
-    contributionIds.add(contribution.id)
+    contributionIds.add(contributionKey)
     for (const required of contribution.requires ?? []) {
       if (!capabilityIds.has(required)) {
         throw new Error(`Contribution "${contribution.id}" requires undeclared capability "${required}"`)
@@ -99,6 +113,14 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
     ) {
       throw new Error(`Contribution "${contribution.id}" requires selection.read`)
     }
+    if (
+      contribution.kind === "ui.textAction" &&
+      contribution.when?.minChars !== undefined &&
+      contribution.when?.maxChars !== undefined &&
+      contribution.when.minChars > contribution.when.maxChars
+    ) {
+      throw new Error(`Text action "${contribution.id}" minChars cannot exceed maxChars`)
+    }
   }
 
   for (const contribution of input.contributions) {
@@ -113,6 +135,24 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
       !operation.expose.includes("ui")
     ) {
       throw new Error(`Text action "${contribution.id}" must reference a UI-exposed command operation`)
+    }
+  }
+
+  for (const contribution of input.contributions) {
+    if (contribution.kind !== "ui.messageRenderer") continue
+    if (contribution.messageType === "tool") {
+      const ownedTool =
+        contribution.tool &&
+        input.contributions.some(
+          (item) => item.kind === "tool" && PluginToolId.format(input.id, item.id) === contribution.tool,
+        )
+      if (!ownedTool) {
+        throw new Error(`Message renderer "${contribution.id}" must target a Tool contributed by the same plugin`)
+      }
+      continue
+    }
+    if (contribution.tool || (HOST_OWNED_MESSAGE_TYPES as readonly string[]).includes(contribution.messageType)) {
+      throw new Error(`Message renderer "${contribution.id}" cannot replace a host-owned message type`)
     }
   }
 
@@ -241,6 +281,7 @@ function compileContribution(
         icon: contribution.icon,
         order: contribution.order,
         messageType: contribution.messageType,
+        tool: contribution.tool,
         component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
       }
     case "ui.composerAction":
@@ -269,6 +310,18 @@ function compileContribution(
         icon: contribution.icon,
         order: contribution.order,
         operation: contribution.operation,
+        when: contribution.when,
+        presentation: contribution.presentation
+          ? {
+              kind: contribution.presentation.kind,
+              width: contribution.presentation.width,
+              component: compiledComponent(
+                contribution.presentation.component,
+                artifacts,
+                `${contribution.kind}:${contribution.id}`,
+              )!,
+            }
+          : undefined,
       }
     case "ui.messageSlot":
       return {

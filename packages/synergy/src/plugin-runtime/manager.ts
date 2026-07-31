@@ -9,6 +9,7 @@ import { createPluginInvocationContext } from "./context-factory.js"
 import { pathToFileURL } from "node:url"
 import { Installation } from "../global/installation.js"
 import { startMemoryMonitor, type MemoryMonitorInput, type MemoryMonitor } from "./resource-limits.js"
+import { pluginAgentCallRuntime } from "../plugin/agent-call-runtime.js"
 
 export type PluginRuntimeErrorCode =
   | "PLUGIN_UNAVAILABLE"
@@ -330,6 +331,7 @@ export class PluginRuntimeManager {
     const previous = this.registry.activate(key)
     if (!previous) return
     previous.state = "draining"
+    await pluginAgentCallRuntime.cancelGeneration(previous.pluginId, previous.generation, "Plugin generation replaced")
     if (previous.inFlight === 0) void this.#stopEntry(previous, graceMs)
   }
 
@@ -473,6 +475,7 @@ export class PluginRuntimeManager {
   async #stopEntry(entry: PluginRuntimeEntry, graceMs: number) {
     if (entry.state === "stopped") return
     entry.state = "stopped"
+    await pluginAgentCallRuntime.cancelGeneration(entry.pluginId, entry.generation)
     entry.memoryMonitor?.stop()
     entry.memoryMonitor = undefined
     await entry.process?.stop(graceMs)
@@ -504,20 +507,20 @@ export class PluginRuntimeManager {
   }
 
   #logger(pluginId: string) {
-    const append = (level: string, message: string) =>
-      this.logs.append(pluginId, { timestamp: Date.now(), level, message })
+    const append = (level: string, message: string, details?: Record<string, unknown>) =>
+      this.logs.append(pluginId, { timestamp: Date.now(), level, message, details })
     return {
-      debug: (message: string) => {
-        append("debug", message)
+      debug: (message: string, details?: Record<string, unknown>) => {
+        append("debug", message, details)
       },
-      info: (message: string) => {
-        append("info", message)
+      info: (message: string, details?: Record<string, unknown>) => {
+        append("info", message, details)
       },
-      warn: (message: string) => {
-        append("warn", message)
+      warn: (message: string, details?: Record<string, unknown>) => {
+        append("warn", message, details)
       },
-      error: (message: string) => {
-        append("error", message)
+      error: (message: string, details?: Record<string, unknown>) => {
+        append("error", message, details)
       },
     }
   }

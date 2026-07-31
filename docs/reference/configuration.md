@@ -41,6 +41,26 @@ Use `synergy config path` to print the active global roots.
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
+Clarus accounts live in the Channel domain and reuse Holos credentials:
+
+```jsonc
+{
+  "channel": {
+    "clarus": {
+      "type": "clarus",
+      "accounts": {
+        "<holos-agent-id>": {
+          "enabled": false,
+          "agent": "synergy",
+        },
+      },
+    },
+  },
+}
+```
+
+Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. A versioned Holos migration provisions the same disabled account for an existing active identity. There is no top-level `clarus` domain or Clarus workspace-root setting.
+
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
 
 ### Execution isolation
@@ -208,6 +228,61 @@ Feishu/Lark account configuration may pair an explicit `model` with `variant`. T
 
 A Feishu/Lark account may also set `projectDir` to bind the account's sessions to a project Scope. Resolution rules and error behavior are documented in the [Channels reference](../product/connections.md).
 
+## Feishu/Lark Channel Settings
+
+`90-channels.jsonc` owns the built-in Feishu/Lark Channel provider under `channel.feishu`. A minimal configuration is:
+
+```jsonc
+{
+  "channel": {
+    "feishu": {
+      "type": "feishu",
+      "domain": "feishu",
+      "streaming": true,
+      "accounts": {
+        "default": {
+          "appId": "cli_...",
+          "appSecret": "...",
+        },
+      },
+    },
+  },
+}
+```
+
+Provider-level fields apply as defaults to all accounts:
+
+| Field       | Type                   | Default    | Behavior                                                                      |
+| ----------- | ---------------------- | ---------- | ----------------------------------------------------------------------------- |
+| `type`      | `"feishu"`             | required   | Selects the built-in Feishu/Lark provider.                                    |
+| `accounts`  | object                 | required   | Maps stable local account IDs to account configurations.                      |
+| `domain`    | `"feishu"` or `"lark"` | `"feishu"` | Selects the China or international API domain unless an account overrides it. |
+| `streaming` | boolean                | `true`     | Enables streaming cards unless an account overrides it.                       |
+
+Each entry in `accounts` supports:
+
+| Field                 | Type                                                                    | Default                     | Behavior                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`             | boolean                                                                 | `true`                      | Enables connection startup for this account.                                                                                                                                                                     |
+| `appId`               | string                                                                  | required                    | Feishu/Lark application ID.                                                                                                                                                                                      |
+| `appSecret`           | string                                                                  | required                    | Feishu/Lark application secret. It is sensitive configuration and is redacted from normal config responses.                                                                                                      |
+| `domain`              | `"feishu"` or `"lark"`                                                  | provider value              | Overrides the provider API domain for this account.                                                                                                                                                              |
+| `allowDM`             | boolean                                                                 | `true`                      | Accepts direct messages.                                                                                                                                                                                         |
+| `allowGroup`          | boolean                                                                 | `true`                      | Accepts group messages.                                                                                                                                                                                          |
+| `requireMention`      | boolean                                                                 | `true`                      | Requires a real mention of Synergy in group messages.                                                                                                                                                            |
+| `botOpenId`           | string                                                                  | resolved automatically      | Supplies Synergy's bot `open_id` for mention and self-message validation; when omitted, the provider resolves it through the bot-info API and fails closed where that identity is required.                      |
+| `projectDir`          | string                                                                  | home Scope                  | Binds every endpoint session for the account to the project Scope resolved from this directory. Relative paths resolve from the Synergy home directory. Invalid or non-project directories fail account startup. |
+| `streaming`           | boolean                                                                 | provider value, then `true` | Overrides streaming cards for this account. When disabled, the provider sends the terminal response through ordinary messages.                                                                                   |
+| `streamingThrottleMs` | positive integer                                                        | `100`                       | Sets the minimum interval in milliseconds between streaming-card updates.                                                                                                                                        |
+| `groupSessionScope`   | `"group"`, `"group_sender"`, `"group_topic"`, or `"group_topic_sender"` | `"group"`                   | Chooses whether group sessions are shared, isolated by sender, isolated by topic, or isolated by both topic and sender.                                                                                          |
+| `inboundDebounceMs`   | non-negative integer                                                    | `0`                         | Debounces rapid messages from the same sender in the same chat; `0` disables debouncing.                                                                                                                         |
+| `model`               | string                                                                  | global model resolution     | Selects the account model in `providerID/modelID` form.                                                                                                                                                          |
+| `variant`             | string                                                                  | model default               | Selects an exposed variant while the account's `model` remains effective. A conversation `/model` override does not inherit it.                                                                                  |
+| `resolveSenderNames`  | boolean                                                                 | `true`                      | Resolves sender display names through the Feishu contact API.                                                                                                                                                    |
+| `replyInThread`       | boolean                                                                 | `false`                     | Sends replies into the Feishu topic/thread when a reply anchor is available.                                                                                                                                     |
+
+See [Connections](../product/connections.md) for endpoint reuse, group scope semantics, commands, response cards, outbound delivery, and callback validation.
+
 ## Control Profiles and Sandbox
 
 `controlProfile` selects `guarded`, `autonomous`, or `full_access`. Session and agent settings can override the global value through the resolution order documented in [Execution Boundaries](../architecture/execution-boundaries.md).
@@ -216,9 +291,13 @@ A Feishu/Lark account may also set `projectDir` to bind the account's sessions t
 
 ## Server Settings
 
-The `server` object supports `hostname`, `port`, `mdns`, and additional CORS origins. Explicit CLI network flags override configured values. The managed background service snapshots these values into its service definition, so restart the service after changing them.
+The `server` object supports `hostname`, `port`, `mdns`, and additional allowed origins through `cors`. Explicit CLI network flags override configured values. The managed background service snapshots these values into its service definition, so restart the service after changing them.
 
-Binding a server beyond loopback exposes it to other hosts. Configure CORS and the surrounding network boundary deliberately.
+Each explicit `server.cors` entry authorizes both ordinary cross-origin HTTP requests and Browser viewer WebSocket handshakes from that exact HTTP(S) origin. Automatically detected LAN CORS origins and reverse-proxy forwarding headers do not authorize Browser viewer sockets; configure the public Browser viewer Origin explicitly.
+
+`SYNERGY_ALLOWED_ORIGINS` is a comma-separated compatibility source for additional Browser viewer Origins. Its value is snapshotted when the server process starts, is read again after a restart, and does not add HTTP CORS response headers.
+
+Binding a server beyond loopback exposes it to other hosts. Configure allowed origins and the surrounding network boundary deliberately.
 
 ## Code Checks
 
@@ -484,13 +563,14 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Network and discovery overrides
 
-| Variable                                      | Effect                                                                                    |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `SYNERGY_ARXIV_API_URL`                       | Replace the built-in arXiv search service base URL                                        |
-| `SYNERGY_SEARXNG_URL`                         | Replace the built-in Web search service base URL                                          |
-| `SYNERGY_DISABLE_MODELS_FETCH=1`              | Disable the models catalog refresh                                                        |
-| `SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH=true` | Use the last verified provider catalog cache instead of fetching its signed remote source |
-| `SYNERGY_DISABLE_LSP_DOWNLOAD=1`              | Prevent automatic language-server downloads                                               |
+| Variable                                      | Effect                                                                                                                                                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SYNERGY_ARXIV_API_URL`                       | Replace the built-in arXiv search service base URL                                                                                                                          |
+| `SYNERGY_SEARXNG_URL`                         | Replace the built-in Web search service base URL                                                                                                                            |
+| `SYNERGY_DISABLE_MODELS_FETCH=true` or `1`    | Disable ModelsDev catalog fetches performed by the source macro and runtime refresh; runtime disk cache and the bundled snapshot remain active                              |
+| `MODELS_DEV_API_JSON`                         | Override the models catalog source embedded by the build-time Bun macro; local builds may set this, while the release workflow always forces the repository-pinned snapshot |
+| `SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH=true` | Use the last verified provider catalog cache instead of fetching its signed remote source                                                                                   |
+| `SYNERGY_DISABLE_LSP_DOWNLOAD=1`              | Prevent automatic language-server downloads                                                                                                                                 |
 
 ### Compatibility and behavior overrides
 

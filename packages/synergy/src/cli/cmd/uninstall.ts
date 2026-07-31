@@ -154,7 +154,7 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
     return
   }
 
-  if (method !== "unknown") {
+  if (method !== "unknown" && method !== "standalone") {
     const cmds: Record<string, string> = {
       npm: "npm uninstall -g @ericsanchezok/synergy",
       pnpm: "pnpm uninstall -g @ericsanchezok/synergy",
@@ -227,7 +227,7 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     }
   }
 
-  if (method !== "unknown" && method !== "desktop") {
+  if (method !== "unknown" && method !== "desktop" && method !== "standalone") {
     const cmds: Record<string, string[]> = {
       npm: ["npm", "uninstall", "-g", "@ericsanchezok/synergy"],
       pnpm: ["pnpm", "uninstall", "-g", "@ericsanchezok/synergy"],

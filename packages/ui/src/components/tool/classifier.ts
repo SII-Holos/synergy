@@ -381,11 +381,14 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   question: "communication",
   email_send: "communication",
   email_read: "communication",
+  clarus_submit_task_result: "communication",
+  clarus_extend_task: "communication",
   openai_image_gen: "communication",
   openai_image_edit: "communication",
   diagram: "analyze",
   render: "analyze",
   attach: "communication",
+  response_card: "communication",
 
   // qzcli / MCP tools
   qzcli_qz_auth_login: "config",
@@ -521,7 +524,9 @@ export function classifyTool(
   const subtitle =
     toolName === "lattice_submit" && typeof input.action === "string"
       ? input.action
-      : (extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys))
+      : toolName === "response_card" && typeof input.title === "string"
+        ? input.title
+        : (extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys))
 
   const args = buildArgs(input, metadata, spec)
   const count = classifyCount(toolName, category, metadata)

@@ -10,6 +10,7 @@ import { BrowserControl } from "./control.js"
 import { BrowserHostBrokerProcess } from "./host-broker-process.js"
 import { BrowserOwner } from "./owner.js"
 import { BrowserEvent } from "./event.js"
+import { BrowserWebRTCSignaling } from "./webrtc-signaling.js"
 import type { BrowserSession } from "./types.js"
 
 export namespace BrowserWorkspace {
@@ -54,16 +55,25 @@ export namespace BrowserWorkspace {
       status: session.status,
       page: session.page,
       presentation,
-      hostStatus: pageHostStatus(owner, session),
+      hostStatus: pageHostStatus(owner, session, presentation),
       seq: watermark.seq,
       epoch: watermark.epoch,
       ...(session.error ? { error: session.error } : {}),
     }
   }
 
-  function pageHostStatus(owner: BrowserOwner.Info, session: BrowserControl.SessionState) {
+  function pageHostStatus(
+    owner: BrowserOwner.Info,
+    session: BrowserControl.SessionState,
+    presentation: BrowserPresentationSelection,
+  ) {
     if (!session.page) return "detached" as const
-    if (BrowserBroker.hasPage(owner, session.page.id)) return "ready" as const
+    if (BrowserBroker.hasPage(owner, session.page.id)) {
+      if (presentation?.kind === "webrtc" && !BrowserWebRTCSignaling.hasHost(owner, session.page.id)) {
+        return "detached" as const
+      }
+      return "ready" as const
+    }
     const status = BrowserHostBrokerProcess.status()
     return status === "installing" || status === "starting" || status === "restarting" || status === "failed"
       ? status

@@ -29,6 +29,7 @@ import {
   formatSessionPreview,
   formatSessionReference,
   inlineLength,
+  inlineText,
   SESSION_PREVIEW_MAX_MESSAGES,
 } from "./content"
 import { setCursorPosition } from "./editor-dom"
@@ -66,6 +67,8 @@ import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } fr
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 import { promptSubmitFailure } from "./submit-failure"
 import { runComposerPreflight } from "./composer-preflight"
+import { createOptimisticUserMessage } from "./optimistic-user-message"
+import { handoffOptimisticMessage } from "@/context/session-optimistic-message"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -922,7 +925,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const textPart = {
       id: Identifier.ascending("part"),
       type: "text" as const,
-      text,
+      text: inlineText(currentPrompt),
     }
     const requestParts = [
       textPart,
@@ -946,16 +949,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
 
     const optimisticMessage: Message | undefined = messageID
-      ? {
+      ? createOptimisticUserMessage({
           id: messageID,
           sessionID: activeSession.id,
-          role: "user",
-          time: { created: Date.now() },
+          created: Date.now(),
           agent,
           model,
           variant,
           metadata: userMessageMetadata,
-        }
+        })
       : undefined
 
     const [syncStore, setSyncStore] =
@@ -995,6 +997,42 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               .filter((part) => !!part?.id)
               .slice()
               .sort((a, b) => a.id.localeCompare(b.id))
+          }
+        }),
+      )
+    }
+
+    const handoffAcceptedOptimisticMessage = (canonicalID: string) => {
+      if (!messageID) return
+      const messages = syncStore.message[activeSession.id]
+      if (!messages) return
+      const metadata = syncStore.messageWindow[activeSession.id]
+      const result = handoffOptimisticMessage({
+        current: {
+          messages,
+          mode: metadata?.mode ?? "latest",
+          pendingLatest: metadata?.pendingLatest ?? false,
+          pendingLatestIds: metadata?.pendingLatestIds ?? [],
+        },
+        optimisticParts: syncStore.part[messageID],
+        canonicalParts: syncStore.part[canonicalID],
+        optimisticID: messageID,
+        canonicalID,
+        total: metadata?.total ?? messages.length,
+      })
+      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
+      setSyncStore(
+        produce((draft) => {
+          draft.message[activeSession.id] = result.window.messages
+          delete draft.part[messageID]
+          if (result.canonicalParts) draft.part[canonicalID] = result.canonicalParts
+          if (metadata) {
+            draft.messageWindow[activeSession.id] = {
+              ...metadata,
+              total: result.total,
+              pendingLatest: result.window.pendingLatest,
+              pendingLatestIds: result.window.pendingLatestIds,
+            }
           }
         }),
       )
@@ -1076,7 +1114,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
         if (armedLightLoop) input.clearPendingLightLoop()
         if (accepted.status === "queued" && optimisticAdded) {
-          removeOptimisticMessage()
+          handoffAcceptedOptimisticMessage(accepted.item.messageID)
           optimisticAdded = false
         }
         handoffNewSessionMessage(

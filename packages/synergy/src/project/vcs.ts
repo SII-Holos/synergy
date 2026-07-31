@@ -81,17 +81,19 @@ export namespace Vcs {
     return await state().then((s) => s.branch())
   }
 
-  export async function initIfNeeded(directory: string) {
+  export async function initIfNeeded(directory: string, options?: { searchParents?: boolean }) {
     const gitDir = path.join(directory, ".git")
     const stat = await Bun.file(gitDir)
       .stat()
       .catch(() => undefined)
     if (stat) return false
 
-    const matches = Filesystem.up({ targets: [".git"], start: directory })
-    const found = await matches.next().then((x) => x.value)
-    await matches.return()
-    if (found) return false
+    if (options?.searchParents !== false) {
+      const matches = Filesystem.up({ targets: [".git"], start: directory })
+      const found = await matches.next().then((x) => x.value)
+      await matches.return()
+      if (found) return false
+    }
 
     log.info("initializing git repository", { directory })
     await $`git init`.cwd(directory).quiet()

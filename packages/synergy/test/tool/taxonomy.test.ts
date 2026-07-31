@@ -16,6 +16,14 @@ describe("tool taxonomy", () => {
     expect(entry.domain).toBe("communication")
   })
 
+  test("classifies response_card as stateful external Channel delivery", () => {
+    expect(ToolTaxonomy.classify("response_card")).toEqual({
+      kind: "communication.deliver",
+      domain: "communication",
+      traits: { stateful: true, externalIO: true },
+    })
+  })
+
   test("classifies Lattice reads and writes by their durable behavior", () => {
     expect(ToolTaxonomy.classify("pathway_read")).toMatchObject({
       kind: "orchestration.dag",
@@ -29,5 +37,16 @@ describe("tool taxonomy", () => {
       kind: "orchestration.task",
       traits: { auxiliary: true, stateful: true },
     })
+  })
+
+  test("classifies Clarus result submission as stateful external collaboration", () => {
+    const entry = ToolTaxonomy.classify("clarus_submit_task_result")
+
+    expect(entry.kind).toBe("platform.collaboration")
+    expect(entry.traits).toEqual({ stateful: true, externalIO: true })
+  })
+
+  test("labels collaboration tools without a retired product name", () => {
+    expect(ToolTaxonomy.KIND_LABELS["platform.collaboration"]).toBe("Collaboration")
   })
 })

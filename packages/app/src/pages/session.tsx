@@ -9,7 +9,7 @@ import { useFile, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
 import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special-user-message"
 
-import { WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
+import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 
 import { useSync } from "@/context/sync"
@@ -76,6 +76,7 @@ import {
 import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
 import { RollbackDialog } from "@/components/session/rollback-dialog"
 import { rollbackDialogAction } from "@/components/session/rollback-dialog-model"
+import { resolveRollbackDialogSeenKey } from "@/context/rollback-dialog"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 import { createRewindRetryInput } from "@/components/session/rewind-retry"
 import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
@@ -96,6 +97,8 @@ import {
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
+import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
+import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
 
 const handoff = {
   prompt: "",
@@ -179,6 +182,7 @@ function SessionPageContent() {
   })
 
   const isDesktop = () => layout.isDesktop()
+  const sideWorkspaceMounts = createMemo(() => sessionSideWorkspaceMounts(isDesktop(), sideOpen()))
 
   const [store, setStore] = createStore({
     messageId: undefined as string | undefined,
@@ -193,9 +197,24 @@ function SessionPageContent() {
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const rollback = createMemo(() => info()?.history?.rollback)
+  const [pendingRollbackDialogKey, setPendingRollbackDialogKey] = createSignal<string>()
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   let activeRollbackKey: string | undefined
   let rollbackDialogID: string | undefined
+  createEffect(
+    on(
+      () => params.id,
+      () => setPendingRollbackDialogKey(undefined),
+      { defer: true },
+    ),
+  )
+  createEffect(() => {
+    const sessionID = params.id
+    const rollbackID = info()?.rollbackAck?.rollbackID
+    if (!sessionID || !rollbackID) return
+    if (pendingRollbackDialogKey() !== `${sessionID}:${rollbackID}`) return
+    setPendingRollbackDialogKey(undefined)
+  })
   const visibleSessionTransitionEntry = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return undefined
@@ -322,11 +341,20 @@ function SessionPageContent() {
     }
     setSessionTransition(input.sessionID, input.progress, input.actions, input.handoff)
   }
+  const markRollbackPresented = (sessionID: string, rollbackID: string) => {
+    setPendingRollbackDialogKey(`${sessionID}:${rollbackID}`)
+    void sync.rollbackDialog.markPresented(sessionID, rollbackID).catch(() => {})
+  }
   createEffect(() => {
     const summary = rollback()
     const sessionID = params.id
     const rollbackKey = summary && sessionID ? `${sessionID}:${summary.id}` : undefined
-    const seenKey = sessionID ? sync.rollbackDialog.seenKey(sessionID) : undefined
+    const seenKey = resolveRollbackDialogSeenKey({
+      sessionID,
+      rollbackID: summary?.id,
+      rollbackAck: info()?.rollbackAck,
+      pendingKey: pendingRollbackDialogKey(),
+    })
     const action = rollbackDialogAction({
       rollbackKey,
       activeDialogID: dialog.active?.id,
@@ -358,7 +386,7 @@ function SessionPageContent() {
     )
     mountedDialogID = dialog.active?.id
     rollbackDialogID = mountedDialogID
-    sync.rollbackDialog.markPresented(sessionID, rollbackKey)
+    markRollbackPresented(sessionID, summary.id)
   })
   onCleanup(() => {
     if (rollbackDialogID && dialog.active?.id === rollbackDialogID) dialog.close()
@@ -392,6 +420,7 @@ function SessionPageContent() {
   })
   const openRewindConfirm = (message: UserMessage | undefined) => {
     if (!message?.id) return
+    if (!messageAllowsCanonicalActions(message)) return
     const targetMsg = message
     const targetID = targetMsg.id
     const sessionID = params.id
@@ -415,7 +444,7 @@ function SessionPageContent() {
           const result = await sdk.client.session.rollback({ sessionID, cutMessageID })
           if (action === "retry") {
             if (result.data?.id) {
-              sync.rollbackDialog.markPresented(sessionID, `${sessionID}:${result.data.id}`)
+              markRollbackPresented(sessionID, result.data.id)
             }
             try {
               await sync.session.sync(sessionID, { trigger: { type: "history-transition" } })
@@ -781,14 +810,21 @@ function SessionPageContent() {
   const hydratedSessions = new Set<string>()
   const initializedSessions = new Set<string>()
 
-  // Single idempotent entry point for loading a session's data. Runs on session
-  // switch and on (re)connect; sync.session.sync dedups concurrent/ready loads
-  // internally. Replaces two separate effects that both called sync (one on
-  // params.id, one on sdk.connected) and double-fetched on mount.
+  // Single idempotent entry point for loading a session's data. Runs when the
+  // scope is initially ready, on session switch, and after reconnect recovery
+  // publishes its completed generation. sync.session.sync dedups concurrent or
+  // already-ready loads internally.
   createEffect(
     on(
-      () => [params.id, sdk.connected()] as const,
-      ([id, connected], prev) => {
+      () =>
+        sessionSyncWatchKey({
+          sessionID: params.id,
+          connected: sdk.connected(),
+          ready: sync.ready,
+          reconnectVersion: sync.reconnectVersion,
+        }),
+      (current, prev) => {
+        const [id] = current
         const prevId = prev?.[0]
         if (prevId && prevId !== id) {
           hydratedSessions.delete(prevId)
@@ -796,7 +832,8 @@ function SessionPageContent() {
         }
         // Protect the viewed session's buckets from LRU eviction.
         sync.markActiveSession(id)
-        if (connected && id) void sync.session.sync(id, { refreshVolatile: true }).catch(() => undefined)
+        if (!id || !shouldRunSessionSync(current, prev)) return
+        void sync.session.sync(id, { refreshVolatile: true }).catch(() => undefined)
       },
     ),
   )
@@ -1428,13 +1465,14 @@ function SessionPageContent() {
               rollbackActive={rollbackActive()}
             />
           </div>
-          {/* Desktop side workspace */}
-          <div class="hidden md:block">
-            <WorkbenchSurface surface="side" />
-          </div>
+          <Show when={sideWorkspaceMounts().desktop}>
+            <div class="hidden md:block">
+              <WorkbenchSurface surface="side" />
+            </div>
+          </Show>
 
           {/* Mobile side workspace overlay */}
-          <Show when={!isDesktop() && sideOpen()}>
+          <Show when={sideWorkspaceMounts().mobile}>
             <div class="absolute inset-0 z-50 flex flex-col bg-background-stronger">
               <WorkspaceMobileHeader onClose={() => sideSurface().close()} />
               <div class="mobile-workbench-overlay relative flex-1 min-h-0">

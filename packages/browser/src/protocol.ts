@@ -1343,6 +1343,15 @@ export const BrowserHostMessageSchema = z
       })
       .strict(),
     z
+      .object({
+        type: z.literal("page.signaling.ticket"),
+        protocolVersion,
+        ownerKey: nonEmpty,
+        pageId,
+        signalingTicket: nonEmpty,
+      })
+      .strict(),
+    z
       .object({ type: z.literal("page.close"), protocolVersion, requestId: nonEmpty, ownerKey: nonEmpty, pageId })
       .strict(),
     z

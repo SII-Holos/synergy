@@ -721,6 +721,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["attach"],
         subtitle: input.filename || input.file_path,
       }
+    case "response_card":
+      return {
+        icon: "message-square-more",
+        title: TOOL_TITLE_DESC["response_card"],
+        subtitle: input.title,
+      }
     case "openai_image_gen":
       return {
         icon: "image",
@@ -1231,6 +1237,16 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "mail",
         title: TOOL_TITLE_DESC["email_send"],
         subtitle: input.to ? `To: ${Array.isArray(input.to) ? input.to.join(", ") : input.to}` : input.subject,
+      }
+    case "clarus_submit_task_result":
+      return {
+        icon: "send",
+        title: TOOL_TITLE_DESC["clarus_submit_task_result"],
+      }
+    case "clarus_extend_task":
+      return {
+        icon: "timer",
+        title: TOOL_TITLE_DESC["clarus_extend_task"],
       }
     case "email_read": {
       const args: string[] = []
@@ -2074,6 +2090,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
               charsReceived={charsAnimated()}
               hideDetails={props.hideDetails}
               defaultOpen={props.defaultOpen}
+              sessionId={props.message.sessionID}
+              messageId={props.message.id}
             />
           </Match>
         </Switch>
@@ -2092,7 +2110,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 }
 
 PART_MAPPING["text"] = function TextPartDisplay(props) {
-  const data = useData()
   const part = () => props.part as TextPart
   const isTerminal = createMemo(() =>
     isTextPartTerminal({
@@ -2107,7 +2124,6 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
       key: part().id,
       source: part().text ?? "",
       completed: isTerminal(),
-      remove: data.directory,
     }),
   )
 

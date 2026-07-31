@@ -2,7 +2,7 @@
 
 These rules apply under `packages/synergy`. Root [AGENTS.md](../../AGENTS.md) still applies.
 
-Load `integrate-llm` for every new or changed model-backed operation, `change-server-api` for HTTP/OpenAPI/SDK contracts, `change-persistence` for durable state or migrations, `change-execution-boundaries` for capability/permission/sandbox changes, `change-browser-runtime` for Browser ownership/control, and `change-plugin-runtime` for plugin host/runtime changes.
+Load `integrate-llm` for every new or changed model-backed operation, `change-server-api` for HTTP/OpenAPI/SDK contracts, `change-persistence` for durable state or migrations, `change-execution-boundaries` for capability/permission/sandbox changes, `change-channel-runtime` for Channel targets/providers/managed Projects and Native Clarus work, `change-browser-runtime` for Browser ownership/control, and `change-plugin-runtime` for plugin host/runtime changes.
 
 ## Read the Owning Contract
 

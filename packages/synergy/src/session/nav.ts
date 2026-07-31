@@ -1,9 +1,12 @@
+import { ChannelTarget } from "../channel/types"
+
 import z from "zod"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
-import type { Info as SessionInfo } from "./types"
+import { Lock } from "../util/lock"
+import { Info as SessionInfo } from "./types"
 
 export type NavCategory = "project" | "home" | "channel" | "background" | "github"
 export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
@@ -22,6 +25,9 @@ export const SessionNavEntry = z
     chatId: z.string().optional(),
     chatName: z.string().optional(),
     chatType: z.enum(["dm", "group"]).optional(),
+    channelType: z.string().optional(),
+    channelAccountId: z.string().optional(),
+    channelTarget: ChannelTarget.optional(),
     completionNotice: z.object({
       unread: z.boolean(),
       unreadCount: z.number().int().nonnegative(),
@@ -56,6 +62,14 @@ export const ScopeNavEntry = z
       .object({
         url: z.string().optional(),
         color: z.string().optional(),
+      })
+      .optional(),
+    managedProject: z
+      .object({
+        channelType: z.string(),
+        accountId: z.string(),
+        externalProjectId: z.string(),
+        remoteState: z.enum(["active", "paused", "stale", "archived"]),
       })
       .optional(),
   })
@@ -95,6 +109,9 @@ export interface SessionNavEntry {
   chatId?: string
   chatName?: string
   chatType?: "dm" | "group"
+  channelType?: string
+  channelAccountId?: string
+  channelTarget?: ChannelTarget
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -108,6 +125,12 @@ export interface ScopeNavEntry {
   latestActivityAt: number
   sessionCount: number
   icon?: { url?: string; color?: string }
+  managedProject?: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+    remoteState: "active" | "paused" | "stale" | "archived"
+  }
 }
 export interface ScopeNavIndex {
   version: 1
@@ -122,6 +145,10 @@ export interface NavCursor {
 
 export namespace SessionNav {
   const log = Log.create({ service: "session.nav" })
+
+  function mutationKey(scopeID: string) {
+    return `session-nav-index:${scopeID}`
+  }
 
   export function deriveCategory(input: DeriveCategoryInput): NavCategory {
     if (input.endpointKind === "channel") return "channel"
@@ -152,18 +179,20 @@ export namespace SessionNav {
     return { items: slice, nextCursor, total }
   }
 
-  export async function buildNavIndex(scopeID: string): Promise<ScopeNavIndex> {
+  async function buildNavIndexUnlocked(scopeID: string): Promise<ScopeNavIndex> {
     const sid = Identifier.asScopeID(scopeID)
     const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(sid))
     const entries: SessionNavEntry[] = []
     if (sessionIDs.length > 0) {
       const keys = sessionIDs.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
-      const sessions = await Storage.readMany<SessionInfo>(keys)
-      for (const session of sessions) {
-        if (!session || !session.scope) {
+      const storedSessions = await Storage.readMany<unknown>(keys)
+      for (const storedSession of storedSessions) {
+        const parsed = SessionInfo.safeParse(storedSession)
+        if (!parsed.success) {
           log.warn("skipping malformed session info", { scopeID })
           continue
         }
+        const session = parsed.data
         const scopeType: "home" | "project" = scopeID === "home" ? "home" : "project"
         const category = deriveCategory({
           scopeType,
@@ -174,10 +203,13 @@ export namespace SessionNav {
           agenda: session.agenda,
         })
         if (!session.category) {
-          await Storage.write(StoragePath.sessionInfo(sid, Identifier.asSessionID(session.id)), {
-            ...session,
-            category,
-          })
+          // The nav lock is already held. This idempotent file update avoids the inverse nav-to-session lock order.
+          await Storage.update<SessionInfo>(
+            StoragePath.sessionInfo(sid, Identifier.asSessionID(session.id)),
+            (draft) => {
+              draft.category ??= category
+            },
+          )
         }
         const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
         entries.push({
@@ -194,6 +226,9 @@ export namespace SessionNav {
           chatId: channelEndpoint?.chatId,
           chatName: channelEndpoint?.chatName,
           chatType: channelEndpoint?.chatType,
+          channelType: channelEndpoint?.type,
+          channelAccountId: channelEndpoint?.accountId,
+          channelTarget: channelEndpoint?.target,
           completionNotice: {
             unread: session.completionNotice.unread,
             unreadCount: session.completionNotice.unreadCount ?? (session.completionNotice.unread ? 1 : 0),
@@ -207,15 +242,29 @@ export namespace SessionNav {
     return index
   }
 
-  export async function readNavIndex(scopeID: string): Promise<ScopeNavIndex> {
+  export async function buildNavIndex(scopeID: string): Promise<ScopeNavIndex> {
+    using _ = await Lock.write(mutationKey(scopeID))
+    return buildNavIndexUnlocked(scopeID)
+  }
+
+  async function readNavIndexUnlocked(scopeID: string): Promise<ScopeNavIndex> {
     const sid = Identifier.asScopeID(scopeID)
     const key = StoragePath.sessionNavIndex(sid)
     const existing = await Storage.read<ScopeNavIndex>(key).catch(() => undefined)
     if (existing) return existing
-    return buildNavIndex(scopeID).catch<ScopeNavIndex>((error) => {
+    return buildNavIndexUnlocked(scopeID).catch<ScopeNavIndex>((error) => {
       log.warn("failed to lazily build nav index", { scopeID, error: String(error) })
       return { version: 1, scopeID, updatedAt: 0, entries: [] }
     })
+  }
+
+  export async function readNavIndex(scopeID: string): Promise<ScopeNavIndex> {
+    const existing = await Storage.read<ScopeNavIndex>(
+      StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)),
+    ).catch(() => undefined)
+    if (existing) return existing
+    using _ = await Lock.write(mutationKey(scopeID))
+    return readNavIndexUnlocked(scopeID)
   }
 
   export async function rebuildAllNavIndexes(progress?: (done: number, total: number) => void): Promise<void> {
@@ -225,11 +274,7 @@ export namespace SessionNav {
     const total = allScopeIDs.length
     let done = 0
     for (const scopeID of allScopeIDs) {
-      try {
-        await buildNavIndex(scopeID)
-      } catch (err) {
-        log.warn("failed to build nav index for scope", { scopeID, error: String(err) })
-      }
+      await buildNavIndex(scopeID)
       done++
       progress?.(done, total)
     }
@@ -238,8 +283,7 @@ export namespace SessionNav {
   async function getAllScopeIDs(): Promise<string[]> {
     const { Scope } = await import("../scope")
     const projects = await Scope.list()
-    const sessionScopeIDs = await Storage.scan(["sessions"])
-    return [...new Set(["home", ...projects.map((p) => p.id), ...sessionScopeIDs])]
+    return ["home", ...projects.map((project) => project.id)]
   }
 
   export async function listUnreadCompletionEntries(): Promise<SessionNavEntry[]> {
@@ -275,6 +319,7 @@ export namespace SessionNav {
   export async function queryGlobal(opts?: {
     parentOnly?: boolean
     category?: NavCategory
+    channelType?: string
     includeArchived?: boolean
     search?: string
     cursor?: NavCursor
@@ -296,6 +341,7 @@ export namespace SessionNav {
     let entries = allEntries
     if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
     if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
+    if (opts?.channelType) entries = entries.filter((e) => e.channelType === opts.channelType)
     if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
     if (opts?.search) {
       const term = opts.search.toLowerCase()
@@ -326,6 +372,9 @@ export namespace SessionNav {
 
   export async function buildScopeIndex(): Promise<ScopeNavEntry[]> {
     const scopeIDs = await getAllScopeIDs()
+    const { ManagedProjectOwnership } = await import("../channel/managed-project-ownership")
+    const ownershipRecords = await ManagedProjectOwnership.listAll()
+    const ownershipByScopeID = new Map(ownershipRecords.map((r) => [r.scopeID, r]))
     const results: ScopeNavEntry[] = []
     const { Scope } = await import("../scope")
     const home = Scope.home()
@@ -349,6 +398,7 @@ export namespace SessionNav {
         activeEntries.length > 0
           ? Math.max(...activeEntries.map((e) => e.lastActivityAt))
           : (scopeInfo?.time?.created ?? 0)
+      const ownership = ownershipByScopeID.get(sid)
       results.push({
         scopeID: sid,
         scopeType: sid === "home" ? "home" : "project",
@@ -357,6 +407,16 @@ export namespace SessionNav {
         latestActivityAt,
         sessionCount: activeEntries.length,
         icon: scopeInfo?.icon,
+        ...(ownership
+          ? {
+              managedProject: {
+                channelType: ownership.channelType,
+                accountId: ownership.accountId,
+                externalProjectId: ownership.externalProjectId,
+                remoteState: ownership.remoteState,
+              },
+            }
+          : {}),
       })
     }
     results.sort((a, b) => b.latestActivityAt - a.latestActivityAt || a.scopeID.localeCompare(b.scopeID))
@@ -367,7 +427,8 @@ export namespace SessionNav {
     entry: SessionNavEntry,
     options?: { preserveActivityAt?: boolean },
   ): Promise<SessionNavEntry> {
-    const index = await readNavIndex(entry.scopeID)
+    using _ = await Lock.write(mutationKey(entry.scopeID))
+    const index = await readNavIndexUnlocked(entry.scopeID)
     const existing = index.entries.findIndex((e) => e.id === entry.id)
     const nextEntry =
       options?.preserveActivityAt && existing >= 0
@@ -387,7 +448,8 @@ export namespace SessionNav {
   }
 
   export async function removeNavEntry(scopeID: string, sessionID: string): Promise<void> {
-    const index = await readNavIndex(scopeID)
+    using _ = await Lock.write(mutationKey(scopeID))
+    const index = await readNavIndexUnlocked(scopeID)
     index.entries = index.entries.filter((e) => e.id !== sessionID)
     index.updatedAt = Date.now()
     await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)), index)

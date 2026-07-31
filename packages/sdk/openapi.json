@@ -2130,6 +2130,14 @@
           },
           {
             "in": "query",
+            "name": "channelType",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
             "name": "search",
             "schema": {
               "type": "string"
@@ -2494,6 +2502,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Managed project archive conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedProjectArchiveError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -2589,6 +2607,16 @@
                     }
                   },
                   "required": ["ok"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Managed project archive conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedProjectArchiveError"
                 }
               }
             }
@@ -7653,6 +7681,102 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.rollback({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/rollback/ack": {
+      "post": {
+        "operationId": "session.rollbackAck",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Acknowledge rollback feedback",
+        "description": "Persist that the current rollback feedback has been presented to a client.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRollbackAckInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Persisted rollback acknowledgment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rollbackAck": {
+                      "$ref": "#/components/schemas/SessionRollbackAck"
+                    }
+                  },
+                  "required": ["rollbackAck"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rollback acknowledgment conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRollbackAckConflictError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.rollbackAck({\n  ...\n})"
           }
         ]
       }
@@ -20118,6 +20242,169 @@
         ]
       }
     },
+    "/channel/{channelType}/{accountId}/projects/refresh": {
+      "post": {
+        "operationId": "channel.refreshProjects",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channelType",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Refresh channel account projects",
+        "description": "Discover and reconcile projects for one connected channel account. Connecting accounts return a retryable conflict; connected refreshes return only after completion.",
+        "responses": {
+          "200": {
+            "description": "Refresh completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "completed": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": ["completed"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Channel account is still connecting and cannot refresh projects yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelRefreshUnavailable"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Refresh failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelRefreshError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.refreshProjects({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/channel/{channelType}/{accountId}/diagnostics.ndjson": {
+      "get": {
+        "operationId": "channel.downloadDiagnostics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channelType",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Download channel account diagnostics",
+        "description": "Stream the retained diagnostics window as bounded NDJSON. Each line is a valid JSON record.",
+        "responses": {
+          "200": {
+            "description": "NDJSON diagnostic stream",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "level": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "data": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "required": ["timestamp", "level", "message"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.channel.downloadDiagnostics({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/experimental/resource": {
       "get": {
         "operationId": "experimental.resource.list",
@@ -24481,6 +24768,52 @@
           "chatId": {
             "type": "string"
           },
+          "target": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "chat"
+                  },
+                  "chatId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "chatId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "project"
+                  },
+                  "externalProjectId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "externalProjectId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "task"
+                  },
+                  "externalProjectId": {
+                    "type": "string"
+                  },
+                  "externalTaskId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "externalProjectId", "externalTaskId"]
+              }
+            ]
+          },
           "chatType": {
             "type": "string",
             "enum": ["dm", "group"]
@@ -24501,7 +24834,7 @@
             "type": "number"
           }
         },
-        "required": ["type", "chatId"]
+        "required": ["type"]
       },
       "SessionEndpoint": {
         "description": "Endpoint context if created from a session endpoint",
@@ -24619,6 +24952,11 @@
           "prompt": {
             "description": "Instruction for the agent when triggered",
             "type": "string"
+          },
+          "deliveryMode": {
+            "description": "Internal delivery mode that injects hidden system guidance into the origin Session",
+            "type": "string",
+            "const": "session_guidance"
           },
           "agent": {
             "description": "Agent to use, defaults to configured default",
@@ -24741,6 +25079,58 @@
           "chatType": {
             "type": "string",
             "enum": ["dm", "group"]
+          },
+          "channelType": {
+            "type": "string"
+          },
+          "channelAccountId": {
+            "type": "string"
+          },
+          "channelTarget": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "chat"
+                  },
+                  "chatId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "chatId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "project"
+                  },
+                  "externalProjectId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "externalProjectId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "task"
+                  },
+                  "externalProjectId": {
+                    "type": "string"
+                  },
+                  "externalTaskId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "externalProjectId", "externalTaskId"]
+              }
+            ]
           },
           "completionNotice": {
             "type": "object",
@@ -24961,9 +25351,51 @@
                 "type": "string"
               }
             }
+          },
+          "managedProject": {
+            "type": "object",
+            "properties": {
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "externalProjectId": {
+                "type": "string"
+              },
+              "remoteState": {
+                "type": "string",
+                "enum": ["active", "paused", "stale", "archived"]
+              }
+            },
+            "required": ["channelType", "accountId", "externalProjectId", "remoteState"]
           }
         },
         "required": ["scopeID", "scopeType", "directory", "latestActivityAt", "sessionCount"]
+      },
+      "ManagedProjectArchiveError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ManagedProjectArchiveError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "remoteState": {
+                "type": "string",
+                "enum": ["active", "paused"]
+              }
+            },
+            "required": ["scopeID", "remoteState"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "Model": {
         "type": "object",
@@ -26089,7 +26521,7 @@
             "type": "boolean"
           },
           "cors": {
-            "description": "Additional domains to allow for CORS",
+            "description": "Additional origins allowed for CORS and Browser viewer WebSockets",
             "type": "array",
             "items": {
               "type": "string"
@@ -27847,7 +28279,6 @@
           },
           "streaming": {
             "description": "Enable streaming card updates",
-            "default": true,
             "type": "boolean"
           },
           "streamingThrottleMs": {
@@ -27917,6 +28348,44 @@
             "description": "Default streaming setting for all accounts",
             "default": true,
             "type": "boolean"
+          }
+        },
+        "required": ["type", "accounts"],
+        "additionalProperties": false
+      },
+      "ChannelClarusAccountConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "apiUrl": {
+            "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
+            "type": "string"
+          },
+          "agent": {
+            "description": "Primary Synergy agent for project and assignment Sessions",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ChannelClarusConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "clarus"
+          },
+          "accounts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ChannelClarusAccountConfig"
+            }
           }
         },
         "required": ["type", "accounts"],
@@ -28848,6 +29317,9 @@
               "anyOf": [
                 {
                   "$ref": "#/components/schemas/ChannelFeishuConfig"
+                },
+                {
+                  "$ref": "#/components/schemas/ChannelClarusConfig"
                 }
               ]
             }
@@ -29505,6 +29977,19 @@
           }
         }
       },
+      "SessionRollbackAck": {
+        "type": "object",
+        "properties": {
+          "rollbackID": {
+            "type": "string",
+            "pattern": "^hst.*"
+          },
+          "acknowledgedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["rollbackID", "acknowledgedAt"]
+      },
       "SessionCortexDelegation": {
         "type": "object",
         "properties": {
@@ -30154,6 +30639,9 @@
           },
           "history": {
             "$ref": "#/components/schemas/SessionHistoryInfo"
+          },
+          "rollbackAck": {
+            "$ref": "#/components/schemas/SessionRollbackAck"
           },
           "cortex": {
             "$ref": "#/components/schemas/SessionCortexDelegation"
@@ -33350,17 +33838,39 @@
                 "required": ["attributedTokens"]
               },
               "estimator": {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "model-tokenizer"
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "model-tokenizer"
+                      },
+                      "encoding": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind"]
                   },
-                  "encoding": {
-                    "type": "string"
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "bounded-utf8"
+                      },
+                      "sampledCharacters": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "truncated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["kind", "sampledCharacters", "truncated"]
                   }
-                },
-                "required": ["kind"]
+                ]
               },
               "reconciliation": {
                 "type": "object",
@@ -34235,6 +34745,43 @@
           "files",
           "patchPartIDs"
         ]
+      },
+      "SessionRollbackAckConflictError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionRollbackAckConflictError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "rollbackID": {
+                "type": "string",
+                "pattern": "^hst.*"
+              },
+              "currentRollbackID": {
+                "type": "string",
+                "pattern": "^hst.*"
+              }
+            },
+            "required": ["message", "rollbackID"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SessionRollbackAckInput": {
+        "type": "object",
+        "properties": {
+          "rollbackID": {
+            "type": "string",
+            "pattern": "^hst.*"
+          }
+        },
+        "required": ["rollbackID"]
       },
       "SessionUnrollbackEvent": {
         "type": "object",
@@ -40713,6 +41260,16 @@
             "properties": {
               "status": {
                 "type": "string",
+                "const": "waiting_for_transport"
+              }
+            },
+            "required": ["status"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
                 "const": "disconnected"
               }
             },
@@ -40733,6 +41290,16 @@
             "properties": {
               "status": {
                 "type": "string",
+                "const": "syncing"
+              }
+            },
+            "required": ["status"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
                 "const": "failed"
               },
               "error": {
@@ -40742,6 +41309,63 @@
             "required": ["status", "error"]
           }
         ]
+      },
+      "ChannelRefreshUnavailable": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ChannelRefreshUnavailable"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "currentStatus": {
+                "$ref": "#/components/schemas/ChannelStatus"
+              },
+              "retryable": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": ["message", "channelType", "accountId", "currentStatus", "retryable"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ChannelRefreshError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ChannelRefreshError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              }
+            },
+            "required": ["message", "channelType", "accountId"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "McpResource": {
         "type": "object",
@@ -42136,6 +42760,233 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.channel.command.executed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "channel.command.executed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "chatId": {
+                "type": "string"
+              },
+              "userId": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "channelType", "accountId", "chatId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.channel.connected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "channel.connected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              }
+            },
+            "required": ["channelType", "accountId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.channel.disconnected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "channel.disconnected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["channelType", "accountId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.channel.message.received": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "channel.message.received"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "chatId": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["channelType", "accountId", "chatId", "text"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.added": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.added"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "contact": {
+                "$ref": "#/components/schemas/Contact"
+              }
+            },
+            "required": ["contact"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "contact": {
+                "$ref": "#/components/schemas/Contact"
+              }
+            },
+            "required": ["contact"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.connected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "peerId": {
+                "type": "string"
+              }
+            },
+            "required": ["peerId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.connection.status_changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connection.status_changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.presence": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.presence"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "peerId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["online", "offline"]
+              }
+            },
+            "required": ["peerId", "status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.cortex.task.created": {
         "type": "object",
         "properties": {
@@ -42418,233 +43269,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.channel.command.executed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "channel.command.executed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "channelType": {
-                "type": "string"
-              },
-              "accountId": {
-                "type": "string"
-              },
-              "chatId": {
-                "type": "string"
-              },
-              "userId": {
-                "type": "string"
-              }
-            },
-            "required": ["name", "channelType", "accountId", "chatId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.channel.connected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "channel.connected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "channelType": {
-                "type": "string"
-              },
-              "accountId": {
-                "type": "string"
-              }
-            },
-            "required": ["channelType", "accountId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.channel.disconnected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "channel.disconnected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "channelType": {
-                "type": "string"
-              },
-              "accountId": {
-                "type": "string"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": ["channelType", "accountId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.channel.message.received": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "channel.message.received"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "channelType": {
-                "type": "string"
-              },
-              "accountId": {
-                "type": "string"
-              },
-              "chatId": {
-                "type": "string"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": ["channelType", "accountId", "chatId", "text"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.added": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.added"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.connected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.connected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "peerId": {
-                "type": "string"
-              }
-            },
-            "required": ["peerId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.connection.status_changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.connection.status_changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              }
-            },
-            "required": ["status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.presence": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.presence"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "peerId": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string",
-                "enum": ["online", "offline"]
-              }
-            },
-            "required": ["peerId", "status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.server.connected": {
         "type": "object",
         "properties": {
@@ -42850,6 +43474,36 @@
             "$ref": "#/components/schemas/Event.synergy_link.target.removed"
           },
           {
+            "$ref": "#/components/schemas/Event.channel.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.channel.connected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.channel.disconnected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.channel.message.received"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.added"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.presence"
+          },
+          {
             "$ref": "#/components/schemas/Event.cortex.task.created"
           },
           {
@@ -42881,36 +43535,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.pty.deleted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.channel.command.executed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.channel.connected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.channel.disconnected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.channel.message.received"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.added"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.removed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.connected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.presence"
           },
           {
             "$ref": "#/components/schemas/Event.server.connected"

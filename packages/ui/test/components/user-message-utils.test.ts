@@ -32,6 +32,127 @@ describe("user message display helpers", () => {
     expect(visibleUserMessageText(parts)).toBe("visible user message")
   })
 
+  test("restores inline file text omitted by legacy prompt submission", () => {
+    const parts = [
+      { type: "text", text: "Read  now" },
+      {
+        type: "attachment",
+        filename: "app.ts",
+        mime: "text/plain",
+        source: {
+          type: "file",
+          text: { value: "@src/app.ts", start: 5, end: 16 },
+          path: "/repo/src/app.ts",
+        },
+      },
+    ] as PartType[]
+
+    expect(visibleUserMessageText(parts)).toBe("Read @src/app.ts now")
+  })
+
+  test("keeps complete inline file text unchanged", () => {
+    const parts = [
+      { type: "text", text: "Read @src/app.ts now" },
+      {
+        type: "attachment",
+        filename: "app.ts",
+        mime: "text/plain",
+        source: {
+          type: "file",
+          text: { value: "@src/app.ts", start: 5, end: 16 },
+          path: "/repo/src/app.ts",
+        },
+      },
+    ] as PartType[]
+
+    expect(visibleUserMessageText(parts)).toBe("Read @src/app.ts now")
+  })
+
+  test("keeps complete inline file text unchanged when stored coordinates are offset", () => {
+    const parts = [
+      { type: "text", text: "xRead @src/app.ts now" },
+      {
+        type: "attachment",
+        filename: "app.ts",
+        mime: "text/plain",
+        source: {
+          type: "file",
+          text: { value: "@src/app.ts", start: 5, end: 16 },
+          path: "/repo/src/app.ts",
+        },
+      },
+    ] as PartType[]
+
+    expect(visibleUserMessageText(parts)).toBe("xRead @src/app.ts now")
+  })
+
+  test("restores a mention-only user message from its file attachment", () => {
+    const parts = [
+      { type: "text", text: "" },
+      {
+        type: "attachment",
+        filename: "app.ts",
+        mime: "text/plain",
+        source: {
+          type: "file",
+          text: { value: "@src/app.ts", start: 0, end: 11 },
+          path: "/repo/src/app.ts",
+        },
+      },
+    ] as PartType[]
+
+    expect(visibleUserMessageText(parts)).toBe("@src/app.ts")
+  })
+
+  test("restores multiple omitted inline file references in coordinate order", () => {
+    const parts = [
+      { type: "text", text: "Read  then  done" },
+      {
+        type: "attachment",
+        mime: "text/plain",
+        source: { type: "file", text: { value: "@src/a.ts", start: 5, end: 14 }, path: "/repo/src/a.ts" },
+      },
+      {
+        type: "attachment",
+        mime: "text/plain",
+        source: { type: "file", text: { value: "@src/b.ts", start: 20, end: 29 }, path: "/repo/src/b.ts" },
+      },
+    ] as PartType[]
+
+    expect(visibleUserMessageText(parts)).toBe("Read @src/a.ts then @src/b.ts done")
+  })
+
+  test("leaves text unchanged when inline file coordinates cannot be recovered safely", () => {
+    const parts = [
+      { type: "text", text: "Keep this text" },
+      {
+        type: "attachment",
+        mime: "text/plain",
+        source: { type: "file", text: { value: "@src/app.ts", start: 999, end: 1010 }, path: "/repo/src/app.ts" },
+      },
+    ] as PartType[]
+
+    expect(visibleUserMessageText(parts)).toBe("Keep this text")
+  })
+
+  test("leaves text unchanged when any inline file reference is malformed", () => {
+    const parts = [
+      { type: "text", text: "Read  then  done" },
+      {
+        type: "attachment",
+        mime: "text/plain",
+        source: { type: "file", text: { value: "@src/a.ts", start: 5, end: 14 }, path: "/repo/src/a.ts" },
+      },
+      {
+        type: "attachment",
+        mime: "text/plain",
+        source: { type: "file", text: { value: "@src/b.ts", start: 20, end: 20 }, path: "/repo/src/b.ts" },
+      },
+    ] as PartType[]
+
+    expect(visibleUserMessageText(parts)).toBe("Read  then  done")
+  })
+
   test("does not treat synthetic-only text as visible user content", () => {
     expect(hasVisibleUserMessageContent(undefined)).toBe(false)
     expect(

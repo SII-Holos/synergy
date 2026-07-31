@@ -7,12 +7,22 @@ import z from "zod"
 import { Auth } from "./api-key"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { CodexProvider } from "./codex"
-import { ModelsDev } from "./models"
+import { ModelsDev } from "./models-schemas"
 import { ProviderProfile } from "./profile"
 import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
+
+  type ModelsDevRuntime = (typeof import("./models"))["ModelsDev"]
+  let modelsDevRuntime: Promise<ModelsDevRuntime> | undefined
+
+  function loadModelsDevRuntime() {
+    if (!modelsDevRuntime) {
+      modelsDevRuntime = import("./models").then((module) => module.ModelsDev)
+    }
+    return modelsDevRuntime
+  }
 
   export const DEFAULT_REGISTRY_URL =
     "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json"
@@ -116,6 +126,7 @@ export namespace ProviderCatalog {
   const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let snapshots: Map<string, Snapshot> | undefined
   let writeQueue = Promise.resolve()
+  let cacheGeneration = 0
 
   function snapshotKey(providerID: string, identityHash: string) {
     return `${providerID}:${identityHash}`
@@ -702,8 +713,9 @@ export namespace ProviderCatalog {
     }
     const pending = inFlight.get(key)
     if (!input?.forceRefresh && pending) return pending
+    const generation = cacheGeneration
     let request: Promise<Record<string, ModelsDev.Provider>>
-    request = doResolve(input, liveContexts, key).finally(() => {
+    request = doResolve(input, liveContexts, key, generation).finally(() => {
       if (inFlight.get(key) === request) inFlight.delete(key)
     })
     inFlight.set(key, request)
@@ -725,9 +737,11 @@ export namespace ProviderCatalog {
     input: { config?: unknown; includeLive?: boolean } | undefined,
     liveContexts: Map<string, LiveDiscoveryContext>,
     key: string,
+    generation: number,
   ): Promise<Record<string, ModelsDev.Provider>> {
     const config = Config.parse((input?.config as any)?.providerCatalog ?? {})
-    const modelsDev = withBuiltinSourceSurfaces(await ModelsDev.get())
+    const runtimeModelsDev = await loadModelsDevRuntime()
+    const modelsDev = withBuiltinSourceSurfaces(await runtimeModelsDev.get())
     const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
 
     for (const [providerID, provider] of Object.entries(bundledSnapshot(modelsDev))) {
@@ -785,11 +799,13 @@ export namespace ProviderCatalog {
       }
     }
 
-    memoryCache.set(key, {
-      value: result,
-      createdAt: Date.now(),
-      ttlMs: DEFAULT_CACHE_TTL_MS,
-    })
+    if (generation === cacheGeneration) {
+      memoryCache.set(key, {
+        value: result,
+        createdAt: Date.now(),
+        ttlMs: DEFAULT_CACHE_TTL_MS,
+      })
+    }
     return result
   }
 
@@ -826,7 +842,14 @@ export namespace ProviderCatalog {
     return result
   }
 
+  function invalidateModelsDevProjection() {
+    cacheGeneration++
+    memoryCache.clear()
+    inFlight.clear()
+  }
+
   export function reset() {
+    cacheGeneration++
     for (const timer of retryTimers.values()) clearTimeout(timer)
     retryTimers.clear()
     refreshInFlight.clear()
@@ -837,6 +860,18 @@ export namespace ProviderCatalog {
     freshlyVerified.clear()
     snapshots = undefined
   }
+
+  void loadModelsDevRuntime()
+    .then((modelsDevRuntime) =>
+      modelsDevRuntime.onRefresh(async () => {
+        invalidateModelsDevProjection()
+        const { RuntimeReload } = await import("@/runtime/reload")
+        await RuntimeReload.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })
+      }),
+    )
+    .catch((error) => {
+      log.warn("failed to register models.dev refresh listener", { error })
+    })
 
   export function modelCatalogState(providerID: string) {
     return catalogStates.get(providerID)

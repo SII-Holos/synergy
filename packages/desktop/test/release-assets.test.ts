@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   browserHostArtifactName,
+  browserHostExecutablePath,
   browserHostManifestName,
   browserHostManifestSignatureName,
   chromiumManifestName,
@@ -54,6 +55,12 @@ describe("desktop release asset names", () => {
       "synergy-browser-host-linux-arm64-1.2.3.manifest.json.sig",
     )
     expect(expectedBrowserHostArtifacts("1.2.3")).toHaveLength(18)
+  })
+
+  test("keeps Browser Host executable paths aligned with packaged platform names", () => {
+    expect(browserHostExecutablePath("darwin")).toBe("Synergy Browser Host.app/Contents/MacOS/Synergy Browser Host")
+    expect(browserHostExecutablePath("win32")).toBe("Synergy Browser Host.exe")
+    expect(browserHostExecutablePath("linux")).toBe("synergy-browser-host")
   })
   test("names all supported signed Chromium manifests", () => {
     expect(chromiumManifestName("1.2.3", "darwin", "arm64")).toBe("synergy-chromium-darwin-arm64-1.2.3.manifest.json")

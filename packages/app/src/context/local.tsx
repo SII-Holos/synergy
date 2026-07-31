@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { batch, createMemo, createRoot, onCleanup } from "solid-js"
-import { firstBy, uniqueBy } from "remeda"
+import { uniqueBy } from "remeda"
 import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useParams } from "@solidjs/router"
@@ -11,7 +11,12 @@ import { useProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
 import { createModelVariantSession } from "./prompt/model-variant"
 import * as ComposerIntent from "./prompt/composer-intent"
-import { isSelectableModel, resolveSessionModel } from "@/components/provider/model-catalog"
+import {
+  isSelectableModel,
+  recommendQuickSwitcherModels,
+  resolveQuickSwitcherModels,
+  resolveSessionModel,
+} from "@/components/provider/model-catalog"
 
 export type TextSelection = { startLine: number; startChar: number; endLine: number; endChar: number }
 
@@ -252,51 +257,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return all().find((m) => m.id === key.modelID && m.provider.id === key.providerID)
       }
 
-      const recommended = createMemo(() => {
-        const result: ModelKey[] = []
-        const push = (model: LocalModel | undefined) => {
-          if (!model) return
-          const entry = { providerID: model.provider.id, modelID: model.id }
-          if (!result.some((item) => item.providerID === entry.providerID && item.modelID === entry.modelID)) {
-            result.push(entry)
-          }
-        }
-        const newest = (models: LocalModel[]) => firstBy(models, [(x) => x.release_date, "desc"])
-
-        for (const provider of providers.available()) {
-          const providerModels = all().filter((model) => model.provider.id === provider.id)
-          if (providerModels.length === 0) continue
-
-          const defaultModelID = providers.default()[provider.id]
-          push(find(defaultModelID ? { providerID: provider.id, modelID: defaultModelID } : undefined))
-          push(newest(providerModels.filter((model) => model.capabilities.reasoning)))
-          push(
-            newest(providerModels.filter((model) => (model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0)),
-          )
-          push(
-            newest(
-              providerModels.filter(
-                (model) =>
-                  model.capabilities.input.image || model.capabilities.input.pdf || model.capabilities.input.video,
-              ),
-            ),
-          )
-        }
-
-        return uniqueBy(result, keyOf)
-      })
+      const recommended = createMemo(() => recommendQuickSwitcherModels(all(), providers.default()))
 
       const recommendedSet = createMemo(() => new Set(recommended().map(keyOf)))
 
       const quickSwitcherPreferences = createMemo(() => sync.data.config.quick_switcher?.models ?? [])
 
-      const quickSwitcherPreferenceMap = createMemo(() => {
-        const map = new Map<string, "add" | "remove">()
-        for (const item of quickSwitcherPreferences()) {
-          map.set(keyOf(item), item.state)
-        }
-        return map
-      })
+      const quickSwitcherSet = createMemo(
+        () => new Set(resolveQuickSwitcherModels(recommended(), quickSwitcherPreferences()).map(keyOf)),
+      )
 
       const fallbackModel = createMemo((): ModelKey | undefined => {
         if (sync.data.config.model) {
@@ -397,18 +366,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const recent = createMemo(() => store.recent.map(find).filter((model): model is LocalModel => !!model))
 
       function inQuickSwitcher(model: ModelKey) {
-        const key = keyOf(model)
-        const preference = quickSwitcherPreferenceMap().get(key)
-        if (preference === "remove") return false
-        if (preference === "add") return true
-        return recommendedSet().has(key)
+        return quickSwitcherSet().has(keyOf(model))
       }
 
-      const quickSwitcherOnly = createMemo(() =>
+      const quickSwitcher = createMemo(() =>
         all().filter((item) => inQuickSwitcher({ providerID: item.provider.id, modelID: item.id })),
       )
-
-      const quickSwitcher = createMemo(() => uniqueBy([...recent(), ...quickSwitcherOnly()], keyOfLocalModel))
 
       const cycle = (direction: 1 | -1) => {
         const recentList = recent()

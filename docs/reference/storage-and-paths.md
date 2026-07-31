@@ -37,7 +37,14 @@ data/session_nav_v2/
 data/sessions/<scope>/<session>/
 data/session_message_order_v1/<scope>/<session>/
 data/endpoint_session/
+data/channel/managed_ownership/
+data/channel/managed_ownership_reverse/
+data/channel/workspaces/<identity-hash>/workspace/
+data/channel/diagnostics/
+data/channel/providers/clarus/accounts/
 data/permissions/
+data/channel/response_cards/<channel-type>/<account-id>/<request-id>.json
+data/channel/feishu/streaming_cards/<account-id>/<session-id>/<card-id>.json
 data/permission-rules.json
 data/notes/<scope>/
 data/agenda/items/<scope>/
@@ -58,7 +65,15 @@ data/github/runtime.json
 data/github/poll-state/
 ```
 
+Channel-managed Project ownership uses a hashed forward record under `managed_ownership/` and a Scope-ID reverse index under `managed_ownership_reverse/`. Raw external account and Project IDs remain record values rather than path components. `workspaces/<identity-hash>/workspace/` is the deterministic, symlink-rejecting Project directory and an independent Git repository.
+
+Channel diagnostics store bounded, redacted, independently addressable records below `data/channel/diagnostics/accounts/<account-hash>/records/`. Account-level NDJSON downloads first scan the bounded set of at most 10,000 retained record IDs, then read, validate, and encode one record per response pull instead of materializing record payloads. Obsolete pre-release per-account array files directly under `data/channel/diagnostics/` are left untouched and ignored. Clarus provider-private state is isolated below each hashed account root: `assignments/`, `assignment_session_index/`, `dedup/`, `outbox/results/`, and `outbox/extensions/`. Result and extension outboxes are durable-before-send recovery state; pending records recovered after an interrupted process become ambiguous rather than being retried blindly.
+
 GitHub integration deliveries, CI failure state, runtime anchors, and per-repository poll state live under `data/github/`. Each delivery is keyed by its synthetic delivery GUID. Poll state files use URI-encoded repository names.
+
+Channel response-card registrations live under `data/channel/response_cards/`. Each provider-neutral record is keyed by channel type, account, and response-card tool-part ID. A pending record is written before the provider side effect and becomes active only after the provider returns a sent message ID. Both states retain the original chat, requester, session, card contract, and a 14-day expiry. An active registration additionally binds the provider message ID used to validate callbacks. A surviving pending record blocks resend until its expiry. Expired and malformed registrations are pruned at global runtime startup.
+
+Active Feishu/Lark streaming cards live under `data/channel/feishu/streaming_cards/`, keyed independently by account, session, and card ID. Each record is written after CardKit creates the card but before the card is exposed in chat, and contains the identifiers and start time needed to terminate an orphan after process restart. The message ID is added after provider delivery succeeds. A successful terminal close removes only that card's record. Account reconnect scans all records for its account, closes each orphan with a terminal recovery mutation, and preserves records whose provider call fails transiently so a later reconnect can retry without a newer card overwriting them.
 
 Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
 

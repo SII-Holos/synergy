@@ -98,7 +98,7 @@ export const contextWorkspace = {
   exactInputShare: { id: "app.context.breakdown.exactInputShare", message: "{percent} of exact input" },
   estimateNote: {
     id: "app.context.breakdown.estimateNote",
-    message: "Category values are model-tokenizer estimates reconciled to the exact provider input total.",
+    message: "Category values use bounded UTF-8 estimates reconciled to the exact provider input total.",
   },
   usageDetails: { id: "app.context.details.usage", message: "Usage details" },
   provider: { id: "app.context.details.provider", message: "Provider" },
@@ -728,6 +728,22 @@ export const sidebar = {
   logoAlt: { id: "app.sidebar.brand.logo", message: "HOLOS" },
   channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },
   addProjectDialogTitle: { id: "app.sidebar.dialog.addProject", message: "Add project" },
+  // Channel account status
+  channelAccountConnected: { id: "app.sidebar.channel.account.connected", message: "Connected" },
+  channelAccountDisconnected: { id: "app.sidebar.channel.account.disconnected", message: "Disconnected" },
+  channelAccountSyncing: { id: "app.sidebar.channel.account.syncing", message: "Syncing…" },
+  channelAccountSyncFailed: { id: "app.sidebar.channel.account.syncFailed", message: "Sync failed" },
+  channelAccountDegraded: { id: "app.sidebar.channel.account.degraded", message: "Degraded" },
+  channelAccountDisabled: { id: "app.sidebar.channel.account.disabled", message: "Disabled" },
+  channelAccountWaitingForTransport: {
+    id: "app.sidebar.channel.account.waitingForTransport",
+    message: "Waiting for transport",
+  },
+  // Channel account actions
+  channelRefreshProjects: { id: "app.sidebar.channel.refreshProjects", message: "Refresh projects" },
+  channelDownloadDiagnostics: { id: "app.sidebar.channel.downloadDiagnostics", message: "Download diagnostics" },
+  // Channel account section header
+  channelAccounts: { id: "app.sidebar.channel.accounts", message: "Channel Accounts" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Status Bar ───────────────────────────────────────────────────────────────

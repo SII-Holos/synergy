@@ -1256,7 +1256,21 @@ export type AgendaScope = {
 export type ChannelInfo = {
   type: string
   accountId?: string
-  chatId: string
+  chatId?: string
+  target?:
+    | {
+        kind: "chat"
+        chatId: string
+      }
+    | {
+        kind: "project"
+        externalProjectId: string
+      }
+    | {
+        kind: "task"
+        externalProjectId: string
+        externalTaskId: string
+      }
   chatType?: "dm" | "group"
   chatName?: string
   senderId?: string
@@ -1340,6 +1354,10 @@ export type AgendaItem = {
    */
   prompt: string
   /**
+   * Internal delivery mode that injects hidden system guidance into the origin Session
+   */
+  deliveryMode?: "session_guidance"
+  /**
    * Agent to use, defaults to configured default
    */
   agent?: string
@@ -1398,6 +1416,22 @@ export type SessionNavEntry = {
   chatId?: string
   chatName?: string
   chatType?: "dm" | "group"
+  channelType?: string
+  channelAccountId?: string
+  channelTarget?:
+    | {
+        kind: "chat"
+        chatId: string
+      }
+    | {
+        kind: "project"
+        externalProjectId: string
+      }
+    | {
+        kind: "task"
+        externalProjectId: string
+        externalTaskId: string
+      }
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -1466,6 +1500,20 @@ export type ScopeNavEntry = {
   icon?: {
     url?: string
     color?: string
+  }
+  managedProject?: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+    remoteState: "active" | "paused" | "stale" | "archived"
+  }
+}
+
+export type ManagedProjectArchiveError = {
+  name: "ManagedProjectArchiveError"
+  data: {
+    scopeID: string
+    remoteState: "active" | "paused"
   }
 }
 
@@ -2050,7 +2098,7 @@ export type ServerConfig = {
    */
   mdns?: boolean
   /**
-   * Additional domains to allow for CORS
+   * Additional origins allowed for CORS and Browser viewer WebSockets
    */
   cors?: Array<string>
 }
@@ -2461,7 +2509,7 @@ export type ProviderConfig = {
         [key: string]: string
       }
       provider?: {
-        npm: string
+        npm?: string
       }
       /**
        * Variant-specific configuration
@@ -3048,6 +3096,25 @@ export type ChannelFeishuConfig = {
    * Default streaming setting for all accounts
    */
   streaming?: boolean
+}
+
+export type ChannelClarusAccountConfig = {
+  enabled?: boolean
+  /**
+   * Clarus REST API origin override; defaults to the configured Holos API origin
+   */
+  apiUrl?: string
+  /**
+   * Primary Synergy agent for project and assignment Sessions
+   */
+  agent?: string
+}
+
+export type ChannelClarusConfig = {
+  type: "clarus"
+  accounts: {
+    [key: string]: ChannelClarusAccountConfig
+  }
 }
 
 /**
@@ -3660,7 +3727,7 @@ export type Config = {
    * Channel configurations for messaging platform integrations
    */
   channel?: {
-    [key: string]: ChannelFeishuConfig
+    [key: string]: ChannelFeishuConfig | ChannelClarusConfig
   }
   sandbox?: SandboxConfig
   observability?: ObservabilityConfig
@@ -3920,6 +3987,11 @@ export type SessionHistoryInfo = {
   }
 }
 
+export type SessionRollbackAck = {
+  rollbackID: string
+  acknowledgedAt: number
+}
+
 export type SessionCortexDelegation = {
   taskID: string
   parentSessionID: string
@@ -4124,6 +4196,7 @@ export type Session = {
     assistant?: string
   }
   history?: SessionHistoryInfo
+  rollbackAck?: SessionRollbackAck
   cortex?: SessionCortexDelegation
   superplan?: SessionSuperPlanInfo
   working?: SessionWorkingInfo
@@ -5261,10 +5334,16 @@ export type AssistantMessage = {
     overhead: {
       attributedTokens: number
     }
-    estimator: {
-      kind: "model-tokenizer"
-      encoding?: string
-    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
     reconciliation: {
       mode: "residual" | "scaled-down"
       factor: number
@@ -5545,6 +5624,19 @@ export type SessionRollbackEvent = {
   cutMessageID?: string
   files: Array<string>
   patchPartIDs: Array<string>
+}
+
+export type SessionRollbackAckConflictError = {
+  name: "SessionRollbackAckConflictError"
+  data: {
+    message: string
+    rollbackID: string
+    currentRollbackID?: string
+  }
+}
+
+export type SessionRollbackAckInput = {
+  rollbackID: string
 }
 
 export type SessionUnrollbackEvent = {
@@ -7628,15 +7720,41 @@ export type ChannelStatus =
       status: "connecting"
     }
   | {
+      status: "waiting_for_transport"
+    }
+  | {
       status: "disconnected"
     }
   | {
       status: "disabled"
     }
   | {
+      status: "syncing"
+    }
+  | {
       status: "failed"
       error: string
     }
+
+export type ChannelRefreshUnavailable = {
+  name: "ChannelRefreshUnavailable"
+  data: {
+    message: string
+    channelType: string
+    accountId: string
+    currentStatus: ChannelStatus
+    retryable: true
+  }
+}
+
+export type ChannelRefreshError = {
+  name: "ChannelRefreshError"
+  data: {
+    message: string
+    channelType: string
+    accountId: string
+  }
+}
 
 export type McpResource = {
   name: string
@@ -8130,6 +8248,88 @@ export type EventSynergyLinkTargetRemoved = {
   }
 }
 
+export type EventChannelCommandExecuted = {
+  type: "channel.command.executed"
+  properties: {
+    name: string
+    channelType: string
+    accountId: string
+    chatId: string
+    userId?: string
+  }
+}
+
+export type EventChannelConnected = {
+  type: "channel.connected"
+  properties: {
+    channelType: string
+    accountId: string
+  }
+}
+
+export type EventChannelDisconnected = {
+  type: "channel.disconnected"
+  properties: {
+    channelType: string
+    accountId: string
+    reason?: string
+  }
+}
+
+export type EventChannelMessageReceived = {
+  type: "channel.message.received"
+  properties: {
+    channelType: string
+    accountId: string
+    chatId: string
+    text: string
+  }
+}
+
+export type EventHolosContactAdded = {
+  type: "holos.contact.added"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosContactRemoved = {
+  type: "holos.contact.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventHolosContactUpdated = {
+  type: "holos.contact.updated"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosConnected = {
+  type: "holos.connected"
+  properties: {
+    peerId: string
+  }
+}
+
+export type EventHolosConnectionStatusChanged = {
+  type: "holos.connection.status_changed"
+  properties: {
+    status: string
+    error?: string
+  }
+}
+
+export type EventHolosPresence = {
+  type: "holos.presence"
+  properties: {
+    peerId: string
+    status: "online" | "offline"
+  }
+}
+
 export type EventCortexTaskCreated = {
   type: "cortex.task.created"
   properties: {
@@ -8226,88 +8426,6 @@ export type EventPtyDeleted = {
   }
 }
 
-export type EventChannelCommandExecuted = {
-  type: "channel.command.executed"
-  properties: {
-    name: string
-    channelType: string
-    accountId: string
-    chatId: string
-    userId?: string
-  }
-}
-
-export type EventChannelConnected = {
-  type: "channel.connected"
-  properties: {
-    channelType: string
-    accountId: string
-  }
-}
-
-export type EventChannelDisconnected = {
-  type: "channel.disconnected"
-  properties: {
-    channelType: string
-    accountId: string
-    reason?: string
-  }
-}
-
-export type EventChannelMessageReceived = {
-  type: "channel.message.received"
-  properties: {
-    channelType: string
-    accountId: string
-    chatId: string
-    text: string
-  }
-}
-
-export type EventHolosContactAdded = {
-  type: "holos.contact.added"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactRemoved = {
-  type: "holos.contact.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosContactUpdated = {
-  type: "holos.contact.updated"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosConnected = {
-  type: "holos.connected"
-  properties: {
-    peerId: string
-  }
-}
-
-export type EventHolosConnectionStatusChanged = {
-  type: "holos.connection.status_changed"
-  properties: {
-    status: string
-    error?: string
-  }
-}
-
-export type EventHolosPresence = {
-  type: "holos.presence"
-  properties: {
-    peerId: string
-    status: "online" | "offline"
-  }
-}
-
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -8381,6 +8499,16 @@ export type Event =
   | EventSynergyLinkTargetCreated
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
+  | EventChannelCommandExecuted
+  | EventChannelConnected
+  | EventChannelDisconnected
+  | EventChannelMessageReceived
+  | EventHolosContactAdded
+  | EventHolosContactRemoved
+  | EventHolosContactUpdated
+  | EventHolosConnected
+  | EventHolosConnectionStatusChanged
+  | EventHolosPresence
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
@@ -8392,16 +8520,6 @@ export type Event =
   | EventPtyUpdated
   | EventPtyExited
   | EventPtyDeleted
-  | EventChannelCommandExecuted
-  | EventChannelConnected
-  | EventChannelDisconnected
-  | EventChannelMessageReceived
-  | EventHolosContactAdded
-  | EventHolosContactRemoved
-  | EventHolosContactUpdated
-  | EventHolosConnected
-  | EventHolosConnectionStatusChanged
-  | EventHolosPresence
   | EventServerConnected
   | EventGlobalDisposed
 
@@ -9431,6 +9549,7 @@ export type GlobalNavRecentData = {
     parentOnly?: boolean
     includeArchived?: boolean
     category?: "project" | "home" | "channel" | "background" | "github"
+    channelType?: string
     search?: string
     limit?: number
     cursorLastActivityAt?: number
@@ -9600,6 +9719,15 @@ export type ScopeRemoveData = {
   url: "/scope/{scopeID}"
 }
 
+export type ScopeRemoveErrors = {
+  /**
+   * Managed project archive conflict
+   */
+  409: ManagedProjectArchiveError
+}
+
+export type ScopeRemoveError = ScopeRemoveErrors[keyof ScopeRemoveErrors]
+
 export type ScopeRemoveResponses = {
   /**
    * Scope removed
@@ -9640,6 +9768,10 @@ export type ScopeUpdateErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Managed project archive conflict
+   */
+  409: ManagedProjectArchiveError
 }
 
 export type ScopeUpdateError = ScopeUpdateErrors[keyof ScopeUpdateErrors]
@@ -11941,6 +12073,46 @@ export type SessionRollbackResponses = {
 }
 
 export type SessionRollbackResponse = SessionRollbackResponses[keyof SessionRollbackResponses]
+
+export type SessionRollbackAckData = {
+  body: SessionRollbackAckInput
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/rollback/ack"
+}
+
+export type SessionRollbackAckErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Rollback acknowledgment conflict
+   */
+  409: SessionRollbackAckConflictError
+}
+
+export type SessionRollbackAckError = SessionRollbackAckErrors[keyof SessionRollbackAckErrors]
+
+export type SessionRollbackAckResponses = {
+  /**
+   * Persisted rollback acknowledgment
+   */
+  200: {
+    rollbackAck: SessionRollbackAck
+  }
+}
+
+export type SessionRollbackAckResponse = SessionRollbackAckResponses[keyof SessionRollbackAckResponses]
 
 export type SessionUnrollbackData = {
   body?: never
@@ -17733,6 +17905,73 @@ export type ChannelAppResetResponses = {
 }
 
 export type ChannelAppResetResponse = ChannelAppResetResponses[keyof ChannelAppResetResponses]
+
+export type ChannelRefreshProjectsData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/projects/refresh"
+}
+
+export type ChannelRefreshProjectsErrors = {
+  /**
+   * Channel account is still connecting and cannot refresh projects yet
+   */
+  409: ChannelRefreshUnavailable
+  /**
+   * Refresh failed
+   */
+  500: ChannelRefreshError
+}
+
+export type ChannelRefreshProjectsError = ChannelRefreshProjectsErrors[keyof ChannelRefreshProjectsErrors]
+
+export type ChannelRefreshProjectsResponses = {
+  /**
+   * Refresh completed
+   */
+  200: {
+    completed: true
+  }
+}
+
+export type ChannelRefreshProjectsResponse = ChannelRefreshProjectsResponses[keyof ChannelRefreshProjectsResponses]
+
+export type ChannelDownloadDiagnosticsData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/diagnostics.ndjson"
+}
+
+export type ChannelDownloadDiagnosticsResponses = {
+  /**
+   * NDJSON diagnostic stream
+   */
+  200: Array<{
+    timestamp: number
+    level: string
+    message: string
+    data?: {
+      [key: string]: unknown
+    }
+  }>
+}
+
+export type ChannelDownloadDiagnosticsResponse =
+  ChannelDownloadDiagnosticsResponses[keyof ChannelDownloadDiagnosticsResponses]
 
 export type ExperimentalResourceListData = {
   body?: never

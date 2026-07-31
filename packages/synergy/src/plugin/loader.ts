@@ -36,6 +36,7 @@ export interface LoadedPlugin {
 }
 
 export type PluginAgentEntry = PluginAgent & {
+  contributionId: string
   pluginId: string
   pluginGeneration: string
 }
@@ -326,19 +327,16 @@ export async function getSkillEntries(): Promise<
   )
 }
 
-export async function getAgentEntries(): Promise<Record<string, PluginAgentEntry>> {
-  const agents: Record<string, PluginAgentEntry> = {}
-  for (const plugin of await getLoadedPlugins()) {
-    for (const item of contributions(plugin, "agent")) {
-      agents[item.id] = {
-        ...(item.agent as unknown as PluginAgent),
-        name: (item.agent.name as string | undefined) ?? item.id,
-        pluginId: plugin.id,
-        pluginGeneration: plugin.manifest.artifacts.generation,
-      }
-    }
-  }
-  return agents
+export async function getAgentEntries(): Promise<PluginAgentEntry[]> {
+  return (await getLoadedPlugins()).flatMap((plugin) =>
+    contributions(plugin, "agent").map((item) => ({
+      ...(item.agent as unknown as PluginAgent),
+      name: (item.agent.name as string | undefined) ?? item.id,
+      contributionId: item.id,
+      pluginId: plugin.id,
+      pluginGeneration: plugin.manifest.artifacts.generation,
+    })),
+  )
 }
 
 export async function getAuthProviderEntries() {
@@ -369,8 +367,12 @@ export function contributions<Kind extends PluginManifestContribution["kind"]>(
   return pluginContributionAdapters.list(plugin.id, kind)
 }
 
-export function markContributionDegraded(plugin: LoadedPlugin, contributionId: string, error: unknown) {
-  plugin.contributionHealth.set(contributionId, {
+export function markContributionDegraded(
+  plugin: LoadedPlugin,
+  contribution: Pick<PluginManifestContribution, "kind" | "id">,
+  error: unknown,
+) {
+  plugin.contributionHealth.set(`${contribution.kind}:${contribution.id}`, {
     state: "degraded",
     lastError: error instanceof Error ? error.message : String(error),
     updatedAt: Date.now(),

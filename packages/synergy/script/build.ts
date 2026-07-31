@@ -21,6 +21,8 @@ import {
   type SandboxRuntimeTarget,
 } from "./sandbox-assets"
 import { stagePlaywrightCoreRuntime } from "./playwright-runtime-assets"
+import { copyHolosCliAsset } from "./holos-cli-assets"
+import { prepareBuildModelsCatalog } from "./models-catalog"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -124,6 +126,9 @@ if (targets.length === 0) {
   throw new Error(`No Synergy build targets matched SYNERGY_BUILD_TARGETS=${process.env.SYNERGY_BUILD_TARGETS}`)
 }
 
+const modelsCatalog = await prepareBuildModelsCatalog()
+console.log(`using ${modelsCatalog.source} models catalog (${modelsCatalog.providerCount} providers)`)
+
 fs.rmSync("dist", { recursive: true, force: true })
 
 console.log("building web app")
@@ -148,6 +153,7 @@ for (const item of targets) {
   if (shouldReusePublishedRuntime(item)) {
     await extractPublishedRuntimePackage(name, Script.version)
     await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
+    copyHolosCliAsset(path.join("dist", name))
     if (requireSandboxAssets) assertPackagedSandboxAsset(item, path.join("dist", name))
     binaries[name] = Script.version
     continue
@@ -197,6 +203,7 @@ for (const item of targets) {
       2,
     ),
   )
+  copyHolosCliAsset(path.join("dist", name))
   binaries[name] = Script.version
   await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
 

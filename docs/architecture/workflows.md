@@ -10,7 +10,7 @@ Enabling or switching any workflow, plus ordinary workflow disabling, requires a
 
 A user-owned BlueprintLoop can replace Plan or Light Loop after the session is idle. It cannot replace an active Lattice workflow. A BlueprintLoop with `source: "lattice"` is valid only while Lattice owns the session.
 
-Pausing Lattice persists the inactive run before aborting session work, withdrawing queued Inbox work owned by that run, or cancelling its active Lattice-owned BlueprintLoop. A paused run cannot advance from a late loop event. Cancellation is terminal; resume is explicit and creates an idempotent state-entry prompt only when the saved action is no longer valid.
+Disabling a pristine Lattice Run cancels it so a later enable starts a new Run. Once Lattice has advanced durable work, disabling pauses the inactive Run before aborting session work, withdrawing queued Inbox work owned by that Run, or cancelling its active Lattice-owned BlueprintLoop. A paused Run cannot advance from a late loop event and requires explicit resume. Cancellation is terminal; resume creates an idempotent state-entry prompt only when the saved action is no longer valid.
 
 ## User-Message Projection
 

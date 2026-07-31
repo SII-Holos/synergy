@@ -1,4 +1,4 @@
-import type { NavEntry, NavListState, ScopeNavEntry } from "./index"
+import type { LocalScope, NavCursor, NavEntry, NavListState, ScopeNavEntry } from "./index"
 
 // Instant in-place projection of a session.updated event onto a nav list
 // (frontend sync redesign, P3). Applying the event directly gives the sidebar
@@ -74,6 +74,84 @@ export function applySessionToNavList(
   return { list: { ...list, items }, applied: true }
 }
 
+export function removeScopeFromNavList(list: NavListState, scopeID: string): NavListState {
+  const items = list.items.filter((entry) => entry.scopeID !== scopeID)
+  const removedCount = list.items.length - items.length
+  if (removedCount === 0) return list
+  return { ...list, items, total: Math.max(0, list.total - removedCount) }
+}
+
+export function channelNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
+  return {
+    category: "channel" as const,
+    channelType: "feishu",
+    parentOnly: true,
+    includeArchived: true,
+    limit,
+    ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+  }
+}
+
+export type RootNavSectionKey = "home" | "channel" | "background"
+export function removeScopeFromLoadedNavigation(
+  input: {
+    recent: NavListState
+    github: NavListState
+    root: Record<RootNavSectionKey, NavListState>
+  },
+  scopeID: string,
+) {
+  const recent = removeScopeFromNavList(input.recent, scopeID)
+  const github = removeScopeFromNavList(input.github, scopeID)
+  const root = {
+    home: removeScopeFromNavList(input.root.home, scopeID),
+    channel: removeScopeFromNavList(input.root.channel, scopeID),
+    background: removeScopeFromNavList(input.root.background, scopeID),
+  }
+  const affectedRoot = (Object.keys(root) as RootNavSectionKey[]).filter((key) => root[key] !== input.root[key])
+  return {
+    recent,
+    github,
+    root,
+    affected: {
+      recent: recent !== input.recent,
+      github: github !== input.github,
+      root: affectedRoot,
+    },
+  }
+}
+
+export function rootNavRequest(
+  category: RootNavSectionKey,
+  limit: number,
+  cursor?: { lastActivityAt: number; id: string },
+) {
+  if (category === "channel") return { source: "global" as const, query: channelNavQuery(limit, cursor) }
+  return {
+    source: "scope" as const,
+    query: {
+      scopeID: "home",
+      category,
+      parentOnly: "true" as const,
+      limit,
+      ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+    },
+  }
+}
+
+export function rootNavSectionsForSessionUpdate(input: {
+  scopeID?: string
+  navCategory?: NavEntry["category"]
+  channelType?: string
+  channelApplied: boolean
+}): RootNavSectionKey[] {
+  if (input.scopeID === "home") return ["home", "channel", "background"]
+  if ((input.navCategory === "channel" && input.channelType === "feishu") || input.channelApplied) {
+    return ["channel"]
+  }
+  return []
+}
+
 export function githubNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
   return {
     category: "github" as const,
@@ -81,6 +159,29 @@ export function githubNavQuery(limit: number, cursor?: { lastActivityAt: number;
     limit,
     ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
   }
+}
+
+export async function loadNavListToDepth(input: {
+  depth: number
+  pageLimit: number
+  fetchPage: (limit: number, cursor?: NavCursor) => Promise<NavListState | undefined>
+}): Promise<NavListState | undefined> {
+  const items: NavEntry[] = []
+  let cursor: NavCursor | undefined
+  let nextCursor: NavCursor | null = null
+  let total = 0
+
+  while (items.length < input.depth) {
+    const page = await input.fetchPage(Math.min(input.pageLimit, input.depth - items.length), cursor)
+    if (!page) return undefined
+    items.push(...page.items)
+    total = page.total
+    nextCursor = page.nextCursor
+    if (!nextCursor || page.items.length === 0) break
+    cursor = nextCursor
+  }
+
+  return { items, nextCursor, total }
 }
 
 export function orderNavEntries(entries: readonly NavEntry[]): NavEntry[] {
@@ -106,6 +207,21 @@ export function mergeNavListByID(previous: NavListState | undefined, next: NavLi
   }
 }
 
+export function managedProjectLocalScope(
+  entry: ScopeNavEntry,
+  metadata: Partial<LocalScope> | undefined,
+  expanded: boolean,
+): LocalScope {
+  return {
+    ...metadata,
+    id: entry.scopeID,
+    worktree: entry.directory,
+    name: entry.name ?? metadata?.name,
+    icon: { url: entry.icon?.url ?? metadata?.icon?.url, color: entry.icon?.color ?? metadata?.icon?.color },
+    expanded,
+  }
+}
+
 export function removeScopeFromIndex(
   entries: readonly ScopeNavEntry[],
   scopeID: string,
@@ -118,4 +234,98 @@ export function removeScopeFromIndex(
     directory: removed.directory || fallbackDirectory,
     removed: true,
   }
+}
+
+export type ChannelAccountStatus =
+  | { kind: "disabled" }
+  | { kind: "waiting_for_transport"; reason?: string }
+  | { kind: "disconnected"; reason?: string }
+  | { kind: "syncing" }
+  | { kind: "connected" }
+  | { kind: "sync_failed"; error?: string; lastGoodAt?: number }
+  | { kind: "degraded"; error?: string }
+
+export interface ChannelAccountActions {
+  canRefreshProjects: boolean
+  canDownloadDiagnostics: boolean
+  hiddenActions: string[]
+}
+
+export interface ChannelAccount {
+  channelType: string
+  accountId: string
+  projects: ScopeNavEntry[]
+  status?: ChannelAccountStatus
+}
+export function managedProjectScopesByWorktree(
+  accounts: readonly ChannelAccount[],
+  metadataByID: ReadonlyMap<string, Partial<LocalScope>>,
+  expandedWorktrees: ReadonlySet<string>,
+): Map<string, LocalScope> {
+  return new Map(
+    accounts.flatMap((account) =>
+      account.projects.map((entry) => [
+        entry.directory,
+        managedProjectLocalScope(entry, metadataByID.get(entry.scopeID), expandedWorktrees.has(entry.directory)),
+      ]),
+    ),
+  )
+}
+
+export function partitionScopeNavigation(entries: readonly ScopeNavEntry[]): {
+  genericProjects: ScopeNavEntry[]
+  channelAccounts: ChannelAccount[]
+} {
+  const accountsByChannel = new Map<string, Map<string, ChannelAccount>>()
+  const genericProjects: ScopeNavEntry[] = []
+  for (const entry of entries) {
+    if (entry.scopeType !== "project") continue
+    const managedProject = entry.managedProject
+    if (!managedProject) {
+      genericProjects.push(entry)
+      continue
+    }
+    let accounts = accountsByChannel.get(managedProject.channelType)
+    if (!accounts) {
+      accounts = new Map()
+      accountsByChannel.set(managedProject.channelType, accounts)
+    }
+    let account = accounts.get(managedProject.accountId)
+    if (!account) {
+      account = {
+        channelType: managedProject.channelType,
+        accountId: managedProject.accountId,
+        projects: [],
+        status: { kind: "connected" },
+      }
+      accounts.set(managedProject.accountId, account)
+    }
+    account.projects.push(entry)
+  }
+  const channelAccounts = Array.from(accountsByChannel.values()).flatMap((accounts) => Array.from(accounts.values()))
+  for (const account of channelAccounts) {
+    account.projects.sort((a, b) => b.latestActivityAt - a.latestActivityAt || a.scopeID.localeCompare(b.scopeID))
+  }
+  channelAccounts.sort((a, b) => {
+    if (a.channelType !== b.channelType) return a.channelType.localeCompare(b.channelType)
+    return a.accountId.localeCompare(b.accountId)
+  })
+  return { genericProjects, channelAccounts }
+}
+
+const CHANNEL_ACCOUNT_PROVIDER_ACTIONS: Record<string, Partial<ChannelAccountActions>> = {
+  clarus: {
+    canRefreshProjects: true,
+    canDownloadDiagnostics: true,
+  },
+}
+
+export function deriveChannelAccountActions(channelType: string): ChannelAccountActions {
+  const providerActions = CHANNEL_ACCOUNT_PROVIDER_ACTIONS[channelType]
+  const canRefreshProjects = providerActions?.canRefreshProjects ?? false
+  const canDownloadDiagnostics = providerActions?.canDownloadDiagnostics ?? false
+  const hiddenActions: string[] = []
+  if (!canRefreshProjects) hiddenActions.push("refreshProjects")
+  if (!canDownloadDiagnostics) hiddenActions.push("downloadDiagnostics")
+  return { canRefreshProjects, canDownloadDiagnostics, hiddenActions }
 }

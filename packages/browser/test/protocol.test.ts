@@ -67,6 +67,20 @@ describe("browser protocol v2", () => {
     expect(BrowserRegistrationSecretSchema.safeParse("a".repeat(64)).success).toBe(true)
   })
 
+  test("accepts a page-scoped Host signaling ticket renewal message", () => {
+    const renewal = {
+      type: "page.signaling.ticket",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: "owner-1",
+      pageId: "page-1",
+      signalingTicket: "fresh-host-ticket",
+    }
+
+    expect(BrowserHostMessageSchema.safeParse(renewal).success).toBe(true)
+    expect(BrowserHostMessageSchema.safeParse({ ...renewal, pageId: undefined }).success).toBe(false)
+    expect(BrowserHostMessageSchema.safeParse({ ...renewal, unexpected: true }).success).toBe(false)
+  })
+
   test("derives unambiguous owner keys from delimiter-shaped ids", () => {
     expect(browserOwnerKey({ mode: "session", scopeID: "a:b", sessionID: "c" })).not.toBe(
       browserOwnerKey({ mode: "session", scopeID: "a", sessionID: "b:c" }),

@@ -29,9 +29,13 @@ An active tool-created headless page migrates to the selected Host presentation 
 
 Browser state persists under the Synergy data directory by Scope and owner. It includes page identity and metadata, annotations, storage-state path, and profile directory. A restored saved page keeps its prior page ID and navigates through the user-navigation safety path.
 
+Session-owned headless pages suspend in place after ten minutes without a Browser command. The command service owns the inactivity deadline and serializes suspension with the owner's command queue; accepting a newer command invalidates stale timer work. Scope-owned pages and Host-backed pages are excluded because native and WebRTC activity does not pass through that command-idle signal. Suspension closes the live headless page and owner context while retaining the canonical `BrowserSession`, descriptor, checkpoint, annotations, downloads, gateway, broker state, and `BrowserEvent` subscribers. A later `resume` recreates the same page identity and existing event subscribers observe the `page.closed` and `page.created` transition. Cleanup failures retain their resource handle and retry at most three times after the initial attempt; new command activity resets that retry budget.
+
 When a session is archived or deleted, or a Cortex child session reaches a terminal task status, the Browser runtime reaper disposes its live session. Disposal closes the live page and owner context while preserving suspended Browser state for later restoration. Runtime shutdown disposes every Browser session and stops the driver.
 
 Browser resource attribution counts owners and pages by backend without exposing owner identifiers. The remote Browser Host is eligible for idle retirement only after the broker reports that no canonical page is active for any owner; an active page cancels the retirement timer. Performance may report Host RSS and the idle-retirement effect, but it cannot close Browser pages or stop the Host directly. Headless Chromium remains explicitly partial when its process RSS is not available through the driver contract.
+
+The shared Playwright browser retires only when no owner contexts are live or being created. Retirement and relaunch are serialized, and a failed Chromium close retains the browser handle so a later owner release, ensure, or runtime stop can retry cleanup instead of losing track of a live process.
 
 ## Canonical Control Model
 
@@ -67,6 +71,8 @@ Signaling only pairs those peers. Media carries the live page and the WebRTC dat
 
 During page creation, the broker reservation and its one-shot Host ticket form a creation lease. The Host signaling socket may attach under that lease before the new page is committed as canonical session state. Viewer signaling still requires the committed active page, so pending Host construction cannot expose an uncommitted page to a Web client.
 
+Viewer signaling requires an Origin header. HTTP(S) viewers are accepted only when their Origin matches the backend request, both sides are loopback peers, or the Origin appears in the server-authorized viewer allowlist. Explicit server CORS origins populate that allowlist; the startup-snapshotted `SYNERGY_ALLOWED_ORIGINS` environment variable remains a compatibility source. Automatically detected LAN CORS origins and proxy forwarding headers do not authorize Browser viewer sockets. The Origin check supplements, but never replaces, the one-shot owner/page/role-bound viewer ticket.
+
 The Electron Host controller runs from a generated local file, so its WebSocket handshake may carry the exact `file://` Origin. Host signaling permits that local-file Origin or no Origin, rejects HTTP(S) page Origins, and always requires the one-shot owner/page/role-bound ticket.
 
 The registered socket from signaling `onOpen` remains the peer identity for later message and close events; transport adapters may expose a different wrapper object to each callback. Relaying against a callback-local wrapper would incorrectly discard valid viewer offers as stale.
@@ -91,7 +97,9 @@ Navigation accepts HTTP(S), `about:blank`, and explicit workspace-contained `fil
 
 Browser routes attach trace IDs, command IDs, owner keys, page IDs, presentation choices, host state, and durations to structured logs. Page loading failure, host pending, signaling failure, page absence, and control failure are separate error states so clients can decide whether to wait, retry, navigate, or report a terminal error.
 
-API errors stay structured through the SDK boundary. WebRTC retries only retryable ticket failures and transient socket closure, resets backoff after Host or media readiness, and discards stale ticket, socket, peer, and timer work when a surface is replaced or disposed.
+API errors stay structured through the SDK boundary. WebRTC viewer signaling retries retryable ticket failures and transient socket closure, resets backoff after Host or media readiness, and discards stale ticket, socket, peer, and timer work when a surface is replaced or disposed. If only the Host signaling socket disconnects while the broker-owned page remains alive, the server reports that WebRTC presentation as detached, issues a fresh one-shot Host ticket through the broker, and the Electron controller replaces its signaling socket without recreating the canonical page or losing page state.
+
+Viewer ticket retries also heal an initially missing Host signaling attachment: when the canonical page still belongs to the broker but no Host socket is attached, issuing a viewer ticket renews the one-shot Host ticket through the broker. An already attached Host is left unchanged.
 
 The interactive surface continues to use live native or WebRTC presentation. Screenshots, DOM snapshots, console entries, network records, and accessibility snapshots are inspection products and tool inputs.
 
@@ -112,4 +120,6 @@ Tool actions keep failures atomic and results directly useful to the agent. Sele
 - The network gateway authenticates and forwards; Chromium owns webpage network policy.
 - Workspace resize semantics are CSS width and height across presentations.
 - Session archive or deletion, and terminal Cortex child status, release live Browser resources while preserving restorable state.
+- Command inactivity suspends only session-owned headless pages; it never removes the canonical session or its event subscribers.
+- Recoverable idle suspension and terminal owner disposal remain distinct lifecycle transitions.
 - Browser implementations and runtime state never load through the Agent worker runner dependency graph.

@@ -18,6 +18,7 @@ import { SessionTransitionCard } from "./session-transition-card"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
 import { pendingTimelineItemView } from "./conversation-pending"
+import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
 
 export function SessionConversation(props: {
   sessionID: string
@@ -148,6 +149,7 @@ export function SessionConversation(props: {
               <div
                 id={props.anchor(msg.id)}
                 data-message-id={msg.id}
+                data-message-role="assistant"
                 class="min-w-0 w-full max-w-full"
                 style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
               >
@@ -184,6 +186,7 @@ export function SessionConversation(props: {
             <div
               id={props.anchor(msg.id)}
               data-message-id={msg.id}
+              data-message-role="user"
               class="min-w-0 w-full max-w-full"
               style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
             >
@@ -191,7 +194,7 @@ export function SessionConversation(props: {
                 sessionID={props.sessionID}
                 messageID={msg.id}
                 lastUserMessageID={props.lastUserMessage()?.id}
-                onRewind={() => props.onRewind?.(msg as UserMessage)}
+                onRewind={messageAllowsCanonicalActions(msg) ? () => props.onRewind?.(msg as UserMessage) : undefined}
                 rollbackActive={props.rollbackActive}
                 onReviewChanges={props.onReviewChanges}
                 classes={{

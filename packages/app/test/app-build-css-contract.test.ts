@@ -717,6 +717,15 @@ describe("app production build contract", () => {
       const initialAssets = initialJavaScriptAssets(index)
       expect(initialAssets.length, "Production index must reference an initial JavaScript entry").toBeGreaterThan(0)
       const initialJavaScript = initialAssets.map((asset) => javascript.get(asset) ?? "").join("\n")
+      const prosemirrorModelDiagnostic = "looks like multiple versions of prosemirror-model were loaded"
+      const prosemirrorModelImplementations = [...javascript.values()].reduce(
+        (count, source) => count + source.split(prosemirrorModelDiagnostic).length - 1,
+        0,
+      )
+      expect(
+        prosemirrorModelImplementations,
+        "Production JavaScript must contain one ProseMirror model implementation",
+      ).toBe(1)
       const simplifiedChineseChunks = [...javascript.entries()].filter(
         ([asset, source]) =>
           asset.startsWith("messages-") && source.includes('"ui.list.loading"') && source.includes("正在加载"),

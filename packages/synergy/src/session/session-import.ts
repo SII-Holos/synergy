@@ -301,6 +301,7 @@ export namespace SessionImport {
       cortex,
       workspace,
       time,
+      rollbackAck: undefined,
     })
   }
 

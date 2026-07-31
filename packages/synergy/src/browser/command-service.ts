@@ -9,6 +9,7 @@ import { BrowserOwner } from "./owner.js"
 import { BrowserPolicy } from "./policy.js"
 import { BrowserRuntime } from "./runtime.js"
 import type { BrowserSession } from "./types.js"
+import { Log } from "../util/log.js"
 
 interface ExecuteRequest {
   commandId: string
@@ -21,12 +22,24 @@ interface OwnerQueue {
   results: Map<string, { fingerprint: string; result?: BrowserBackendResult; error?: unknown; bytes: number }>
   resultBytes: number
   closing: boolean
+  suspending: boolean
+}
+
+interface IdleState {
+  generation: number
+  failures: number
+  timer?: ReturnType<typeof setTimeout>
 }
 
 const MAX_REPLAY_RESULTS = 256
 const MAX_REPLAY_BYTES = 128 * 1024 * 1024
+const MAX_IDLE_SUSPEND_RETRIES = 3
+const DEFAULT_OWNER_IDLE_MS = 10 * 60 * 1_000
 const queues = new Map<string, OwnerQueue>()
+const idleStates = new Map<string, IdleState>()
+const log = Log.create({ service: "browser.command" })
 let runtime: Pick<typeof BrowserRuntime, "getOrCreateSession"> = BrowserRuntime
+let ownerIdleMs = DEFAULT_OWNER_IDLE_MS
 
 export namespace BrowserCommandService {
   export async function session(owner: BrowserOwner.Info): Promise<BrowserSession> {
@@ -59,7 +72,7 @@ export namespace BrowserCommandService {
     const command = parsed.data
     const fingerprint = JSON.stringify(command)
     const key = BrowserOwner.key(owner)
-    const queue = queues.get(key) ?? { tail: Promise.resolve(), results: new Map(), resultBytes: 0, closing: false }
+    const queue = queues.get(key) ?? createQueue()
     queues.set(key, queue)
     if (queue.closing) {
       throw new BrowserProtocolError({
@@ -69,13 +82,30 @@ export namespace BrowserCommandService {
         commandId: request.commandId,
       })
     }
+    const restoreAfterIdleSuspension = queue.suspending && requiresExistingPage(command)
+    const idleGeneration = owner.mode === "session" ? beginIdleActivity(key) : 0
     const replay = queue.results.get(request.commandId)
-    if (replay) return replayResult(replay, fingerprint, request.commandId)
+    if (replay) {
+      try {
+        const result = replayResult(replay, fingerprint, request.commandId)
+        settleIdleActivity(owner, command.type, idleGeneration, true)
+        return result
+      } catch (error) {
+        settleIdleActivity(owner, command.type, idleGeneration, false)
+        throw error
+      }
+    }
 
     const run = queue.tail.then(async () => {
       throwIfAborted(request.signal, request.commandId)
       const repeated = queue.results.get(request.commandId)
       if (repeated) return replayResult(repeated, fingerprint, request.commandId)
+      if (restoreAfterIdleSuspension) {
+        const session = await BrowserCommandService.session(owner)
+        if (!session.page && session.descriptor && (session.status === "suspended" || session.status === "failed")) {
+          await session.resumePage()
+        }
+      }
       try {
         const result = await executeOnce(owner, command, request)
         cache(queue, request.commandId, { fingerprint, result, bytes: encodedBytes(result) })
@@ -86,20 +116,35 @@ export namespace BrowserCommandService {
         throw normalized
       }
     })
-    queue.tail = run.then(
+    const settled = run.then(
+      (result) => {
+        settleIdleActivity(owner, command.type, idleGeneration, true)
+        return result
+      },
+      (error) => {
+        settleIdleActivity(owner, command.type, idleGeneration, false)
+        throw error
+      },
+    )
+    queue.tail = settled.then(
       () => undefined,
       () => undefined,
     )
-    return run
+    return settled
   }
 
   export function clear(): void {
+    for (const state of idleStates.values()) {
+      if (state.timer) clearTimeout(state.timer)
+    }
+    idleStates.clear()
     queues.clear()
   }
 
   export async function disposeOwner(owner: BrowserOwner.Info, dispose: () => Promise<void>): Promise<void> {
     const key = BrowserOwner.key(owner)
-    const queue = queues.get(key) ?? { tail: Promise.resolve(), results: new Map(), resultBytes: 0, closing: false }
+    clearIdleState(key)
+    const queue = queues.get(key) ?? createQueue()
     queues.set(key, queue)
     queue.closing = true
     const operation = queue.tail.then(dispose)
@@ -114,13 +159,117 @@ export namespace BrowserCommandService {
     }
   }
 
-  export function useRuntimeForTest(adapter: Pick<typeof BrowserRuntime, "getOrCreateSession">): () => void {
+  export function useRuntimeForTest(
+    adapter: Pick<typeof BrowserRuntime, "getOrCreateSession">,
+    options?: { ownerIdleMs?: number },
+  ): () => void {
     const previous = runtime
+    const previousIdleMs = ownerIdleMs
     runtime = adapter
+    ownerIdleMs = options?.ownerIdleMs ?? DEFAULT_OWNER_IDLE_MS
     return () => {
       runtime = previous
-      queues.clear()
+      ownerIdleMs = previousIdleMs
+      clear()
     }
+  }
+}
+
+function settleIdleActivity(
+  owner: BrowserOwner.Info,
+  commandType: BrowserBackendCommand["type"],
+  generation: number,
+  succeeded: boolean,
+): void {
+  if (commandType === "close" && succeeded) {
+    clearIdleGeneration(BrowserOwner.key(owner), generation)
+    return
+  }
+  scheduleIdleSuspension(owner, generation)
+}
+
+function beginIdleActivity(key: string): number {
+  const state = idleStates.get(key) ?? { generation: 0, failures: 0 }
+  if (state.timer) clearTimeout(state.timer)
+  state.timer = undefined
+  state.generation++
+  state.failures = 0
+  idleStates.set(key, state)
+  return state.generation
+}
+function clearIdleGeneration(key: string, generation: number): void {
+  const state = idleStates.get(key)
+  if (!state || state.generation !== generation) return
+  if (state.timer) clearTimeout(state.timer)
+  idleStates.delete(key)
+}
+
+function scheduleIdleSuspension(owner: BrowserOwner.Info, generation: number): void {
+  if (ownerIdleMs <= 0 || owner.mode !== "session") return
+  const key = BrowserOwner.key(owner)
+  const state = idleStates.get(key)
+  if (!state || state.generation !== generation) return
+  if (state.timer) clearTimeout(state.timer)
+  const timer = setTimeout(() => {
+    if (state.timer === timer) state.timer = undefined
+    void suspendIdleOwner(owner, generation)
+  }, ownerIdleMs)
+  const unref = (timer as { unref?: () => void }).unref
+  unref?.call(timer)
+  state.timer = timer
+}
+
+async function suspendIdleOwner(owner: BrowserOwner.Info, generation: number): Promise<void> {
+  const key = BrowserOwner.key(owner)
+  const state = idleStates.get(key)
+  if (!state || state.generation !== generation) return
+  const queue = queues.get(key) ?? createQueue()
+  queues.set(key, queue)
+  const operation = queue.tail.then(async () => {
+    if (idleStates.get(key)?.generation !== generation) return false
+    const session = await runtime.getOrCreateSession(owner)
+    if (idleStates.get(key)?.generation !== generation) return false
+    if (session.page?.backend === "host") return true
+    queue.suspending = true
+    try {
+      await session.suspend()
+    } finally {
+      queue.suspending = false
+    }
+    return true
+  })
+  queue.tail = operation.then(
+    () => undefined,
+    () => undefined,
+  )
+  try {
+    const handled = await operation
+    if (handled && idleStates.get(key)?.generation === generation) idleStates.delete(key)
+  } catch (error) {
+    if (idleStates.get(key)?.generation !== generation) return
+    state.failures++
+    if (state.failures <= MAX_IDLE_SUSPEND_RETRIES) {
+      scheduleIdleSuspension(owner, generation)
+    } else {
+      idleStates.delete(key)
+      log.warn("failed to suspend idle browser owner after retries", { ownerMode: owner.mode, error })
+    }
+  }
+}
+
+function clearIdleState(key: string): void {
+  const state = idleStates.get(key)
+  if (state?.timer) clearTimeout(state.timer)
+  idleStates.delete(key)
+}
+
+function createQueue(): OwnerQueue {
+  return {
+    tail: Promise.resolve(),
+    results: new Map(),
+    resultBytes: 0,
+    closing: false,
+    suspending: false,
   }
 }
 
@@ -253,6 +402,10 @@ async function executePage(
   } finally {
     request.signal?.removeEventListener("abort", onAbort)
   }
+}
+
+function requiresExistingPage(command: BrowserBackendCommand): boolean {
+  return command.type !== "close" && command.type !== "navigate" && command.type !== "resume"
 }
 
 function shouldCheckpoint(command: BrowserBackendCommand): boolean {

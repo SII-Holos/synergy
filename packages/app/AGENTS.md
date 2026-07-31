@@ -2,7 +2,7 @@
 
 These rules apply under `packages/app`. Root [AGENTS.md](../../AGENTS.md) and [PRODUCT.md](PRODUCT.md) still apply.
 
-Load `develop-frontend` for the complete Web/shared UI workflow, `change-server-api` when the change needs a new or modified server contract, `change-browser-runtime` for Browser presentation/control, and `change-plugin-runtime` for the built-in plugin host or registries.
+Load `develop-frontend` for the complete Web/shared UI workflow, `change-server-api` when the change needs a new or modified server contract, `change-channel-runtime` for Channel account/navigation surfaces, `change-browser-runtime` for Browser presentation/control, and `change-plugin-runtime` for the built-in plugin host or registries.
 
 ## Protect the Active App
 

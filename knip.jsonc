@@ -22,6 +22,7 @@
     "@napi-rs/canvas",
     "@scope/plugin",
     "playwright",
+    "@sii-holos/holos-cli",
     "@shikijs/transformers",
     "@solid-primitives/bounds",
     "@solid-primitives/scroll",

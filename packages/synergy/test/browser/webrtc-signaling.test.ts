@@ -35,6 +35,32 @@ const offer = (connectionId: string, generation: number) => ({
 afterEach(() => BrowserWebRTCSignaling.resetForTest())
 
 describe("BrowserWebRTCSignaling v2", () => {
+  test("notifies a viewer as Host signaling becomes pending, ready, then detached", () => {
+    const viewer = peer()
+    const host = peer()
+
+    BrowserWebRTCSignaling.attachViewer(owner, "page-1", viewer.socket, { hostReady: true })
+    expect(viewer.messages).toContainEqual({
+      type: "webrtc.host.pending",
+      protocolVersion: 2,
+      pageId: "page-1",
+    })
+
+    BrowserWebRTCSignaling.attachHost(owner, "page-1", host.socket, { hostReady: true })
+    expect(viewer.messages).toContainEqual({
+      type: "webrtc.host.ready",
+      protocolVersion: 2,
+      pageId: "page-1",
+    })
+
+    BrowserWebRTCSignaling.detachHost(owner, "page-1", host.socket)
+    expect(viewer.messages.at(-1)).toEqual({
+      type: "webrtc.host.pending",
+      protocolVersion: 2,
+      pageId: "page-1",
+    })
+  })
+
   test("forwards only signals for the active connection and generation", () => {
     const viewer = peer()
     const host = peer()

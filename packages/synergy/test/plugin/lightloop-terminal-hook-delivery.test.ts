@@ -18,7 +18,7 @@ async function writeNoHookPlugin(root: string) {
   await fs.mkdir(pluginDir, { recursive: true })
   const manifest = {
     manifestVersion: 1,
-    apiVersion: "3.0",
+    apiVersion: "4.0",
     id: "no-terminal-hook-plugin",
     name: "no-terminal-hook-plugin",
     version: "1.0.0",
@@ -83,7 +83,7 @@ export default {
   )
   const manifest = {
     manifestVersion: 1,
-    apiVersion: "3.0",
+    apiVersion: "4.0",
     id: "terminal-hook-plugin",
     name: "terminal-hook-plugin",
     version: "1.0.0",

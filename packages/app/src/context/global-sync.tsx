@@ -39,6 +39,7 @@ import { planBucketEviction } from "./message-eviction"
 import { describeToolPartApply } from "./session-sync-plan"
 import { findSessionByID, findSessionIndex } from "./session-collection"
 import { createSessionMessageLoader } from "./session-message-loader"
+import { createScopeReconnectRecovery } from "./scope-reconnect-recovery"
 import { SessionPartSnapshotFreshness, type SessionPartSnapshotRequest } from "./session-part-snapshot-freshness"
 import {
   applyLatestPage,
@@ -59,16 +60,6 @@ import {
   type PlanBlueprintOfferEvent,
   type PlanBlueprintOfferState,
 } from "./plan-blueprint-offer"
-import {
-  browserRollbackDialogStorage,
-  emptyRollbackDialogPresentationState,
-  isEmptyRollbackDialogPresentationState,
-  removePersistedRollbackDialogSeenKey,
-  reduceRollbackDialogPresentationState,
-  type RollbackDialogPresentationEvent,
-  type RollbackDialogPresentationState,
-  writePersistedRollbackDialogSeenKey,
-} from "./rollback-dialog"
 import {
   createSessionContextProjectionRevision,
   invalidateLatestSessionContextUsageMessage,
@@ -149,9 +140,6 @@ type State = {
   planBlueprintOffer: {
     [sessionID: string]: PlanBlueprintOfferState
   }
-  rollbackDialogPresentation: {
-    [sessionID: string]: RollbackDialogPresentationState
-  }
   inbox: {
     [sessionID: string]: SessionInboxItem[]
   }
@@ -203,42 +191,6 @@ export function updatePlanBlueprintOfferState(
 ) {
   const current = store.planBlueprintOffer[sessionID] ?? emptyPlanBlueprintOfferState
   setPlanBlueprintOfferState(store, setStore, sessionID, reducePlanBlueprintOfferState(current, event))
-}
-
-function setRollbackDialogPresentationState(
-  store: State,
-  setStore: SetStoreFunction<State>,
-  sessionID: string,
-  state: RollbackDialogPresentationState,
-) {
-  if (isEmptyRollbackDialogPresentationState(state)) {
-    if (!store.rollbackDialogPresentation[sessionID]) return
-    setStore(
-      "rollbackDialogPresentation",
-      produce((draft) => {
-        delete draft[sessionID]
-      }),
-    )
-    return
-  }
-
-  setStore("rollbackDialogPresentation", sessionID, reconcile(state))
-}
-
-export function updateRollbackDialogPresentationState(
-  store: State,
-  setStore: SetStoreFunction<State>,
-  sessionID: string,
-  event: RollbackDialogPresentationEvent,
-) {
-  const current = store.rollbackDialogPresentation[sessionID] ?? emptyRollbackDialogPresentationState
-  setRollbackDialogPresentationState(store, setStore, sessionID, reduceRollbackDialogPresentationState(current, event))
-  const storage = browserRollbackDialogStorage()
-  if (event.type === "presented") {
-    writePersistedRollbackDialogSeenKey(storage, sessionID, event.key)
-    return
-  }
-  removePersistedRollbackDialogSeenKey(storage, sessionID)
 }
 
 function capturePlanBlueprintOfferFromPart(store: State, setStore: SetStoreFunction<State>, part: Part) {
@@ -313,10 +265,14 @@ function createGlobalSync() {
   const bootstrapQueue: string[] = []
   const bootstrapQueued = new Set<string>()
   const bootstrapActive = new Set<string>()
-  // Bumped on every (re)connect resync so component-level resources that are not
-  // in the normalized store — e.g. blueprint loop state, which the server cannot
-  // replay after a restart — refetch their state (issue #331).
+  // Bumped when reconnect recovery starts so store-external resources can
+  // refetch immediately. Session snapshots observe the per-scope completed
+  // generation below, after replay/reset has established freshness state.
   const [reconnectVersion, setReconnectVersion] = createSignal(0)
+  const [scopeReconnectVersions, setScopeReconnectVersions] = createStore<Record<string, number>>({})
+  const scopeReconnectRecovery = createScopeReconnectRecovery((scopeKey, generation) => {
+    setScopeReconnectVersions(scopeKey, generation)
+  })
   const resourceFreshness = new SyncResourceFreshness()
   const partSnapshotFreshness = new SessionPartSnapshotFreshness()
   const replayPending = new Set<string>()
@@ -348,6 +304,10 @@ function createGlobalSync() {
 
   function scopeRequest(scopeKey: string) {
     return isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+  }
+
+  function scopeReconnectVersion(scopeKey: string) {
+    return scopeReconnectVersions[scopeKey] ?? 0
   }
 
   function captureResourceRequest(scopeKey: string, sessionID: string, resource: SyncResource) {
@@ -488,7 +448,6 @@ function createGlobalSync() {
         permission: {},
         question: {},
         planBlueprintOffer: {},
-        rollbackDialogPresentation: {},
         inbox: {},
         mcp: {},
         lsp: [],
@@ -544,6 +503,12 @@ function createGlobalSync() {
     resourceFreshness.releaseScope(scopeKey)
     partSnapshotFreshness.releaseScope(scopeKey)
     bootstrapQueued.delete(scopeKey)
+    scopeReconnectRecovery.release(scopeKey)
+    setScopeReconnectVersions(
+      produce((draft) => {
+        delete draft[scopeKey]
+      }),
+    )
   }
 
   async function loadAgenda(scopeKey: string) {
@@ -957,15 +922,15 @@ function createGlobalSync() {
       .catch(() => {})
   }
 
-  async function resyncInstance(scopeKey: string) {
-    if (!scopeKey || !children[scopeKey]) return
+  async function resyncInstance(scopeKey: string): Promise<boolean> {
+    if (!scopeKey || !children[scopeKey]) return false
     const [store, setStore] = children[scopeKey]
-    if (store.status === "loading") return
+    if (store.status === "loading") return false
     const sdk = createScopedClient(scopeKey)
 
     await Promise.all([
       sdk.scope.bootstrap(scopeRequest(scopeKey)).then((result) => {
-        if (!result.data) return
+        if (!result.data) throw new Error("Scope bootstrap returned no data")
         applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
       }),
       sdk.permission
@@ -976,6 +941,7 @@ function createGlobalSync() {
         .then((result) => syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])),
       refreshVolatileAfterResync(scopeKey, store, setStore),
     ])
+    return true
   }
 
   async function bootstrapInstance(scopeKey: string): Promise<boolean> {
@@ -1010,7 +976,7 @@ function createGlobalSync() {
   // Per-scope event watermark (highest applied state-event seq + epoch), used
   // for reconnect replay and gap detection (frontend sync redesign, phase 1).
   const watermarks = new Map<string, Watermark>()
-  const replayInFlight = new Set<string>()
+  const replayInFlight = new Map<string, Promise<boolean>>()
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
   // switches between sessions (C7). The actively-viewed session is protected, so
@@ -1269,7 +1235,6 @@ function createGlobalSync() {
             setStore("sessionTotal", Math.max(0, store.sessionTotal - 1))
           }
           updatePlanBlueprintOfferState(store, setStore, info.id, { type: "session_removed" })
-          updateRollbackDialogPresentationState(store, setStore, info.id, { type: "session_removed" })
           break
         }
         if (index !== -1) {
@@ -1765,18 +1730,10 @@ function createGlobalSync() {
   // watermark instead of refetching everything. Falls back to a full resync on
   // reset (stale epoch / pruned journal) or any error — so it can never lose
   // updates, only do more work.
-  async function replayOrResync(scopeKey: string, replayFrom?: Watermark) {
-    if (scopeKey === "global" || !children[scopeKey]) return
-    if (replayInFlight.has(scopeKey)) {
-      replayPending.add(scopeKey)
-      return
-    }
+  async function performReplayOrResync(scopeKey: string, replayFrom?: Watermark): Promise<boolean> {
+    if (scopeKey === "global" || !children[scopeKey]) return false
     const wm = replayFrom ?? watermarks.get(scopeKey)
-    if (!wm) {
-      await resyncInstance(scopeKey).catch(() => undefined)
-      return
-    }
-    replayInFlight.add(scopeKey)
+    if (!wm) return resyncInstance(scopeKey).catch(() => false)
     try {
       const sdk = createScopedClient(scopeKey)
       const res = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch })
@@ -1787,26 +1744,40 @@ function createGlobalSync() {
       if (!data || data.status === "reset") {
         watermarks.delete(scopeKey)
         if (data) resourceFreshness.resetScope(scopeKey, data.epoch, data.seq)
-        await resyncInstance(scopeKey).catch(() => undefined)
-        return
+        return resyncInstance(scopeKey).catch(() => false)
       }
       for (const ev of data.events) applyEvent(scopeKey, ev)
       watermarks.set(scopeKey, { epoch: data.epoch, seq: data.seq })
+      return true
     } catch {
-      await resyncInstance(scopeKey).catch(() => undefined)
-    } finally {
-      replayInFlight.delete(scopeKey)
-      if (replayPending.delete(scopeKey)) void replayOrResync(scopeKey)
+      return resyncInstance(scopeKey).catch(() => false)
     }
+  }
+
+  function replayOrResync(scopeKey: string, replayFrom?: Watermark): Promise<boolean> {
+    const active = replayInFlight.get(scopeKey)
+    if (active) {
+      replayPending.add(scopeKey)
+      return active
+    }
+
+    let tracked!: Promise<boolean>
+    tracked = performReplayOrResync(scopeKey, replayFrom).then(async (recovered) => {
+      if (replayInFlight.get(scopeKey) === tracked) replayInFlight.delete(scopeKey)
+      if (replayPending.delete(scopeKey)) return replayOrResync(scopeKey)
+      return recovered
+    })
+    replayInFlight.set(scopeKey, tracked)
+    return tracked
   }
 
   let resyncInstancesPromise: Promise<void> | undefined
   function resyncInstances(directories: string[]) {
     if (resyncInstancesPromise) return resyncInstancesPromise
-    // Signal reconnect so store-external resources (blueprint loops) refetch.
-    setReconnectVersion((v) => v + 1)
+    const generation = reconnectVersion() + 1
+    setReconnectVersion(generation)
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
-      replayOrResync(directory).catch(() => undefined),
+      scopeReconnectRecovery.run(directory, generation, () => replayOrResync(directory)),
     ).finally(() => {
       resyncInstancesPromise = undefined
     })
@@ -1908,6 +1879,7 @@ function createGlobalSync() {
     setLatestContextMessage,
     recover,
     reconnectVersion,
+    scopeReconnectVersion,
     captureResourceRequest,
     applyResourceResponse,
     applyResourceMutationResponse,

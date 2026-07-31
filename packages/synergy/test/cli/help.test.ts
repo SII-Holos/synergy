@@ -34,6 +34,14 @@ describe("product CLI help", () => {
     expect(help).not.toContain("synergy build")
   })
 
+  test("send documents explicit scope selection and cwd fallback", async () => {
+    const help = await cliHelp(["send", "--help"])
+
+    expect(help).toContain("--scope")
+    expect(help).toContain("registered scope id")
+    expect(help).toContain("current directory")
+  })
+
   test("web command opens a running server and no longer starts Vite", async () => {
     const help = await cliHelp(["web", "--help"])
 

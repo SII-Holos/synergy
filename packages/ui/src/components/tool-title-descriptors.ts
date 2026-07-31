@@ -110,12 +110,15 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   // Communication
   email_send: d("tool.title.send-email", "Send Email"),
   email_read: d("tool.title.read-email", "Read Email"),
+  clarus_submit_task_result: d("tool.title.clarus-submit-task-result", "Submit Clarus Result"),
+  clarus_extend_task: d("tool.title.clarus-extend-task", "Extend Clarus Task"),
   email_search: d("tool.title.search-email", "Search Email"),
   email_mark_read: d("tool.title.mark-read", "Mark Read"),
   email_inbox: d("tool.title.email-inbox", "View inbox"),
   generate_image: d("tool.title.generate-image", "Generate Image"),
   edit_image: d("tool.title.edit-image", "Edit Image"),
   attach: d("tool.title.attach", "Add attachment"),
+  response_card: d("tool.title.response-card", "Prepare response card"),
 
   // Platform
   runtime_reload: d("tool.title.runtime-reload", "Reload runtime"),
@@ -477,6 +480,7 @@ export const TOOL_LABEL_DESC = {
   tasks: d("tool.label.tasks", "{count, plural, one {# task} other {# tasks}}"),
   results: d("tool.label.results", "{count, plural, one {# result} other {# results}}"),
   items: d("tool.label.items", "{count, plural, one {# item} other {# items}}"),
+  elements: d("tool.label.elements", "{count, plural, one {# element} other {# elements}}"),
   files: d("tool.label.files", "{count, plural, one {# file} other {# files}}"),
   matches: d("tool.label.matches", "{count, plural, one {# match} other {# matches}}"),
   runs: d("tool.label.runs", "{count, plural, one {# run} other {# runs}}"),

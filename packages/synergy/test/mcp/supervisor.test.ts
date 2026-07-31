@@ -45,7 +45,7 @@ async function writeMcpPlugin(root: string, input: { id: string; serverPath: str
   await fs.mkdir(dir, { recursive: true })
   const manifest = {
     manifestVersion: 1 as const,
-    apiVersion: "3.0" as const,
+    apiVersion: "4.0" as const,
     id: input.id,
     name: input.id,
     version: "0.1.0",

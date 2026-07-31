@@ -1231,7 +1231,7 @@ msgstr "Estimated {tokens}"
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.estimateNote"
-msgstr "Category values are model-tokenizer estimates reconciled to the exact provider input total."
+msgstr "Category values use bounded UTF-8 estimates reconciled to the exact provider input total."
 
 #. js-lingui-explicit-id
 msgid "app.context.breakdown.exactInputShare"
@@ -6783,6 +6783,42 @@ msgstr "Working..."
 msgid "app.sidebar.brand.logo"
 msgstr "HOLOS"
 
+#. Channel account status
+msgid "app.sidebar.channel.account.connected"
+msgstr "Connected"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.degraded"
+msgstr "Degraded"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.disabled"
+msgstr "Disabled"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.disconnected"
+msgstr "Disconnected"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.syncFailed"
+msgstr "Sync failed"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.syncing"
+msgstr "Syncing…"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.waitingForTransport"
+msgstr "Waiting for transport"
+
+#. Channel account section header
+msgid "app.sidebar.channel.accounts"
+msgstr "Channel Accounts"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.downloadDiagnostics"
+msgstr "Download diagnostics"
+
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.channel.feishu"
 msgstr "Feishu"
@@ -6790,6 +6826,10 @@ msgstr "Feishu"
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr "Other"
+
+#. Channel account actions
+msgid "app.sidebar.channel.refreshProjects"
+msgstr "Refresh projects"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.collapse"
@@ -8966,6 +9006,14 @@ msgid "nav.tools.title"
 msgstr "Tools"
 
 #. js-lingui-explicit-id
+msgid "plugin.textAction.back"
+msgstr "Back"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.close"
+msgstr "Close"
+
+#. js-lingui-explicit-id
 msgid "plugin.textAction.copy"
 msgstr "Copy"
 
@@ -8978,16 +9026,24 @@ msgid "plugin.textAction.failed"
 msgstr "Text action failed"
 
 #. js-lingui-explicit-id
+msgid "plugin.textAction.loading"
+msgstr "Working…"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.menu"
+msgstr "Text actions"
+
+#. js-lingui-explicit-id
 msgid "plugin.textAction.paste"
 msgstr "Paste"
 
 #. js-lingui-explicit-id
-msgid "plugin.textAction.selectAll"
-msgstr "Select all"
+msgid "plugin.textAction.retry"
+msgstr "Retry"
 
 #. js-lingui-explicit-id
-msgid "plugin.textAction.tooLarge"
-msgstr "This selection is too large for extensions."
+msgid "plugin.textAction.selectAll"
+msgstr "Select all"
 
 #. js-lingui-explicit-id
 msgid "plugin.textAction.unavailable"
@@ -13702,6 +13758,58 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr "worktree | git | checkout | branch | delete | project"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.description"
+msgstr "Allow each Holos Agent account to receive and run Clarus tasks."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnostics"
+msgstr "Download diagnostics"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnosticsFailed"
+msgstr "Failed to download Clarus diagnostics"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.empty"
+msgstr "No Clarus accounts configured yet."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.enable"
+msgstr "Clarus task execution"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.enableAccount"
+msgstr "Enable Clarus task execution for {accountName}"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.maintenance"
+msgstr "Account maintenance"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.maintenanceAccount"
+msgstr "Account maintenance for {accountName}"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.preparingDiagnostics"
+msgstr "Preparing diagnostics…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refresh"
+msgstr "Refresh projects"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshFailed"
+msgstr "Failed to refresh Clarus projects"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshing"
+msgstr "Refreshing…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.title"
+msgstr "Clarus"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.feishu.accounts"
 msgstr "Feishu accounts"
 
@@ -13719,11 +13827,43 @@ msgstr "Feishu"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.page.description"
-msgstr "External messaging channel accounts."
+msgstr "Messaging and task channel accounts."
 
 #. js-lingui-explicit-id
 msgid "settings.channels.page.title"
 msgstr "Channels"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connecting"
+msgstr "Connecting…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disabled"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disconnected"
+msgstr "Disconnected"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.failed"
+msgstr "Connection failed"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.syncing"
+msgstr "Syncing…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.unavailable"
+msgstr "Status unavailable"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.waitingForTransport"
+msgstr "Waiting for transport"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
@@ -17070,6 +17210,10 @@ msgid "tool.label.changes"
 msgstr "{count, plural, one {# change} other {# changes}}"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.elements"
+msgstr "{count, plural, one {# element} other {# elements}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.files"
 msgstr "{count, plural, one {# file} other {# files}}"
 
@@ -17272,6 +17416,14 @@ msgstr "Cancel Agenda"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "Manage research claims"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-extend-task"
+msgstr "Extend Clarus Task"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-submit-task-result"
+msgstr "Submit Clarus Result"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"
@@ -17700,6 +17852,10 @@ msgstr "Manage research state"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "Resolve Library"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.response-card"
+msgstr "Prepare response card"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.revise-file"

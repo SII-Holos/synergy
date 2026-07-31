@@ -120,6 +120,30 @@ export namespace StoragePath {
 
   export const share = (shareID: string) => ["shares", shareID]
 
+  export const channelResponseCardsRoot = () => ["channel", "response_cards"]
+  export const channelResponseCardAccountRoot = (channelType: string, accountId: string) => [
+    ...channelResponseCardsRoot(),
+    encodeURIComponent(channelType),
+    encodeURIComponent(accountId),
+  ]
+  export const channelResponseCard = (channelType: string, accountId: string, requestId: string) => [
+    ...channelResponseCardAccountRoot(channelType, accountId),
+    encodeURIComponent(requestId),
+  ]
+  export const channelFeishuStreamingCardsRoot = () => ["channel", "feishu", "streaming_cards"]
+  export const channelFeishuStreamingCardAccountRoot = (accountId: string) => [
+    ...channelFeishuStreamingCardsRoot(),
+    encodeURIComponent(accountId),
+  ]
+  export const channelFeishuStreamingCardSessionRoot = (accountId: string, sessionID: string) => [
+    ...channelFeishuStreamingCardAccountRoot(accountId),
+    encodeURIComponent(sessionID),
+  ]
+  export const channelFeishuStreamingCard = (accountId: string, sessionID: string, cardId: string) => [
+    ...channelFeishuStreamingCardSessionRoot(accountId, sessionID),
+    encodeURIComponent(cardId),
+  ]
+
   export const agendaItemsRoot = (scopeID: ScopeID) => ["agenda", "items", scopeID as string]
   export const agendaItem = (scopeID: ScopeID, itemID: string) => ["agenda", "items", scopeID as string, itemID]
   export const agendaRunsRoot = (scopeID: ScopeID, itemID: string) => ["agenda", "runs", scopeID as string, itemID]
@@ -223,6 +247,45 @@ export namespace StoragePath {
     encodeURIComponent(workflowName),
   ]
 
+  export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
+  export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]
+  export const clarusProviderAccountRoot = (accountHash: string) => [
+    "channel",
+    "providers",
+    "clarus",
+    "accounts",
+    accountHash,
+  ]
+  export const clarusProviderAccountsRoot = () => ["channel", "providers", "clarus", "accounts"]
+  export const clarusProviderAssignment = (accountHash: string, assignmentHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "assignments",
+    assignmentHash,
+  ]
+  export const clarusProviderAssignmentSession = (accountHash: string, sessionID: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "assignment_session_index",
+    sessionID,
+  ]
+  export const clarusProviderResultOutboxRoot = (accountHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "outbox",
+    "results",
+  ]
+  export const clarusProviderResultOutbox = (accountHash: string, recordHash: string) => [
+    ...clarusProviderResultOutboxRoot(accountHash),
+    recordHash,
+  ]
+  export const clarusProviderExtensionOutboxRoot = (accountHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "outbox",
+    "extensions",
+  ]
+  export const clarusProviderExtensionOutbox = (accountHash: string, recordHash: string) => [
+    ...clarusProviderExtensionOutboxRoot(accountHash),
+    recordHash,
+  ]
+
   // Stats
   export const statsRoot = () => ["stats"]
   export const statsWatermark = () => ["stats", "watermark"]
@@ -234,4 +297,19 @@ export namespace StoragePath {
   /** Daily buckets: stats/daily/{YYYY-MM-DD} */
   export const statsDailyRoot = () => ["stats", "daily"]
   export const statsDaily = (day: string) => ["stats", "daily", day]
+  // Channel diagnostics (independently addressable records per account)
+  export const channelDiagnosticsRoot = () => ["channel", "diagnostics"]
+  export const channelDiagnosticsAccountsRoot = () => [...channelDiagnosticsRoot(), "accounts"]
+  export const channelDiagnosticsAccountRoot = (accountHash: string) => [
+    ...channelDiagnosticsAccountsRoot(),
+    accountHash,
+  ]
+  export const channelDiagnosticsRecordsRoot = (accountHash: string) => [
+    ...channelDiagnosticsAccountRoot(accountHash),
+    "records",
+  ]
+  export const channelDiagnosticsRecord = (accountHash: string, recordID: string) => [
+    ...channelDiagnosticsRecordsRoot(accountHash),
+    recordID,
+  ]
 }

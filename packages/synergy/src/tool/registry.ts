@@ -59,6 +59,7 @@ import { AgendaLogsTool } from "./agenda-logs"
 // import { AgoraAcceptTool } from "./agora-accept"
 // import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
+import { ResponseCardTool } from "./response-card"
 import { OpenAIImageGenTool } from "./openai-image-gen"
 import { OpenAIImageEditTool } from "./openai-image-edit"
 
@@ -93,6 +94,8 @@ import { Truncate } from "./truncation"
 import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
+import { ClarusSubmitTaskResultTool } from "./clarus-submit-task-result"
+import { ClarusExtendTaskTool } from "./clarus-extend-task"
 import { RuntimeReloadTool } from "./runtime-reload"
 import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
@@ -269,6 +272,7 @@ export namespace ToolRegistry {
                 agent: ctx.agent,
                 messageId: ctx.messageID,
                 callId: ctx.callID ?? `${plugin.id}:${contribution.id}`,
+                userMessageId: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
               },
             },
             pluginDir: plugin.pluginDir,
@@ -402,10 +406,13 @@ export namespace ToolRegistry {
       //       AgoraAcceptTool,
       //       AgoraCommentTool,
       AttachTool,
+      ResponseCardTool,
       // 🔇 DiagramTool,  — 已注释，待重构
       RenderTool,
       EmailSendTool,
       EmailReadTool,
+      ClarusSubmitTaskResultTool,
+      ClarusExtendTaskTool,
       RuntimeReloadTool,
       WorktreeEnterTool,
       WorktreeLeaveTool,

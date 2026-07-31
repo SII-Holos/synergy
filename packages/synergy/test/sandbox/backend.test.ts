@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { SandboxBackend } from "../../src/sandbox/backend"
+import { EnforcementError } from "../../src/enforcement/errors"
 import * as fs from "fs"
 import * as os from "os"
 import * as path from "path"
@@ -8,6 +9,22 @@ function printCommand(text: string) {
   return {
     command: process.execPath,
     args: ["-e", `console.log(${JSON.stringify(text)})`],
+  }
+}
+
+function executeIfSandboxAvailable(wrapper: Parameters<typeof SandboxBackend.execute>[0]) {
+  try {
+    const result = SandboxBackend.execute(wrapper)
+    if (result.stderr.includes("loopback: Failed RTM_NEWADDR: Operation not permitted")) return
+    return result
+  } catch (error) {
+    if (
+      error instanceof EnforcementError.SandboxBlocked &&
+      error.rawOutput.includes("loopback: Failed RTM_NEWADDR: Operation not permitted")
+    ) {
+      return
+    }
+    throw error
   }
 }
 
@@ -685,7 +702,7 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
     const wrapper = SandboxBackend.prepareWrapper({
       command: "true",
       args: [],
-      workspace: "/Users/test/project",
+      workspace: process.cwd(),
       sandboxMode: "workspace_write",
       backend: "seatbelt-legacy-allow-default",
     })
@@ -695,21 +712,23 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
       return
     }
 
-    const result = SandboxBackend.execute(wrapper)
+    const result = executeIfSandboxAvailable(wrapper)
+    if (!result) return
     expect(result.exitCode).toBe(0)
   })
   test("execute captures stdout in sandbox", () => {
     const wrapper = SandboxBackend.prepareWrapper({
       command: "echo",
       args: ["sandbox-test-output"],
-      workspace: "/Users/test/project",
+      workspace: process.cwd(),
       sandboxMode: "workspace_write",
       backend: "seatbelt-legacy-allow-default",
     })
 
     if (wrapper.skipReason) return
 
-    const result = SandboxBackend.execute(wrapper)
+    const result = executeIfSandboxAvailable(wrapper)
+    if (!result) return
     expect(result.stdout).toContain("sandbox-test-output")
   })
 
@@ -717,13 +736,14 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
     const wrapper = SandboxBackend.prepareWrapper({
       command: "touch",
       args: ["/etc/should-fail"],
-      workspace: "/Users/test/project",
+      workspace: process.cwd(),
       sandboxMode: "workspace_write",
     })
 
     if (wrapper.skipReason) return
 
-    const result = SandboxBackend.execute(wrapper)
+    const result = executeIfSandboxAvailable(wrapper)
+    if (!result) return
     // Sandbox should prevent writing to /etc — command exits non-zero
     expect(result.exitCode).not.toBe(0)
   })

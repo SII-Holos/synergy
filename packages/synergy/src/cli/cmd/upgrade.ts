@@ -16,7 +16,7 @@ export const UpgradeCommand = {
         alias: "m",
         describe: "installation method to use",
         type: "string",
-        choices: ["npm", "yarn", "pnpm", "bun", "brew", "desktop"],
+        choices: ["npm", "yarn", "pnpm", "bun", "brew", "desktop", "standalone"],
       })
   },
   handler: async (args: { target?: string; method?: string }) => {
@@ -27,19 +27,10 @@ export const UpgradeCommand = {
     const detectedMethod = await Installation.method()
     const method = (args.method as Installation.Method) ?? detectedMethod
     if (method === "unknown") {
-      prompts.log.error(`synergy is installed to ${process.execPath} and may be managed by a package manager`)
-      const install = await prompts.select({
-        message: "Install anyways?",
-        options: [
-          { label: "Yes", value: true },
-          { label: "No", value: false },
-        ],
-        initialValue: false,
-      })
-      if (!install) {
-        prompts.outro("Done")
-        return
-      }
+      prompts.log.error(`Unable to determine how ${process.execPath} was installed.`)
+      prompts.log.info("Reinstall with the official installer or pass a supported --method option.")
+      prompts.outro("Done")
+      return
     }
     prompts.log.info("Using method: " + method)
     if (method === "desktop") {
@@ -52,7 +43,7 @@ export const UpgradeCommand = {
       prompts.outro("Done")
       return
     }
-    const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest()
+    const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest(method)
 
     if (Installation.VERSION === target) {
       prompts.log.warn(`synergy upgrade skipped: ${target} is already installed`)

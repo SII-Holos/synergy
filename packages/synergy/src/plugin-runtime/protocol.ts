@@ -43,6 +43,7 @@ export type PluginHostServiceMethod =
   | "secrets.delete"
   | "tool.invoke"
   | "agent.call"
+  | "agent.start"
   | "asset.create"
   | "shell.run"
 
@@ -116,5 +117,5 @@ export function deserializePluginRuntimeError(error: SerializedPluginRuntimeErro
   })
 }
 
-export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 7
+export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 9
 export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

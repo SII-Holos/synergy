@@ -26,6 +26,17 @@ describe("tool classifier localization", () => {
     expect(classified.titleDescriptor).toBeUndefined()
   })
 
+  test("classifies response_card as localized communication", () => {
+    const classified = classifyTool("response_card", {
+      title: "Choose a release path",
+      elements: [{ type: "button", id: "approve", label: "Approve", value: "approve" }],
+    })
+
+    expect(classified.category).toBe("communication")
+    expect(classified.titleDescriptor).toBe(TOOL_TITLE_DESC.response_card)
+    expect(classified.subtitle).toBe("Choose a release path")
+  })
+
   test("classifies every Lattice tool with an explicit localized title", () => {
     const read = classifyTool("pathway_read")
     const write = classifyTool("pathway_write", { futureSteps: [{ title: "Build" }] })

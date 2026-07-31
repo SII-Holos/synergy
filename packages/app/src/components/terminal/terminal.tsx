@@ -127,7 +127,17 @@ export const Terminal = (props: TerminalProps) => {
 
       return false
     })
-    t.onSelectionChange(() => textSelectionController.update(t.getSelection() || undefined))
+    t.onSelectionChange(() => {
+      const rect = container.getBoundingClientRect()
+      textSelectionController.update(t.getSelection() || undefined, {
+        source: "terminal",
+        origin: "other",
+        editable: false,
+        wholeContainer: false,
+        owner: container,
+        anchor: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      })
+    })
 
     fitAddon = new mod.FitAddon()
     serializeAddon = new SerializeAddon()

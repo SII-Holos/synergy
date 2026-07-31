@@ -262,6 +262,41 @@ describe("AgentTurnProtocol", () => {
     ).toThrow()
   })
 
+  test("keeps Context Usage provenance and drafts out of the Agent worker protocol", () => {
+    const input = {
+      user: { id: "msg_user" },
+      sessionID: "ses_test",
+      model: { id: "model", providerID: "provider" },
+      agent: { name: "synergy" },
+      system: [],
+      messages: [],
+      toolDefinitions: [],
+      prepared: {
+        system: [],
+        baseSystemLength: 0,
+        provider: {
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+        },
+        params: { options: {} },
+      },
+    }
+
+    expect(
+      AgentTurnProtocol.TurnInputSchema.safeParse({
+        ...input,
+        contextUsageProvenance: { categories: {} },
+      }).success,
+    ).toBe(false)
+    expect(() =>
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "started",
+        requestId: "turn",
+        contextUsageDraft: { categories: {} },
+      }),
+    ).toThrow()
+  })
+
   test("validates home and project runtime Scope snapshots", () => {
     const input = {
       user: { id: "msg_user" },

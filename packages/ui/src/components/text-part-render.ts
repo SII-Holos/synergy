@@ -2,7 +2,6 @@ export interface TextPartProjectionInput {
   key: string
   source: string
   completed: boolean
-  remove?: string
 }
 
 export function isTextPartTerminal(input: { partEnd?: number; messageCompleted?: number }) {
@@ -35,60 +34,25 @@ function createTrimTransform(): IncrementalTransform {
   }
 }
 
-function createRemoveTransform(pattern?: string): IncrementalTransform {
-  if (!pattern) return { write: (chunk) => chunk }
-
-  let pending = ""
-  return {
-    write(chunk) {
-      let output = ""
-      for (const character of chunk) {
-        pending += character
-        while (pending && !pattern.startsWith(pending)) {
-          output += pending[0]
-          pending = pending.slice(1)
-        }
-        if (pending === pattern) pending = ""
-      }
-      return output
-    },
-  }
-}
-
-function projectCompleteText(source: string, remove?: string) {
-  const trimmed = source.trim()
-  if (!remove) return trimmed
-  return trimmed.split(remove).join("")
-}
-
 export function createTextPartProjection() {
   let key: string | undefined
-  let remove: string | undefined
   let sourceLength = 0
   let completed = false
   let output = ""
   let trim = createTrimTransform()
-  let strip = createRemoveTransform()
 
   const reset = (input: TextPartProjectionInput) => {
     key = input.key
-    remove = input.remove
     sourceLength = input.source.length
     completed = input.completed
     trim = createTrimTransform()
-    strip = createRemoveTransform(remove)
-    output = input.completed ? projectCompleteText(input.source, remove) : strip.write(trim.write(input.source))
+    output = input.completed ? input.source.trim() : trim.write(input.source)
     return output
   }
 
   return {
     project(input: TextPartProjectionInput) {
-      if (
-        key !== input.key ||
-        remove !== input.remove ||
-        input.source.length < sourceLength ||
-        input.completed !== completed
-      ) {
+      if (key !== input.key || input.source.length < sourceLength || input.completed !== completed) {
         return reset(input)
       }
 
@@ -99,7 +63,7 @@ export function createTextPartProjection() {
 
       const delta = input.source.slice(sourceLength)
       sourceLength = input.source.length
-      if (delta) output += strip.write(trim.write(delta))
+      if (delta) output += trim.write(delta)
       return output
     },
   }

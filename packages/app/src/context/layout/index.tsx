@@ -19,16 +19,24 @@ import { createInitialLayoutDefaults } from "./defaults"
 import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
+  rootNavRequest,
+  rootNavSectionsForSessionUpdate,
   githubNavQuery,
+  managedProjectScopesByWorktree,
+  loadNavListToDepth,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
+  partitionScopeNavigation,
   removeScopeFromIndex,
+  removeScopeFromLoadedNavigation,
+  type RootNavSectionKey,
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { planMessagePageApply } from "../session-message-page"
 import { findSessionIndex } from "../session-collection"
+import { classifyScopeEvent } from "./event-routing"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -81,6 +89,12 @@ export interface NavEntry {
   chatId?: string
   chatName?: string
   chatType?: string
+  channelType?: string
+  channelAccountId?: string
+  channelTarget?:
+    | { kind: "chat"; chatId: string }
+    | { kind: "project"; externalProjectId: string }
+    | { kind: "task"; externalProjectId: string; externalTaskId: string }
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -100,17 +114,23 @@ export interface ScopeNavEntry {
   latestActivityAt: number
   sessionCount: number
   icon?: { url?: string; color?: string }
+  managedProject?: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+    remoteState: "active" | "paused" | "stale" | "archived"
+  }
 }
 
 const ROOT_NAV_SECTION_LIMIT = 100
 const ROOT_NAV_SECTION_KEYS = ["home", "channel", "background"] as const
-type RootNavSectionKey = (typeof ROOT_NAV_SECTION_KEYS)[number]
 export type NavListState = { items: NavEntry[]; nextCursor: NavCursor | null; total: number }
 function emptyNavList(): NavListState {
   return { items: [], nextCursor: null, total: 0 }
 }
 const NAV_FIRST_PAGE_LIMIT = 10
 const RECENT_LIMIT = 10
+const NAV_REFRESH_PAGE_LIMIT = 200
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -274,6 +294,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const navPending = new Set<string>()
     const [scopeIndexLoaded, setScopeIndexLoaded] = createSignal(false)
 
+    const channelProjection = createMemo(() => {
+      const index = scopeIndex()
+      if (index.length === 0) return { genericProjects: [] as ScopeNavEntry[], channelAccounts: [] }
+      return partitionScopeNavigation(index)
+    })
+
     async function loadScopeIndex() {
       await globalSdk.client.scope.list()
       try {
@@ -343,14 +369,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (navPending.has(key)) return
       navPending.add(key)
       try {
-        const res = await globalSdk.client.session.index({
-          scopeID: "home",
-          category,
-          parentOnly: "true",
-          includeArchived: category === "channel" ? "true" : undefined,
-          limit: ROOT_NAV_SECTION_LIMIT,
-          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
-        })
+        const request = rootNavRequest(category, ROOT_NAV_SECTION_LIMIT, cursor)
+        const res =
+          request.source === "global"
+            ? await globalSdk.client.global.nav.recent(request.query)
+            : await globalSdk.client.session.index(request.query)
         if (!res.data) return
         const data = res.data
         if (cursor) {
@@ -522,23 +545,25 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       navPending.add(key)
       try {
         const existing = rootNavStore[category]
-        const res = await globalSdk.client.session.index({
-          scopeID: "home",
-          category,
-          parentOnly: "true",
-          includeArchived: category === "channel" ? "true" : undefined,
-          limit: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
+        const refreshed = await loadNavListToDepth({
+          depth: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
+          pageLimit: NAV_REFRESH_PAGE_LIMIT,
+          fetchPage: async (limit, cursor) => {
+            const request = rootNavRequest(category, limit, cursor)
+            const response =
+              request.source === "global"
+                ? await globalSdk.client.global.nav.recent(request.query)
+                : await globalSdk.client.session.index(request.query)
+            if (!response.data) return undefined
+            return {
+              items: response.data.items as NavEntry[],
+              nextCursor: response.data.nextCursor,
+              total: response.data.total,
+            }
+          },
         })
-        if (!res.data) return
-        const data = res.data
-        setRootNavStore(
-          category,
-          mergeNavListByID(existing, {
-            items: data.items as NavEntry[],
-            nextCursor: data.nextCursor,
-            total: data.total,
-          }),
-        )
+        if (!refreshed) return
+        setRootNavStore(category, mergeNavListByID(existing, refreshed))
       } finally {
         navPending.delete(key)
       }
@@ -607,9 +632,58 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     function applyScopeRemoval(scopeID: string, directory?: string) {
       const removed = removeScopeFromIndex(scopeIndex(), scopeID, directory)
       if (removed.directory) server.scopes.close(removed.directory)
-      if (removed.removed) {
-        setScopeIndex(removed.entries)
+      if (removed.removed) setScopeIndex(removed.entries)
+
+      const navigation = removeScopeFromLoadedNavigation(
+        {
+          recent: recentEntries,
+          github: githubEntries,
+          root: {
+            home: rootNavStore.home,
+            channel: rootNavStore.channel,
+            background: rootNavStore.background,
+          },
+        },
+        scopeID,
+      )
+      if (navigation.affected.recent) {
+        setRecentEntries(navigation.recent)
+        const pending = navRefreshTimers.get("__recent__")
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          "__recent__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__recent__")
+            refreshGlobalRecent()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
       }
+      if (navigation.affected.github) {
+        setGitHubEntries(navigation.github)
+        const pending = navRefreshTimers.get("__github__")
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          "__github__",
+          setTimeout(() => {
+            navRefreshTimers.delete("__github__")
+            refreshGitHubSection()
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+      }
+      for (const category of navigation.affected.root) {
+        setRootNavStore(category, navigation.root[category])
+        const key = `__root_${category}`
+        const pending = navRefreshTimers.get(key)
+        if (pending) clearTimeout(pending)
+        navRefreshTimers.set(
+          key,
+          setTimeout(() => {
+            navRefreshTimers.delete(key)
+            refreshRootNavSection(category)
+          }, NAV_REFRESH_DEBOUNCE_MS),
+        )
+      }
+
       scheduleScopeIndexRefresh()
     }
 
@@ -618,18 +692,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const event = e.details as { type?: string; properties?: unknown }
         const eventProperties = isRecord(event.properties) ? event.properties : undefined
         const eventDirectory = typeof eventProperties?.directory === "string" ? eventProperties.directory : undefined
-        if (event.type === "scope.removed") {
-          const scopeID = typeof eventProperties?.id === "string" ? eventProperties.id : undefined
-          if (scopeID) applyScopeRemoval(scopeID, eventDirectory)
-          return
-        }
         const eventTime = isRecord(eventProperties?.time) ? eventProperties.time : undefined
-        if (event.type === "scope.updated" && eventTime?.archived) {
+        const route = classifyScopeEvent(event.type, !!eventTime?.archived)
+        if (route === "scopeRemoval") {
           const scopeID = typeof eventProperties?.id === "string" ? eventProperties.id : undefined
           if (scopeID) applyScopeRemoval(scopeID, eventDirectory)
           return
         }
-        if (event.type !== "session.updated") return
+        if (route === "scopeIndexRefresh") {
+          scheduleScopeIndexRefresh()
+          return
+        }
+        if (route === "ignore") return
         const properties = (
           event as {
             properties?: {
@@ -649,6 +723,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0], properties?.navEntry)
         const githubResult = applySessionToNavList(githubEntries, navUpdate)
         const githubAffected = properties?.navEntry?.category === "github" || githubResult.applied
+        let channelApplied = false
         {
           const recentResult = applySessionToNavList(recentEntries, navUpdate)
           if (recentResult.applied) setRecentEntries(recentResult.list)
@@ -661,6 +736,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           for (const category of ROOT_NAV_SECTION_KEYS) {
             if (!rootNavStore[category]) continue
             const rootResult = applySessionToNavList(rootNavStore[category], navUpdate)
+            if (category === "channel") channelApplied = rootResult.applied
             if (rootResult.applied) setRootNavStore(category, rootResult.list)
           }
         }
@@ -685,21 +761,24 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             }, NAV_REFRESH_DEBOUNCE_MS),
           )
         }
-        if (scope.id === "home") {
-          for (const category of ROOT_NAV_SECTION_KEYS) {
-            if (!rootNavStore[category]) continue
-            const pending = navRefreshTimers.get(`__root_${category}`)
-            if (pending) clearTimeout(pending)
-            navRefreshTimers.set(
-              `__root_${category}`,
-              setTimeout(() => {
-                navRefreshTimers.delete(`__root_${category}`)
-                refreshRootNavSection(category)
-              }, NAV_REFRESH_DEBOUNCE_MS),
-            )
-          }
-          return
+        const affectedRootSections = rootNavSectionsForSessionUpdate({
+          scopeID: scope.id,
+          navCategory: properties?.navEntry?.category,
+          channelType: properties?.navEntry?.channelType,
+          channelApplied,
+        })
+        for (const category of affectedRootSections) {
+          const pending = navRefreshTimers.get(`__root_${category}`)
+          if (pending) clearTimeout(pending)
+          navRefreshTimers.set(
+            `__root_${category}`,
+            setTimeout(() => {
+              navRefreshTimers.delete(`__root_${category}`)
+              refreshRootNavSection(category)
+            }, NAV_REFRESH_DEBOUNCE_MS),
+          )
         }
+        if (scope.id === "home") return
         const dir = scope.directory
         if (!dir || !navEntries[dir]) return
         const pending = navRefreshTimers.get(dir)
@@ -819,7 +898,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       // Locally-tracked scopes (user-opened, persisted in localStorage).
       const local = enriched().flatMap(colorize)
       const index = scopeIndex()
-      if (index.length === 0) return local
+      const managedScopeIDs = new Set(
+        channelProjection().channelAccounts.flatMap((account) => account.projects.map((p) => p.scopeID)),
+      )
+      if (index.length === 0) return local.filter((s) => !s.id || !managedScopeIDs.has(s.id))
 
       // Supplement server-side projects that are NOT locally tracked, so the
       // sidebar reflects all projects (not just manually-opened ones). These
@@ -833,6 +915,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const supplemented: LocalScope[] = []
       for (const entry of index) {
         if (entry.scopeType !== "project") continue
+        if (managedScopeIDs.has(entry.scopeID)) continue
         if (entry.directory && seenDirectories.has(entry.directory)) continue
         if (entry.scopeID && seenIDs.has(entry.scopeID)) continue
         const metadata = globalSync.data.scope.find((s) => s.id === entry.scopeID || s.worktree === entry.directory)
@@ -845,7 +928,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
       }
 
-      const raw = [...local, ...supplemented.flatMap(colorize)]
+      const raw = [...local.filter((s) => !s.id || !managedScopeIDs.has(s.id)), ...supplemented.flatMap(colorize)]
 
       // Stable sort: pinned projects first (most-recently-pinned on top),
       // then by creation time ascending (oldest first), with directory as
@@ -864,6 +947,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         return a.worktree.localeCompare(b.worktree)
       })
     })
+
+    const managedScopesByWorktree = createMemo(() =>
+      managedProjectScopesByWorktree(
+        channelProjection().channelAccounts,
+        new Map(globalSync.data.scope.map((scope) => [scope.id, scope])),
+        supplementalExpanded(),
+      ),
+    )
 
     // Whether a project is supplemental (not locally tracked). Supplemental
     // projects manage expand state in-memory and load sessions lazily.
@@ -1150,6 +1241,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const isDesktop = createMediaQuery("(min-width: 768px)")
 
     return {
+      channelProjection: () => channelProjection(),
       ready,
       isDesktop,
       nav: {
@@ -1179,6 +1271,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       scopes: {
         list,
+        managed: (directory: string) => managedScopesByWorktree().get(directory),
         isSupplemental: isSupplementalScope,
         toggleSupplementalExpand,
         async open(directory: string) {

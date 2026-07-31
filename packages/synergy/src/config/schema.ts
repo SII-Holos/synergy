@@ -12,11 +12,12 @@ import {
   McpToolsConfig,
 } from "@ericsanchezok/synergy-plugin"
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
-import { ModelsDev } from "../provider/models"
+import { ModelsDev } from "../provider/models-schemas"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
+import { validateHolosEndpoint } from "../holos/security"
 
 export const McpRetry = McpRetryConfig
 export type McpRetry = McpRetryConfig
@@ -70,7 +71,7 @@ export const ChannelFeishuAccount = z
       .min(1)
       .optional()
       .describe("Project directory whose Scope owns sessions for this Feishu account"),
-    streaming: z.boolean().optional().default(true).describe("Enable streaming card updates"),
+    streaming: z.boolean().optional().describe("Enable streaming card updates"),
     streamingThrottleMs: z
       .number()
       .int()
@@ -114,6 +115,41 @@ export const ChannelFeishu = z
   .strict()
   .meta({ ref: "ChannelFeishuConfig" })
 export type ChannelFeishu = z.infer<typeof ChannelFeishu>
+
+export const ChannelClarusAccount = z
+  .object({
+    enabled: z.boolean().optional().default(false),
+    apiUrl: z
+      .string()
+      .optional()
+      .describe("Clarus REST API origin override; defaults to the configured Holos API origin"),
+    agent: z.string().optional().describe("Primary Synergy agent for project and assignment Sessions"),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.apiUrl) return
+    try {
+      const url = validateHolosEndpoint(value.apiUrl, "api")
+      if (url.pathname !== "/" || url.search || url.hash) throw new Error("Clarus apiUrl must be an origin")
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["apiUrl"],
+        message: error instanceof Error ? error.message : "Invalid Clarus apiUrl",
+      })
+    }
+  })
+  .meta({ ref: "ChannelClarusAccountConfig" })
+export type ChannelClarusAccount = z.infer<typeof ChannelClarusAccount>
+
+export const ChannelClarus = z
+  .object({
+    type: z.literal("clarus"),
+    accounts: z.record(z.string(), ChannelClarusAccount),
+  })
+  .strict()
+  .meta({ ref: "ChannelClarusConfig" })
+export type ChannelClarus = z.infer<typeof ChannelClarus>
 
 export const Holos = z
   .object({
@@ -308,7 +344,7 @@ export const ObservabilityConfig = z
   .meta({ ref: "ObservabilityConfig" })
 export type ObservabilityConfig = z.infer<typeof ObservabilityConfig>
 
-export const Channel = z.discriminatedUnion("type", [ChannelFeishu])
+export const Channel = z.discriminatedUnion("type", [ChannelFeishu, ChannelClarus])
 export type Channel = z.infer<typeof Channel>
 
 export const EmailSmtp = z
@@ -693,7 +729,7 @@ export const Server = z
     port: z.number().int().positive().optional().describe("Port to listen on"),
     hostname: z.string().optional().describe("Hostname to listen on"),
     mdns: z.boolean().optional().describe("Enable mDNS service discovery"),
-    cors: z.array(z.string()).optional().describe("Additional domains to allow for CORS"),
+    cors: z.array(z.string()).optional().describe("Additional origins allowed for CORS and Browser viewer WebSockets"),
   })
   .strict()
   .meta({

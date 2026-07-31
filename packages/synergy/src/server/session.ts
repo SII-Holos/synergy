@@ -38,6 +38,11 @@ const SessionMessagePageBadRequestError = z.union([
   SessionHistory.MessagePageCursorInvalidError.Schema,
   SessionHistory.MessagePageCursorStaleError.Schema,
 ])
+const SessionRollbackAckInput = z
+  .object({
+    rollbackID: Identifier.schema("history"),
+  })
+  .meta({ ref: "SessionRollbackAckInput" })
 
 async function assertSessionWorkspaceAvailable(sessionID: string) {
   const session = await Session.get(sessionID)
@@ -1307,6 +1312,55 @@ export const SessionRoute = new Hono()
       log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
       const event = await Session.rollback({ sessionID, ...body })
       return c.json(event)
+    },
+  )
+  .post(
+    "/:sessionID/rollback/ack",
+    describeRoute({
+      summary: "Acknowledge rollback feedback",
+      description: "Persist that the current rollback feedback has been presented to a client.",
+      operationId: "session.rollbackAck",
+      requestBody: {
+        required: true,
+        content: {},
+      },
+      responses: {
+        200: {
+          description: "Persisted rollback acknowledgment",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ rollbackAck: Session.RollbackAck })),
+            },
+          },
+        },
+        409: {
+          description: "Rollback acknowledgment conflict",
+          content: {
+            "application/json": {
+              schema: resolver(Session.RollbackAckConflictError.Schema),
+            },
+          },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: Identifier.schema("session"),
+      }),
+    ),
+    validator("json", SessionRollbackAckInput),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      const { rollbackID } = c.req.valid("json")
+      try {
+        const rollbackAck = await Session.acknowledgeRollback(sessionID, rollbackID)
+        return c.json({ rollbackAck })
+      } catch (error) {
+        if (error instanceof Session.RollbackAckConflictError) return c.json(error.toObject(), 409)
+        throw error
+      }
     },
   )
   .post(

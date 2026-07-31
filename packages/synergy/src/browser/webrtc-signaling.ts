@@ -50,8 +50,11 @@ export namespace BrowserWebRTCSignaling {
       channel.generation = -1
     }
     channel.viewer = { socket }
-    if (channel.host && options.hostReady)
+    if (channel.host && options.hostReady) {
       send(socket, { type: "webrtc.host.ready", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId })
+    } else {
+      send(socket, { type: "webrtc.host.pending", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId })
+    }
   }
 
   export function attachHost(
@@ -89,16 +92,21 @@ export namespace BrowserWebRTCSignaling {
     deleteIfEmpty(key, channel)
   }
 
-  export function detachHost(owner: BrowserOwner.Info, pageId: string, socket: BrowserWebRTCSocket): void {
+  export function hasHost(owner: BrowserOwner.Info, pageId: string): boolean {
+    return Boolean(channels.get(channelKey(owner, pageId))?.host)
+  }
+
+  export function detachHost(owner: BrowserOwner.Info, pageId: string, socket: BrowserWebRTCSocket): boolean {
     const key = channelKey(owner, pageId)
     const channel = channels.get(key)
-    if (!channel || channel.host?.socket !== socket) return
+    if (!channel || channel.host?.socket !== socket) return false
     channel.host = undefined
     if (channel.viewer) {
       closeActiveConnection(channel, pageId, channel.viewer.socket)
       send(channel.viewer.socket, { type: "webrtc.host.pending", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId })
     }
     deleteIfEmpty(key, channel)
+    return true
   }
 
   export function handleViewerMessage(

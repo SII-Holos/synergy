@@ -84,6 +84,27 @@ export namespace HolosAuth {
         portalUrl: HOLOS_PORTAL_URL,
       },
     })
+    const credential = await getStoredCredential()
+    if (!credential) return
+    await ensureClarusChannelAccount(credential.agentId)
+  }
+
+  export async function ensureClarusChannelAccount(agentId: string): Promise<boolean> {
+    const stored = await Config.domainGet("channels")
+    const existing = stored.channel?.clarus
+    if (existing?.type === "clarus" && existing.accounts[agentId]) return false
+    await Config.domainUpdate("channels", {
+      channel: {
+        clarus: {
+          type: "clarus",
+          accounts: {
+            ...(existing?.type === "clarus" ? existing.accounts : {}),
+            [agentId]: { enabled: false },
+          },
+        },
+      },
+    })
+    return true
   }
 
   export async function reloadRuntime(): Promise<void> {

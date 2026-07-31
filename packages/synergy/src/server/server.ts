@@ -15,6 +15,7 @@ import { Provider } from "../provider/provider"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
 import { ConfigImport } from "../config/import"
+import { ManagedProjectArchiveError } from "../channel/managed-project-ownership"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
 import { ScopeContext } from "../scope/context"
@@ -70,7 +71,7 @@ import { GlobalNavRoute } from "./global-nav"
 import { GitHubConfiguredRoute } from "./github-configured"
 import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
-import { BrowserRoute } from "./browser-route"
+import { BrowserRoute, configureBrowserViewerOrigins } from "./browser-route"
 import { BlueprintRoute } from "./blueprint"
 import { LatticeRoute } from "./lattice"
 import { WorkflowRoute } from "./workflow"
@@ -377,7 +378,8 @@ export namespace Server {
             if (
               err instanceof ConfigImport.RevisionConflictError ||
               err instanceof ConfigImport.LockedError ||
-              err instanceof Worktree.UnavailableError
+              err instanceof Worktree.UnavailableError ||
+              err instanceof ManagedProjectArchiveError
             )
               status = 409
             else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
@@ -1601,6 +1603,7 @@ export namespace Server {
   export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
     const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
     _corsWhitelist = new Set([...(opts.cors ?? []), ...(isExternalHost ? lanOrigins() : [])])
+    configureBrowserViewerOrigins(opts.cors ?? [])
 
     const args = {
       hostname: opts.hostname,
