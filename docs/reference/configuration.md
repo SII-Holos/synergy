@@ -224,7 +224,6 @@ A local provider connection can reuse a canonical Models.dev catalog while keepi
 {
   "provider": {
     "deepseek-team": {
-      "profile": "deepseek",
       "modelsDevProviderID": "deepseek",
       "name": "DeepSeek Team",
       "env": ["DEEPSEEK_TEAM_API_KEY"],

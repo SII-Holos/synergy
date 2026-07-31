@@ -149,8 +149,22 @@ export namespace ProviderCatalog {
     return `${providerID}:${identityHash}`
   }
 
-  async function hashIdentity(providerID: string, profileID: string, identity: string) {
-    const bytes = new TextEncoder().encode(`${providerID}\u0000${profileID}\u0000${identity}`)
+  function normalizeDiscoveryEndpoint(baseURL: string | undefined) {
+    const value = baseURL?.trim()
+    if (!value) return ""
+    try {
+      const url = new URL(value)
+      url.hash = ""
+      url.pathname = url.pathname.replace(/\/+$/, "") || "/"
+      return url.toString().replace(/\/$/, "")
+    } catch {
+      return value.replace(/\/+$/, "")
+    }
+  }
+
+  async function hashIdentity(providerID: string, profileID: string, baseURL: string | undefined, identity: string) {
+    const endpoint = normalizeDiscoveryEndpoint(baseURL)
+    const bytes = new TextEncoder().encode(`${providerID}\u0000${profileID}\u0000${endpoint}\u0000${identity}`)
     const digest = await crypto.subtle.digest("SHA-256", bytes)
     return Buffer.from(digest).toString("hex")
   }
@@ -175,7 +189,7 @@ export namespace ProviderCatalog {
     const protectedKeys = new Set([currentKey])
     for (const profile of ProviderProfile.all()) {
       if (!profile.fetchModelCatalog && !profile.fetchModels) continue
-      const context = await resolveLiveDiscoveryContext(profile).catch(() => undefined)
+      const context = await resolveLiveDiscoveryContext(profile, profile.id, profile.baseURL).catch(() => undefined)
       if (context?.auth) protectedKeys.add(snapshotKey(profile.id, context.identityHash))
     }
     if (store.size > MAX_SNAPSHOT_ENTRIES) {
@@ -497,6 +511,7 @@ export namespace ProviderCatalog {
   async function resolveLiveDiscoveryContext(
     profile: ProviderProfile.Profile,
     providerID = profile.id,
+    baseURL = profile.baseURL,
   ): Promise<LiveDiscoveryContext> {
     const selected = await Auth.select(providerID)
     const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
@@ -513,7 +528,7 @@ export namespace ProviderCatalog {
         : profile.authKind === "none"
           ? "anonymous"
           : "unauthenticated")
-    return { auth: selected?.auth, identityHash: await hashIdentity(providerID, profile.id, identity) }
+    return { auth: selected?.auth, identityHash: await hashIdentity(providerID, profile.id, baseURL, identity) }
   }
 
   function configuredProviders(config: unknown): Record<string, ConfiguredProvider> {
@@ -544,13 +559,14 @@ export namespace ProviderCatalog {
     for (const [providerID, profile] of profiles) {
       if (!profile.fetchModelCatalog && !profile.fetchModels) continue
       const configured = configuredProviders(config)[providerID]
+      const baseURL =
+        (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
+        configured?.api ??
+        profile.baseURL
       targets.set(providerID, {
         profile,
-        context: await resolveLiveDiscoveryContext(profile, providerID),
-        baseURL:
-          (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
-          configured?.api ??
-          profile.baseURL,
+        context: await resolveLiveDiscoveryContext(profile, providerID, baseURL),
+        baseURL,
       })
     }
     return targets
@@ -656,7 +672,7 @@ export namespace ProviderCatalog {
       (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
       configured?.api ??
       profile.baseURL
-    const context = await resolveLiveDiscoveryContext(profile, providerID)
+    const context = await resolveLiveDiscoveryContext(profile, providerID, resolvedBaseURL)
     const key = snapshotKey(providerID, context.identityHash)
     const pending = refreshInFlight.get(key)
     if (pending) return pending

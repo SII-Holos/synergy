@@ -98,7 +98,7 @@ export function registerBuiltinProviderProfiles() {
         fetch: input.fetch,
       }).catch(() => undefined)
       if (!access) return []
-      return CodexProvider.fetchModelIDs(access, input.fetch, input.providerID)
+      return CodexProvider.fetchModelIDs(access, input.fetch, input.providerID, input.baseURL)
     },
     fetchModelCatalog: async (input) => {
       const access = await CodexProvider.resolveToken({
@@ -107,7 +107,7 @@ export function registerBuiltinProviderProfiles() {
         fetch: input.fetch,
       }).catch(() => undefined)
       if (!access) return []
-      return CodexProvider.fetchModelCatalog(access, input.fetch, input.providerID)
+      return CodexProvider.fetchModelCatalog(access, input.fetch, input.providerID, input.baseURL)
     },
     fetchUsage: (input) => CodexProvider.fetchUsage(input.fetch, input.providerID),
     refreshAuth: (input) =>

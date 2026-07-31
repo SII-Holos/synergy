@@ -436,6 +436,21 @@ test("fetchModelIDs preserves future account-visible model slugs", async () => {
   expect(ids).toEqual(["gpt-5.6-sol", "future-codex-model"])
 })
 
+test("Codex discovery uses the configured connection endpoint", async () => {
+  const token = accessToken({ accountID: "acct_custom_endpoint" })
+  const catalog = await CodexProvider.fetchModelCatalog(
+    token,
+    async (input) => {
+      expect(String(input)).toBe("https://codex-proxy.invalid/custom/models?client_version=1.0.0")
+      return jsonResponse({ models: [{ slug: "proxy-model", priority: 1 }] })
+    },
+    secondaryProviderID,
+    "https://codex-proxy.invalid/custom/",
+  )
+
+  expect(catalog.map((entry) => entry.id)).toEqual(["proxy-model"])
+})
+
 test("fetchModelCatalog parses Codex context windows without filtering supported_in_api false", async () => {
   const token = accessToken({ accountID: "acct_catalog" })
   const catalog = await CodexProvider.fetchModelCatalog(token, async (input, init) => {

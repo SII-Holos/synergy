@@ -201,6 +201,19 @@ test("catalog snapshots include the runtime profile identity", async () => {
   expect(new Set(matching.map((snapshot: { identityHash: string }) => snapshot.identityHash)).size).toBe(2)
 })
 
+test("catalog snapshots include the normalized discovery endpoint", async () => {
+  fetchCatalog = async () => [{ id: "endpoint-model" }]
+  await ProviderCatalog.refresh(providerID, undefined, "https://first.invalid/v1/")
+  await ProviderCatalog.refresh(providerID, undefined, "https://second.invalid/v1")
+
+  const persisted = JSON.parse(await Bun.file(Global.Path.providerModelCatalogCache).text())
+  const matching = persisted.snapshots.filter((snapshot: { providerID: string }) => snapshot.providerID === providerID)
+  expect(matching).toHaveLength(2)
+  expect(new Set(matching.map((snapshot: { identityHash: string }) => snapshot.identityHash)).size).toBe(2)
+  expect(JSON.stringify(matching)).not.toContain("first.invalid")
+  expect(JSON.stringify(matching)).not.toContain("second.invalid")
+})
+
 test("configured account endpoint is passed to live model discovery", async () => {
   await ProviderCatalog.resolve({
     config: {

@@ -618,13 +618,18 @@ export namespace CodexProvider {
     }
   }
 
-  async function fetchModelPayload(accessToken: string, fetchFn: FetchLike = fetch, providerID = PROVIDER_ID) {
+  async function fetchModelPayload(
+    accessToken: string,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+    discoveryBaseURL = baseURL(),
+  ) {
     const response = await ProviderAuthRecovery.execute({
       providerID,
       request: async () => {
         const current =
           (await resolveToken({ providerID, allowMissing: true, fetch: fetchFn }).catch(() => undefined)) ?? accessToken
-        return fetchFn(`${baseURL()}/models?client_version=1.0.0`, {
+        return fetchFn(`${discoveryBaseURL.trim().replace(/\/+$/, "")}/models?client_version=1.0.0`, {
           headers: {
             Authorization: `Bearer ${current}`,
             Accept: "application/json",
@@ -647,8 +652,9 @@ export namespace CodexProvider {
     accessToken: string,
     fetchFn: FetchLike = fetch,
     providerID = PROVIDER_ID,
+    discoveryBaseURL = baseURL(),
   ): Promise<ProviderProfile.ModelCatalogEntry[]> {
-    const entries = await fetchModelPayload(accessToken, fetchFn, providerID)
+    const entries = await fetchModelPayload(accessToken, fetchFn, providerID, discoveryBaseURL)
     const models: Array<ProviderProfile.ModelCatalogEntry & { rank: number }> = []
     for (const entry of entries) {
       if (!entry || typeof entry !== "object") continue
@@ -672,8 +678,9 @@ export namespace CodexProvider {
     accessToken: string,
     fetchFn: FetchLike = fetch,
     providerID = PROVIDER_ID,
+    discoveryBaseURL = baseURL(),
   ): Promise<string[]> {
-    const payload = await fetchModelCatalog(accessToken, fetchFn, providerID)
+    const payload = await fetchModelCatalog(accessToken, fetchFn, providerID, discoveryBaseURL)
     return payload.map((item) => item.id)
   }
 
