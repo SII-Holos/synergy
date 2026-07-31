@@ -489,7 +489,13 @@ export namespace Provider {
       return true
     }
 
-    const modelsDev = { ...(await ProviderCatalog.resolve({ config, includeLive: true })) }
+    const configProviders = Object.entries(config.provider ?? {})
+    const inheritsModelsDev = configProviders.some(([, provider]) => provider.modelsDevProviderID)
+    const [liveModelsDev, inheritedModelsDev] = await Promise.all([
+      ProviderCatalog.resolve({ config, includeLive: true }),
+      inheritsModelsDev ? ProviderCatalog.resolve({ config, includeLive: false }) : Promise.resolve(undefined),
+    ])
+    const modelsDev = { ...liveModelsDev }
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
     const providers: { [providerID: string]: Info } = {}
@@ -500,11 +506,6 @@ export namespace Provider {
     const sdk = new Map<number, { instance: SDK; createdAt: number }>()
 
     log.info("init")
-
-    const configProviders = Object.entries(config.provider ?? {})
-    const inheritedModelsDev = configProviders.some(([, provider]) => provider.modelsDevProviderID)
-      ? await ProviderCatalog.resolve({ config, includeLive: false })
-      : modelsDev
 
     function mergeProvider(providerID: string, provider: Partial<Info>) {
       const existing = providers[providerID]
@@ -523,7 +524,7 @@ export namespace Provider {
     for (const [providerID, provider] of configProviders) {
       const sourceProviderID = provider.modelsDevProviderID ?? providerID
       const sourceCatalog = provider.modelsDevProviderID
-        ? inheritedModelsDev[sourceProviderID]
+        ? inheritedModelsDev?.[sourceProviderID]
         : modelsDev[sourceProviderID]
       if (provider.modelsDevProviderID && !sourceCatalog) {
         log.warn("configured provider model catalog source not found", {
@@ -561,7 +562,7 @@ export namespace Provider {
       }
 
       for (const [modelID, model] of Object.entries(provider.models ?? {})) {
-        const existingModel = parsed.models[model.id ?? modelID]
+        const existingModel = parsed.models[model.id ?? modelID] ?? parsed.models[modelID]
         const name = iife(() => {
           if (model.name) return model.name
           if (model.id && model.id !== modelID) return modelID

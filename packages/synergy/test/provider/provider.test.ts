@@ -412,6 +412,7 @@ test("custom provider inherits a models.dev catalog without sharing account iden
               env: ["ANTHROPIC_SECONDARY_API_KEY"],
               models: {
                 "claude-sonnet-4-5": {
+                  id: "secondary-sonnet-api-id",
                   name: "Secondary Sonnet",
                 },
               },
@@ -437,8 +438,11 @@ test("custom provider inherits a models.dev catalog without sharing account iden
       expect(secondary.env).toEqual(["ANTHROPIC_SECONDARY_API_KEY"])
       expect(inherited.name).toBe("Secondary Sonnet")
       expect(inherited.providerID).toBe("anthropic-secondary")
+      expect(inherited.api.id).toBe("secondary-sonnet-api-id")
       expect(inherited.api.url).toBe("https://secondary.example.test/v1")
       expect(inherited.api.npm).toBe("@ai-sdk/openai-compatible")
+      expect(inherited.limit.context).toBeGreaterThan(0)
+      expect(inherited.capabilities.reasoning).toBe(true)
       expect(inheritedWithoutOverride.variants).toEqual({
         low: { reasoningEffort: "low" },
         medium: { reasoningEffort: "medium" },
