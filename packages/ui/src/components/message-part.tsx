@@ -2090,6 +2090,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
               charsReceived={charsAnimated()}
               hideDetails={props.hideDetails}
               defaultOpen={props.defaultOpen}
+              sessionId={props.message.sessionID}
+              messageId={props.message.id}
             />
           </Match>
         </Switch>

@@ -58,7 +58,7 @@ describe("plugin catalog migration", () => {
     expect(lock.version).toBe(2)
     expect(lock.plugins["migrated-plugin"]).toMatchObject({
       version: "2.0.0",
-      apiVersion: "3.0",
+      apiVersion: "4.0",
       generation: "migrated-generation",
     })
     const incompatible = JSON.parse(await Bun.file(path.join(data, "plugin-incompatible.json")).text())

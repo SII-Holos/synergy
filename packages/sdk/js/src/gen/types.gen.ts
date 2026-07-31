@@ -2509,7 +2509,7 @@ export type ProviderConfig = {
         [key: string]: string
       }
       provider?: {
-        npm: string
+        npm?: string
       }
       /**
        * Variant-specific configuration

@@ -9006,6 +9006,14 @@ msgid "nav.tools.title"
 msgstr "工具"
 
 #. js-lingui-explicit-id
+msgid "plugin.textAction.back"
+msgstr "返回"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.close"
+msgstr "关闭"
+
+#. js-lingui-explicit-id
 msgid "plugin.textAction.copy"
 msgstr "复制"
 
@@ -9018,16 +9026,24 @@ msgid "plugin.textAction.failed"
 msgstr "文本操作失败"
 
 #. js-lingui-explicit-id
+msgid "plugin.textAction.loading"
+msgstr "正在处理…"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.menu"
+msgstr "文本操作"
+
+#. js-lingui-explicit-id
 msgid "plugin.textAction.paste"
 msgstr "粘贴"
 
 #. js-lingui-explicit-id
-msgid "plugin.textAction.selectAll"
-msgstr "全选"
+msgid "plugin.textAction.retry"
+msgstr "重试"
 
 #. js-lingui-explicit-id
-msgid "plugin.textAction.tooLarge"
-msgstr "所选文本过长，扩展无法处理。"
+msgid "plugin.textAction.selectAll"
+msgstr "全选"
 
 #. js-lingui-explicit-id
 msgid "plugin.textAction.unavailable"

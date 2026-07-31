@@ -1,3 +1,4 @@
+import { HOST_OWNED_MESSAGE_TYPES } from "@ericsanchezok/synergy-plugin"
 import { registerPartComponent, PART_MAPPING, type PartComponent } from "@ericsanchezok/synergy-ui/message-part"
 
 export type PartRenderer = PartComponent
@@ -11,6 +12,9 @@ export function registerPartRenderer(
   renderer: PartRenderer | undefined,
   loader?: () => Promise<{ default: PartRenderer }>,
 ): () => void {
+  if ((HOST_OWNED_MESSAGE_TYPES as readonly string[]).includes(type)) {
+    throw new Error(`Plugin message renderer cannot replace host-owned message type: ${type}`)
+  }
   registerPartComponent(type, renderer as any)
   if (loader) loaders.set(type, loader)
   return () => {

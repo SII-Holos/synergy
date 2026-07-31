@@ -1,13 +1,88 @@
-export interface TextSelectionSnapshot {
-  text: string
+import type {
+  PluginTextActionPresentation,
+  PluginTextActionWhen,
+  PluginTextSelectionSnapshot,
+} from "@ericsanchezok/synergy-plugin"
+import type { Component } from "solid-js"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+
+export type TextSelectionSnapshot = PluginTextSelectionSnapshot
+
+export type TextSelectionAnchor = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type TextActionPresentationProps = {
+  invocationId: string
+  selection: TextSelectionSnapshot
+  output: unknown
+  close(): void
 }
 
 export interface TextAction {
   id: string
+  pluginId: string
+  pluginName: string
   label: string
   icon?: string
   order: number
-  run(snapshot: TextSelectionSnapshot, signal: AbortSignal): Promise<void>
+  when?: PluginTextActionWhen
+  presentation?: {
+    kind: PluginTextActionPresentation["kind"]
+    width?: PluginTextActionPresentation["width"]
+    load(): Promise<{ default: Component<TextActionPresentationProps> }>
+  }
+  run(input: { selection: TextSelectionSnapshot }, signal: AbortSignal): Promise<unknown>
+}
+
+export type TextActionGroup = {
+  pluginId: string
+  pluginName: string
+  order: number
+  actions: TextAction[]
+}
+
+type SelectionUpdateOptions = Partial<Omit<TextSelectionSnapshot, "selectionId" | "text">> & {
+  excluded?: boolean
+  owner?: Element
+  anchor?: TextSelectionAnchor
+}
+
+const actionOrder = (a: TextAction, b: TextAction) => a.order - b.order || a.id.localeCompare(b.id)
+
+export function groupTextActions(actions: TextAction[]): TextActionGroup[] {
+  const groups = new Map<string, TextActionGroup>()
+  for (const action of actions) {
+    const group = groups.get(action.pluginId) ?? {
+      pluginId: action.pluginId,
+      pluginName: action.pluginName,
+      order: action.order,
+      actions: [],
+    }
+    group.order = Math.min(group.order, action.order)
+    group.actions.push(action)
+    groups.set(action.pluginId, group)
+  }
+  return [...groups.values()]
+    .map((group) => ({ ...group, actions: group.actions.toSorted(actionOrder) }))
+    .toSorted(
+      (a, b) => a.order - b.order || a.pluginName.localeCompare(b.pluginName) || a.pluginId.localeCompare(b.pluginId),
+    )
+}
+
+function actionApplies(action: TextAction, snapshot: TextSelectionSnapshot) {
+  const when = action.when
+  if (!when) return true
+  const length = [...snapshot.text].length
+  if (when.sources && !when.sources.includes(snapshot.source)) return false
+  if (when.origins && !when.origins.includes(snapshot.origin)) return false
+  if (when.minChars !== undefined && length < when.minChars) return false
+  if (when.maxChars !== undefined && length > when.maxChars) return false
+  if (when.editable !== undefined && snapshot.editable !== when.editable) return false
+  return true
 }
 
 export class TextSelectionController {
@@ -19,6 +94,8 @@ export class TextSelectionController {
   #timer?: ReturnType<typeof setTimeout>
   #generation = 0
   #current?: TextSelectionSnapshot
+  #owner?: Element
+  #anchor?: TextSelectionAnchor
   #tooLarge = false
 
   constructor(options?: { settleMs?: number; maxChars?: number }) {
@@ -30,17 +107,46 @@ export class TextSelectionController {
     return this.#current ? { ...this.#current } : undefined
   }
 
+  owner() {
+    return this.#owner
+  }
+
+  anchor() {
+    return this.#anchor ? { ...this.#anchor } : undefined
+  }
+
+  owns(target: Node | null) {
+    if (!this.#owner || !target) return false
+    return (
+      this.#owner === target ||
+      this.#owner.contains(target) ||
+      (target instanceof Element && target.contains(this.#owner))
+    )
+  }
+
   tooLarge() {
     return this.#tooLarge
   }
 
-  update(text: string | undefined, options?: { excluded?: boolean }) {
+  update(text: string | undefined, options: SelectionUpdateOptions = {}) {
     const generation = ++this.#generation
     if (this.#timer) clearTimeout(this.#timer)
-    const raw = options?.excluded ? "" : (text ?? "")
+    const raw = options.excluded ? "" : (text ?? "")
     const normalized = raw.trim() ? raw : ""
-    this.#tooLarge = normalized.length > this.#maxChars
-    this.#current = normalized && !this.#tooLarge ? { text: normalized } : undefined
+    this.#tooLarge = [...normalized].length > this.#maxChars
+    this.#current =
+      normalized && !this.#tooLarge
+        ? {
+            selectionId: generateUUID(),
+            text: normalized,
+            source: options.source ?? "document",
+            origin: options.origin ?? (options.editable ? "editable" : "other"),
+            editable: options.editable ?? false,
+            wholeContainer: options.wholeContainer ?? false,
+          }
+        : undefined
+    this.#owner = normalized ? options.owner : undefined
+    this.#anchor = normalized ? options.anchor : undefined
     this.#timer = setTimeout(() => {
       if (generation !== this.#generation) return
       this.#timer = undefined
@@ -64,7 +170,15 @@ export class TextSelectionController {
   }
 
   actions() {
-    return [...this.#actions.values()].toSorted((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+    return [...this.#actions.values()].toSorted(actionOrder)
+  }
+
+  hasAction(id: string) {
+    return this.#actions.has(id)
+  }
+
+  actionsFor(snapshot: TextSelectionSnapshot) {
+    return this.actions().filter((action) => actionApplies(action, snapshot))
   }
 
   onActionsChanged(listener: () => void) {
@@ -72,12 +186,11 @@ export class TextSelectionController {
     return () => this.#actionListeners.delete(listener)
   }
 
-  async run(actionId: string, signal: AbortSignal) {
+  async run(actionId: string, snapshot: TextSelectionSnapshot, signal: AbortSignal) {
     const action = this.#actions.get(actionId)
-    const snapshot = this.current()
     if (!action) throw new Error(`Unknown text action: ${actionId}`)
-    if (!snapshot) throw new Error("No active text selection")
-    await action.run(snapshot, signal)
+    if (!actionApplies(action, snapshot)) throw new Error("Text action is not available for this selection")
+    return action.run({ selection: { ...snapshot } }, signal)
   }
 
   dispose() {
@@ -86,6 +199,8 @@ export class TextSelectionController {
     this.#actionListeners.clear()
     this.#actions.clear()
     this.#current = undefined
+    this.#owner = undefined
+    this.#anchor = undefined
   }
 }
 

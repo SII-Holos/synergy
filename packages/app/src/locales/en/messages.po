@@ -9006,6 +9006,14 @@ msgid "nav.tools.title"
 msgstr "Tools"
 
 #. js-lingui-explicit-id
+msgid "plugin.textAction.back"
+msgstr "Back"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.close"
+msgstr "Close"
+
+#. js-lingui-explicit-id
 msgid "plugin.textAction.copy"
 msgstr "Copy"
 
@@ -9018,16 +9026,24 @@ msgid "plugin.textAction.failed"
 msgstr "Text action failed"
 
 #. js-lingui-explicit-id
+msgid "plugin.textAction.loading"
+msgstr "Working…"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.menu"
+msgstr "Text actions"
+
+#. js-lingui-explicit-id
 msgid "plugin.textAction.paste"
 msgstr "Paste"
 
 #. js-lingui-explicit-id
-msgid "plugin.textAction.selectAll"
-msgstr "Select all"
+msgid "plugin.textAction.retry"
+msgstr "Retry"
 
 #. js-lingui-explicit-id
-msgid "plugin.textAction.tooLarge"
-msgstr "This selection is too large for extensions."
+msgid "plugin.textAction.selectAll"
+msgstr "Select all"
 
 #. js-lingui-explicit-id
 msgid "plugin.textAction.unavailable"

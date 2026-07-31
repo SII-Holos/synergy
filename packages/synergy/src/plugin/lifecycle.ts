@@ -2,6 +2,7 @@ import { Config } from "../config/config"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { pluginRuntimeManager } from "./runtime"
+import { pluginAgentCallRuntime } from "./agent-call-runtime"
 import { PluginHookPointRegistry } from "./hook-points"
 import {
   ensureRuntime,
@@ -182,7 +183,7 @@ async function executePluginHooks<Input, Output>(
           ? error.message
           : String(error)
       errors.push(`Hook ${pointName} handler ${contribution.id} failed: ${message}`)
-      markContributionDegraded(plugin, contribution.id, point.redactErrors ? new Error(message) : error)
+      markContributionDegraded(plugin, contribution, point.redactErrors ? new Error(message) : error)
       log.error("plugin contribution failed", {
         pluginId: plugin.id,
         contributionId: contribution.id,
@@ -273,6 +274,14 @@ export async function deliverHookForPlugin<Input>(
     }
   }
   return { status: "delivered", handlerCount: result.succeededHandlers }
+}
+
+export function activateScope(scopeId: string) {
+  pluginAgentCallRuntime.enableScope(scopeId)
+}
+
+export function disposeScope(scopeId: string) {
+  return pluginAgentCallRuntime.disableScope(scopeId)
 }
 
 export async function init() {

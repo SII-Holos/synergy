@@ -1,6 +1,8 @@
 import z from "zod"
 import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
 import { McpServerConfig } from "./mcp.js"
+import { HOST_OWNED_MESSAGE_TYPES, PLUGIN_MODEL_ROLES } from "./plugin-types.js"
+import { PluginToolId } from "./ids.js"
 
 const Id = z.string().regex(/^[a-z][a-z0-9.-]*$/)
 const ContributionId = z.string().regex(/^[a-z][A-Za-z0-9._-]*$/)
@@ -146,6 +148,7 @@ const NavigationItemContribution = UIBase.extend({
 const MessageRendererContribution = UIBase.extend({
   kind: z.literal("ui.messageRenderer"),
   messageType: z.string().min(1),
+  tool: z.string().min(1).optional(),
 }).strict()
 
 const ComposerActionContribution = UIBase.extend({
@@ -166,12 +169,33 @@ const SelectionExtensionContribution = HeadlessUIBase.extend({
   kind: z.literal("ui.selectionExtension"),
 }).strict()
 
+const TextSelectionSource = z.enum(["document", "code", "terminal"])
+const TextSelectionOrigin = z.enum(["user_message", "assistant_message", "editable", "other"])
+
 const TextActionContribution = ContributionBase.extend({
   kind: z.literal("ui.textAction"),
   label: z.string().min(1),
   icon: z.string().optional(),
   order: z.number().int(),
   operation: ContributionId,
+  when: z
+    .object({
+      sources: z.array(TextSelectionSource).min(1).optional(),
+      origins: z.array(TextSelectionOrigin).min(1).optional(),
+      minChars: z.number().int().nonnegative().optional(),
+      maxChars: z.number().int().positive().optional(),
+      editable: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
+  presentation: z
+    .object({
+      kind: z.literal("popover"),
+      component: Component,
+      width: z.enum(["sm", "md", "lg"]).optional(),
+    })
+    .strict()
+    .optional(),
 }).strict()
 
 const MessageSlotContribution = HeadlessUIBase.extend({
@@ -231,6 +255,16 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
 
 export type PluginManifestContribution = z.infer<typeof PluginManifestContribution>
 
+function trustedUIComponent(contribution: PluginManifestContribution) {
+  if (contribution.kind === "ui.textAction") return contribution.presentation?.component
+  if (!contribution.kind.startsWith("ui.") || !("component" in contribution)) return undefined
+  return contribution.component
+}
+
+export function hasTrustedUIComponent(contribution: PluginManifestContribution): boolean {
+  return Boolean(trustedUIComponent(contribution))
+}
+
 const Artifact = z.object({ entry: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/i) }).strict()
 
 export const PluginManifest = z
@@ -261,20 +295,38 @@ export const PluginManifest = z
   .superRefine((manifest, context) => {
     const ids = new Set<string>()
     const capabilities = new Set(manifest.capabilities.map((item) => item.id))
+    const agentCapability = manifest.capabilities.find((item) => item.id === "agent.call")
+    const modelRoles = agentCapability?.constraints?.modelRoles
+    if (
+      modelRoles !== undefined &&
+      (!Array.isArray(modelRoles) ||
+        modelRoles.length === 0 ||
+        new Set(modelRoles).size !== modelRoles.length ||
+        modelRoles.some(
+          (role) => typeof role !== "string" || !(PLUGIN_MODEL_ROLES as readonly string[]).includes(role),
+        ))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["capabilities", "agent.call", "constraints", "modelRoles"],
+        message: "agent.call modelRoles must contain unique PluginModelRole values",
+      })
+    }
     const settings = manifest.contributions.find((item) => item.kind === "ui.settings")
     const settingProperties =
       settings?.formSchema && typeof settings.formSchema.properties === "object" && settings.formSchema.properties
         ? (settings.formSchema.properties as Record<string, unknown>)
         : {}
     for (const contribution of manifest.contributions) {
-      if (ids.has(contribution.id)) {
+      const contributionKey = `${contribution.kind}:${contribution.id}`
+      if (ids.has(contributionKey)) {
         context.addIssue({
           code: "custom",
           path: ["contributions"],
-          message: `Duplicate contribution id ${contribution.id}`,
+          message: `Duplicate ${contribution.kind} contribution id ${contribution.id}`,
         })
       }
-      ids.add(contribution.id)
+      ids.add(contributionKey)
       for (const required of contribution.requires ?? []) {
         if (!capabilities.has(required)) {
           context.addIssue({
@@ -315,6 +367,17 @@ export const PluginManifest = z
         })
       }
       if (contribution.kind === "ui.textAction") {
+        if (
+          contribution.when?.minChars !== undefined &&
+          contribution.when?.maxChars !== undefined &&
+          contribution.when.minChars > contribution.when.maxChars
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "when"],
+            message: "Text action minChars cannot exceed maxChars",
+          })
+        }
         const operation = manifest.contributions.find(
           (item) => item.kind === "operation" && item.id === contribution.operation,
         )
@@ -338,17 +401,45 @@ export const PluginManifest = z
           message: "Plugin tool input must be a top-level JSON Schema object",
         })
       }
-      if (
-        contribution.kind.startsWith("ui.") &&
-        "component" in contribution &&
-        contribution.component &&
-        !manifest.artifacts.ui
-      ) {
+      const component = trustedUIComponent(contribution)
+      if (component && !manifest.artifacts.ui) {
         context.addIssue({
           code: "custom",
           path: ["artifacts", "ui"],
           message: "Trusted UI contribution requires a UI artifact",
         })
+      }
+      if (component && manifest.artifacts.ui && component.entry !== manifest.artifacts.ui.entry) {
+        context.addIssue({
+          code: "custom",
+          path: ["contributions", contribution.id, "component", "entry"],
+          message: "Trusted UI component must use the verified UI artifact entry",
+        })
+      }
+      if (contribution.kind === "ui.messageRenderer") {
+        if (contribution.messageType === "tool") {
+          const owned =
+            contribution.tool &&
+            manifest.contributions.some(
+              (item) => item.kind === "tool" && PluginToolId.format(manifest.id, item.id) === contribution.tool,
+            )
+          if (!owned) {
+            context.addIssue({
+              code: "custom",
+              path: ["contributions", contribution.id, "tool"],
+              message: "Message renderer must target a Tool contributed by the same plugin",
+            })
+          }
+        } else if (
+          contribution.tool ||
+          (HOST_OWNED_MESSAGE_TYPES as readonly string[]).includes(contribution.messageType)
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "messageType"],
+            message: "Message renderer cannot replace a host-owned message type",
+          })
+        }
       }
     }
     const needsRuntime = manifest.contributions.some((item) =>
@@ -366,3 +457,7 @@ export const PluginManifest = z
   })
 
 export type PluginManifest = z.infer<typeof PluginManifest>
+
+export function manifestHasTrustedUI(manifest: Pick<PluginManifest, "contributions">): boolean {
+  return manifest.contributions.some(hasTrustedUIComponent)
+}

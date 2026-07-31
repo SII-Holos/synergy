@@ -4,19 +4,19 @@ Synergy supports two UI paths: host-rendered declarations and user-approved trus
 
 ## Contribution Kinds
 
-| Kind                    | Purpose                                              |
-| ----------------------- | ---------------------------------------------------- |
-| `ui.workbenchPanel`     | side or bottom workbench surface                     |
-| `ui.navigationItem`     | sidebar or plugin page destination                   |
-| `ui.messageRenderer`    | renderer for a declared message type                 |
-| `ui.composerAction`     | component in a declared composer slot                |
-| `ui.settings`           | schema-driven settings and optional custom component |
-| `ui.theme`              | packaged structured JSON theme                       |
-| `ui.icon`               | packaged SVG icon                                    |
-| `ui.composerExtension`  | headless lifecycle for Composer document services    |
-| `ui.selectionExtension` | headless lifecycle for settled selected text         |
-| `ui.textAction`         | host-rendered action for the selected-text menu      |
-| `ui.messageSlot`        | additive content around canonical messages           |
+| Kind                    | Purpose                                                     |
+| ----------------------- | ----------------------------------------------------------- |
+| `ui.workbenchPanel`     | side or bottom workbench surface                            |
+| `ui.navigationItem`     | sidebar or plugin page destination                          |
+| `ui.messageRenderer`    | renderer for a declared message type or one owned Tool card |
+| `ui.composerAction`     | component in a declared composer slot                       |
+| `ui.settings`           | schema-driven settings and optional custom component        |
+| `ui.theme`              | packaged structured JSON theme                              |
+| `ui.icon`               | packaged SVG icon                                           |
+| `ui.composerExtension`  | headless lifecycle for Composer document services           |
+| `ui.selectionExtension` | headless lifecycle for settled selected text                |
+| `ui.textAction`         | host-rendered action for the selected-text menu             |
+| `ui.messageSlot`        | additive content around canonical messages                  |
 
 The host owns placement, lifecycle, Scope/Session binding, accessibility shell, and disposal. Each registration returns one disposer and is removed before reload.
 
@@ -81,13 +81,31 @@ Draft callbacks run in parallel after IME composition settles. Preflight callbac
 
 ## Selection and Text Actions
 
-`selectionExtension()` receives only `{ text }` after the active selection has remained stable for 250 ms. Password, credential, explicitly excluded, and oversized selections are not distributed. DOM text, the Composer, Notes, Monaco source, and Terminal selection use the same App controller; Browser-page selection remains inside the Browser runtime boundary.
+`selectionExtension()` receives the immutable selected-text snapshot after the active selection has remained stable for 250 ms. The snapshot includes a host-generated `selectionId`, text, `document | code | terminal` source, `user_message | assistant_message | editable | other` origin, and editable/whole-container flags. Password, credential, explicitly excluded, and oversized selections are not distributed. DOM text, inputs, textareas, the Composer, Notes, Monaco source, and Terminal selection use the same App controller; Browser-page selection remains inside the Browser runtime boundary.
 
-`textAction()` declares a label, order, and a same-plugin UI-exposed command operation. The host adds it to the accessible selected-text menu and invokes that existing operation with the exact `{ text }` snapshot. The host owns copy/edit actions, focus, pending/error/cancel state, narrow-screen placement, and theme behavior; operation output remains plugin-owned.
+`textAction()` declares a label, order, a same-plugin UI-exposed command operation, and optional `when` constraints for source, origin, editability, and Unicode character bounds. The host evaluates those constraints against the frozen snapshot and invokes the operation with `{ selection }`.
+
+Actions are qualified by `pluginId + actionId`, so different plugins may use the same local ID or label without replacing each other. Native edit commands appear first; plugin actions follow in stable plugin groups ordered by group order, plugin name, action order, and local ID. Reload, disable, and uninstall remove only the owning plugin's actions.
+
+Without `presentation`, a text action is a command and closes after execution. With `presentation: { kind: "popover", component, width }`, the host replaces the menu with loading state and then mounts the trusted result component beside the selection. `PluginTextActionSurfaceContext` supplies the invocation ID, frozen selection, validated operation output, and `close()`. The host owns anchoring, viewport collision, one-surface-at-a-time behavior, focus restoration, Escape/outside-click handling, retry/error controls, cancellation, ARIA, and the narrow-screen bottom sheet. The plugin owns only result content; one failed operation or renderer does not affect other registered actions.
 
 ## Message Slots
 
-`messageSlot()` adds a lazy trusted component at `message.before`, `message.after`, or `message.actions`, optionally filtered to user or assistant roles. `PluginMessageSurfaceContext` contains only message ID and role; a plugin with `session.read` queries any required content through its own operation. Slots cannot replace the native message renderer, and `ui.messageRenderer` remains reserved for declared custom message types.
+`messageSlot()` adds a lazy trusted component at `message.before`, `message.after`, or `message.actions`, optionally filtered to user or assistant roles. `PluginMessageSurfaceContext` contains only message ID and role; a plugin with `session.read` queries any required content through its own operation. Slots cannot replace the native message renderer.
+
+`messageRenderer()` may render a declared custom message type. For a plugin-owned Tool card, set `messageType: "tool"` and `tool` to the exact generated host tool name:
+
+```ts
+messageRenderer({
+  id: "correction-card",
+  label: "Correction",
+  messageType: "tool",
+  tool: "plugin__language-coach__record-correction",
+  component: { source: "./src/ui/correction-card.tsx" },
+})
+```
+
+The plugin must contribute that Tool itself; a renderer cannot replace another plugin's or a built-in Tool. The component receives `PluginToolMessageSurfaceContext`, which adds assistant message identity and the bounded Tool `name`, `input`, `metadata`, `title`, `output`, and `status`. It should render useful input/output even when a later query or event subscription is unavailable. Each plugin Tool card owns its own error boundary: a throwing renderer falls back to the normal host Tool card without replacing healthy sibling cards.
 
 ## Resource Tabs
 

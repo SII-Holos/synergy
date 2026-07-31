@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { diffPermissions } from "../../src/plugin/consent/diff"
+import { diffPermissions, evaluatePluginUpdateConsent } from "../../src/plugin/consent/diff"
 
 describe("permission diff", () => {
   test("new install: everything added, no oldVersion", () => {
@@ -32,6 +32,42 @@ describe("permission diff", () => {
     expect(diff.removed.length).toBe(0)
     expect(diff.unchanged.length).toBe(1)
     expect(diff.changed.length).toBe(0)
+  })
+
+  test("requires approval for manifest-only updates without labeling permissions changed", () => {
+    const result = evaluatePluginUpdateConsent({
+      diff: diffPermissions("test-plugin", {
+        oldVersion: "1.0.0",
+        newVersion: "1.1.0",
+        oldCapabilities: ["session.read"],
+        newCapabilities: ["session.read"],
+      }),
+      previous: { manifestHash: "old-manifest", permissionsHash: "same-permissions" },
+      candidate: { manifestHash: "new-manifest", permissionsHash: "same-permissions" },
+    })
+
+    expect(result.permissionsChanged).toBe(false)
+    expect(result.manifestChanged).toBe(true)
+    expect(result.diff.requiresApproval).toBe(true)
+    expect(result.diff.reason).toBe("Plugin manifest changed and requires approval.")
+  })
+
+  test("labels trusted UI permission-contract changes", () => {
+    const result = evaluatePluginUpdateConsent({
+      diff: diffPermissions("test-plugin", {
+        oldVersion: "1.0.0",
+        newVersion: "1.1.0",
+        oldCapabilities: [],
+        newCapabilities: [],
+      }),
+      previous: { manifestHash: "old-manifest", permissionsHash: "old-permissions" },
+      candidate: { manifestHash: "new-manifest", permissionsHash: "new-permissions" },
+    })
+
+    expect(result.permissionsChanged).toBe(true)
+    expect(result.manifestChanged).toBe(true)
+    expect(result.diff.requiresApproval).toBe(true)
+    expect(result.diff.reason).toBe("Plugin permission contract changed and requires approval.")
   })
 
   test("capability added triggers approval with reason", () => {

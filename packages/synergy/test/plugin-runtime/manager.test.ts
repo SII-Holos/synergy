@@ -1,10 +1,11 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import path from "path"
 import { compilePluginManifest } from "@ericsanchezok/synergy-plugin"
 import definition from "./fixtures/runtime-plugin"
 import upgradeDefinition from "./fixtures/upgrade-plugin-v2"
 import { PluginRuntimeError, PluginRuntimeManager } from "../../src/plugin-runtime/manager"
 import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health"
+import { pluginAgentCallRuntime } from "../../src/plugin/agent-call-runtime"
 
 describe("PluginRuntimeManager", () => {
   test("memory recycling is generation-safe and reports the reclaimed runtime", async () => {
@@ -89,6 +90,39 @@ describe("PluginRuntimeManager", () => {
     await manager.stop(definition.id)
   }, 15_000)
 
+  test("waits for cancelled Agent call delivery before stopping a generation", async () => {
+    const manager = new PluginRuntimeManager()
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const manifest = compilePluginManifest(definition, {
+      generation: "stop-after-agent-cancellation",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    await manager.start({
+      manifest,
+      pluginDir: path.dirname(entryPath),
+      entryPath,
+    })
+
+    let releaseCancellation!: () => void
+    const cancellationDelivered = new Promise<void>((resolve) => {
+      releaseCancellation = resolve
+    })
+    using _cancelGeneration = spyOn(pluginAgentCallRuntime, "cancelGeneration").mockImplementation(
+      () => cancellationDelivered,
+    )
+
+    let stopped = false
+    const stopping = manager.stop(manifest.id).then(() => {
+      stopped = true
+    })
+    await Bun.sleep(1)
+    expect(stopped).toBe(false)
+
+    releaseCancellation()
+    await stopping
+    expect(stopped).toBe(true)
+  })
+
   test("activates once and injects scope for every invocation", async () => {
     const manager = new PluginRuntimeManager()
     const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
@@ -125,7 +159,7 @@ describe("PluginRuntimeManager", () => {
         runtime: {
           pluginVersion: "1.0.0",
           pluginGeneration: "manager-test",
-          protocolVersion: 7,
+          protocolVersion: 9,
         },
       })
       expect(second).toMatchObject({ scopeId: "scope-two", activations: 1 })
@@ -164,7 +198,7 @@ describe("PluginRuntimeManager", () => {
         runtime: {
           pluginVersion: "1.0.0",
           pluginGeneration: "in-process-test",
-          protocolVersion: 7,
+          protocolVersion: 9,
         },
       })
       expect(manager.registry.active(manifest.id)?.mode).toBe("inProcess")

@@ -272,6 +272,7 @@ export namespace ToolRegistry {
                 agent: ctx.agent,
                 messageId: ctx.messageID,
                 callId: ctx.callID ?? `${plugin.id}:${contribution.id}`,
+                userMessageId: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
               },
             },
             pluginDir: plugin.pluginDir,

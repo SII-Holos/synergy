@@ -9,6 +9,7 @@ import { createPluginInvocationContext } from "./context-factory.js"
 import { pathToFileURL } from "node:url"
 import { Installation } from "../global/installation.js"
 import { startMemoryMonitor, type MemoryMonitorInput, type MemoryMonitor } from "./resource-limits.js"
+import { pluginAgentCallRuntime } from "../plugin/agent-call-runtime.js"
 
 export type PluginRuntimeErrorCode =
   | "PLUGIN_UNAVAILABLE"
@@ -330,6 +331,7 @@ export class PluginRuntimeManager {
     const previous = this.registry.activate(key)
     if (!previous) return
     previous.state = "draining"
+    await pluginAgentCallRuntime.cancelGeneration(previous.pluginId, previous.generation, "Plugin generation replaced")
     if (previous.inFlight === 0) void this.#stopEntry(previous, graceMs)
   }
 
@@ -473,6 +475,7 @@ export class PluginRuntimeManager {
   async #stopEntry(entry: PluginRuntimeEntry, graceMs: number) {
     if (entry.state === "stopped") return
     entry.state = "stopped"
+    await pluginAgentCallRuntime.cancelGeneration(entry.pluginId, entry.generation)
     entry.memoryMonitor?.stop()
     entry.memoryMonitor = undefined
     await entry.process?.stop(graceMs)
