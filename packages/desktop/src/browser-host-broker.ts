@@ -30,6 +30,10 @@ function isThemeAwarePage(page: ManagedPage): page is BrowserWebRTCHost {
   return "setTheme" in page
 }
 
+function isWebRTCPage(page: ManagedPage): page is BrowserWebRTCHost {
+  return "updateSignalingTicket" in page
+}
+
 export class BrowserHostBrokerClient {
   private socket: WebSocket | null = null
   private pages = new Map<string, ManagedPageEntry>()
@@ -131,7 +135,12 @@ export class BrowserHostBrokerClient {
       return
     }
     if (message.type === "host.registered") return
-    if (message.type !== "page.create" && message.type !== "page.close" && message.type !== "page.command") {
+    if (
+      message.type !== "page.create" &&
+      message.type !== "page.close" &&
+      message.type !== "page.command" &&
+      message.type !== "page.signaling.ticket"
+    ) {
       this.socket?.close(1008, "Browser Host received a message for the wrong protocol role")
       return
     }
@@ -146,7 +155,10 @@ export class BrowserHostBrokerClient {
   }
 
   private async dispatch(
-    message: Extract<BrowserHostMessage, { type: "page.create" | "page.close" | "page.command" }>,
+    message: Extract<
+      BrowserHostMessage,
+      { type: "page.create" | "page.close" | "page.command" | "page.signaling.ticket" }
+    >,
     epoch: number,
   ): Promise<void> {
     if (epoch !== this.connectionEpoch) return
@@ -190,6 +202,14 @@ export class BrowserHostBrokerClient {
       }
       return
     }
+    if (message.type === "page.signaling.ticket") {
+      const entry = this.pages.get(message.ownerKey)
+      if (entry?.pageId === message.pageId && isWebRTCPage(entry.page)) {
+        entry.page.updateSignalingTicket(message.signalingTicket)
+      }
+      return
+    }
+
     if (message.type !== "page.command") return
     const entry = this.pages.get(message.ownerKey)
     if (!entry || entry.pageId !== message.pageId) {

@@ -48,7 +48,7 @@ export function isCompatibleUIVersion(pluginVersion: string, hostVersion: string
  * @param pluginId        - Unique plugin identifier
  * @param assetsBaseUrl   - Fully resolved URL for the plugin UI asset.
  * @param exportName      - Named export to pull from the bundle (use "default" for default export)
- * @param uiApiVersion    - Minimum UI API version the plugin requires (e.g. "3.0")
+ * @param uiApiVersion    - UI API version the plugin requires (e.g. "4.0")
  */
 export async function loadPluginExport<T = unknown>(
   pluginId: string,

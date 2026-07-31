@@ -1,6 +1,6 @@
 # Synergy Plugin Platform
 
-Synergy Plugin API 3 has one authoring source and one host path. A plugin exports `definePlugin()` with a flat contribution list. plugin-kit validates that definition and generates the installable manifest and bundles. Synergy reads generated metadata before it imports executable code, records approval, registers contributions, and starts one runtime generation lazily when an executable contribution is invoked.
+Synergy Plugin API 4 has one authoring source and one host path. A plugin exports `definePlugin()` with a flat contribution list. plugin-kit validates that definition and generates the installable manifest and bundles. Synergy reads generated metadata before it imports executable code, records approval, registers contributions, and starts one runtime generation lazily when an executable contribution is invoked.
 
 ## Start Here
 

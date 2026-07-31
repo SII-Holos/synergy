@@ -12,7 +12,7 @@ import {
   McpToolsConfig,
 } from "@ericsanchezok/synergy-plugin"
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
-import { ModelsDev } from "../provider/models"
+import { ModelsDev } from "../provider/models-schemas"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"

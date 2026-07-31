@@ -9,6 +9,7 @@ const browserOnly = [
   "test/components/note/document-editor-core.test.ts",
   "test/pages/fatal-error.test.tsx",
   "test/plugin/builtin-navigation.test.ts",
+  "test/plugin/registries/tool-renderer-registry.test.ts",
 ]
 
 async function collectTests(directory: string): Promise<string[]> {

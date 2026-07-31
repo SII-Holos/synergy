@@ -173,7 +173,7 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 - `change-execution-boundaries` — capabilities, permissions, control profiles, enforcement, and sandboxing
 - `change-browser-runtime` — Browser ownership/control plus Desktop native and WebRTC presentation
 - `change-channel-runtime` — Channel targets, provider lifecycle, managed Projects, native Clarus tasks, diagnostics, and account navigation
-- `change-plugin-runtime` — Plugin API 3 definitions, generated artifacts, installation, runtime generations, Host Services, and UI host
+- `change-plugin-runtime` — Plugin API 4 definitions, generated artifacts, installation, runtime generations, Host Services, and UI host
 - `develop-synergy` — run an isolated second instance
 - `testing-guide` — choose fixtures and verification gates
 - `git-guide` — worktree, commit, rebase, push, and PR safety

@@ -28,6 +28,7 @@ function executableIds(definition: PluginDefinition) {
 
 function trustedComponentSources(definition: PluginDefinition) {
   return definition.contributions.flatMap((item) => {
+    if (item.kind === "ui.textAction" && item.presentation) return [item.presentation.component.source]
     if (!item.kind.startsWith("ui.") || !("component" in item) || !item.component) return []
     return [item.component.source]
   })

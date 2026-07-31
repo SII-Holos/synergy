@@ -149,6 +149,7 @@ export function SessionConversation(props: {
               <div
                 id={props.anchor(msg.id)}
                 data-message-id={msg.id}
+                data-message-role="assistant"
                 class="min-w-0 w-full max-w-full"
                 style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
               >
@@ -185,6 +186,7 @@ export function SessionConversation(props: {
             <div
               id={props.anchor(msg.id)}
               data-message-id={msg.id}
+              data-message-role="user"
               class="min-w-0 w-full max-w-full"
               style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
             >

@@ -1,3 +1,4 @@
+import { manifestHasTrustedUI } from "@ericsanchezok/synergy-plugin"
 import path from "path"
 import { fileURLToPath } from "url"
 import z from "zod"
@@ -95,12 +96,6 @@ export const PluginStatusSchema = z
 
 export type PluginStatus = z.infer<typeof PluginStatusSchema>
 
-function trustedImport(plugin: LoadedPlugin) {
-  return plugin.manifest.contributions.some(
-    (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
-  )
-}
-
 export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<PluginStatus> {
   const capabilities = plugin.manifest.capabilities.map((item) => item.id)
   const runtime = pluginRuntimeManager.registry.active(plugin.id)
@@ -111,7 +106,7 @@ export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<Pl
     apiVersion: plugin.manifest.apiVersion,
     generation: plugin.manifest.artifacts.generation,
     installation: classifyPluginInstallation(plugin),
-    trust: trustedImport(plugin) ? "trusted-import" : "declarative",
+    trust: manifestHasTrustedUI(plugin.manifest) ? "trusted-import" : "declarative",
     health: "loaded",
     loaded: true,
     capabilities,
@@ -145,9 +140,7 @@ function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & 
   if (plugin.phase === "approval" && plugin.manifest) {
     const manifest = plugin.manifest
     const capabilities = manifest.capabilities.map((item) => item.id)
-    const trusted = manifest.contributions.some(
-      (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
-    )
+    const trusted = manifestHasTrustedUI(manifest)
     return {
       id: plugin.pluginId,
       name: plugin.name ?? plugin.pluginId,

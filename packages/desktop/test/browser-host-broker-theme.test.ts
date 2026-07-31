@@ -5,9 +5,14 @@ import { defaultDesktopSkinState, desktopThemeSnapshot, type DesktopThemeSnapsho
 const started = deferred<void>()
 const releaseStart = deferred<void>()
 const appliedThemes: DesktopThemeSnapshot[] = []
+const createdHosts: MockWebRTCHost[] = []
 
 class MockWebRTCHost {
-  constructor(private options: { theme: DesktopThemeSnapshot }) {}
+  renewedTickets: string[] = []
+
+  constructor(private options: { theme: DesktopThemeSnapshot }) {
+    createdHosts.push(this)
+  }
 
   async start() {
     started.resolve()
@@ -17,6 +22,10 @@ class MockWebRTCHost {
   setTheme(theme: DesktopThemeSnapshot) {
     this.options.theme = theme
     appliedThemes.push(theme)
+  }
+
+  updateSignalingTicket(ticket: string) {
+    this.renewedTickets.push(ticket)
   }
 
   state() {
@@ -39,6 +48,10 @@ class TestBroker extends BrowserHostBrokerClient {
       message,
       0,
     )
+  }
+
+  async receive(input: unknown) {
+    await (this as unknown as { handle(data: unknown, epoch: number): Promise<void> }).handle(JSON.stringify(input), 0)
   }
 }
 
@@ -79,6 +92,53 @@ test("a page finishing asynchronous creation receives the latest broker theme", 
   await creation
 
   expect(appliedThemes.at(-1)).toEqual(latest)
+})
+
+test("forwards renewed signaling tickets only to the matching WebRTC page", async () => {
+  const theme = desktopThemeSnapshot(defaultDesktopSkinState(), false)
+  const broker = new TestBroker({ serverUrl: "http://127.0.0.1:3000", token: "a".repeat(64), theme })
+  ;(broker as unknown as { connectionEpoch: number }).connectionEpoch = 0
+  ;(broker as unknown as { socket: { readyState: number; send(): void; close(): void } }).socket = {
+    readyState: WebSocket.OPEN,
+    send() {},
+    close() {},
+  }
+
+  const before = createdHosts.length
+  const creation = broker.createPage({
+    type: "page.create",
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
+    requestId: "request-signaling",
+    ownerKey: "scope-test:session:session-signaling",
+    owner: { mode: "session", scopeID: "scope-test", sessionID: "session-signaling", directory: "/tmp" },
+    routeDirectory: "home",
+    presentation: "webrtc",
+    page: { id: "page-signaling", url: "about:blank", title: "", isLoading: false, lastActiveAt: null },
+    networkProxy: { server: "http://127.0.0.1:3000", username: "user", password: "password" },
+    downloadDir: "/tmp",
+    signalingTicket: "initial-ticket",
+  })
+  releaseStart.resolve()
+  await creation
+
+  const host = createdHosts[before]
+  expect(host).toBeDefined()
+  await broker.receive({
+    type: "page.signaling.ticket",
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
+    ownerKey: "scope-test:session:session-signaling",
+    pageId: "page-signaling",
+    signalingTicket: "renewed-ticket",
+  })
+  await broker.receive({
+    type: "page.signaling.ticket",
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
+    ownerKey: "scope-test:session:session-signaling",
+    pageId: "other-page",
+    signalingTicket: "wrong-page-ticket",
+  })
+
+  expect(host.renewedTickets).toEqual(["renewed-ticket"])
 })
 
 function deferred<T>() {

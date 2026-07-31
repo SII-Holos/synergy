@@ -12,6 +12,7 @@ import {
   hasUnsupportedSolidRuntimeImport,
   operation,
   messageSlot,
+  messageRenderer,
   hook,
   selectionExtension,
   settings,
@@ -132,6 +133,143 @@ describe("definePlugin", () => {
     })
   })
 
+  test("targets one host tool with a trusted message renderer", () => {
+    const plugin = definePlugin({
+      id: "correction-card",
+      version: "1.0.0",
+      description: "Targeted correction card",
+      contributions: [
+        tool({
+          id: "record",
+          description: "Record the correction",
+          input: z.object({}),
+          handler: async () => "ok",
+        }),
+        messageRenderer({
+          id: "correction",
+          label: "Correction",
+          messageType: "tool",
+          tool: "plugin__correction-card__record",
+          component: { source: "./src/correction.tsx" },
+        }),
+      ],
+    })
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-one",
+      ui: { entry: "ui/index.js", sha256: "ui-hash" },
+    })
+    expect(manifest.contributions).toEqual([
+      expect.objectContaining({
+        kind: "tool",
+        id: "record",
+      }),
+      expect.objectContaining({
+        kind: "ui.messageRenderer",
+        id: "correction",
+        messageType: "tool",
+        tool: "plugin__correction-card__record",
+        component: {
+          entry: "ui/index.js",
+          exportName: expect.any(String),
+        },
+      }),
+    ])
+  })
+
+  test("validates metadata-only Tool renderer ownership", () => {
+    const plugin = definePlugin({
+      id: "correction-card",
+      version: "1.0.0",
+      description: "Targeted correction card",
+      contributions: [
+        tool({
+          id: "record",
+          description: "Record the correction",
+          input: z.object({}),
+          handler: async () => "ok",
+        }),
+        messageRenderer({
+          id: "correction",
+          label: "Correction",
+          messageType: "tool",
+          tool: "plugin__correction-card__record",
+          component: { source: "./src/correction.tsx" },
+        }),
+      ],
+    })
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-one",
+      runtime: { entry: "runtime/index.js", sha256: "a".repeat(64) },
+      ui: { entry: "ui/index.js", sha256: "b".repeat(64) },
+    })
+
+    const foreign = structuredClone(manifest)
+    const foreignRenderer = foreign.contributions.find((item) => item.kind === "ui.messageRenderer")
+    if (!foreignRenderer || foreignRenderer.kind !== "ui.messageRenderer") throw new Error("Missing renderer")
+    foreignRenderer.tool = "plugin__another-plugin__record"
+    expect(PluginManifest.safeParse(foreign).success).toBe(false)
+
+    const missing = structuredClone(manifest)
+    missing.contributions = missing.contributions.filter((item) => item.kind !== "tool")
+    expect(PluginManifest.safeParse(missing).success).toBe(false)
+
+    const unbound = structuredClone(manifest)
+    const unboundRenderer = unbound.contributions.find((item) => item.kind === "ui.messageRenderer")
+    if (!unboundRenderer || unboundRenderer.kind !== "ui.messageRenderer") throw new Error("Missing renderer")
+    delete unboundRenderer.tool
+    expect(PluginManifest.safeParse(unbound).success).toBe(false)
+
+    const hostPart = structuredClone(manifest)
+    const hostPartRenderer = hostPart.contributions.find((item) => item.kind === "ui.messageRenderer")
+    if (!hostPartRenderer || hostPartRenderer.kind !== "ui.messageRenderer") throw new Error("Missing renderer")
+    hostPartRenderer.messageType = "text"
+    delete hostPartRenderer.tool
+    expect(PluginManifest.safeParse(hostPart).success).toBe(false)
+  })
+
+  test("rejects message renderers that omit Tool ownership or replace host parts", () => {
+    const unsafe = (messageType: string, toolName?: string) =>
+      definePlugin({
+        id: "correction-card",
+        version: "1.0.0",
+        description: "Unsafe host renderer replacement",
+        contributions: [
+          messageRenderer({
+            id: "correction",
+            label: "Correction",
+            messageType,
+            ...(toolName ? { tool: toolName } : {}),
+            component: { source: "./src/correction.tsx" },
+          }),
+        ],
+      })
+
+    expect(() => unsafe("tool")).toThrow("must target a Tool contributed by the same plugin")
+    expect(() => unsafe("text")).toThrow("cannot replace a host-owned message type")
+    expect(() => unsafe("custom:correction", "plugin__correction-card__record")).toThrow(
+      "cannot replace a host-owned message type",
+    )
+  })
+
+  test("rejects a message renderer that tries to replace another tool", () => {
+    expect(() =>
+      definePlugin({
+        id: "correction-card",
+        version: "1.0.0",
+        description: "Unsafe targeted renderer",
+        contributions: [
+          messageRenderer({
+            id: "correction",
+            label: "Correction",
+            messageType: "tool",
+            tool: "plugin__another-plugin__record",
+            component: { source: "./src/correction.tsx" },
+          }),
+        ],
+      }),
+    ).toThrow("must target a Tool contributed by the same plugin")
+  })
+
   test("compiles setting-gated MCP servers against a declared setting", () => {
     const plugin = definePlugin({
       id: "frontend-kit",
@@ -232,7 +370,7 @@ describe("definePlugin", () => {
           event({ id: "changed", payload: z.object({}) }),
         ],
       }),
-    ).toThrow('Duplicate plugin contribution id "changed"')
+    ).toThrow('Duplicate plugin contribution id "changed" for kind "event"')
   })
 
   test("rejects undeclared contribution capabilities", () => {
@@ -308,7 +446,16 @@ describe("definePlugin", () => {
           id: "translate",
           type: "command",
           expose: ["ui"],
-          input: z.object({ text: z.string() }),
+          input: z.object({
+            selection: z.object({
+              selectionId: z.string(),
+              text: z.string(),
+              source: z.enum(["document", "code", "terminal"]),
+              origin: z.enum(["user_message", "assistant_message", "editable", "other"]),
+              editable: z.boolean(),
+              wholeContainer: z.boolean(),
+            }),
+          }),
           output: z.object({}),
           handler: async () => ({}),
         }),
@@ -318,7 +465,23 @@ describe("definePlugin", () => {
           component: { source: "src/composer.tsx" },
         }),
         selectionExtension({ id: "selection", component: { source: "src/selection.tsx" } }),
-        textAction({ id: "translate-action", label: "Translate", operation: "translate" }),
+        textAction({
+          id: "translate-action",
+          label: "Translate",
+          operation: "translate",
+          when: {
+            sources: ["document", "code"],
+            origins: ["assistant_message", "other"],
+            minChars: 1,
+            maxChars: 4_000,
+            editable: false,
+          },
+          presentation: {
+            kind: "popover",
+            width: "md",
+            component: { source: "src/translation.tsx" },
+          },
+        }),
         messageSlot({ id: "message", slot: "message.after", component: { source: "src/message.tsx" } }),
       ],
     })
@@ -331,6 +494,7 @@ describe("definePlugin", () => {
         exports: {
           "ui.composerExtension:composer": "Composer",
           "ui.selectionExtension:selection": "Selection",
+          "ui.textAction:translate-action": "Translation",
           "ui.messageSlot:message": "Message",
         },
       },
@@ -339,7 +503,23 @@ describe("definePlugin", () => {
     expect(manifest.contributions.slice(1)).toMatchObject([
       { kind: "ui.composerExtension", order: 1000, component: { exportName: "Composer" } },
       { kind: "ui.selectionExtension", requires: ["selection.read"] },
-      { kind: "ui.textAction", operation: "translate", requires: ["selection.read"] },
+      {
+        kind: "ui.textAction",
+        operation: "translate",
+        requires: ["selection.read"],
+        when: {
+          sources: ["document", "code"],
+          origins: ["assistant_message", "other"],
+          minChars: 1,
+          maxChars: 4_000,
+          editable: false,
+        },
+        presentation: {
+          kind: "popover",
+          width: "md",
+          component: { exportName: "Translation" },
+        },
+      },
       { kind: "ui.messageSlot", slot: "message.after", component: { exportName: "Message" } },
     ])
 
@@ -352,6 +532,98 @@ describe("definePlugin", () => {
         contributions: [textAction({ id: "bad", label: "Bad", operation: "missing" })],
       }),
     ).toThrow("must reference a UI-exposed command operation")
+  })
+
+  test("requires the verified UI artifact for nested text-action presentation", () => {
+    const plugin = definePlugin({
+      id: "interaction",
+      version: "1.0.0",
+      description: "Interaction surfaces",
+      capabilities: [capability("selection.read")],
+      contributions: [
+        operation({
+          id: "translate",
+          type: "command",
+          expose: ["ui"],
+          input: z.object({}),
+          output: z.object({}),
+          handler: async () => ({}),
+        }),
+        textAction({
+          id: "translate-action",
+          label: "Translate",
+          operation: "translate",
+          presentation: {
+            kind: "popover",
+            component: { source: "src/translation.tsx" },
+          },
+        }),
+      ],
+    })
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-1",
+      runtime: { entry: "runtime/index.js", sha256: "a".repeat(64) },
+      ui: {
+        entry: "ui/index.js",
+        sha256: "b".repeat(64),
+        exports: { "ui.textAction:translate-action": "Translation" },
+      },
+    })
+
+    const missingArtifact = structuredClone(manifest)
+    delete missingArtifact.artifacts.ui
+    expect(PluginManifest.safeParse(missingArtifact).success).toBe(false)
+
+    const mismatchedEntry = structuredClone(manifest)
+    const action = mismatchedEntry.contributions.find((item) => item.kind === "ui.textAction")
+    if (!action || action.kind !== "ui.textAction" || !action.presentation) {
+      throw new Error("Missing text action presentation")
+    }
+    action.presentation.component.entry = "ui/unverified.js"
+    expect(PluginManifest.safeParse(mismatchedEntry).success).toBe(false)
+  })
+
+  test("rejects invalid text-action bounds and Agent role allowlists", () => {
+    expect(() =>
+      definePlugin({
+        id: "bad-bounds",
+        version: "1.0.0",
+        description: "Invalid text action bounds",
+        capabilities: [capability("selection.read")],
+        contributions: [
+          operation({
+            id: "translate",
+            type: "command",
+            expose: ["ui"],
+            input: z.object({}),
+            output: z.object({}),
+            async handler() {
+              return {}
+            },
+          }),
+          textAction({
+            id: "translate",
+            label: "Translate",
+            operation: "translate",
+            when: { minChars: 10, maxChars: 2 },
+          }),
+        ],
+      }),
+    ).toThrow("minChars cannot exceed maxChars")
+
+    expect(() =>
+      definePlugin({
+        id: "bad-roles",
+        version: "1.0.0",
+        description: "Invalid model roles",
+        capabilities: [
+          capability("agent.call", {
+            modelRoles: ["mini", "provider-specific-model"],
+          }),
+        ],
+        contributions: [],
+      }),
+    ).toThrow("unique PluginModelRole values")
   })
 
   test("requires session.read on persisted user message observers", () => {

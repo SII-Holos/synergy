@@ -112,7 +112,7 @@ export async function invokePluginOperation(input: {
     return result
   } catch (error) {
     if (error instanceof PluginOperationError) throw error
-    markContributionDegraded(plugin, operation.id, error)
+    markContributionDegraded(plugin, operation, error)
     if (error instanceof PluginRuntimeError) {
       const domainCode = (error as PluginRuntimeError & { domainCode?: string }).domainCode
       if (domainCode === "CONFLICT") {
