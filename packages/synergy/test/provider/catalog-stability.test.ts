@@ -21,6 +21,8 @@ const environmentProviderID = `catalog-environment-provider-${Math.random().toSt
 const environmentName = "SYNERGY_TEST_CATALOG_ACCOUNT_KEY"
 let alternateFetchCalls = 0
 let environmentDiscoveryAuth: string | undefined
+let environmentDiscovery: Promise<void>
+let resolveEnvironmentDiscovery: (() => void) | undefined
 
 ProviderProfile.register({
   id: providerID,
@@ -50,9 +52,11 @@ ProviderProfile.register({
   name: "Catalog Environment Profile Test",
   authKind: "api_key",
   modelsDevProviderID: "openai",
+  baseURL: "https://environment-catalog.invalid/v1",
   fallbackModels: ["gpt-5.5"],
   fetchModelCatalog: async ({ auth }) => {
     environmentDiscoveryAuth = auth?.type === "api" ? auth.key : undefined
+    resolveEnvironmentDiscovery?.()
     return [{ id: "environment-model" }]
   },
 })
@@ -91,6 +95,9 @@ async function reset() {
   fetchCatalog = async () => []
   alternateFetchCalls = 0
   environmentDiscoveryAuth = undefined
+  environmentDiscovery = new Promise<void>((resolve) => {
+    resolveEnvironmentDiscovery = resolve
+  })
   configuredBaseURL = undefined
   configuredDiscovery = new Promise<void>((resolve) => {
     resolveConfiguredDiscovery = resolve
@@ -303,15 +310,28 @@ test("configured environment credentials participate in live discovery", async (
     },
   })
 
-  const result = await ScopeContext.provide({
+  await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       Env.set(environmentName, "environment-account-key")
-      return ProviderCatalog.refresh(environmentProviderID)
+      await ProviderCatalog.resolve({
+        config: {
+          providerCatalog: { enabled: false, offlineCache: false },
+          provider: {
+            [environmentProviderID]: {
+              profile: environmentProfileID,
+              modelsDevProviderID: "openai",
+              env: [environmentName],
+            },
+          },
+        },
+        includeLive: true,
+        forceRefresh: true,
+      })
+      await environmentDiscovery
     },
   })
 
-  expect(result.modelCount).toBe(1)
   expect(environmentDiscoveryAuth).toBe("environment-account-key")
 })
 

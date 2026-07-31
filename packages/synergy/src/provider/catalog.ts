@@ -117,6 +117,7 @@ export namespace ProviderCatalog {
     profile: ProviderProfile.Profile
     context: LiveDiscoveryContext
     baseURL?: string
+    configured?: ConfiguredProvider
   }
 
   type ConfiguredProvider = {
@@ -578,6 +579,7 @@ export namespace ProviderCatalog {
         profile,
         context: await resolveLiveDiscoveryContext(profile, providerID, baseURL, configured),
         baseURL,
+        configured,
       })
     }
     return targets
@@ -622,6 +624,7 @@ export namespace ProviderCatalog {
     providerID: string,
     profileID: string,
     baseURL: string | undefined,
+    configured: ConfiguredProvider | undefined,
     failure: Failure,
     error?: unknown,
   ) {
@@ -630,7 +633,7 @@ export namespace ProviderCatalog {
     const timer = setTimeout(
       () => {
         retryTimers.delete(providerID)
-        void refreshAndReload(providerID, profileID, baseURL)
+        void refreshAndReload(providerID, profileID, baseURL, configured)
       },
       retryDelay({ failure, retryAfterMs: retryAfterMs(error) }),
     )
@@ -664,15 +667,20 @@ export namespace ProviderCatalog {
     }
   }
 
-  export async function refresh(providerID: string, profileID?: string, baseURL?: string): Promise<ModelCatalogState> {
+  export async function refresh(
+    providerID: string,
+    profileID?: string,
+    baseURL?: string,
+    configuredInput?: ConfiguredProvider,
+  ): Promise<ModelCatalogState> {
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
     let profile = ProviderProfile.resolve(providerID, profileID)
-    let configured: ConfiguredProvider | undefined
-    if (!profile || ((profileID === undefined || baseURL === undefined) && ScopeContext.tryScope())) {
+    let configured = configuredInput
+    if (ScopeContext.tryScope() && (!configured || profileID === undefined || baseURL === undefined)) {
       const { Config } = await import("@/config/config")
       const config = await Config.current()
-      configured = config.provider?.[providerID]
+      configured ??= config.provider?.[providerID]
       if (profileID === undefined && configured?.profile) profile = ProviderProfile.get(configured.profile)
       else if (!profile) profile = ProviderProfile.get(configured?.profile ?? "")
     }
@@ -739,7 +747,7 @@ export namespace ProviderCatalog {
           failure,
         }
         catalogStates.set(providerID, state)
-        scheduleRetry(providerID, profile.id, resolvedBaseURL, failure, error)
+        scheduleRetry(providerID, profile.id, resolvedBaseURL, configured, failure, error)
         log.warn("failed to refresh provider model catalog", { providerID, profileID: profile.id, failure, error })
         return state
       }
@@ -768,9 +776,14 @@ export namespace ProviderCatalog {
     return request
   }
 
-  async function refreshAndReload(providerID: string, profileID?: string, baseURL?: string) {
+  async function refreshAndReload(
+    providerID: string,
+    profileID?: string,
+    baseURL?: string,
+    configured?: ConfiguredProvider,
+  ) {
     try {
-      await refresh(providerID, profileID, baseURL)
+      await refresh(providerID, profileID, baseURL, configured)
       const { RuntimeReload } = await import("@/runtime/reload")
       await RuntimeReload.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
     } catch (error) {
@@ -783,6 +796,7 @@ export namespace ProviderCatalog {
     profile: ProviderProfile.Profile,
     context: LiveDiscoveryContext,
     baseURL: string | undefined,
+    configured: ConfiguredProvider | undefined,
     snapshot: Snapshot | undefined,
   ) {
     if (!context.auth && profile.authKind !== "none") return
@@ -794,7 +808,7 @@ export namespace ProviderCatalog {
     if (refreshInFlight.has(key) || scheduledRefreshes.has(key)) return
     scheduledRefreshes.add(key)
     queueMicrotask(() => {
-      void refreshAndReload(providerID, profile.id, baseURL).finally(() => scheduledRefreshes.delete(key))
+      void refreshAndReload(providerID, profile.id, baseURL, configured).finally(() => scheduledRefreshes.delete(key))
     })
   }
 
@@ -935,7 +949,7 @@ export namespace ProviderCatalog {
         result[providerID] = await applyCachedDiscovery(provider, target.profile, modelsDev, target.context, providerID)
         if (target.profile.fetchModelCatalog || target.profile.fetchModels) {
           const snapshot = (await readSnapshots()).get(snapshotKey(providerID, target.context.identityHash))
-          scheduleRefresh(providerID, target.profile, target.context, target.baseURL, snapshot)
+          scheduleRefresh(providerID, target.profile, target.context, target.baseURL, target.configured, snapshot)
         }
       }
     }

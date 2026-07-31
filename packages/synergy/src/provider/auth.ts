@@ -203,10 +203,10 @@ export namespace ProviderAuth {
     for (const [providerID, provider] of Object.entries(config.provider ?? {})) {
       if (!provider.profile) continue
       const profile = ProviderProfile.get(provider.profile)
-      if (!profile) continue
-      const source = methods[profile.id]
+      const profileID = profile?.id ?? provider.profile
+      const source = methods[profileID]
       if (!source) continue
-      methods[providerID] = retargetHook(source, providerID, profile.id)
+      methods[providerID] = retargetHook(source, providerID, profileID)
     }
     return { methods, pending: {} as Record<string, PendingOauthResult> }
   })
