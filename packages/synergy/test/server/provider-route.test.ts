@@ -10,6 +10,7 @@ import { tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { Global } from "../../src/global"
+import { Config } from "../../src/config/config"
 
 const originalCodexHome = process.env.CODEX_HOME
 const originalOpenAIAPIKey = process.env.OPENAI_API_KEY
@@ -117,6 +118,109 @@ test("/provider returns catalog, auth health, and runtime availability", async (
       },
     },
   })
+  expect(body.connections[CodexProvider.PROVIDER_ID]).toMatchObject({
+    id: CodexProvider.PROVIDER_ID,
+    profileID: CodexProvider.PROVIDER_ID,
+    catalogProviderID: CodexProvider.PROVIDER_ID,
+    removable: false,
+  })
+})
+
+test("provider connection routes manage a second account without changing its canonical provider", async () => {
+  const before = await Config.domainGet("providers")
+  const providerID = `deepseek-team-${Math.random().toString(36).slice(2)}`
+  const app = Server.App()
+
+  try {
+    const createdResponse = await app.request("/provider/connections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: providerID,
+        profileID: "deepseek",
+        name: "DeepSeek Team",
+        endpoint: "https://deepseek-team.invalid/v1",
+        enabled: false,
+      }),
+    })
+    const createdBody = await createdResponse.json()
+    expect({ status: createdResponse.status, body: createdBody }).toEqual({
+      status: 200,
+      body: {
+        id: providerID,
+        name: "DeepSeek Team",
+        profileID: "deepseek",
+        catalogProviderID: "deepseek",
+        endpoint: "https://deepseek-team.invalid/v1",
+        enabled: false,
+        configured: true,
+        removable: true,
+      },
+    })
+
+    const listedResponse = await app.request("/provider")
+    const listed = await listedResponse.json()
+    expect(listed.connections[providerID]).toMatchObject({
+      profileID: "deepseek",
+      enabled: false,
+      removable: true,
+    })
+    expect(listed.runtimeAvailability[providerID]).toMatchObject({
+      available: false,
+      reason: "disabled",
+    })
+    expect(listed.all.some((provider: Provider.Info) => provider.id === providerID)).toBe(false)
+
+    const updatedResponse = await app.request(`/provider/connections/${providerID}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "DeepSeek Production",
+        endpoint: null,
+        enabled: true,
+      }),
+    })
+    expect(updatedResponse.status).toBe(200)
+    expect(await updatedResponse.json()).toMatchObject({
+      id: providerID,
+      name: "DeepSeek Production",
+      enabled: true,
+    })
+    expect((await Config.domainGet("providers")).provider?.[providerID]).toMatchObject({
+      modelsDevProviderID: "deepseek",
+      name: "DeepSeek Production",
+    })
+    expect((await Config.domainGet("providers")).provider?.[providerID]?.api).toBeUndefined()
+
+    await Auth.set("deepseek", { type: "api", key: "canonical-connection-test-key" })
+    await Auth.set(providerID, { type: "api", key: "connection-test-key" })
+    const removedResponse = await app.request(`/provider/connections/${providerID}`, { method: "DELETE" })
+    expect(removedResponse.status).toBe(200)
+    expect(await removedResponse.json()).toEqual({ providerID, removed: true })
+    expect((await Config.domainGet("providers")).provider?.[providerID]).toBeUndefined()
+    expect(await Auth.get(providerID)).toBeUndefined()
+    expect(await Auth.get("deepseek")).toMatchObject({ type: "api", key: "canonical-connection-test-key" })
+
+    const collisionResponse = await app.request("/provider/connections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "deepseek",
+        profileID: "deepseek",
+        name: "Canonical collision",
+      }),
+    })
+    expect(collisionResponse.status).toBe(400)
+    expect(await collisionResponse.json()).toMatchObject({
+      name: "ProviderConnectionAlreadyExistsError",
+      data: { providerID: "deepseek" },
+    })
+  } finally {
+    await Auth.remove(providerID)
+    await Auth.remove("deepseek")
+    await Config.domainUpdate("providers", before, { mode: "replace-domain" })
+    await Provider.reload()
+  }
 })
 
 test("DELETE /provider/:providerID/auth refuses to clear healthy stored credentials", async () => {

@@ -11,6 +11,8 @@ import { AccountUsage } from "@/provider/usage"
 import { GitHubProvider } from "@/provider/github"
 import { listProvidersForClient, ProviderListResponse } from "./provider-view"
 import { ProviderCatalog } from "@/provider/catalog"
+import { ProviderConnection } from "@/provider/connection"
+import { Config } from "@/config/config"
 
 const log = Log.create({ service: "provider" })
 
@@ -22,6 +24,25 @@ const ProviderAuthRemoveResponse = z
   .meta({ ref: "ProviderAuthRemoveResponse" })
 
 const ProviderAuthDisconnectConflict = ProviderAuth.DisconnectUnavailable.Schema
+
+async function reloadProviderConnections(change: Config.Change, reason: string) {
+  await RuntimeReload.reload(
+    {
+      targets: ["provider"],
+      scope: "global",
+      reason,
+    },
+    { configChange: change },
+  )
+}
+
+function providerConnectionError(error: unknown) {
+  if (error instanceof ProviderConnection.ProfileNotFound) return error.toObject()
+  if (error instanceof ProviderConnection.CatalogNotFound) return error.toObject()
+  if (error instanceof ProviderConnection.AlreadyExists) return error.toObject()
+  if (error instanceof ProviderConnection.NotFound) return error.toObject()
+  if (error instanceof ProviderConnection.NotManaged) return error.toObject()
+}
 
 export const ProviderRoute = new Hono()
   .get(
@@ -44,6 +65,104 @@ export const ProviderRoute = new Hono()
     async (c) => {
       using _ = log.time("providers")
       return c.json(await listProvidersForClient())
+    },
+  )
+  .post(
+    "/connections",
+    describeRoute({
+      summary: "Create provider account connection",
+      description:
+        "Create a named account connection that reuses a canonical provider profile and model catalog. Credentials are connected separately.",
+      operationId: "provider.connection.create",
+      responses: {
+        200: {
+          description: "Provider account connection created",
+          content: {
+            "application/json": {
+              schema: resolver(ProviderConnection.Info),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("json", ProviderConnection.CreateInput),
+    async (c) => {
+      try {
+        const { connection, change } = await ProviderConnection.create(c.req.valid("json"))
+        await reloadProviderConnections(change, `provider connection created: ${connection.id}`)
+        return c.json(connection)
+      } catch (error) {
+        const failure = providerConnectionError(error)
+        if (failure) return c.json(failure, 400)
+        throw error
+      }
+    },
+  )
+  .patch(
+    "/connections/:providerID",
+    describeRoute({
+      summary: "Update provider account connection",
+      description: "Update the name, endpoint, or enabled state of a managed provider account connection.",
+      operationId: "provider.connection.update",
+      responses: {
+        200: {
+          description: "Provider account connection updated",
+          content: {
+            "application/json": {
+              schema: resolver(ProviderConnection.Info),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("param", z.object({ providerID: z.string().min(1) })),
+    validator("json", ProviderConnection.UpdateInput),
+    async (c) => {
+      const { providerID } = c.req.valid("param")
+      try {
+        const { connection, change } = await ProviderConnection.update(providerID, c.req.valid("json"))
+        await reloadProviderConnections(change, `provider connection updated: ${providerID}`)
+        return c.json(connection)
+      } catch (error) {
+        const failure = providerConnectionError(error)
+        if (failure) return c.json(failure, 400)
+        throw error
+      }
+    },
+  )
+  .delete(
+    "/connections/:providerID",
+    describeRoute({
+      summary: "Remove provider account connection",
+      description:
+        "Remove a managed provider account connection and its Synergy-managed credentials without changing its canonical provider profile or sibling accounts.",
+      operationId: "provider.connection.remove",
+      responses: {
+        200: {
+          description: "Provider account connection removed",
+          content: {
+            "application/json": {
+              schema: resolver(ProviderConnection.Removed),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("param", z.object({ providerID: z.string().min(1) })),
+    async (c) => {
+      const { providerID } = c.req.valid("param")
+      try {
+        const { result, change } = await ProviderConnection.remove(providerID)
+        await reloadProviderConnections(change, `provider connection removed: ${providerID}`)
+        return c.json(result)
+      } catch (error) {
+        const failure = providerConnectionError(error)
+        if (failure) return c.json(failure, 400)
+        throw error
+      }
     },
   )
   .post(
@@ -77,6 +196,7 @@ export const ProviderRoute = new Hono()
       return c.json(state)
     },
   )
+
   .get(
     "/usage",
     describeRoute({

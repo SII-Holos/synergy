@@ -9,6 +9,10 @@ const providerFlow = await Bun.file(
 const settingsCss = await Bun.file(
   new URL("../../../../src/components/settings/settings-panel.css", import.meta.url),
 ).text()
+const settingsPanel = await Bun.file(
+  new URL("../../../../src/components/settings/SettingsPanel.tsx", import.meta.url),
+).text()
+const globalSync = await Bun.file(new URL("../../../../src/context/global-sync.tsx", import.meta.url)).text()
 
 describe("Providers panel UI contract", () => {
   test("keeps provider discovery in an internal scroll column", () => {
@@ -70,5 +74,23 @@ describe("Providers panel UI contract", () => {
     expect(settingsCss).toContain(".providers-detail .provider-flow-body")
     expect(settingsCss).toContain("border: 0")
     expect(settingsCss).toContain("background: transparent")
+  })
+
+  test("builds the provider directory from account connections", () => {
+    expect(settingsPanel).toContain("Object.values(data.connections)")
+    expect(globalSync).toContain("connections: {}")
+    expect(providersPanel).toContain("ProviderConnectionSummary = ProviderConnection")
+    expect(providersPanel).toContain("<ProviderIcon id={provider().profileID}")
+  })
+
+  test("manages named accounts separately from credentials and credential failover", () => {
+    expect(providersPanel).toContain("provider.connection.create")
+    expect(providersPanel).toContain("provider.connection.update")
+    expect(providersPanel).toContain("provider.connection.remove")
+    expect(providersPanel).toContain("independent credentials")
+    expect(providersPanel).toContain("not a credential failover entry")
+    expect(providersPanel).toContain("<ProviderConnectionFlow")
+    expect(providersPanel).toContain("providerName={provider().name}")
+    expect(providersPanel).toContain("iconID={provider().profileID}")
   })
 })
