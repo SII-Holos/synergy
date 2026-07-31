@@ -334,7 +334,7 @@ const PROVIDER_ENV_MAP: Record<string, ProviderEntry> = {
   anthropic: { name: "Anthropic", envVars: ["ANTHROPIC_API_KEY"], defaultModel: "claude-sonnet-4-5", order: 1 },
   openai: { name: "OpenAI", envVars: ["OPENAI_API_KEY"], defaultModel: "gpt-4o", order: 2 },
   google: { name: "Google", envVars: ["GEMINI_API_KEY", "GOOGLE_API_KEY"], defaultModel: "gemini-2.5-flash", order: 3 },
-  deepseek: { name: "DeepSeek", envVars: ["DEEPSEEK_API_KEY"], defaultModel: "deepseek-chat", order: 4 },
+  deepseek: { name: "DeepSeek", envVars: ["DEEPSEEK_API_KEY"], defaultModel: "deepseek-v4-flash", order: 4 },
   groq: { name: "Groq", envVars: ["GROQ_API_KEY"], defaultModel: "llama-4-scout-17b-16e-instruct", order: 10 },
   openrouter: { name: "OpenRouter", envVars: ["OPENROUTER_API_KEY"], defaultModel: "openai/gpt-4o", order: 11 },
   xai: { name: "xAI", envVars: ["XAI_API_KEY"], defaultModel: "grok-3", order: 12 },
