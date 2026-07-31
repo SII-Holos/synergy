@@ -964,6 +964,55 @@ export namespace Provider {
     return builtSDK
   }
 
+  /**
+   * Create a language model from an explicit provider spec without using scoped
+   * provider state. Import probes use this path before a config is installed.
+   */
+  export async function createLanguageFromSpec(
+    model: Model,
+    provider: {
+      profileID?: string
+      options?: Record<string, unknown>
+      key?: string
+      auth?: Auth.Info
+      catalogProvider?: ModelsDev.Provider
+    },
+  ): Promise<LanguageModelV2> {
+    const { registerBuiltinProviderProfiles } = await import("./builtin")
+    registerBuiltinProviderProfiles()
+
+    const profile = ProviderProfile.resolve(model.providerID, provider.profileID)
+    const connectionAuth =
+      provider.auth ?? (provider.key ? ({ type: "api", key: provider.key } satisfies Auth.Info) : undefined)
+    const profileInput = {
+      providerID: model.providerID,
+      auth: connectionAuth,
+      provider: provider.catalogProvider,
+    }
+    const auth = (await profile?.resolveAuth?.(profileInput)) ?? connectionAuth
+    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth })) ?? {}
+    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+    const dynamicOptions = mergeDeep(modelOptions, runtimeOptions)
+    const options = mergeDeep(dynamicOptions, provider.options ?? {})
+    const key = auth?.type === "api" ? auth.key : provider.key
+    const sdk = createSDKFromSpec(model, {
+      profileID: profile?.id ?? provider.profileID,
+      options,
+      key,
+    })
+
+    if (profile?.getModel) return profile.getModel({ sdk, modelID: model.api.id, options })
+    if (profile?.modelFactory) {
+      return ProviderProfile.defaultModelFactory(profile.modelFactory, {
+        sdk,
+        modelID: model.api.id,
+        options,
+      }) as LanguageModelV2
+    }
+    if (model.api.npm === "@ai-sdk/openai") return (sdk as any).responses(model.api.id)
+    return sdk.languageModel(model.api.id) as LanguageModelV2
+  }
+
   export async function getSDK(model: Model, resolvedOptions?: Record<string, any>) {
     try {
       using _ = log.time("getSDK", {

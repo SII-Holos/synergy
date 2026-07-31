@@ -155,6 +155,12 @@ export namespace CopilotProvider {
     runtimeTokens.delete(providerID)
   }
 
+  async function shouldPreferProvidedAuth(providerID: string, auth?: Auth.Info) {
+    if (!auth) return false
+    const selected = await Auth.select(providerID)
+    return !(auth.type === "api" && selected?.auth.type === "api" && auth.key === selected.auth.key)
+  }
+
   export async function exchangeToken(
     providerID = PROVIDER_ID,
     fetchFn: FetchLike = fetch,
@@ -276,9 +282,7 @@ export namespace CopilotProvider {
     let externalPreferredAuth: Promise<boolean> | undefined
     const usesExternalPreferredAuth = () => {
       if (!auth) return Promise.resolve(false)
-      externalPreferredAuth ??= Auth.select(providerID).then(
-        (selected) => !(auth.type === "api" && selected?.auth.type === "api" && auth.key === selected.auth.key),
-      )
+      externalPreferredAuth ??= shouldPreferProvidedAuth(providerID, auth)
       return externalPreferredAuth
     }
     return async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -309,10 +313,11 @@ export namespace CopilotProvider {
   export const copilotFetch = copilotFetchFor(PROVIDER_ID)
 
   async function fetchModelPayload(providerID: string, fetchFn: FetchLike, auth?: Auth.Info) {
+    const preferProvidedAuth = await shouldPreferProvidedAuth(providerID, auth)
     const response = await ProviderAuthRecovery.execute({
       providerID,
       request: async () => {
-        const token = await exchangeToken(providerID, fetchFn, false, auth)
+        const token = await exchangeToken(providerID, fetchFn, false, auth, preferProvidedAuth)
         return fetchFn(`${BASE_URL}/models`, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -326,10 +331,11 @@ export namespace CopilotProvider {
       refresh: (auth) => refreshAuth(providerID, auth, fetchFn),
       recoverWithoutCredential: async () => {
         clearApiToken(providerID)
-        await exchangeToken(providerID, fetchFn, true, auth)
+        await exchangeToken(providerID, fetchFn, true, auth, preferProvidedAuth)
         return true
       },
       classify: classifyError,
+      manageStoredCredential: !preferProvidedAuth,
       reloadOnTransition: false,
       throwOnActionRequired: false,
     })

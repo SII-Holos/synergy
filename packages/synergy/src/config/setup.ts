@@ -199,6 +199,7 @@ export namespace ConfigSetup {
   interface ImportedProviderModelTarget {
     provider: Provider.Info
     model: Provider.Model
+    catalogProvider?: ModelsDev.Provider
   }
 
   export async function init() {
@@ -822,14 +823,17 @@ export namespace ConfigSetup {
       source: "config",
       env: imported?.env ?? existing?.env ?? [],
       key: undefined,
-      options: mergeDeep(existing?.options ?? {}, imported?.options ?? {}),
+      options: mergeDeep(
+        existing?.options ?? {},
+        mergeDeep(imported?.api ? { baseURL: imported.api } : {}, imported?.options ?? {}),
+      ),
       models: {
         ...(existing?.models ?? {}),
         [modelID]: model,
       },
     }
 
-    return { provider, model }
+    return { provider, model, catalogProvider: base }
   }
 
   async function resolveImportedProviderModel(config: Config.Info, ref: string): Promise<ImportedProviderModelTarget> {
@@ -972,8 +976,6 @@ export namespace ConfigSetup {
     target: ImportedProviderModelTarget,
     authChanges?: Record<string, StagedAuthChange>,
   ) {
-    const modelOptions = (target.model.options ?? {}) as Record<string, unknown>
-    const providerOptions = (target.provider.options ?? {}) as Record<string, unknown>
     const apiKey = await resolveProviderAPIKey(target.provider, target.model, authChanges)
 
     if (!apiKey) {
@@ -984,13 +986,13 @@ export namespace ConfigSetup {
       )
     }
 
-    const sdk = Provider.createSDKFromSpec(target.model, {
+    return Provider.createLanguageFromSpec(target.model, {
       profileID: target.provider.profileID,
-      options: { ...providerOptions, ...modelOptions, apiKey },
+      options: target.provider.options,
       key: apiKey,
+      auth: { type: "api", key: apiKey },
+      catalogProvider: target.catalogProvider,
     })
-
-    return sdk.languageModel(target.model.api.id)
   }
 
   async function probeLanguageModel(

@@ -486,6 +486,31 @@ test("inline Copilot auth overrides stored credentials without changing their he
   })
 })
 
+test("inline Copilot auth is used for mapped connection catalog discovery", async () => {
+  await Auth.set(mappedCopilotProviderID, { type: "api", key: "stored-copilot-token" })
+  CopilotProvider.clearApiToken(mappedCopilotProviderID)
+  const authorizations: string[] = []
+  const catalog = await CopilotProvider.fetchModelCatalog(
+    mappedCopilotProviderID,
+    asFetch(async (input, init) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? ""
+      authorizations.push(authorization)
+      if (String(input) === CopilotProvider.TOKEN_EXCHANGE_URL) {
+        return jsonResponse({ token: "inline-copilot-api-token", expires_at: nowSeconds() + 3600 })
+      }
+      return jsonResponse({ data: [{ id: "gpt-inline-catalog" }] })
+    }),
+    { type: "api", key: "inline-copilot-token" },
+  )
+
+  expect(catalog).toEqual([{ id: "gpt-inline-catalog" }])
+  expect(authorizations).toEqual(["token inline-copilot-token", "Bearer inline-copilot-api-token"])
+  expect(await Auth.get(mappedCopilotProviderID)).toMatchObject({
+    type: "api",
+    key: "stored-copilot-token",
+  })
+})
+
 test("mapped Copilot requests reselect a backup credential after failover", async () => {
   await Auth.set(mappedCopilotProviderID, { type: "api", key: "primary-copilot-token" })
   await Auth.addToPool(mappedCopilotProviderID, "backup-copilot", {
