@@ -756,7 +756,9 @@ export namespace Provider {
       const partial: Partial<Info> = { source: "config" }
       if (provider.env) partial.env = provider.env
       if (provider.name) partial.name = provider.name
-      if (provider.options) partial.options = provider.options
+      if (provider.api || provider.options) {
+        partial.options = mergeDeep(provider.api ? { baseURL: provider.api } : {}, provider.options ?? {})
+      }
       mergeProvider(providerID, partial)
     }
 

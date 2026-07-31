@@ -496,6 +496,7 @@ test("custom provider resolves runtime behavior through its canonical profile", 
     modelsDevProviderID: "openai",
     modelFactory: "openaiResponses",
     runtimeOptions: async ({ providerID, auth }) => ({
+      baseURL: "https://canonical-profile.invalid/v1",
       resolvedProviderID: providerID,
       resolvedCredential: auth?.type === "api" ? auth.key : undefined,
     }),
@@ -521,6 +522,7 @@ test("custom provider resolves runtime behavior through its canonical profile", 
             [connectionID]: {
               profile: profileID,
               modelsDevProviderID: "openai",
+              api: "https://secondary-profile.invalid/v1",
             },
           },
         }),
@@ -537,6 +539,7 @@ test("custom provider resolves runtime behavior through its canonical profile", 
         expect(provider.key).toBe("secondary-profile-key")
         expect(provider.options.resolvedProviderID).toBe(connectionID)
         expect(provider.options.resolvedCredential).toBe("secondary-profile-key")
+        expect(provider.options.baseURL).toBe("https://secondary-profile.invalid/v1")
         expect(provider.models["gpt-5.5"].providerID).toBe(connectionID)
         expect(await ProviderUsage.get(connectionID)).toMatchObject({
           providerID: connectionID,
