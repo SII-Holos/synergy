@@ -83,6 +83,8 @@ Opening signaling without a page returns readiness with no page ID. After the fi
 
 Navigation is special: it can establish canonical page state before the remote host is ready, then synchronize the attached host. This avoids requiring a pre-existing page merely to start the Browser.
 
+The Host process calls back to the server's own listen address, never the client request origin. At listen time the server registers its URL with the Host broker process; wildcard binds are rewritten for loopback (`0.0.0.0` to `127.0.0.1`, `::` to `[::1]`). `SYNERGY_BROWSER_HOST_SERVER_URL` overrides that resolution explicitly. Registration waits are status-aware: an installing Host is given a 120-second window and a starting Host 30 seconds, while a failed or unavailable Host rejects immediately. If the resolved callback URL changes while a Host process is alive, the server restarts that process with the new URL instead of failing.
+
 ## Network and File Boundaries
 
 Chromium owns webpage network security: same-origin behavior, CORS, TLS, mixed-content checks, Local Network Access, and renderer isolation. Synergy does not maintain a second IP-address policy or classify loopback, private, metadata, benchmark, documentation, or TUN/Fake-IP ranges.

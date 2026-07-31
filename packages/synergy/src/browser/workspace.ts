@@ -123,15 +123,33 @@ export namespace BrowserWorkspace {
   }
 
   async function waitForBroker(kind: "native" | "webrtc", timeoutMs: number): Promise<void> {
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() <= deadline) {
+    const startedAt = Date.now()
+    while (true) {
       if (BrowserBroker.ready(kind)) return
+      let budget = timeoutMs
+      if (kind === "webrtc") {
+        const status = BrowserHostBrokerProcess.status()
+        if (status === "failed" || status === "unavailable") {
+          throw new BrowserProtocolError({
+            code: "browser_host_unavailable",
+            message: `Browser Host did not register ${kind} capability (host status: ${status}).`,
+            retryable: true,
+          })
+        }
+        budget =
+          status === "installing"
+            ? BrowserHostBrokerProcess.INSTALL_TIMEOUT_MS
+            : BrowserHostBrokerProcess.START_TIMEOUT_MS
+      }
+      if (Date.now() - startedAt >= budget) {
+        const detail = kind === "webrtc" ? ` (host status: ${BrowserHostBrokerProcess.status()})` : ""
+        throw new BrowserProtocolError({
+          code: "browser_host_unavailable",
+          message: `Browser Host did not register ${kind} capability within ${budget}ms${detail}.`,
+          retryable: true,
+        })
+      }
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    throw new BrowserProtocolError({
-      code: "browser_host_unavailable",
-      message: `Browser Host did not register ${kind} capability within ${timeoutMs}ms.`,
-      retryable: true,
-    })
   }
 }

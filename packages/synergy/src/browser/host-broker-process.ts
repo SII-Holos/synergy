@@ -21,10 +21,13 @@ export namespace BrowserHostBrokerProcess {
   const log = Log.create({ service: "browser.host.process" })
   let proc: HostSubprocess | null = null
   let serverUrl: string | null = null
+  let listenUrl: string | null = null
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let activityInstalled = false
   let activityUnsubscribe: (() => void) | null = null
   let hostStatus: BrowserHostStatus = "idle"
+  export const INSTALL_TIMEOUT_MS = 120_000
+  export const START_TIMEOUT_MS = 30_000
   let baselineRssBytes: number | undefined
   let peakRssBytes = 0
   let currentRssBytes: number | undefined
@@ -80,6 +83,14 @@ export namespace BrowserHostBrokerProcess {
     }
   }
 
+  export function configureServerUrl(url: string): void {
+    listenUrl = url
+  }
+
+  export function activeServerUrl(): string | null {
+    return serverUrl
+  }
+
   export async function ensure(input: EnsureInput): Promise<EnsureResult> {
     installActivityListener()
     cancelIdleStop()
@@ -93,18 +104,18 @@ export namespace BrowserHostBrokerProcess {
       BrowserBroker.publishHostStatus(hostStatus)
       return { status: "disabled", key: key() }
     }
+    const resolvedServerUrl = resolveServerUrl(input.serverUrl)
     if (proc?.exitCode === null) {
-      if (serverUrl !== input.serverUrl) {
-        hostStatus = "failed"
+      if (serverUrl === resolvedServerUrl) {
+        hostStatus = "starting"
         BrowserBroker.publishHostStatus(hostStatus)
-        return { status: "failed", key: key() }
+        return { status: "running", key: key() }
       }
-      hostStatus = "starting"
-      BrowserBroker.publishHostStatus(hostStatus)
-      return { status: "running", key: key() }
+      log.info("browser.host.broker.restarting", { previous: serverUrl, next: resolvedServerUrl })
+      await stop()
     }
 
-    serverUrl = input.serverUrl
+    serverUrl = resolvedServerUrl
     const pipeLogs = process.env.NODE_ENV !== "production"
     hostStatus =
       Installation.VERSION === "local" || process.env.SYNERGY_BROWSER_HOST_COMMAND ? "starting" : "installing"
@@ -127,12 +138,12 @@ export namespace BrowserHostBrokerProcess {
       stderr: pipeLogs ? "pipe" : "ignore",
       env: {
         ...process.env,
-        SYNERGY_BROWSER_HOST_SERVER_URL: input.serverUrl,
+        SYNERGY_BROWSER_HOST_SERVER_URL: resolvedServerUrl,
         SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: BrowserBroker.secret(),
       },
     })
     const active = proc
-    log.info("browser.host.broker.started", { pid: active.pid, serverUrl: input.serverUrl })
+    log.info("browser.host.broker.started", { pid: active.pid, serverUrl: resolvedServerUrl })
     if (pipeLogs) {
       pipe(active.stdout, "stdout")
       pipe(active.stderr, "stderr")
@@ -186,6 +197,7 @@ export namespace BrowserHostBrokerProcess {
     if (proc) killHostTree(proc, "SIGKILL")
     proc = null
     serverUrl = null
+    listenUrl = null
     hostStatus = "idle"
     baselineRssBytes = undefined
     peakRssBytes = 0
@@ -194,6 +206,20 @@ export namespace BrowserHostBrokerProcess {
     activityUnsubscribe?.()
     activityUnsubscribe = null
     activityInstalled = false
+  }
+
+  function resolveServerUrl(requestOrigin: string): string {
+    const configured = process.env.SYNERGY_BROWSER_HOST_SERVER_URL?.trim()
+    if (configured) return configured
+    if (!listenUrl) return requestOrigin
+    try {
+      const url = new URL(listenUrl)
+      if (url.hostname === "0.0.0.0") url.hostname = "127.0.0.1"
+      else if (url.hostname === "[::]" || url.hostname === "::") url.hostname = "[::1]"
+      return url.origin
+    } catch {
+      return requestOrigin
+    }
   }
 
   function installActivityListener(): void {
