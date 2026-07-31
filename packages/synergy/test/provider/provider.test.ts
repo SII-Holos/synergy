@@ -6,6 +6,8 @@ import { Provider } from "../../src/provider/provider"
 import { Env } from "../../src/util/env"
 import { ModelsDev } from "../../src/provider/models"
 import { Provider as ProviderConfig } from "../../src/config/schema"
+import { ProviderCatalog } from "../../src/provider/catalog"
+import { ProviderProfile } from "../../src/provider/profile"
 
 async function provideTestScope(input: {
   scope: Awaited<ReturnType<Awaited<ReturnType<typeof tmpdir>>["scope"]>>
@@ -444,6 +446,55 @@ test("custom provider inherits a models.dev catalog without sharing account iden
       })
       expect(primary.models["claude-sonnet-4-5"].providerID).toBe("anthropic")
       expect(primary.models["claude-sonnet-4-5"].name).not.toBe("Secondary Sonnet")
+    },
+  })
+})
+
+test("custom provider inheritance excludes credential-aware live catalog snapshots", async () => {
+  const profileID = `live-catalog-source-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  ProviderProfile.register({
+    id: profileID,
+    name: "Live catalog source",
+    authKind: "none",
+    modelsDevProviderID: "openai",
+    fallbackModels: ["gpt-5.5"],
+    modelCatalogIdentity: () => "primary-account",
+    fetchModelCatalog: async () => [{ id: "primary-account-only-model" }],
+  })
+  ProviderCatalog.reset()
+  await ProviderCatalog.refresh(profileID)
+  const liveCatalog = await ProviderCatalog.resolve({
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+    includeLive: true,
+  })
+  expect(liveCatalog[profileID].models["primary-account-only-model"]).toBeDefined()
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          provider: {
+            [connectionID]: {
+              modelsDevProviderID: profileID,
+              env: ["SECONDARY_API_KEY"],
+            },
+          },
+        }),
+      )
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("SECONDARY_API_KEY", "secondary-api-key")
+    },
+    fn: async () => {
+      const providers = await Provider.list()
+      expect(providers[connectionID].models["primary-account-only-model"]).toBeUndefined()
+      expect(providers[connectionID].models["gpt-5.5"]).toBeDefined()
     },
   })
 })

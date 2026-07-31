@@ -502,6 +502,9 @@ export namespace Provider {
     log.info("init")
 
     const configProviders = Object.entries(config.provider ?? {})
+    const inheritedModelsDev = configProviders.some(([, provider]) => provider.modelsDevProviderID)
+      ? await ProviderCatalog.resolve({ config, includeLive: false })
+      : modelsDev
 
     function mergeProvider(providerID: string, provider: Partial<Info>) {
       const existing = providers[providerID]
@@ -519,7 +522,9 @@ export namespace Provider {
     // extend database from config
     for (const [providerID, provider] of configProviders) {
       const sourceProviderID = provider.modelsDevProviderID ?? providerID
-      const sourceCatalog = modelsDev[sourceProviderID]
+      const sourceCatalog = provider.modelsDevProviderID
+        ? inheritedModelsDev[sourceProviderID]
+        : modelsDev[sourceProviderID]
       if (provider.modelsDevProviderID && !sourceCatalog) {
         log.warn("configured provider model catalog source not found", {
           providerID,
