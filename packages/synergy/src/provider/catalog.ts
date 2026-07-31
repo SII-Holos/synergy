@@ -128,6 +128,9 @@ export namespace ProviderCatalog {
     npm?: string
     env?: string[]
     options?: Record<string, unknown>
+    models?: Record<string, Record<string, any>>
+    whitelist?: string[]
+    blacklist?: string[]
   }
 
   type CacheEntry = {
@@ -149,6 +152,57 @@ export namespace ProviderCatalog {
 
   function snapshotKey(providerID: string, identityHash: string) {
     return `${providerID}:${identityHash}`
+  }
+
+  function catalogStateKey(providerID: string) {
+    return `${ScopeContext.tryScope()?.id ?? "global"}:${providerID}`
+  }
+
+  function isSensitiveConfiguredKey(key: string) {
+    const normalized = key.replace(/[-_.]/g, "").toLowerCase()
+    return (
+      normalized.endsWith("apikey") ||
+      normalized.endsWith("password") ||
+      normalized.endsWith("secret") ||
+      normalized.endsWith("secretkey") ||
+      normalized === "token" ||
+      ["authtoken", "accesstoken", "refreshtoken", "bearertoken"].some((suffix) => normalized.endsWith(suffix)) ||
+      normalized.endsWith("authorization")
+    )
+  }
+
+  function publicConfiguredValue(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(publicConfiguredValue)
+    if (!value || typeof value !== "object") return value
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([key, entry]) =>
+        isSensitiveConfiguredKey(key) ? [] : [[key, publicConfiguredValue(entry)] as const],
+      ),
+    )
+  }
+
+  function modelRulesIdentity(provider: ConfiguredProvider) {
+    const rules = {
+      whitelist: provider.whitelist,
+      blacklist: provider.blacklist,
+      models: publicConfiguredValue(provider.models),
+    }
+    return new Bun.CryptoHasher("sha256").update(JSON.stringify(rules)).digest("hex")
+  }
+
+  function applyConfiguredModelRules(provider: ModelsDev.Provider, configured: ConfiguredProvider) {
+    const result = structuredClone(provider)
+    for (const [modelID, raw] of Object.entries(configured.models ?? {})) {
+      const model = publicConfiguredValue(raw) as Record<string, any>
+      const sourceID = typeof model.id === "string" ? model.id : modelID
+      const source = result.models[sourceID] ?? result.models[modelID] ?? fallbackModel(result, sourceID)
+      result.models[modelID] = mergeDeep(source, model) as ModelsDev.Model
+    }
+    for (const modelID of Object.keys(result.models)) {
+      if (configured.whitelist && !configured.whitelist.includes(modelID)) delete result.models[modelID]
+      if (configured.blacklist?.includes(modelID)) delete result.models[modelID]
+    }
+    return result
   }
 
   function normalizeDiscoveryEndpoint(baseURL: string | undefined) {
@@ -595,13 +649,13 @@ export namespace ProviderCatalog {
     if (!profile.fetchModelCatalog && !profile.fetchModels) return provider
     const auth = context?.auth
     if (!auth && profile.authKind !== "none") {
-      catalogStates.delete(providerID)
+      catalogStates.delete(catalogStateKey(providerID))
       return provider
     }
     const key = context ? snapshotKey(providerID, context.identityHash) : undefined
     const snapshot = key ? (await readSnapshots()).get(key) : undefined
     const modelCount = snapshot?.activeModels.length ?? Object.keys(provider.models).length
-    catalogStates.set(providerID, {
+    catalogStates.set(catalogStateKey(providerID), {
       source: snapshot && key && freshlyVerified.has(key) ? "live" : snapshot ? "cached" : "bundled",
       refreshing: key ? refreshInFlight.has(key) || scheduledRefreshes.has(key) : false,
       modelCount,
@@ -702,7 +756,7 @@ export namespace ProviderCatalog {
       const store = await readSnapshots()
       const previous = store.get(key)
       const now = Date.now()
-      catalogStates.set(providerID, {
+      catalogStates.set(catalogStateKey(providerID), {
         source: previous ? (freshlyVerified.has(key) ? "live" : "cached") : "bundled",
         refreshing: true,
         modelCount: previous?.activeModels.length ?? 0,
@@ -746,7 +800,7 @@ export namespace ProviderCatalog {
           lastVerifiedAt: failed.lastVerifiedAt,
           failure,
         }
-        catalogStates.set(providerID, state)
+        catalogStates.set(catalogStateKey(providerID), state)
         scheduleRetry(providerID, profile.id, resolvedBaseURL, configured, failure, error)
         log.warn("failed to refresh provider model catalog", { providerID, profileID: profile.id, failure, error })
         return state
@@ -766,7 +820,7 @@ export namespace ProviderCatalog {
         modelCount: next.activeModels.length,
         lastVerifiedAt: next.lastVerifiedAt,
       }
-      catalogStates.set(providerID, state)
+      catalogStates.set(catalogStateKey(providerID), state)
       return state
     })().finally(() => {
       if (refreshInFlight.get(key) === request) refreshInFlight.delete(key)
@@ -854,6 +908,7 @@ export namespace ProviderCatalog {
                   api: provider.api,
                   npm: provider.npm,
                   env: provider.env,
+                  modelRules: modelRulesIdentity(provider),
                 },
               ],
             ]
@@ -933,13 +988,16 @@ export namespace ProviderCatalog {
         })
         continue
       }
-      result[providerID] = mergeProvider(structuredClone(source), {
-        id: providerID,
-        name: provider.name ?? source.name,
-        api: provider.api ?? source.api,
-        npm: provider.npm ?? source.npm,
-        env: provider.env ?? [],
-      })
+      result[providerID] = applyConfiguredModelRules(
+        mergeProvider(structuredClone(source), {
+          id: providerID,
+          name: provider.name ?? source.name,
+          api: provider.api ?? source.api,
+          npm: provider.npm ?? source.npm,
+          env: provider.env ?? [],
+        }),
+        provider,
+      )
     }
 
     if (input?.includeLive) {
@@ -1029,6 +1087,6 @@ export namespace ProviderCatalog {
     })
 
   export function modelCatalogState(providerID: string) {
-    return catalogStates.get(providerID)
+    return catalogStates.get(catalogStateKey(providerID))
   }
 }

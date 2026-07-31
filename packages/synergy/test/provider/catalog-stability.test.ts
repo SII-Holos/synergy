@@ -364,6 +364,94 @@ test("catalog-only account projections are isolated by configuration", async () 
   expect(second["catalog-account-a"]).toBeUndefined()
 })
 
+test("catalog-only projections apply model rules without exposing inline credentials", async () => {
+  const accountID = "catalog-account-rules"
+  const first = await ProviderCatalog.resolve({
+    config: {
+      providerCatalog: { enabled: false, offlineCache: false },
+      provider: {
+        [accountID]: {
+          modelsDevProviderID: "openai",
+          whitelist: ["gpt-5.5", "account-alias"],
+          blacklist: ["gpt-5.5"],
+          models: {
+            "account-alias": {
+              id: "gpt-5.5",
+              name: "Account Alias",
+              options: {
+                apiKey: "must-not-be-projected",
+                headers: {
+                  Authorization: "must-not-be-projected",
+                  "X-API-Key": "must-not-be-projected",
+                },
+                maxTokens: 16_384,
+                reasoningEffort: "high",
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  expect(Object.keys(first[accountID].models)).toEqual(["account-alias"])
+  expect(first[accountID].models["account-alias"].name).toBe("Account Alias")
+  expect(first[accountID].models["account-alias"].options).toEqual({
+    headers: {},
+    maxTokens: 16_384,
+    reasoningEffort: "high",
+  })
+  expect(JSON.stringify(first[accountID])).not.toContain("must-not-be-projected")
+
+  const second = await ProviderCatalog.resolve({
+    config: {
+      providerCatalog: { enabled: false, offlineCache: false },
+      provider: {
+        [accountID]: {
+          modelsDevProviderID: "openai",
+          whitelist: ["gpt-5.4"],
+        },
+      },
+    },
+  })
+  expect(second[accountID].models["gpt-5.4"]).toBeDefined()
+  expect(second[accountID].models["account-alias"]).toBeUndefined()
+})
+
+test("catalog state is isolated between scopes that reuse a provider ID", async () => {
+  await using first = await tmpdir()
+  await using second = await tmpdir()
+  const firstScope = await first.scope()
+  const secondScope = await second.scope()
+
+  identity = "scope-a"
+  fetchCatalog = async () => [{ id: "scope-a-model" }]
+  await ScopeContext.provide({
+    scope: firstScope,
+    fn: () => ProviderCatalog.refresh(providerID),
+  })
+
+  identity = "scope-b"
+  fetchCatalog = async () => [{ id: "scope-b-model" }, { id: "scope-b-model-2" }]
+  await ScopeContext.provide({
+    scope: secondScope,
+    fn: () => ProviderCatalog.refresh(providerID),
+  })
+
+  expect(
+    await ScopeContext.provide({
+      scope: firstScope,
+      fn: () => ProviderCatalog.modelCatalogState(providerID)?.modelCount,
+    }),
+  ).toBe(1)
+  expect(
+    await ScopeContext.provide({
+      scope: secondScope,
+      fn: () => ProviderCatalog.modelCatalogState(providerID)?.modelCount,
+    }),
+  ).toBe(2)
+})
+
 test("reconnecting a provider does not reuse the previous credential's catalog", async () => {
   const originalNow = Date.now
   Date.now = () => 1_000

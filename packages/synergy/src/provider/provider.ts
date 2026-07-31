@@ -722,9 +722,17 @@ export namespace Provider {
         })
       }
       const providerKey = providers[providerID]?.key
-      const connectionAuth =
-        storedAuth ?? (providerKey ? ({ type: "api", key: providerKey } satisfies Auth.Info) : undefined)
       const configProvider = config.provider?.[providerID]
+      const inlineProviderKey =
+        typeof configProvider?.options?.apiKey === "string" && configProvider.options.apiKey
+          ? configProvider.options.apiKey
+          : undefined
+      const connectionKey = providerKey ?? inlineProviderKey
+      const hasInlineModelKey = Object.values(configProvider?.models ?? {}).some(
+        (model) => typeof model.options?.apiKey === "string" && model.options.apiKey.length > 0,
+      )
+      const connectionAuth =
+        storedAuth ?? (connectionKey ? ({ type: "api", key: connectionKey } satisfies Auth.Info) : undefined)
       const sourceProviderID = configProvider?.modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id
       const profileInput = {
         providerID,
@@ -733,7 +741,7 @@ export namespace Provider {
       }
       const auth = (await profile.resolveAuth?.(profileInput)) ?? connectionAuth
       const autoload = (await profile.autoload?.({ ...profileInput, auth })) ?? false
-      const shouldMerge = !!auth || !!providers[providerID] || autoload
+      const shouldMerge = !!auth || !!providers[providerID] || hasInlineModelKey || autoload
       if (!shouldMerge) continue
       const modelOptions = (await profile.modelOptions?.({ ...profileInput, auth })) ?? {}
       const runtimeOptions = (await profile.runtimeOptions?.({ ...profileInput, auth })) ?? {}
@@ -1154,7 +1162,7 @@ export namespace Provider {
 
     try {
       const language = s.modelLoaders[model.providerID]
-        ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
+        ? await s.modelLoaders[model.providerID](sdk, model.api.id, options)
         : model.api.npm === "@ai-sdk/openai"
           ? (sdk as any).responses(model.api.id)
           : sdk.languageModel(model.api.id)

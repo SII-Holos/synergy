@@ -502,6 +502,107 @@ test("Copilot Claude factories honor the merged connection endpoint", async () =
   }
 })
 
+test("inline model credentials initialize mapped profiles and reach model loaders", async () => {
+  const profileID = `inline-runtime-profile-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  let loaderOptions: Record<string, any> | undefined
+  ProviderProfile.register({
+    id: profileID,
+    name: "Inline runtime profile",
+    authKind: "api_key",
+    modelsDevProviderID: "openai",
+    aiSdkPackage: "@ai-sdk/openai",
+    getModel: async ({ options }) => {
+      loaderOptions = options
+      return { specificationVersion: "v2", provider: profileID, modelId: "test" }
+    },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          providerCatalog: { enabled: false, offlineCache: false },
+          provider: {
+            [connectionID]: {
+              profile: profileID,
+              modelsDevProviderID: "openai",
+              models: {
+                "gpt-5.5": {
+                  options: {
+                    apiKey: "inline-model-key",
+                    baseURL: "https://inline-model.invalid/v1",
+                  },
+                },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await provideTestScope({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const provider = (await Provider.list())[connectionID]
+      expect(provider.profileID).toBe(profileID)
+      const model = await Provider.getModel(connectionID, "gpt-5.5")
+      await Provider.getLanguage(model)
+      expect(loaderOptions).toMatchObject({
+        apiKey: "inline-model-key",
+        baseURL: "https://inline-model.invalid/v1",
+      })
+    },
+  })
+})
+
+test("inline provider credentials initialize mapped profile auth", async () => {
+  const profileID = `inline-provider-profile-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  let resolvedKey: string | undefined
+  ProviderProfile.register({
+    id: profileID,
+    name: "Inline provider profile",
+    authKind: "api_key",
+    modelsDevProviderID: "openai",
+    aiSdkPackage: "@ai-sdk/openai",
+    runtimeOptions: async ({ auth }) => {
+      resolvedKey = auth?.type === "api" ? auth.key : undefined
+      return {}
+    },
+  })
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          providerCatalog: { enabled: false, offlineCache: false },
+          provider: {
+            [connectionID]: {
+              profile: profileID,
+              modelsDevProviderID: "openai",
+              options: {
+                apiKey: "inline-provider-key",
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await provideTestScope({
+    scope: await tmp.scope(),
+    fn: async () => {
+      expect((await Provider.list())[connectionID].profileID).toBe(profileID)
+      expect(resolvedKey).toBe("inline-provider-key")
+    },
+  })
+})
+
 test("custom provider resolves runtime behavior through its canonical profile", async () => {
   const profileID = `runtime-profile-${Math.random().toString(36).slice(2)}`
   const connectionID = `${profileID}-secondary`
