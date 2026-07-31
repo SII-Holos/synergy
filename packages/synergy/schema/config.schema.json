@@ -697,7 +697,9 @@
             "hostServiceRequestTimeoutMs": 120000,
             "taskRunTimeoutMs": 120000,
             "shutdownGraceMs": 1500,
-            "heartbeatIntervalMs": 5000
+            "heartbeatIntervalMs": 5000,
+            "maxMemoryMb": 512,
+            "memorySampleIntervalMs": 5000
           },
           "ref": "PluginRuntimeLimitsConfig",
           "type": "object",
@@ -734,6 +736,18 @@
             },
             "heartbeatIntervalMs": {
               "description": "Heartbeat interval in milliseconds",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxMemoryMb": {
+              "description": "External plugin runtime RSS limit in megabytes",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "memorySampleIntervalMs": {
+              "description": "External plugin runtime RSS sampling interval in milliseconds",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
@@ -1126,6 +1140,7 @@
                   }
                 },
                 "temperature": {
+                  "default": false,
                   "type": "boolean"
                 },
                 "tool_call": {
@@ -1240,6 +1255,7 @@
                   "enum": ["active", "retained"]
                 },
                 "options": {
+                  "default": {},
                   "type": "object",
                   "propertyNames": {
                     "type": "string"
@@ -1262,7 +1278,6 @@
                       "type": "string"
                     }
                   },
-                  "required": ["npm"],
                   "additionalProperties": false
                 },
                 "variants": {
@@ -1285,6 +1300,11 @@
               },
               "additionalProperties": false
             }
+          },
+          "modelsDevProviderID": {
+            "description": "Models.dev provider id to use as this provider connection's model catalog source",
+            "type": "string",
+            "minLength": 1
           },
           "whitelist": {
             "type": "array",
@@ -2259,9 +2279,13 @@
                       "description": "Bot open_id used to verify real @mentions in group chats",
                       "type": "string"
                     },
+                    "projectDir": {
+                      "description": "Project directory whose Scope owns sessions for this Feishu account",
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "streaming": {
                       "description": "Enable streaming card updates",
-                      "default": true,
                       "type": "boolean"
                     },
                     "streamingThrottleMs": {
@@ -2310,7 +2334,6 @@
                     "allowDM",
                     "allowGroup",
                     "requireMention",
-                    "streaming",
                     "streamingThrottleMs",
                     "groupSessionScope",
                     "inboundDebounceMs",
@@ -2332,6 +2355,44 @@
               }
             },
             "required": ["type", "accounts", "streaming"],
+            "additionalProperties": false
+          },
+          {
+            "ref": "ChannelClarusConfig",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "clarus"
+              },
+              "accounts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "ref": "ChannelClarusAccountConfig",
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "apiUrl": {
+                      "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
+                      "type": "string"
+                    },
+                    "agent": {
+                      "description": "Primary Synergy agent for project and assignment Sessions",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["type", "accounts"],
             "additionalProperties": false
           }
         ]

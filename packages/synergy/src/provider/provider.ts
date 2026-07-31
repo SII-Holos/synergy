@@ -489,7 +489,13 @@ export namespace Provider {
       return true
     }
 
-    const modelsDev = { ...(await ProviderCatalog.resolve({ config, includeLive: true })) }
+    const configProviders = Object.entries(config.provider ?? {})
+    const inheritsModelsDev = configProviders.some(([, provider]) => provider.modelsDevProviderID)
+    const [liveModelsDev, inheritedModelsDev] = await Promise.all([
+      ProviderCatalog.resolve({ config, includeLive: true }),
+      inheritsModelsDev ? ProviderCatalog.resolve({ config, includeLive: false }) : Promise.resolve(undefined),
+    ])
+    const modelsDev = { ...liveModelsDev }
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
     const providers: { [providerID: string]: Info } = {}
@@ -500,8 +506,6 @@ export namespace Provider {
     const sdk = new Map<number, { instance: SDK; createdAt: number }>()
 
     log.info("init")
-
-    const configProviders = Object.entries(config.provider ?? {})
 
     function mergeProvider(providerID: string, provider: Partial<Info>) {
       const existing = providers[providerID]
@@ -518,7 +522,36 @@ export namespace Provider {
 
     // extend database from config
     for (const [providerID, provider] of configProviders) {
-      const existing = database[providerID]
+      const sourceProviderID = provider.modelsDevProviderID ?? providerID
+      const sourceCatalog = provider.modelsDevProviderID
+        ? inheritedModelsDev?.[sourceProviderID]
+        : modelsDev[sourceProviderID]
+      if (provider.modelsDevProviderID && !sourceCatalog) {
+        log.warn("configured provider model catalog source not found", {
+          providerID,
+          modelsDevProviderID: provider.modelsDevProviderID,
+        })
+      }
+      const existing = provider.modelsDevProviderID
+        ? sourceCatalog
+          ? fromModelsDevProvider({
+              ...sourceCatalog,
+              id: providerID,
+              env: [],
+              api: provider.api ?? sourceCatalog.api,
+              npm: provider.npm ?? sourceCatalog.npm,
+            })
+          : undefined
+        : database[providerID]
+      if (provider.modelsDevProviderID && existing) {
+        for (const model of Object.values(existing.models)) {
+          if (provider.api) model.api.url = provider.api
+          if (provider.npm) {
+            model.api.npm = provider.npm
+            model.variants = mapValues(ProviderTransform.variants(model), (variant) => variant)
+          }
+        }
+      }
       const parsed: Info = {
         id: providerID,
         name: provider.name ?? existing?.name ?? providerID,
@@ -529,7 +562,7 @@ export namespace Provider {
       }
 
       for (const [modelID, model] of Object.entries(provider.models ?? {})) {
-        const existingModel = parsed.models[model.id ?? modelID]
+        const existingModel = parsed.models[model.id ?? modelID] ?? parsed.models[modelID]
         const name = iife(() => {
           if (model.name) return model.name
           if (model.id && model.id !== modelID) return modelID
@@ -543,9 +576,9 @@ export namespace Provider {
               model.provider?.npm ??
               provider.npm ??
               existingModel?.api.npm ??
-              modelsDev[providerID]?.npm ??
+              sourceCatalog?.npm ??
               "@ai-sdk/openai-compatible",
-            url: provider?.api ?? existingModel?.api.url ?? modelsDev[providerID]?.api,
+            url: provider?.api ?? existingModel?.api.url ?? sourceCatalog?.api,
           },
           status: model.status ?? existingModel?.status ?? "active",
           name,
