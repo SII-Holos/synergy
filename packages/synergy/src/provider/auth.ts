@@ -40,9 +40,10 @@ export namespace ProviderAuth {
         callback: async (code) => retargetResult(await result.callback(code), providerID),
       }
     }
+    const callback = result.callback as (signal?: AbortSignal) => ReturnType<AutoOauthResult["callback"]>
     return {
       ...result,
-      callback: async () => retargetResult(await result.callback(), providerID),
+      callback: async (signal?: AbortSignal) => retargetResult(await callback(signal), providerID),
     }
   }
 
@@ -57,7 +58,9 @@ export namespace ProviderAuth {
             authorize: async (inputs?: Record<string, string>) => {
               const result =
                 profileID === CopilotProvider.PROVIDER_ID || profileID === CopilotProvider.ENTERPRISE_PROVIDER_ID
-                  ? await CopilotProvider.authorizeDeviceCode(providerID)
+                  ? await CopilotProvider.authorizeDeviceCode(providerID, fetch, {
+                      enterprise: profileID === CopilotProvider.ENTERPRISE_PROVIDER_ID,
+                    })
                   : await method.authorize(inputs)
               return retargetOauth(result, providerID)
             },

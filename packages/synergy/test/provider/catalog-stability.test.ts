@@ -233,6 +233,35 @@ test("configured account endpoint is passed to live model discovery", async () =
   expect(configuredBaseURL).toBe("https://account.invalid/v1")
 })
 
+test("catalog-only account projections are isolated by configuration", async () => {
+  const first = await ProviderCatalog.resolve({
+    config: {
+      providerCatalog: { enabled: false, offlineCache: false },
+      provider: {
+        "catalog-account-a": {
+          modelsDevProviderID: "openai",
+          name: "Catalog Account A",
+        },
+      },
+    },
+  })
+  expect(first["catalog-account-a"]?.name).toBe("Catalog Account A")
+
+  const second = await ProviderCatalog.resolve({
+    config: {
+      providerCatalog: { enabled: false, offlineCache: false },
+      provider: {
+        "catalog-account-b": {
+          modelsDevProviderID: "anthropic",
+          name: "Catalog Account B",
+        },
+      },
+    },
+  })
+  expect(second["catalog-account-b"]?.name).toBe("Catalog Account B")
+  expect(second["catalog-account-a"]).toBeUndefined()
+})
+
 test("reconnecting a provider does not reuse the previous credential's catalog", async () => {
   const originalNow = Date.now
   Date.now = () => 1_000

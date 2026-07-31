@@ -199,6 +199,102 @@ test("mapped Copilot device auth binds the concrete connection ID", async () => 
   expect(await Auth.get(CopilotProvider.PROVIDER_ID)).toBeUndefined()
 })
 
+test("mapped Copilot enterprise auth preserves the enterprise host", async () => {
+  const previousEnterpriseURL = process.env.COPILOT_GITHUB_ENTERPRISE_URL
+  process.env.COPILOT_GITHUB_ENTERPRISE_URL = "https://github.enterprise.invalid"
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          `${dir}/synergy.json`,
+          JSON.stringify({
+            provider: {
+              [mappedCopilotProviderID]: {
+                profile: CopilotProvider.ENTERPRISE_PROVIDER_ID,
+                modelsDevProviderID: CopilotProvider.PROVIDER_ID,
+              },
+            },
+          }),
+        )
+      },
+    })
+    let deviceCodeURL: string | undefined
+    globalThis.fetch = asFetch(async (input) => {
+      deviceCodeURL = String(input)
+      return jsonResponse({
+        device_code: "mapped-enterprise-device",
+        user_code: "ENTERPRISE",
+        verification_uri: "https://github.enterprise.invalid/login/device",
+        interval: 1,
+        expires_in: 60,
+      })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      async fn() {
+        await ProviderAuth.authorize({ providerID: mappedCopilotProviderID, method: 0 })
+      },
+    })
+
+    expect(deviceCodeURL).toBe("https://github.enterprise.invalid/login/device/code")
+  } finally {
+    if (previousEnterpriseURL === undefined) delete process.env.COPILOT_GITHUB_ENTERPRISE_URL
+    else process.env.COPILOT_GITHUB_ENTERPRISE_URL = previousEnterpriseURL
+  }
+})
+
+test("mapped Copilot auth forwards cancellation to the device callback", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/synergy.json`,
+        JSON.stringify({
+          provider: {
+            [mappedCopilotProviderID]: {
+              profile: CopilotProvider.PROVIDER_ID,
+              modelsDevProviderID: CopilotProvider.PROVIDER_ID,
+            },
+          },
+        }),
+      )
+    },
+  })
+  let polls = 0
+  globalThis.fetch = asFetch(async (input) => {
+    const url = String(input)
+    if (url.endsWith("/login/device/code")) {
+      return jsonResponse({
+        device_code: "mapped-cancelled-device",
+        user_code: "STOP-MAPPED",
+        verification_uri: "https://github.com/login/device",
+        interval: 1,
+        expires_in: 60,
+      })
+    }
+    if (url.endsWith("/login/oauth/access_token")) {
+      polls++
+      return jsonResponse({ access_token: "unexpected-mapped-token" })
+    }
+    throw new Error(`unexpected URL ${url}`)
+  })
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      const input = { providerID: mappedCopilotProviderID, method: 0 }
+      await ProviderAuth.authorize(input)
+      const controller = new AbortController()
+      controller.abort()
+      const result = await ProviderAuth.callback({ ...input, signal: controller.signal }).catch((error) => error)
+      expect(result).toBeInstanceOf(ProviderAuth.OauthCallbackFailed)
+    },
+  })
+
+  expect(polls).toBe(0)
+  expect(await Auth.get(mappedCopilotProviderID)).toBeUndefined()
+})
+
 test("anthropic oauth refresh rotates tokens and marks invalid grants dead", async () => {
   await Auth.set(AnthropicOAuthProvider.PROVIDER_ID, {
     type: "oauth",

@@ -817,7 +817,7 @@ export namespace ProviderCatalog {
     const providerCatalog = (input?.config as { providerCatalog?: unknown } | undefined)?.providerCatalog ?? {}
     const connections = Object.fromEntries(
       Object.entries(configuredProviders(input?.config)).flatMap(([providerID, provider]) =>
-        provider.profile
+        provider.profile || provider.modelsDevProviderID
           ? [
               [
                 providerID,

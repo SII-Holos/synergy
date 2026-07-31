@@ -43,16 +43,16 @@ export namespace CopilotProvider {
     }
   }
 
-  function githubBase(providerID: string) {
-    const enterprise = providerID === ENTERPRISE_PROVIDER_ID
+  function githubBase(enterprise: boolean) {
     return enterprise ? process.env.COPILOT_GITHUB_ENTERPRISE_URL || "https://github.com" : "https://github.com"
   }
 
   export async function authorizeDeviceCode(
     providerID = PROVIDER_ID,
     fetchFn: FetchLike = fetch,
+    options: { enterprise?: boolean } = {},
   ): Promise<AuthOuathResult> {
-    const base = githubBase(providerID).replace(/\/+$/, "")
+    const base = githubBase(options.enterprise ?? providerID === ENTERPRISE_PROVIDER_ID).replace(/\/+$/, "")
     const response = await fetchFn(`${base}/login/device/code`, {
       method: "POST",
       headers: {
