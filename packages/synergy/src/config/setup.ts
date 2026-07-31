@@ -754,7 +754,18 @@ export namespace ConfigSetup {
     const { providerID, modelID } = Provider.parseModel(ref)
     const database = await ModelsDev.get()
     const imported = config.provider?.[providerID]
-    const base = database[providerID]
+    const sourceProviderID = imported?.modelsDevProviderID ?? providerID
+    const source = database[sourceProviderID]
+    const base =
+      source && sourceProviderID !== providerID
+        ? {
+            ...source,
+            id: providerID,
+            env: [],
+            api: imported?.api ?? source.api,
+            npm: imported?.npm ?? source.npm,
+          }
+        : source
 
     if (!imported && !base) {
       throw new Error(`Provider \"${providerID}\" was not found in the imported config or known provider catalog`)
@@ -806,6 +817,7 @@ export namespace ConfigSetup {
 
     const provider: Provider.Info = {
       id: providerID,
+      profileID: imported?.profile,
       name: imported?.name ?? existing?.name ?? providerID,
       source: "config",
       env: imported?.env ?? existing?.env ?? [],

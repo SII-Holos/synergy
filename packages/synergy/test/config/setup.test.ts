@@ -36,3 +36,28 @@ test("vision_model requires image input rather than another non-text modality", 
     },
   })
 })
+
+test("mapped provider models validate through their configured catalog source", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      const result = await ConfigSetup.validateRequiredCore({
+        model: "openai-secondary/gpt-4o",
+        provider: {
+          "openai-secondary": {
+            profile: "openai",
+            modelsDevProviderID: "openai",
+            options: { apiKey: "test-api-key" },
+          },
+        },
+      })
+
+      expect(result.fields.model).toMatchObject({
+        valid: true,
+        mode: "static",
+        message: "Default model verified",
+      })
+    },
+  })
+})
