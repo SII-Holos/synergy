@@ -4,6 +4,7 @@ type Provider = ProviderListResponse["all"][number]
 type Model = Provider["models"][string]
 
 export type ModelRef = { providerID: string; modelID: string }
+export type QuickSwitcherPreference = ModelRef & { state: "add" | "remove" }
 export type SelectableConnectedModel = Omit<Model, "provider" | "name"> & {
   provider: Provider
   name: string
@@ -78,6 +79,57 @@ export function recommendQuickSwitcherModels(
   }
 
   return result
+}
+
+function modelRefKey(model: ModelRef) {
+  return `${model.providerID}:${model.modelID}`
+}
+
+export function resolveQuickSwitcherModels(
+  recommended: readonly ModelRef[],
+  preferences: readonly QuickSwitcherPreference[],
+): ModelRef[] {
+  const preferencesByModel = new Map(preferences.map((item) => [modelRefKey(item), item.state]))
+  const result = recommended.filter((model) => preferencesByModel.get(modelRefKey(model)) !== "remove")
+  const seen = new Set(result.map(modelRefKey))
+
+  for (const preference of preferences) {
+    const key = modelRefKey(preference)
+    if (preferencesByModel.get(key) !== "add" || seen.has(key)) continue
+    seen.add(key)
+    result.push({ providerID: preference.providerID, modelID: preference.modelID })
+  }
+
+  return result
+}
+
+type QuickSwitcherDisplayModel = {
+  id: string
+  name: string
+  provider: { id: string; name: string }
+}
+
+export function listQuickSwitcherEntries<T extends QuickSwitcherDisplayModel>(
+  configured: readonly T[],
+  recent: readonly T[],
+  providerID?: string,
+): Array<T & { group: string; listKey: string }> {
+  const matchesProvider = (model: T) => !providerID || model.provider.id === providerID
+  const configuredEntries = configured
+    .filter(matchesProvider)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((model) => ({
+      ...model,
+      group: model.provider.name,
+      listKey: `${model.provider.id}:${model.id}`,
+    }))
+  const recentEntries = recent.filter(matchesProvider).map((model) => ({
+    ...model,
+    group: "Recent",
+    listKey: `recent:${model.provider.id}:${model.id}`,
+  }))
+
+  return [...recentEntries, ...configuredEntries]
 }
 
 export function resolveSessionModel(providers: Provider[], ref: ModelRef | undefined) {

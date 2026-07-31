@@ -14,6 +14,7 @@ import * as ComposerIntent from "./prompt/composer-intent"
 import {
   isSelectableModel,
   recommendQuickSwitcherModels,
+  resolveQuickSwitcherModels,
   resolveSessionModel,
 } from "@/components/provider/model-catalog"
 
@@ -262,13 +263,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const quickSwitcherPreferences = createMemo(() => sync.data.config.quick_switcher?.models ?? [])
 
-      const quickSwitcherPreferenceMap = createMemo(() => {
-        const map = new Map<string, "add" | "remove">()
-        for (const item of quickSwitcherPreferences()) {
-          map.set(keyOf(item), item.state)
-        }
-        return map
-      })
+      const quickSwitcherSet = createMemo(
+        () => new Set(resolveQuickSwitcherModels(recommended(), quickSwitcherPreferences()).map(keyOf)),
+      )
 
       const fallbackModel = createMemo((): ModelKey | undefined => {
         if (sync.data.config.model) {
@@ -369,18 +366,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const recent = createMemo(() => store.recent.map(find).filter((model): model is LocalModel => !!model))
 
       function inQuickSwitcher(model: ModelKey) {
-        const key = keyOf(model)
-        const preference = quickSwitcherPreferenceMap().get(key)
-        if (preference === "remove") return false
-        if (preference === "add") return true
-        return recommendedSet().has(key)
+        return quickSwitcherSet().has(keyOf(model))
       }
 
-      const quickSwitcherOnly = createMemo(() =>
+      const quickSwitcher = createMemo(() =>
         all().filter((item) => inQuickSwitcher({ providerID: item.provider.id, modelID: item.id })),
       )
-
-      const quickSwitcher = createMemo(() => uniqueBy([...recent(), ...quickSwitcherOnly()], keyOfLocalModel))
 
       const cycle = (direction: 1 | -1) => {
         const recentList = recent()

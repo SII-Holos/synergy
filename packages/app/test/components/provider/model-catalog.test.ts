@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test"
 import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk"
 import {
   isSelectableModel,
+  listQuickSwitcherEntries,
   listSelectableConnectedModels,
   recommendQuickSwitcherModels,
+  resolveQuickSwitcherModels,
   resolveSessionModel,
 } from "../../../src/components/provider/model-catalog"
 
@@ -123,5 +125,41 @@ describe("provider model catalog selection", () => {
     expect(recommendQuickSwitcherModels([...models].reverse(), defaults)).toEqual(
       recommendQuickSwitcherModels(models, defaults),
     )
+  })
+
+  test("quick-switcher preferences resolve independently from recent models", () => {
+    const recommended = [
+      { providerID: "provider", modelID: "gpt-5.6-terra" },
+      { providerID: "provider", modelID: "gpt-5.6-luna" },
+    ]
+    const preferences = [
+      { providerID: "provider", modelID: "gpt-5.6-sol", state: "add" as const },
+      { providerID: "provider", modelID: "gpt-5.6-luna", state: "remove" as const },
+    ]
+
+    expect(resolveQuickSwitcherModels(recommended, preferences)).toEqual([
+      { providerID: "provider", modelID: "gpt-5.6-terra" },
+      { providerID: "provider", modelID: "gpt-5.6-sol" },
+    ])
+  })
+
+  test("recent-only models stay out of provider quick-switch groups", () => {
+    const connected = provider({
+      luna: { ...baseModel, id: "gpt-5.6-luna", name: "GPT-5.6 Luna" },
+      sol: { ...baseModel, id: "gpt-5.6-sol", name: "GPT-5.6 Sol" },
+      terra: { ...baseModel, id: "gpt-5.6-terra", name: "GPT-5.6 Terra" },
+      legacy: { ...baseModel, id: "gpt-5.5", name: "GPT-5.5" },
+    })
+    const models = listSelectableConnectedModels([connected], ["provider"])
+    const configured = models.filter((model) => model.id.startsWith("gpt-5.6"))
+    const recent = models.filter((model) => model.id === "gpt-5.5")
+    const entries = listQuickSwitcherEntries(configured, recent)
+
+    expect(entries.filter((entry) => entry.group === "Recent").map((entry) => entry.id)).toEqual(["gpt-5.5"])
+    expect(entries.filter((entry) => entry.group === "Provider").map((entry) => entry.id)).toEqual([
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+    ])
   })
 })
