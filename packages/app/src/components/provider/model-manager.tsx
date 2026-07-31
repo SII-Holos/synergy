@@ -3,7 +3,7 @@ import { createMemo, Show, type Component } from "solid-js"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
-import { listSelectableConnectedModels } from "@/components/provider/model-catalog"
+import { listSelectableConnectedModels, recommendQuickSwitcherModels } from "@/components/provider/model-catalog"
 import { compareProviderIDs, type ProviderRecommendationMap } from "@/components/provider/provider-recommendation"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLocal, type LocalModel, type ModelKey } from "@/context/local"
@@ -130,20 +130,6 @@ function modelKey(model: ModelKey) {
   return `${model.providerID}:${model.modelID}`
 }
 
-function uniqueModelKeys(models: ModelKey[]) {
-  const seen = new Set<string>()
-  return models.filter((model) => {
-    const key = modelKey(model)
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-function newest(models: LocalModel[]) {
-  return [...models].sort((a, b) => String(b.release_date ?? "").localeCompare(String(a.release_date ?? "")))[0]
-}
-
 export type QuickSwitcherModelPreference = ModelKey & { state: "add" | "remove" }
 
 function quickSwitcherPreferenceMap(preferences: QuickSwitcherModelPreference[]) {
@@ -202,33 +188,7 @@ export const ConnectedModelManager: Component<{
   const local = optionalLocal()
   const selectable = () => props.selectable !== false
   const currentModel = () => (props.selectable === false ? undefined : local?.model.current())
-  const recommended = createMemo(() => {
-    const result: ModelKey[] = []
-    const push = (model: LocalModel | undefined) => {
-      if (!model) return
-      result.push({ providerID: model.provider.id, modelID: model.id })
-    }
-
-    const providerIDs = [...new Set(models().map((model) => model.provider.id))]
-    for (const providerID of providerIDs) {
-      const providerModels = models().filter((model) => model.provider.id === providerID)
-      if (providerModels.length === 0) continue
-
-      const defaultModelID = providers.default()[providerID]
-      push(providerModels.find((model) => model.id === defaultModelID))
-      push(newest(providerModels.filter((model) => model.capabilities.reasoning)))
-      push(newest(providerModels.filter((model) => (model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0)))
-      push(
-        newest(
-          providerModels.filter(
-            (model) => model.capabilities.input.image || model.capabilities.input.pdf || model.capabilities.input.video,
-          ),
-        ),
-      )
-    }
-
-    return uniqueModelKeys(result)
-  })
+  const recommended = createMemo(() => recommendQuickSwitcherModels(models(), providers.default()))
   const recommendedSet = createMemo(() => new Set(recommended().map(modelKey)))
   const preferenceMap = createMemo(() =>
     quickSwitcherPreferenceMap(props.quickSwitcher ?? local?.model.quickSwitcherPreferences() ?? []),

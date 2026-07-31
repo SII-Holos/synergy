@@ -3,6 +3,7 @@ import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk"
 import {
   isSelectableModel,
   listSelectableConnectedModels,
+  recommendQuickSwitcherModels,
   resolveSessionModel,
 } from "../../../src/components/provider/model-catalog"
 
@@ -74,5 +75,53 @@ describe("provider model catalog selection", () => {
     expect(listSelectableConnectedModels([connected, disconnected], ["provider"]).map((model) => model.id)).toEqual([
       "active",
     ])
+  })
+
+  test("quick-switcher recommendations use deterministic tie-breaking", () => {
+    const connected = provider({
+      sol: {
+        ...baseModel,
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol",
+        capabilities: {
+          ...baseModel.capabilities,
+          reasoning: true,
+          input: { ...baseModel.capabilities.input, image: true },
+        },
+        cost: { ...baseModel.cost, input: 1, output: 1 },
+      },
+      terra: {
+        ...baseModel,
+        id: "gpt-5.6-terra",
+        name: "GPT-5.6 Terra",
+        capabilities: {
+          ...baseModel.capabilities,
+          reasoning: true,
+          input: { ...baseModel.capabilities.input, image: true },
+        },
+        cost: { ...baseModel.cost, input: 1, output: 1 },
+      },
+      luna: {
+        ...baseModel,
+        id: "gpt-5.6-luna",
+        name: "GPT-5.6 Luna",
+        capabilities: {
+          ...baseModel.capabilities,
+          reasoning: true,
+          input: { ...baseModel.capabilities.input, image: true },
+        },
+        cost: { ...baseModel.cost, input: 1, output: 1 },
+      },
+    })
+    const models = listSelectableConnectedModels([connected], ["provider"])
+    const defaults = { provider: "gpt-5.6-terra" }
+
+    expect(recommendQuickSwitcherModels(models, defaults)).toEqual([
+      { providerID: "provider", modelID: "gpt-5.6-terra" },
+      { providerID: "provider", modelID: "gpt-5.6-luna" },
+    ])
+    expect(recommendQuickSwitcherModels([...models].reverse(), defaults)).toEqual(
+      recommendQuickSwitcherModels(models, defaults),
+    )
   })
 })
