@@ -29,7 +29,7 @@ export namespace ProviderCatalog {
   export const DEFAULT_REGISTRY_URL =
     "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json"
   export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000
-  export const DEFAULT_PUBLIC_KEY = "h4Y782Oylib+BlO2/7AKO5vY6skpCmTZNhqr3GRoBxA="
+  export const DEFAULT_PUBLIC_KEY = "cUp5d09eZbq8Akcx4jZJSFFzQS2oZqI1m5JOhFy0mgk="
   export const RETRY_DELAY_MS = 60 * 1000
   export const MAX_SNAPSHOT_ENTRIES = 100
 
