@@ -5,7 +5,7 @@ import { ProviderProfile } from "../../src/provider/profile"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 
-test("Agent worker provider plans retain data options without executable callbacks", () => {
+test("Agent worker provider plans retain data options without executable callbacks", async () => {
   const fetch = () => Promise.resolve(new Response())
   const provider = {
     key: "private-key",
@@ -19,7 +19,7 @@ test("Agent worker provider plans retain data options without executable callbac
     },
   } as unknown as Provider.Info
 
-  const plan = Provider.workerPlan(provider, {
+  const plan = await Provider.workerPlan(provider, {
     ttfbMs: 10,
     idleMs: 20,
     wallMs: false as const,
@@ -42,14 +42,14 @@ test("Agent worker provider plans retain data options without executable callbac
   expect(provider.options.fetch).toBe(fetch)
 })
 
-test("Agent worker provider plans retain canonical runtime profile identity", () => {
+test("Agent worker provider plans retain canonical runtime profile identity", async () => {
   const provider = {
     profileID: "canonical-provider",
     options: {},
   } as unknown as Provider.Info
 
   expect(
-    Provider.workerPlan(provider, {
+    await Provider.workerPlan(provider, {
       ttfbMs: 10,
       idleMs: 20,
       wallMs: false,
@@ -259,6 +259,101 @@ test("Agent worker connection options override runtime profile defaults", async 
       },
     })
   } finally {
+    if (previousWorker === undefined) delete process.env.SYNERGY_AGENT_WORKER
+    else process.env.SYNERGY_AGENT_WORKER = previousWorker
+  }
+})
+
+test("Agent worker model credentials replace stored OAuth runtime options", async () => {
+  const previousWorker = process.env.SYNERGY_AGENT_WORKER
+  process.env.SYNERGY_AGENT_WORKER = "1"
+  const providerID = `worker-credential-split-${Math.random().toString(36).slice(2)}`
+  let receivedOptions: Record<string, unknown> | undefined
+  ProviderProfile.register({
+    id: providerID,
+    name: "Worker credential split test",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/openai-compatible",
+    runtimeOptions: async ({ auth }) =>
+      auth?.type === "oauth"
+        ? {
+            apiKey: "oauth-placeholder",
+            headers: { "x-auth-mode": "oauth" },
+          }
+        : {
+            headers: { "x-auth-mode": "api-key" },
+          },
+    getModel: async ({ options }) => {
+      receivedOptions = options
+      return {} as never
+    },
+  })
+  const model = Provider.Model.parse({
+    id: "worker-credential-split-model",
+    providerID,
+    api: {
+      id: "worker-credential-split-model",
+      url: "https://provider.invalid/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: "Worker Credential Split Model",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: false,
+      toolcall: true,
+      input: { text: true, audio: false, image: false, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    limit: { context: 4_096, output: 1_024 },
+    status: "active",
+    options: { apiKey: "inline-model-key" },
+    headers: {},
+    release_date: "2026-01-01",
+    variants: {},
+  })
+
+  try {
+    await Auth.set(providerID, {
+      type: "oauth",
+      access: "stored-access",
+      refresh: "stored-refresh",
+      expires: Date.now() + 60_000,
+    })
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        await Provider.configureWorkerProvider(model, {
+          profileID: providerID,
+          options: {
+            baseURL: "https://provider.invalid/v1",
+            apiKey: "oauth-placeholder",
+            headers: { "x-auth-mode": "oauth" },
+          },
+          baseOptions: {
+            baseURL: "https://provider.invalid/v1",
+          },
+          explicitOptions: {
+            headers: { "x-account": "selected" },
+          },
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false },
+        })
+        await Provider.getLanguage(model)
+      },
+    })
+
+    expect(receivedOptions).toMatchObject({
+      baseURL: "https://provider.invalid/v1",
+      apiKey: "inline-model-key",
+      headers: {
+        "x-account": "selected",
+        "x-auth-mode": "api-key",
+      },
+    })
+  } finally {
+    await Auth.remove(providerID)
     if (previousWorker === undefined) delete process.env.SYNERGY_AGENT_WORKER
     else process.env.SYNERGY_AGENT_WORKER = previousWorker
   }

@@ -486,6 +486,48 @@ test("mapped Bedrock and SAP profiles consume connection auth and options", asyn
   }
 })
 
+test("mapped Cloudflare profile prefers the connection credential over the canonical environment", async () => {
+  registerBuiltinProviderProfiles()
+  const envNames = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID", "CLOUDFLARE_API_TOKEN"] as const
+  const previous = Object.fromEntries(envNames.map((name) => [name, process.env[name]]))
+
+  try {
+    await using tmp = await tmpdir()
+    await provideTestScope({
+      scope: await tmp.scope(),
+      init: async () => {
+        Env.set("CLOUDFLARE_ACCOUNT_ID", "account-id")
+        Env.set("CLOUDFLARE_GATEWAY_ID", "gateway-id")
+        Env.set("CLOUDFLARE_API_TOKEN", "canonical-token")
+      },
+      fn: async () => {
+        const profile = ProviderProfile.get("cloudflare-ai-gateway")!
+        const mapped = await profile.runtimeOptions!({
+          providerID: "cloudflare-secondary",
+          auth: { type: "api", key: "connection-token" },
+        })
+        expect(mapped.headers).toMatchObject({
+          "cf-aig-authorization": "Bearer connection-token",
+        })
+
+        const canonical = await profile.runtimeOptions!({
+          providerID: "cloudflare-ai-gateway",
+          auth: undefined,
+        })
+        expect(canonical.headers).toMatchObject({
+          "cf-aig-authorization": "Bearer canonical-token",
+        })
+      },
+    })
+  } finally {
+    for (const name of envNames) {
+      const value = previous[name]
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+})
+
 test("Copilot Claude factories honor the merged connection endpoint", async () => {
   registerBuiltinProviderProfiles()
   for (const profileID of ["github-copilot", "github-copilot-enterprise"]) {
@@ -622,6 +664,15 @@ test("inline provider credentials initialize mapped profile auth", async () => {
         expect(provider.profileID).toBe(profileID)
         expect(provider.key).toBe("inline-provider-key")
         expect(resolvedKey).toBe("inline-provider-key")
+        const plan = await Provider.workerPlan(provider, {
+          ttfbMs: 10,
+          idleMs: 20,
+          wallMs: false,
+        })
+        expect(plan.baseOptions).toBeDefined()
+        expect(plan.explicitOptions).toMatchObject({
+          apiKey: "inline-provider-key",
+        })
       },
     })
   } finally {

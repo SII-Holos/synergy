@@ -455,12 +455,14 @@ export function registerBuiltinProviderProfiles() {
     modelFactory: "languageModel",
     modelsDevProviderID: "cloudflare-ai-gateway",
     autoload: async () => Boolean(Env.get("CLOUDFLARE_ACCOUNT_ID") && Env.get("CLOUDFLARE_GATEWAY_ID")),
-    runtimeOptions: async ({ providerID }) => {
+    runtimeOptions: async (input) => {
       const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
       const gateway = Env.get("CLOUDFLARE_GATEWAY_ID")
       if (!accountId || !gateway) return {}
-      const auth = await Auth.get(providerID)
-      const apiToken = Env.get("CLOUDFLARE_API_TOKEN") ?? (auth?.type === "api" ? auth.key : undefined)
+      const auth = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = auth?.type === "api" ? auth.key : undefined
+      const apiToken =
+        input.providerID === "cloudflare-ai-gateway" ? (authKey ?? Env.get("CLOUDFLARE_API_TOKEN")) : authKey
       return {
         baseURL: `https://gateway.ai.cloudflare.com/v1/${accountId}/${gateway}/compat`,
         headers: {

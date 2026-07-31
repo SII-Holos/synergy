@@ -390,7 +390,7 @@ export namespace LLM {
     return {
       system,
       baseSystemLength,
-      provider: Provider.workerPlan(provider, {
+      provider: await Provider.workerPlan(provider, {
         ttfbMs: timeout.providerTtfbMs,
         idleMs: timeout.providerIdleMs,
         wallMs: timeout.providerWallMs,

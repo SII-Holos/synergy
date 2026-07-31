@@ -332,6 +332,8 @@ export namespace Provider {
     profileID?: string
     key?: string
     options: Record<string, unknown>
+    baseOptions?: Record<string, unknown>
+    explicitOptions?: Record<string, unknown>
     timeouts: {
       ttfbMs: number
       idleMs: number | false
@@ -339,11 +341,18 @@ export namespace Provider {
     }
   }
 
-  export function workerPlan(provider: Info | undefined, timeouts: WorkerPlan["timeouts"]): WorkerPlan {
+  export async function workerPlan(provider: Info | undefined, timeouts: WorkerPlan["timeouts"]): Promise<WorkerPlan> {
+    const runtimeProfile = provider?.id ? (await state()).runtimeProfileStates[provider.id] : undefined
     return {
       ...(provider?.profileID ? { profileID: provider.profileID } : {}),
       key: provider?.key,
       options: serializableProviderOptions(provider?.options ?? {}),
+      ...(runtimeProfile
+        ? {
+            baseOptions: serializableProviderOptions(runtimeProfile.baseOptions),
+            explicitOptions: serializableProviderOptions(runtimeProfile.explicitOptions),
+          }
+        : {}),
       timeouts,
     }
   }
@@ -469,12 +478,16 @@ export namespace Provider {
     const resolvedAuth = (await profile?.resolveAuth?.(profileInput)) ?? auth
     const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
     const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
-    const options = mergeDeep(mergeDeep(modelOptions, runtimeOptions), plan.options)
+    const dynamicOptions = mergeDeep(modelOptions, runtimeOptions)
+    const options =
+      profile && plan.baseOptions && plan.explicitOptions
+        ? mergeDeep(mergeDeep(plan.baseOptions, dynamicOptions), plan.explicitOptions)
+        : mergeDeep(dynamicOptions, plan.options)
     if (profile) {
       workerState.runtimeProfileStates[model.providerID] = {
         profile,
-        baseOptions: {},
-        explicitOptions: plan.options,
+        baseOptions: plan.baseOptions ?? {},
+        explicitOptions: plan.explicitOptions ?? plan.options,
       }
     } else {
       delete workerState.runtimeProfileStates[model.providerID]
