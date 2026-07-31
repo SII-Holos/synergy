@@ -72,6 +72,10 @@ export const ChannelFeishuAccount = z
       .optional()
       .describe("Project directory whose Scope owns sessions for this Feishu account"),
     streaming: z.boolean().optional().describe("Enable streaming card updates"),
+    responseFormat: z
+      .enum(["text", "markdown"])
+      .optional()
+      .describe("Format for ordinary outbound text messages (markdown renders through a CardKit card)"),
     streamingThrottleMs: z
       .number()
       .int()
@@ -111,6 +115,11 @@ export const ChannelFeishu = z
     accounts: z.record(z.string(), ChannelFeishuAccount),
     domain: z.enum(["feishu", "lark"]).optional().describe("Default domain for all accounts"),
     streaming: z.boolean().optional().default(true).describe("Default streaming setting for all accounts"),
+    responseFormat: z
+      .enum(["text", "markdown"])
+      .optional()
+      .default("markdown")
+      .describe("Default outbound text format for all accounts"),
   })
   .strict()
   .meta({ ref: "ChannelFeishuConfig" })

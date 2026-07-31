@@ -49,6 +49,21 @@ describe("Feishu streaming configuration", () => {
     expect(provider.streaming).toBe(false)
     expect(provider.accounts.default?.streaming).toBeUndefined()
   })
+
+  test("defaults provider responseFormat to markdown while preserving an omitted account setting", () => {
+    const provider = Config.ChannelFeishu.parse({
+      type: "feishu",
+      accounts: {
+        default: {
+          appId: "app",
+          appSecret: "secret",
+        },
+      },
+    })
+
+    expect(provider.responseFormat).toBe("markdown")
+    expect(provider.accounts.default?.responseFormat).toBeUndefined()
+  })
 })
 
 describe("isSelfSender", () => {
@@ -361,7 +376,7 @@ describe("Feishu replies", () => {
         }
       ).accounts
       accounts.set("acct_test", {
-        config: accountConfig({ replyInThread: true }),
+        config: accountConfig({ replyInThread: true, responseFormat: "text" }),
         channelConfig: {},
         apiBase: "https://open.feishu.test/open-apis",
         tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
@@ -451,6 +466,209 @@ describe("Feishu replies", () => {
     } finally {
       globalThis.fetch = originalFetch
       if (assetPath) await fs.rm(assetPath, { force: true })
+    }
+  })
+})
+
+describe("Feishu markdown replies", () => {
+  function markdownAccount(overrides: Partial<Config.ChannelFeishuAccount> = {}) {
+    return {
+      config: accountConfig(overrides),
+      channelConfig: {},
+      apiBase: "https://open.feishu.test/open-apis",
+      tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+    }
+  }
+
+  function mockCardFlow(requests: Array<{ url: string; body: Record<string, unknown> }>) {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+      if (url.endsWith("/cardkit/v1/cards")) {
+        return new Response(JSON.stringify({ code: 0, data: { card_id: "card_md" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+    return originalFetch
+  }
+
+  test("sends text replies as a CardKit markdown card by default", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_md", markdownAccount())
+
+      await provider.replyMessage({
+        accountId: "acct_md",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: "**bold** answer with `code`" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/cardkit/v1/cards",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      const cardJson = JSON.parse(String(requests[0]?.body.data)) as {
+        body: { elements: Array<{ tag: string; content: string }> }
+      }
+      expect(cardJson.body.elements[0]?.tag).toBe("markdown")
+      expect(cardJson.body.elements[0]?.content).toBe("**bold** answer with `code`")
+      const reply = requests[1]?.body
+      expect(reply?.msg_type).toBe("interactive")
+      expect(JSON.parse(String(reply?.content))).toEqual({ type: "card", data: { card_id: "card_md" } })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("sends pushed text as a markdown card by default", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_md", markdownAccount())
+
+      await provider.pushMessage({
+        accountId: "acct_md",
+        chatId: "chat_1",
+        parts: [{ type: "text", text: "pushed **markdown**" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/cardkit/v1/cards",
+        "https://open.feishu.test/open-apis/im/v1/messages?receive_id_type=chat_id",
+      ])
+      const create = requests[1]?.body
+      expect(create?.receive_id).toBe("chat_1")
+      expect(create?.msg_type).toBe("interactive")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("keeps plain text replies when the account sets responseFormat text", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_text", markdownAccount({ responseFormat: "text" }))
+
+      await provider.replyMessage({
+        accountId: "acct_text",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: "**bold** stays raw" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      expect(requests[0]?.body.msg_type).toBe("text")
+      expect(JSON.parse(String(requests[0]?.body.content))).toEqual({ text: "**bold** stays raw" })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("honors the provider-level responseFormat when the account omits it", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_provider_text", {
+        ...markdownAccount(),
+        channelConfig: { responseFormat: "text" },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_provider_text",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: "plain" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      expect(requests[0]?.body.msg_type).toBe("text")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("falls back to plain text when the markdown card API fails", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+      if (url.endsWith("/cardkit/v1/cards")) {
+        return new Response(JSON.stringify({ code: 500, msg: "card unavailable" }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_fallback", markdownAccount())
+
+      const result = await provider.replyMessage({
+        accountId: "acct_fallback",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: "fallback **text**" }],
+      })
+
+      expect(result.messageId).toBe("msg_reply")
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/cardkit/v1/cards",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      expect(requests[1]?.body.msg_type).toBe("text")
+      expect(JSON.parse(String(requests[1]?.body.content))).toEqual({ text: "fallback **text**" })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("falls back to plain text when the answer exceeds the card size limit", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_large", markdownAccount())
+
+      const oversized = "x".repeat(31 * 1024)
+      await provider.replyMessage({
+        accountId: "acct_large",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: oversized }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      expect(requests[0]?.body.msg_type).toBe("text")
+    } finally {
+      globalThis.fetch = originalFetch
     }
   })
 })
