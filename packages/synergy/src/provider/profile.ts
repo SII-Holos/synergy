@@ -152,7 +152,12 @@ export namespace ProviderProfile {
       credentialID?: string
       authUpdatedAt?: number
     }): Promise<string | undefined> | string | undefined
-    fetchUsage?(input: { providerID: string; fetch?: FetchLike }): Promise<AccountUsage.Snapshot>
+    fetchUsage?(input: {
+      providerID: string
+      auth?: Auth.Info
+      manageStoredCredential?: boolean
+      fetch?: FetchLike
+    }): Promise<AccountUsage.Snapshot>
   }
 
   const profiles = new Map<string, Profile>()

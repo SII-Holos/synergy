@@ -374,19 +374,29 @@ export namespace ProviderAuthRecovery {
     return retryOnce(input, removalRevision)
   }
 
-  export function wrapFetch(providerID: string, fetchFn: FetchLike = fetch, profileID?: string): FetchLike {
+  export function wrapFetch(
+    providerID: string,
+    fetchFn: FetchLike = fetch,
+    profileID?: string,
+    options?: { effectiveAPIKey?: string },
+  ): FetchLike {
     if (handledFetches.has(fetchFn)) return fetchFn
-    const wrapped: FetchLike = (input, init) => {
+    const wrapped: FetchLike = async (input, init) => {
       const template = new Request(input, init)
+      const selected = await Auth.select(providerID)
+      const manageStoredCredential =
+        options?.effectiveAPIKey === undefined ||
+        (selected?.auth.type === "api" && selected.auth.key === options.effectiveAPIKey)
       return execute({
         providerID,
         profileID,
+        manageStoredCredential,
         request: async () => {
-          const selected = await Auth.select(providerID)
           const request = template.clone()
           const headers = new Headers(request.headers)
-          if (selected?.auth.type === "api") {
-            const key = selected.auth.key
+          const current = manageStoredCredential ? await Auth.select(providerID) : undefined
+          if (current?.auth.type === "api") {
+            const key = current.auth.key
             if (headers.has("authorization")) headers.set("authorization", `Bearer ${key}`)
             if (headers.has("x-api-key")) headers.set("x-api-key", key)
             if (headers.has("api-key")) headers.set("api-key", key)

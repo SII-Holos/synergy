@@ -604,6 +604,10 @@ export function registerBuiltinProviderProfiles() {
         "X-OpenRouter-Categories": "cli-agent,personal-agent",
       },
     }),
-    fetchUsage: (input) => AccountUsage.openrouter(input.providerID, input.fetch),
+    fetchUsage: (input) =>
+      AccountUsage.openrouter(input.providerID, input.fetch, {
+        auth: input.auth,
+        manageStoredCredential: input.manageStoredCredential,
+      }),
   })
 }

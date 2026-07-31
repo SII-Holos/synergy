@@ -507,6 +507,7 @@ test("inline model credentials initialize mapped profiles and reach model loader
   const connectionID = `${profileID}-secondary`
   let loaderOptions: Record<string, any> | undefined
   const runtimeAuthKeys: string[] = []
+  const oauthFetch = async () => new Response(null, { status: 200 })
   ProviderProfile.register({
     id: profileID,
     name: "Inline runtime profile",
@@ -515,7 +516,7 @@ test("inline model credentials initialize mapped profiles and reach model loader
     aiSdkPackage: "@ai-sdk/openai",
     runtimeOptions: async ({ auth }) => {
       if (auth?.type === "api") runtimeAuthKeys.push(auth.key)
-      return {}
+      return auth?.type === "oauth" ? { fetch: oauthFetch, authMode: "oauth" } : { authMode: "api" }
     },
     getModel: async ({ options }) => {
       loaderOptions = options
@@ -523,45 +524,57 @@ test("inline model credentials initialize mapped profiles and reach model loader
     },
   })
 
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          providerCatalog: { enabled: false, offlineCache: false },
-          provider: {
-            [connectionID]: {
-              profile: profileID,
-              modelsDevProviderID: "openai",
-              models: {
-                "gpt-5.5": {
-                  options: {
-                    apiKey: "inline-model-key",
-                    baseURL: "https://inline-model.invalid/v1",
+  await Auth.set(connectionID, {
+    type: "oauth",
+    access: "stored-oauth-access",
+    refresh: "stored-oauth-refresh",
+    expires: Math.floor(Date.now() / 1000) + 3600,
+  })
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "synergy.json"),
+          JSON.stringify({
+            providerCatalog: { enabled: false, offlineCache: false },
+            provider: {
+              [connectionID]: {
+                profile: profileID,
+                modelsDevProviderID: "openai",
+                models: {
+                  "gpt-5.5": {
+                    options: {
+                      apiKey: "inline-model-key",
+                      baseURL: "https://inline-model.invalid/v1",
+                    },
                   },
                 },
               },
             },
-          },
-        }),
-      )
-    },
-  })
+          }),
+        )
+      },
+    })
 
-  await provideTestScope({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const provider = (await Provider.list())[connectionID]
-      expect(provider.profileID).toBe(profileID)
-      const model = await Provider.getModel(connectionID, "gpt-5.5")
-      await Provider.getLanguage(model)
-      expect(loaderOptions).toMatchObject({
-        apiKey: "inline-model-key",
-        baseURL: "https://inline-model.invalid/v1",
-      })
-      expect(runtimeAuthKeys).toContain("inline-model-key")
-    },
-  })
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const provider = (await Provider.list())[connectionID]
+        expect(provider.profileID).toBe(profileID)
+        const model = await Provider.getModel(connectionID, "gpt-5.5")
+        await Provider.getLanguage(model)
+        expect(loaderOptions).toMatchObject({
+          apiKey: "inline-model-key",
+          baseURL: "https://inline-model.invalid/v1",
+          authMode: "api",
+        })
+        expect(loaderOptions?.fetch).toBeUndefined()
+        expect(runtimeAuthKeys).toContain("inline-model-key")
+      },
+    })
+  } finally {
+    await Auth.remove(connectionID)
+  }
 })
 
 test("inline provider credentials initialize mapped profile auth", async () => {
@@ -681,6 +694,73 @@ test("custom provider resolves runtime behavior through its canonical profile", 
   } finally {
     await Auth.remove(connectionID)
   }
+})
+
+test("mapped OpenRouter usage uses inline and environment connection credentials", async () => {
+  const originalFetch = globalThis.fetch
+  const seen: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    seen.push(new Headers(init?.headers).get("authorization") ?? "")
+    const credits = String(input).endsWith("/credits")
+    return new Response(
+      JSON.stringify({
+        data: credits ? { total_credits: 10, total_usage: 2 } : { limit: 10, limit_remaining: 8 },
+      }),
+      { headers: { "content-type": "application/json" } },
+    )
+  }) as typeof fetch
+
+  try {
+    for (const account of [
+      {
+        id: `openrouter-inline-${Math.random().toString(36).slice(2)}`,
+        provider: { profile: "openrouter", options: { apiKey: "inline-openrouter-key" } },
+        expected: "inline-openrouter-key",
+      },
+      {
+        id: `openrouter-environment-${Math.random().toString(36).slice(2)}`,
+        provider: { profile: "openrouter", env: ["MAPPED_OPENROUTER_KEY"] },
+        expected: "environment-openrouter-key",
+      },
+    ]) {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(
+            path.join(dir, "synergy.json"),
+            JSON.stringify({
+              providerCatalog: { enabled: false, offlineCache: false },
+              provider: {
+                [account.id]: account.provider,
+              },
+            }),
+          )
+        },
+      })
+
+      await provideTestScope({
+        scope: await tmp.scope(),
+        init: async () => {
+          if (account.provider.env) Env.set("MAPPED_OPENROUTER_KEY", account.expected)
+        },
+        fn: async () => {
+          expect(await ProviderUsage.get(account.id)).toMatchObject({
+            providerID: account.id,
+            status: "available",
+            source: "credits_api",
+          })
+        },
+      })
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  expect(seen).toEqual([
+    "Bearer inline-openrouter-key",
+    "Bearer inline-openrouter-key",
+    "Bearer environment-openrouter-key",
+    "Bearer environment-openrouter-key",
+  ])
 })
 
 test("custom provider inherits a models.dev catalog without sharing account identity", async () => {

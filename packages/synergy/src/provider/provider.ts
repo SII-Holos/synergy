@@ -185,6 +185,7 @@ export namespace Provider {
   type RuntimeProfileState = {
     profile: ProviderProfile.Profile
     provider?: ModelsDev.Provider
+    baseOptions: Record<string, any>
     explicitOptions: Record<string, any>
   }
   export const Model = z
@@ -472,6 +473,7 @@ export namespace Provider {
     if (profile) {
       workerState.runtimeProfileStates[model.providerID] = {
         profile,
+        baseOptions: {},
         explicitOptions: plan.options,
       }
     } else {
@@ -770,6 +772,7 @@ export namespace Provider {
       runtimeProfileStates[providerID] = {
         profile,
         provider: profileInput.provider,
+        baseOptions: base.options,
         explicitOptions: mergeDeep(
           configProvider?.api ? { baseURL: configProvider.api } : {},
           configProvider?.options ?? {},
@@ -869,7 +872,7 @@ export namespace Provider {
     const modelOptions = (await runtimeProfile.profile.modelOptions?.({ ...profileInput, auth })) ?? {}
     const runtimeOptions = (await runtimeProfile.profile.runtimeOptions?.({ ...profileInput, auth })) ?? {}
     const dynamicOptions = mergeDeep(modelOptions, runtimeOptions)
-    const withRuntime = mergeDeep(provider.options, dynamicOptions)
+    const withRuntime = mergeDeep(runtimeProfile.baseOptions, dynamicOptions)
     const withExplicitConnection = mergeDeep(withRuntime, runtimeProfile.explicitOptions)
     return { ...withExplicitConnection, ...(model.options ?? {}) }
   }
@@ -921,7 +924,9 @@ export namespace Provider {
     delete options["proxy"]
     delete options["noProxy"]
 
-    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID)
+    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID, {
+      effectiveAPIKey: typeof options["apiKey"] === "string" ? options["apiKey"] : undefined,
+    })
     const proxyFetch =
       proxyUrl || noProxy
         ? (input: any, init?: any) => fetchWithProxyOptions(authFetch, input, init, proxyUrl, noProxy)
@@ -985,7 +990,9 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
-      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID)
+      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID, {
+        effectiveAPIKey: typeof options["apiKey"] === "string" ? options["apiKey"] : undefined,
+      })
       const proxyUrl = options["proxy"] as string | undefined
       const noProxy = options["noProxy"] === true
       delete options["proxy"]

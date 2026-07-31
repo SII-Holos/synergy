@@ -12,6 +12,7 @@ const PROVIDERS = [
   "test-backup",
   "test-api-confirm",
   "test-wrapped-api",
+  "test-inline-api",
   "test-status",
   "test-exhausted",
   "test-env",
@@ -180,6 +181,28 @@ test("generic SDK transport rewrites common API-key headers when selecting a bac
   })
   expect(response.status).toBe(200)
   expect(seen).toEqual(["Bearer primary", "Bearer backup"])
+})
+
+test("generic SDK transport preserves an effective inline API key", async () => {
+  await Auth.set("test-inline-api", { type: "api", key: "stored" })
+  const seen: string[] = []
+  const transport = ProviderAuthRecovery.wrapFetch(
+    "test-inline-api",
+    async (_input, init) => {
+      seen.push(new Headers(init?.headers).get("authorization") ?? "")
+      return new Response(null, { status: 401 })
+    },
+    undefined,
+    { effectiveAPIKey: "inline" },
+  )
+
+  const response = await transport("https://provider.test/v1/messages", {
+    headers: { Authorization: "Bearer inline" },
+  })
+
+  expect(response.status).toBe(401)
+  expect(seen).toEqual(["Bearer inline"])
+  expect(await Auth.get("test-inline-api")).toMatchObject({ type: "api", key: "stored" })
 })
 
 test("403, server failures, and network exceptions do not invalidate credentials without classification", async () => {

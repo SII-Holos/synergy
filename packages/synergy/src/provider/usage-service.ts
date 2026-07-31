@@ -1,22 +1,40 @@
 import { Config } from "@/config/config"
 import { Log } from "@/util/log"
 import { AccountUsage } from "./usage"
+import { Auth } from "./api-key"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
 import { ProviderProfile } from "./profile"
+import { Env } from "@/util/env"
 
 export namespace ProviderUsage {
   const log = Log.create({ service: "provider.usage" })
 
   export async function get(providerID: string, profileID?: string): Promise<AccountUsage.Snapshot> {
     registerBuiltinProviderProfiles()
-    const resolvedProfileID = profileID ?? (await Config.current()).provider?.[providerID]?.profile
+    const config = await Config.current()
+    const configured = config.provider?.[providerID]
+    const resolvedProfileID = profileID ?? configured?.profile
     const profile = ProviderProfile.resolve(providerID, resolvedProfileID)
     if (!profile?.fetchUsage) {
       return AccountUsage.unavailable(providerID, "This provider does not expose account usage through Synergy.")
     }
+    const inlineKey =
+      typeof configured?.options?.apiKey === "string" && configured.options.apiKey
+        ? configured.options.apiKey
+        : undefined
+    const storedAuth = await Auth.get(providerID)
+    const environment = (configured?.env ?? profile.env ?? [])
+      .map((name) => Env.get(name)?.trim())
+      .find((value) => value)
+    const configuredKey = inlineKey ?? (storedAuth ? undefined : environment)
+    const configuredAuth = configuredKey ? ({ type: "api", key: configuredKey } satisfies Auth.Info) : undefined
     return {
-      ...(await profile.fetchUsage({ providerID })),
+      ...(await profile.fetchUsage({
+        providerID,
+        auth: configuredAuth,
+        manageStoredCredential: configuredAuth ? false : undefined,
+      })),
       providerID,
     }
   }
