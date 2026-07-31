@@ -1458,7 +1458,7 @@ export namespace ToolResolver {
       } catch (error) {
         if (item.source?.type === "plugin") {
           const plugin = await Plugin.get(item.source.pluginId)
-          if (plugin) markContributionDegraded(plugin, item.source.toolId, error)
+          if (plugin) markContributionDegraded(plugin, { kind: "tool", id: item.source.toolId }, error)
         }
         const diagnostic = toolSchemaDiagnostic(item, error)
         log.warn("tool skipped due to schema failure", {

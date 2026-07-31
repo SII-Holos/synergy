@@ -24,17 +24,17 @@
   "exports": {
     ".": {
       "bun": "./src/index.ts",
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "import": "./dist/index.js"
     },
     "./commands": {
       "bun": "./src/commands/index.ts",
-      "types": "./dist/commands/index.d.ts",
+      "types": "./src/commands/index.ts",
       "import": "./dist/commands/index.js"
     },
     "./market-entry": {
       "bun": "./src/lib/market-entry.ts",
-      "types": "./dist/lib/market-entry.d.ts",
+      "types": "./src/lib/market-entry.ts",
       "import": "./dist/lib/market-entry.js"
     }
   },
@@ -59,6 +59,7 @@
     "@types/node": "catalog:",
     "@types/yargs": "17.0.33",
     "@typescript/native-preview": "catalog:",
+    "ajv": "8.18.0",
     "solid-js": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"

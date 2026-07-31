@@ -180,4 +180,128 @@ describe("PluginAgentCallRuntime", () => {
       }),
     ])
   })
+
+  test("cancels only calls owned by the disabled Scope", async () => {
+    const runtime = new PluginAgentCallRuntime()
+    const running = deferred<{ text: string }>()
+    const delivered: Array<{ scopeId: string; call: PluginAgentCallTerminal }> = []
+    const input = baseInput(
+      async () => running.promise,
+      async (call) => {
+        delivered.push({ scopeId: "scope-one", call })
+      },
+    )
+    runtime.start(input)
+    runtime.start({
+      ...input,
+      scopeId: "scope-two",
+      correlationId: "correction:two",
+      inputDigest: "digest-two",
+      deliver: async (call) => {
+        delivered.push({ scopeId: "scope-two", call })
+      },
+    })
+
+    await runtime.disableScope("scope-one")
+    expect(runtime.activeCount()).toBe(1)
+    expect(delivered).toEqual([
+      {
+        scopeId: "scope-one",
+        call: expect.objectContaining({ status: "cancelled" }),
+      },
+    ])
+
+    running.resolve({ text: "kept" })
+    await settle()
+    expect(delivered).toEqual([
+      {
+        scopeId: "scope-one",
+        call: expect.objectContaining({ status: "cancelled" }),
+      },
+      {
+        scopeId: "scope-two",
+        call: expect.objectContaining({ status: "completed", text: "kept" }),
+      },
+    ])
+  })
+
+  test("releases Scope capacity before terminal delivery completes", async () => {
+    const runtime = new PluginAgentCallRuntime(1)
+    const running = deferred<{ text: string }>()
+    const delivery = deferred<void>()
+    runtime.start(
+      baseInput(
+        async () => running.promise,
+        async () => delivery.promise,
+      ),
+    )
+
+    const disabled = runtime.disableScope("scope-one")
+    expect(runtime.activeCount()).toBe(0)
+    runtime.enableScope("scope-one")
+    expect(
+      runtime.start({
+        ...baseInput(
+          async () => Promise.resolve({ text: "new" }),
+          async () => undefined,
+        ),
+        correlationId: "correction:new",
+        inputDigest: "digest-new",
+      }).callId,
+    ).toBeString()
+    delivery.resolve()
+    await disabled
+  })
+
+  test("keeps a disabled Scope cancelled when its provider settles late", async () => {
+    const runtime = new PluginAgentCallRuntime()
+    const running = deferred<{ text: string }>()
+    const delivered: PluginAgentCallTerminal[] = []
+    runtime.start(
+      baseInput(
+        async () => running.promise,
+        async (call) => {
+          delivered.push(call)
+        },
+      ),
+    )
+
+    await runtime.disableScope("scope-one")
+    running.resolve({ text: "late" })
+    await settle()
+    expect(delivered.map((call) => call.status)).toEqual(["cancelled"])
+  })
+
+  test("rejects disabled Scopes until explicitly enabled", () => {
+    const runtime = new PluginAgentCallRuntime()
+    runtime.disableScope("scope-one")
+    expect(() =>
+      runtime.start(
+        baseInput(
+          async () => Promise.resolve({ text: "blocked" }),
+          async () => undefined,
+        ),
+      ),
+    ).toThrow(PluginAgentCallRuntimeError)
+    try {
+      runtime.start(
+        baseInput(
+          async () => Promise.resolve({ text: "blocked" }),
+          async () => undefined,
+        ),
+      )
+    } catch (error) {
+      expect(error).toMatchObject({ code: "cancelled" })
+    }
+
+    runtime.enableScope("scope-one")
+    expect(
+      runtime.start(
+        baseInput(
+          async () => Promise.resolve({ text: "accepted" }),
+          async () => undefined,
+        ),
+      ).callId,
+    ).toBeString()
+  })
 })

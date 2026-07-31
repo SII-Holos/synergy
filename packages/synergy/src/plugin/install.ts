@@ -5,6 +5,7 @@ import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { PluginSpec } from "../util/plugin-spec"
 import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
+import { manifestHasTrustedUI } from "@ericsanchezok/synergy-plugin"
 import { riskForCapabilities } from "./capability"
 import { getApproval, type PluginApprovalRecord, verifyApproval } from "./consent/approval-store"
 import { ensureRuntime, forgetPlugin, specToPluginId, state, type LoadedPlugin } from "./loader"
@@ -38,12 +39,6 @@ export async function resolveConfiguredPluginId(spec: string): Promise<string | 
   } catch {
     return null
   }
-}
-
-function trustedUI(manifest: LoadedPlugin["manifest"]) {
-  return manifest.contributions.some(
-    (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
-  )
 }
 
 async function prepareUpgrade(input: {
@@ -132,7 +127,7 @@ export async function add(
         capabilitiesHash,
         approvedAt: Date.now(),
         approvedBy: options.skipConsent ? "policy" : source === "builtin" ? "builtin" : "policy",
-        trustTier: trustedUI(manifest) ? "trusted-import" : "declarative",
+        trustTier: manifestHasTrustedUI(manifest) ? "trusted-import" : "declarative",
         approvedCapabilities: capabilities,
         risk,
         status: "approved",
@@ -184,6 +179,9 @@ export async function add(
   } finally {
     if (stagingDir) await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined)
   }
+}
+export async function updateReviewed(spec: string, approval: PluginApprovalRecord): Promise<LoadedPlugin> {
+  return add(spec, { preApproved: approval })
 }
 
 export async function remove(pluginId: string, options: { force?: boolean } = {}): Promise<void> {

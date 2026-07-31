@@ -70,4 +70,33 @@ describe("plugin integrity hashes", () => {
     )
     expect(computeManifestHash(manifest)).toBe("b32a41a1d7feed51cb5acb70e6537f7c62b5b620f5699bc17f8465e60c8682f2")
   })
+
+  test("binds nested text-action presentation to the trusted UI permission contract", () => {
+    const nested = {
+      ...manifest,
+      contributions: [
+        ...manifest.contributions,
+        {
+          kind: "ui.textAction",
+          id: "translate",
+          label: "Translate",
+          order: 1000,
+          operation: "plan",
+          requires: [],
+          presentation: {
+            kind: "popover",
+            component: { entry: "ui/index.js", exportName: "Translation" },
+          },
+        },
+      ],
+    } satisfies PluginManifestType
+
+    expect(permissionsHashPayload(nested).contributionRequirements.at(-1)).toEqual({
+      kind: "ui.textAction",
+      id: "translate",
+      requires: [],
+      trustedComponent: true,
+    })
+    expect(computePermissionsHash(nested)).not.toBe(computePermissionsHash(manifest))
+  })
 })

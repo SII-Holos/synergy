@@ -130,6 +130,51 @@ describe("TextSelectionController", () => {
     expect(controller.actionsFor(controller.current()!)).toEqual([])
   })
 
+  test("matches read-only Monaco selections as code from another origin", () => {
+    const controller = new TextSelectionController()
+    controller.registerAction({
+      id: "explain-code",
+      pluginId: "vibe-lingo",
+      pluginName: "VibeLingo",
+      label: "Explain code",
+      order: 1,
+      when: {
+        sources: ["code"],
+        origins: ["other"],
+        editable: false,
+      },
+      run: async () => undefined,
+    })
+    controller.registerAction({
+      id: "rewrite-code",
+      pluginId: "vibe-lingo",
+      pluginName: "VibeLingo",
+      label: "Rewrite code",
+      order: 2,
+      when: {
+        sources: ["code"],
+        origins: ["editable"],
+        editable: true,
+      },
+      run: async () => undefined,
+    })
+
+    controller.update("const answer = 42", {
+      source: "code",
+      origin: "other",
+      editable: false,
+      wholeContainer: false,
+    })
+
+    expect(controller.current()).toMatchObject({
+      source: "code",
+      origin: "other",
+      editable: false,
+      wholeContainer: false,
+    })
+    expect(controller.actionsFor(controller.current()!).map((action) => action.id)).toEqual(["explain-code"])
+  })
+
   test("groups actions by plugin without collapsing duplicate local labels", () => {
     const groups = groupTextActions([
       {

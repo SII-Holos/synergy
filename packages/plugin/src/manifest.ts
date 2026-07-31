@@ -1,7 +1,8 @@
 import z from "zod"
 import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
 import { McpServerConfig } from "./mcp.js"
-import { PLUGIN_MODEL_ROLES } from "./plugin-types.js"
+import { HOST_OWNED_MESSAGE_TYPES, PLUGIN_MODEL_ROLES } from "./plugin-types.js"
+import { PluginToolId } from "./ids.js"
 
 const Id = z.string().regex(/^[a-z][a-z0-9.-]*$/)
 const ContributionId = z.string().regex(/^[a-z][A-Za-z0-9._-]*$/)
@@ -254,6 +255,16 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
 
 export type PluginManifestContribution = z.infer<typeof PluginManifestContribution>
 
+function trustedUIComponent(contribution: PluginManifestContribution) {
+  if (contribution.kind === "ui.textAction") return contribution.presentation?.component
+  if (!contribution.kind.startsWith("ui.") || !("component" in contribution)) return undefined
+  return contribution.component
+}
+
+export function hasTrustedUIComponent(contribution: PluginManifestContribution): boolean {
+  return Boolean(trustedUIComponent(contribution))
+}
+
 const Artifact = z.object({ entry: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/i) }).strict()
 
 export const PluginManifest = z
@@ -390,17 +401,45 @@ export const PluginManifest = z
           message: "Plugin tool input must be a top-level JSON Schema object",
         })
       }
-      if (
-        contribution.kind.startsWith("ui.") &&
-        "component" in contribution &&
-        contribution.component &&
-        !manifest.artifacts.ui
-      ) {
+      const component = trustedUIComponent(contribution)
+      if (component && !manifest.artifacts.ui) {
         context.addIssue({
           code: "custom",
           path: ["artifacts", "ui"],
           message: "Trusted UI contribution requires a UI artifact",
         })
+      }
+      if (component && manifest.artifacts.ui && component.entry !== manifest.artifacts.ui.entry) {
+        context.addIssue({
+          code: "custom",
+          path: ["contributions", contribution.id, "component", "entry"],
+          message: "Trusted UI component must use the verified UI artifact entry",
+        })
+      }
+      if (contribution.kind === "ui.messageRenderer") {
+        if (contribution.messageType === "tool") {
+          const owned =
+            contribution.tool &&
+            manifest.contributions.some(
+              (item) => item.kind === "tool" && PluginToolId.format(manifest.id, item.id) === contribution.tool,
+            )
+          if (!owned) {
+            context.addIssue({
+              code: "custom",
+              path: ["contributions", contribution.id, "tool"],
+              message: "Message renderer must target a Tool contributed by the same plugin",
+            })
+          }
+        } else if (
+          contribution.tool ||
+          (HOST_OWNED_MESSAGE_TYPES as readonly string[]).includes(contribution.messageType)
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "messageType"],
+            message: "Message renderer cannot replace a host-owned message type",
+          })
+        }
       }
     }
     const needsRuntime = manifest.contributions.some((item) =>
@@ -418,3 +457,7 @@ export const PluginManifest = z
   })
 
 export type PluginManifest = z.infer<typeof PluginManifest>
+
+export function manifestHasTrustedUI(manifest: Pick<PluginManifest, "contributions">): boolean {
+  return manifest.contributions.some(hasTrustedUIComponent)
+}

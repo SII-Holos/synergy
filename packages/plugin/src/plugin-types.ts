@@ -1,3 +1,6 @@
+export const HOST_OWNED_MESSAGE_TYPES = ["attachment", "tool", "text", "reasoning", "compaction_recovery"] as const
+export type HostOwnedMessageType = (typeof HOST_OWNED_MESSAGE_TYPES)[number]
+
 export interface PluginSkill {
   name: string
   description: string

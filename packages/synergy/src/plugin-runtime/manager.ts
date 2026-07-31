@@ -331,7 +331,7 @@ export class PluginRuntimeManager {
     const previous = this.registry.activate(key)
     if (!previous) return
     previous.state = "draining"
-    pluginAgentCallRuntime.cancelGeneration(previous.pluginId, previous.generation, "Plugin generation replaced")
+    await pluginAgentCallRuntime.cancelGeneration(previous.pluginId, previous.generation, "Plugin generation replaced")
     if (previous.inFlight === 0) void this.#stopEntry(previous, graceMs)
   }
 
@@ -475,7 +475,7 @@ export class PluginRuntimeManager {
   async #stopEntry(entry: PluginRuntimeEntry, graceMs: number) {
     if (entry.state === "stopped") return
     entry.state = "stopped"
-    pluginAgentCallRuntime.cancelGeneration(entry.pluginId, entry.generation)
+    await pluginAgentCallRuntime.cancelGeneration(entry.pluginId, entry.generation)
     entry.memoryMonitor?.stop()
     entry.memoryMonitor = undefined
     await entry.process?.stop(graceMs)

@@ -9,6 +9,35 @@ export interface DiffPermissionsState {
   newCapabilities: string[]
 }
 
+export interface PluginApprovalEvidence {
+  manifestHash: string
+  permissionsHash: string
+}
+
+export function evaluatePluginUpdateConsent(input: {
+  diff: PluginPermissionDiff
+  previous: PluginApprovalEvidence
+  candidate: PluginApprovalEvidence
+}) {
+  const permissionsChanged = input.previous.permissionsHash !== input.candidate.permissionsHash
+  const manifestChanged = input.previous.manifestHash !== input.candidate.manifestHash
+  const requiresApproval = input.diff.requiresApproval || permissionsChanged || manifestChanged
+  const reason = permissionsChanged
+    ? "Plugin permission contract changed and requires approval."
+    : manifestChanged
+      ? "Plugin manifest changed and requires approval."
+      : input.diff.reason
+  return {
+    diff: {
+      ...input.diff,
+      requiresApproval,
+      reason,
+    },
+    permissionsChanged,
+    manifestChanged,
+  }
+}
+
 /**
  * Diff permissions between two states.
  *

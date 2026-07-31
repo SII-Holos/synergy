@@ -84,6 +84,8 @@ An `agent.call` capability may declare a `modelRoles` allowlist using Synergy's 
 
 `call()` waits for `{ text }` and is cancelled with its invocation. `start()` accepts an explicit `correlationId`, returns `{ callId }` after the host accepts the work, and continues under a host-owned `AbortController` after the initiating handler returns. A terminal `completed`, `error`, or `cancelled` result is delivered only to the same plugin ID, generation, and Scope through the `agent.call.after` observer. Active identical correlations are idempotent; changed content conflicts. Each plugin may own at most four active lightweight calls, with no waiting queue. Generation replacement, disable, uninstall, and runtime stop cancel the generation's active calls. Inputs, prompts, outputs, and terminal results are memory-only and are not written to the Session store or ordinary plugin logs.
 
+Disposing a project Scope disables new detached calls for that exact Scope, synchronously releases their admission capacity, aborts the providers, and then delivers one `cancelled` terminal before scoped plugin state is removed. Calls in other Scopes continue. A provider result that arrives after cancellation is ignored, and only a later explicit Scope activation permits new detached calls.
+
 ```ts
 const { callId } = await context.agent!.start({
   agent: "metadata_agent",
@@ -149,6 +151,8 @@ Plugins contribute handlers to host-defined hook points. A plugin cannot define 
 - `guard` returns `{ allow, reason?, value? }`.
 
 Ordering is priority, plugin ID, then contribution ID. Each hook point owns input/output schema, timeout, and failure policy. A handler failure degrades that contribution. It propagates only when the point's failure policy requires it; a guard denial always propagates as a denial.
+
+Contribution health uses the API 4 identity `<kind>:<id>`. Operations, hooks, and tools may therefore reuse one plugin-local ID without overwriting each other's degraded state; bare IDs are not written.
 
 `session.user-message.after` is a continuing observer dispatched asynchronously after an ordinary user message and all of its parts are persisted. Its input contains only `{ message: { id, text, createdAt } }`; Scope and Session identity come from `PluginInvocationContext`. It requires `session.read`, does not run for synthetic/internal messages, and cannot delay or roll back the Session loop.
 

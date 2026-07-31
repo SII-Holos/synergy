@@ -172,7 +172,7 @@ export function FileSourceView(props: { path: string; content: string }) {
         const position = activeEditor.getScrolledVisiblePosition(selection.getStartPosition())
         textSelectionController.update(selection.isEmpty() ? undefined : cached.model.getValueInRange(selection), {
           source: "code",
-          origin: "editable",
+          origin: "other",
           editable: false,
           wholeContainer: false,
           owner: host,

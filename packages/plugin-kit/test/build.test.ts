@@ -3,6 +3,7 @@ import fs from "fs"
 import path from "path"
 import { pathToFileURL } from "url"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import Ajv2020 from "ajv/dist/2020"
 import { buildPluginProject } from "../src/commands/build"
 import { publishGeneration } from "../src/commands/dev"
 import { packPluginProject } from "../src/commands/pack"
@@ -40,6 +41,106 @@ export default definePlugin({
       expect(await buildPluginProject(root)).toBe(true)
       const second = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
       expect(second.artifacts.generation).not.toBe(first.artifacts.generation)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("compiles Zod schemas before crossing the definition loader boundary", async () => {
+    const root = fs.mkdtempSync(path.join(import.meta.dir, "zod-schema-fixture-"))
+    try {
+      fs.mkdirSync(path.join(root, "src"), { recursive: true })
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ name: "zod-schema-fixture", version: "1.0.0", type: "module", source: "./src/index.ts" }),
+      )
+      fs.writeFileSync(
+        path.join(root, "src", "index.ts"),
+        `
+import { definePlugin, event, operation, tool } from "@ericsanchezok/synergy-plugin"
+import z from "zod"
+export default definePlugin({
+  id: "zod-schema-fixture",
+  version: "1.0.0",
+  description: "Zod schema build fixture",
+  contributions: [
+    operation({
+      id: "convert",
+      type: "query",
+      input: z.object({
+        mode: z.discriminatedUnion("kind", [
+          z.object({ kind: z.literal("text"), value: z.string().default("fallback") }),
+          z.object({ kind: z.literal("count"), value: z.number() }),
+        ]),
+        tag: z.union([z.string(), z.number()]),
+      }),
+      output: z.object({ value: z.string().refine((value) => value.length > 0) }),
+      handler: async () => ({ value: "ok" }),
+    }),
+    event({ id: "changed", payload: z.object({ value: z.union([z.string(), z.number()]) }) }),
+    tool({
+      id: "inspect",
+      description: "Inspect a value",
+      input: z.object({ value: z.string().default("fallback") }),
+      handler: async () => "ok",
+    }),
+  ],
+})
+`,
+      )
+
+      expect(await buildPluginProject(root)).toBe(true)
+      const manifest = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
+      const operationContribution = manifest.contributions.find((item) => item.kind === "operation")
+      const eventContribution = manifest.contributions.find((item) => item.kind === "event")
+      const toolContribution = manifest.contributions.find((item) => item.kind === "tool")
+      if (operationContribution?.kind !== "operation") throw new Error("Expected operation contribution")
+      if (eventContribution?.kind !== "event") throw new Error("Expected event contribution")
+      if (toolContribution?.kind !== "tool") throw new Error("Expected tool contribution")
+      const ajv = new Ajv2020({ strict: false })
+      expect(() => ajv.compile(operationContribution.input)).not.toThrow()
+      expect(() => ajv.compile(operationContribution.output)).not.toThrow()
+      expect(() => ajv.compile(eventContribution.payload)).not.toThrow()
+      expect(() => ajv.compile(toolContribution.input)).not.toThrow()
+      expect(operationContribution.input).toMatchObject({ type: "object" })
+      expect(JSON.stringify(operationContribution.input)).toContain('"anyOf"')
+      expect(JSON.stringify(operationContribution.input)).toContain('"default":"fallback"')
+      expect(JSON.stringify(manifest.contributions)).not.toContain('"type":"union"')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects Zod transforms during manifest compilation", async () => {
+    const root = fs.mkdtempSync(path.join(import.meta.dir, "zod-transform-fixture-"))
+    try {
+      fs.mkdirSync(path.join(root, "src"), { recursive: true })
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ name: "zod-transform-fixture", version: "1.0.0", type: "module", source: "./src/index.ts" }),
+      )
+      fs.writeFileSync(
+        path.join(root, "src", "index.ts"),
+        `
+import { definePlugin, operation } from "@ericsanchezok/synergy-plugin"
+import z from "zod"
+export default definePlugin({
+  id: "zod-transform-fixture",
+  version: "1.0.0",
+  description: "Zod transform build fixture",
+  contributions: [operation({
+    id: "transform",
+    type: "query",
+    input: z.object({ value: z.string().transform((value) => value.trim()) }),
+    output: z.object({ value: z.string() }),
+    handler: async ({ value }) => ({ value }),
+  })],
+})
+`,
+      )
+
+      expect(await buildPluginProject(root)).toBe(false)
+      expect(fs.existsSync(path.join(root, "dist", "plugin.json"))).toBe(false)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

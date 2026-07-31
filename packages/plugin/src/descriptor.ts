@@ -9,7 +9,7 @@ import type { PluginActivationContext } from "./context.js"
 import type { PluginManifest, PluginManifestContribution } from "./manifest.js"
 import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
 import { PluginToolId } from "./ids.js"
-import { PLUGIN_MODEL_ROLES } from "./plugin-types.js"
+import { HOST_OWNED_MESSAGE_TYPES, PLUGIN_MODEL_ROLES } from "./plugin-types.js"
 
 export interface PluginDefinitionInput {
   id: string
@@ -139,12 +139,20 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
   }
 
   for (const contribution of input.contributions) {
-    if (contribution.kind !== "ui.messageRenderer" || !contribution.tool) continue
-    const ownedTool = input.contributions.some(
-      (item) => item.kind === "tool" && PluginToolId.format(input.id, item.id) === contribution.tool,
-    )
-    if (!ownedTool) {
-      throw new Error(`Message renderer "${contribution.id}" must target a Tool contributed by the same plugin`)
+    if (contribution.kind !== "ui.messageRenderer") continue
+    if (contribution.messageType === "tool") {
+      const ownedTool =
+        contribution.tool &&
+        input.contributions.some(
+          (item) => item.kind === "tool" && PluginToolId.format(input.id, item.id) === contribution.tool,
+        )
+      if (!ownedTool) {
+        throw new Error(`Message renderer "${contribution.id}" must target a Tool contributed by the same plugin`)
+      }
+      continue
+    }
+    if (contribution.tool || (HOST_OWNED_MESSAGE_TYPES as readonly string[]).includes(contribution.messageType)) {
+      throw new Error(`Message renderer "${contribution.id}" cannot replace a host-owned message type`)
     }
   }
 

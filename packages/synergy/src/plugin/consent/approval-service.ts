@@ -1,8 +1,8 @@
 import z from "zod"
-import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { manifestHasTrustedUI, type PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { getApproval, verifyApproval, type PluginApprovalRecord } from "./approval-store"
-import { diffPermissions } from "./diff"
+import { diffPermissions, evaluatePluginUpdateConsent } from "./diff"
 import { PluginPermissionDiffSchema } from "./schema"
 import { riskForCapabilities } from "../capability"
 import { getDisabledPlugin, state as loaderState } from "../loader"
@@ -149,6 +149,7 @@ interface ResolvedTargetManifest {
   spec: string
   oldVersion?: string
   oldCapabilities?: string[]
+  oldApproval?: PluginApprovalRecord
 }
 
 async function resolveConfiguredTarget(pluginId: string): Promise<ResolvedTargetManifest> {
@@ -183,6 +184,7 @@ async function resolveConfiguredTarget(pluginId: string): Promise<ResolvedTarget
     spec,
     oldVersion: latestApproval?.version,
     oldCapabilities: latestApproval?.approvedCapabilities ?? [],
+    oldApproval: latestApproval,
   }
 }
 
@@ -217,6 +219,7 @@ async function resolveRegistryTarget(
     spec,
     oldVersion: latestApproval?.version,
     oldCapabilities: latestApproval?.approvedCapabilities ?? [],
+    oldApproval: latestApproval,
   }
 }
 
@@ -225,15 +228,12 @@ export async function resolveTarget(target: ApprovalTarget): Promise<ResolvedTar
   return resolveRegistryTarget(target)
 }
 
-function trustedUI(manifest: PluginManifestType): boolean {
-  return manifest.contributions.some((c) => c.kind.startsWith("ui.") && "component" in c && Boolean(c.component))
-}
-
 export function buildApprovalRecord(
   pluginId: string,
   source: ResolvedTargetManifest["source"],
   manifest: PluginManifestType,
   capabilities: string[],
+  approvedBy: PluginApprovalRecord["approvedBy"] = "user",
 ): PluginApprovalRecord {
   return {
     pluginId,
@@ -242,8 +242,8 @@ export function buildApprovalRecord(
     manifestHash: computeManifestHash(manifest),
     capabilitiesHash: computePermissionsHash(manifest, capabilities),
     approvedAt: Date.now(),
-    approvedBy: "user",
-    trustTier: trustedUI(manifest) ? "trusted-import" : "declarative",
+    approvedBy,
+    trustTier: manifestHasTrustedUI(manifest) ? "trusted-import" : "declarative",
     approvedCapabilities: capabilities,
     risk: riskForCapabilities(capabilities),
     status: "approved",
@@ -266,12 +266,26 @@ export async function buildApprovalReview(target: ApprovalTarget): Promise<Appro
   const manifest = resolved.manifest
   const capabilities = manifest.capabilities.map((c) => c.id)
   const token = generateReviewToken(target, manifest, capabilities)
-  const diff = diffPermissions(target.pluginId, {
+  const baseDiff = diffPermissions(target.pluginId, {
     oldVersion: resolved.oldVersion,
     newVersion: manifest.version,
     oldCapabilities: resolved.oldCapabilities ?? [],
     newCapabilities: capabilities,
   })
+  const consent = resolved.oldApproval
+    ? evaluatePluginUpdateConsent({
+        diff: baseDiff,
+        previous: {
+          manifestHash: resolved.oldApproval.manifestHash,
+          permissionsHash: resolved.oldApproval.capabilitiesHash,
+        },
+        candidate: {
+          manifestHash: computeManifestHash(manifest),
+          permissionsHash: computePermissionsHash(manifest, capabilities),
+        },
+      })
+    : { diff: baseDiff, permissionsChanged: baseDiff.requiresApproval, manifestChanged: true }
+  const diff = consent.diff
   const approvedModelRoles = manifest.capabilities.find((capability) => capability.id === "agent.call")?.constraints
     ?.modelRoles
   if (Array.isArray(approvedModelRoles)) {
@@ -291,9 +305,9 @@ export async function buildApprovalReview(target: ApprovalTarget): Promise<Appro
     generation: manifest.artifacts.generation,
     capabilities,
     risk: riskForCapabilities(capabilities),
-    trust: trustedUI(manifest) ? "trusted-import" : "declarative",
+    trust: manifestHasTrustedUI(manifest) ? "trusted-import" : "declarative",
     diff,
-    permissionsChanged: diff.requiresApproval,
+    permissionsChanged: consent.permissionsChanged,
     reason: diff.reason,
     reviewToken: token,
   }

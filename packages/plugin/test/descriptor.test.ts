@@ -176,6 +176,81 @@ describe("definePlugin", () => {
     ])
   })
 
+  test("validates metadata-only Tool renderer ownership", () => {
+    const plugin = definePlugin({
+      id: "correction-card",
+      version: "1.0.0",
+      description: "Targeted correction card",
+      contributions: [
+        tool({
+          id: "record",
+          description: "Record the correction",
+          input: z.object({}),
+          handler: async () => "ok",
+        }),
+        messageRenderer({
+          id: "correction",
+          label: "Correction",
+          messageType: "tool",
+          tool: "plugin__correction-card__record",
+          component: { source: "./src/correction.tsx" },
+        }),
+      ],
+    })
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-one",
+      runtime: { entry: "runtime/index.js", sha256: "a".repeat(64) },
+      ui: { entry: "ui/index.js", sha256: "b".repeat(64) },
+    })
+
+    const foreign = structuredClone(manifest)
+    const foreignRenderer = foreign.contributions.find((item) => item.kind === "ui.messageRenderer")
+    if (!foreignRenderer || foreignRenderer.kind !== "ui.messageRenderer") throw new Error("Missing renderer")
+    foreignRenderer.tool = "plugin__another-plugin__record"
+    expect(PluginManifest.safeParse(foreign).success).toBe(false)
+
+    const missing = structuredClone(manifest)
+    missing.contributions = missing.contributions.filter((item) => item.kind !== "tool")
+    expect(PluginManifest.safeParse(missing).success).toBe(false)
+
+    const unbound = structuredClone(manifest)
+    const unboundRenderer = unbound.contributions.find((item) => item.kind === "ui.messageRenderer")
+    if (!unboundRenderer || unboundRenderer.kind !== "ui.messageRenderer") throw new Error("Missing renderer")
+    delete unboundRenderer.tool
+    expect(PluginManifest.safeParse(unbound).success).toBe(false)
+
+    const hostPart = structuredClone(manifest)
+    const hostPartRenderer = hostPart.contributions.find((item) => item.kind === "ui.messageRenderer")
+    if (!hostPartRenderer || hostPartRenderer.kind !== "ui.messageRenderer") throw new Error("Missing renderer")
+    hostPartRenderer.messageType = "text"
+    delete hostPartRenderer.tool
+    expect(PluginManifest.safeParse(hostPart).success).toBe(false)
+  })
+
+  test("rejects message renderers that omit Tool ownership or replace host parts", () => {
+    const unsafe = (messageType: string, toolName?: string) =>
+      definePlugin({
+        id: "correction-card",
+        version: "1.0.0",
+        description: "Unsafe host renderer replacement",
+        contributions: [
+          messageRenderer({
+            id: "correction",
+            label: "Correction",
+            messageType,
+            ...(toolName ? { tool: toolName } : {}),
+            component: { source: "./src/correction.tsx" },
+          }),
+        ],
+      })
+
+    expect(() => unsafe("tool")).toThrow("must target a Tool contributed by the same plugin")
+    expect(() => unsafe("text")).toThrow("cannot replace a host-owned message type")
+    expect(() => unsafe("custom:correction", "plugin__correction-card__record")).toThrow(
+      "cannot replace a host-owned message type",
+    )
+  })
+
   test("rejects a message renderer that tries to replace another tool", () => {
     expect(() =>
       definePlugin({
@@ -457,6 +532,55 @@ describe("definePlugin", () => {
         contributions: [textAction({ id: "bad", label: "Bad", operation: "missing" })],
       }),
     ).toThrow("must reference a UI-exposed command operation")
+  })
+
+  test("requires the verified UI artifact for nested text-action presentation", () => {
+    const plugin = definePlugin({
+      id: "interaction",
+      version: "1.0.0",
+      description: "Interaction surfaces",
+      capabilities: [capability("selection.read")],
+      contributions: [
+        operation({
+          id: "translate",
+          type: "command",
+          expose: ["ui"],
+          input: z.object({}),
+          output: z.object({}),
+          handler: async () => ({}),
+        }),
+        textAction({
+          id: "translate-action",
+          label: "Translate",
+          operation: "translate",
+          presentation: {
+            kind: "popover",
+            component: { source: "src/translation.tsx" },
+          },
+        }),
+      ],
+    })
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-1",
+      runtime: { entry: "runtime/index.js", sha256: "a".repeat(64) },
+      ui: {
+        entry: "ui/index.js",
+        sha256: "b".repeat(64),
+        exports: { "ui.textAction:translate-action": "Translation" },
+      },
+    })
+
+    const missingArtifact = structuredClone(manifest)
+    delete missingArtifact.artifacts.ui
+    expect(PluginManifest.safeParse(missingArtifact).success).toBe(false)
+
+    const mismatchedEntry = structuredClone(manifest)
+    const action = mismatchedEntry.contributions.find((item) => item.kind === "ui.textAction")
+    if (!action || action.kind !== "ui.textAction" || !action.presentation) {
+      throw new Error("Missing text action presentation")
+    }
+    action.presentation.component.entry = "ui/unverified.js"
+    expect(PluginManifest.safeParse(mismatchedEntry).success).toBe(false)
   })
 
   test("rejects invalid text-action bounds and Agent role allowlists", () => {

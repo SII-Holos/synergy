@@ -281,7 +281,9 @@ async function startPluginAgent(input: PluginHostServiceInvocationInput, value: 
     const code =
       error.code === "capacity"
         ? PluginHostServiceErrorCode.AGENT_CALL_CAPACITY
-        : PluginHostServiceErrorCode.AGENT_CALL_CONFLICT
+        : error.code === "cancelled"
+          ? PluginHostServiceErrorCode.AGENT_CANCELLED
+          : PluginHostServiceErrorCode.AGENT_CALL_CONFLICT
     throw pluginHostServiceError(code, error.message)
   }
 }

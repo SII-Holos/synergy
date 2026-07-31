@@ -26,7 +26,7 @@ type ActiveCall = {
 
 export class PluginAgentCallRuntimeError extends Error {
   constructor(
-    readonly code: "capacity" | "conflict",
+    readonly code: "capacity" | "conflict" | "cancelled",
     message: string,
   ) {
     super(message)
@@ -37,6 +37,7 @@ export class PluginAgentCallRuntimeError extends Error {
 export class PluginAgentCallRuntime {
   readonly #activeById = new Map<string, ActiveCall>()
   readonly #activeByCorrelation = new Map<string, ActiveCall>()
+  readonly #disabledScopes = new Set<string>()
 
   constructor(readonly maxConcurrentPerPlugin = 4) {}
 
@@ -50,6 +51,9 @@ export class PluginAgentCallRuntime {
     deliver(call: PluginAgentCallTerminal): Promise<void>
     mapError(error: unknown): { code: string; message: string }
   }): { callId: string } {
+    if (this.#disabledScopes.has(input.scopeId)) {
+      throw new PluginAgentCallRuntimeError("cancelled", `Scope ${input.scopeId} is not accepting Agent calls`)
+    }
     const key = this.correlationKey(input)
     const existing = this.#activeByCorrelation.get(key)
     if (existing) {
@@ -106,18 +110,20 @@ export class PluginAgentCallRuntime {
     return { callId: call.callId }
   }
 
-  cancelGeneration(pluginId: string, pluginGeneration: string, reason = "Plugin generation stopped"): void {
-    for (const call of this.#activeById.values()) {
-      if (call.pluginId !== pluginId || call.pluginGeneration !== pluginGeneration) continue
-      call.controller.abort(new DOMException(reason, "AbortError"))
-      void this.settle(call, call.deliver, {
-        status: "cancelled",
-        error: {
-          code: "PLUGIN_AGENT_CANCELLED",
-          message: reason,
-        },
-      })
-    }
+  cancelGeneration(pluginId: string, pluginGeneration: string, reason = "Plugin generation stopped"): Promise<void> {
+    return this.cancelMatching(
+      (call) => call.pluginId === pluginId && call.pluginGeneration === pluginGeneration,
+      reason,
+    )
+  }
+
+  disableScope(scopeId: string, reason = "Scope runtime disposed"): Promise<void> {
+    this.#disabledScopes.add(scopeId)
+    return this.cancelMatching((call) => call.scopeId === scopeId, reason)
+  }
+
+  enableScope(scopeId: string): void {
+    this.#disabledScopes.delete(scopeId)
   }
 
   activeCount(pluginId?: string): number {
@@ -129,23 +135,55 @@ export class PluginAgentCallRuntime {
     return [input.pluginId, input.scopeId, input.correlationId].join("\u0000")
   }
 
-  private async settle(
-    call: ActiveCall,
-    deliver: (call: PluginAgentCallTerminal) => Promise<void>,
-    terminal: Pick<PluginAgentCallTerminal, "status" | "text" | "error">,
-  ): Promise<void> {
-    if (this.#activeById.get(call.callId) !== call) return
+  private cancelMatching(predicate: (call: ActiveCall) => boolean, reason: string): Promise<void> {
+    const deliveries: Promise<void>[] = []
+    for (const call of [...this.#activeById.values()]) {
+      if (!predicate(call) || !this.claim(call)) continue
+      call.controller.abort(new DOMException(reason, "AbortError"))
+      deliveries.push(
+        this.deliver(call, {
+          status: "cancelled",
+          error: {
+            code: "PLUGIN_AGENT_CANCELLED",
+            message: reason,
+          },
+        }),
+      )
+    }
+    return Promise.all(deliveries).then(() => undefined)
+  }
+
+  private claim(call: ActiveCall): boolean {
+    if (this.#activeById.get(call.callId) !== call) return false
     this.#activeById.delete(call.callId)
     this.#activeByCorrelation.delete(call.key)
-    await deliver({
-      callId: call.callId,
-      correlationId: call.correlationId,
-      status: terminal.status,
-      ...(terminal.text === undefined ? {} : { text: terminal.text }),
-      ...(terminal.error === undefined ? {} : { error: terminal.error }),
-      startedAt: call.startedAt,
-      completedAt: Date.now(),
-    }).catch(() => undefined)
+    return true
+  }
+
+  private async settle(
+    call: ActiveCall,
+    _deliver: (call: PluginAgentCallTerminal) => Promise<void>,
+    terminal: Pick<PluginAgentCallTerminal, "status" | "text" | "error">,
+  ): Promise<void> {
+    if (!this.claim(call)) return
+    await this.deliver(call, terminal)
+  }
+
+  private async deliver(
+    call: ActiveCall,
+    terminal: Pick<PluginAgentCallTerminal, "status" | "text" | "error">,
+  ): Promise<void> {
+    await call
+      .deliver({
+        callId: call.callId,
+        correlationId: call.correlationId,
+        status: terminal.status,
+        ...(terminal.text === undefined ? {} : { text: terminal.text }),
+        ...(terminal.error === undefined ? {} : { error: terminal.error }),
+        startedAt: call.startedAt,
+        completedAt: Date.now(),
+      })
+      .catch(() => undefined)
   }
 }
 

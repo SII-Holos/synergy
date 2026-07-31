@@ -20,72 +20,72 @@
   "exports": {
     ".": {
       "bun": "./src/index.ts",
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "import": "./dist/index.js"
     },
     "./tool": {
       "bun": "./src/tool.ts",
-      "types": "./dist/tool.d.ts",
+      "types": "./src/tool.ts",
       "import": "./dist/tool.js"
     },
     "./display": {
       "bun": "./src/display.ts",
-      "types": "./dist/display.d.ts",
+      "types": "./src/display.ts",
       "import": "./dist/display.js"
     },
     "./ids": {
       "bun": "./src/ids.ts",
-      "types": "./dist/ids.d.ts",
+      "types": "./src/ids.ts",
       "import": "./dist/ids.js"
     },
     "./paths": {
       "bun": "./src/paths.ts",
-      "types": "./dist/paths.d.ts",
+      "types": "./src/paths.ts",
       "import": "./dist/paths.js"
     },
     "./artifact": {
       "bun": "./src/artifact.ts",
-      "types": "./dist/artifact.d.ts",
+      "types": "./src/artifact.ts",
       "import": "./dist/artifact.js"
     },
     "./integrity": {
       "bun": "./src/integrity.ts",
-      "types": "./dist/integrity.d.ts",
+      "types": "./src/integrity.ts",
       "import": "./dist/integrity.js"
     },
     "./market": {
       "bun": "./src/market.ts",
-      "types": "./dist/market.d.ts",
+      "types": "./src/market.ts",
       "import": "./dist/market.js"
     },
     "./version": {
       "bun": "./src/version.ts",
-      "types": "./dist/version.d.ts",
+      "types": "./src/version.ts",
       "import": "./dist/version.js"
     },
     "./loader": {
       "bun": "./src/loader.ts",
-      "types": "./dist/loader.d.ts",
+      "types": "./src/loader.ts",
       "import": "./dist/loader.js"
     },
     "./shell": {
       "bun": "./src/shell.ts",
-      "types": "./dist/shell.d.ts",
+      "types": "./src/shell.ts",
       "import": "./dist/shell.js"
     },
     "./ui": {
       "bun": "./src/ui.ts",
-      "types": "./dist/ui.d.ts",
+      "types": "./src/ui.ts",
       "import": "./dist/ui.js"
     },
     "./theme": {
       "bun": "./src/theme/index.ts",
-      "types": "./dist/theme/index.d.ts",
+      "types": "./src/theme/index.ts",
       "import": "./dist/theme/index.js"
     },
     "./auth": {
       "bun": "./src/auth-types.ts",
-      "types": "./dist/auth-types.d.ts",
+      "types": "./src/auth-types.ts",
       "import": "./dist/auth-types.js"
     }
   },

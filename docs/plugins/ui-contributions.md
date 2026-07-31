@@ -105,7 +105,7 @@ messageRenderer({
 })
 ```
 
-The plugin must contribute that Tool itself; a renderer cannot replace another plugin's or a built-in Tool. The component receives `PluginToolMessageSurfaceContext`, which adds assistant message identity and the bounded Tool `name`, `input`, `metadata`, `title`, `output`, and `status`. It should render useful input/output even when a later query or event subscription is unavailable. Unregistered or failed renderers fall back to the normal host Tool card.
+The plugin must contribute that Tool itself; a renderer cannot replace another plugin's or a built-in Tool. The component receives `PluginToolMessageSurfaceContext`, which adds assistant message identity and the bounded Tool `name`, `input`, `metadata`, `title`, `output`, and `status`. It should render useful input/output even when a later query or event subscription is unavailable. Each plugin Tool card owns its own error boundary: a throwing renderer falls back to the normal host Tool card without replacing healthy sibling cards.
 
 ## Resource Tabs
 
