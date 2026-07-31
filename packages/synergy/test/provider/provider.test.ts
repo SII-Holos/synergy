@@ -429,6 +429,7 @@ test("custom provider inherits a models.dev catalog without sharing account iden
       const primary = providers.anthropic
       const secondary = providers["anthropic-secondary"]
       const inherited = secondary.models["claude-sonnet-4-5"]
+      const inheritedWithoutOverride = secondary.models["claude-opus-4-5"]
 
       expect(secondary.name).toBe("Anthropic Secondary")
       expect(secondary.env).toEqual(["ANTHROPIC_SECONDARY_API_KEY"])
@@ -436,6 +437,11 @@ test("custom provider inherits a models.dev catalog without sharing account iden
       expect(inherited.providerID).toBe("anthropic-secondary")
       expect(inherited.api.url).toBe("https://secondary.example.test/v1")
       expect(inherited.api.npm).toBe("@ai-sdk/openai-compatible")
+      expect(inheritedWithoutOverride.variants).toEqual({
+        low: { reasoningEffort: "low" },
+        medium: { reasoningEffort: "medium" },
+        high: { reasoningEffort: "high" },
+      })
       expect(primary.models["claude-sonnet-4-5"].providerID).toBe("anthropic")
       expect(primary.models["claude-sonnet-4-5"].name).not.toBe("Secondary Sonnet")
     },

@@ -540,7 +540,10 @@ export namespace Provider {
       if (provider.modelsDevProviderID && existing) {
         for (const model of Object.values(existing.models)) {
           if (provider.api) model.api.url = provider.api
-          if (provider.npm) model.api.npm = provider.npm
+          if (provider.npm) {
+            model.api.npm = provider.npm
+            model.variants = mapValues(ProviderTransform.variants(model), (variant) => variant)
+          }
         }
       }
       const parsed: Info = {
