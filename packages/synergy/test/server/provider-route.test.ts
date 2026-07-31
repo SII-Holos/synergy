@@ -168,6 +168,9 @@ test("provider connection routes manage a second account without changing its ca
           [providerID]: {
             ...configured.provider?.[providerID],
             whitelist: ["deepseek-chat"],
+            options: {
+              baseURL: "https://stale-deepseek-team.invalid/v1",
+            },
           },
         },
       },
@@ -208,6 +211,7 @@ test("provider connection routes manage a second account without changing its ca
       name: "DeepSeek Production",
     })
     expect((await Config.domainGet("providers")).provider?.[providerID]?.api).toBeUndefined()
+    expect((await Config.domainGet("providers")).provider?.[providerID]?.options?.baseURL).toBeUndefined()
 
     await Auth.set("deepseek", { type: "api", key: "canonical-connection-test-key" })
     await Auth.set(providerID, { type: "api", key: "connection-test-key" })

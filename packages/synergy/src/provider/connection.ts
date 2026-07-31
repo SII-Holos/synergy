@@ -223,6 +223,12 @@ export namespace ProviderConnection {
     if (parsed.endpoint !== undefined) {
       if (parsed.endpoint === null) delete provider.api
       else provider.api = parsed.endpoint
+      if (provider.options && "baseURL" in provider.options) {
+        const options = { ...provider.options }
+        delete options.baseURL
+        if (Object.keys(options).length === 0) delete provider.options
+        else provider.options = options
+      }
     }
     let next: Config.Info = {
       ...domain,
