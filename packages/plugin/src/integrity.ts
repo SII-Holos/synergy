@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import type { PluginManifest } from "./manifest.js"
+import { hasTrustedUIComponent, type PluginManifest } from "./manifest.js"
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable)
@@ -26,7 +26,7 @@ export function permissionsHashPayload(
       id: item.id,
       requires: item.requires ?? [],
       ...(item.kind === "operation" ? { expose: item.expose } : {}),
-      ...(item.kind.startsWith("ui.") && "component" in item && item.component ? { trustedComponent: true } : {}),
+      ...(hasTrustedUIComponent(item) ? { trustedComponent: true } : {}),
     })),
   }
 }

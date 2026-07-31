@@ -7,6 +7,7 @@ import { LLM } from "../../src/session/llm"
 const originalAgentGet = Agent.get
 const originalAgentModel = Agent.getAvailableModel
 const originalProviderGetModel = Provider.getModel
+const originalResolveRoleModel = Provider.resolveRoleModel
 const originalStream = LLM.stream
 const originalTakeTextStream = LLM.takeTextStream
 const originalSetTimeout = globalThis.setTimeout
@@ -15,6 +16,7 @@ afterEach(() => {
   ;(Agent.get as any) = originalAgentGet
   ;(Agent.getAvailableModel as any) = originalAgentModel
   ;(Provider.getModel as any) = originalProviderGetModel
+  ;(Provider.resolveRoleModel as any) = originalResolveRoleModel
   ;(LLM.stream as any) = originalStream
   ;(LLM.takeTextStream as any) = originalTakeTextStream
   globalThis.setTimeout = originalSetTimeout
@@ -74,6 +76,28 @@ describe("AgentCall", () => {
       return { textStream: (async function* () {})() }
     })
     await expect(call({ fallbackModel: fallback })).resolves.toEqual({ text: "" })
+  })
+
+  test("uses a requested model role instead of the Agent default", async () => {
+    installAgent()
+    ;(Provider.resolveRoleModel as any) = mock(async (role: string) => {
+      expect(role).toBe("thinking")
+      return { providerID: "role-provider", modelID: "role-model" }
+    })
+    ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => {
+      expect({ providerID, modelID }).toEqual({
+        providerID: "role-provider",
+        modelID: "role-model",
+      })
+      return { providerID, id: modelID }
+    })
+    ;(LLM.stream as any) = mock(async () => ({
+      textStream: (async function* () {
+        yield "role answer"
+      })(),
+    }))
+
+    await expect(call({ modelRole: "thinking" })).resolves.toEqual({ text: "role answer" })
   })
 
   test("rejects missing agents and models with stable codes", async () => {

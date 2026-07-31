@@ -56,6 +56,9 @@ function assetPaths(definition: PluginDefinition): Array<{ source: string; targe
 
 function trustedComponents(contributions: PluginContribution[]) {
   return contributions.flatMap((contribution) => {
+    if (contribution.kind === "ui.textAction" && contribution.presentation) {
+      return [{ key: `${contribution.kind}:${contribution.id}`, component: contribution.presentation.component }]
+    }
     if (!contribution.kind.startsWith("ui.") || !("component" in contribution) || !contribution.component) return []
     return [{ key: `${contribution.kind}:${contribution.id}`, component: contribution.component }]
   })

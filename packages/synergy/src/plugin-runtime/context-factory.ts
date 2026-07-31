@@ -108,7 +108,10 @@ export function createPluginInvocationContext(input: {
       ? { invoke: (toolId, value) => input.invokeHost("tool.invoke", { toolId, input: value }) as never }
       : undefined,
     agent: capabilities.has("agent.call")
-      ? { call: (value) => input.invokeHost("agent.call", value) as Promise<{ text: string }> }
+      ? {
+          call: (value) => input.invokeHost("agent.call", value) as Promise<{ text: string }>,
+          start: (value) => input.invokeHost("agent.start", value) as Promise<{ callId: string }>,
+        }
       : undefined,
   }
 }

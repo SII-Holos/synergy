@@ -5,6 +5,7 @@
   "license": "MIT",
   "exports": {
     "./*": "./src/components/*.tsx",
+    "./tool-registry-lazy": "./src/components/tool-registry-lazy.ts",
     "./plugin/*": "./src/plugin/*.ts",
     "./pierre": "./src/pierre/index.ts",
     "./pierre/*": "./src/pierre/*.ts",

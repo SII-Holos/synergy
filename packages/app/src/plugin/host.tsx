@@ -10,13 +10,17 @@ import {
   type ParentProps,
   useContext,
 } from "solid-js"
-import type {
-  PluginComposerSurfaceContext,
-  PluginManifestContribution,
-  PluginSelectionSurfaceContext,
-  PluginMessageSurfaceContext,
-  PluginSurfaceContext,
+import {
+  PLUGIN_UI_API_VERSION,
+  type PluginComposerSurfaceContext,
+  type PluginManifestContribution,
+  type PluginSelectionSurfaceContext,
+  type PluginTextActionSurfaceContext,
+  type PluginMessageSurfaceContext,
+  type PluginToolMessageSurfaceContext,
+  type PluginSurfaceContext,
 } from "@ericsanchezok/synergy-plugin"
+import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
 import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -32,12 +36,13 @@ import { registerComposerExtension, type ComposerExtensionProps } from "./regist
 import { registerIcon } from "./registries/icon-registry"
 import { registerNavigation, type NavigationContentProps } from "./registries/navigation-registry"
 import { registerPartRenderer } from "./registries/part-registry"
+import { registerPluginToolRenderer } from "./registries/tool-renderer-registry"
 import { registerSettingsSection } from "./registries/settings-registry"
 import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./registries/workbench-panel-registry"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { requestPluginHostConfirm } from "./host-confirm"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
-import { textSelectionController } from "@/context/text-selection"
+import { textSelectionController, type TextActionPresentationProps } from "@/context/text-selection"
 import { registerSelectionExtension } from "./registries/selection-extension-registry"
 import { registerMessageSlot } from "./registries/message-slot-registry"
 import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
@@ -210,7 +215,7 @@ function registerPluginSurfaces(input: {
           plugin.pluginId,
           asset(item.component!.entry),
           item.component!.exportName,
-          "3.0",
+          PLUGIN_UI_API_VERSION,
         )
         const Wrapper: Component<Props> = (props) => {
           const context = surfaceContext({
@@ -226,6 +231,42 @@ function registerPluginSurfaces(input: {
             showConfirm: input.showConfirm,
           })
           return createComponent(loaded.default, extendContext?.(context, props) ?? context)
+        }
+        return { default: Wrapper }
+      }
+    }
+
+    const textActionComponentLoader = (item: Extract<PluginManifestContribution, { kind: "ui.textAction" }>) => {
+      const component = item.presentation?.component
+      if (!component) return undefined
+      return async () => {
+        const loaded = await loadPluginExport<Component<PluginTextActionSurfaceContext>>(
+          plugin.pluginId,
+          asset(component.entry),
+          component.exportName,
+          PLUGIN_UI_API_VERSION,
+        )
+        const Wrapper: Component<TextActionPresentationProps> = (props) => {
+          const context = surfaceContext({
+            contribution: plugin,
+            contributionId: item.id,
+            kind: item.kind,
+            serverUrl: input.serverUrl,
+            client: input.client,
+            events: input.events,
+            scopeKey: input.scopeKey,
+            sessionId: currentSessionId(),
+            showConfirm: input.showConfirm,
+          })
+          return createComponent(loaded.default, {
+            ...context,
+            textAction: {
+              invocationId: props.invocationId,
+              selection: props.selection,
+              output: props.output,
+              close: props.close,
+            },
+          } satisfies PluginTextActionSurfaceContext)
         }
         return { default: Wrapper }
       }
@@ -300,6 +341,31 @@ function registerPluginSurfaces(input: {
         )
       },
       "ui.messageRenderer": (item: Extract<PluginManifestContribution, { kind: "ui.messageRenderer" }>) => {
+        if (item.tool) {
+          const loader = componentLoader<ToolProps>(
+            item,
+            (props) => props.sessionId ?? currentSessionId(),
+            () => undefined,
+            (context, props) =>
+              ({
+                ...context,
+                message: {
+                  id: props.messageId ?? "",
+                  role: "assistant",
+                },
+                tool: {
+                  name: props.tool,
+                  input: props.input,
+                  metadata: props.metadata,
+                  title: props.title,
+                  output: props.output,
+                  status: props.status,
+                },
+              }) satisfies PluginToolMessageSurfaceContext,
+          )
+          if (loader) disposers.push(registerPluginToolRenderer(item.tool, loader as never))
+          return
+        }
         const loader = componentLoader<{ sessionId?: string }>(item, (props) => props.sessionId ?? currentSessionId())
         if (loader) disposers.push(registerPartRenderer(item.messageType, undefined, loader as never))
       },
@@ -379,13 +445,29 @@ function registerPluginSurfaces(input: {
         )
       },
       "ui.textAction": (item: Extract<PluginManifestContribution, { kind: "ui.textAction" }>) => {
+        const presentationLoader = textActionComponentLoader(item)
+        if (item.presentation && !presentationLoader) {
+          fail(plugin.pluginId, `Text action ${item.id} has no trusted result component`)
+          return
+        }
         disposers.push(
           textSelectionController.registerAction({
             id: pluginSurfaceId(plugin.pluginId, item.id),
+            pluginId: plugin.pluginId,
+            pluginName: plugin.name,
             label: item.label,
             icon: resolvePluginIconReference(plugin, item.icon),
             order: item.order,
-            run: (snapshot, signal) =>
+            when: item.when,
+            presentation:
+              item.presentation && presentationLoader
+                ? {
+                    kind: item.presentation.kind,
+                    width: item.presentation.width,
+                    load: presentationLoader,
+                  }
+                : undefined,
+            run: (value, signal) =>
               surfaceContext({
                 contribution: plugin,
                 contributionId: item.id,
@@ -396,7 +478,7 @@ function registerPluginSurfaces(input: {
                 scopeKey: input.scopeKey,
                 sessionId: currentSessionId(),
                 showConfirm: input.showConfirm,
-              }).operations.command(item.operation, snapshot, { signal }),
+              }).operations.command(item.operation, value, { signal }),
           }),
         )
       },

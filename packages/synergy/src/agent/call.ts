@@ -30,6 +30,7 @@ export namespace AgentCall {
     user?: MessageV2.User
     sessionId?: string
     fallbackModel?: Provider.Model
+    modelRole?: Provider.ModelRole
     signal?: AbortSignal
     timeoutMs: number
     retries: number
@@ -76,7 +77,9 @@ export namespace AgentCall {
 
     const agent = await Agent.get(input.agent)
     if (!agent) throw new Error("agent_not_found", `Agent is unavailable: ${input.agent}`)
-    const configured = await Agent.getAvailableModel(agent)
+    const configured = input.modelRole
+      ? await Provider.resolveRoleModel(input.modelRole)
+      : await Agent.getAvailableModel(agent)
     const model = configured
       ? await Provider.getModel(configured.providerID, configured.modelID).catch(() => input.fallbackModel)
       : input.fallbackModel

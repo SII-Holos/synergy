@@ -66,7 +66,7 @@ export default {
   )
   const manifest = {
     manifestVersion: 1,
-    apiVersion: "3.0",
+    apiVersion: "4.0",
     id: "tool-hook-abort-plugin",
     name: "tool-hook-abort-plugin",
     version: "1.0.0",

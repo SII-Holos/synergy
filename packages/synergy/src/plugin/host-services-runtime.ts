@@ -1,8 +1,11 @@
 import path from "path"
 import fs from "fs/promises"
+import { createHash } from "node:crypto"
 import Ajv2020 from "ajv/dist/2020"
 import {
   PluginHostServiceErrorCode,
+  PLUGIN_MODEL_ROLES,
+  type PluginModelRole,
   type PluginAssetCreateInput,
   type PluginManifestType,
   type PluginTaskRunInput,
@@ -23,6 +26,7 @@ import { Session } from "../session"
 import { SessionInvoke } from "../session/invoke"
 import { Agent } from "../agent/agent"
 import { AgentCall } from "../agent/call"
+import { PluginAgentCallRuntimeError, pluginAgentCallRuntime } from "./agent-call-runtime"
 import { isPathContained } from "../util/path-contain"
 import { getPluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
@@ -65,6 +69,7 @@ const capabilityByMethod = {
   "secrets.delete": "secrets",
   "tool.invoke": "tool.invoke",
   "agent.call": "agent.call",
+  "agent.start": "agent.call",
   "asset.create": "asset.write",
   "shell.run": "shell.execute",
 } as const
@@ -102,7 +107,7 @@ function positiveConstraint(value: unknown, fallback: number, hardMaximum: numbe
   return Math.min(value, hardMaximum)
 }
 
-async function callPluginAgent(input: PluginHostServiceInvocationInput, value: Record<string, unknown>) {
+async function resolvePluginAgentCall(input: PluginHostServiceInvocationInput, value: Record<string, unknown>) {
   const name = value.agent
   const text = value.text
   if (typeof name !== "string" || !name) throw new Error("agent.call requires agent")
@@ -126,6 +131,29 @@ async function callPluginAgent(input: PluginHostServiceInvocationInput, value: R
     AGENT_CALL_MAX_RUNTIME_MS,
   )
   const timeoutMs = positiveConstraint(value.timeoutMs, maxRuntimeMs, maxRuntimeMs)
+  const requestedRole = value.modelRole
+  let modelRole: PluginModelRole | undefined
+  if (requestedRole !== undefined) {
+    if (typeof requestedRole !== "string" || !(PLUGIN_MODEL_ROLES as readonly string[]).includes(requestedRole)) {
+      throw pluginHostServiceError(
+        PluginHostServiceErrorCode.AGENT_MODEL_ROLE_INVALID,
+        `Invalid plugin Agent model role: ${String(requestedRole)}`,
+      )
+    }
+    const allowedRoles = Array.isArray(constraints.modelRoles)
+      ? constraints.modelRoles.filter(
+          (item): item is PluginModelRole =>
+            typeof item === "string" && (PLUGIN_MODEL_ROLES as readonly string[]).includes(item),
+        )
+      : []
+    if (!allowedRoles.includes(requestedRole as PluginModelRole)) {
+      throw pluginHostServiceError(
+        PluginHostServiceErrorCode.AGENT_MODEL_ROLE_DENIED,
+        `Plugin is not approved to use Agent model role: ${requestedRole}`,
+      )
+    }
+    modelRole = requestedRole as PluginModelRole
+  }
   const agent = await Agent.get(name)
   if (!agent) {
     throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_NOT_FOUND, `Plugin Agent is unavailable: ${name}`)
@@ -144,37 +172,119 @@ async function callPluginAgent(input: PluginHostServiceInvocationInput, value: R
       `Plugin is not approved to call Agent: ${name}`,
     )
   }
+  return {
+    name,
+    text,
+    modelRole,
+    timeoutMs,
+    maxInputChars,
+    maxOutputChars: requestedOutput,
+  }
+}
+
+function mapPluginAgentCallError(error: unknown): Error & { code?: string } {
+  if (!(error instanceof AgentCall.Error)) {
+    return error instanceof Error ? error : new Error(String(error))
+  }
+  if (error.code === "agent_not_found") {
+    return pluginHostServiceError(PluginHostServiceErrorCode.AGENT_NOT_FOUND, error.message)
+  }
+  if (error.code === "model_unavailable") {
+    return pluginHostServiceError(PluginHostServiceErrorCode.AGENT_MODEL_UNAVAILABLE, error.message)
+  }
+  if (error.code === "input_too_large") {
+    return pluginHostServiceError(PluginHostServiceErrorCode.AGENT_INPUT_TOO_LARGE, error.message)
+  }
+  if (error.code === "output_too_large") {
+    return pluginHostServiceError(PluginHostServiceErrorCode.AGENT_OUTPUT_TOO_LARGE, error.message)
+  }
+  if (error.code === "timeout") {
+    return pluginHostServiceError(PluginHostServiceErrorCode.AGENT_TIMEOUT, error.message)
+  }
+  if (error.code === "cancelled") {
+    return pluginHostServiceError(PluginHostServiceErrorCode.AGENT_CANCELLED, error.message)
+  }
+  return error
+}
+
+async function runPluginAgent(resolved: Awaited<ReturnType<typeof resolvePluginAgentCall>>, signal: AbortSignal) {
   try {
     return await AgentCall.text({
-      agent: name,
-      messages: [{ role: "user", content: text }],
-      signal: input.signal,
-      timeoutMs,
+      agent: resolved.name,
+      modelRole: resolved.modelRole,
+      messages: [{ role: "user", content: resolved.text }],
+      signal,
+      timeoutMs: resolved.timeoutMs,
       retries: 1,
-      maxInputChars,
-      maxOutputChars: requestedOutput,
+      maxInputChars: resolved.maxInputChars,
+      maxOutputChars: resolved.maxOutputChars,
     })
   } catch (error) {
-    if (!(error instanceof AgentCall.Error)) throw error
-    if (error.code === "agent_not_found") {
-      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_NOT_FOUND, error.message)
-    }
-    if (error.code === "model_unavailable") {
-      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_MODEL_UNAVAILABLE, error.message)
-    }
-    if (error.code === "input_too_large") {
-      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_INPUT_TOO_LARGE, error.message)
-    }
-    if (error.code === "output_too_large") {
-      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_OUTPUT_TOO_LARGE, error.message)
-    }
-    if (error.code === "timeout") {
-      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_TIMEOUT, error.message)
-    }
-    if (error.code === "cancelled") {
-      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_CANCELLED, error.message)
-    }
-    throw error
+    throw mapPluginAgentCallError(error)
+  }
+}
+
+async function callPluginAgent(input: PluginHostServiceInvocationInput, value: Record<string, unknown>) {
+  return runPluginAgent(await resolvePluginAgentCall(input, value), input.signal)
+}
+
+async function startPluginAgent(input: PluginHostServiceInvocationInput, value: Record<string, unknown>) {
+  const correlationId = value.correlationId
+  if (typeof correlationId !== "string" || !correlationId.trim()) {
+    throw new Error("agent.start requires correlationId")
+  }
+  if (Array.from(correlationId).length > 160) {
+    throw new Error("agent.start correlationId must be at most 160 characters")
+  }
+  input.signal.throwIfAborted()
+  const resolved = await resolvePluginAgentCall(input, value)
+  const scope = ScopeContext.current.scope
+  const inputDigest = createHash("sha256")
+    .update(
+      JSON.stringify({
+        agent: resolved.name,
+        text: resolved.text,
+        modelRole: resolved.modelRole,
+        timeoutMs: resolved.timeoutMs,
+        maxOutputChars: resolved.maxOutputChars,
+      }),
+    )
+    .digest("hex")
+  try {
+    return pluginAgentCallRuntime.start({
+      pluginId: input.pluginId,
+      pluginGeneration: input.manifest.artifacts.generation,
+      scopeId: input.invocation.scopeId,
+      correlationId,
+      inputDigest,
+      run: (signal) => runPluginAgent(resolved, signal),
+      mapError(error) {
+        const mapped = mapPluginAgentCallError(error)
+        return {
+          code: mapped.code ?? "PLUGIN_AGENT_CALL_FAILED",
+          message: mapped.message,
+        }
+      },
+      deliver: (call) =>
+        ScopeContext.provide({
+          scope,
+          fn: async () => {
+            const { deliverHookForPlugin } = await import("./lifecycle")
+            await deliverHookForPlugin(input.pluginId, input.manifest.artifacts.generation, "agent.call.after", {
+              call,
+            })
+          },
+        }),
+    })
+  } catch (error) {
+    if (!(error instanceof PluginAgentCallRuntimeError)) throw error
+    const code =
+      error.code === "capacity"
+        ? PluginHostServiceErrorCode.AGENT_CALL_CAPACITY
+        : error.code === "cancelled"
+          ? PluginHostServiceErrorCode.AGENT_CANCELLED
+          : PluginHostServiceErrorCode.AGENT_CALL_CONFLICT
+    throw pluginHostServiceError(code, error.message)
   }
 }
 
@@ -506,6 +616,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     const value = params(input)
     if (input.method === "event.publish") return publishEvent(input)
     if (input.method === "agent.call") return callPluginAgent(input, value)
+    if (input.method === "agent.start") return startPluginAgent(input, value)
     if (input.method === "session.get") {
       const sessionId = value.sessionId
       if (typeof sessionId !== "string") throw new Error("session.get requires sessionId")

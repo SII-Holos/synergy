@@ -33,6 +33,8 @@ export namespace Plugin {
   export const triggerForPlugin = lifecycle.triggerForPlugin
   export const deliverHookForPlugin = lifecycle.deliverHookForPlugin
   export const init = lifecycle.init
+  export const activateScope = lifecycle.activateScope
+  export const disposeScope = lifecycle.disposeScope
   export const notifyConfigHooks = lifecycle.notifyConfigHooks
   export const reload = lifecycle.reload
   export const reloadMcpContributions = lifecycle.reloadMcpContributions
@@ -41,6 +43,7 @@ export namespace Plugin {
 
   // Install
   export const add = install.add
+  export const updateReviewed = install.updateReviewed
   export const remove = install.remove
 
   // Status

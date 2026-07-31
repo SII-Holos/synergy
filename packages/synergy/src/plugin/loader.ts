@@ -367,8 +367,12 @@ export function contributions<Kind extends PluginManifestContribution["kind"]>(
   return pluginContributionAdapters.list(plugin.id, kind)
 }
 
-export function markContributionDegraded(plugin: LoadedPlugin, contributionId: string, error: unknown) {
-  plugin.contributionHealth.set(contributionId, {
+export function markContributionDegraded(
+  plugin: LoadedPlugin,
+  contribution: Pick<PluginManifestContribution, "kind" | "id">,
+  error: unknown,
+) {
+  plugin.contributionHealth.set(`${contribution.kind}:${contribution.id}`, {
     state: "degraded",
     lastError: error instanceof Error ? error.message : String(error),
     updatedAt: Date.now(),

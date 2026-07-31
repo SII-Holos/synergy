@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { pathToFileURL } from "url"
 import { localRegistryArtifactDir } from "../../src/plugin/local-registry-store"
-import { classifyPluginInstallation, PluginStatusSchema } from "../../src/plugin/status"
+import { classifyPluginInstallation, getStatusForLoadedPlugin, PluginStatusSchema } from "../../src/plugin/status"
+import { markContributionDegraded, type LoadedPlugin } from "../../src/plugin/loader"
 
 describe("plugin installation classification", () => {
   test("PluginStatus uses installation origin instead of the overloaded source field", () => {
@@ -44,5 +45,40 @@ describe("plugin installation classification", () => {
       kind: "builtin",
       spec: "builtin:plugin",
     })
+  })
+
+  test("qualifies contribution health by kind", async () => {
+    const plugin = {
+      id: "health-test",
+      name: "Health Test",
+      manifest: {
+        manifestVersion: 1,
+        apiVersion: "4.0",
+        id: "health-test",
+        name: "Health Test",
+        version: "1.0.0",
+        description: "Health identity test",
+        capabilities: [],
+        contributions: [],
+        artifacts: { generation: "generation-one" },
+      },
+      pluginDir: "/plugins/health-test",
+      source: "builtin",
+      spec: "builtin:health-test",
+      enabledScopes: new Set(["home"]),
+      contributionHealth: new Map(),
+    } satisfies LoadedPlugin
+
+    markContributionDegraded(plugin, { kind: "operation", id: "shared" }, new Error("operation failed"))
+    markContributionDegraded(plugin, { kind: "hook", id: "shared" }, new Error("hook failed"))
+    markContributionDegraded(plugin, { kind: "tool", id: "shared" }, new Error("tool failed"))
+
+    const status = await getStatusForLoadedPlugin(plugin)
+    expect(status.contributionHealth).toMatchObject({
+      "operation:shared": { state: "degraded", lastError: "operation failed" },
+      "hook:shared": { state: "degraded", lastError: "hook failed" },
+      "tool:shared": { state: "degraded", lastError: "tool failed" },
+    })
+    expect(status.contributionHealth).not.toHaveProperty("shared")
   })
 })
