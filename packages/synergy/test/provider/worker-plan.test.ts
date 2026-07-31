@@ -58,6 +58,75 @@ test("Agent worker provider plans retain canonical runtime profile identity", ()
   })
 })
 
+test("Agent worker profile hooks receive inline provider and model credentials", async () => {
+  const previousWorker = process.env.SYNERGY_AGENT_WORKER
+  process.env.SYNERGY_AGENT_WORKER = "1"
+  const providerID = `worker-inline-auth-${Math.random().toString(36).slice(2)}`
+  const runtimeAuthKeys: Array<string | undefined> = []
+  ProviderProfile.register({
+    id: providerID,
+    name: "Worker inline auth test",
+    authKind: "api_key",
+    aiSdkPackage: "@ai-sdk/openai-compatible",
+    runtimeOptions: async ({ auth }) => {
+      runtimeAuthKeys.push(auth?.type === "api" ? auth.key : undefined)
+      return {}
+    },
+  })
+  const model = Provider.Model.parse({
+    id: "worker-inline-model",
+    providerID,
+    api: {
+      id: "worker-inline-model",
+      url: "https://provider.invalid/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: "Worker Inline Model",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: false,
+      toolcall: true,
+      input: { text: true, audio: false, image: false, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    limit: { context: 4_096, output: 1_024 },
+    status: "active",
+    options: { apiKey: "inline-model-key" },
+    headers: {},
+    release_date: "2026-01-01",
+    variants: {},
+  })
+
+  try {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        await Provider.configureWorkerProvider(model, {
+          profileID: providerID,
+          options: { apiKey: "inline-provider-key" },
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false },
+        })
+        await Provider.configureWorkerProvider(
+          { ...model, options: {} },
+          {
+            profileID: providerID,
+            options: { apiKey: "inline-provider-key" },
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false },
+          },
+        )
+      },
+    })
+
+    expect(runtimeAuthKeys).toEqual(["inline-model-key", "inline-provider-key"])
+  } finally {
+    if (previousWorker === undefined) delete process.env.SYNERGY_AGENT_WORKER
+    else process.env.SYNERGY_AGENT_WORKER = previousWorker
+  }
+})
+
 test("Agent worker model caches follow provider credential changes", async () => {
   const previousWorker = process.env.SYNERGY_AGENT_WORKER
   process.env.SYNERGY_AGENT_WORKER = "1"

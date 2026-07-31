@@ -335,6 +335,39 @@ test("configured environment credentials participate in live discovery", async (
   expect(environmentDiscoveryAuth).toBe("environment-account-key")
 })
 
+test("configured inline credentials participate in live discovery", async () => {
+  const providerID = "catalog-inline-credentials"
+  const configured = {
+    profile: environmentProfileID,
+    modelsDevProviderID: "openai",
+    options: {
+      apiKey: "inline-catalog-key",
+    },
+  }
+  await using tmp = await tmpdir()
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await ProviderCatalog.resolve({
+        config: {
+          providerCatalog: { enabled: false, offlineCache: false },
+          provider: {
+            [providerID]: configured,
+          },
+        },
+        includeLive: true,
+        forceRefresh: true,
+      })
+      await environmentDiscovery
+      await ProviderCatalog.refresh(providerID, environmentProfileID, undefined, configured)
+    },
+  })
+
+  expect(environmentDiscoveryAuth).toBe("inline-catalog-key")
+  expect(await Bun.file(Global.Path.providerModelCatalogCache).text()).not.toContain("inline-catalog-key")
+})
+
 test("catalog-only account projections are isolated by configuration", async () => {
   const first = await ProviderCatalog.resolve({
     config: {
@@ -384,6 +417,10 @@ test("catalog-only projections apply model rules without exposing inline credent
                   Authorization: "must-not-be-projected",
                   "X-API-Key": "must-not-be-projected",
                 },
+                apiToken: "must-not-be-projected",
+                sessionToken: "must-not-be-projected",
+                accessKeyId: "must-not-be-projected",
+                secretAccessKey: "must-not-be-projected",
                 maxTokens: 16_384,
                 reasoningEffort: "high",
               },
@@ -396,6 +433,7 @@ test("catalog-only projections apply model rules without exposing inline credent
 
   expect(Object.keys(first[accountID].models)).toEqual(["account-alias"])
   expect(first[accountID].models["account-alias"].name).toBe("Account Alias")
+  expect(first[accountID].models["account-alias"].id).toBe("account-alias")
   expect(first[accountID].models["account-alias"].options).toEqual({
     headers: {},
     maxTokens: 16_384,

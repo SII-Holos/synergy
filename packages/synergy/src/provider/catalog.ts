@@ -161,12 +161,20 @@ export namespace ProviderCatalog {
   function isSensitiveConfiguredKey(key: string) {
     const normalized = key.replace(/[-_.]/g, "").toLowerCase()
     return (
+      normalized === "auth" ||
+      normalized === "cookie" ||
+      normalized === "setcookie" ||
       normalized.endsWith("apikey") ||
+      normalized.endsWith("apitoken") ||
+      normalized.endsWith("sessiontoken") ||
+      normalized.endsWith("accesskey") ||
+      normalized.endsWith("accesskeyid") ||
+      normalized.endsWith("privatekey") ||
       normalized.endsWith("password") ||
-      normalized.endsWith("secret") ||
-      normalized.endsWith("secretkey") ||
+      normalized.includes("secret") ||
       normalized === "token" ||
-      ["authtoken", "accesstoken", "refreshtoken", "bearertoken"].some((suffix) => normalized.endsWith(suffix)) ||
+      normalized.endsWith("token") ||
+      normalized.endsWith("credential") ||
       normalized.endsWith("authorization")
     )
   }
@@ -196,7 +204,10 @@ export namespace ProviderCatalog {
       const model = publicConfiguredValue(raw) as Record<string, any>
       const sourceID = typeof model.id === "string" ? model.id : modelID
       const source = result.models[sourceID] ?? result.models[modelID] ?? fallbackModel(result, sourceID)
-      result.models[modelID] = mergeDeep(source, model) as ModelsDev.Model
+      result.models[modelID] = {
+        ...(mergeDeep(source, model) as ModelsDev.Model),
+        id: modelID,
+      }
     }
     for (const modelID of Object.keys(result.models)) {
       if (configured.whitelist && !configured.whitelist.includes(modelID)) delete result.models[modelID]
@@ -578,8 +589,15 @@ export namespace ProviderCatalog {
     const environmentAuth = environment?.value
       ? ({ type: "api", key: environment.value } satisfies Auth.Info)
       : undefined
-    const auth = selected?.auth ?? environmentAuth
-    const credentialID = selected?.credentialID ?? (environment ? `env:${environment.name}` : undefined)
+    const inlineKey =
+      typeof configured?.options?.apiKey === "string" && configured.options.apiKey
+        ? configured.options.apiKey
+        : undefined
+    const inlineAuth = inlineKey ? ({ type: "api", key: inlineKey } satisfies Auth.Info) : undefined
+    const auth = selected?.auth ?? environmentAuth ?? inlineAuth
+    const credentialID =
+      selected?.credentialID ??
+      (environment ? `env:${environment.name}` : inlineAuth ? "config:options.apiKey" : undefined)
     const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
     const customIdentity = await profile.modelCatalogIdentity?.({
       providerID,

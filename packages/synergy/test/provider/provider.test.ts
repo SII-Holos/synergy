@@ -506,12 +506,17 @@ test("inline model credentials initialize mapped profiles and reach model loader
   const profileID = `inline-runtime-profile-${Math.random().toString(36).slice(2)}`
   const connectionID = `${profileID}-secondary`
   let loaderOptions: Record<string, any> | undefined
+  const runtimeAuthKeys: string[] = []
   ProviderProfile.register({
     id: profileID,
     name: "Inline runtime profile",
     authKind: "api_key",
     modelsDevProviderID: "openai",
     aiSdkPackage: "@ai-sdk/openai",
+    runtimeOptions: async ({ auth }) => {
+      if (auth?.type === "api") runtimeAuthKeys.push(auth.key)
+      return {}
+    },
     getModel: async ({ options }) => {
       loaderOptions = options
       return { specificationVersion: "v2", provider: profileID, modelId: "test" }
@@ -554,6 +559,7 @@ test("inline model credentials initialize mapped profiles and reach model loader
         apiKey: "inline-model-key",
         baseURL: "https://inline-model.invalid/v1",
       })
+      expect(runtimeAuthKeys).toContain("inline-model-key")
     },
   })
 })

@@ -182,6 +182,11 @@ export namespace Provider {
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
+  type RuntimeProfileState = {
+    profile: ProviderProfile.Profile
+    provider?: ModelsDev.Provider
+    explicitOptions: Record<string, any>
+  }
   export const Model = z
     .object({
       id: z.string(),
@@ -429,6 +434,7 @@ export namespace Provider {
     providers: {} as Record<string, Info>,
     sdk: new Map<number, { instance: SDK; createdAt: number }>(),
     modelLoaders: {} as Record<string, CustomModelLoader>,
+    runtimeProfileStates: {} as Record<string, RuntimeProfileState>,
     timeouts: {} as Record<string, WorkerPlan["timeouts"]>,
   }
 
@@ -445,7 +451,15 @@ export namespace Provider {
     registerBuiltinProviderProfiles()
     const profile = ProviderProfile.resolve(model.providerID, plan.profileID)
     const storedAuth = await Auth.get(model.providerID)
-    const auth = storedAuth ?? (plan.key ? ({ type: "api", key: plan.key } satisfies Auth.Info) : undefined)
+    const inlineModelKey =
+      typeof model.options.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
+    const inlineProviderKey =
+      typeof plan.options.apiKey === "string" && plan.options.apiKey ? plan.options.apiKey : undefined
+    const connectionKey = plan.key ?? inlineProviderKey
+    const auth =
+      (inlineModelKey ? ({ type: "api", key: inlineModelKey } satisfies Auth.Info) : undefined) ??
+      storedAuth ??
+      (connectionKey ? ({ type: "api", key: connectionKey } satisfies Auth.Info) : undefined)
     const profileInput = {
       providerID: model.providerID,
       auth,
@@ -455,6 +469,14 @@ export namespace Provider {
     const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
     const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
     const options = mergeDeep(mergeDeep(modelOptions, runtimeOptions), plan.options)
+    if (profile) {
+      workerState.runtimeProfileStates[model.providerID] = {
+        profile,
+        explicitOptions: plan.options,
+      }
+    } else {
+      delete workerState.runtimeProfileStates[model.providerID]
+    }
     workerState.providers[model.providerID] = {
       id: model.providerID,
       profileID: plan.profileID,
@@ -508,6 +530,7 @@ export namespace Provider {
     const modelLoaders: {
       [providerID: string]: CustomModelLoader
     } = {}
+    const runtimeProfileStates: Record<string, RuntimeProfileState> = {}
     const sdk = new Map<number, { instance: SDK; createdAt: number }>()
 
     log.info("init")
@@ -743,6 +766,14 @@ export namespace Provider {
       const autoload = (await profile.autoload?.({ ...profileInput, auth })) ?? false
       const shouldMerge = !!auth || !!providers[providerID] || hasInlineModelKey || autoload
       if (!shouldMerge) continue
+      runtimeProfileStates[providerID] = {
+        profile,
+        provider: profileInput.provider,
+        explicitOptions: mergeDeep(
+          configProvider?.api ? { baseURL: configProvider.api } : {},
+          configProvider?.options ?? {},
+        ),
+      }
       const modelOptions = (await profile.modelOptions?.({ ...profileInput, auth })) ?? {}
       const runtimeOptions = (await profile.runtimeOptions?.({ ...profileInput, auth })) ?? {}
       const options = mergeDeep(modelOptions, runtimeOptions)
@@ -812,8 +843,32 @@ export namespace Provider {
       providers,
       sdk,
       modelLoaders,
+      runtimeProfileStates,
     }
   })
+
+  async function resolveModelOptions(
+    model: Model,
+    provider: Info,
+    runtimeProfile: RuntimeProfileState | undefined,
+  ): Promise<Record<string, any>> {
+    const inlineModelKey =
+      typeof model.options.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
+    if (!inlineModelKey || !runtimeProfile) return { ...provider.options, ...model.options }
+
+    const profileInput = {
+      providerID: model.providerID,
+      auth: { type: "api", key: inlineModelKey } satisfies Auth.Info,
+      provider: runtimeProfile.provider,
+    }
+    const auth = (await runtimeProfile.profile.resolveAuth?.(profileInput)) ?? profileInput.auth
+    const modelOptions = (await runtimeProfile.profile.modelOptions?.({ ...profileInput, auth })) ?? {}
+    const runtimeOptions = (await runtimeProfile.profile.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+    const dynamicOptions = mergeDeep(modelOptions, runtimeOptions)
+    const withRuntime = mergeDeep(provider.options, dynamicOptions)
+    const withExplicitConnection = mergeDeep(withRuntime, runtimeProfile.explicitOptions)
+    return { ...withExplicitConnection, ...model.options }
+  }
 
   export async function reload() {
     log.info("reloading provider state")
@@ -887,14 +942,16 @@ export namespace Provider {
     return builtSDK
   }
 
-  export async function getSDK(model: Model) {
+  export async function getSDK(model: Model, resolvedOptions?: Record<string, any>) {
     try {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
       })
       const s = await state()
       const provider = s.providers[model.providerID]
-      const options: Record<string, any> = { ...provider.options, ...model.options }
+      const options: Record<string, any> = {
+        ...(resolvedOptions ?? (await resolveModelOptions(model, provider, s.runtimeProfileStates[model.providerID]))),
+      }
 
       if (model.api.npm.includes("@ai-sdk/openai-compatible") && options["includeUsage"] !== false) {
         options["includeUsage"] = true
@@ -1138,7 +1195,7 @@ export namespace Provider {
   export async function getLanguage(model: Model): Promise<LanguageModelV2> {
     const s = await state()
     const provider = s.providers[model.providerID]
-    const options = { ...provider.options, ...model.options }
+    const options = await resolveModelOptions(model, provider, s.runtimeProfileStates[model.providerID])
     const key = Bun.hash
       .xxHash32(
         JSON.stringify({
@@ -1158,7 +1215,7 @@ export namespace Provider {
       log.info("model cache entry expired, recreating", { key })
     }
 
-    const sdk = await getSDK(model)
+    const sdk = await getSDK(model, options)
 
     try {
       const language = s.modelLoaders[model.providerID]
