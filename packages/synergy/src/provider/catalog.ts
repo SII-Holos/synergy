@@ -7,12 +7,22 @@ import z from "zod"
 import { Auth } from "./api-key"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { CodexProvider } from "./codex"
-import { ModelsDev } from "./models"
+import { ModelsDev } from "./models-schemas"
 import { ProviderProfile } from "./profile"
 import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
+
+  type ModelsDevRuntime = (typeof import("./models"))["ModelsDev"]
+  let modelsDevRuntime: Promise<ModelsDevRuntime> | undefined
+
+  function loadModelsDevRuntime() {
+    if (!modelsDevRuntime) {
+      modelsDevRuntime = import("./models").then((module) => module.ModelsDev)
+    }
+    return modelsDevRuntime
+  }
 
   export const DEFAULT_REGISTRY_URL =
     "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json"
@@ -730,7 +740,8 @@ export namespace ProviderCatalog {
     generation: number,
   ): Promise<Record<string, ModelsDev.Provider>> {
     const config = Config.parse((input?.config as any)?.providerCatalog ?? {})
-    const modelsDev = withBuiltinSourceSurfaces(await ModelsDev.get())
+    const runtimeModelsDev = await loadModelsDevRuntime()
+    const modelsDev = withBuiltinSourceSurfaces(await runtimeModelsDev.get())
     const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
 
     for (const [providerID, provider] of Object.entries(bundledSnapshot(modelsDev))) {
@@ -850,11 +861,17 @@ export namespace ProviderCatalog {
     snapshots = undefined
   }
 
-  ModelsDev.onRefresh(async () => {
-    invalidateModelsDevProjection()
-    const { RuntimeReload } = await import("@/runtime/reload")
-    await RuntimeReload.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })
-  })
+  void loadModelsDevRuntime()
+    .then((modelsDevRuntime) =>
+      modelsDevRuntime.onRefresh(async () => {
+        invalidateModelsDevProjection()
+        const { RuntimeReload } = await import("@/runtime/reload")
+        await RuntimeReload.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })
+      }),
+    )
+    .catch((error) => {
+      log.warn("failed to register models.dev refresh listener", { error })
+    })
 
   export function modelCatalogState(providerID: string) {
     return catalogStates.get(providerID)
