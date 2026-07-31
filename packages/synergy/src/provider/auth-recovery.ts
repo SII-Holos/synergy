@@ -254,6 +254,7 @@ export namespace ProviderAuthRecovery {
   }
 
   async function retryOnce(input: ExecuteInput, removalRevision: number) {
+    const selectedBeforeRequest = await Auth.select(input.providerID)
     try {
       const response = await input.request()
       if (response.ok) {
@@ -266,7 +267,7 @@ export namespace ProviderAuthRecovery {
     } catch (error) {
       const failure = classifiedThrownError(error)
       if (!failure) throw error
-      const selected = await Auth.select(input.providerID)
+      const selected = selectedBeforeRequest ?? (await Auth.select(input.providerID))
       const entry = (await Auth.entries())[input.providerID]
       if (isMissingCredentialError(error) && !entry) throw error
       await markFailure(input, selected, failure, removalRevision)
@@ -289,13 +290,14 @@ export namespace ProviderAuthRecovery {
 
   export async function execute(input: ExecuteInput) {
     const removalRevision = Auth.removalRevision(input.providerID)
+    const selectedBeforeRequest = await Auth.select(input.providerID)
     let first: Response
     try {
       first = await input.request()
     } catch (error) {
       const failure = classifiedThrownError(error)
       if (!failure) throw error
-      const selected = await Auth.select(input.providerID)
+      const selected = selectedBeforeRequest ?? (await Auth.select(input.providerID))
       const entry = (await Auth.entries())[input.providerID]
       if (isMissingCredentialError(error) && !entry) throw error
       await markFailure(input, selected, failure, removalRevision)

@@ -648,9 +648,11 @@ export namespace Provider {
       import("@/plugin/loader"),
       import("@/plugin/auth-provider"),
     ])
+    const authProviderPlugins = new Map<string, ReturnType<typeof authHook>>()
     for (const entry of await getAuthProviderEntries()) {
       const plugin = authHook(entry.plugin, entry.contribution)
       const providerID = plugin.provider
+      authProviderPlugins.set(providerID, plugin)
       if (disabled.has(providerID)) continue
 
       // For github-copilot plugin, check if auth exists for either github-copilot or github-copilot-enterprise
@@ -711,6 +713,14 @@ export namespace Provider {
       const base = database[providerID]
       if (!base) continue
       const storedAuth = await Auth.get(providerID)
+      const sourcePlugin = providerID === profile.id ? undefined : authProviderPlugins.get(profile.id)
+      if (storedAuth && sourcePlugin?.loader) {
+        const options = await sourcePlugin.loader(() => Auth.get(providerID) as any, base)
+        mergeProvider(providerID, {
+          source: "custom",
+          options,
+        })
+      }
       const providerKey = providers[providerID]?.key
       const connectionAuth =
         storedAuth ?? (providerKey ? ({ type: "api", key: providerKey } satisfies Auth.Info) : undefined)

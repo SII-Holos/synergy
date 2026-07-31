@@ -11,6 +11,7 @@ import { CodexProvider } from "./codex"
 import { ModelsDev } from "./models-schemas"
 import { ProviderProfile } from "./profile"
 import { normalizeImageMediaTypes } from "./image-capability"
+import { Env } from "@/util/env"
 
 export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
@@ -512,23 +513,33 @@ export namespace ProviderCatalog {
     profile: ProviderProfile.Profile,
     providerID = profile.id,
     baseURL = profile.baseURL,
+    configured?: ConfiguredProvider,
   ): Promise<LiveDiscoveryContext> {
     const selected = await Auth.select(providerID)
+    const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+    const environment = (configured?.env ?? profile.env ?? [])
+      .map((name) => ({ name, value: environmentValues[name]?.trim() }))
+      .find((entry) => entry.value)
+    const environmentAuth = environment?.value
+      ? ({ type: "api", key: environment.value } satisfies Auth.Info)
+      : undefined
+    const auth = selected?.auth ?? environmentAuth
+    const credentialID = selected?.credentialID ?? (environment ? `env:${environment.name}` : undefined)
     const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
     const customIdentity = await profile.modelCatalogIdentity?.({
       providerID,
-      auth: selected?.auth,
-      credentialID: selected?.credentialID,
+      auth,
+      credentialID,
       authUpdatedAt,
     })
     const identity =
       customIdentity ??
-      (selected
-        ? defaultCredentialIdentity(selected.credentialID, selected.auth)
+      (auth && credentialID
+        ? defaultCredentialIdentity(credentialID, auth)
         : profile.authKind === "none"
           ? "anonymous"
           : "unauthenticated")
-    return { auth: selected?.auth, identityHash: await hashIdentity(providerID, profile.id, baseURL, identity) }
+    return { auth, identityHash: await hashIdentity(providerID, profile.id, baseURL, identity) }
   }
 
   function configuredProviders(config: unknown): Record<string, ConfiguredProvider> {
@@ -565,7 +576,7 @@ export namespace ProviderCatalog {
         profile.baseURL
       targets.set(providerID, {
         profile,
-        context: await resolveLiveDiscoveryContext(profile, providerID, baseURL),
+        context: await resolveLiveDiscoveryContext(profile, providerID, baseURL, configured),
         baseURL,
       })
     }
@@ -673,7 +684,7 @@ export namespace ProviderCatalog {
       (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
       configured?.api ??
       profile.baseURL
-    const context = await resolveLiveDiscoveryContext(profile, providerID, resolvedBaseURL)
+    const context = await resolveLiveDiscoveryContext(profile, providerID, resolvedBaseURL, configured)
     const key = snapshotKey(providerID, context.identityHash)
     const pending = refreshInFlight.get(key)
     if (pending) return pending

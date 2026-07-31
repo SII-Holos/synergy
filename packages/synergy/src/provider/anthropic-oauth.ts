@@ -190,10 +190,12 @@ export namespace AnthropicOAuthProvider {
       })
     }
     if (auth.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return auth.access
+    let refreshCredentialID = selected.credentialID
     try {
       return await Auth.withLock(`${providerID}:oauth-refresh`, async () => {
         const latestSelected = await Auth.select(providerID)
         const latest = latestSelected?.auth
+        refreshCredentialID = latestSelected?.credentialID ?? refreshCredentialID
         if (latest?.type === "oauth" && latest.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return latest.access
         const refreshed = await refreshOAuth(latest?.type === "oauth" ? latest : auth, options?.fetch, providerID)
         await Auth.replaceSelectedCredential(
@@ -210,7 +212,7 @@ export namespace AnthropicOAuthProvider {
       })
     } catch (error) {
       if (AuthError.isInstance(error) && error.data.reloginRequired) {
-        await Auth.markDead(providerID, error.data.code).catch(() => {})
+        await Auth.markDead(providerID, error.data.code, { credentialID: refreshCredentialID }).catch(() => {})
         if (options?.allowMissing) return undefined
       }
       throw error

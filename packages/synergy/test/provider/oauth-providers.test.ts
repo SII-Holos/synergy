@@ -363,6 +363,41 @@ test("anthropic request rejection refreshes once and retries with the rotated to
   expect(requests).toBe(2)
 })
 
+test("anthropic refresh rejection preserves and retries a healthy backup credential", async () => {
+  await Auth.set(secondaryAnthropicProviderID, {
+    type: "oauth",
+    access: "anthropic-expired-primary",
+    refresh: "anthropic-rejected-refresh",
+    expires: nowSeconds() - 1,
+  })
+  await Auth.addToPool(secondaryAnthropicProviderID, "anthropic-backup", {
+    type: "oauth",
+    access: "anthropic-backup-access",
+    refresh: "anthropic-backup-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  let refreshes = 0
+  globalThis.fetch = asFetch(async (input, init) => {
+    if (AnthropicOAuthProvider.OAUTH_TOKEN_URLS.some((url) => url === String(input))) {
+      refreshes++
+      expect(JSON.parse(String(init?.body)).refresh_token).toBe("anthropic-rejected-refresh")
+      return jsonResponse({ error: "invalid_grant" }, { status: 401 })
+    }
+    const authorization = new Headers(init?.headers).get("authorization")
+    return authorization === "Bearer anthropic-backup-access"
+      ? jsonResponse({ ok: true })
+      : jsonResponse({ type: "authentication_error" }, { status: 401 })
+  })
+
+  const response = await AnthropicOAuthProvider.anthropicFetchFor(secondaryAnthropicProviderID)(
+    "https://api.anthropic.com/v1/messages",
+  )
+
+  expect(response.status).toBe(200)
+  expect(refreshes).toBe(1)
+  expect((await Auth.select(secondaryAnthropicProviderID))?.credentialID).toBe("anthropic-backup")
+})
+
 test("anthropicFetchFor binds requests to the selected connection credential", async () => {
   await Auth.set(AnthropicOAuthProvider.PROVIDER_ID, {
     type: "oauth",

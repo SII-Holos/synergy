@@ -18,6 +18,7 @@ const PROVIDERS = [
   "test-missing",
   "test-plugin-with-hooks",
   "test-plugin-without-classifier",
+  "test-thrown-backup",
 ]
 
 async function reset() {
@@ -76,6 +77,32 @@ test("a rejected primary API key switches to a backup within the single retry bu
   expect(keys).toEqual(["primary", "backup"])
   expect((await Auth.select("test-backup"))?.credentialID).toBe("backup")
   expect(ProviderAuthHealth.fromEntry("test-backup", (await Auth.entries())["test-backup"]).status).toBe("connected")
+})
+
+test("a request-local rejection cannot mark the newly selected backup dead", async () => {
+  await Auth.set("test-thrown-backup", { type: "api", key: "primary" })
+  await Auth.addToPool("test-thrown-backup", "backup", { type: "api", key: "backup" })
+  const seen: string[] = []
+
+  const response = await ProviderAuthRecovery.execute({
+    providerID: "test-thrown-backup",
+    request: async () => {
+      const selected = await Auth.select("test-thrown-backup")
+      const key = selected?.auth.type === "api" ? selected.auth.key : ""
+      seen.push(key)
+      if (selected?.credentialID === "test-thrown-backup") {
+        await Auth.markDead("test-thrown-backup", "refresh_rejected", {
+          credentialID: selected.credentialID,
+        })
+        throw { data: { code: "refresh_rejected", reloginRequired: true } }
+      }
+      return new Response(null, { status: 200 })
+    },
+  })
+
+  expect(response.status).toBe(200)
+  expect(seen).toEqual(["primary", "backup"])
+  expect((await Auth.select("test-thrown-backup"))?.credentialID).toBe("backup")
 })
 
 test("a lone API key is invalidated only after a confirmed rejection", async () => {

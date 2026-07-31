@@ -6,6 +6,7 @@ import { ProviderProfile } from "../../src/provider/profile"
 import { Auth } from "../../src/provider/api-key"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
+import { Env } from "../../src/util/env"
 
 const config = { providerCatalog: { enabled: false, offlineCache: false } }
 const providerID = `catalog-stability-${Math.random().toString(36).slice(2)}`
@@ -15,7 +16,11 @@ const credentialProviderID = `catalog-credentials-${Math.random().toString(36).s
 const alternateProfileID = `catalog-alternate-profile-${Math.random().toString(36).slice(2)}`
 const configuredProfileID = `catalog-configured-profile-${Math.random().toString(36).slice(2)}`
 const configuredProviderID = `catalog-configured-provider-${Math.random().toString(36).slice(2)}`
+const environmentProfileID = `catalog-environment-profile-${Math.random().toString(36).slice(2)}`
+const environmentProviderID = `catalog-environment-provider-${Math.random().toString(36).slice(2)}`
+const environmentName = "SYNERGY_TEST_CATALOG_ACCOUNT_KEY"
 let alternateFetchCalls = 0
+let environmentDiscoveryAuth: string | undefined
 
 ProviderProfile.register({
   id: providerID,
@@ -37,6 +42,18 @@ ProviderProfile.register({
   fetchModelCatalog: async () => {
     alternateFetchCalls++
     return [{ id: "alternate-model" }]
+  },
+})
+
+ProviderProfile.register({
+  id: environmentProfileID,
+  name: "Catalog Environment Profile Test",
+  authKind: "api_key",
+  modelsDevProviderID: "openai",
+  fallbackModels: ["gpt-5.5"],
+  fetchModelCatalog: async ({ auth }) => {
+    environmentDiscoveryAuth = auth?.type === "api" ? auth.key : undefined
+    return [{ id: "environment-model" }]
   },
 })
 
@@ -73,6 +90,7 @@ async function reset() {
   identity = "account-a"
   fetchCatalog = async () => []
   alternateFetchCalls = 0
+  environmentDiscoveryAuth = undefined
   configuredBaseURL = undefined
   configuredDiscovery = new Promise<void>((resolve) => {
     resolveConfiguredDiscovery = resolve
@@ -265,6 +283,36 @@ test("explicit refresh honors a configured profile for a registered provider ID"
 
   expect(alternateFetchCalls).toBe(1)
   expect(result.modelCount).toBe(1)
+})
+
+test("configured environment credentials participate in live discovery", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/synergy.json`,
+        JSON.stringify({
+          provider: {
+            [environmentProviderID]: {
+              profile: environmentProfileID,
+              modelsDevProviderID: "openai",
+              env: [environmentName],
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  const result = await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      Env.set(environmentName, "environment-account-key")
+      return ProviderCatalog.refresh(environmentProviderID)
+    },
+  })
+
+  expect(result.modelCount).toBe(1)
+  expect(environmentDiscoveryAuth).toBe("environment-account-key")
 })
 
 test("catalog-only account projections are isolated by configuration", async () => {

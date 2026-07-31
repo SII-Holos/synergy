@@ -451,10 +451,12 @@ export namespace CodexProvider {
 
     if (!shouldRefresh) return auth.access
 
+    let refreshCredentialID = selected.credentialID
     try {
       return await Auth.withLock(`${providerID}:oauth-refresh`, async () => {
         const latestSelected = await Auth.select(providerID)
         const latest = latestSelected?.auth
+        refreshCredentialID = latestSelected?.credentialID ?? refreshCredentialID
         if (latest?.type === "oauth" && !options?.forceRefresh) {
           const latestExpires = accessTokenExpiresAt(latest.access) ?? latest.expires
           const latestShouldRefresh =
@@ -482,11 +484,12 @@ export namespace CodexProvider {
         await Auth.markExhausted(providerID, {
           failureCode: error.data.code,
           cooldownUntil: error.data.retryAfterSeconds ? nowSeconds() + error.data.retryAfterSeconds : undefined,
+          credentialID: refreshCredentialID,
         }).catch(() => {})
         if (auth.access) return auth.access
       }
       if (AuthError.isInstance(error) && error.data.reloginRequired) {
-        await Auth.markDead(providerID, error.data.code).catch(() => {})
+        await Auth.markDead(providerID, error.data.code, { credentialID: refreshCredentialID }).catch(() => {})
       }
       if (options?.allowMissing && AuthError.isInstance(error) && error.data.reloginRequired) return undefined
       throw error
