@@ -22,9 +22,13 @@ export namespace PromptCachePolicy {
     return LATE_USER_CONTEXT_PROVIDER_IDS.has(model.providerID) || LATE_USER_CONTEXT_SDK_PACKAGES.has(model.api.npm)
   }
 
-  export function usesSessionPromptCacheKey(model: Provider.Model, providerOptions?: Record<string, unknown>): boolean {
+  export function usesSessionPromptCacheKey(
+    model: Provider.Model,
+    providerOptions?: Record<string, unknown>,
+    profileID?: string,
+  ): boolean {
     return (
-      SESSION_CACHE_KEY_PROVIDER_IDS.has(model.providerID) ||
+      SESSION_CACHE_KEY_PROVIDER_IDS.has(profileID ?? model.providerID) ||
       SESSION_CACHE_KEY_SDK_PACKAGES.has(model.api.npm) ||
       providerOptions?.setCacheKey === true
     )

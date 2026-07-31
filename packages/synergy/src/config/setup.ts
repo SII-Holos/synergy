@@ -193,6 +193,7 @@ export namespace ConfigSetup {
 
   interface LanguageProbeTarget {
     ref: string
+    provider?: Provider.Info
     model: Provider.Model
     runtimeModel: Awaited<ReturnType<typeof Provider.getLanguage>>
   }
@@ -858,6 +859,7 @@ export namespace ConfigSetup {
 
     return {
       ref: value,
+      provider,
       model,
       runtimeModel: await Provider.getLanguage(model),
     }
@@ -1010,7 +1012,10 @@ export namespace ConfigSetup {
         "runtimeModel" in target
           ? target.runtimeModel
           : await createImportedLanguageRuntime(target, options?.importContext?.auth)
-      const providerOptions = ProviderTransform.providerOptions(model, ProviderTransform.smallOptions(model))
+      const providerOptions = ProviderTransform.providerOptions(
+        model,
+        ProviderTransform.smallOptions(model, target.provider?.profileID),
+      )
 
       const messages: ModelMessage[] = options?.requireImageInput
         ? [

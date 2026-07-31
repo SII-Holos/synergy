@@ -90,6 +90,25 @@ describe("ProviderTransform.options - setCacheKey", () => {
     expect(result.promptCacheKey).toBe(sessionID)
   })
 
+  test("mapped accounts retain canonical OpenAI-Codex transforms", () => {
+    const mappedCodexModel = {
+      ...mockModel,
+      providerID: "openai-codex-secondary",
+      api: {
+        id: "gpt-5.5",
+        url: "https://api.openai.com",
+        npm: "@ai-sdk/openai",
+      },
+    }
+
+    const result = ProviderTransform.options(mappedCodexModel, sessionID, {}, "openai-codex")
+    expect(result).toMatchObject({ promptCacheKey: sessionID, store: false })
+    expect(result.reasoningEffort).toBeUndefined()
+    expect(result.reasoningSummary).toBeUndefined()
+    expect(result.textVerbosity).toBeUndefined()
+    expect(ProviderTransform.smallOptions(mappedCodexModel, "openai-codex")).toEqual({ store: false })
+  })
+
   test("sets promptCacheKey and store=false for Azure models", () => {
     const azureModel = {
       ...mockModel,

@@ -348,8 +348,8 @@ export namespace LLM {
       small: input.small,
     })
     const base = input.small
-      ? ProviderTransform.smallOptions(input.model)
-      : ProviderTransform.options(input.model, input.sessionID, provider?.options)
+      ? ProviderTransform.smallOptions(input.model, provider?.profileID)
+      : ProviderTransform.options(input.model, input.sessionID, provider?.options, provider?.profileID)
     const options: Record<string, unknown> = pipe(
       base,
       mergeDeep(input.model.options),
