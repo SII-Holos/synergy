@@ -10,6 +10,9 @@ const providerID = `catalog-stability-${Math.random().toString(36).slice(2)}`
 let identity = "account-a"
 let fetchCatalog: () => Promise<ProviderProfile.ModelCatalogEntry[]>
 const credentialProviderID = `catalog-credentials-${Math.random().toString(36).slice(2)}`
+const alternateProfileID = `catalog-alternate-profile-${Math.random().toString(36).slice(2)}`
+const configuredProfileID = `catalog-configured-profile-${Math.random().toString(36).slice(2)}`
+const configuredProviderID = `catalog-configured-provider-${Math.random().toString(36).slice(2)}`
 
 ProviderProfile.register({
   id: providerID,
@@ -19,6 +22,34 @@ ProviderProfile.register({
   fallbackModels: ["gpt-5.5"],
   modelCatalogIdentity: () => identity,
   fetchModelCatalog: () => fetchCatalog(),
+})
+
+ProviderProfile.register({
+  id: alternateProfileID,
+  name: "Catalog Alternate Profile Test",
+  authKind: "none",
+  modelsDevProviderID: "openai",
+  fallbackModels: ["gpt-5.5"],
+  modelCatalogIdentity: () => identity,
+  fetchModelCatalog: async () => [{ id: "alternate-model" }],
+})
+
+let configuredBaseURL: string | undefined
+let configuredDiscovery: Promise<void> | undefined
+let resolveConfiguredDiscovery: (() => void) | undefined
+ProviderProfile.register({
+  id: configuredProfileID,
+  name: "Catalog Configured Endpoint Test",
+  authKind: "none",
+  modelsDevProviderID: "openai",
+  fallbackModels: ["gpt-5.5"],
+  fetchModelCatalog: async ({ providerID, baseURL }) => {
+    if (providerID === configuredProviderID) {
+      configuredBaseURL = baseURL
+      resolveConfiguredDiscovery?.()
+    }
+    return [{ id: "configured-model" }]
+  },
 })
 
 ProviderProfile.register({
@@ -35,6 +66,10 @@ ProviderProfile.register({
 async function reset() {
   identity = "account-a"
   fetchCatalog = async () => []
+  configuredBaseURL = undefined
+  configuredDiscovery = new Promise<void>((resolve) => {
+    resolveConfiguredDiscovery = resolve
+  })
   await Auth.remove(credentialProviderID).catch(() => {})
   ProviderCatalog.reset()
   await fs.rm(Global.Path.providerModelCatalogCache, { force: true })
@@ -153,6 +188,36 @@ test("catalog snapshots are isolated by opaque identity hashes", async () => {
   const accountA = await ProviderCatalog.resolve({ config, includeLive: true })
   expect(accountA[providerID].models["model-a"].catalog_state).toBe("active")
   expect(accountA[providerID].models["model-b"]).toBeUndefined()
+})
+
+test("catalog snapshots include the runtime profile identity", async () => {
+  fetchCatalog = async () => [{ id: "primary-model" }]
+  await ProviderCatalog.refresh(providerID)
+  await ProviderCatalog.refresh(providerID, alternateProfileID)
+
+  const persisted = JSON.parse(await Bun.file(Global.Path.providerModelCatalogCache).text())
+  const matching = persisted.snapshots.filter((snapshot: { providerID: string }) => snapshot.providerID === providerID)
+  expect(matching).toHaveLength(2)
+  expect(new Set(matching.map((snapshot: { identityHash: string }) => snapshot.identityHash)).size).toBe(2)
+})
+
+test("configured account endpoint is passed to live model discovery", async () => {
+  await ProviderCatalog.resolve({
+    config: {
+      providerCatalog: { enabled: false, offlineCache: false },
+      provider: {
+        [configuredProviderID]: {
+          profile: configuredProfileID,
+          options: { baseURL: "https://account.invalid/v1" },
+        },
+      },
+    },
+    includeLive: true,
+    forceRefresh: true,
+  })
+  await configuredDiscovery
+
+  expect(configuredBaseURL).toBe("https://account.invalid/v1")
 })
 
 test("reconnecting a provider does not reuse the previous credential's catalog", async () => {

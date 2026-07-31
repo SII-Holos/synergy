@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { Provider } from "../../src/provider/provider"
+import { ProviderProfile } from "../../src/provider/profile"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 
@@ -105,6 +106,82 @@ test("Agent worker model caches follow provider credential changes", async () =>
         const second = await Provider.getLanguage(model)
 
         expect(second).not.toBe(first)
+      },
+    })
+  } finally {
+    if (previousWorker === undefined) delete process.env.SYNERGY_AGENT_WORKER
+    else process.env.SYNERGY_AGENT_WORKER = previousWorker
+  }
+})
+
+test("Agent worker connection options override runtime profile defaults", async () => {
+  const previousWorker = process.env.SYNERGY_AGENT_WORKER
+  process.env.SYNERGY_AGENT_WORKER = "1"
+  const providerID = `worker-profile-${Math.random().toString(36).slice(2)}`
+  let receivedOptions: Record<string, unknown> | undefined
+  ProviderProfile.register({
+    id: providerID,
+    name: "Worker profile precedence test",
+    authKind: "none",
+    aiSdkPackage: "@ai-sdk/openai-compatible",
+    runtimeOptions: async () => ({
+      baseURL: "https://profile.invalid/v1",
+      headers: { "x-profile": "default" },
+    }),
+    getModel: async ({ options }) => {
+      receivedOptions = options
+      return {} as never
+    },
+  })
+  const model = Provider.Model.parse({
+    id: "worker-profile-model",
+    providerID,
+    api: {
+      id: "worker-profile-model",
+      url: "https://model.invalid/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: "Worker Profile Model",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: false,
+      toolcall: true,
+      input: { text: true, audio: false, image: false, video: false, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    limit: { context: 4_096, output: 1_024 },
+    status: "active",
+    options: {},
+    headers: {},
+    release_date: "2026-01-01",
+    variants: {},
+  })
+
+  try {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        await Provider.configureWorkerProvider(model, {
+          profileID: providerID,
+          key: "connection-key",
+          options: {
+            baseURL: "https://connection.invalid/v1",
+            headers: { "x-connection": "selected" },
+          },
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false },
+        })
+        await Provider.getLanguage(model)
+      },
+    })
+
+    expect(receivedOptions).toMatchObject({
+      baseURL: "https://connection.invalid/v1",
+      headers: {
+        "x-profile": "default",
+        "x-connection": "selected",
       },
     })
   } finally {

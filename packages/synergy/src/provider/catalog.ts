@@ -1,5 +1,6 @@
 import { Global } from "@/global"
 import { Installation } from "@/global/installation"
+import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import fs from "fs/promises"
 import { mergeDeep } from "remeda"
@@ -114,11 +115,17 @@ export namespace ProviderCatalog {
   type LiveDiscoveryTarget = {
     profile: ProviderProfile.Profile
     context: LiveDiscoveryContext
+    baseURL?: string
   }
 
-  type ConfiguredProvider = Partial<ModelsDev.Provider> & {
+  type ConfiguredProvider = {
     profile?: string
     modelsDevProviderID?: string
+    name?: string
+    api?: string
+    npm?: string
+    env?: string[]
+    options?: Record<string, unknown>
   }
 
   type CacheEntry = {
@@ -142,8 +149,8 @@ export namespace ProviderCatalog {
     return `${providerID}:${identityHash}`
   }
 
-  async function hashIdentity(providerID: string, identity: string) {
-    const bytes = new TextEncoder().encode(`${providerID}\u0000${identity}`)
+  async function hashIdentity(providerID: string, profileID: string, identity: string) {
+    const bytes = new TextEncoder().encode(`${providerID}\u0000${profileID}\u0000${identity}`)
     const digest = await crypto.subtle.digest("SHA-256", bytes)
     return Buffer.from(digest).toString("hex")
   }
@@ -506,7 +513,7 @@ export namespace ProviderCatalog {
         : profile.authKind === "none"
           ? "anonymous"
           : "unauthenticated")
-    return { auth: selected?.auth, identityHash: await hashIdentity(providerID, identity) }
+    return { auth: selected?.auth, identityHash: await hashIdentity(providerID, profile.id, identity) }
   }
 
   function configuredProviders(config: unknown): Record<string, ConfiguredProvider> {
@@ -536,9 +543,14 @@ export namespace ProviderCatalog {
     for (const [providerID, profile] of configuredProfiles(config)) profiles.set(providerID, profile)
     for (const [providerID, profile] of profiles) {
       if (!profile.fetchModelCatalog && !profile.fetchModels) continue
+      const configured = configuredProviders(config)[providerID]
       targets.set(providerID, {
         profile,
         context: await resolveLiveDiscoveryContext(profile, providerID),
+        baseURL:
+          (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
+          configured?.api ??
+          profile.baseURL,
       })
     }
     return targets
@@ -579,13 +591,19 @@ export namespace ProviderCatalog {
     return undefined
   }
 
-  function scheduleRetry(providerID: string, profileID: string, failure: Failure, error?: unknown) {
+  function scheduleRetry(
+    providerID: string,
+    profileID: string,
+    baseURL: string | undefined,
+    failure: Failure,
+    error?: unknown,
+  ) {
     const current = retryTimers.get(providerID)
     if (current) clearTimeout(current)
     const timer = setTimeout(
       () => {
         retryTimers.delete(providerID)
-        void refreshAndReload(providerID, profileID)
+        void refreshAndReload(providerID, profileID, baseURL)
       },
       retryDelay({ failure, retryAfterMs: retryAfterMs(error) }),
     )
@@ -619,18 +637,25 @@ export namespace ProviderCatalog {
     }
   }
 
-  export async function refresh(providerID: string, profileID?: string): Promise<ModelCatalogState> {
+  export async function refresh(providerID: string, profileID?: string, baseURL?: string): Promise<ModelCatalogState> {
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
     let profile = ProviderProfile.resolve(providerID, profileID)
-    if (!profile) {
+    let configured: ConfiguredProvider | undefined
+    if (!profile || (baseURL === undefined && ScopeContext.tryScope())) {
       const { Config } = await import("@/config/config")
       const config = await Config.current()
-      profile = ProviderProfile.get(config.provider?.[providerID]?.profile ?? "")
+      configured = config.provider?.[providerID]
+      if (!profile) profile = ProviderProfile.get(configured?.profile ?? "")
     }
     if (!profile?.fetchModelCatalog && !profile?.fetchModels) {
       return { source: "bundled", refreshing: false, modelCount: 0 }
     }
+    const resolvedBaseURL =
+      baseURL ??
+      (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
+      configured?.api ??
+      profile.baseURL
     const context = await resolveLiveDiscoveryContext(profile, providerID)
     const key = snapshotKey(providerID, context.identityHash)
     const pending = refreshInFlight.get(key)
@@ -652,8 +677,8 @@ export namespace ProviderCatalog {
       let entries: ProviderProfile.ModelCatalogEntry[]
       try {
         entries = profile.fetchModelCatalog
-          ? await profile.fetchModelCatalog({ providerID, auth: context.auth, fetch, baseURL: profile.baseURL })
-          : (await profile.fetchModels!({ providerID, auth: context.auth, fetch, baseURL: profile.baseURL })).map(
+          ? await profile.fetchModelCatalog({ providerID, auth: context.auth, fetch, baseURL: resolvedBaseURL })
+          : (await profile.fetchModels!({ providerID, auth: context.auth, fetch, baseURL: resolvedBaseURL })).map(
               (id) => ({ id }),
             )
         if (entries.length === 0)
@@ -686,7 +711,7 @@ export namespace ProviderCatalog {
           failure,
         }
         catalogStates.set(providerID, state)
-        scheduleRetry(providerID, profile.id, failure, error)
+        scheduleRetry(providerID, profile.id, resolvedBaseURL, failure, error)
         log.warn("failed to refresh provider model catalog", { providerID, profileID: profile.id, failure, error })
         return state
       }
@@ -715,9 +740,9 @@ export namespace ProviderCatalog {
     return request
   }
 
-  async function refreshAndReload(providerID: string, profileID?: string) {
+  async function refreshAndReload(providerID: string, profileID?: string, baseURL?: string) {
     try {
-      await refresh(providerID, profileID)
+      await refresh(providerID, profileID, baseURL)
       const { RuntimeReload } = await import("@/runtime/reload")
       await RuntimeReload.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
     } catch (error) {
@@ -729,6 +754,7 @@ export namespace ProviderCatalog {
     providerID: string,
     profile: ProviderProfile.Profile,
     context: LiveDiscoveryContext,
+    baseURL: string | undefined,
     snapshot: Snapshot | undefined,
   ) {
     if (!context.auth && profile.authKind !== "none") return
@@ -740,7 +766,7 @@ export namespace ProviderCatalog {
     if (refreshInFlight.has(key) || scheduledRefreshes.has(key)) return
     scheduledRefreshes.add(key)
     queueMicrotask(() => {
-      void refreshAndReload(providerID, profile.id).finally(() => scheduledRefreshes.delete(key))
+      void refreshAndReload(providerID, profile.id, baseURL).finally(() => scheduledRefreshes.delete(key))
     })
   }
 
@@ -881,7 +907,7 @@ export namespace ProviderCatalog {
         result[providerID] = await applyCachedDiscovery(provider, target.profile, modelsDev, target.context, providerID)
         if (target.profile.fetchModelCatalog || target.profile.fetchModels) {
           const snapshot = (await readSnapshots()).get(snapshotKey(providerID, target.context.identityHash))
-          scheduleRefresh(providerID, target.profile, target.context, snapshot)
+          scheduleRefresh(providerID, target.profile, target.context, target.baseURL, snapshot)
         }
       }
     }

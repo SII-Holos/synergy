@@ -14,6 +14,8 @@ import { tmpdir } from "../fixture/fixture"
 const originalFetch = globalThis.fetch
 const originalGHToken = process.env.GH_TOKEN
 const originalGITHUBToken = process.env.GITHUB_TOKEN
+const secondaryAnthropicProviderID = "anthropic-secondary-test"
+const secondaryMiniMaxProviderID = "minimax-secondary-test"
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -39,6 +41,8 @@ async function reset() {
     CopilotProvider.PROVIDER_ID,
     CopilotProvider.ENTERPRISE_PROVIDER_ID,
     MiniMaxProvider.PROVIDER_ID,
+    secondaryAnthropicProviderID,
+    secondaryMiniMaxProviderID,
   ]) {
     await Auth.remove(provider).catch(() => {})
   }
@@ -162,6 +166,32 @@ test("anthropic request rejection refreshes once and retries with the rotated to
   expect(response.status).toBe(200)
   expect(refreshes).toBe(1)
   expect(requests).toBe(2)
+})
+
+test("anthropicFetchFor binds requests to the selected connection credential", async () => {
+  await Auth.set(AnthropicOAuthProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: "anthropic-canonical",
+    refresh: "anthropic-canonical-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  await Auth.set(secondaryAnthropicProviderID, {
+    type: "oauth",
+    access: "anthropic-secondary",
+    refresh: "anthropic-secondary-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  globalThis.fetch = asFetch(async (_input, init) => {
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer anthropic-secondary")
+    return jsonResponse({ ok: true })
+  })
+
+  await AnthropicOAuthProvider.anthropicFetchFor(secondaryAnthropicProviderID)("https://api.anthropic.com/v1/messages")
+
+  expect(await Auth.get(AnthropicOAuthProvider.PROVIDER_ID)).toMatchObject({
+    type: "oauth",
+    access: "anthropic-canonical",
+  })
 })
 
 test("github copilot device login exchanges a GitHub token for Copilot models", async () => {
@@ -648,6 +678,32 @@ test("minimax request rejection recovers once and invalid refresh requires recon
   )
   await expect(MiniMaxProvider.minimaxFetch(`${MiniMaxProvider.GLOBAL_INFERENCE}/v1/messages`)).rejects.toMatchObject({
     name: "ProviderAuthenticationRequiredError",
+  })
+})
+
+test("minimaxFetchFor binds requests to the selected connection credential", async () => {
+  await Auth.set(MiniMaxProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: "minimax-canonical",
+    refresh: "minimax-canonical-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  await Auth.set(secondaryMiniMaxProviderID, {
+    type: "oauth",
+    access: "minimax-secondary",
+    refresh: "minimax-secondary-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  globalThis.fetch = asFetch(async (_input, init) => {
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer minimax-secondary")
+    return jsonResponse({ ok: true })
+  })
+
+  await MiniMaxProvider.minimaxFetchFor(secondaryMiniMaxProviderID)(`${MiniMaxProvider.GLOBAL_INFERENCE}/v1/messages`)
+
+  expect(await Auth.get(MiniMaxProvider.PROVIDER_ID)).toMatchObject({
+    type: "oauth",
+    access: "minimax-canonical",
   })
 })
 

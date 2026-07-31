@@ -8,10 +8,10 @@ import { ProviderProfile } from "./profile"
 export namespace ProviderUsage {
   const log = Log.create({ service: "provider.usage" })
 
-  export async function get(providerID: string): Promise<AccountUsage.Snapshot> {
+  export async function get(providerID: string, profileID?: string): Promise<AccountUsage.Snapshot> {
     registerBuiltinProviderProfiles()
-    const provider = (await Provider.list())[providerID]
-    const profile = ProviderProfile.resolve(providerID, provider?.profileID)
+    const resolvedProfileID = profileID ?? (await Config.current()).provider?.[providerID]?.profile
+    const profile = ProviderProfile.resolve(providerID, resolvedProfileID)
     if (!profile?.fetchUsage) {
       return AccountUsage.unavailable(providerID, "This provider does not expose account usage through Synergy.")
     }
@@ -33,7 +33,7 @@ export namespace ProviderUsage {
       const profile = ProviderProfile.resolve(providerID, providers[providerID]?.profileID)
       if (!profile?.fetchUsage) continue
       try {
-        result[providerID] = await get(providerID)
+        result[providerID] = await get(providerID, providers[providerID]?.profileID)
       } catch (error) {
         result[providerID] = AccountUsage.error(providerID, "Failed to load usage data.")
         log.error("provider usage fetch failed", { providerID, error })

@@ -453,7 +453,7 @@ export namespace Provider {
     const auth = (await profile?.resolveAuth?.(profileInput)) ?? storedAuth
     const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth })) ?? {}
     const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth })) ?? {}
-    const options = mergeDeep(mergeDeep(plan.options, modelOptions), runtimeOptions)
+    const options = mergeDeep(mergeDeep(modelOptions, runtimeOptions), plan.options)
     workerState.providers[model.providerID] = {
       id: model.providerID,
       profileID: plan.profileID,

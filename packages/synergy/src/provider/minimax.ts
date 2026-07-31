@@ -19,7 +19,7 @@ export namespace MiniMaxProvider {
   export const AuthError = NamedError.create(
     "MiniMaxOAuthError",
     z.object({
-      providerID: z.literal(PROVIDER_ID),
+      providerID: z.string(),
       code: z.string(),
       message: z.string(),
       reloginRequired: z.boolean(),
@@ -140,7 +140,11 @@ export namespace MiniMaxProvider {
     }
   }
 
-  export async function refreshOAuth(auth: z.infer<typeof Auth.Oauth>, fetchFn: FetchLike = fetch) {
+  export async function refreshOAuth(
+    auth: z.infer<typeof Auth.Oauth>,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ) {
     const response = await fetchFn(`${GLOBAL_BASE}/oauth/token`, {
       method: "POST",
       headers: {
@@ -156,7 +160,7 @@ export namespace MiniMaxProvider {
     })
     if (!response.ok) {
       throw new AuthError({
-        providerID: PROVIDER_ID,
+        providerID,
         code: "refresh_failed",
         message: `MiniMax OAuth refresh failed with status ${response.status}.`,
         reloginRequired: response.status === 401 || response.status === 403,
@@ -165,7 +169,7 @@ export namespace MiniMaxProvider {
     const payload = await safeJson(response)
     if (typeof payload.access_token !== "string") {
       throw new AuthError({
-        providerID: PROVIDER_ID,
+        providerID,
         code: "missing_access_token",
         message: "MiniMax OAuth refresh response was missing access_token.",
         reloginRequired: true,
@@ -178,13 +182,14 @@ export namespace MiniMaxProvider {
     }
   }
 
-  export async function resolveToken(options?: { allowMissing?: boolean; fetch?: FetchLike }) {
-    const selected = await Auth.select(PROVIDER_ID)
+  export async function resolveToken(options?: { providerID?: string; allowMissing?: boolean; fetch?: FetchLike }) {
+    const providerID = options?.providerID ?? PROVIDER_ID
+    const selected = await Auth.select(providerID)
     const auth = selected?.auth
     if (!selected || !auth || auth.type !== "oauth") {
       if (options?.allowMissing) return undefined
       throw new AuthError({
-        providerID: PROVIDER_ID,
+        providerID,
         code: "minimax_oauth_missing",
         message: "No MiniMax OAuth credentials stored.",
         reloginRequired: true,
@@ -192,13 +197,13 @@ export namespace MiniMaxProvider {
     }
     if (auth.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return auth.access
     try {
-      return await Auth.withLock(`${PROVIDER_ID}:oauth-refresh`, async () => {
-        const latestSelected = await Auth.select(PROVIDER_ID)
+      return await Auth.withLock(`${providerID}:oauth-refresh`, async () => {
+        const latestSelected = await Auth.select(providerID)
         const latest = latestSelected?.auth
         if (latest?.type === "oauth" && latest.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return latest.access
-        const refreshed = await refreshOAuth(latest?.type === "oauth" ? latest : auth, options?.fetch)
+        const refreshed = await refreshOAuth(latest?.type === "oauth" ? latest : auth, options?.fetch, providerID)
         await Auth.replaceSelectedCredential(
-          PROVIDER_ID,
+          providerID,
           {
             type: "oauth",
             access: refreshed.access,
@@ -211,30 +216,37 @@ export namespace MiniMaxProvider {
       })
     } catch (error) {
       if (AuthError.isInstance(error) && error.data.reloginRequired) {
-        await Auth.markDead(PROVIDER_ID, error.data.code).catch(() => {})
+        await Auth.markDead(providerID, error.data.code).catch(() => {})
         if (options?.allowMissing) return undefined
       }
       throw error
     }
   }
 
-  export async function minimaxFetch(input: RequestInfo | URL, init?: RequestInit) {
-    return ProviderAuthRecovery.execute({
-      providerID: PROVIDER_ID,
-      request: async () => {
-        const token = await resolveToken()
-        const headers = new Headers(init?.headers)
-        headers.set("Authorization", `Bearer ${token}`)
-        return fetch(input, { ...init, headers })
-      },
-      refresh: refreshAuth,
-      classify: classifyError,
-    })
+  export function minimaxFetchFor(providerID = PROVIDER_ID) {
+    return async (input: RequestInfo | URL, init?: RequestInit) =>
+      ProviderAuthRecovery.execute({
+        providerID,
+        request: async () => {
+          const token = await resolveToken({ providerID })
+          const headers = new Headers(init?.headers)
+          headers.set("Authorization", `Bearer ${token}`)
+          return fetch(input, { ...init, headers })
+        },
+        refresh: (auth) => refreshAuth(auth, fetch, providerID),
+        classify: classifyError,
+      })
   }
 
-  export async function refreshAuth(auth: Auth.Info, fetchFn: FetchLike = fetch): Promise<Auth.Info | undefined> {
+  export const minimaxFetch = minimaxFetchFor(PROVIDER_ID)
+
+  export async function refreshAuth(
+    auth: Auth.Info,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ): Promise<Auth.Info | undefined> {
     if (auth.type !== "oauth") return undefined
-    const refreshed = await refreshOAuth(auth, fetchFn)
+    const refreshed = await refreshOAuth(auth, fetchFn, providerID)
     return {
       type: "oauth",
       access: refreshed.access,
