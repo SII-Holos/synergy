@@ -8,6 +8,13 @@ export interface WorkspaceWidthConstraints {
   tabsMinWidth?: number
 }
 
+export function sessionSideWorkspaceMounts(isDesktop: boolean, sideOpen: boolean) {
+  return {
+    desktop: isDesktop,
+    mobile: !isDesktop && sideOpen,
+  }
+}
+
 export function computeMaxWorkspaceWidth(viewportWidth: number, constraints: WorkspaceWidthConstraints = {}) {
   const sessionMinWidth = constraints.sessionMinWidth ?? WORKSPACE_SESSION_MIN_WIDTH
   const tabsMinWidth = constraints.tabsMinWidth ?? 0

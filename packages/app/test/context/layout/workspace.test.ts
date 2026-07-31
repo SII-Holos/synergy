@@ -7,6 +7,7 @@ import {
   clampWorkspaceWidth,
   computeDefaultWorkspaceWidth,
   computeMaxWorkspaceWidth,
+  sessionSideWorkspaceMounts,
 } from "../../../src/context/layout/workspace"
 
 describe("workspace layout constants", () => {
@@ -24,6 +25,18 @@ describe("workspace layout constants", () => {
 
   test("reserves room for an open tabs panel", () => {
     expect(WORKSPACE_TABS_MIN_WIDTH).toBe(200)
+  })
+})
+
+describe("sessionSideWorkspaceMounts", () => {
+  test("mounts only the desktop side workspace at desktop widths", () => {
+    expect(sessionSideWorkspaceMounts(true, true)).toEqual({ desktop: true, mobile: false })
+    expect(sessionSideWorkspaceMounts(true, false)).toEqual({ desktop: true, mobile: false })
+  })
+
+  test("mounts the mobile side workspace only while it is open", () => {
+    expect(sessionSideWorkspaceMounts(false, true)).toEqual({ desktop: false, mobile: true })
+    expect(sessionSideWorkspaceMounts(false, false)).toEqual({ desktop: false, mobile: false })
   })
 })
 
