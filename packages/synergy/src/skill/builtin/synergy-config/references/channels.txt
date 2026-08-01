@@ -73,6 +73,7 @@ Channels integrate Synergy with external messaging platforms.
 - `"group_sender"` — separate session per sender in group
 - `"group_topic"` — separate session per thread/topic
 - `"group_topic_sender"` — separate session per thread + sender
+- `"group_thread"` — one session per Feishu thread; `thread_id` is the only continuity key, and a top-level message with no `thread_id` starts one session per message. The first response uses `reply_in_thread` and the returned `thread_id` is durably bound to the session.
 
 Top-level `domain` and `streaming` on the channel object set defaults for all accounts.
 

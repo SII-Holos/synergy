@@ -143,6 +143,13 @@ export namespace StoragePath {
     ...channelFeishuStreamingCardSessionRoot(accountId, sessionID),
     encodeURIComponent(cardId),
   ]
+  export const channelFeishuThreadBindingsRoot = () => ["channel", "feishu", "thread_bindings"]
+  export const channelFeishuThreadBinding = (accountId: string, chatId: string, threadId: string) => [
+    ...channelFeishuThreadBindingsRoot(),
+    encodeURIComponent(accountId),
+    encodeURIComponent(chatId),
+    encodeURIComponent(threadId),
+  ]
 
   export const agendaItemsRoot = (scopeID: ScopeID) => ["agenda", "items", scopeID as string]
   export const agendaItem = (scopeID: ScopeID, itemID: string) => ["agenda", "items", scopeID as string, itemID]

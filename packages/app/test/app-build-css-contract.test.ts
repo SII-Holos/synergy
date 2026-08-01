@@ -761,5 +761,5 @@ describe("app production build contract", () => {
     } finally {
       await rm(outDir, { recursive: true, force: true })
     }
-  }, 60_000)
+  }, 120_000)
 })

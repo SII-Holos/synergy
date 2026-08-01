@@ -626,6 +626,7 @@ export namespace Channel {
         log.warn("channel provider is missing conversation capabilities", { channelType: provider.type })
         return
       }
+      const replyToMessageId = ctx.replyToMessageId ?? ctx.rootId ?? ctx.messageId
       await ScopeContext.provide({
         scope,
         fn: async () => {
@@ -666,6 +667,9 @@ export namespace Channel {
               await replyMessage({
                 accountId: ctx.accountId,
                 messageId: ctx.messageId,
+                chatId: ctx.chatId,
+                chatType: ctx.chatType,
+                scopeKey: ctx.scopeKey,
                 parts: [{ type: "text", text: cmdResult.reply }],
               })
             }
@@ -719,8 +723,10 @@ export namespace Channel {
           let streaming = createStreamingSession({
             accountId: ctx.accountId,
             chatId: ctx.chatId,
-            replyToMessageId: ctx.rootId ?? ctx.messageId,
+            chatType: ctx.chatType,
+            replyToMessageId,
             sessionID,
+            scopeKey: ctx.scopeKey,
           })
           try {
             await streaming.start()
@@ -729,7 +735,10 @@ export namespace Channel {
             streaming = createTextFallbackSession({
               replyMessage,
               accountId: ctx.accountId,
-              messageId: ctx.rootId ?? ctx.messageId,
+              chatId: ctx.chatId,
+              chatType: ctx.chatType,
+              messageId: replyToMessageId,
+              scopeKey: ctx.scopeKey,
             })
           }
           const accountInvocation = resolveChannelAccountInvocation({
@@ -805,7 +814,7 @@ export namespace Channel {
               sessionID,
               ...accountInvocation,
               metadata: {
-                channelReplyToMessageId: ctx.rootId ?? ctx.messageId,
+                channelReplyToMessageId: replyToMessageId,
                 channelRequesterId: ctx.senderId,
               },
               parts: buildPromptParts(ctx),
@@ -825,7 +834,9 @@ export namespace Channel {
               provider,
               accountId: ctx.accountId,
               chatId: ctx.chatId,
-              replyToMessageId: ctx.rootId ?? ctx.messageId,
+              chatType: ctx.chatType,
+              scopeKey: ctx.scopeKey,
+              replyToMessageId,
               sessionID,
               terminal: result,
               messages: taskMessages,
@@ -833,7 +844,7 @@ export namespace Channel {
             await replyChannelTaskAttachments({
               provider,
               accountId: ctx.accountId,
-              messageId: ctx.rootId ?? ctx.messageId,
+              messageId: replyToMessageId,
               sessionID,
               terminal: result,
               messages: taskMessages,
@@ -863,6 +874,9 @@ export namespace Channel {
     replyMessage: NonNullable<ConversationCapabilities["replyMessage"]>
     accountId: string
     messageId: string
+    chatId: string
+    chatType: "dm" | "group"
+    scopeKey?: string
   }): StreamingSession {
     return {
       async start() {},
@@ -873,6 +887,9 @@ export namespace Channel {
         await input.replyMessage({
           accountId: input.accountId,
           messageId: input.messageId,
+          chatId: input.chatId,
+          chatType: input.chatType,
+          scopeKey: input.scopeKey,
           parts: [{ type: "text", text: finalText }],
         })
       },

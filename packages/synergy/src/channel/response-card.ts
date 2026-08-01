@@ -54,6 +54,8 @@ export namespace ResponseCardRuntime {
     provider: Provider
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    scopeKey?: string
     replyToMessageId?: string
     sessionID: string
     terminal: MessageV2.WithParts
@@ -184,6 +186,8 @@ export namespace ResponseCardRuntime {
     provider: Provider
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    scopeKey?: string
     replyToMessageId?: string
     sessionID: string
     requesterId: string
@@ -218,6 +222,8 @@ export namespace ResponseCardRuntime {
     const sent = await input.provider.sendResponseCard!({
       accountId: input.accountId,
       chatId: input.chatId,
+      ...(input.chatType ? { chatType: input.chatType } : {}),
+      ...(input.scopeKey ? { scopeKey: input.scopeKey } : {}),
       replyToMessageId: input.replyToMessageId,
       requestId: input.requestId,
       card: input.card,
