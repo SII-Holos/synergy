@@ -217,4 +217,72 @@ describe("Feishu markdown card image materialization", () => {
       globalThis.fetch = originalFetch
     }
   })
+
+  test("does not materialize image syntax inside inline code", async () => {
+    const { originalFetch, requests } = mockFetch([...cardRoutes()])
+
+    try {
+      const text =
+        "Use `` ![logo](https://img.example.com/logo.png) `` in code, or `![alt](data:image/png;base64,AAAA)`"
+      await sendFeishuMarkdownCard({ ...apiContext(), chatId: "chat_1", text })
+
+      expect(requests.some((request) => request.url.startsWith("https://img.example.com"))).toBe(false)
+      expect(requests.some((request) => request.url.split("?")[0]!.endsWith("/im/v1/images"))).toBe(false)
+      expect(cardContentFrom(requests)).toBe(text)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("does not materialize image syntax inside a fenced code block", async () => {
+    const { originalFetch, requests } = mockFetch([...cardRoutes()])
+
+    try {
+      const text = "Example:\n```markdown\n![logo](https://img.example.com/logo.png)\n```\nDone"
+      await sendFeishuMarkdownCard({ ...apiContext(), chatId: "chat_1", text })
+
+      expect(requests.some((request) => request.url.startsWith("https://img.example.com"))).toBe(false)
+      expect(requests.some((request) => request.url.split("?")[0]!.endsWith("/im/v1/images"))).toBe(false)
+      expect(cardContentFrom(requests)).toBe(text)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("does not materialize escaped image syntax", async () => {
+    const { originalFetch, requests } = mockFetch([...cardRoutes()])
+
+    try {
+      const text = "Escaped: \\![logo](https://img.example.com/logo.png)"
+      await sendFeishuMarkdownCard({ ...apiContext(), chatId: "chat_1", text })
+
+      expect(requests.some((request) => request.url.startsWith("https://img.example.com"))).toBe(false)
+      expect(requests.some((request) => request.url.split("?")[0]!.endsWith("/im/v1/images"))).toBe(false)
+      expect(cardContentFrom(requests)).toBe(text)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("materializes real images while leaving code-block examples untouched", async () => {
+    const { originalFetch, requests } = mockFetch([
+      imageDownloadRoute("https://img.example.com/real.png"),
+      imageUploadRoute("img_v2_uploaded"),
+      ...cardRoutes(),
+    ])
+
+    try {
+      const text =
+        "Real: ![logo](https://img.example.com/real.png)\n\nCode example:\n```\n![logo](https://img.example.com/fake.png)\n```"
+      await sendFeishuMarkdownCard({ ...apiContext(), chatId: "chat_1", text })
+
+      const content = cardContentFrom(requests)
+      expect(content).toContain("![logo](img_v2_uploaded)")
+      expect(content).toContain("![logo](https://img.example.com/fake.png)")
+      expect(requests.filter((request) => request.url === "https://img.example.com/real.png")).toHaveLength(1)
+      expect(requests.some((request) => request.url === "https://img.example.com/fake.png")).toBe(false)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })
