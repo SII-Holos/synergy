@@ -1,50 +1,70 @@
-# Synergy <a href="https://www.sii.edu.cn" target="_blank" rel="noopener noreferrer"><img src=".github/assets/sii-logo.png" height="28" alt="Shanghai Innovation Institute" /></a>
+<div align="center">
+  <a href="https://synergy.holosai.io">
+    <img src="packages/ui/src/assets/brand/synergy-product-icon.png" width="112" alt="Synergy" />
+  </a>
 
-Synergy is an open-source AI agent workspace for persistent, recoverable software and knowledge work. It is built by the [Holos](https://github.com/SII-Holos) team at Shanghai Innovation Institute (SII).
+  <h1>Synergy</h1>
 
-One Synergy runtime hosts sessions, agents, tools, knowledge, automation, and integrations. Web, Desktop, and CLI are clients of that runtime, so the same work can continue across interactive, background, and one-off flows.
+  <p><strong>Persistent, recoverable AI agent work.</strong></p>
 
-Synergy works as a standalone local workspace. Connecting a Holos agent adds account identity, agent messaging, presence, and Synergy Link remote execution without replacing local projects, providers, sessions, or data.
+  <p>
+    An open-source workspace for software and knowledge work that keeps sessions, agents, files, Browser,
+    tools, and automation connected in one runtime.
+  </p>
 
-Read the [product overview](docs/product/overview.md) for the complete product model.
+  <p>
+    <a href="https://synergy.holosai.io">Website</a> ·
+    <a href="docs/README.md">Documentation</a> ·
+    <a href="#quick-start">Quick Start</a> ·
+    <a href="CONTRIBUTING.md">Contributing</a>
+  </p>
 
-## What You Can Do
+  <p>
+    <a href="https://github.com/SII-Holos/synergy/releases/latest"><img src="https://img.shields.io/github/v/release/SII-Holos/synergy?sort=semver" alt="Latest release" /></a>
+    <a href="https://github.com/SII-Holos/synergy/actions/workflows/ci.yml"><img src="https://github.com/SII-Holos/synergy/actions/workflows/ci.yml/badge.svg?branch=dev" alt="CI status" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/SII-Holos/synergy" alt="MIT License" /></a>
+  </p>
 
-- Keep durable sessions attached to an explicit home or project `Scope`.
-- Use configurable primary agents and specialist subagents with built-in, MCP, and plugin tools.
-- Plan work as durable Blueprints, execute them through independently reviewed BlueprintLoops, or use Light Loop for a focused task that should continue until verified.
-- Organize larger goals as a Lattice Pathway of planned, executed, and reviewed steps.
-- Schedule recurring or triggered work through Agenda.
-- Retain reusable memory and learned experience in Library, while authoring Notes and Blueprints as separate documents.
-- Browse project files through the Side Workspace file workbench with a virtualized Explorer, multi-file tabs, and source or preview modes.
-- Work with the same session-owned Browser page from the UI and browser tools.
-- Connect external messaging through Channels, mail through governed Email tools, and remote agents or hosts through Holos and Synergy Link.
-- Extend tools, agents, skills, commands, MCP servers, configuration, hooks, and product UI with plugins.
+<sub>Built by the <a href="https://github.com/SII-Holos">Holos</a> team at [Shanghai Innovation Institute](https://www.sii.edu.cn).</sub>
 
-Long sessions use compaction to replace older model context with a continuation summary while preserving the complete durable session history.
+  <p align="center">
+    <a href=".github/assets/readme/synergy-workspace.png">
+      <img src=".github/assets/readme/synergy-workspace.png" alt="Synergy workspace" width="100%" />
+    </a>
+  </p>
 
-## Product Surfaces
+</div>
 
-| Surface            | Purpose                                                                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Web                | The primary workbench for sessions, project files, Browser, Notes, Library, Agenda, plugins, settings, and operational views.              |
-| Desktop            | The Electron product, with a managed packaged server, native Browser presentation, local folder selection, protocol handling, and updates. |
-| CLI                | Runtime management, one-off `send` execution, configuration, sessions, integrations, diagnostics, and development workflows.               |
-| Server API and SDK | The shared contract used by first-party clients and integrations.                                                                          |
+## Work that continues
+
+AI agent work often outlives a single conversation. Synergy treats it as durable workspace state. A task can move between Web, Desktop, CLI, background execution, and specialist agents while preserving its project, history, files, tools, and operating context.
+
+Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, presence, and Synergy Link remote execution without replacing local projects, providers, sessions, or data.
+
+## What makes Synergy different
+
+- **Durable by default** — Keep recoverable sessions attached to an explicit home or project Scope, with complete history even when older model context is compacted.
+- **One runtime, every surface** — Use the same sessions and state from the Web workbench, Desktop app, CLI, server API, and SDK.
+- **First-class agent coordination** — Delegate to specialist subagents, plan durable Blueprints, run independently reviewed BlueprintLoops, or keep focused work moving with Light Loop.
+- **Files and Browser stay in context** — Work across project files and a session-owned Browser page without moving the task into a separate tool or disposable environment.
+- **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
+- **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins, Channels, and remote Synergy Link targets while keeping local ownership of projects and data.
+
+Read the [product overview](docs/product/overview.md) for the complete product model, including Lattice Pathways, Agenda, Channels, Library, Holos, and extension boundaries.
 
 ## Quick Start
 
 ### Desktop
 
-Download a platform installer from [GitHub Releases](https://github.com/SII-Holos/synergy/releases):
+Download the latest installer from [GitHub Releases](https://github.com/SII-Holos/synergy/releases/latest). Desktop installers include the app and expose the packaged runtime as the `synergy` CLI.
 
-- macOS: `.pkg`
-- Windows: NSIS `.exe`
-- Linux: `.deb`
+| Platform | Installer   |
+| -------- | ----------- |
+| macOS    | `.pkg`      |
+| Windows  | NSIS `.exe` |
+| Linux    | `.deb`      |
 
-The recommended installers include the Desktop app and expose its packaged runtime as the `synergy` CLI. Portable artifacts are also published but do not configure a system CLI.
-
-Released packages do not require Rust. Rust is used only to build the Linux and Windows sandbox helpers. The Linux `.deb` installs Bubblewrap as a package dependency. On supported distributions, the interactive CLI installer offers to install a missing `bubblewrap` package with `apt-get`, `dnf`, or `pacman`; declining the prompt, running non-interactively, or using a portable archive leaves the package as a documented system prerequisite. Windows Desktop and CLI releases currently support x64.
+Portable artifacts are also published, but they do not configure a system CLI. Windows Desktop and CLI releases currently support x64.
 
 ### CLI and Web
 
@@ -54,18 +74,6 @@ Install the current release:
 curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash
 ```
 
-Install a specific release:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | bash -s -- --version <version>
-```
-
-The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`. It does not install the Electron Desktop app. After installation, run `synergy` directly from any directory.
-
-Upgrade an installed CLI runtime with `synergy upgrade`, or run `synergy upgrade <version>` to select a specific release.
-
-Desktop Browser presentation includes Electron's Chromium. For headless Browser tools used directly by the CLI/server, run `synergy browser install` to install verified managed Chromium and `synergy browser doctor` to diagnose discovery and launch readiness. On Linux, installation also ensures the Playwright-pinned system libraries are present; use `--no-deps` to skip that step or `synergy browser install-deps` to rerun it independently. You can instead set `CHROMIUM_PATH` to a separately installed executable.
-
 Configure a model provider, start the background runtime, and open the Web client:
 
 ```bash
@@ -74,7 +82,7 @@ synergy start
 synergy web
 ```
 
-Run one task from the terminal:
+Run one task directly from the terminal:
 
 ```bash
 synergy send "summarize this repository"
@@ -89,15 +97,24 @@ synergy doctor
 synergy stop
 ```
 
-Run `synergy server` for a foreground server. `synergy web --attach <url>` and `synergy send --attach <url> ...` connect to a non-default runtime.
+The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`; setting `SYNERGY_HOME=/path` changes that root to `/path/.synergy/`. It does not install the Electron Desktop app.
 
-Holos is optional. Connect an agent from the Web account surface or with:
+Upgrade with `synergy upgrade`, or install a specific version by passing `--version <version>` to the installer.
 
-```bash
-synergy holos login
-```
+Headless Browser tools require Chromium. Run `synergy browser install` to install the verified managed version and `synergy browser doctor` to check readiness, or set `CHROMIUM_PATH` to a separately installed executable. Desktop Browser presentation uses Electron's bundled Chromium.
 
-See the [CLI reference](docs/reference/cli.md) and [configuration reference](docs/reference/configuration.md) for the complete command and configuration models.
+Holos is optional. Connect an agent from the Web account surface or run `synergy holos login`.
+
+See the [CLI reference](docs/reference/cli.md), [configuration reference](docs/reference/configuration.md), and [release notes](https://github.com/SII-Holos/synergy/releases) for complete setup and runtime details.
+
+## Product Surfaces
+
+| Surface            | Purpose                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Web                | Primary workbench for sessions, project files, Browser, Notes, Library, Agenda, plugins, settings, and operational views.             |
+| Desktop            | Electron product with a managed packaged server, native Browser presentation, local folder selection, protocol handling, and updates. |
+| CLI                | Runtime management, one-off `send` execution, configuration, sessions, integrations, diagnostics, and development workflows.          |
+| Server API and SDK | Shared contract used by first-party clients and integrations.                                                                         |
 
 ## Develop Synergy
 
@@ -188,7 +205,7 @@ The [documentation home](docs/README.md) routes readers by product area and task
 
 Coding agents and LLM tools should begin with [llms.txt](llms.txt). Read [AGENTS.md](AGENTS.md) only when modifying the Synergy repository; plugin authors do not need the repository agent guide.
 
-## About Shanghai Innovation Institute
+## About Shanghai Innovation Institute <a href="https://www.sii.edu.cn" target="_blank" rel="noopener noreferrer"><img src=".github/assets/sii-logo.png" height="28" alt="Shanghai Innovation Institute" /></a>
 
 **Shanghai Innovation Institute (SII / 上海创智学院)** is a research institute dedicated to AI and large model innovation, based in Shanghai. The Holos team at SII builds Synergy as part of its open-source AI platform work.
 

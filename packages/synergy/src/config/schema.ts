@@ -1077,6 +1077,11 @@ export type LibraryConfig = z.infer<typeof LibraryConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
+    modelsDevProviderID: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Models.dev provider id to use as this provider connection's model catalog source"),
     whitelist: z.array(z.string()).optional(),
     blacklist: z.array(z.string()).optional(),
     models: z
