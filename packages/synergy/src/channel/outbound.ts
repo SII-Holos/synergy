@@ -94,6 +94,8 @@ export namespace ChannelOutbound {
             provider,
             accountId: channelInfo.accountId,
             chatId: chatId ?? "",
+            chatType: channelInfo.chatType,
+            scopeKey: channelInfo.scopeKey,
             replyToMessageId,
             sessionID: msg.sessionID,
             terminal: current,
@@ -109,6 +111,9 @@ export namespace ChannelOutbound {
               await replyMessage({
                 accountId: channelInfo.accountId,
                 messageId: replyToMessageId,
+                chatId,
+                chatType: channelInfo.chatType,
+                scopeKey: channelInfo.scopeKey,
                 parts,
               })
             } else if (chatId) {

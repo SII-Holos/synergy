@@ -57,14 +57,14 @@ function safeRenderer(renderer: ToolComponent): ToolComponent {
 
 const renderers = new Map<string, ToolComponent>()
 const loaders = new Map<string, Loader>()
-const loading = new Set<string>()
+const loading = new Map<string, Loader>()
 
 export function getPluginToolRenderer(name: string): ToolComponent | undefined {
   const renderer = renderers.get(name)
   if (renderer) return renderer
   const loader = loaders.get(name)
-  if (!loader || loading.has(name)) return undefined
-  loading.add(name)
+  if (!loader || loading.get(name) === loader) return undefined
+  loading.set(name, loader)
   void loader()
     .then(
       (module) => {
@@ -74,18 +74,21 @@ export function getPluginToolRenderer(name: string): ToolComponent | undefined {
       },
       () => undefined,
     )
-    .finally(() => loading.delete(name))
+    .finally(() => {
+      if (loading.get(name) === loader) loading.delete(name)
+    })
   return undefined
 }
 
 export function registerPluginToolRenderer(name: string, loader: Loader): () => void {
   loaders.set(name, loader)
   renderers.delete(name)
+  notifyExternalToolLoaded()
   return () => {
     if (loaders.get(name) !== loader) return
     loaders.delete(name)
     renderers.delete(name)
-    loading.delete(name)
+    if (loading.get(name) === loader) loading.delete(name)
     notifyExternalToolLoaded()
   }
 }

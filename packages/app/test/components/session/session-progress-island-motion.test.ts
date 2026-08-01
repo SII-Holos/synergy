@@ -36,6 +36,19 @@ async function motionState(page: Page) {
   })
 }
 
+async function seekTransitions(page: Page, currentTime: number) {
+  await page.evaluate((time) => {
+    const transitions = document
+      .getAnimations()
+      .filter((animation): animation is CSSTransition => animation instanceof CSSTransition)
+    if (transitions.length === 0) throw new Error("Expected active CSS transitions")
+    for (const transition of transitions) {
+      transition.pause()
+      transition.currentTime = time
+    }
+  }, currentTime)
+}
+
 beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
 })
@@ -83,26 +96,28 @@ describe("session progress island motion", () => {
       expect(collapsed.opacity).toBe(0)
 
       await setExpanded(page, true)
-      await page.waitForTimeout(60)
+      await settleLayout(page)
+      await seekTransitions(page, 60)
       const opening = await motionState(page)
       expect(opening.surfaceWidth).toBeGreaterThan(collapsed.surfaceWidth + 10)
       expect(opening.panelWidth).toBeCloseTo(collapsed.panelWidth, 0)
       expect(opening.opacity).toBe(0)
 
-      await page.waitForTimeout(420)
+      await seekTransitions(page, 500)
       const expanded = await motionState(page)
       expect(expanded.surfaceWidth).toBeGreaterThan(600)
       expect(expanded.panelWidth).toBeCloseTo(collapsed.panelWidth, 0)
       expect(expanded.opacity).toBe(1)
 
       await setExpanded(page, false)
-      await page.waitForTimeout(45)
+      await settleLayout(page)
+      await seekTransitions(page, 45)
       const closing = await motionState(page)
       expect(closing.surfaceWidth).toBeGreaterThan(expanded.surfaceWidth - 5)
       expect(closing.panelWidth).toBeCloseTo(expanded.panelWidth, 0)
       expect(closing.opacity).toBeLessThan(0.9)
 
-      await page.waitForTimeout(400)
+      await seekTransitions(page, 500)
       const closed = await motionState(page)
       expect(closed.surfaceWidth).toBeCloseTo(collapsed.surfaceWidth, 0)
       expect(closed.panelWidth).toBeCloseTo(expanded.panelWidth, 0)

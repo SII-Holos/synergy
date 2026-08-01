@@ -61,6 +61,8 @@ test("delivers continuation questions from durable channel root metadata after t
           type,
           accountId: "acct_test",
           chatId: "oc_chat",
+          chatType: "group",
+          scopeKey: "oc_chat:message:om_original_topic",
           senderId: "ou_stale_endpoint_user",
         }),
       })
@@ -120,6 +122,8 @@ test("delivers continuation questions from durable channel root metadata after t
       expect(delivery).toEqual({
         accountId: "acct_test",
         chatId: "oc_chat",
+        chatType: "group",
+        scopeKey: "oc_chat:message:om_original_topic",
         replyToMessageId: "om_original_topic",
         requestId: expect.any(String),
         questions,

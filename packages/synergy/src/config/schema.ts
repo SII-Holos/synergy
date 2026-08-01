@@ -49,9 +49,9 @@ export const McpDefaults = z.object(McpLifecycleFields).strict().meta({ ref: "Mc
 export type McpDefaults = z.infer<typeof McpDefaults>
 
 export const FeishuGroupSessionScope = z
-  .enum(["group", "group_sender", "group_topic", "group_topic_sender"])
+  .enum(["group", "group_sender", "group_topic", "group_topic_sender", "group_thread"])
   .describe(
-    "How group chat sessions are scoped: group = shared, group_sender = per sender, group_topic = per thread/topic, group_topic_sender = per thread+sender",
+    "How group chat sessions are scoped: group = shared, group_sender = per sender, group_topic = per topic, group_topic_sender = per topic+sender, group_thread = one session per Feishu thread or top-level request",
   )
 export type FeishuGroupSessionScope = z.infer<typeof FeishuGroupSessionScope>
 
@@ -1086,6 +1086,11 @@ export type LibraryConfig = z.infer<typeof LibraryConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
+    profile: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Canonical provider profile whose runtime behavior this account connection uses"),
     modelsDevProviderID: z
       .string()
       .min(1)
