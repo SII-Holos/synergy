@@ -11,7 +11,7 @@ export async function sendFeishuCard(
     replyInThread?: boolean
     kind: string
   },
-): Promise<{ messageId: string }> {
+): Promise<{ messageId: string; threadId?: string }> {
   const token = await input.getAccessToken()
   const createResponse = await fetch(`${input.apiBase}/cardkit/v1/cards`, {
     method: "POST",
@@ -50,13 +50,17 @@ export async function sendFeishuCard(
         body: JSON.stringify({ receive_id: input.chatId, content, msg_type: "interactive" }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
-  const result = (await response.json()) as { code?: number; msg?: string; data?: { message_id?: string } }
+  const result = (await response.json()) as {
+    code?: number
+    msg?: string
+    data?: { message_id?: string; thread_id?: string }
+  }
   if (!response.ok || result.code !== 0) {
     throw new Error(`Failed to send ${input.kind}: ${result.msg ?? `code ${result.code ?? response.status}`}`)
   }
   const messageId = result.data?.message_id
   if (!messageId) throw new Error(`Failed to send ${input.kind}: no message_id returned`)
-  return { messageId }
+  return { messageId, threadId: result.data?.thread_id }
 }
 
 const MAX_MARKDOWN_CARD_BYTES = 30 * 1024
@@ -85,7 +89,7 @@ export async function sendFeishuMarkdownCard(
     replyToMessageId?: string
     replyInThread?: boolean
   },
-): Promise<{ messageId: string } | undefined> {
+): Promise<{ messageId: string; threadId?: string } | undefined> {
   const text = await materializeMarkdownImages(input.text, input)
   const cardJson = buildFeishuMarkdownCard(text)
   if (!cardJson) return undefined

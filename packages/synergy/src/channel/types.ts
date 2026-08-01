@@ -276,6 +276,7 @@ export const MessageContext = z
     rootId: z.string().optional(),
     parentId: z.string().optional(),
     threadId: z.string().optional(),
+    replyToMessageId: z.string().optional(),
     mentions: z.array(Mention).optional(),
     quotedContent: z.string().optional(),
     attachments: z.array(Attachment).optional(),
@@ -286,6 +287,7 @@ export type MessageContext = z.infer<typeof MessageContext>
 
 export type SendResult = {
   messageId: string
+  threadId?: string
 }
 
 export type StreamingToolProgress = {
@@ -306,7 +308,13 @@ export interface StreamingSession {
 export type ProviderLifecycle = "self_connected" | "borrowed_transport"
 
 export interface ConversationCapabilities {
-  replyMessage?(input: { accountId: string; messageId: string; parts: OutboundPart[] }): Promise<SendResult>
+  replyMessage?(input: {
+    accountId: string
+    messageId: string
+    chatId?: string
+    parts: OutboundPart[]
+    scopeKey?: string
+  }): Promise<SendResult>
 
   pushMessage?(input: { accountId: string; chatId: string; parts: OutboundPart[] }): Promise<SendResult>
 
@@ -319,6 +327,7 @@ export interface ConversationCapabilities {
     chatId: string
     replyToMessageId?: string
     sessionID: string
+    scopeKey?: string
   }): StreamingSession
 }
 
@@ -343,7 +352,13 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
 
   refreshProjects?(input: { accountId: string; signal: AbortSignal; host: ChannelHost.Instance }): Promise<void>
 
-  replyMessage?(input: { accountId: string; messageId: string; parts: OutboundPart[] }): Promise<SendResult>
+  replyMessage?(input: {
+    accountId: string
+    messageId: string
+    chatId?: string
+    parts: OutboundPart[]
+    scopeKey?: string
+  }): Promise<SendResult>
 
   pushMessage?(input: { accountId: string; chatId: string; parts: OutboundPart[] }): Promise<SendResult>
 
@@ -372,5 +387,6 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
     chatId: string
     replyToMessageId?: string
     sessionID: string
+    scopeKey?: string
   }): StreamingSession
 }

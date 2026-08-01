@@ -9,11 +9,16 @@ import {
   normalizeBotOpenId,
   resolveSenderOpenId,
   isBotMentioned,
+  resolveFeishuDebounceKey,
+  resolveFeishuQueueKey,
   resolveGroupScopeKey,
 } from "../../src/channel/provider/feishu"
 import { createStatusReactionController } from "../../src/channel/status-reactions"
+import { FeishuThreadBinding } from "../../src/channel/provider/feishu/thread-binding"
 import type { StreamingSession } from "../../src/channel/types"
 import { Config } from "../../src/config/config"
+import { ScopeContext } from "../../src/scope/context"
+import { tmpdir } from "../fixture/fixture"
 
 function accountConfig(overrides: Partial<Config.ChannelFeishuAccount> = {}): Config.ChannelFeishuAccount {
   return {
@@ -174,6 +179,87 @@ describe("resolveGroupScopeKey", () => {
 
   test("group_topic_sender falls back to sender when no topic", () => {
     expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", scope: "group_topic_sender" })).toBe("c1:sender:s1")
+  })
+  test("group_thread scope uses only threadId for continuity", () => {
+    expect(
+      resolveGroupScopeKey({
+        chatId: "c1",
+        senderId: "s1",
+        messageId: "m1",
+        rootId: "r1",
+        threadId: "t1",
+        scope: "group_thread",
+      }),
+    ).toBe("c1:thread:t1")
+  })
+
+  test("group_thread scope anchors a threadless message to its own messageId", () => {
+    expect(
+      resolveGroupScopeKey({
+        chatId: "c1",
+        senderId: "s1",
+        messageId: "m1",
+        rootId: "r1",
+        scope: "group_thread",
+      }),
+    ).toBe("c1:message:m1")
+  })
+})
+
+describe("Feishu thread scope isolation", () => {
+  test("uses the resolved Session key for queueing and debouncing", () => {
+    const firstScope = "chat_1:message:message_1"
+    const secondScope = "chat_1:message:message_2"
+
+    expect(resolveFeishuQueueKey({ chatId: "chat_1", scopeKey: firstScope, scope: "group_thread" })).toBe(firstScope)
+    expect(resolveFeishuQueueKey({ chatId: "chat_1", scopeKey: secondScope, scope: "group_thread" })).toBe(secondScope)
+    expect(
+      resolveFeishuDebounceKey({ chatId: "chat_1", senderId: "sender_1", scopeKey: firstScope, scope: "group_thread" }),
+    ).toBe(firstScope)
+    expect(
+      resolveFeishuDebounceKey({
+        chatId: "chat_1",
+        senderId: "sender_1",
+        scopeKey: secondScope,
+        scope: "group_thread",
+      }),
+    ).toBe(secondScope)
+  })
+
+  test("preserves legacy queue and debounce keys for existing scopes", () => {
+    expect(resolveFeishuQueueKey({ chatId: "chat_1", scopeKey: "ignored", scope: "group_topic" })).toBe("chat_1")
+    expect(
+      resolveFeishuDebounceKey({
+        chatId: "chat_1",
+        senderId: "sender_1",
+        scopeKey: "ignored",
+        scope: "group_topic_sender",
+      }),
+    ).toBe("chat_1:sender_1")
+  })
+})
+
+describe("Feishu thread bindings", () => {
+  test("persist the original Session scope across provider instances", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await FeishuThreadBinding.set({
+          accountId: "acct_test",
+          chatId: "chat_1",
+          threadId: "thread_1",
+          scopeKey: "chat_1:message:message_1",
+        })
+
+        expect(await FeishuThreadBinding.get({ accountId: "acct_test", chatId: "chat_1", threadId: "thread_1" })).toBe(
+          "chat_1:message:message_1",
+        )
+        expect(
+          await FeishuThreadBinding.get({ accountId: "acct_test", chatId: "chat_1", threadId: "thread_other" }),
+        ).toBeUndefined()
+      },
+    })
   })
 })
 
@@ -396,6 +482,103 @@ describe("Feishu replies", () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+
+  test("threads response and question cards when group_thread is enabled", async () => {
+    const originalFetch = globalThis.fetch
+    const replyBodies: Array<Record<string, unknown>> = []
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      if (url.endsWith("/cardkit/v1/cards")) {
+        return new Response(JSON.stringify({ code: 0, data: { card_id: "card_thread" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      replyBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_card" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_thread_cards", {
+        config: accountConfig({ groupSessionScope: "group_thread", replyInThread: false }),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.sendResponseCard({
+        accountId: "acct_thread_cards",
+        chatId: "chat_1",
+        replyToMessageId: "message_origin",
+        requestId: "response_1",
+        card: { title: "Choose", elements: [{ type: "button", id: "confirm", label: "Confirm", value: "yes" }] },
+      })
+      await provider.sendQuestionCard({
+        accountId: "acct_thread_cards",
+        chatId: "chat_1",
+        replyToMessageId: "message_origin",
+        requestId: "question_1",
+        questions: [
+          {
+            question: "Continue?",
+            header: "Continue",
+            options: [
+              { label: "Yes", description: "Continue" },
+              { label: "No", description: "Stop" },
+            ],
+          },
+        ],
+      })
+
+      expect(replyBodies).toHaveLength(2)
+      expect(replyBodies.every((body) => body.reply_in_thread === true)).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("binds a newly created Feishu thread to the originating Session scope", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalFetch = globalThis.fetch
+        globalThis.fetch = (async () =>
+          new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply", thread_id: "thread_created" } }), {
+            headers: { "Content-Type": "application/json" },
+          })) as unknown as typeof fetch
+
+        try {
+          const provider = new FeishuProvider()
+          const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+          accounts.set("acct_thread", {
+            config: accountConfig({ groupSessionScope: "group_thread", responseFormat: "text" }),
+            channelConfig: {},
+            apiBase: "https://open.feishu.test/open-apis",
+            tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+          })
+
+          const result = await provider.replyMessage({
+            accountId: "acct_thread",
+            messageId: "message_origin",
+            chatId: "chat_1",
+            scopeKey: "chat_1:message:message_origin",
+            parts: [{ type: "text", text: "Threaded answer" }],
+          })
+
+          expect(result.threadId).toBe("thread_created")
+          expect(
+            await FeishuThreadBinding.get({ accountId: "acct_thread", chatId: "chat_1", threadId: "thread_created" }),
+          ).toBe("chat_1:message:message_origin")
+        } finally {
+          globalThis.fetch = originalFetch
+        }
+      },
+    })
   })
 
   test("uploads SVG attachments as files instead of unsupported Feishu images", async () => {

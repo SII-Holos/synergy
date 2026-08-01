@@ -3046,7 +3046,7 @@ export type ChannelFeishuAccountConfig = {
   /**
    * Session scoping strategy for group chats
    */
-  groupSessionScope?: "group" | "group_sender" | "group_topic" | "group_topic_sender"
+  groupSessionScope?: "group" | "group_sender" | "group_topic" | "group_topic_sender" | "group_thread"
   /**
    * Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)
    */
