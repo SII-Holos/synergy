@@ -1,4 +1,5 @@
 import {
+  BROWSER_HOST_WAIT_TIMEOUT_MS,
   BROWSER_PROTOCOL_VERSION,
   BrowserProtocolError,
   type BrowserPresentationSelection,
@@ -107,7 +108,7 @@ export namespace BrowserWorkspace {
         serverUrl,
         routeDirectory: state.directory,
       })
-      await waitForBroker("webrtc", 10_000)
+      await waitForBroker("webrtc", BROWSER_HOST_WAIT_TIMEOUT_MS)
     }
 
     const result = await BrowserCommandService.execute(state.owner, {
@@ -123,15 +124,31 @@ export namespace BrowserWorkspace {
   }
 
   async function waitForBroker(kind: "native" | "webrtc", timeoutMs: number): Promise<void> {
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() <= deadline) {
+    const startedAt = Date.now()
+    while (true) {
       if (BrowserBroker.ready(kind)) return
+      if (kind === "webrtc") {
+        const status = BrowserHostBrokerProcess.status()
+        if (status === "failed" || status === "unavailable") {
+          throw new BrowserProtocolError({
+            code: "browser_host_unavailable",
+            message: `Browser Host did not register ${kind} capability (host status: ${status}).`,
+            retryable: true,
+          })
+        }
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        // The Host may still be installing or starting. Return a retryable
+        // pending error so the client can retry in the background instead of
+        // holding a synchronous HTTP request open for minutes.
+        const detail = kind === "webrtc" ? ` (host status: ${BrowserHostBrokerProcess.status()})` : ""
+        throw new BrowserProtocolError({
+          code: "browser_host_pending",
+          message: `Browser Host is still registering ${kind} capability after ${timeoutMs}ms${detail}.`,
+          retryable: true,
+        })
+      }
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    throw new BrowserProtocolError({
-      code: "browser_host_unavailable",
-      message: `Browser Host did not register ${kind} capability within ${timeoutMs}ms.`,
-      retryable: true,
-    })
   }
 }

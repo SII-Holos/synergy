@@ -60,6 +60,7 @@ async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy
     fs.mkdir(path.join(runtimeDir, "app"), { recursive: true }),
     fs.mkdir(path.join(runtimeDir, "schema"), { recursive: true }),
     fs.mkdir(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
+    fs.mkdir(path.join(runtimeDir, "lib", "onnxruntime-web"), { recursive: true }),
   ])
   await Promise.all([
     fs.writeFile(path.join(runtimeDir, "bin", binary), "runtime"),
@@ -68,6 +69,8 @@ async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy
     fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "package.json"), "{}"),
     fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "index.js"), "runtime"),
     fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib", "coreBundle.js"), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.mjs"), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"), "runtime"),
   ])
   return runtimeDir
 }
@@ -190,6 +193,15 @@ describe("desktop packaging", () => {
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
       /browser-runtime\/playwright-core\/package\.json/,
+    )
+  })
+
+  test("rejects a runtime without its ONNX Web embedding sidecar", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.rm(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /lib\/onnxruntime-web\/ort-wasm-simd-threaded\.asyncify\.wasm/,
     )
   })
 })
