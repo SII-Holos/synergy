@@ -313,6 +313,7 @@ async function addFeishuChannel(printOnly: boolean, serverUrl: string): Promise<
         type: "feishu" as const,
         domain,
         streaming: true,
+        responseFormat: "markdown" as const,
         accounts: {
           [accountId]: {
             enabled: true,

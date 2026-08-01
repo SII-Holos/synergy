@@ -3058,6 +3058,10 @@ export type ChannelFeishuAccountConfig = {
    */
   streaming?: boolean
   /**
+   * Format for ordinary outbound text messages (markdown renders through a CardKit card)
+   */
+  responseFormat?: "text" | "markdown"
+  /**
    * Minimum interval between streaming card updates in ms
    */
   streamingThrottleMs?: number
@@ -3100,6 +3104,10 @@ export type ChannelFeishuConfig = {
    * Default streaming setting for all accounts
    */
   streaming?: boolean
+  /**
+   * Default outbound text format for all accounts
+   */
+  responseFormat?: "text" | "markdown"
 }
 
 export type ChannelClarusAccountConfig = {
@@ -7841,6 +7849,14 @@ export type EventProviderAuthUpdated = {
   }
 }
 
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -7852,14 +7868,6 @@ export type EventInstallationUpdateAvailable = {
   type: "installation.update-available"
   properties: {
     version: string
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
   }
 }
 
@@ -8449,9 +8457,9 @@ export type Event =
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
   | EventProviderAuthUpdated
+  | EventConfigUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
-  | EventConfigUpdated
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
