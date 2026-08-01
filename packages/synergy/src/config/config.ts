@@ -354,6 +354,12 @@ export namespace Config {
 
     if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
 
+    // Empty enabled/disabled provider lists carry no filtering intent and are
+    // normalized away so all write paths (settings UI, config import, manual
+    // edits) resolve to the same "unset" semantics.
+    if (result.enabled_providers?.length === 0) delete result.enabled_providers
+    if (result.disabled_providers?.length === 0) delete result.disabled_providers
+
     // Apply flag overrides for compaction settings
     if (Flag.SYNERGY_DISABLE_AUTOCOMPACT) {
       result.compaction = { ...result.compaction, auto: false }
