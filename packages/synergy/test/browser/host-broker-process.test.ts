@@ -79,6 +79,55 @@ describe("BrowserHostBrokerProcess", () => {
     expect(BrowserHostBrokerProcess.activeServerUrl()).toBe("http://127.0.0.1:4096")
   })
 
+  test("rewrites an IPv6 wildcard listen address to loopback", async () => {
+    process.env.SYNERGY_BROWSER_HOST_COMMAND = idleStubCommand()
+    BrowserHostBrokerProcess.configureServerUrl("http://[::]:4096/")
+    const result = await BrowserHostBrokerProcess.ensure({
+      owner,
+      serverUrl: "https://client-facing.example.com",
+      routeDirectory: "scope",
+    })
+    expect(result.status).toBe("started")
+    expect(BrowserHostBrokerProcess.activeServerUrl()).toBe("http://[::1]:4096")
+  })
+
+  test("falls back to the request origin for an invalid SYNERGY_BROWSER_HOST_SERVER_URL override", async () => {
+    process.env.SYNERGY_BROWSER_HOST_COMMAND = idleStubCommand()
+    process.env.SYNERGY_BROWSER_HOST_SERVER_URL = "not a url"
+    const result = await BrowserHostBrokerProcess.ensure({
+      owner,
+      serverUrl: "https://client-facing.example.com",
+      routeDirectory: "scope",
+    })
+    expect(result.status).toBe("started")
+    expect(BrowserHostBrokerProcess.activeServerUrl()).toBe("https://client-facing.example.com")
+  })
+
+  test("spawns a single Host process for concurrent ensure calls", async () => {
+    process.env.SYNERGY_BROWSER_HOST_COMMAND = idleStubCommand()
+    const [first, second, third] = await Promise.all([
+      BrowserHostBrokerProcess.ensure({
+        owner,
+        serverUrl: "http://localhost:4096",
+        routeDirectory: "scope",
+      }),
+      BrowserHostBrokerProcess.ensure({
+        owner,
+        serverUrl: "http://localhost:4096",
+        routeDirectory: "scope",
+      }),
+      BrowserHostBrokerProcess.ensure({
+        owner,
+        serverUrl: "http://localhost:4096",
+        routeDirectory: "scope",
+      }),
+    ])
+    expect(first.status).toBe("started")
+    expect(second.status).toBe("running")
+    expect(third.status).toBe("running")
+    expect(BrowserHostBrokerProcess.resourceStats().processCount).toBe(1)
+  })
+
   test("falls back to the request origin without a configured listen address", async () => {
     process.env.SYNERGY_BROWSER_HOST_COMMAND = idleStubCommand()
     const result = await BrowserHostBrokerProcess.ensure({

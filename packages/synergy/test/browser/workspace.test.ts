@@ -191,7 +191,7 @@ describe("Browser workspace Host registration wait", () => {
     ).rejects.toMatchObject({ code: "browser_host_unavailable", message: expect.stringContaining("unavailable") })
   })
 
-  test("waits beyond the legacy 10s window while the WebRTC Host starts", async () => {
+  test("returns browser_host_pending after the bounded wait while the WebRTC Host starts", async () => {
     process.env.SYNERGY_BROWSER_HOST_COMMAND = JSON.stringify([BunProc.which(), "-e", "setInterval(() => {}, 1000)"])
     const restoreRuntime = BrowserCommandService.useRuntimeForTest({
       async getOrCreateSession() {
@@ -210,8 +210,35 @@ describe("Browser workspace Host registration wait", () => {
         { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-starting" },
         "http://localhost:4096",
       )
-      await new Promise((resolve) => setTimeout(resolve, 12_000))
-      expect(BrowserHostBrokerProcess.status()).toBe("starting")
+      await expect(control).rejects.toMatchObject({
+        code: "browser_host_pending",
+        retryable: true,
+        message: expect.stringContaining("starting"),
+      })
+    } finally {
+      restoreRuntime()
+    }
+  }, 15_000)
+
+  test("succeeds when the Host registers within the bounded wait", async () => {
+    process.env.SYNERGY_BROWSER_HOST_COMMAND = JSON.stringify([BunProc.which(), "-e", "setInterval(() => {}, 1000)"])
+    const restoreRuntime = BrowserCommandService.useRuntimeForTest({
+      async getOrCreateSession() {
+        return fakeSession()
+      },
+    })
+    try {
+      const control = BrowserWorkspace.executeControl(
+        {
+          directory: "/tmp",
+          owner,
+          presentation: presentation("webrtc"),
+          requestedPresentation: "webrtc",
+          nativePresentation: false,
+        },
+        { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-ready" },
+        "http://localhost:4096",
+      )
       const broker = new BrokerSocket()
       BrowserBroker.attach(broker, {
         type: "host.register",
@@ -225,5 +252,5 @@ describe("Browser workspace Host registration wait", () => {
     } finally {
       restoreRuntime()
     }
-  }, 30_000)
+  }, 15_000)
 })

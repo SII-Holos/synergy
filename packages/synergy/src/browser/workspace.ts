@@ -1,4 +1,5 @@
 import {
+  BROWSER_HOST_WAIT_TIMEOUT_MS,
   BROWSER_PROTOCOL_VERSION,
   BrowserProtocolError,
   type BrowserPresentationSelection,
@@ -107,7 +108,7 @@ export namespace BrowserWorkspace {
         serverUrl,
         routeDirectory: state.directory,
       })
-      await waitForBroker("webrtc", 10_000)
+      await waitForBroker("webrtc", BROWSER_HOST_WAIT_TIMEOUT_MS)
     }
 
     const result = await BrowserCommandService.execute(state.owner, {
@@ -126,7 +127,6 @@ export namespace BrowserWorkspace {
     const startedAt = Date.now()
     while (true) {
       if (BrowserBroker.ready(kind)) return
-      let budget = timeoutMs
       if (kind === "webrtc") {
         const status = BrowserHostBrokerProcess.status()
         if (status === "failed" || status === "unavailable") {
@@ -136,16 +136,15 @@ export namespace BrowserWorkspace {
             retryable: true,
           })
         }
-        budget =
-          status === "installing"
-            ? BrowserHostBrokerProcess.INSTALL_TIMEOUT_MS
-            : BrowserHostBrokerProcess.START_TIMEOUT_MS
       }
-      if (Date.now() - startedAt >= budget) {
+      if (Date.now() - startedAt >= timeoutMs) {
+        // The Host may still be installing or starting. Return a retryable
+        // pending error so the client can retry in the background instead of
+        // holding a synchronous HTTP request open for minutes.
         const detail = kind === "webrtc" ? ` (host status: ${BrowserHostBrokerProcess.status()})` : ""
         throw new BrowserProtocolError({
-          code: "browser_host_unavailable",
-          message: `Browser Host did not register ${kind} capability within ${budget}ms${detail}.`,
+          code: "browser_host_pending",
+          message: `Browser Host is still registering ${kind} capability after ${timeoutMs}ms${detail}.`,
           retryable: true,
         })
       }
