@@ -204,11 +204,11 @@
 }
 
 .library-menu-item:hover {
-  background: var(--library-control-bg, var(--surface-inset-base));
+  background: var(--library-control-bg-hover, var(--surface-raised-stronger-hover));
 }
 
 .library-menu-item.is-active {
-  background: var(--library-selected-bg, var(--surface-interactive-selected));
+  background: var(--library-selected-bg, var(--surface-raised-stronger-hover));
   color: var(--text-strong);
 }
 
