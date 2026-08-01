@@ -1,4 +1,8 @@
+import { Log } from "../../../util/log"
 import type { FeishuApiContext } from "./api-context"
+import { FeishuOutboundMedia } from "./outbound-media"
+
+const log = Log.create({ service: "channel.feishu.send-card" })
 
 const REQUEST_TIMEOUT_MS = 15_000
 
@@ -65,6 +69,39 @@ function normalizeMarkdown(content: string): string {
   return content.trim() ? content : BLANK_MARKDOWN
 }
 
+const MARKDOWN_IMAGE_PATTERN = /!\[([^\]]*)\]\(([^)]+)\)/g
+
+async function materializeMarkdownImages(text: string, ctx: FeishuApiContext): Promise<string> {
+  const images = [...text.matchAll(MARKDOWN_IMAGE_PATTERN)]
+  if (images.length === 0) return text
+
+  const replacements = await Promise.all(
+    images.map(async (match) => {
+      const alt = match[1] ?? ""
+      const destination = (match[2] ?? "").split(/\s+/)[0] ?? ""
+      if (!/^https?:\/\//i.test(destination)) {
+        // Non-http destinations (data:, file:, relative) cannot be uploaded;
+        // keep only the alt text so the card still renders.
+        return { index: match.index ?? 0, length: match[0].length, to: alt }
+      }
+      try {
+        const { imageKey } = await FeishuOutboundMedia.uploadImageFromUrl(destination, ctx)
+        return { index: match.index ?? 0, length: match[0].length, to: `![${alt}](${imageKey})` }
+      } catch (error) {
+        log.warn("markdown image upload failed; keeping as link", { url: destination, error })
+        return { index: match.index ?? 0, length: match[0].length, to: `[${alt}](${destination})` }
+      }
+    }),
+  )
+
+  replacements.sort((a, b) => b.index - a.index)
+  let result = text
+  for (const { index, length, to } of replacements) {
+    result = result.slice(0, index) + to + result.slice(index + length)
+  }
+  return result
+}
+
 export function buildFeishuMarkdownCard(text: string): Record<string, unknown> | undefined {
   const cardJson = {
     schema: "2.0",
@@ -85,7 +122,8 @@ export async function sendFeishuMarkdownCard(
     replyInThread?: boolean
   },
 ): Promise<{ messageId: string } | undefined> {
-  const cardJson = buildFeishuMarkdownCard(input.text)
+  const text = await materializeMarkdownImages(input.text, input)
+  const cardJson = buildFeishuMarkdownCard(text)
   if (!cardJson) return undefined
   return sendFeishuCard({ ...input, cardJson, kind: "markdown reply" })
 }
