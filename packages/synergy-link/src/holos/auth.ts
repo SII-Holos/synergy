@@ -1,6 +1,6 @@
 import os from "node:os"
 import path from "node:path"
-import { chmod, mkdir, readFile, unlink, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { applyEdits, modify } from "jsonc-parser"
 import z from "zod"
 import type { SynergyLinkAuthState } from "../state/store"
@@ -25,6 +25,20 @@ const SynergyHolosAuth = z.object({
   agentSecret: z.string(),
 })
 
+const SynergyHolosAccount = z.object({
+  agentId: z.string(),
+  agentSecret: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+
+const SynergyHolosAccounts = z.object({
+  activeAccountId: z.string().nullable(),
+  accounts: z.record(z.string(), SynergyHolosAccount),
+})
+
+type SynergyHolosAccounts = z.infer<typeof SynergyHolosAccounts>
+
 const SynergyAuthRecord = z.record(z.string(), z.unknown())
 const SynergyConfigSetMetadata = z.object({ active: z.string().min(1).default("default") })
 
@@ -35,6 +49,10 @@ export namespace SynergyLinkHolosAuth {
 
   export function sharedAuthPath() {
     return path.join(synergyRoot(), "data", "auth", "api-key.json")
+  }
+
+  export function accountsAuthPath() {
+    return path.join(synergyRoot(), "data", "auth", "holos-accounts.json")
   }
 
   export function configMetadataPath() {
@@ -56,10 +74,24 @@ export namespace SynergyLinkHolosAuth {
   export async function inspect(): Promise<
     { auth: SynergyLinkAuthState; source: SynergyLinkHolosAuthSource } | { auth: undefined; source: null }
   > {
-    const shared = await loadShared()
-    if (shared) {
+    const accounts = await loadAccounts()
+    if (accounts.authoritative) {
+      if (!accounts.auth) {
+        return {
+          auth: undefined,
+          source: null,
+        }
+      }
       return {
-        auth: shared,
+        auth: accounts.auth,
+        source: "shared",
+      }
+    }
+
+    const legacy = await loadLegacy()
+    if (legacy) {
+      return {
+        auth: legacy,
         source: "shared",
       }
     }
@@ -75,7 +107,8 @@ export namespace SynergyLinkHolosAuth {
   }
 
   export async function save(auth: SynergyLinkAuthState): Promise<void> {
-    await saveShared(auth)
+    await saveAccount(auth)
+    await removeLegacy()
     await configureHolos()
   }
 
@@ -103,10 +136,32 @@ export namespace SynergyLinkHolosAuth {
   }
 
   export async function clear(): Promise<void> {
-    await removeShared()
+    await Promise.all([removeActiveAccount(), removeLegacy()])
   }
 
-  async function loadShared(): Promise<SynergyLinkAuthState | undefined> {
+  async function loadAccounts(): Promise<
+    { authoritative: true; auth: SynergyLinkAuthState | undefined } | { authoritative: false }
+  > {
+    let parsed: SynergyHolosAccounts
+    try {
+      parsed = SynergyHolosAccounts.parse(JSON.parse(await readFile(accountsAuthPath(), "utf8")))
+    } catch {
+      return { authoritative: false }
+    }
+
+    const active = parsed.activeAccountId ? parsed.accounts[parsed.activeAccountId] : undefined
+    return {
+      authoritative: true,
+      auth: active
+        ? {
+            agentID: active.agentId,
+            agentSecret: active.agentSecret,
+          }
+        : undefined,
+    }
+  }
+
+  async function loadLegacy(): Promise<SynergyLinkAuthState | undefined> {
     try {
       const parsed = SynergyAuthRecord.parse(JSON.parse(await readFile(sharedAuthPath(), "utf8")))
       const holos = SynergyHolosAuth.safeParse(parsed.holos)
@@ -120,41 +175,93 @@ export namespace SynergyLinkHolosAuth {
     }
   }
 
-  async function saveShared(auth: SynergyLinkAuthState): Promise<void> {
-    const filePath = sharedAuthPath()
-    let data: Record<string, unknown> = {}
-    try {
-      data = SynergyAuthRecord.parse(JSON.parse(await readFile(filePath, "utf8")))
-    } catch {
-      data = {}
-    }
+  async function saveAccount(auth: SynergyLinkAuthState): Promise<void> {
+    const filePath = accountsAuthPath()
+    const stored = await readAccountsForUpdate()
+    const now = Date.now()
+    const existing = stored.accounts[auth.agentID]
 
     const next = {
-      ...data,
-      holos: {
-        type: "holos",
-        agentId: auth.agentID,
-        agentSecret: auth.agentSecret,
+      activeAccountId: auth.agentID,
+      accounts: {
+        ...stored.accounts,
+        [auth.agentID]: {
+          agentId: auth.agentID,
+          agentSecret: auth.agentSecret,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        },
       },
-    }
+    } satisfies SynergyHolosAccounts
 
-    await mkdir(path.dirname(filePath), { recursive: true })
-    await writeFile(filePath, JSON.stringify(next, null, 2) + "\n")
-    await chmod(filePath, 0o600)
+    await writePrivateJson(filePath, next)
   }
 
-  async function removeShared(): Promise<void> {
+  async function removeActiveAccount(): Promise<void> {
+    const stored = await readAccounts()
+    if (!stored?.activeAccountId) return
+
+    const accounts = { ...stored.accounts }
+    delete accounts[stored.activeAccountId]
+    await writePrivateJson(accountsAuthPath(), {
+      activeAccountId: null,
+      accounts,
+    } satisfies SynergyHolosAccounts)
+  }
+
+  async function readAccounts(): Promise<SynergyHolosAccounts | undefined> {
+    try {
+      return SynergyHolosAccounts.parse(JSON.parse(await readFile(accountsAuthPath(), "utf8")))
+    } catch {
+      return undefined
+    }
+  }
+
+  async function readAccountsForUpdate(): Promise<SynergyHolosAccounts> {
+    let raw: string
+    try {
+      raw = await readFile(accountsAuthPath(), "utf8")
+    } catch (error) {
+      if (isEnoent(error)) {
+        return {
+          activeAccountId: null,
+          accounts: {},
+        }
+      }
+      throw error
+    }
+
+    try {
+      return SynergyHolosAccounts.parse(JSON.parse(raw))
+    } catch (error) {
+      throw new Error("Failed to parse the shared Holos account store.", { cause: error })
+    }
+  }
+
+  async function removeLegacy(): Promise<void> {
     let data: Record<string, unknown>
     try {
       data = SynergyAuthRecord.parse(JSON.parse(await readFile(sharedAuthPath(), "utf8")))
     } catch {
-      await unlink(sharedAuthPath()).catch(() => undefined)
       return
     }
 
+    if (!("holos" in data)) return
     delete data.holos
-    await mkdir(path.dirname(sharedAuthPath()), { recursive: true })
-    await writeFile(sharedAuthPath(), JSON.stringify(data, null, 2) + "\n")
+    await writePrivateJson(sharedAuthPath(), data)
+  }
+
+  async function writePrivateJson(filePath: string, data: unknown): Promise<void> {
+    const temporaryPath = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`
+    await mkdir(path.dirname(filePath), { recursive: true })
+    try {
+      await writeFile(temporaryPath, JSON.stringify(data, null, 2) + "\n", { flag: "wx", mode: 0o600 })
+      await rename(temporaryPath, filePath)
+      await chmod(filePath, 0o600)
+    } catch (error) {
+      await rm(temporaryPath, { force: true }).catch(() => undefined)
+      throw error
+    }
   }
 
   async function loadGlobalConfigSource(filePath: string): Promise<string> {
@@ -165,4 +272,8 @@ export namespace SynergyLinkHolosAuth {
       return "{}\n"
     }
   }
+}
+
+function isEnoent(error: unknown): error is NodeJS.ErrnoException {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
 }
