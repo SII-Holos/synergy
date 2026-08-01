@@ -1,0 +1,309 @@
+import { Log } from "@/util/log"
+import { mergeDeep } from "remeda"
+import type { Auth } from "./api-key"
+import type { ModelsDev } from "./models"
+import { ProviderProfile } from "./profile"
+
+/**
+ * Single owner for "connection ID → runtime behavior" resolution.
+ *
+ * Before this module, each consumer (catalog refresh, provider init, auth
+ * retarget, usage service, setup probes, transform) independently decided how
+ * a connection ID maps to a profile, a catalog source, a base URL and an env
+ * list. Those implementations drifted (e.g. `refresh()` silently degraded to
+ * bundled outside a scope, copilot lost the environment fallback for mapped
+ * connections, env classification missed profile env). Everything that needs
+ * connection semantics goes through here.
+ *
+ * Layer order for composition (from the review of PR #990):
+ *   1. catalog  → models (source projected onto the connection ID)
+ *   2. profile  → runtime behavior (resolveAuth / modelOptions / runtimeOptions)
+ *   3. connection → local overrides (api → baseURL, options, model rules)
+ * Overrides always win.
+ */
+export namespace ProviderConnection {
+  const log = Log.create({ service: "provider.connection" })
+
+  /** Shape of a `provider.<id>` config entry, subset used for resolution. */
+  export interface ConfiguredProvider {
+    profile?: string
+    modelsDevProviderID?: string
+    name?: string
+    api?: string
+    npm?: string
+    env?: string[]
+    options?: Record<string, unknown>
+    models?: Record<string, Record<string, unknown>>
+    whitelist?: string[]
+    blacklist?: string[]
+  }
+
+  export type ConnectionConfig = { provider?: Record<string, ConfiguredProvider> }
+
+  /** Fully-resolved semantics for one connection. Never partially resolved. */
+  export interface ConnectionDefinition {
+    connectionID: string
+    /** Behavior source; undefined for plain config-only providers. */
+    profile: ProviderProfile.Profile | undefined
+    /** True when the connection ID differs from its behavior profile id. */
+    isMapped: boolean
+    /** Catalog source: modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id ?? connectionID. */
+    catalogSourceID: string
+    /** Explicit Phase 1 catalog inheritance, when configured. */
+    modelsDevProviderID: string | undefined
+    /** Behavior profile id (explicit config or the canonical profile itself). */
+    profileID: string | undefined
+    /** Derived base URL: options.baseURL ?? api ?? profile.baseURL. */
+    baseURL: string | undefined
+    /** Unified env rule: configured.env ?? profile.env. */
+    env: string[]
+    configured: ConfiguredProvider | undefined
+  }
+
+  export type ResolveResult =
+    | { ok: true; connection: ConnectionDefinition }
+    | { ok: false; reason: "unknown_profile"; connectionID: string; profileID?: string }
+
+  /**
+   * Resolve one connection ID against config. Explicit failures instead of
+   * silent degradation: a configured `profile` that is not registered is an
+   * `unknown_profile` result, never a bundled fallback.
+   */
+  export function resolveConnection(connectionID: string, config: ConnectionConfig | undefined): ResolveResult {
+    const configured = config?.provider?.[connectionID]
+    const explicitProfileID = configured?.profile
+    const profile = explicitProfileID ? ProviderProfile.get(explicitProfileID) : ProviderProfile.get(connectionID)
+
+    if (explicitProfileID && !profile) {
+      log.warn("configured provider profile not found", { providerID: connectionID, profileID: explicitProfileID })
+      return { ok: false, reason: "unknown_profile", connectionID, profileID: explicitProfileID }
+    }
+
+    const catalogSourceID =
+      configured?.modelsDevProviderID ?? profile?.modelsDevProviderID ?? profile?.id ?? connectionID
+    const env = configured?.env ?? profile?.env ?? []
+    const baseURL =
+      (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
+      configured?.api ??
+      profile?.baseURL
+
+    return {
+      ok: true,
+      connection: {
+        connectionID,
+        profile,
+        isMapped: profile ? connectionID !== profile.id : false,
+        catalogSourceID,
+        modelsDevProviderID: configured?.modelsDevProviderID,
+        profileID: explicitProfileID ?? (profile ? profile.id : undefined),
+        baseURL,
+        env,
+        configured,
+      },
+    }
+  }
+
+  /** Resolve every registered canonical profile plus every configured connection. */
+  export function resolveAllConnections(config: ConnectionConfig | undefined): Record<string, ConnectionDefinition> {
+    const result: Record<string, ConnectionDefinition> = {}
+    for (const profile of ProviderProfile.all()) {
+      const resolved = resolveConnection(profile.id, config)
+      if (resolved.ok) result[profile.id] = resolved.connection
+    }
+    for (const connectionID of Object.keys(config?.provider ?? {})) {
+      const resolved = resolveConnection(connectionID, config)
+      if (resolved.ok) result[connectionID] = resolved.connection
+    }
+    return result
+  }
+
+  export interface ComposeInput {
+    connection: ConnectionDefinition
+    /** Authoritative catalog (already merged remote/live projections). */
+    catalog: Record<string, ModelsDev.Provider>
+    auth?: Auth.Info
+  }
+
+  export interface ComposedProviderSpec {
+    providerID: string
+    profileID: string | undefined
+    /** Source provider after projection onto the connection ID. */
+    catalogSource: ModelsDev.Provider | undefined
+    /** Models after source projection + configured model rules. */
+    models: Record<string, ModelsDev.Model>
+    /** Final options: profile runtime options merged under connection overrides. */
+    options: Record<string, unknown>
+    /** Options from the catalog source (for worker plan serialization). */
+    baseOptions: Record<string, unknown>
+    /** Connection-level overrides (api → baseURL, options). */
+    explicitOptions: Record<string, unknown>
+    env: string[]
+    api: string | undefined
+    npm: string | undefined
+    baseURL: string | undefined
+  }
+
+  function fallbackModel(provider: ModelsDev.Provider, modelID: string): ModelsDev.Model {
+    return {
+      id: modelID,
+      name: modelID,
+      family: modelID.split(/[-/:]/)[0] || modelID,
+      release_date: "2026-06-25",
+      attachment: false,
+      reasoning: false,
+      temperature: false,
+      tool_call: true,
+      cost: { input: 0, output: 0 },
+      limit: { context: 128000, input: 96000, output: 32000 },
+      options: {},
+    }
+  }
+
+  function applyModelRules(
+    source: ModelsDev.Provider,
+    configured: ConfiguredProvider | undefined,
+  ): Record<string, ModelsDev.Model> {
+    const models = { ...source.models }
+    for (const [modelID, raw] of Object.entries(configured?.models ?? {})) {
+      const model = raw as Record<string, any>
+      const sourceID = typeof model.id === "string" ? model.id : modelID
+      const base = models[sourceID] ?? models[modelID] ?? fallbackModel(source, modelID)
+      models[modelID] = { ...(mergeDeep(base, model) as ModelsDev.Model), id: modelID }
+    }
+    for (const modelID of Object.keys(models)) {
+      if (configured?.whitelist && !configured.whitelist.includes(modelID)) delete models[modelID]
+      if (configured?.blacklist?.includes(modelID)) delete models[modelID]
+    }
+    return models
+  }
+
+  /**
+   * The single composition path for a connection. Used by provider init,
+   * getSDK option resolution, import probes and (via a serialized definition)
+   * the agent worker — so all of them merge in the same order.
+   */
+  export async function composeProviderSpec(input: ComposeInput): Promise<ComposedProviderSpec> {
+    const { connection, catalog, auth } = input
+    const { profile, configured } = connection
+
+    const source = connection.catalogSourceID ? catalog[connection.catalogSourceID] : undefined
+    const catalogSource = source
+      ? {
+          ...source,
+          id: connection.connectionID,
+          name: configured?.name ?? source.name,
+          env: connection.env,
+          api: configured?.api ?? source.api,
+          npm: configured?.npm ?? source.npm,
+        }
+      : undefined
+    const emptySource: ModelsDev.Provider = {
+      id: connection.connectionID,
+      name: connection.connectionID,
+      env: [],
+      models: {},
+    }
+    const models = applyModelRules(catalogSource ?? emptySource, configured)
+
+    const profileInput = { providerID: connection.connectionID, auth, provider: catalogSource }
+    const resolvedAuth = (await profile?.resolveAuth?.(profileInput)) ?? auth
+    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
+    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
+    const runtime = mergeDeep(modelOptions, runtimeOptions)
+    const explicitOptions = mergeDeep(configured?.api ? { baseURL: configured.api } : {}, configured?.options ?? {})
+
+    return {
+      providerID: connection.connectionID,
+      profileID: profile?.id,
+      catalogSource,
+      models,
+      options: mergeDeep(runtime, explicitOptions) as Record<string, unknown>,
+      baseOptions: {} as Record<string, unknown>,
+      explicitOptions: explicitOptions as Record<string, unknown>,
+      env: connection.env,
+      api: configured?.api,
+      npm: configured?.npm,
+      baseURL: connection.baseURL,
+    }
+  }
+
+  /**
+   * Per-connection state lifecycle: snapshot storage, eviction protection and
+   * invalidation. The eviction protection is computed from the ACTIVE
+   * connection set — not the canonical profile set — so low-activity
+   * connections' live catalog snapshots are never collected as LRU garbage
+   * while they remain registered (fixes the PR #990 review finding B1).
+   */
+  export class ConnectionStateManager {
+    private readonly active = new Set<string>()
+    private readonly snapshots = new Map<string, SnapshotRecord>()
+    private readonly maxEntries: number
+
+    constructor(maxEntries = 100) {
+      this.maxEntries = maxEntries
+    }
+
+    register(connectionID: string) {
+      this.active.add(connectionID)
+    }
+
+    unregister(connectionID: string) {
+      this.active.delete(connectionID)
+    }
+
+    isActive(connectionID: string) {
+      return this.active.has(connectionID)
+    }
+
+    activeConnections(): string[] {
+      return [...this.active]
+    }
+
+    set(connectionID: string, key: string, snapshot: unknown, lastAttemptAt = Date.now()) {
+      this.snapshots.set(key, { connectionID, lastAttemptAt, snapshot })
+      this.evict()
+    }
+
+    get(key: string): unknown | undefined {
+      return this.snapshots.get(key)?.snapshot
+    }
+
+    has(key: string) {
+      return this.snapshots.has(key)
+    }
+
+    /** Keys protected from eviction (all snapshots of active connections). */
+    protectedKeys(): Set<string> {
+      const keys = new Set<string>()
+      for (const [key, record] of this.snapshots) {
+        if (this.active.has(record.connectionID)) keys.add(key)
+      }
+      return keys
+    }
+
+    /** Evict LRU entries from inactive connections until under the cap. */
+    evict(): string[] {
+      const evicted: string[] = []
+      const removable = [...this.snapshots.entries()]
+        .filter(([, record]) => !this.active.has(record.connectionID))
+        .sort(([, left], [, right]) => left.lastAttemptAt - right.lastAttemptAt)
+      while (this.snapshots.size > this.maxEntries) {
+        const entry = removable.shift()
+        if (!entry) break
+        this.snapshots.delete(entry[0])
+        evicted.push(entry[0])
+      }
+      return evicted
+    }
+
+    clear() {
+      this.snapshots.clear()
+    }
+  }
+
+  interface SnapshotRecord {
+    connectionID: string
+    lastAttemptAt: number
+    snapshot: unknown
+  }
+}
