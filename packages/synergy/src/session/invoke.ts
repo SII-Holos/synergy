@@ -57,6 +57,7 @@ import { SessionUserMessageMaterialization } from "./user-message-materializatio
 import {
   buildMemoryContext,
   buildAlwaysOnlyMemoryContext,
+  buildAlwaysOnlyMemoryResult,
   cacheResult,
   getCachedResult,
   evictRecallCache,
@@ -209,12 +210,13 @@ export namespace SessionInvoke {
     if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.current()
-      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.library), RECALL_TIMEOUT_MS).catch(
-        (err: any) => {
+      const alwaysResult = cfg.library?.memory?.enabled !== false ? buildAlwaysOnlyMemoryResult() : undefined
+      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.library), RECALL_TIMEOUT_MS)
+        .then((result) => result ?? alwaysResult)
+        .catch((err: any) => {
           log.warn("recall failed or timed out", { sessionID, error: err })
-          return undefined
-        },
-      )
+          return alwaysResult
+        })
     }
     // Keep recalled memory/experience available for every step so the agent
     // retains its knowledge context across the entire trajectory, including

@@ -18,6 +18,8 @@ import { SessionProcessor } from "../../src/session/processor"
 import { Identifier } from "../../src/id/id"
 import { Cortex } from "../../src/cortex/manager"
 import { Embedding } from "../../src/vector/embedding"
+import { LibraryDB } from "../../src/library/database"
+import { RECALL_TIMEOUT_MS } from "../../src/session/recall"
 import { Worktree } from "../../src/project/worktree"
 import { SessionMessageCache } from "../../src/session/message-cache"
 import { Bus } from "../../src/bus"
@@ -757,6 +759,68 @@ describe("SessionInvoke system prompt assembly", () => {
       ;(Cortex.list as any) = originalCortexList
       ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
       ;(Embedding.generate as any) = originalEmbeddingGenerate
+    }
+  })
+})
+
+describe.serial("SessionInvoke memory recall", () => {
+  test("keeps always memories when contextual recall times out", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let capturedLateSystem: string[] | undefined
+    const restore = installBasicLoopMocks({
+      config: { library: { memory: { enabled: true }, experience: { retrieve: false } } },
+      onBuildPlan: (input) => {
+        capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
+      },
+    })
+    const originalSetTimeout = globalThis.setTimeout
+    const memoryID = "mem_always_recall_timeout"
+
+    ;(Embedding.generate as any) = mock(async () => new Promise<never>(() => {}))
+    ;(globalThis as any).setTimeout = (handler: (...args: any[]) => void, timeout?: number, ...args: any[]) => {
+      if (timeout === RECALL_TIMEOUT_MS) {
+        queueMicrotask(() => handler(...args))
+        return 0
+      }
+      return originalSetTimeout(handler, timeout, ...args)
+    }
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          LibraryDB.Memory.insert(
+            {
+              id: memoryID,
+              title: "Always workflow memory",
+              content: "Keep the workflow contract in every top-level turn.",
+              category: "workflow",
+              recallMode: "always",
+            },
+            { id: "embedding", vector: [1, 0, 0, 0, 0, 0, 0, 0], model: "test-embedding" },
+          )
+
+          const { session } = await createSessionWithUser()
+          try {
+            await SessionInvoke.loop.force(session.id)
+
+            const lateSystemPrompt = capturedLateSystem?.join("\n") ?? ""
+            expect(lateSystemPrompt).toContain('<entry title="Always workflow memory">')
+            expect(lateSystemPrompt).toContain("Keep the workflow contract in every top-level turn.")
+
+            const messages = await Session.messages({ sessionID: session.id })
+            const user = messages.find((message) => message.info.role === "user")
+            const injectedContext = user?.info.role === "user" ? user.info.metadata?.injectedContext : undefined
+            expect(injectedContext?.memory).toContain('<entry title="Always workflow memory">')
+          } finally {
+            await Session.remove(session.id)
+          }
+        },
+      })
+    } finally {
+      LibraryDB.Memory.remove(memoryID)
+      ;(globalThis as any).setTimeout = originalSetTimeout
+      restore()
     }
   })
 })
