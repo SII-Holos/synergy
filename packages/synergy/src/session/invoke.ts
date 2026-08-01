@@ -210,12 +210,20 @@ export namespace SessionInvoke {
     if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.current()
-      const alwaysResult = cfg.library?.memory?.enabled !== false ? buildAlwaysOnlyMemoryResult() : undefined
+      const buildAlwaysFallback = () => {
+        if (cfg.library?.memory?.enabled === false) return undefined
+        try {
+          return buildAlwaysOnlyMemoryResult()
+        } catch (error: unknown) {
+          log.warn("always memory fallback failed", { sessionID, error })
+          return undefined
+        }
+      }
       return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.library), RECALL_TIMEOUT_MS)
-        .then((result) => result ?? alwaysResult)
-        .catch((err: any) => {
-          log.warn("recall failed or timed out", { sessionID, error: err })
-          return alwaysResult
+        .then((result) => result ?? buildAlwaysFallback())
+        .catch((error: unknown) => {
+          log.warn("recall failed or timed out", { sessionID, error })
+          return buildAlwaysFallback()
         })
     }
     // Keep recalled memory/experience available for every step so the agent
