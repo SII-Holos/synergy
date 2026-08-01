@@ -3616,11 +3616,11 @@ export type Config = {
   pluginMarketplace?: PluginMarketplaceConfig
   snapshot?: boolean
   /**
-   * Disable providers that are loaded automatically
+   * Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */
   disabled_providers?: Array<string>
   /**
-   * When set, ONLY these providers will be enabled. All other providers will be ignored
+   * When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */
   enabled_providers?: Array<string>
   providerCatalog?: ProviderCatalogConfig

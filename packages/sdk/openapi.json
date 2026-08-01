@@ -29129,14 +29129,14 @@
             "type": "boolean"
           },
           "disabled_providers": {
-            "description": "Disable providers that are loaded automatically",
+            "description": "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
             "type": "array",
             "items": {
               "type": "string"
             }
           },
           "enabled_providers": {
-            "description": "When set, ONLY these providers will be enabled. All other providers will be ignored",
+            "description": "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
             "type": "array",
             "items": {
               "type": "string"

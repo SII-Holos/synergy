@@ -421,9 +421,28 @@ export namespace Provider {
     }
   }
 
+  // Configured providers cross the client boundary even when runtime filters exclude them, so strip all secrets.
+  function redactedClientInfo(provider: Info): Info {
+    return {
+      id: provider.id,
+      name: provider.name,
+      source: provider.source,
+      env: provider.env,
+      options: {},
+      models: mapValues(provider.models, (model) => ({
+        ...model,
+        options: {},
+        headers: {},
+        variants: {},
+      })),
+    }
+  }
+
   const workerState = {
     models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
     providers: {} as Record<string, Info>,
+    // Unfiltered, redacted config snapshot for client visibility only; runtime code must use providers.
+    configuredForClient: {} as Record<string, Info>,
     sdk: new Map<number, { instance: SDK; createdAt: number }>(),
     modelLoaders: {} as Record<string, CustomModelLoader>,
     timeouts: {} as Record<string, WorkerPlan["timeouts"]>,
@@ -612,6 +631,12 @@ export namespace Provider {
       }
       database[providerID] = parsed
     }
+    const configuredForClient = Object.fromEntries(
+      configProviders.flatMap(([providerID]) => {
+        const provider = database[providerID]
+        return provider ? ([[providerID, redactedClientInfo(provider)]] as const) : []
+      }),
+    )
 
     // load env
     const env = Env.all()
@@ -766,6 +791,7 @@ export namespace Provider {
     return {
       models,
       providers,
+      configuredForClient,
       sdk,
       modelLoaders,
     }
@@ -779,6 +805,10 @@ export namespace Provider {
 
   export async function list() {
     return state().then((state) => state.providers)
+  }
+
+  export async function listConfiguredForClient() {
+    return state().then((state) => state.configuredForClient)
   }
 
   /**

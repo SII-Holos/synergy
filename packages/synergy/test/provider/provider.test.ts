@@ -3,6 +3,7 @@ import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Provider } from "../../src/provider/provider"
+import { Config } from "../../src/config/config"
 import { Env } from "../../src/util/env"
 import { ModelsDev } from "../../src/provider/models"
 import { Provider as ProviderConfig } from "../../src/config/schema"
@@ -981,7 +982,7 @@ test("disabled_providers prevents loading even with env var", async () => {
   })
 })
 
-test("enabled_providers with empty array allows no providers", async () => {
+test("enabled_providers with empty array is treated as unset", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -1000,8 +1001,37 @@ test("enabled_providers with empty array allows no providers", async () => {
       Env.set("OPENAI_API_KEY", "test-openai-key")
     },
     fn: async () => {
+      const config = await Config.current()
+      expect(config.enabled_providers).toBeUndefined()
       const providers = await Provider.list()
-      expect(Object.keys(providers).length).toBe(0)
+      expect(providers["anthropic"]).toBeDefined()
+      expect(providers["openai"]).toBeDefined()
+    },
+  })
+})
+
+test("disabled_providers with empty array is treated as unset", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          disabled_providers: [],
+        }),
+      )
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("OPENAI_API_KEY", "test-openai-key")
+    },
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.disabled_providers).toBeUndefined()
+      const providers = await Provider.list()
+      expect(providers["openai"]).toBeDefined()
     },
   })
 })
