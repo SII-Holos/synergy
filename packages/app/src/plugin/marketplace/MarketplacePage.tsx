@@ -17,6 +17,7 @@ import type { RegistryPluginSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { InstalledPlugin } from "./types"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
+import { formatPluginBuildId } from "@/plugin/permission-presentation"
 import { PluginDetailDialog, type RegistrySource } from "./PluginDetailDialog"
 import { loadRegistryResource } from "./registry-resource"
 import {
@@ -543,9 +544,9 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
                 <span aria-hidden="true">·</span>
                 <span>
                   {_({
-                    id: "app.plugin.marketplace.generation.label",
-                    message: "Generation {id}",
-                    values: { id: generation().slice(0, 8) },
+                    id: "app.plugin.marketplace.build.label",
+                    message: "Build {id}",
+                    values: { id: formatPluginBuildId(generation()) },
                   })}
                 </span>
               </>

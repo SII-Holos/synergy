@@ -5705,10 +5705,6 @@ msgid "app.plugin.detail.notFoundInRegistry"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.permission.hostCapability"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.plugin.detail.permission.technicalDetails"
 msgstr ""
 
@@ -5820,6 +5816,10 @@ msgstr ""
 msgid "app.plugin.marketplace.apiVersion.label"
 msgstr ""
 
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.build.label"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.catalogSource"
 msgstr ""
@@ -5878,10 +5878,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.empty.officialEmpty"
-msgstr ""
-
-#. ── Plugin marketplace ────────────────────────────────────────────────────────
-msgid "app.plugin.marketplace.generation.label"
 msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────

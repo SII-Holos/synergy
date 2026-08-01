@@ -5705,10 +5705,6 @@ msgid "app.plugin.detail.notFoundInRegistry"
 msgstr "{pluginId} does not exist in this registry."
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.permission.hostCapability"
-msgstr "Synergy host capability {key}"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.detail.permission.technicalDetails"
 msgstr "Technical details"
 
@@ -5820,6 +5816,10 @@ msgstr "Plugin icon"
 msgid "app.plugin.marketplace.apiVersion.label"
 msgstr "API {version}"
 
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.build.label"
+msgstr "Build {id}"
+
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.catalogSource"
 msgstr "Plugin catalog source"
@@ -5879,10 +5879,6 @@ msgstr "No results for \"{query}\"."
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.empty.officialEmpty"
 msgstr "The official plugin registry has not returned any plugins yet."
-
-#. ── Plugin marketplace ────────────────────────────────────────────────────────
-msgid "app.plugin.marketplace.generation.label"
-msgstr "Generation {id}"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.heading.label"

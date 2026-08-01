@@ -9,6 +9,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { ApprovalReview } from "@ericsanchezok/synergy-sdk/client"
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
+import { presentPluginPermission } from "@/plugin/permission-presentation"
 import "./PluginConsentDialog.css"
 
 const DISPLAY_GROUPS: Array<{
@@ -105,17 +106,24 @@ function groupByDisplayCategory(items: readonly ReviewAccessItem[]) {
 
 function AccessItem(props: { item: ReviewAccessItem; muted?: boolean }) {
   const { _ } = useLingui()
+  const presentation = createMemo(() => presentPluginPermission(props.item))
   return (
     <li classList={{ "consent-item": true, "consent-item-muted": props.muted }}>
       <div class="consent-item-row">
         <Icon name={getSemanticIcon(iconForItem(props.item))} size="small" class="consent-item-icon" />
         <div class="consent-item-body">
-          <span class="consent-item-title">{props.item.title}</span>
-          <span class="consent-item-desc">{props.item.description}</span>
-          <details class="consent-item-technical">
-            <summary>{_({ id: "app.plugin.consent.technicalDetails", message: "Technical details" })}</summary>
-            <code>{props.item.technical ?? props.item.key}</code>
-          </details>
+          <span class="consent-item-title">{presentation().title}</span>
+          <Show when={presentation().description}>
+            {(description) => <span class="consent-item-desc">{description()}</span>}
+          </Show>
+          <Show when={presentation().technical}>
+            {(technical) => (
+              <details class="consent-item-technical">
+                <summary>{_({ id: "app.plugin.consent.technicalDetails", message: "Technical details" })}</summary>
+                <code>{technical()}</code>
+              </details>
+            )}
+          </Show>
         </div>
       </div>
     </li>

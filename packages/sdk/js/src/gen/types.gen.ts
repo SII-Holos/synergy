@@ -7319,6 +7319,9 @@ export type PluginStatus = {
   name: string
   version?: string
   apiVersion?: string
+  compatibility?: {
+    synergy: string
+  }
   generation?: string
   installation:
     | {

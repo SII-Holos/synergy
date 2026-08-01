@@ -39995,6 +39995,15 @@
           "apiVersion": {
             "type": "string"
           },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "synergy": {
+                "type": "string"
+              }
+            },
+            "required": ["synergy"]
+          },
           "generation": {
             "type": "string"
           },

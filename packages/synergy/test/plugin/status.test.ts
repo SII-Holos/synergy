@@ -8,6 +8,7 @@ import { markContributionDegraded, type LoadedPlugin } from "../../src/plugin/lo
 describe("plugin installation classification", () => {
   test("PluginStatus uses installation origin instead of the overloaded source field", () => {
     expect(PluginStatusSchema.shape).toHaveProperty("installation")
+    expect(PluginStatusSchema.shape).toHaveProperty("compatibility")
     expect(PluginStatusSchema.shape).not.toHaveProperty("source")
   })
 
@@ -60,7 +61,21 @@ describe("plugin installation classification", () => {
         version: "1.0.0",
         description: "Health identity test",
         capabilities: [],
-        contributions: [],
+        contributions: [
+          {
+            kind: "tool",
+            id: "public-tool",
+            description: "Visible to agents",
+            input: { type: "object", properties: {}, additionalProperties: false },
+          },
+          {
+            kind: "tool",
+            id: "internal-tool",
+            description: "Only available inside the plugin runtime",
+            input: { type: "object", properties: {}, additionalProperties: false },
+            exposure: { mode: "internal" },
+          },
+        ],
         artifacts: { generation: "generation-one" },
       },
       pluginDir: "/plugins/health-test",
@@ -75,6 +90,8 @@ describe("plugin installation classification", () => {
     markContributionDegraded(plugin, { kind: "tool", id: "shared" }, new Error("tool failed"))
 
     const status = await getStatusForLoadedPlugin(plugin)
+    expect(status.compatibility).toEqual({ synergy: ">=3.0.11" })
+    expect(status.tools.map((tool) => tool.id)).toEqual(["public-tool"])
     expect(status.contributionHealth).toMatchObject({
       "operation:shared": { state: "degraded", lastError: "operation failed" },
       "hook:shared": { state: "degraded", lastError: "hook failed" },

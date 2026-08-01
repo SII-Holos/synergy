@@ -64,6 +64,7 @@ export const PluginStatusSchema = z
     name: z.string(),
     version: z.string().optional(),
     apiVersion: z.string().optional(),
+    compatibility: z.object({ synergy: z.string() }).optional(),
     generation: z.string().optional(),
     installation: PluginInstallationSchema,
     trust: z.enum(["declarative", "trusted-import"]),
@@ -102,6 +103,7 @@ export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<Pl
     name: plugin.name,
     version: plugin.manifest.version,
     apiVersion: plugin.manifest.apiVersion,
+    compatibility: plugin.manifest.compatibility,
     generation: plugin.manifest.artifacts.generation,
     installation: classifyPluginInstallation(plugin),
     trust: manifestHasTrustedUI(plugin.manifest) ? "trusted-import" : "declarative",
@@ -112,7 +114,7 @@ export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<Pl
       .filter((item) => item.kind === "operation")
       .map((item) => ({ id: item.id, type: item.type, expose: item.expose })),
     tools: plugin.manifest.contributions
-      .filter((item) => item.kind === "tool")
+      .filter((item) => item.kind === "tool" && item.exposure?.mode !== "internal")
       .map((item) => ({
         id: item.id,
         fullId: PluginToolId.format(plugin.id, item.id),
@@ -143,6 +145,7 @@ function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & 
       name: plugin.name ?? plugin.pluginId,
       version: manifest.version,
       apiVersion: manifest.apiVersion,
+      compatibility: manifest.compatibility,
       generation: manifest.artifacts.generation,
       installation: classifyPluginInstallation({ spec: plugin.spec ?? plugin.pluginId, source: plugin.source }),
       trust: trusted ? "trusted-import" : "declarative",
@@ -155,7 +158,7 @@ function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & 
         .filter((item) => item.kind === "operation")
         .map((item) => ({ id: item.id, type: item.type as "query" | "command", expose: item.expose })),
       tools: manifest.contributions
-        .filter((item) => item.kind === "tool")
+        .filter((item) => item.kind === "tool" && item.exposure?.mode !== "internal")
         .map((item) => ({
           id: item.id,
           fullId: PluginToolId.format(plugin.pluginId, item.id),

@@ -5705,10 +5705,6 @@ msgid "app.plugin.detail.notFoundInRegistry"
 msgstr "{pluginId} 不存在于此注册表中。"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.permission.hostCapability"
-msgstr "Synergy 主机能力 {key}"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.detail.permission.technicalDetails"
 msgstr "技术详情"
 
@@ -5750,7 +5746,7 @@ msgstr "没有可用的注册表版本。"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.permissions"
-msgstr "权限"
+msgstr "这个插件可以"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.permissionsCount"
@@ -5820,6 +5816,10 @@ msgstr "插件图标"
 msgid "app.plugin.marketplace.apiVersion.label"
 msgstr "API {version}"
 
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.build.label"
+msgstr "构建 {id}"
+
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.catalogSource"
 msgstr "插件目录来源"
@@ -5879,10 +5879,6 @@ msgstr "没有关于“{query}”的结果。"
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.empty.officialEmpty"
 msgstr "官方插件注册表尚未返回任何插件。"
-
-#. ── Plugin marketplace ────────────────────────────────────────────────────────
-msgid "app.plugin.marketplace.generation.label"
-msgstr "第 {id} 代"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.heading.label"

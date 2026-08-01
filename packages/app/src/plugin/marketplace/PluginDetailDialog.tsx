@@ -15,6 +15,7 @@ import { VerifiedBadge } from "./VerifiedBadge"
 import { PluginConsentDialog, type PluginConsentIntent } from "../consent/PluginConsentDialog"
 import { checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
+import { formatPluginBuildId, presentPluginPermission } from "@/plugin/permission-presentation"
 import { loadRegistryResource } from "./registry-resource"
 import type { ApprovalReview, RegistryPluginSummary, RegistryPluginVersion } from "@ericsanchezok/synergy-sdk/client"
 import type { InstalledPlugin, PluginDetail } from "./types"
@@ -197,11 +198,6 @@ export function PluginDetailDialog(props: {
     return (installedDetail()?.capabilities ?? installedInfo()?.capabilities ?? []).map((key) => ({
       key,
       title: key,
-      description: _({
-        id: "app.plugin.detail.permission.hostCapability",
-        message: "Synergy host capability {key}",
-        values: { key },
-      }),
       technical: key,
     }))
   })
@@ -536,7 +532,7 @@ export function PluginDetailDialog(props: {
                   />
                   <DetailMetric
                     label={_({ id: "app.plugin.detail.metric.compatibility", message: "Requires Synergy" })}
-                    value={latestVersion()?.compatibility?.synergy ?? "—"}
+                    value={latestVersion()?.compatibility?.synergy ?? installedInfo()?.compatibility?.synergy ?? "—"}
                   />
                   <DetailMetric
                     label={_({ id: "app.plugin.detail.metric.updated", message: "Updated" })}
@@ -590,9 +586,9 @@ export function PluginDetailDialog(props: {
                           {(generation) => (
                             <span class="plugin-detail-chip">
                               {_({
-                                id: "app.plugin.marketplace.generation.label",
-                                message: "Generation {id}",
-                                values: { id: generation().slice(0, 12) },
+                                id: "app.plugin.marketplace.build.label",
+                                message: "Build {id}",
+                                values: { id: formatPluginBuildId(generation()) },
                               })}
                             </span>
                           )}
@@ -651,23 +647,34 @@ export function PluginDetailDialog(props: {
                   >
                     <div class="plugin-detail-permission-list">
                       <For each={features()}>
-                        {(feature) => (
-                          <div class="plugin-detail-permission-row">
-                            <div>
-                              <span class="plugin-detail-permission-key">{feature.title}</span>
-                              <span class="plugin-detail-permission-description">{feature.description}</span>
-                              <details class="plugin-detail-permission-technical">
-                                <summary>
-                                  {_({
-                                    id: "app.plugin.detail.permission.technicalDetails",
-                                    message: "Technical details",
-                                  })}
-                                </summary>
-                                <code>{feature.key}</code>
-                              </details>
+                        {(feature) => {
+                          const presentation = createMemo(() => presentPluginPermission(feature))
+                          return (
+                            <div class="plugin-detail-permission-row">
+                              <div>
+                                <span class="plugin-detail-permission-key">{presentation().title}</span>
+                                <Show when={presentation().description}>
+                                  {(description) => (
+                                    <span class="plugin-detail-permission-description">{description()}</span>
+                                  )}
+                                </Show>
+                                <Show when={presentation().technical}>
+                                  {(technical) => (
+                                    <details class="plugin-detail-permission-technical">
+                                      <summary>
+                                        {_({
+                                          id: "app.plugin.detail.permission.technicalDetails",
+                                          message: "Technical details",
+                                        })}
+                                      </summary>
+                                      <code>{technical()}</code>
+                                    </details>
+                                  )}
+                                </Show>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )
+                        }}
                       </For>
                     </div>
                   </Show>
@@ -697,24 +704,34 @@ export function PluginDetailDialog(props: {
                   >
                     <div class="plugin-detail-permission-list">
                       <For each={permissions()}>
-                        {(permission) => (
-                          <div class="plugin-detail-permission-row">
-                            <div>
-                              <span class="plugin-detail-permission-key">{permission.title ?? permission.key}</span>
-                              {/* permission.description is passed through as-is */}
-                              <span class="plugin-detail-permission-description">{permission.description}</span>
-                              <details class="plugin-detail-permission-technical">
-                                <summary>
-                                  {_({
-                                    id: "app.plugin.detail.permission.technicalDetails",
-                                    message: "Technical details",
-                                  })}
-                                </summary>
-                                <code>{permission.key}</code>
-                              </details>
+                        {(permission) => {
+                          const presentation = createMemo(() => presentPluginPermission(permission))
+                          return (
+                            <div class="plugin-detail-permission-row">
+                              <div>
+                                <span class="plugin-detail-permission-key">{presentation().title}</span>
+                                <Show when={presentation().description}>
+                                  {(description) => (
+                                    <span class="plugin-detail-permission-description">{description()}</span>
+                                  )}
+                                </Show>
+                                <Show when={presentation().technical}>
+                                  {(technical) => (
+                                    <details class="plugin-detail-permission-technical">
+                                      <summary>
+                                        {_({
+                                          id: "app.plugin.detail.permission.technicalDetails",
+                                          message: "Technical details",
+                                        })}
+                                      </summary>
+                                      <code>{technical()}</code>
+                                    </details>
+                                  )}
+                                </Show>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )
+                        }}
                       </For>
                     </div>
                   </Show>

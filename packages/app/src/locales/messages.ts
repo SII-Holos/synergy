@@ -1292,7 +1292,7 @@ export const pluginMarketplace = {
   installationBuiltIn: { id: "app.plugin.marketplace.installation.builtIn", message: "Built in" },
   versionLabel: { id: "app.plugin.marketplace.version.label", message: "v{version}" },
   apiVersionLabel: { id: "app.plugin.marketplace.apiVersion.label", message: "API {version}" },
-  generationLabel: { id: "app.plugin.marketplace.generation.label", message: "Generation {id}" },
+  buildLabel: { id: "app.plugin.marketplace.build.label", message: "Build {id}" },
   headingLabel: { id: "app.plugin.marketplace.heading.label", message: "{label} plugins" },
   pluginApiLabel: { id: "app.plugin.marketplace.pluginApi.label", message: "Plugin API {version}" },
   statusNeedsApproval: { id: "app.plugin.marketplace.status.needsApproval", message: "Needs approval" },
