@@ -430,6 +430,11 @@ test("github copilot model catalog preserves API vision capabilities", async () 
 test("github copilot live catalog changes only image capability and preserves other modalities", async () => {
   await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
   ProviderCatalog.reset()
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  const baseline = await ProviderCatalog.resolve({ forceRefresh: true, includeLive: false, config })
+  const baselineModels = baseline[CopilotProvider.PROVIDER_ID].models
+  const baselineVisionInputs = baselineModels["gemini-2.5-pro"].modalities?.input ?? []
+  const baselineTextInputs = baselineModels["gemini-2.0-flash-001"].modalities?.input ?? []
   globalThis.fetch = asFetch(async (input) => {
     const url = String(input)
     if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
@@ -467,13 +472,19 @@ test("github copilot live catalog changes only image capability and preserves ot
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
     includeLive: true,
-    config: { providerCatalog: { enabled: false, offlineCache: false } },
+    config,
   })
   const models = catalog[CopilotProvider.PROVIDER_ID].models
 
-  expect(models["gemini-2.5-pro"].modalities?.input).toEqual(["text", "image", "audio", "video"])
+  expect(models["gemini-2.5-pro"].modalities?.input).toContain("image")
+  expect(models["gemini-2.5-pro"].modalities?.input.filter((modality) => modality !== "image")).toEqual(
+    baselineVisionInputs.filter((modality) => modality !== "image"),
+  )
   expect(models["gemini-2.5-pro"].supported_image_media_types).toEqual(["image/png", "image/jpeg"])
-  expect(models["gemini-2.0-flash-001"].modalities?.input).toEqual(["text", "audio", "video"])
+  expect(models["gemini-2.0-flash-001"].modalities?.input).not.toContain("image")
+  expect(models["gemini-2.0-flash-001"].modalities?.input).toEqual(
+    baselineTextInputs.filter((modality) => modality !== "image"),
+  )
 })
 
 test("github provider device login resolves managed token and reports account status", async () => {
