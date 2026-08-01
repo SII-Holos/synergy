@@ -7837,6 +7837,14 @@ export type EventProviderAuthUpdated = {
   }
 }
 
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -7848,14 +7856,6 @@ export type EventInstallationUpdateAvailable = {
   type: "installation.update-available"
   properties: {
     version: string
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
   }
 }
 
@@ -8445,9 +8445,9 @@ export type Event =
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
   | EventProviderAuthUpdated
+  | EventConfigUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
-  | EventConfigUpdated
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged

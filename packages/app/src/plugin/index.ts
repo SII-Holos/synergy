@@ -17,6 +17,7 @@ export {
   registerSettingsSection,
   getSettingsSections,
   getSettingsSection,
+  subscribeSettingsSections,
 } from "./registries/settings-registry"
 
 export {

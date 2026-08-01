@@ -27337,6 +27337,7 @@
                   }
                 },
                 "temperature": {
+                  "default": false,
                   "type": "boolean"
                 },
                 "tool_call": {
@@ -27447,6 +27448,7 @@
                   "enum": ["active", "retained"]
                 },
                 "options": {
+                  "default": {},
                   "type": "object",
                   "propertyNames": {
                     "type": "string"
@@ -27468,8 +27470,7 @@
                     "npm": {
                       "type": "string"
                     }
-                  },
-                  "required": ["npm"]
+                  }
                 },
                 "variants": {
                   "description": "Variant-specific configuration",
@@ -41593,6 +41594,32 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -41627,32 +41654,6 @@
               }
             },
             "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -43312,13 +43313,13 @@
             "$ref": "#/components/schemas/Event.provider.auth.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.config.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
             "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"
