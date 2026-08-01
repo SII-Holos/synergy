@@ -306,18 +306,19 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const providerSummaries = createMemo(() => {
     const data = globalSync.data.provider
-    return data.all.map((provider) => {
-      const health = data.authHealth?.[provider.id]
-      const availability = data.runtimeAvailability?.[provider.id]
+    const providers = new Map(data.all.map((provider) => [provider.id, provider]))
+    return Object.values(data.connections).map((connection) => {
+      const provider = providers.get(connection.id)
+      const health = data.authHealth?.[connection.id]
+      const availability = data.runtimeAvailability?.[connection.id]
       return {
-        id: provider.id,
-        name: provider.name,
-        connected: data.connected.includes(provider.id),
-        modelCount: availability?.modelCount ?? Object.keys(provider.models).length,
+        ...connection,
+        connected: data.connected.includes(connection.id),
+        modelCount: availability?.modelCount ?? Object.keys(provider?.models ?? {}).length,
         health,
         availability,
-        catalog: data.modelCatalog?.[provider.id],
-        profile: data.profiles?.[provider.id],
+        catalog: data.modelCatalog?.[connection.id],
+        profile: data.profiles?.[connection.id],
       }
     })
   })

@@ -618,8 +618,10 @@ export namespace ProviderTransform {
     model: Provider.Model,
     sessionID: string,
     providerOptions?: Record<string, any>,
+    profileID?: string,
   ): Record<string, any> {
     const result: Record<string, any> = {}
+    const providerID = profileID ?? model.providerID
 
     if (model.api.npm === "@openrouter/ai-sdk-provider") {
       result["usage"] = {
@@ -630,17 +632,17 @@ export namespace ProviderTransform {
       }
     }
 
-    if (model.providerID === "baseten") {
+    if (providerID === "baseten") {
       result["chat_template_args"] = { enable_thinking: true }
     }
 
-    if (PromptCachePolicy.usesSessionPromptCacheKey(model, providerOptions)) {
+    if (PromptCachePolicy.usesSessionPromptCacheKey(model, providerOptions, profileID)) {
       result["promptCacheKey"] = sessionID
     }
 
     // openai and providers using openai package should set store to false by default
     // to avoid item_reference lookups that fail on proxies/non-OpenAI backends
-    if (model.providerID === "openai" || model.providerID === "openai-codex" || model.api.npm === "@ai-sdk/openai") {
+    if (providerID === "openai" || providerID === "openai-codex" || model.api.npm === "@ai-sdk/openai") {
       result["store"] = false
     }
 
@@ -665,7 +667,7 @@ export namespace ProviderTransform {
         // @ai-sdk/openai-compatible proxies (e.g. LiteLLM) do not support reasoningEffort + tools
         // on /v1/chat/completions and will return a 400 error.
         if (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/azure") {
-          if (model.providerID !== "openai-codex") {
+          if (providerID !== "openai-codex") {
             result["reasoningEffort"] = "medium"
             result["reasoningSummary"] = "auto"
           }
@@ -678,8 +680,8 @@ export namespace ProviderTransform {
         model.api.id.includes("gpt-5.") &&
         !model.api.id.includes("codex") &&
         !model.api.id.includes("-chat") &&
-        model.providerID !== "azure" &&
-        model.providerID !== "openai-codex" &&
+        providerID !== "azure" &&
+        providerID !== "openai-codex" &&
         model.api.npm === "@ai-sdk/openai"
       ) {
         result["textVerbosity"] = "low"
@@ -688,11 +690,12 @@ export namespace ProviderTransform {
     return result
   }
 
-  export function smallOptions(model: Provider.Model) {
-    if (model.providerID === "openai-codex") {
+  export function smallOptions(model: Provider.Model, profileID?: string) {
+    const providerID = profileID ?? model.providerID
+    if (providerID === "openai-codex") {
       return { store: false }
     }
-    if (model.providerID === "openai" || model.api.npm === "@ai-sdk/openai") {
+    if (providerID === "openai" || model.api.npm === "@ai-sdk/openai") {
       if (model.api.id.includes("gpt-5")) {
         if (model.api.id.includes("5.") || model.api.id.includes("5-mini")) {
           return { store: false, reasoningEffort: "low" }
@@ -701,14 +704,14 @@ export namespace ProviderTransform {
       }
       return { store: false }
     }
-    if (model.providerID === "google") {
+    if (providerID === "google") {
       // gemini-3 uses thinkingLevel, gemini-2.5 uses thinkingBudget
       if (model.api.id.includes("gemini-3")) {
         return { thinkingConfig: { thinkingLevel: "minimal" } }
       }
       return { thinkingConfig: { thinkingBudget: 0 } }
     }
-    if (model.providerID === "openrouter") {
+    if (providerID === "openrouter") {
       if (model.api.id.includes("google")) {
         return { reasoning: { enabled: false } }
       }
