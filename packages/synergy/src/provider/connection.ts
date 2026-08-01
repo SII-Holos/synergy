@@ -32,6 +32,15 @@ export namespace ProviderConnection {
   > & { profile?: string }
 
   export type ConnectionConfig = { provider?: Record<string, ConfiguredProvider> }
+  export interface CatalogSet {
+    /** Runtime catalog, including connection-scoped live projections. */
+    runtime: Record<string, ModelsDev.Provider>
+    /** Static catalog without credential-scoped live discovery results. */
+    inherited: Record<string, ModelsDev.Provider>
+  }
+  function sourceCatalog(catalogs: CatalogSet, modelsDevProviderID: string | undefined) {
+    return modelsDevProviderID ? catalogs.inherited : catalogs.runtime
+  }
 
   /** Fully-resolved semantics for one connection. Never partially resolved. */
   export interface ConnectionDefinition {
@@ -46,9 +55,9 @@ export namespace ProviderConnection {
     modelsDevProviderID: string | undefined
     /** Behavior profile id (explicit config or the canonical profile itself). */
     profileID: string | undefined
-    /** Derived base URL: options.baseURL ?? api ?? profile.baseURL. */
+    /** Derived base URL: options.baseURL ?? api ?? profile.baseURL ?? catalog API. */
     baseURL: string | undefined
-    /** Unified env rule: configured.env ?? profile.env. */
+    /** Unified env rule without leaking canonical credentials into mapped connections. */
     env: string[]
     configured: ConfiguredProvider | undefined
   }
@@ -56,17 +65,18 @@ export namespace ProviderConnection {
   export type ResolveResult =
     | { ok: true; connection: ConnectionDefinition }
     | { ok: false; reason: "unknown_profile"; connectionID: string; profileID?: string }
+    | { ok: false; reason: "unknown_catalog_source"; connectionID: string; catalogSourceID: string }
 
   export type ResolveAllResult =
     | { ok: true; connections: Record<string, ConnectionDefinition> }
     | { ok: false; failures: Array<Extract<ResolveResult, { ok: false }>> }
 
-  /**
-   * Resolve one connection ID against config. Explicit failures instead of
-   * silent degradation: a configured `profile` that is not registered is an
-   * `unknown_profile` result, never a bundled fallback.
-   */
-  export function resolveConnection(connectionID: string, config: ConnectionConfig | undefined): ResolveResult {
+  /** Resolve one connection ID against config and the authoritative catalogs. */
+  export function resolveConnection(
+    connectionID: string,
+    config: ConnectionConfig | undefined,
+    catalogs: CatalogSet,
+  ): ResolveResult {
     const configured = config?.provider?.[connectionID]
     const explicitProfileID = configured?.profile
     const profile = explicitProfileID ? ProviderProfile.get(explicitProfileID) : ProviderProfile.get(connectionID)
@@ -77,18 +87,26 @@ export namespace ProviderConnection {
     }
 
     const catalogSourceID = configured?.modelsDevProviderID ?? profile?.id ?? connectionID
-    const env = configured?.env ?? profile?.env ?? []
+    const source = sourceCatalog(catalogs, configured?.modelsDevProviderID)[catalogSourceID]
+    if (configured?.modelsDevProviderID && !source) {
+      return { ok: false, reason: "unknown_catalog_source", connectionID, catalogSourceID }
+    }
+    const isMapped = profile ? connectionID !== profile.id : false
+    const env =
+      configured?.env ?? profile?.env ?? (!isMapped && !configured?.modelsDevProviderID ? source?.env : undefined) ?? []
+    // Catalog endpoints describe transport, not credential ownership, so explicit inheritance may safely reuse them.
     const baseURL =
       (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
       configured?.api ??
-      profile?.baseURL
+      profile?.baseURL ??
+      source?.api
 
     return {
       ok: true,
       connection: {
         connectionID,
         profile,
-        isMapped: profile ? connectionID !== profile.id : false,
+        isMapped,
         catalogSourceID,
         modelsDevProviderID: configured?.modelsDevProviderID,
         profileID: explicitProfileID ?? (profile ? profile.id : undefined),
@@ -100,7 +118,7 @@ export namespace ProviderConnection {
   }
 
   /** Resolve every registered canonical profile plus every configured connection. */
-  export function resolveAllConnections(config: ConnectionConfig | undefined): ResolveAllResult {
+  export function resolveAllConnections(config: ConnectionConfig | undefined, catalogs: CatalogSet): ResolveAllResult {
     const connections: Record<string, ConnectionDefinition> = {}
     const failures: Array<Extract<ResolveResult, { ok: false }>> = []
     const connectionIDs = new Set([
@@ -108,7 +126,7 @@ export namespace ProviderConnection {
       ...Object.keys(config?.provider ?? {}),
     ])
     for (const connectionID of connectionIDs) {
-      const resolved = resolveConnection(connectionID, config)
+      const resolved = resolveConnection(connectionID, config, catalogs)
       if (resolved.ok) {
         connections[connectionID] = resolved.connection
         continue
@@ -121,8 +139,7 @@ export namespace ProviderConnection {
 
   export interface ComposeInput {
     connection: ConnectionDefinition
-    /** Authoritative catalog (already merged remote/live projections). */
-    catalog: Record<string, ModelsDev.Provider>
+    catalogs: CatalogSet
     auth?: Auth.Info
   }
 
@@ -169,6 +186,7 @@ export namespace ProviderConnection {
       cost: { input: 0, output: 0 },
       limit: { context: 128000, input: 96000, output: 32000 },
       options: {},
+      modalities: { input: ["text"], output: ["text"] },
     }
   }
 
@@ -204,10 +222,12 @@ export namespace ProviderConnection {
    * the agent worker — so all of them merge in the same order.
    */
   export async function composeProviderSpec(input: ComposeInput): Promise<ComposeResult> {
-    const { connection, catalog, auth } = input
+    const { connection, catalogs, auth } = input
     const { profile, configured } = connection
 
-    const source = connection.catalogSourceID ? catalog[connection.catalogSourceID] : undefined
+    const source = connection.catalogSourceID
+      ? sourceCatalog(catalogs, connection.modelsDevProviderID)[connection.catalogSourceID]
+      : undefined
     if (!source && connection.modelsDevProviderID) {
       return {
         ok: false,
@@ -216,11 +236,7 @@ export namespace ProviderConnection {
         catalogSourceID: connection.catalogSourceID,
       }
     }
-    const env =
-      configured?.env ??
-      profile?.env ??
-      (!connection.isMapped && !connection.modelsDevProviderID ? source?.env : undefined) ??
-      []
+    const env = connection.env
     const catalogSource = source
       ? {
           ...source,
@@ -229,6 +245,14 @@ export namespace ProviderConnection {
           env,
           api: configured?.api ?? source.api,
           npm: configured?.npm ?? source.npm,
+          models: configured?.npm
+            ? Object.fromEntries(
+                Object.entries(source.models).map(([modelID, model]) => [
+                  modelID,
+                  { ...model, provider: { ...(model.provider ?? {}), npm: configured.npm } },
+                ]),
+              )
+            : source.models,
         }
       : undefined
     const emptySource: ModelsDev.Provider = {
