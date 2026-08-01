@@ -1,6 +1,7 @@
 import { Log } from "../../../util/log"
 import type * as ChannelTypes from "../../types"
 import type { FeishuApiContext } from "./api-context"
+import { degradeMarkdownImages, materializeMarkdownImages } from "./markdown-image"
 import { FeishuStreamingState } from "./streaming-state"
 
 const log = Log.create({ service: "channel.feishu.streaming-card" })
@@ -146,7 +147,10 @@ export function renderToolProgress(progress: ChannelTypes.StreamingToolProgress[
 }
 
 function renderAnswerContent(answerText: string): string {
-  return normalizeMarkdown(answerText)
+  // Incremental renders must stay synchronous: degrade image syntax to links
+  // so Feishu never rejects the card element. The final answer is materialized
+  // (downloaded and uploaded to image_key) once in finalize().
+  return normalizeMarkdown(degradeMarkdownImages(answerText))
 }
 
 function renderStatusContent(state: Pick<CardState, "answerText" | "toolProgress" | "error">, closed: boolean): string {
@@ -413,7 +417,12 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     try {
       if (!deliveryFailure && !tooLarge) {
         try {
-          await this.applyRender(desired, finalRendered)
+          // The final answer is written once: materialize image URLs into
+          // image_key so the closed card renders real images instead of links.
+          // Materialize the raw text (the rendered sections are already
+          // degraded), then render it with the same pipeline as increments.
+          const materializedAnswer = renderAnswerContent(await materializeMarkdownImages(desired.answerText, this.opts))
+          await this.applyRender(desired, { ...finalRendered, answerContent: materializedAnswer })
         } catch (cause) {
           deliveryFailure = cause
           log.error("streaming card final content update failed", { error: cause, cardId: this.state.cardId })
