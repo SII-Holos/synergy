@@ -2526,10 +2526,6 @@ export type ProviderConfig = {
     }
   }
   /**
-   * Canonical provider profile whose runtime behavior this account connection uses
-   */
-  profile?: string
-  /**
    * Models.dev provider id to use as this provider connection's model catalog source
    */
   modelsDevProviderID?: string

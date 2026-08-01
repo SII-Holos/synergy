@@ -122,9 +122,7 @@ When the user wants a second, independently selectable account for a provider th
 }
 ```
 
-`modelsDevProviderID` inherits model catalog metadata. A registered `profile` can separately enable the canonical provider's runtime, auth recovery, usage, model factory, and credential-aware live-discovery behavior. The connection keeps its own provider ID, credentials, health state, live catalog snapshot, endpoint/SDK overrides, allowlist/blacklist, and explicit model overrides.
-
-Omit `profile` when the connection is only an OpenAI-compatible gateway that should share model metadata without canonical OAuth or request behavior.
+This inherits model catalog metadata only. The connection keeps its own provider ID, credentials, endpoint/SDK overrides, allowlist/blacklist, and explicit model overrides. It does not inherit provider-specific runtime, auth, usage, or live-discovery behavior.
 
 **Overriding baseURL for a built-in provider:**
 ```jsonc

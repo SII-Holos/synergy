@@ -27492,11 +27492,6 @@
               }
             }
           },
-          "profile": {
-            "description": "Canonical provider profile whose runtime behavior this account connection uses",
-            "type": "string",
-            "minLength": 1
-          },
           "modelsDevProviderID": {
             "description": "Models.dev provider id to use as this provider connection's model catalog source",
             "type": "string",

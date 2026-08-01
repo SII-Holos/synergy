@@ -25,20 +25,11 @@ import { ProviderProfile } from "./profile"
 export namespace ProviderConnection {
   const log = Log.create({ service: "provider.connection" })
 
-  /** Canonical `provider.<id>` config fields used for connection resolution. */
+  /** Resolver input; `profile` remains internal until production consumers migrate. */
   export type ConfiguredProvider = Pick<
     ConfigProvider,
-    | "profile"
-    | "modelsDevProviderID"
-    | "name"
-    | "api"
-    | "npm"
-    | "env"
-    | "options"
-    | "models"
-    | "whitelist"
-    | "blacklist"
-  >
+    "modelsDevProviderID" | "name" | "api" | "npm" | "env" | "options" | "models" | "whitelist" | "blacklist"
+  > & { profile?: string }
 
   export type ConnectionConfig = { provider?: Record<string, ConfiguredProvider> }
 
@@ -49,7 +40,7 @@ export namespace ProviderConnection {
     profile: ProviderProfile.Profile | undefined
     /** True when the connection ID differs from its behavior profile id. */
     isMapped: boolean
-    /** Catalog source: modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id ?? connectionID. */
+    /** Catalog source: an explicit source override, otherwise the profile projection or connection itself. */
     catalogSourceID: string
     /** Explicit Phase 1 catalog inheritance, when configured. */
     modelsDevProviderID: string | undefined
@@ -66,6 +57,10 @@ export namespace ProviderConnection {
     | { ok: true; connection: ConnectionDefinition }
     | { ok: false; reason: "unknown_profile"; connectionID: string; profileID?: string }
 
+  export type ResolveAllResult =
+    | { ok: true; connections: Record<string, ConnectionDefinition> }
+    | { ok: false; failures: Array<Extract<ResolveResult, { ok: false }>> }
+
   /**
    * Resolve one connection ID against config. Explicit failures instead of
    * silent degradation: a configured `profile` that is not registered is an
@@ -81,8 +76,7 @@ export namespace ProviderConnection {
       return { ok: false, reason: "unknown_profile", connectionID, profileID: explicitProfileID }
     }
 
-    const catalogSourceID =
-      configured?.modelsDevProviderID ?? profile?.modelsDevProviderID ?? profile?.id ?? connectionID
+    const catalogSourceID = configured?.modelsDevProviderID ?? profile?.id ?? connectionID
     const env = configured?.env ?? profile?.env ?? []
     const baseURL =
       (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
@@ -106,17 +100,23 @@ export namespace ProviderConnection {
   }
 
   /** Resolve every registered canonical profile plus every configured connection. */
-  export function resolveAllConnections(config: ConnectionConfig | undefined): Record<string, ConnectionDefinition> {
-    const result: Record<string, ConnectionDefinition> = {}
-    for (const profile of ProviderProfile.all()) {
-      const resolved = resolveConnection(profile.id, config)
-      if (resolved.ok) result[profile.id] = resolved.connection
-    }
-    for (const connectionID of Object.keys(config?.provider ?? {})) {
+  export function resolveAllConnections(config: ConnectionConfig | undefined): ResolveAllResult {
+    const connections: Record<string, ConnectionDefinition> = {}
+    const failures: Array<Extract<ResolveResult, { ok: false }>> = []
+    const connectionIDs = new Set([
+      ...ProviderProfile.all().map((profile) => profile.id),
+      ...Object.keys(config?.provider ?? {}),
+    ])
+    for (const connectionID of connectionIDs) {
       const resolved = resolveConnection(connectionID, config)
-      if (resolved.ok) result[connectionID] = resolved.connection
+      if (resolved.ok) {
+        connections[connectionID] = resolved.connection
+        continue
+      }
+      failures.push(resolved)
     }
-    return result
+    if (failures.length > 0) return { ok: false, failures }
+    return { ok: true, connections }
   }
 
   export interface ComposeInput {
@@ -180,10 +180,11 @@ export namespace ProviderConnection {
     const modelApiIDs = Object.fromEntries(Object.entries(models).map(([modelID, model]) => [modelID, model.id]))
     for (const [modelID, raw] of Object.entries(configured?.models ?? {})) {
       const model = raw as Record<string, any>
-      const sourceID = typeof model.id === "string" ? model.id : modelID
+      const explicitSourceID = typeof model.id === "string" ? model.id : undefined
+      const sourceID = explicitSourceID ?? modelID
       const base = models[sourceID] ?? models[modelID] ?? fallbackModel(source, sourceID)
       models[modelID] = { ...(mergeDeep(base, model) as ModelsDev.Model), id: modelID }
-      modelApiIDs[modelID] = base.id
+      modelApiIDs[modelID] = explicitSourceID ?? base.id
     }
     for (const modelID of Object.keys(models)) {
       if (
@@ -215,7 +216,11 @@ export namespace ProviderConnection {
         catalogSourceID: connection.catalogSourceID,
       }
     }
-    const env = configured?.env ?? profile?.env ?? (connection.modelsDevProviderID ? [] : source?.env) ?? []
+    const env =
+      configured?.env ??
+      profile?.env ??
+      (!connection.isMapped && !connection.modelsDevProviderID ? source?.env : undefined) ??
+      []
     const catalogSource = source
       ? {
           ...source,

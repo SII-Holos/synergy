@@ -6,6 +6,9 @@ import { ProviderProfile } from "../../src/provider/profile"
 
 const profileID = `connection-test-${Math.random().toString(36).slice(2)}`
 const mappedConnectionID = `${profileID}-account`
+const projectedProfileID = `${profileID}-projected`
+const projectedSourceID = `${profileID}-source`
+const noEnvProfileID = `${profileID}-no-env`
 const envName = `SYNERGY_TEST_CONNECTION_${profileID.toUpperCase().replace(/-/g, "_")}`
 
 const runtimeOptionsAuth: { value?: string } = {}
@@ -23,6 +26,17 @@ ProviderProfile.register({
     return { temperature: 0.2 }
   },
   resolveAuth: async () => undefined,
+})
+
+ProviderProfile.register({
+  id: projectedProfileID,
+  name: "Projected Connection Test Provider",
+  modelsDevProviderID: projectedSourceID,
+})
+
+ProviderProfile.register({
+  id: noEnvProfileID,
+  name: "No-env Connection Test Provider",
 })
 
 function catalogSource(models: Record<string, ModelsDev.Model>): ModelsDev.Provider {
@@ -60,9 +74,8 @@ async function compose(input: ProviderConnection.ComposeInput) {
 }
 
 describe("ProviderConnection.resolveConnection", () => {
-  test("canonical provider config accepts a non-empty runtime profile", () => {
-    expect(ProviderConfig.parse({ profile: profileID }).profile).toBe(profileID)
-    expect(ProviderConfig.safeParse({ profile: "" }).success).toBe(false)
+  test("canonical provider config does not expose profile mapping before runtime consumers migrate", () => {
+    expect(ProviderConfig.safeParse({ profile: profileID }).success).toBe(false)
   })
 
   test("maps a configured connection to its profile and inherits profile env/baseURL", () => {
@@ -88,6 +101,15 @@ describe("ProviderConnection.resolveConnection", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.connection.catalogSourceID).toBe("other-catalog")
+  })
+
+  test("profile mappings use the profile's projected catalog entry", () => {
+    const result = ProviderConnection.resolveConnection(mappedConnectionID, {
+      provider: { [mappedConnectionID]: { profile: projectedProfileID } },
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.connection.catalogSourceID).toBe(projectedProfileID)
   })
 
   test("configured env overrides profile env", () => {
@@ -140,8 +162,27 @@ describe("ProviderConnection.resolveConnection", () => {
     const all = ProviderConnection.resolveAllConnections({
       provider: { [mappedConnectionID]: { profile: profileID } },
     })
-    expect(all[profileID]?.isMapped).toBe(false)
-    expect(all[mappedConnectionID]?.isMapped).toBe(true)
+    expect(all.ok).toBe(true)
+    if (!all.ok) return
+    expect(all.connections[profileID]?.isMapped).toBe(false)
+    expect(all.connections[mappedConnectionID]?.isMapped).toBe(true)
+  })
+
+  test("resolveAllConnections propagates invalid configured profiles", () => {
+    const all = ProviderConnection.resolveAllConnections({
+      provider: { [mappedConnectionID]: { profile: "does-not-exist" } },
+    })
+    expect(all).toEqual({
+      ok: false,
+      failures: [
+        {
+          ok: false,
+          reason: "unknown_profile",
+          connectionID: mappedConnectionID,
+          profileID: "does-not-exist",
+        },
+      ],
+    })
   })
 })
 
@@ -177,6 +218,29 @@ describe("ProviderConnection.composeProviderSpec", () => {
     expect(spec.models["model-renamed"].id).toBe("model-renamed")
     expect(spec.modelApiIDs["model-renamed"]).toBe("model-b")
     expect(spec.models["model-renamed"].name).toBe("Renamed B")
+  })
+
+  test("explicit upstream model ids win while catalog metadata is retained", async () => {
+    const connection = ProviderConnection.resolveConnection(mappedConnectionID, {
+      provider: {
+        [mappedConnectionID]: {
+          profile: profileID,
+          models: {
+            "model-a": { id: "deployment-123", name: "Deployment A" },
+          },
+        },
+      },
+    })
+    if (!connection.ok) throw new Error("expected ok")
+
+    const spec = await compose({
+      connection: connection.connection,
+      catalog: { [profileID]: catalogSource({ "model-a": model("model-a", { reasoning: true }) }) },
+    })
+
+    expect(spec.modelApiIDs["model-a"]).toBe("deployment-123")
+    expect(spec.models["model-a"].reasoning).toBe(true)
+    expect(spec.models["model-a"].name).toBe("Deployment A")
   })
 
   test("connection overrides win over profile runtime options", async () => {
@@ -251,6 +315,27 @@ describe("ProviderConnection.composeProviderSpec", () => {
 
     expect(spec.env).toEqual([envName])
     expect(spec.catalogSource?.env).toEqual([envName])
+  })
+
+  test("mapped profiles do not inherit canonical catalog environment keys", async () => {
+    const connectionID = `${noEnvProfileID}-account`
+    const connection = ProviderConnection.resolveConnection(connectionID, {
+      provider: { [connectionID]: { profile: noEnvProfileID } },
+    })
+    if (!connection.ok) throw new Error("expected ok")
+    const source = {
+      ...catalogSource({ "model-a": model("model-a") }),
+      id: noEnvProfileID,
+      env: ["CANONICAL_PROVIDER_API_KEY"],
+    }
+
+    const spec = await compose({
+      connection: connection.connection,
+      catalog: { [noEnvProfileID]: source },
+    })
+
+    expect(spec.env).toEqual([])
+    expect(spec.catalogSource?.env).toEqual([])
   })
 })
 
