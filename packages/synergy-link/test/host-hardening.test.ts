@@ -305,8 +305,32 @@ describe("synergy-link host hardening", () => {
         expect(response.ok).toBe(false)
         if (!response.ok) {
           expect(response.error.code).toBe("invalid_request")
-          expect(response.error.message).toContain("Blocked detached daemon launch pattern")
+          expect(response.error.message).toContain("Blocked direct detached daemon launch pattern")
         }
+      }
+    } finally {
+      await host.rpc.processRegistry.reset()
+    }
+  })
+
+  test("allows benign shell syntax that only mentions daemon tokens or ampersands", async () => {
+    const host = createHost()
+    try {
+      const sessionID = await openSession(host)
+      const commands = [
+        `printf '%s' 'a & b'`,
+        `printf '%s' 'nohup setsid disown daemonize tmux new-session -d screen -dm'`,
+        "printf first && printf second",
+        "printf redirected 2>&1",
+        "printf redirected &> /dev/null",
+        "printf redirected &>> /dev/null",
+        "printf piped |& tee /dev/null",
+        "sh -c 'printf wrapped'",
+      ]
+
+      for (const [index, command] of commands.entries()) {
+        const response = await execute(host, sessionID, `req_benign_${index}`, command)
+        expect(response.ok).toBe(true)
       }
     } finally {
       await host.rpc.processRegistry.reset()

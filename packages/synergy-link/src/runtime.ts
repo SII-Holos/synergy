@@ -393,6 +393,7 @@ export class SynergyLinkRuntime {
     const state = requireState(this)
     state.approvalMode = mode
     await SynergyLinkStore.saveState(state)
+    await this.#enforceCurrentSessionPolicy()
     return { mode }
   }
 
@@ -439,6 +440,7 @@ export class SynergyLinkRuntime {
       state.trusted.ownerUserIDs = state.trusted.ownerUserIDs.filter((item) => item !== userID)
     }
     await SynergyLinkStore.saveState(state)
+    await this.#enforceCurrentSessionPolicy()
     return {
       agents: state.trusted.agentIDs,
       users: state.trusted.ownerUserIDs,
@@ -615,6 +617,16 @@ export class SynergyLinkRuntime {
         throw new Error(`Unsupported control action: ${String(unsupported)}`)
       }
     }
+  }
+
+  async #enforceCurrentSessionPolicy() {
+    const state = requireState(this)
+    const current = this.sessions.current()
+    if (!current || state.approvalMode !== "trusted-only") return
+    const trusted =
+      state.trusted.agentIDs.includes(current.remoteAgentID) ||
+      state.trusted.ownerUserIDs.includes(current.remoteOwnerUserID)
+    if (!trusted) await this.sessions.kickCurrent(false)
   }
 
   async decideSessionOpen(input: {

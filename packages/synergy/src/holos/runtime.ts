@@ -587,6 +587,8 @@ export class HolosProvider {
         this.state.peerId = null
       }
 
+      signal.addEventListener("abort", cleanup, { once: true })
+
       ws.addEventListener("open", () => {
         opened = true
         resolve()

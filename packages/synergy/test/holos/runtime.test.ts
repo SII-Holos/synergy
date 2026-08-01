@@ -153,6 +153,50 @@ describe("HolosProvider send delivery", () => {
       abort.abort()
     }
   })
+
+  test("closes the websocket and settles in-flight sends when the runtime signal aborts", async () => {
+    const closed = Promise.withResolvers<void>()
+    using server = Bun.serve({
+      port: 0,
+      fetch(request, server) {
+        const url = new URL(request.url)
+        if (url.pathname.endsWith("/ws_token")) {
+          return Response.json({ code: 0, data: { ws_token: "test-token", expires_in: 60 } })
+        }
+        if (url.pathname.endsWith("/ws") && server.upgrade(request)) return
+        return new Response("Not found", { status: 404 })
+      },
+      websocket: {
+        close() {
+          closed.resolve()
+        },
+        message() {},
+      },
+    })
+    const abort = new AbortController()
+    const provider = new HolosProvider()
+
+    await HolosAccounts.saveAndActivateAccount(testAgentID, "test-secret")
+    await provider.connect({
+      config: {
+        enabled: true,
+        apiUrl: `http://127.0.0.1:${server.port}`,
+        wsUrl: `ws://127.0.0.1:${server.port}`,
+        portalUrl: `http://127.0.0.1:${server.port}`,
+      },
+      signal: abort.signal,
+    })
+
+    const pending = provider.send("target-agent", "test.event", { value: "ok" })
+    abort.abort()
+
+    await expect(pending).resolves.toEqual({ sent: false, reason: "not_connected" })
+    await expect(Promise.race([closed.promise, Bun.sleep(500).then(() => "timeout")])).resolves.not.toBe("timeout")
+    await expect(provider.send("target-agent", "test.event", { value: "after-abort" })).resolves.toEqual({
+      sent: false,
+      reason: "not_connected",
+    })
+  })
 })
 
 test("does not block an explicit send on a cached offline presence mark", async () => {

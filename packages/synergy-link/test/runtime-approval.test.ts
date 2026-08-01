@@ -107,4 +107,68 @@ describe("synergy-link runtime approval", () => {
       }),
     )
   })
+
+  test("revoking trusted-only access ends the current session immediately", async () => {
+    await SynergyLinkCLIBackend.setApproval("trusted-only")
+    await SynergyLinkCLIBackend.addTrust("agent", "agent_revoked")
+    const runtime = await SynergyLinkRuntime.create()
+    const linkID = runtime.state?.linkID
+    expect(linkID).toBeTruthy()
+
+    const opened = await runtime.inbound.handle({
+      caller: { type: "holos", agentID: "agent_revoked", ownerUserID: 7 },
+      body: {
+        version: 2,
+        requestID: "req_open_before_revoke",
+        linkID,
+        tool: "session",
+        action: "open",
+        payload: { action: "open" },
+      },
+    })
+    expect(opened.ok).toBe(true)
+    expect(runtime.sessions.current()?.remoteAgentID).toBe("agent_revoked")
+
+    await runtime.removeTrust("agent", "agent_revoked")
+
+    expect(runtime.sessions.current()).toBeNull()
+    const reopened = await runtime.inbound.handle({
+      caller: { type: "holos", agentID: "agent_revoked", ownerUserID: 7 },
+      body: {
+        version: 2,
+        requestID: "req_open_after_revoke",
+        linkID,
+        tool: "session",
+        action: "open",
+        payload: { action: "open" },
+      },
+    })
+    expect(reopened.ok).toBe(true)
+    if (reopened.ok && reopened.tool === "session") expect(reopened.result.metadata.status).toBe("refused")
+  })
+
+  test("switching to trusted-only ends an untrusted current session immediately", async () => {
+    await SynergyLinkCLIBackend.setApproval("auto")
+    const runtime = await SynergyLinkRuntime.create()
+    const linkID = runtime.state?.linkID
+    expect(linkID).toBeTruthy()
+
+    const opened = await runtime.inbound.handle({
+      caller: { type: "holos", agentID: "agent_untrusted", ownerUserID: 9 },
+      body: {
+        version: 2,
+        requestID: "req_open_before_policy_change",
+        linkID,
+        tool: "session",
+        action: "open",
+        payload: { action: "open" },
+      },
+    })
+    expect(opened.ok).toBe(true)
+    expect(runtime.sessions.current()?.remoteAgentID).toBe("agent_untrusted")
+
+    await runtime.setApproval("trusted-only")
+
+    expect(runtime.sessions.current()).toBeNull()
+  })
 })
