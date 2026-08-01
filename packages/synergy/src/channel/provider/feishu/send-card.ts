@@ -1,4 +1,5 @@
 import type { FeishuApiContext } from "./api-context"
+import { materializeMarkdownImages } from "./markdown-image"
 
 const REQUEST_TIMEOUT_MS = 15_000
 
@@ -85,7 +86,8 @@ export async function sendFeishuMarkdownCard(
     replyInThread?: boolean
   },
 ): Promise<{ messageId: string } | undefined> {
-  const cardJson = buildFeishuMarkdownCard(input.text)
+  const text = await materializeMarkdownImages(input.text, input)
+  const cardJson = buildFeishuMarkdownCard(text)
   if (!cardJson) return undefined
   return sendFeishuCard({ ...input, cardJson, kind: "markdown reply" })
 }

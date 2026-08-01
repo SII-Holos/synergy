@@ -13,6 +13,14 @@ type PreparedMediaMessage =
   | { msgType: "media"; content: string }
 
 export namespace FeishuOutboundMedia {
+  export async function uploadImageFromUrl(url: string, ctx: FeishuApiContext): Promise<UploadImageResult> {
+    const asset = await loadAsset({ type: "image", url })
+    if (!asset.contentType.startsWith("image/")) {
+      throw new Error(`Refusing to upload non-image content type: ${asset.contentType}`)
+    }
+    return uploadImage(asset, ctx)
+  }
+
   export async function prepare(part: Exclude<ChannelTypes.OutboundPart, { type: "text" }>, ctx: FeishuApiContext) {
     const asset = await loadAsset(part)
 
