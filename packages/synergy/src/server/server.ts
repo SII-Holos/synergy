@@ -72,6 +72,7 @@ import { GitHubConfiguredRoute } from "./github-configured"
 import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
 import { BrowserRoute, configureBrowserViewerOrigins } from "./browser-route"
+import { BrowserHostBrokerProcess } from "../browser/host-broker-process"
 import { BlueprintRoute } from "./blueprint"
 import { LatticeRoute } from "./lattice"
 import { WorkflowRoute } from "./workflow"
@@ -1622,6 +1623,7 @@ export namespace Server {
     if (!server) throw new Error(`Failed to start server on port ${opts.port}`)
 
     _url = server.url
+    BrowserHostBrokerProcess.configureServerUrl(server.url.toString())
 
     if (isExternalHost && _corsWhitelist.size > 0) {
       log.info("cors auto-detected LAN origins", { origins: _corsWhitelist })

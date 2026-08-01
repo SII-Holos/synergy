@@ -1530,6 +1530,10 @@ export namespace ToolResolver {
                   sessionID: runtimeInput.session?.id,
                   agentControlProfile: runtimeInput.agent.controlProfile,
                 })
+                // The bash detached-daemon guard reads ctx.extra.controlProfile; carry the
+                // session-effective profile (session > agent config) so full_access sessions
+                // bypass the guard as documented (issue #1006).
+                ;(ctx.extra as any).controlProfile = profileId
                 const synergyRoot = Global.Path.root
                 const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
                 const pluginToolIds = await currentPluginToolIds()
@@ -1785,6 +1789,8 @@ export namespace ToolResolver {
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,
                   })
+                  // Same effective-profile carry as the builtin path (issue #1006).
+                  ;(ctx.extra as any).controlProfile = profileId
                   const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()

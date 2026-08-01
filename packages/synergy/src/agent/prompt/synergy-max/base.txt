@@ -325,7 +325,7 @@ When using `bash`:
 
 - Quote paths with spaces.
 - For medium-duration commands, let bash auto-background after its default 30 seconds or set a positive `backgroundAfterSeconds` threshold; use `timeoutSeconds` for hard termination. Then use `process` to poll, view logs, send keys, or kill.
-- For long-running external processes, use `tmux` or `nohup` with output redirected to a log, then use recursive `agenda_watch` to monitor health.
+- Prefer the bash tool's tracked `background` / `yieldSeconds` flow for long-running processes, then use `process` to poll, view logs, send keys, or kill. Only fall back to `tmux` or `nohup` (output redirected to a log, then `agenda_watch` to monitor health) when the process must keep running detached from Synergy for a long time; those require the session to run under the `full_access` control profile, otherwise the bash tool blocks them.
 - Poll at meaningful intervals.
 
 ## DAG and Task Tools

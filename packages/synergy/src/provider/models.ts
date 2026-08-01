@@ -83,29 +83,41 @@ export namespace ModelsDev {
     return inFlight
   }
 
+  const MIRRORS = [
+    "https://models.dev/api.json",
+    "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/models.json",
+  ] as const
+
   async function doRefresh() {
     const file = Bun.file(filepath)
     log.info("refreshing", { file })
-    const result = await fetch("https://models.dev/api.json", {
-      headers: {
-        "User-Agent": Installation.USER_AGENT,
-      },
-      signal: AbortSignal.timeout(10 * 1000),
-    }).catch((error) => {
-      log.warn("failed to fetch models catalog", { error })
-    })
-    if (!result) return
-    if (!result.ok) {
-      log.warn("models catalog refresh returned non-success status", { status: result.status })
-      return
+    let text: string | undefined
+    for (const url of MIRRORS) {
+      const result = await fetch(url, {
+        headers: {
+          "User-Agent": Installation.USER_AGENT,
+        },
+        signal: AbortSignal.timeout(10 * 1000),
+      }).catch((error) => {
+        log.warn("failed to fetch models catalog", { url, error })
+      })
+      if (!result) continue
+      if (!result.ok) {
+        log.warn("models catalog refresh returned non-success status", { url, status: result.status })
+        continue
+      }
+      const candidate = await result.text()
+      if (!parseCatalogText(candidate)) {
+        log.warn("ignored invalid refreshed models catalog", { url })
+        continue
+      }
+      text = candidate
+      break
     }
+    if (!text) return
 
-    const text = await result.text()
     const parsed = parseCatalogText(text)
-    if (!parsed) {
-      log.warn("ignored invalid refreshed models catalog")
-      return
-    }
+    if (!parsed) return
 
     await Bun.write(file, text)
     cache = parsed

@@ -27,6 +27,7 @@ import type { FeishuApiContext } from "./api-context"
 import { FeishuOutboundMedia } from "./outbound-media"
 import { parseFeishuResponseCardAction, renderFeishuResponseCard, sendFeishuResponseCard } from "./response-card"
 import { parseFeishuQuestionCardAction, renderFeishuQuestionCard, sendFeishuQuestionCard } from "./question-card"
+import { sendFeishuMarkdownCard } from "./send-card"
 
 export {
   parseFeishuQuestionCardAction,
@@ -853,6 +854,16 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       mediaContext: { apiBase: account.apiBase, getAccessToken: () => this.getAccessToken(input.accountId) },
       sendText: (text) =>
         this.sendCreateMessage(input.accountId, input.chatId, { msgType: "text", content: JSON.stringify({ text }) }),
+      sendMarkdown:
+        this.resolveResponseFormat(account) === "markdown"
+          ? (text) =>
+              sendFeishuMarkdownCard({
+                apiBase: account.apiBase,
+                getAccessToken: () => this.getAccessToken(input.accountId),
+                chatId: input.chatId,
+                text,
+              })
+          : undefined,
       sendMessage: (message) => this.sendCreateMessage(input.accountId, input.chatId, message),
     })
   }
@@ -870,8 +881,24 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       mediaContext: { apiBase: account.apiBase, getAccessToken: () => this.getAccessToken(input.accountId) },
       sendText: (text) =>
         this.sendReplyMessage(input.accountId, input.messageId, { msgType: "text", content: JSON.stringify({ text }) }),
+      sendMarkdown:
+        this.resolveResponseFormat(account) === "markdown"
+          ? (text) =>
+              sendFeishuMarkdownCard({
+                apiBase: account.apiBase,
+                getAccessToken: () => this.getAccessToken(input.accountId),
+                chatId: "",
+                replyToMessageId: input.messageId,
+                replyInThread: account.config.replyInThread,
+                text,
+              })
+          : undefined,
       sendMessage: (message) => this.sendReplyMessage(input.accountId, input.messageId, message),
     })
+  }
+
+  private resolveResponseFormat(account: AccountState): "text" | "markdown" {
+    return account.config.responseFormat ?? account.channelConfig.responseFormat ?? "markdown"
   }
 
   async sendResponseCard(input: {
@@ -1026,17 +1053,33 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
 
     const sendText = async (text: string) => {
-      if (input.replyToMessageId) {
-        await this.sendReplyMessage(input.accountId, input.replyToMessageId, {
-          msgType: "text",
-          content: JSON.stringify({ text }),
-        })
-        return
-      }
-      await this.sendCreateMessage(input.accountId, input.chatId, {
-        msgType: "text",
-        content: JSON.stringify({ text }),
-      })
+      await sendTextPart(
+        text,
+        async (plain) => {
+          if (input.replyToMessageId) {
+            await this.sendReplyMessage(input.accountId, input.replyToMessageId, {
+              msgType: "text",
+              content: JSON.stringify({ text: plain }),
+            })
+            return
+          }
+          await this.sendCreateMessage(input.accountId, input.chatId, {
+            msgType: "text",
+            content: JSON.stringify({ text: plain }),
+          })
+        },
+        this.resolveResponseFormat(account) === "markdown"
+          ? (markdown) =>
+              sendFeishuMarkdownCard({
+                apiBase: account.apiBase,
+                getAccessToken: () => this.getAccessToken(input.accountId),
+                chatId: input.chatId,
+                replyToMessageId: input.replyToMessageId,
+                replyInThread: account.config.replyInThread,
+                text: markdown,
+              })
+          : undefined,
+      )
     }
 
     const streamingEnabled = account.config.streaming ?? account.channelConfig.streaming ?? true
@@ -1064,6 +1107,7 @@ async function sendParts(input: {
   parts: ChannelTypes.OutboundPart[]
   mediaContext: FeishuApiContext
   sendText: (text: string) => Promise<ChannelTypes.SendResult>
+  sendMarkdown?: (text: string) => Promise<ChannelTypes.SendResult | undefined>
   sendMessage: (message: FeishuMessagePayload) => Promise<ChannelTypes.SendResult>
 }) {
   let lastResult: ChannelTypes.SendResult | undefined
@@ -1071,7 +1115,7 @@ async function sendParts(input: {
   for (const part of input.parts) {
     if (part.type === "text") {
       if (!part.text.trim()) continue
-      lastResult = await input.sendText(part.text)
+      lastResult = (await sendTextPart(part.text, input.sendText, input.sendMarkdown)) ?? undefined
       continue
     }
 
@@ -1081,6 +1125,21 @@ async function sendParts(input: {
 
   if (lastResult) return lastResult
   throw new Error("Cannot send an empty outbound message")
+}
+
+async function sendTextPart(
+  text: string,
+  sendText: (text: string) => Promise<ChannelTypes.SendResult | void>,
+  sendMarkdown?: (text: string) => Promise<ChannelTypes.SendResult | undefined>,
+): Promise<ChannelTypes.SendResult | void> {
+  if (sendMarkdown) {
+    const card = await sendMarkdown(text).catch((error) => {
+      log.warn("markdown card delivery failed; falling back to plain text", { error })
+      return undefined
+    })
+    if (card) return card
+  }
+  return sendText(text)
 }
 
 class NonStreamingSession implements ChannelTypes.StreamingSession {
