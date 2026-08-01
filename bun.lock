@@ -265,6 +265,8 @@
         "mammoth": "1.11.0",
         "markitdown-ts": "0.0.10",
         "nodemailer": "8.0.3",
+        "onnxruntime-common": "1.24.3",
+        "onnxruntime-web": "1.26.0-dev.20260416-b7804b056c",
         "open": "10.1.2",
         "playwright-core": "1.61.0",
         "remeda": "catalog:",

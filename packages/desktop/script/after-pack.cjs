@@ -29,6 +29,8 @@ function assertRuntimeAssets(runtimeDir, platform) {
     "browser-runtime/playwright-core/package.json",
     "browser-runtime/playwright-core/index.js",
     "browser-runtime/playwright-core/lib/coreBundle.js",
+    "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
+    "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
   ]
   if (platform === "linux") required.push("sandbox/synergy-sandbox-linux")
   if (platform === "win32") required.push("sandbox/synergy-sandbox-windows.exe")
