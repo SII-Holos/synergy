@@ -58,6 +58,38 @@ export async function sendFeishuCard(
   return { messageId }
 }
 
+const MAX_MARKDOWN_CARD_BYTES = 30 * 1024
+const BLANK_MARKDOWN = " "
+
+function normalizeMarkdown(content: string): string {
+  return content.trim() ? content : BLANK_MARKDOWN
+}
+
+export function buildFeishuMarkdownCard(text: string): Record<string, unknown> | undefined {
+  const cardJson = {
+    schema: "2.0",
+    config: { update_multi: true },
+    body: {
+      elements: [{ tag: "markdown", content: normalizeMarkdown(text) }],
+    },
+  }
+  if (Buffer.byteLength(JSON.stringify(cardJson), "utf8") > MAX_MARKDOWN_CARD_BYTES) return undefined
+  return cardJson
+}
+
+export async function sendFeishuMarkdownCard(
+  input: FeishuApiContext & {
+    text: string
+    chatId: string
+    replyToMessageId?: string
+    replyInThread?: boolean
+  },
+): Promise<{ messageId: string } | undefined> {
+  const cardJson = buildFeishuMarkdownCard(input.text)
+  if (!cardJson) return undefined
+  return sendFeishuCard({ ...input, cardJson, kind: "markdown reply" })
+}
+
 export function sanitizeFeishuCardMarkdown(text: string): string {
   return text
     .replace(/<[^>]*>/g, "")
