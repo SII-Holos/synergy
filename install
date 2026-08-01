@@ -74,7 +74,8 @@ has_bundled_assets() {
     [ -f "$ROOT_DIR/schema/config.schema.json" ] && \
     [ -f "$ROOT_DIR/browser-runtime/playwright-core/package.json" ] && \
     [ -f "$ROOT_DIR/browser-runtime/playwright-core/index.js" ] && \
-    [ -f "$ROOT_DIR/browser-runtime/playwright-core/lib/coreBundle.js" ]
+    [ -f "$ROOT_DIR/browser-runtime/playwright-core/lib/coreBundle.js" ] && \
+    [ -f "$ROOT_DIR/lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm" ]
 }
 
 has_required_sandbox_asset() {
@@ -133,6 +134,11 @@ install_bundle_contents() {
     rm -rf "$ROOT_DIR/browser-runtime"
     if [ -d "$bundle_root/browser-runtime" ]; then
         cp -R "$bundle_root/browser-runtime" "$ROOT_DIR/browser-runtime"
+    fi
+
+    rm -rf "$ROOT_DIR/lib"
+    if [ -d "$bundle_root/lib" ]; then
+        cp -R "$bundle_root/lib" "$ROOT_DIR/lib"
     fi
 
     rm -rf "$ROOT_DIR/sandbox"
@@ -577,7 +583,7 @@ install_from_binary() {
     chmod 755 "${INSTALL_DIR}/synergy"
 
     if ! has_bundled_assets; then
-        print_message warning "${ORANGE}Warning: Installed only the binary. Web UI, schema, and Browser runtime assets were not provided.${NC}"
+        print_message warning "${ORANGE}Warning: Installed only the binary. Web UI, schema, Browser, and local embedding runtime assets were not provided.${NC}"
         print_message warning "${MUTED}Use the release archive installer to install all bundled runtime assets.${NC}"
     fi
 }
