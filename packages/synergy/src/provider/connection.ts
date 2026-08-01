@@ -1,5 +1,6 @@
 import { Log } from "@/util/log"
 import { mergeDeep } from "remeda"
+import type { Provider as ConfigProvider } from "../config/schema"
 import type { Auth } from "./api-key"
 import type { ModelsDev } from "./models"
 import { ProviderProfile } from "./profile"
@@ -24,19 +25,20 @@ import { ProviderProfile } from "./profile"
 export namespace ProviderConnection {
   const log = Log.create({ service: "provider.connection" })
 
-  /** Shape of a `provider.<id>` config entry, subset used for resolution. */
-  export interface ConfiguredProvider {
-    profile?: string
-    modelsDevProviderID?: string
-    name?: string
-    api?: string
-    npm?: string
-    env?: string[]
-    options?: Record<string, unknown>
-    models?: Record<string, Record<string, unknown>>
-    whitelist?: string[]
-    blacklist?: string[]
-  }
+  /** Canonical `provider.<id>` config fields used for connection resolution. */
+  export type ConfiguredProvider = Pick<
+    ConfigProvider,
+    | "profile"
+    | "modelsDevProviderID"
+    | "name"
+    | "api"
+    | "npm"
+    | "env"
+    | "options"
+    | "models"
+    | "whitelist"
+    | "blacklist"
+  >
 
   export type ConnectionConfig = { provider?: Record<string, ConfiguredProvider> }
 
@@ -131,6 +133,8 @@ export namespace ProviderConnection {
     catalogSource: ModelsDev.Provider | undefined
     /** Models after source projection + configured model rules. */
     models: Record<string, ModelsDev.Model>
+    /** Upstream API model id for each connection-scoped model key. */
+    modelApiIDs: Record<string, string>
     /** Final options: profile runtime options merged under connection overrides. */
     options: Record<string, unknown>
     /** Options from the catalog source (for worker plan serialization). */
@@ -142,6 +146,15 @@ export namespace ProviderConnection {
     npm: string | undefined
     baseURL: string | undefined
   }
+
+  export type ComposeResult =
+    | { ok: true; spec: ComposedProviderSpec }
+    | {
+        ok: false
+        reason: "unknown_catalog_source"
+        connectionID: string
+        catalogSourceID: string
+      }
 
   function fallbackModel(provider: ModelsDev.Provider, modelID: string): ModelsDev.Model {
     return {
@@ -162,19 +175,26 @@ export namespace ProviderConnection {
   function applyModelRules(
     source: ModelsDev.Provider,
     configured: ConfiguredProvider | undefined,
-  ): Record<string, ModelsDev.Model> {
+  ): { models: Record<string, ModelsDev.Model>; modelApiIDs: Record<string, string> } {
     const models = { ...source.models }
+    const modelApiIDs = Object.fromEntries(Object.entries(models).map(([modelID, model]) => [modelID, model.id]))
     for (const [modelID, raw] of Object.entries(configured?.models ?? {})) {
       const model = raw as Record<string, any>
       const sourceID = typeof model.id === "string" ? model.id : modelID
-      const base = models[sourceID] ?? models[modelID] ?? fallbackModel(source, modelID)
+      const base = models[sourceID] ?? models[modelID] ?? fallbackModel(source, sourceID)
       models[modelID] = { ...(mergeDeep(base, model) as ModelsDev.Model), id: modelID }
+      modelApiIDs[modelID] = base.id
     }
     for (const modelID of Object.keys(models)) {
-      if (configured?.whitelist && !configured.whitelist.includes(modelID)) delete models[modelID]
-      if (configured?.blacklist?.includes(modelID)) delete models[modelID]
+      if (
+        (configured?.whitelist && !configured.whitelist.includes(modelID)) ||
+        configured?.blacklist?.includes(modelID)
+      ) {
+        delete models[modelID]
+        delete modelApiIDs[modelID]
+      }
     }
-    return models
+    return { models, modelApiIDs }
   }
 
   /**
@@ -182,17 +202,26 @@ export namespace ProviderConnection {
    * getSDK option resolution, import probes and (via a serialized definition)
    * the agent worker — so all of them merge in the same order.
    */
-  export async function composeProviderSpec(input: ComposeInput): Promise<ComposedProviderSpec> {
+  export async function composeProviderSpec(input: ComposeInput): Promise<ComposeResult> {
     const { connection, catalog, auth } = input
     const { profile, configured } = connection
 
     const source = connection.catalogSourceID ? catalog[connection.catalogSourceID] : undefined
+    if (!source && connection.modelsDevProviderID) {
+      return {
+        ok: false,
+        reason: "unknown_catalog_source",
+        connectionID: connection.connectionID,
+        catalogSourceID: connection.catalogSourceID,
+      }
+    }
+    const env = configured?.env ?? profile?.env ?? (connection.modelsDevProviderID ? [] : source?.env) ?? []
     const catalogSource = source
       ? {
           ...source,
           id: connection.connectionID,
           name: configured?.name ?? source.name,
-          env: connection.env,
+          env,
           api: configured?.api ?? source.api,
           npm: configured?.npm ?? source.npm,
         }
@@ -203,7 +232,7 @@ export namespace ProviderConnection {
       env: [],
       models: {},
     }
-    const models = applyModelRules(catalogSource ?? emptySource, configured)
+    const { models, modelApiIDs } = applyModelRules(catalogSource ?? emptySource, configured)
 
     const profileInput = { providerID: connection.connectionID, auth, provider: catalogSource }
     const resolvedAuth = (await profile?.resolveAuth?.(profileInput)) ?? auth
@@ -213,17 +242,21 @@ export namespace ProviderConnection {
     const explicitOptions = mergeDeep(configured?.api ? { baseURL: configured.api } : {}, configured?.options ?? {})
 
     return {
-      providerID: connection.connectionID,
-      profileID: profile?.id,
-      catalogSource,
-      models,
-      options: mergeDeep(runtime, explicitOptions) as Record<string, unknown>,
-      baseOptions: {} as Record<string, unknown>,
-      explicitOptions: explicitOptions as Record<string, unknown>,
-      env: connection.env,
-      api: configured?.api,
-      npm: configured?.npm,
-      baseURL: connection.baseURL,
+      ok: true,
+      spec: {
+        providerID: connection.connectionID,
+        profileID: profile?.id,
+        catalogSource,
+        models,
+        modelApiIDs,
+        options: mergeDeep(runtime, explicitOptions) as Record<string, unknown>,
+        baseOptions: {} as Record<string, unknown>,
+        explicitOptions: explicitOptions as Record<string, unknown>,
+        env,
+        api: configured?.api,
+        npm: configured?.npm,
+        baseURL: connection.baseURL,
+      },
     }
   }
 
@@ -235,7 +268,7 @@ export namespace ProviderConnection {
    * while they remain registered (fixes the PR #990 review finding B1).
    */
   export class ConnectionStateManager {
-    private readonly active = new Set<string>()
+    private readonly active = new Map<string, string>()
     private readonly snapshots = new Map<string, SnapshotRecord>()
     private readonly maxEntries: number
 
@@ -243,12 +276,14 @@ export namespace ProviderConnection {
       this.maxEntries = maxEntries
     }
 
-    register(connectionID: string) {
-      this.active.add(connectionID)
+    register(connectionID: string, snapshotKey: string) {
+      this.active.set(connectionID, snapshotKey)
+      this.evict()
     }
 
     unregister(connectionID: string) {
       this.active.delete(connectionID)
+      this.evict()
     }
 
     isActive(connectionID: string) {
@@ -256,7 +291,7 @@ export namespace ProviderConnection {
     }
 
     activeConnections(): string[] {
-      return [...this.active]
+      return [...this.active.keys()]
     }
 
     set(connectionID: string, key: string, snapshot: unknown, lastAttemptAt = Date.now()) {
@@ -272,20 +307,17 @@ export namespace ProviderConnection {
       return this.snapshots.has(key)
     }
 
-    /** Keys protected from eviction (all snapshots of active connections). */
+    /** Current snapshot key protected for each active connection. */
     protectedKeys(): Set<string> {
-      const keys = new Set<string>()
-      for (const [key, record] of this.snapshots) {
-        if (this.active.has(record.connectionID)) keys.add(key)
-      }
-      return keys
+      return new Set(this.active.values())
     }
 
-    /** Evict LRU entries from inactive connections until under the cap. */
+    /** Evict unprotected LRU entries until under the cap. */
     evict(): string[] {
       const evicted: string[] = []
+      const protectedKeys = this.protectedKeys()
       const removable = [...this.snapshots.entries()]
-        .filter(([, record]) => !this.active.has(record.connectionID))
+        .filter(([key]) => !protectedKeys.has(key))
         .sort(([, left], [, right]) => left.lastAttemptAt - right.lastAttemptAt)
       while (this.snapshots.size > this.maxEntries) {
         const entry = removable.shift()
@@ -296,7 +328,19 @@ export namespace ProviderConnection {
       return evicted
     }
 
+    invalidate(connectionID: string): string[] {
+      const invalidated: string[] = []
+      this.active.delete(connectionID)
+      for (const [key, record] of this.snapshots) {
+        if (record.connectionID !== connectionID) continue
+        this.snapshots.delete(key)
+        invalidated.push(key)
+      }
+      return invalidated
+    }
+
     clear() {
+      this.active.clear()
       this.snapshots.clear()
     }
   }

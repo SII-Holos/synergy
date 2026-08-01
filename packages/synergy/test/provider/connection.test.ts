@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { Provider as ProviderConfig } from "../../src/config/schema"
 import type { ModelsDev } from "../../src/provider/models"
 import { ProviderConnection } from "../../src/provider/connection"
 import { ProviderProfile } from "../../src/provider/profile"
@@ -52,7 +53,18 @@ function model(id: string, extra?: Partial<ModelsDev.Model>): ModelsDev.Model {
   }
 }
 
+async function compose(input: ProviderConnection.ComposeInput) {
+  const result = await ProviderConnection.composeProviderSpec(input)
+  if (!result.ok) throw new Error(`unexpected composition failure: ${result.reason}`)
+  return result.spec
+}
+
 describe("ProviderConnection.resolveConnection", () => {
+  test("canonical provider config accepts a non-empty runtime profile", () => {
+    expect(ProviderConfig.parse({ profile: profileID }).profile).toBe(profileID)
+    expect(ProviderConfig.safeParse({ profile: "" }).success).toBe(false)
+  })
+
   test("maps a configured connection to its profile and inherits profile env/baseURL", () => {
     const result = ProviderConnection.resolveConnection(mappedConnectionID, {
       provider: { [mappedConnectionID]: { profile: profileID } },
@@ -148,7 +160,7 @@ describe("ProviderConnection.composeProviderSpec", () => {
     })
     if (!connection.ok) throw new Error("expected ok")
 
-    const spec = await ProviderConnection.composeProviderSpec({
+    const spec = await compose({
       connection: connection.connection,
       catalog: {
         [profileID]: catalogSource({
@@ -163,6 +175,7 @@ describe("ProviderConnection.composeProviderSpec", () => {
     expect(spec.catalogSource?.id).toBe(mappedConnectionID)
     expect(Object.keys(spec.models).sort()).toEqual(["model-a", "model-renamed"])
     expect(spec.models["model-renamed"].id).toBe("model-renamed")
+    expect(spec.modelApiIDs["model-renamed"]).toBe("model-b")
     expect(spec.models["model-renamed"].name).toBe("Renamed B")
   })
 
@@ -177,7 +190,7 @@ describe("ProviderConnection.composeProviderSpec", () => {
     })
     if (!connection.ok) throw new Error("expected ok")
 
-    const spec = await ProviderConnection.composeProviderSpec({
+    const spec = await compose({
       connection: connection.connection,
       catalog: { [profileID]: catalogSource({ "model-a": model("model-a") }) },
       auth: { type: "api", key: "connection-key" },
@@ -195,7 +208,7 @@ describe("ProviderConnection.composeProviderSpec", () => {
     })
     if (!connection.ok) throw new Error("expected ok")
 
-    await ProviderConnection.composeProviderSpec({
+    await compose({
       connection: connection.connection,
       catalog: { [profileID]: catalogSource({ "model-a": model("model-a") }) },
       auth: { type: "api", key: "connection-key" },
@@ -203,28 +216,49 @@ describe("ProviderConnection.composeProviderSpec", () => {
 
     expect(runtimeOptionsAuth.value!).toBe("connection-key")
   })
-  test("missing catalog source still yields connection-scoped spec without crashing", async () => {
+  test("an explicit missing catalog source returns a typed failure", async () => {
     const connection = ProviderConnection.resolveConnection(mappedConnectionID, {
-      provider: { [mappedConnectionID]: { profile: profileID } },
+      provider: {
+        [mappedConnectionID]: { profile: profileID, modelsDevProviderID: "missing-catalog-source" },
+      },
     })
     if (!connection.ok) throw new Error("expected ok")
 
-    const spec = await ProviderConnection.composeProviderSpec({
+    const result = await ProviderConnection.composeProviderSpec({
       connection: connection.connection,
       catalog: {},
       auth: { type: "api", key: "connection-key" },
     })
 
-    expect(spec.catalogSource).toBeUndefined()
-    expect(spec.providerID).toBe(mappedConnectionID)
+    expect(result).toEqual({
+      ok: false,
+      reason: "unknown_catalog_source",
+      connectionID: mappedConnectionID,
+      catalogSourceID: "missing-catalog-source",
+    })
+  })
+
+  test("canonical catalog providers preserve their source environment", async () => {
+    const connectionID = `${profileID}-catalog-only`
+    const connection = ProviderConnection.resolveConnection(connectionID, undefined)
+    if (!connection.ok) throw new Error("expected ok")
+    const source = { ...catalogSource({ "model-a": model("model-a") }), id: connectionID, env: [envName] }
+
+    const spec = await compose({
+      connection: connection.connection,
+      catalog: { [connectionID]: source },
+    })
+
+    expect(spec.env).toEqual([envName])
+    expect(spec.catalogSource?.env).toEqual([envName])
   })
 })
 
 describe("ProviderConnection.ConnectionStateManager", () => {
   test("eviction protects active connections and evicts inactive LRU entries", () => {
     const manager = new ProviderConnection.ConnectionStateManager(2)
-    manager.register("conn-a")
-    manager.register("conn-b")
+    manager.register("conn-a", "key-a1")
+    manager.register("conn-b", "key-b1")
 
     manager.set("conn-a", "key-a1", { v: 1 }, 100)
     manager.set("conn-b", "key-b1", { v: 2 }, 200)
@@ -241,23 +275,21 @@ describe("ProviderConnection.ConnectionStateManager", () => {
     expect(manager.has("key-c1")).toBe(false)
   })
 
-  test("active connection snapshots are never collected even at capacity", () => {
+  test("only the current snapshot of an active connection is protected", () => {
     const manager = new ProviderConnection.ConnectionStateManager(2)
-    manager.register("conn-a")
-    manager.register("conn-b")
+    manager.register("conn-a", "a2")
+    manager.register("conn-b", "b1")
     manager.set("conn-a", "a1", {}, 100)
     manager.set("conn-b", "b1", {}, 200)
     manager.set("conn-a", "a2", {}, 300)
 
-    // Capacity 2 with 3 entries, but all are active → nothing removable → nothing evicted.
-    expect(manager.evict()).toEqual([])
-    expect(manager.has("a1")).toBe(true)
+    expect(manager.has("a1")).toBe(false)
     expect(manager.has("a2")).toBe(true)
     expect(manager.has("b1")).toBe(true)
   })
   test("unregistering a connection makes its snapshots evictable", () => {
     const manager = new ProviderConnection.ConnectionStateManager(1)
-    manager.register("conn-a")
+    manager.register("conn-a", "a1")
     manager.set("conn-a", "a1", {}, 100)
     expect(manager.evict()).toEqual([])
 
@@ -266,5 +298,17 @@ describe("ProviderConnection.ConnectionStateManager", () => {
     manager.set("conn-b", "b1", {}, 200)
     expect(manager.has("a1")).toBe(false)
     expect(manager.has("b1")).toBe(true)
+  })
+
+  test("invalidating a connection clears its snapshots and active registration", () => {
+    const manager = new ProviderConnection.ConnectionStateManager(2)
+    manager.register("conn-a", "a2")
+    manager.set("conn-a", "a1", {}, 100)
+    manager.set("conn-a", "a2", {}, 200)
+
+    expect(manager.invalidate("conn-a").sort()).toEqual(["a1", "a2"])
+    expect(manager.isActive("conn-a")).toBe(false)
+    expect(manager.has("a1")).toBe(false)
+    expect(manager.has("a2")).toBe(false)
   })
 })

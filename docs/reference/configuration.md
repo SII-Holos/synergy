@@ -234,7 +234,7 @@ A local provider connection can reuse a canonical Models.dev catalog while keepi
 
 Inherited models are projected onto the connection ID, so model references such as `deepseek-team/deepseek-chat` select that account. Connection-level `api`, `npm`, `options`, allowlist/blacklist, and explicit model entries override inherited catalog metadata without mutating the canonical provider.
 
-`modelsDevProviderID` shares model metadata only. Provider-specific runtime behavior, authentication strategy, usage reporting, and credential-aware live discovery are not inherited by this field.
+`modelsDevProviderID` shares model metadata only. Set `profile` separately when the connection should reuse a registered provider profile's runtime behavior, authentication recovery, usage reporting, model factory, and credential-aware live discovery. Omit `profile` for an OpenAI-compatible gateway that should share model metadata without inheriting canonical provider behavior.
 
 ### Model variants and role variants
 
