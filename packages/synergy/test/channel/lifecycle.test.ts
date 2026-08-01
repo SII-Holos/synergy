@@ -6,6 +6,7 @@ import { Config as ConfigRuntime } from "../../src/config/config"
 import { Channel } from "../../src/channel"
 import { ChannelHost } from "../../src/channel/host"
 import type {
+  ConversationCapabilities,
   Provider,
   QuestionCardCallback,
   QuestionCardActionResult,
@@ -675,11 +676,13 @@ test("cleans inbound attachments after a handled channel command", async () => {
   await using tmp = await tmpdir({ git: true })
   const type = `command-cleanup-${crypto.randomUUID()}`
   let receive: ((message: ChannelHost.ConversationMessage) => Promise<void>) | undefined
+  let replyInput: Parameters<NonNullable<ConversationCapabilities["replyMessage"]>>[0] | undefined
   const provider: Provider = {
     type,
     lifecycle: "self_connected",
     conversation: {
-      async replyMessage() {
+      async replyMessage(input) {
+        replyInput = input
         return { messageId: "reply" }
       },
       async addReaction() {},
@@ -697,12 +700,21 @@ test("cleans inbound attachments after a handled channel command", async () => {
   await fs.writeFile(attachmentPath, "temporary command attachment")
   await receive!({
     chatId: "chat_test",
-    chatType: "dm",
+    chatType: "group",
     senderId: "sender_test",
     text: "/help",
     messageId: "message_test",
     timestamp: Date.now(),
+    scopeKey: "chat_test:message:message_test",
     attachments: [{ path: attachmentPath, filename: "command-attachment.txt", contentType: "text/plain" }],
+  })
+
+  expect(replyInput).toMatchObject({
+    accountId: "account",
+    messageId: "message_test",
+    chatId: "chat_test",
+    chatType: "group",
+    scopeKey: "chat_test:message:message_test",
   })
 
   expect(

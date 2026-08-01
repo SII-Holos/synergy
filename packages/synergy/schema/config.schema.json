@@ -2275,7 +2275,7 @@
                       "description": "Session scoping strategy for group chats",
                       "default": "group",
                       "type": "string",
-                      "enum": ["group", "group_sender", "group_topic", "group_topic_sender"]
+                      "enum": ["group", "group_sender", "group_topic", "group_topic_sender", "group_thread"]
                     },
                     "inboundDebounceMs": {
                       "description": "Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)",

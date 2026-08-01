@@ -45,6 +45,7 @@ data/channel/providers/clarus/accounts/
 data/permissions/
 data/channel/response_cards/<channel-type>/<account-id>/<request-id>.json
 data/channel/feishu/streaming_cards/<account-id>/<session-id>/<card-id>.json
+data/channel/feishu/thread_bindings/<account-id>/<chat-id>/<thread-id>.json
 data/permission-rules.json
 data/notes/<scope>/
 data/agenda/items/<scope>/
@@ -74,6 +75,8 @@ GitHub integration deliveries, CI failure state, runtime anchors, and per-reposi
 Channel response-card registrations live under `data/channel/response_cards/`. Each provider-neutral record is keyed by channel type, account, and response-card tool-part ID. A pending record is written before the provider side effect and becomes active only after the provider returns a sent message ID. Both states retain the original chat, requester, session, card contract, and a 14-day expiry. An active registration additionally binds the provider message ID used to validate callbacks. A surviving pending record blocks resend until its expiry. Expired and malformed registrations are pruned at global runtime startup.
 
 Active Feishu/Lark streaming cards live under `data/channel/feishu/streaming_cards/`, keyed independently by account, session, and card ID. Each record is written after CardKit creates the card but before the card is exposed in chat, and contains the identifiers and start time needed to terminate an orphan after process restart. The message ID is added after provider delivery succeeds. A successful terminal close removes only that card's record. Account reconnect scans all records for its account, closes each orphan with a terminal recovery mutation, and preserves records whose provider call fails transiently so a later reconnect can retry without a newer card overwriting them.
+
+Feishu/Lark thread bindings live under `data/channel/feishu/thread_bindings/`, keyed by account, chat, and thread ID. Each record durably maps a Feishu `thread_id` to the endpoint `scopeKey` it belongs to, so `group_thread` sessions resume the same conversation when a later message arrives in the same thread.
 
 Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
 

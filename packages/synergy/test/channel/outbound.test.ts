@@ -33,6 +33,8 @@ type ProviderCalls = {
   responseCards?: Array<{
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    scopeKey?: string
     replyToMessageId?: string
     requestId: string
     card: ResponseCard
@@ -569,7 +571,13 @@ test("delivers a card-only async channel result once and marks the terminal outb
       const dispose = initOutbound()
       try {
         const session = await Session.create({
-          endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
+          endpoint: SessionEndpoint.fromChannel({
+            type,
+            accountId: "acct_test",
+            chatId: "chat_test",
+            chatType: "group",
+            scopeKey: "chat_test:message:msg_topic_root",
+          }),
         })
         const task = await completedResponseCardRequest({
           sessionID: session.id,
@@ -586,6 +594,8 @@ test("delivers a card-only async channel result once and marks the terminal outb
           {
             accountId: "acct_test",
             chatId: "chat_test",
+            chatType: "group",
+            scopeKey: "chat_test:message:msg_topic_root",
             replyToMessageId: "msg_topic_root",
             requestId: task.requestId,
             card: responseCard,

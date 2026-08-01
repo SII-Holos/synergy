@@ -44,6 +44,8 @@ export namespace QuestionCardRuntime {
     provider: Provider
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    scopeKey?: string
     replyToMessageId?: string
     requesterId: string
     sessionID: string
@@ -72,6 +74,8 @@ export namespace QuestionCardRuntime {
       const sent = await input.provider.sendQuestionCard({
         accountId: input.accountId,
         chatId: input.chatId,
+        ...(input.chatType ? { chatType: input.chatType } : {}),
+        ...(input.scopeKey ? { scopeKey: input.scopeKey } : {}),
         replyToMessageId: input.replyToMessageId,
         requestId: input.request.id,
         questions: input.request.questions,
