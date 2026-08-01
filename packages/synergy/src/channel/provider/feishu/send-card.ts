@@ -59,13 +59,18 @@ export async function sendFeishuCard(
 }
 
 const MAX_MARKDOWN_CARD_BYTES = 30 * 1024
+const BLANK_MARKDOWN = " "
+
+function normalizeMarkdown(content: string): string {
+  return content.trim() ? content : BLANK_MARKDOWN
+}
 
 export function buildFeishuMarkdownCard(text: string): Record<string, unknown> | undefined {
   const cardJson = {
     schema: "2.0",
     config: { update_multi: true },
     body: {
-      elements: [{ tag: "markdown", content: sanitizeFeishuCardMarkdown(text) }],
+      elements: [{ tag: "markdown", content: normalizeMarkdown(text) }],
     },
   }
   if (Buffer.byteLength(JSON.stringify(cardJson), "utf8") > MAX_MARKDOWN_CARD_BYTES) return undefined

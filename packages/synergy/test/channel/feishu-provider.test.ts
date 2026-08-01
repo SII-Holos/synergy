@@ -509,7 +509,12 @@ describe("Feishu markdown replies", () => {
       await provider.replyMessage({
         accountId: "acct_md",
         messageId: "msg_root",
-        parts: [{ type: "text", text: "**bold** answer with `code`" }],
+        parts: [
+          {
+            type: "text",
+            text: "**bold** answer with `code` — see https://example.com/docs and [linked](https://example.com/ref)",
+          },
+        ],
       })
 
       expect(requests.map((request) => request.url)).toEqual([
@@ -520,7 +525,9 @@ describe("Feishu markdown replies", () => {
         body: { elements: Array<{ tag: string; content: string }> }
       }
       expect(cardJson.body.elements[0]?.tag).toBe("markdown")
-      expect(cardJson.body.elements[0]?.content).toBe("**bold** answer with `code`")
+      expect(cardJson.body.elements[0]?.content).toBe(
+        "**bold** answer with `code` — see https://example.com/docs and [linked](https://example.com/ref)",
+      )
       const reply = requests[1]?.body
       expect(reply?.msg_type).toBe("interactive")
       expect(JSON.parse(String(reply?.content))).toEqual({ type: "card", data: { card_id: "card_md" } })
