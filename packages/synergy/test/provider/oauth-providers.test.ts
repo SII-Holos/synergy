@@ -433,8 +433,9 @@ test("github copilot live catalog changes only image capability and preserves ot
   const config = { providerCatalog: { enabled: false, offlineCache: false } }
   const baseline = await ProviderCatalog.resolve({ forceRefresh: true, includeLive: false, config })
   const baselineModels = baseline[CopilotProvider.PROVIDER_ID].models
-  const baselineVisionInputs = baselineModels["gemini-2.5-pro"].modalities?.input ?? []
-  const baselineTextInputs = baselineModels["gemini-2.0-flash-001"].modalities?.input ?? []
+  const baselineInputs = (modelID: string) => baselineModels[modelID]?.modalities?.input ?? ["text"]
+  const baselineVisionInputs = baselineInputs("gemini-2.5-pro")
+  const baselineTextInputs = baselineInputs("gemini-2.0-flash-001")
   globalThis.fetch = asFetch(async (input) => {
     const url = String(input)
     if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
