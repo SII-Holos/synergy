@@ -54,6 +54,7 @@ describe("plugin installation classification", () => {
       manifest: {
         manifestVersion: 1,
         apiVersion: "4.0",
+        compatibility: { synergy: ">=3.0.11" },
         id: "health-test",
         name: "Health Test",
         version: "1.0.0",

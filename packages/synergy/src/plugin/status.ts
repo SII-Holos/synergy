@@ -3,7 +3,6 @@ import path from "path"
 import { fileURLToPath } from "url"
 import z from "zod"
 import { PluginToolId } from "./ids"
-import { riskForCapabilities } from "./capability"
 import { getDisabledPlugin, getDisabledPlugins, getLoadedPlugins, getPlugin, type LoadedPlugin } from "./loader"
 import { pluginRuntimeManager } from "./runtime"
 import type { PluginSource } from "./trust"
@@ -73,7 +72,6 @@ export const PluginStatusSchema = z
     disabledPhase: z.string().optional(),
     loaded: z.boolean(),
     capabilities: z.array(z.string()),
-    risk: z.enum(["low", "medium", "high"]),
     operations: z.array(z.object({ id: z.string(), type: z.enum(["query", "command"]), expose: z.array(z.string()) })),
     tools: z.array(z.object({ id: z.string(), fullId: z.string(), capabilities: z.array(z.string()) })),
     uiContributions: z.number(),
@@ -110,7 +108,6 @@ export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<Pl
     health: "loaded",
     loaded: true,
     capabilities,
-    risk: riskForCapabilities(capabilities),
     operations: plugin.manifest.contributions
       .filter((item) => item.kind === "operation")
       .map((item) => ({ id: item.id, type: item.type, expose: item.expose })),
@@ -154,7 +151,6 @@ function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & 
       disabledPhase: plugin.phase,
       loaded: false,
       capabilities,
-      risk: riskForCapabilities(capabilities),
       operations: manifest.contributions
         .filter((item) => item.kind === "operation")
         .map((item) => ({ id: item.id, type: item.type as "query" | "command", expose: item.expose })),
@@ -183,7 +179,6 @@ function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & 
     disabledPhase: plugin.phase,
     loaded: false,
     capabilities: [],
-    risk: "low",
     operations: [],
     tools: [],
     uiContributions: 0,

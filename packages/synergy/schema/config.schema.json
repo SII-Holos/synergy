@@ -650,40 +650,6 @@
         "type": "string"
       }
     },
-    "pluginApprovalPolicy": {
-      "description": "Plugin approval policy configuration",
-      "ref": "PluginApprovalPolicyConfig",
-      "type": "object",
-      "properties": {
-        "allowUnsignedLocal": {
-          "description": "Allow unsigned local plugins with user consent",
-          "default": true,
-          "type": "boolean"
-        },
-        "autoApproveBuiltin": {
-          "description": "Auto-approve builtin plugins without user consent",
-          "default": true,
-          "type": "boolean"
-        },
-        "denyHighRiskThirdParty": {
-          "description": "Block third-party plugins with high-risk capabilities",
-          "default": true,
-          "type": "boolean"
-        },
-        "requireSignatureForMarketplace": {
-          "description": "Require cryptographic signature for non-local plugins",
-          "default": false,
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "allowUnsignedLocal",
-        "autoApproveBuiltin",
-        "denyHighRiskThirdParty",
-        "requireSignatureForMarketplace"
-      ],
-      "additionalProperties": false
-    },
     "pluginRuntimePolicy": {
       "description": "Plugin runtime isolation policy configuration",
       "ref": "PluginRuntimePolicyConfig",
@@ -2366,44 +2332,6 @@
               }
             },
             "required": ["type", "accounts", "streaming", "responseFormat"],
-            "additionalProperties": false
-          },
-          {
-            "ref": "ChannelClarusConfig",
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "clarus"
-              },
-              "accounts": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "ref": "ChannelClarusAccountConfig",
-                  "type": "object",
-                  "properties": {
-                    "enabled": {
-                      "default": false,
-                      "type": "boolean"
-                    },
-                    "apiUrl": {
-                      "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
-                      "type": "string"
-                    },
-                    "agent": {
-                      "description": "Primary Synergy agent for project and assignment Sessions",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["enabled"],
-                  "additionalProperties": false
-                }
-              }
-            },
-            "required": ["type", "accounts"],
             "additionalProperties": false
           },
           {

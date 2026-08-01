@@ -1347,17 +1347,6 @@ export const pluginPermission = {
   },
 } as const satisfies Record<string, AppMessageDescriptor>
 
-// ── Plugin risk labels ────────────────────────────────────────────────────────
-
-export const pluginRisk = {
-  low: { id: "app.plugin.risk.low", message: "Low" },
-  medium: { id: "app.plugin.risk.medium", message: "Medium" },
-  high: { id: "app.plugin.risk.high", message: "High" },
-  ariaLow: { id: "app.plugin.risk.ariaLabel.low", message: "Risk level: Low" },
-  ariaMedium: { id: "app.plugin.risk.ariaLabel.medium", message: "Risk level: Medium" },
-  ariaHigh: { id: "app.plugin.risk.ariaLabel.high", message: "Risk level: High" },
-} as const satisfies Record<string, AppMessageDescriptor>
-
 // ── Agent Visual ─────────────────────────────────────────────────────────────
 
 export const agentVisual = {
@@ -1444,5 +1433,4 @@ export const messages = {
   pluginNav,
   pluginMarketplace,
   pluginPermission,
-  pluginRisk,
 } as const

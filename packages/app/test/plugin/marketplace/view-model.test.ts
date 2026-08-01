@@ -22,7 +22,6 @@ function plugin(input: Partial<InstalledPlugin> & Pick<InstalledPlugin, "id" | "
     health: "loaded",
     loaded: true,
     capabilities: [],
-    risk: "low",
     operations: [],
     tools: [],
     uiContributions: 0,
@@ -91,7 +90,6 @@ describe("plugin marketplace views", () => {
       disabledReason: "Plugin permissions require approval.",
       disabledPhase: "approval",
       capabilities: ["filesystem.read"],
-      risk: "medium",
       tools: [{ id: "scan", fullId: "needs-review.scan", capabilities: ["filesystem.read"] }],
       operations: [{ id: "sync", type: "command", expose: ["api"] }],
       uiContributions: 1,
@@ -186,7 +184,7 @@ describe("plugin content pass-through boundary", () => {
     expect(results).toHaveLength(1)
     expect(results[0]).toBe(dev)
     expect(results[0].id).toBe("dev1")
-    expect(results[0].risk).toBe("low")
+    expect(results[0]).not.toHaveProperty("risk")
     expect(results[0].installation.kind).toBe("directory")
   })
 })

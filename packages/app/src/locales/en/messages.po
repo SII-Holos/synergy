@@ -1197,7 +1197,7 @@ msgstr "Search commands"
 msgid "app.command.title"
 msgstr "Commands"
 
-#. * Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
+#. * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
  *
  * title and message pass through from the plugin — they are plugin author content.
  * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
@@ -1205,7 +1205,7 @@ msgstr "Commands"
 msgid "app.common.cancel"
 msgstr "Cancel"
 
-#. * Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
+#. * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
  *
  * title and message pass through from the plugin — they are plugin author content.
  * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
@@ -5525,48 +5525,36 @@ msgid "app.plugin.builtin.plugins"
 msgstr "Plugins"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.addedGroup"
-msgstr "Added {group}"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.consent.approvalFailed"
-msgstr "Approval failed"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.consent.approvalRequired"
-msgstr "This plugin requires your approval."
+msgstr "Confirmation failed"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.approving"
-msgstr "Approving..."
+msgstr "Confirming..."
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.current.empty"
-msgstr "No existing permissions are unchanged."
-
-#. js-lingui-explicit-id
-msgid "app.plugin.consent.current.title"
-msgstr "Current permissions"
+msgid "app.plugin.consent.confirmationRequired"
+msgstr "Please confirm this access change."
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.dialog.description"
-msgstr "{plugin} {version}. {description}"
+msgstr "{plugin} v{version}. {description}"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.install.approve"
-msgstr "Approve & install"
+msgstr "Confirm & install"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.install.description"
-msgstr "Review the permissions before installing this plugin."
+msgstr "Review what this plugin can do."
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.install.title"
-msgstr "Approve Plugin Install"
+msgstr "Confirm plugin install"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.manifestChanged"
-msgstr "Permissions are unchanged, but the plugin manifest changed. Review the metadata before approving."
+msgid "app.plugin.consent.noHostAccess"
+msgstr "This plugin does not request host access."
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.notNow"
@@ -5574,43 +5562,47 @@ msgstr "Not now"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.reapprove.approve"
-msgstr "Approve & reload"
+msgstr "Confirm & reload"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.reapprove.description"
-msgstr "Review the current plugin manifest before reloading it."
+msgstr "Review what this plugin can do."
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.reapprove.title"
-msgstr "Review Plugin Permissions"
+msgstr "Confirm plugin access"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.removed.empty"
-msgstr "No permissions are being removed."
+msgstr "No access is being removed."
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.removed.title"
-msgstr "Removed permissions"
+msgstr "Access removed by this update"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.reviewChanged"
 msgstr "Plugin changed while you were reviewing it"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.severityChanges"
-msgstr "Severity changes"
+msgid "app.plugin.consent.technicalDetails"
+msgstr "Technical details"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.update.approve"
-msgstr "Approve & update"
+msgstr "Confirm & update"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.update.description"
-msgstr "Review the permission changes before updating this plugin."
+msgstr "Review the expanded access in this update."
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.update.title"
-msgstr "Approve Plugin Update"
+msgstr "Confirm plugin update"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.api4UpdateRequired"
+msgstr "API 4 update required"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.install"
@@ -5627,6 +5619,10 @@ msgstr "Installing..."
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.loadingReview"
 msgstr "Loading review..."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.noApi4Release"
+msgstr "No API 4 release"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.reviewPermissions"
@@ -5659,6 +5655,10 @@ msgstr "Loading plugin..."
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.metric.author"
 msgstr "Author"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.metric.compatibility"
+msgstr "Requires Synergy"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.metric.installed"
@@ -5709,6 +5709,10 @@ msgid "app.plugin.detail.permission.hostCapability"
 msgstr "Synergy host capability {key}"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.permission.technicalDetails"
+msgstr "Technical details"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.progressAriaLabel"
 msgstr "{action} plugin"
 
@@ -5718,7 +5722,7 @@ msgstr "{name} repository on {host}"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.capabilities"
-msgstr "Capabilities"
+msgstr "Features"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.capabilitiesSummary"
@@ -5729,12 +5733,16 @@ msgid "app.plugin.detail.section.developmentRegistration"
 msgstr "Development registration"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.section.noPermissions"
-msgstr "No special permissions declared."
+msgid "app.plugin.detail.section.featuresCount"
+msgstr "{count} features"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.section.noTools"
-msgstr "No tools declared"
+msgid "app.plugin.detail.section.noFeatures"
+msgstr "No features declared"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.section.noPermissions"
+msgstr "No special permissions declared."
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.noVersions"
@@ -5742,7 +5750,7 @@ msgstr "No registry versions available."
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.permissions"
-msgstr "Permissions"
+msgstr "This plugin can"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.permissionsCount"
@@ -5783,6 +5791,10 @@ msgstr "Disabled"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.state.needsApproval"
 msgstr "Needs approval"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.version.compatibility"
+msgstr "Plugin API {apiVersion} · Synergy {range}"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.version.installedLocally"
@@ -5941,6 +5953,10 @@ msgid "app.plugin.marketplace.registryUnavailable.title"
 msgstr "Plugin registry unavailable"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.marketplace.row.compatibility"
+msgstr "Synergy {range}"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.installed"
 msgstr "Installed"
 
@@ -6067,30 +6083,6 @@ msgstr "Tools"
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.ui"
 msgstr "UI"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.high"
-msgstr "Risk level: High"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.low"
-msgstr "Risk level: Low"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.medium"
-msgstr "Risk level: Medium"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.high"
-msgstr "High"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.low"
-msgstr "Low"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.medium"
-msgstr "Medium"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.settings.saveFailed"

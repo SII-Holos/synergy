@@ -462,25 +462,37 @@ export default definePlugin({
     }
   })
 
-  test("classifies asset.write as medium and shell.execute as high risk in registry metadata", async () => {
-    const root = fs.mkdtempSync(path.join(import.meta.dir, "capability-risk-fixture-"))
+  test("writes registry v2 access and compatibility metadata without risk ratings", async () => {
+    const root = fs.mkdtempSync(path.join(import.meta.dir, "capability-access-fixture-"))
     try {
       fs.mkdirSync(path.join(root, "src"), { recursive: true })
       fs.writeFileSync(
         path.join(root, "package.json"),
-        JSON.stringify({ name: "capability-risk-fixture", version: "1.0.0", type: "module", source: "./src/index.ts" }),
+        JSON.stringify({
+          name: "capability-access-fixture",
+          version: "1.0.0",
+          type: "module",
+          source: "./src/index.ts",
+        }),
       )
       fs.writeFileSync(
         path.join(root, "src", "index.ts"),
         `
 import { definePlugin } from "@ericsanchezok/synergy-plugin"
 export default definePlugin({
-  id: "capability-risk-fixture",
+  id: "capability-access-fixture",
   name: "Capability Risk Fixture",
   version: "1.0.0",
-  description: "Capability risk fixture",
+  description: "Capability access fixture",
+  compatibility: { synergy: ">=3.1.0" },
   capabilities: [{ id: "asset.write" }, { id: "shell.execute" }],
-  contributions: [],
+  contributions: [{
+    kind: "tool",
+    id: "create_attachment",
+    description: "Create an attachment when the user asks for one.",
+    input: { type: "object", properties: {} },
+    async handler() { return "created" },
+  }],
 })
 `,
       )
@@ -507,17 +519,31 @@ await signPluginTarball(process.argv[2])
 
       const entry = registryEntry({
         tarballPath: archive,
-        repo: "https://example.com/synergy/capability-risk-fixture",
-        downloadUrl: "https://example.com/capability-risk-fixture.tgz",
-        signatureUrl: "https://example.com/capability-risk-fixture.tgz.sig",
+        repo: "https://example.com/synergy/capability-access-fixture",
+        downloadUrl: "https://example.com/capability-access-fixture.tgz",
+        signatureUrl: "https://example.com/capability-access-fixture.tgz.sig",
         publishedAt: "2026-07-22T00:00:00.000Z",
       })
-      expect(entry.name).toBe("capability-risk-fixture")
-      expect(entry.versions[0]?.risk).toBe("high")
-      expect(entry.versions[0]?.permissionsSummary).toEqual([
-        expect.objectContaining({ key: "asset.write", risk: "medium" }),
-        expect.objectContaining({ key: "shell.execute", risk: "high" }),
+      expect(entry.schemaVersion).toBe(2)
+      expect(entry.name).toBe("capability-access-fixture")
+      expect(entry.compatibility).toEqual({ synergy: ">=3.1.0" })
+      expect(entry.versions[0]).toMatchObject({
+        apiVersion: "4.0",
+        compatibility: { synergy: ">=3.1.0" },
+      })
+      expect(entry.versions[0]).not.toHaveProperty("risk")
+      expect(entry.versions[0]?.featuresSummary).toEqual([
+        {
+          key: "tool:create_attachment",
+          title: "create_attachment",
+          description: "Create an attachment when the user asks for one.",
+        },
       ])
+      expect(entry.versions[0]?.permissionsSummary).toEqual([
+        expect.objectContaining({ key: "asset.write", title: "Create attachments" }),
+        expect.objectContaining({ key: "shell.execute", title: "Run declared setup commands" }),
+      ])
+      expect(JSON.stringify(entry)).not.toContain('"risk"')
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

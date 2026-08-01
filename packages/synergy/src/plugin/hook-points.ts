@@ -53,6 +53,7 @@ points.get("agent.call.after")!.redactErrors = true
 for (const name of [
   "chat.message",
   "chat.params",
+  "chat.system.transform",
   "tool.execute.before",
   "tool.execute.after",
   "experimental.chat.messages.transform",

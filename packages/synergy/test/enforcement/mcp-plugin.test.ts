@@ -173,7 +173,6 @@ describe("EnforcementGate plugin opaque strategy", () => {
       pluginToolCapabilities: {
         plugin__data_export__publish: {
           capabilities: ["file_read", "file_write", "network_request", "shell"],
-          risk: "high",
         },
       },
     })
@@ -195,22 +194,19 @@ describe("EnforcementGate plugin opaque strategy", () => {
       pluginToolCapabilities: {
         plugin__data_export__publish: {
           capabilities: ["file_read", "file_write", "network_request"],
-          risk: "high",
         },
       },
       pluginApprovals: {
         data_export: {
+          schemaVersion: 2,
           pluginId: "data_export",
           source: "npm",
-          version: "1.0.0",
-          manifestHash: "manifest",
-          capabilitiesHash: "permissions",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "permissions",
           approvedAt: 1700000000000,
           approvedBy: "user",
           trustTier: "declarative",
           approvedCapabilities: ["file_read"],
-          risk: "high",
-          status: "approved",
         },
       },
     })
@@ -231,7 +227,6 @@ describe("EnforcementGate plugin opaque strategy", () => {
       pluginToolCapabilities: {
         plugin__meme__generate_meme: {
           capabilities: ["file_read", "task"],
-          risk: "medium",
         },
       },
       pluginApprovals: {},
@@ -249,22 +244,19 @@ describe("EnforcementGate plugin opaque strategy", () => {
       pluginToolCapabilities: {
         plugin__meme__generate_meme: {
           capabilities: ["file_read", "task"],
-          risk: "medium",
         },
       },
       pluginApprovals: {
         meme: {
+          schemaVersion: 2,
           pluginId: "meme",
           source: "official",
-          version: "1.0.0",
-          manifestHash: "manifest",
-          capabilitiesHash: "permissions",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "permissions",
           approvedAt: 1700000000000,
           approvedBy: "user",
           trustTier: "declarative",
           approvedCapabilities: ["file_read", "task"],
-          risk: "medium",
-          status: "approved",
         },
       },
     })

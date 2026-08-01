@@ -1197,7 +1197,7 @@ msgstr "搜索命令"
 msgid "app.command.title"
 msgstr "命令"
 
-#. * Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
+#. * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
  *
  * title and message pass through from the plugin — they are plugin author content.
  * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
@@ -1205,7 +1205,7 @@ msgstr "命令"
 msgid "app.common.cancel"
 msgstr "取消"
 
-#. * Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
+#. * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
  *
  * title and message pass through from the plugin — they are plugin author content.
  * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
@@ -5525,28 +5525,16 @@ msgid "app.plugin.builtin.plugins"
 msgstr "插件"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.addedGroup"
-msgstr "新增：{group}"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.consent.approvalFailed"
 msgstr "批准失败"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.consent.approvalRequired"
-msgstr "此插件需要你的批准。"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.approving"
 msgstr "正在批准…"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.current.empty"
-msgstr "没有保持不变的现有权限。"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.consent.current.title"
-msgstr "当前权限"
+msgid "app.plugin.consent.confirmationRequired"
+msgstr "请确认这次访问范围变更。"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.dialog.description"
@@ -5565,8 +5553,8 @@ msgid "app.plugin.consent.install.title"
 msgstr "批准安装插件"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.manifestChanged"
-msgstr "权限未发生变化，但插件清单已更改。批准前请审查元数据。"
+msgid "app.plugin.consent.noHostAccess"
+msgstr "此插件不请求宿主访问权限。"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.notNow"
@@ -5597,8 +5585,8 @@ msgid "app.plugin.consent.reviewChanged"
 msgstr "你审查期间插件发生了变化"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.severityChanges"
-msgstr "严重级别变化"
+msgid "app.plugin.consent.technicalDetails"
+msgstr "技术详情"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.update.approve"
@@ -5611,6 +5599,10 @@ msgstr "更新此插件前请审查权限变化。"
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.update.title"
 msgstr "批准更新插件"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.api4UpdateRequired"
+msgstr "需要 API 4 更新"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.install"
@@ -5627,6 +5619,10 @@ msgstr "正在安装…"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.loadingReview"
 msgstr "正在加载审查信息…"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.noApi4Release"
+msgstr "暂无 API 4 版本"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.reviewPermissions"
@@ -5659,6 +5655,10 @@ msgstr "正在加载插件…"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.metric.author"
 msgstr "作者"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.metric.compatibility"
+msgstr "Synergy 版本要求"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.metric.installed"
@@ -5709,6 +5709,10 @@ msgid "app.plugin.detail.permission.hostCapability"
 msgstr "Synergy 主机能力 {key}"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.permission.technicalDetails"
+msgstr "技术详情"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.progressAriaLabel"
 msgstr "{action} 插件"
 
@@ -5729,12 +5733,16 @@ msgid "app.plugin.detail.section.developmentRegistration"
 msgstr "开发注册"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.section.noPermissions"
-msgstr "未声明特殊权限。"
+msgid "app.plugin.detail.section.featuresCount"
+msgstr "{count} 项功能"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.section.noTools"
-msgstr "无工具"
+msgid "app.plugin.detail.section.noFeatures"
+msgstr "未声明功能"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.section.noPermissions"
+msgstr "未声明特殊权限。"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.noVersions"
@@ -5783,6 +5791,10 @@ msgstr "已禁用"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.state.needsApproval"
 msgstr "需要批准"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.version.compatibility"
+msgstr "Plugin API {apiVersion} · Synergy {range}"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.version.installedLocally"
@@ -5941,6 +5953,10 @@ msgid "app.plugin.marketplace.registryUnavailable.title"
 msgstr "插件注册表不可用"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.marketplace.row.compatibility"
+msgstr "Synergy {range}"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.installed"
 msgstr "已安装"
 
@@ -6067,30 +6083,6 @@ msgstr "工具"
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.ui"
 msgstr "UI"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.high"
-msgstr "风险级别：高"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.low"
-msgstr "风险级别：低"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.medium"
-msgstr "风险级别：中"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.high"
-msgstr "高"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.low"
-msgstr "低"
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.medium"
-msgstr "中"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.settings.saveFailed"

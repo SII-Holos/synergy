@@ -1,5 +1,5 @@
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
+import { permissionsHashPayload } from "@ericsanchezok/synergy-plugin/integrity"
 import { PluginRuntimeCommand } from "./plugin-runtime"
 import { PluginTestCommand } from "./plugin-test"
 import { PluginPublishMarketCommand } from "./plugin-publish-market"
@@ -28,7 +28,7 @@ import { EOL } from "os"
 import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
-import { diffPermissions, evaluatePluginUpdateConsent } from "../../plugin/consent/diff"
+import { comparePluginAccess, diffPermissions } from "../../plugin/consent/diff"
 import { buildApprovalRecord } from "../../plugin/consent/approval-service"
 import type { PluginApprovalRecord } from "../../plugin/consent/approval-store"
 import { baseCapabilities } from "../../plugin/capability"
@@ -264,21 +264,21 @@ export const PluginUpdateCommand = cmd({
             oldCapabilities: oldCaps,
             newCapabilities: newCaps,
           })
-          const diff = oldManifest
-            ? evaluatePluginUpdateConsent({
-                diff: baseDiff,
-                previous: {
-                  manifestHash: computeManifestHash(oldManifest),
-                  permissionsHash: computePermissionsHash(oldManifest, oldCaps),
-                },
-                candidate: {
-                  manifestHash: computeManifestHash(newManifest),
-                  permissionsHash: computePermissionsHash(newManifest, newCaps),
-                },
-              }).diff
-            : baseDiff
+          const accessChange = oldManifest
+            ? comparePluginAccess(
+                permissionsHashPayload(oldManifest, oldCaps),
+                permissionsHashPayload(newManifest, newCaps),
+              )
+            : "broadened"
+          const diff = {
+            ...baseDiff,
+            broadened: accessChange === "broadened" && baseDiff.added.length === 0 ? baseDiff.access : [],
+            requiresConfirmation: accessChange === "broadened",
+            confirmationReason: accessChange === "broadened" ? ("access_expanded" as const) : undefined,
+            reason: accessChange === "broadened" ? "This update expands plugin access." : undefined,
+          }
 
-          if (!diff.requiresApproval) {
+          if (!diff.requiresConfirmation) {
             consented.push({
               current,
               resolved,
@@ -301,15 +301,15 @@ export const PluginUpdateCommand = cmd({
           // Block in non-interactive mode
           if (!isInteractive) {
             UI.println(
-              `${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Permission changes require approval. Run interactively or use \`synergy plugin approve ${id}\`.${EOL}` +
-                `  Use ${UI.Style.TEXT_DIM}--auto-approve${UI.Style.TEXT_NORMAL} to skip prompts (low-security convenience).`,
+              `${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Access expansion requires confirmation. Run interactively or use \`synergy plugin approve ${id}\`.${EOL}` +
+                `  Use ${UI.Style.TEXT_DIM}--auto-approve${UI.Style.TEXT_NORMAL} to confirm from the command line.`,
             )
             continue
           }
 
           // Prompt for approval
           const approved = await prompts.confirm({
-            message: `Approve permission changes for ${SpecToDisplay(spec)}?`,
+            message: `Confirm expanded access for ${SpecToDisplay(spec)}?`,
           })
           if (approved === true) {
             consented.push({
@@ -419,7 +419,7 @@ export const PluginListCommand = cmd({
             if (status.version) UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${status.version}`)
             UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${status.id}`)
             UI.println(
-              `  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${status.risk}  ${UI.Style.TEXT_DIM}Capabilities:${UI.Style.TEXT_NORMAL} ${status.capabilities.join(", ") || "none"}`,
+              `  ${UI.Style.TEXT_DIM}Capabilities:${UI.Style.TEXT_NORMAL} ${status.capabilities.join(", ") || "none"}`,
             )
             UI.println(
               `  ${UI.Style.TEXT_DIM}Contributions:${UI.Style.TEXT_NORMAL} ${status.tools.length} tools, ${status.operations.length} operations, ${status.uiContributions} UI surfaces`,

@@ -4,10 +4,8 @@ import { Installation } from "../global/installation"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { PluginSpec } from "../util/plugin-spec"
-import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
-import { manifestHasTrustedUI } from "@ericsanchezok/synergy-plugin"
-import { riskForCapabilities } from "./capability"
-import { getApproval, type PluginApprovalRecord, verifyApproval } from "./consent/approval-store"
+import { computeManifestHash } from "@ericsanchezok/synergy-plugin/integrity"
+import { createApprovalRecord, getApproval, type PluginApprovalRecord, verifyApproval } from "./consent/approval-store"
 import { ensureRuntime, forgetPlugin, specToPluginId, state, type LoadedPlugin } from "./loader"
 import { reload } from "./lifecycle"
 import * as Lockfile from "./lockfile"
@@ -26,7 +24,6 @@ export class PluginApprovalRequiredError extends Error {
     readonly version: string,
     readonly manifest: LoadedPlugin["manifest"],
     readonly capabilities: string[],
-    readonly risk: "low" | "medium" | "high",
   ) {
     super(`Plugin ${pluginId}@${version} requires approval before installation`)
     this.name = "PluginApprovalRequiredError"
@@ -83,6 +80,8 @@ export async function add(
     autoReload?: boolean
     skipConsent?: boolean
     source?: PluginSource
+    signer?: string
+    official?: boolean
     preApproved?: PluginApprovalRecord
   } = {},
 ): Promise<LoadedPlugin> {
@@ -99,41 +98,54 @@ export async function add(
     const manifest = resolved.manifest
     const source = options.source ?? resolved.source
     const capabilities = manifest.capabilities.map((item) => item.id)
-    const risk = riskForCapabilities(capabilities)
     const manifestHash = computeManifestHash(manifest)
-    const capabilitiesHash = computePermissionsHash(manifest, capabilities)
-    const existingApproval = await getApproval(manifest.id, manifest)
+    const existingApproval = await getApproval(manifest.id)
     const automaticallyApproved =
-      options.skipConsent === true || source === "builtin" || (Installation.CHANNEL === "local" && source === "local")
+      options.skipConsent === true ||
+      source === "builtin" ||
+      (!existingApproval && source === "official" && options.official === true && Boolean(options.signer)) ||
+      (Installation.CHANNEL === "local" && source === "local")
 
     let approval: PluginApprovalRecord
     if (options.preApproved) {
       if (
         options.preApproved.pluginId !== manifest.id ||
         options.preApproved.source !== source ||
-        !verifyApproval(options.preApproved, manifest, capabilities)
+        !verifyApproval(options.preApproved, manifest, capabilities, { source, signer: options.signer })
       ) {
-        throw new PluginApprovalRequiredError(manifest.id, manifest.version, manifest, capabilities, risk)
+        throw new PluginApprovalRequiredError(manifest.id, manifest.version, manifest, capabilities)
       }
-      approval = options.preApproved
-    } else if (existingApproval && verifyApproval(existingApproval, manifest, capabilities)) {
-      approval = existingApproval
-    } else if (automaticallyApproved) {
-      approval = {
+      approval = createApprovalRecord({
         pluginId: manifest.id,
         source,
-        version: manifest.version,
-        manifestHash,
-        capabilitiesHash,
-        approvedAt: Date.now(),
+        manifest,
+        capabilities,
+        signer: options.signer ?? options.preApproved.signer,
+        approvedBy: options.preApproved.approvedBy,
+      })
+    } else if (
+      existingApproval &&
+      verifyApproval(existingApproval, manifest, capabilities, { source, signer: options.signer })
+    ) {
+      approval = createApprovalRecord({
+        pluginId: manifest.id,
+        source,
+        manifest,
+        capabilities,
+        signer: options.signer ?? existingApproval.signer,
+        approvedBy: existingApproval.approvedBy,
+      })
+    } else if (automaticallyApproved) {
+      approval = createApprovalRecord({
+        pluginId: manifest.id,
+        source,
+        manifest,
+        capabilities,
+        signer: options.signer,
         approvedBy: options.skipConsent ? "policy" : source === "builtin" ? "builtin" : "policy",
-        trustTier: manifestHasTrustedUI(manifest) ? "trusted-import" : "declarative",
-        approvedCapabilities: capabilities,
-        risk,
-        status: "approved",
-      }
+      })
     } else {
-      throw new PluginApprovalRequiredError(manifest.id, manifest.version, manifest, capabilities, risk)
+      throw new PluginApprovalRequiredError(manifest.id, manifest.version, manifest, capabilities)
     }
     const oldPlugin = await state()
       .then((current) => current.loaded.find((plugin) => plugin.id === manifest.id))

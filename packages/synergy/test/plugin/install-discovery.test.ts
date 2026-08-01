@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import z from "zod"
-import { compilePluginManifest, definePlugin, mcp, operation } from "@ericsanchezok/synergy-plugin"
+import { capability, compilePluginManifest, definePlugin, mcp, operation } from "@ericsanchezok/synergy-plugin"
 import { resolvePluginSpec } from "../../src/plugin/spec-resolver"
 import { PluginApprovalRequiredError, resolveConfiguredPluginId, updateReviewed, add } from "../../src/plugin/install"
 import { buildApprovalRecord } from "../../src/plugin/consent/approval-service"
@@ -82,7 +82,7 @@ describe("plugin installation discovery", () => {
     )
   })
 
-  test("rejects an update when the resolved manifest changes after review", async () => {
+  test("accepts a metadata-only update against the reviewed access grant", async () => {
     await using tmp = await tmpdir()
     const definition = definePlugin({
       id: "review-bound-update",
@@ -100,9 +100,9 @@ describe("plugin installation discovery", () => {
     await ScopeContext.provide({
       scope,
       async fn() {
-        await expect(updateReviewed(pathToFileURL(tmp.path).href, approval)).rejects.toBeInstanceOf(
-          PluginApprovalRequiredError,
-        )
+        await expect(updateReviewed(pathToFileURL(tmp.path).href, approval)).resolves.toMatchObject({
+          id: definition.id,
+        })
       },
     })
   })
@@ -128,6 +128,52 @@ describe("plugin installation discovery", () => {
         await expect(add("file://./relative-discovery", { source: "official" })).rejects.toBeInstanceOf(
           PluginApprovalRequiredError,
         )
+      },
+    })
+  })
+
+  test("official policy approval applies only to first install", async () => {
+    await using tmp = await tmpdir()
+    const firstDir = path.join(tmp.path, "official-first")
+    const updateDir = path.join(tmp.path, "official-update")
+    await fs.mkdir(firstDir, { recursive: true })
+    await fs.mkdir(updateDir, { recursive: true })
+    const first = compilePluginManifest(
+      definePlugin({
+        id: "official-policy-boundary",
+        version: "1.0.0",
+        description: "Official first install",
+        contributions: [],
+      }),
+      { generation: "official-first" },
+    )
+    const update = compilePluginManifest(
+      definePlugin({
+        id: "official-policy-boundary",
+        version: "1.1.0",
+        description: "Official update with broader access",
+        capabilities: [capability("asset.write")],
+        contributions: [],
+      }),
+      { generation: "official-update" },
+    )
+    await Bun.write(path.join(firstDir, "plugin.json"), JSON.stringify(first))
+    await Bun.write(path.join(updateDir, "plugin.json"), JSON.stringify(update))
+    const scope = await tmp.scope()
+    const signer = "a".repeat(64)
+
+    await ScopeContext.provide({
+      scope,
+      async fn() {
+        await expect(
+          add(pathToFileURL(firstDir).href, { source: "official", signer, official: true }),
+        ).resolves.toMatchObject({ id: "official-policy-boundary" })
+        await expect(
+          add(pathToFileURL(updateDir).href, { source: "official", signer, official: true }),
+        ).rejects.toBeInstanceOf(PluginApprovalRequiredError)
+        await expect(
+          add(pathToFileURL(firstDir).href, { source: "official", signer: "b".repeat(64), official: true }),
+        ).rejects.toBeInstanceOf(PluginApprovalRequiredError)
       },
     })
   })

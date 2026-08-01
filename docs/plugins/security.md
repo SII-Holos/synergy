@@ -10,13 +10,15 @@ Source `plugin.json` is forbidden because it would create a second declaration p
 
 ## Approval
 
-Approval covers the full generated manifest, permission set, and trusted UI. Loading is gated by the exact manifest hash and permissions hash recorded at approval time; any ordinary manifest or permission change requires a new approval review before executable code or trusted UI is imported. A handler cannot request a Host Service that is absent from the approved manifest.
+Approval covers publisher identity and the structured access grant. A handler cannot request a Host Service that is absent from the manifest and grant. The complete manifest hash still binds signatures, artifact integrity, and the short approval-review transaction, but ordinary metadata or implementation changes are not treated as new user access.
 
-The permissions hash binds capability constraints, contribution requirements, operation exposure, and trusted UI presence through the shared public integrity contract. plugin-kit and the host do not maintain separate hash payloads or canonical JSON implementations.
+The permissions hash binds capability constraints, access-bearing contribution requirements, operation exposure, and trusted UI presence through the shared public integrity contract. It identifies the grant for integrity and comparison; it is not a low/medium/high score.
 
 Approval review is server-authoritative. Configured plugins use `GET /api/plugins/:pluginId/approval-review` to fetch the current review. Submission uses `POST /api/plugins/approve` with only the canonical `target` and opaque `reviewToken`; Web and CLI clients never send manifests, capabilities, source specs, or paths as approval evidence. The `reviewToken` binds the canonical target, current manifest hash, and permissions hash. If the artifact changes before submit, the server returns `stale_review` with a refreshed review and performs no writes.
 
-Plugins disabled for approval keep their canonical identity, version, capabilities, risk, contribution summary, and disabled status. User-facing surfaces should label that state as `Needs approval`.
+Plugins disabled for approval keep their canonical identity, version, access summary, contribution summary, and disabled status. User-facing surfaces label that state as `Needs approval`.
+
+Official registry plugins with `official: true` and a valid reviewed signer install under policy without an extra confirmation. Other sources receive one concise source-and-access confirmation on first install. Updates continue automatically for the same source/signer when access is equal or narrower. Broader access, a signer/source change, or an unknown constraint change requires confirmation. Signature or integrity failure blocks the package and cannot be overridden.
 
 Capabilities govern Synergy Host Services. They do not pretend to block direct OS filesystem or network calls made by an external plugin process. Review external plugin code and provenance accordingly.
 
@@ -48,7 +50,7 @@ The UI receives bound operations, scoped events, and explicit host actions. It d
 
 - Confirm repository, author, release artifact, signature, and registry metadata agree.
 - Confirm `definePlugin().id` is stable and unique.
-- Review every capability and constraint, especially writes, secrets, delegated tasks, tool invocation, and trusted UI.
+- Review every requested Host Service and constraint, especially writes, credentials, delegated tasks, tool invocation, and trusted UI.
 - Confirm executable handler IDs exactly match generated contributions.
 - Confirm input/output/event schemas reject unexpected data.
 - Confirm workspace paths and plugin-owned data paths cannot escape their intended roots.
