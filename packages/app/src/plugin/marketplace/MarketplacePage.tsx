@@ -13,11 +13,11 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale } from "@/context/locale"
 
 import { VerifiedBadge } from "./VerifiedBadge"
-import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import type { RegistryPluginSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { InstalledPlugin } from "./types"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
+import { formatPluginBuildId } from "@/plugin/permission-presentation"
 import { PluginDetailDialog, type RegistrySource } from "./PluginDetailDialog"
 import { loadRegistryResource } from "./registry-resource"
 import {
@@ -420,6 +420,11 @@ function PluginRow(props: {
               {_(pluginMarketplace.versionLabel.id, { version: props.plugin.latestVersion })}
             </span>
           </Show>
+          <Show when={props.plugin.apiVersion}>
+            <span class="plugin-marketplace-version">
+              {_(pluginMarketplace.pluginApiLabel.id, { version: props.plugin.apiVersion })}
+            </span>
+          </Show>
         </span>
         {/* plugin.description is author content — pass through */}
         <span class="plugin-marketplace-row-description">{props.plugin.description}</span>
@@ -440,6 +445,17 @@ function PluginRow(props: {
           <span aria-hidden="true">·</span>
           {/* plugin.runtimeMode is catalog data — pass through */}
           <span>{props.plugin.runtimeMode}</span>
+          <Show when={props.plugin.compatibility?.synergy}>
+            {(range) => (
+              <span>
+                {_({
+                  id: "app.plugin.marketplace.row.compatibility",
+                  message: "Synergy {range}",
+                  values: { range: range() },
+                })}
+              </span>
+            )}
+          </Show>
           <span>
             {_({
               id: "app.plugin.marketplace.row.updated",
@@ -452,7 +468,6 @@ function PluginRow(props: {
 
       <span class="plugin-marketplace-row-status">
         <VerifiedBadge verified={props.plugin.verified} official={props.plugin.official} />
-        <PermissionRiskBadge risk={props.plugin.risk} />
       </span>
       <Icon name={getSemanticIcon("navigation.expand")} size="small" class="plugin-marketplace-row-arrow" />
     </button>
@@ -529,9 +544,9 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
                 <span aria-hidden="true">·</span>
                 <span>
                   {_({
-                    id: "app.plugin.marketplace.generation.label",
-                    message: "Generation {id}",
-                    values: { id: generation().slice(0, 8) },
+                    id: "app.plugin.marketplace.build.label",
+                    message: "Build {id}",
+                    values: { id: formatPluginBuildId(generation()) },
                   })}
                 </span>
               </>

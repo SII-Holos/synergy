@@ -165,7 +165,7 @@ Holos does not replace local sessions, model providers, project configuration, L
 
 Plugins extend Synergy with tools, agents, skills, commands, MCP servers, provider behavior, configuration, hooks, and product UI.
 
-A plugin declares its contributions and requested permissions in a manifest. Synergy evaluates provenance, trust, risk, permission changes, and runtime isolation before enabling it. Install and update flows surface meaningful permission changes for consent, and higher-risk third-party code is isolated from the main runtime.
+A plugin declares its contributions and requested host access in a manifest. Synergy verifies source, publisher signature, artifact integrity, access changes, and runtime isolation before enabling it. Install and update flows explain what the plugin does separately from what it can access, and ask again only when access expands or publisher identity changes. External plugin code runs outside the main process, while ordinary commands, files, and network activity still follow the active runtime permission controls. The product does not assign plugins an overall risk rating.
 
 Plugins participate in the same product contracts as first-party features: tool execution remains governed, UI contributions use defined workbench surfaces, and extension state is visible to the runtime rather than loaded as an unbounded script.
 

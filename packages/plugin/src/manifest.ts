@@ -1,5 +1,5 @@
 import z from "zod"
-import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
+import { PLUGIN_API_4_BASE_SYNERGY_RANGE, PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
 import { McpServerConfig } from "./mcp.js"
 import { HOST_OWNED_MESSAGE_TYPES, PLUGIN_MODEL_ROLES } from "./plugin-types.js"
 import { PluginToolId } from "./ids.js"
@@ -267,10 +267,25 @@ export function hasTrustedUIComponent(contribution: PluginManifestContribution):
 
 const Artifact = z.object({ entry: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/i) }).strict()
 
-export const PluginManifest = z
+export const PluginManifestEnvelope = z
+  .object({
+    manifestVersion: z.number().int().positive(),
+    apiVersion: z.string().min(1),
+    compatibility: z
+      .object({ synergy: z.string().min(1) })
+      .strict()
+      .default({ synergy: PLUGIN_API_4_BASE_SYNERGY_RANGE }),
+  })
+  .passthrough()
+
+export const PluginManifestV4 = z
   .object({
     manifestVersion: z.literal(PLUGIN_MANIFEST_VERSION),
     apiVersion: z.literal(PLUGIN_API_VERSION),
+    compatibility: z
+      .object({ synergy: z.string().min(1) })
+      .strict()
+      .default({ synergy: PLUGIN_API_4_BASE_SYNERGY_RANGE }),
     id: Id,
     name: z.string().min(1).max(128),
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?(?:\+[a-zA-Z0-9.]+)?$/),
@@ -456,7 +471,9 @@ export const PluginManifest = z
     }
   })
 
-export type PluginManifest = z.infer<typeof PluginManifest>
+export const PluginManifest = PluginManifestV4
+
+export type PluginManifest = z.output<typeof PluginManifestV4>
 
 export function manifestHasTrustedUI(manifest: Pick<PluginManifest, "contributions">): boolean {
   return manifest.contributions.some(hasTrustedUIComponent)

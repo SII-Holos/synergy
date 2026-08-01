@@ -26789,33 +26789,6 @@
         },
         "additionalProperties": false
       },
-      "PluginApprovalPolicyConfig": {
-        "description": "Plugin approval policy configuration",
-        "type": "object",
-        "properties": {
-          "allowUnsignedLocal": {
-            "description": "Allow unsigned local plugins with user consent",
-            "default": true,
-            "type": "boolean"
-          },
-          "autoApproveBuiltin": {
-            "description": "Auto-approve builtin plugins without user consent",
-            "default": true,
-            "type": "boolean"
-          },
-          "denyHighRiskThirdParty": {
-            "description": "Block third-party plugins with high-risk capabilities",
-            "default": true,
-            "type": "boolean"
-          },
-          "requireSignatureForMarketplace": {
-            "description": "Require cryptographic signature for non-local plugins",
-            "default": false,
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
       "PluginRuntimeLimitsConfig": {
         "description": "Default plugin runtime resource and request limits",
         "default": {
@@ -27294,11 +27267,6 @@
           "npm": {
             "type": "string"
           },
-          "modelsDevProviderID": {
-            "description": "Models.dev provider id to use as this provider connection's model catalog source",
-            "type": "string",
-            "minLength": 1
-          },
           "models": {
             "type": "object",
             "propertyNames": {
@@ -27496,6 +27464,11 @@
                 }
               }
             }
+          },
+          "modelsDevProviderID": {
+            "description": "Models.dev provider id to use as this provider connection's model catalog source",
+            "type": "string",
+            "minLength": 1
           },
           "whitelist": {
             "type": "array",
@@ -29145,9 +29118,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "pluginApprovalPolicy": {
-            "$ref": "#/components/schemas/PluginApprovalPolicyConfig"
           },
           "pluginRuntimePolicy": {
             "$ref": "#/components/schemas/PluginRuntimePolicyConfig"
@@ -40025,6 +39995,15 @@
           "apiVersion": {
             "type": "string"
           },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "synergy": {
+                "type": "string"
+              }
+            },
+            "required": ["synergy"]
+          },
           "generation": {
             "type": "string"
           },
@@ -40134,10 +40113,6 @@
               "type": "string"
             }
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "operations": {
             "type": "array",
             "items": {
@@ -40241,7 +40216,6 @@
           "health",
           "loaded",
           "capabilities",
-          "risk",
           "operations",
           "tools",
           "uiContributions",
@@ -40305,195 +40279,181 @@
           "generation": {
             "type": "string"
           },
+          "source": {
+            "type": "string",
+            "enum": ["local", "official", "npm", "git", "url", "builtin"]
+          },
+          "signer": {
+            "type": "string"
+          },
           "capabilities": {
             "type": "array",
             "items": {
               "type": "string"
             }
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "trust": {
             "type": "string",
             "enum": ["declarative", "trusted-import"]
           },
-          "diff": {
-            "type": "object",
-            "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "fromVersion": {
-                "type": "string"
-              },
-              "toVersion": {
-                "type": "string"
-              },
-              "riskBefore": {
-                "type": "string",
-                "enum": ["low", "medium", "high"]
-              },
-              "riskAfter": {
-                "type": "string",
-                "enum": ["low", "medium", "high"]
-              },
-              "added": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "category": {
-                      "type": "string",
-                      "enum": [
-                        "tools",
-                        "files",
-                        "network",
-                        "data",
-                        "ui",
-                        "runtime",
-                        "hooks",
-                        "session",
-                        "browser",
-                        "identity",
-                        "communication",
-                        "platform"
-                      ]
-                    },
-                    "severity": {
-                      "type": "string",
-                      "enum": ["low", "medium", "high"]
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "technical": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["key", "category", "severity", "title", "description"]
+          "access": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "files",
+                    "network",
+                    "data",
+                    "ui",
+                    "runtime",
+                    "hooks",
+                    "session",
+                    "browser",
+                    "identity",
+                    "communication",
+                    "platform"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "technical": {
+                  "type": "string"
                 }
               },
-              "removed": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "category": {
-                      "type": "string",
-                      "enum": [
-                        "tools",
-                        "files",
-                        "network",
-                        "data",
-                        "ui",
-                        "runtime",
-                        "hooks",
-                        "session",
-                        "browser",
-                        "identity",
-                        "communication",
-                        "platform"
-                      ]
-                    },
-                    "severity": {
-                      "type": "string",
-                      "enum": ["low", "medium", "high"]
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "technical": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["key", "category", "severity", "title", "description"]
-                }
-              },
-              "unchanged": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "category": {
-                      "type": "string",
-                      "enum": [
-                        "tools",
-                        "files",
-                        "network",
-                        "data",
-                        "ui",
-                        "runtime",
-                        "hooks",
-                        "session",
-                        "browser",
-                        "identity",
-                        "communication",
-                        "platform"
-                      ]
-                    },
-                    "severity": {
-                      "type": "string",
-                      "enum": ["low", "medium", "high"]
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "technical": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["key", "category", "severity", "title", "description"]
-                }
-              },
-              "changed": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "before": {
-                      "type": "string"
-                    },
-                    "after": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["key"]
-                }
-              },
-              "requiresApproval": {
-                "type": "boolean"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": ["pluginId", "added", "removed", "unchanged", "changed", "requiresApproval"]
+              "required": ["key", "category", "title", "description"]
+            }
           },
-          "permissionsChanged": {
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "files",
+                    "network",
+                    "data",
+                    "ui",
+                    "runtime",
+                    "hooks",
+                    "session",
+                    "browser",
+                    "identity",
+                    "communication",
+                    "platform"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "technical": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "category", "title", "description"]
+            }
+          },
+          "broadened": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "files",
+                    "network",
+                    "data",
+                    "ui",
+                    "runtime",
+                    "hooks",
+                    "session",
+                    "browser",
+                    "identity",
+                    "communication",
+                    "platform"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "technical": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "category", "title", "description"]
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "files",
+                    "network",
+                    "data",
+                    "ui",
+                    "runtime",
+                    "hooks",
+                    "session",
+                    "browser",
+                    "identity",
+                    "communication",
+                    "platform"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "technical": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "category", "title", "description"]
+            }
+          },
+          "requiresConfirmation": {
             "type": "boolean"
+          },
+          "confirmationReason": {
+            "type": "string",
+            "enum": ["non_official_source", "access_expanded", "publisher_changed"]
           },
           "reason": {
             "type": "string"
@@ -40507,11 +40467,16 @@
           "pluginId",
           "name",
           "version",
+          "apiVersion",
+          "generation",
+          "source",
           "capabilities",
-          "risk",
           "trust",
-          "diff",
-          "permissionsChanged",
+          "access",
+          "added",
+          "broadened",
+          "removed",
+          "requiresConfirmation",
           "reviewToken"
         ]
       },
@@ -40588,6 +40553,17 @@
           }
         ]
       },
+      "RegistryPluginCompatibility": {
+        "type": "object",
+        "properties": {
+          "synergy": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["synergy"],
+        "additionalProperties": false
+      },
       "RegistryPluginSummary": {
         "type": "object",
         "properties": {
@@ -40636,12 +40612,14 @@
           "latestVersion": {
             "type": "string"
           },
+          "apiVersion": {
+            "type": "string"
+          },
+          "compatibility": {
+            "$ref": "#/components/schemas/RegistryPluginCompatibility"
+          },
           "updatedAt": {
             "type": "number"
-          },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
           },
           "trustTier": {
             "type": "string",
@@ -40683,7 +40661,6 @@
           "official",
           "keywords",
           "updatedAt",
-          "risk",
           "trustTier",
           "runtimeMode",
           "uiSurfaces",
@@ -40691,17 +40668,6 @@
           "downloads",
           "source"
         ]
-      },
-      "RegistryPluginCompatibility": {
-        "type": "object",
-        "properties": {
-          "synergy": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": ["synergy"],
-        "additionalProperties": false
       },
       "RegistryPluginSignature": {
         "type": "object",
@@ -40717,6 +40683,21 @@
         },
         "required": ["algorithm", "signer"]
       },
+      "RegistryFeatureSummary": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": ["key", "title", "description"]
+      },
       "RegistryPermissionItem": {
         "type": "object",
         "properties": {
@@ -40726,21 +40707,29 @@
           "description": {
             "type": "string"
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
+          "category": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
           },
           "granted": {
             "type": "boolean"
           }
         },
-        "required": ["key", "description", "risk"]
+        "required": ["key", "description"]
       },
       "RegistryPluginVersion": {
         "type": "object",
         "properties": {
           "version": {
             "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "compatibility": {
+            "$ref": "#/components/schemas/RegistryPluginCompatibility"
           },
           "manifestHash": {
             "type": "string"
@@ -40763,13 +40752,15 @@
           "integrity": {
             "type": "string"
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "runtimeMode": {
             "type": "string",
             "const": "process"
+          },
+          "featuresSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryFeatureSummary"
+            }
           },
           "permissionsSummary": {
             "type": "array",
@@ -40800,7 +40791,14 @@
             "enum": ["official", "local"]
           }
         },
-        "required": ["version", "manifestHash", "permissionsHash", "risk", "permissionsSummary", "publishedAt"],
+        "required": [
+          "version",
+          "manifestHash",
+          "permissionsHash",
+          "featuresSummary",
+          "permissionsSummary",
+          "publishedAt"
+        ],
         "additionalProperties": false
       },
       "RegistryPermissionSummary": {
@@ -40812,9 +40810,6 @@
           "category": {
             "type": "string"
           },
-          "severity": {
-            "type": "string"
-          },
           "title": {
             "type": "string"
           },
@@ -40822,7 +40817,7 @@
             "type": "string"
           }
         },
-        "required": ["key", "category", "severity", "title", "description"]
+        "required": ["key", "category", "title", "description"]
       },
       "RegistryPluginEntry": {
         "type": "object",
@@ -40887,10 +40882,6 @@
           "updatedAt": {
             "type": "number"
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "trustTier": {
             "type": "string",
             "enum": ["declarative", "trusted-import"]
@@ -40898,6 +40889,12 @@
           "runtimeMode": {
             "type": "string",
             "const": "process"
+          },
+          "featuresSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryFeatureSummary"
+            }
           },
           "permissionsSummary": {
             "type": "array",
@@ -40954,9 +40951,9 @@
           "versions",
           "createdAt",
           "updatedAt",
-          "risk",
           "trustTier",
           "runtimeMode",
+          "featuresSummary",
           "permissionsSummary",
           "uiSurfaces",
           "tools",
@@ -41021,10 +41018,6 @@
               "$ref": "#/components/schemas/RegistryPluginVersion"
             }
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "trustTier": {
             "type": "string",
             "enum": ["declarative", "trusted-import"]
@@ -41032,6 +41025,12 @@
           "runtimeMode": {
             "type": "string",
             "const": "process"
+          },
+          "featuresSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryFeatureSummary"
+            }
           },
           "permissionsSummary": {
             "type": "array",
@@ -41086,9 +41085,9 @@
           "official",
           "keywords",
           "versions",
-          "risk",
           "trustTier",
           "runtimeMode",
+          "featuresSummary",
           "permissionsSummary",
           "uiSurfaces",
           "tools",

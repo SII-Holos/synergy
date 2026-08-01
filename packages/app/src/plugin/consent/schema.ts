@@ -1,29 +1,20 @@
-export type PermissionSeverity = "low" | "medium" | "high"
 export interface PermissionItem {
   key: string
   category: string
-  severity: PermissionSeverity
   title: string
   description: string
   technical?: string
-}
-
-export interface PermissionChange {
-  key: string
-  before?: string
-  after?: string
 }
 
 export interface PluginPermissionDiff {
   pluginId: string
   fromVersion?: string
   toVersion?: string
-  riskBefore?: PermissionSeverity
-  riskAfter?: PermissionSeverity
+  access: PermissionItem[]
   added: PermissionItem[]
+  broadened: PermissionItem[]
   removed: PermissionItem[]
-  unchanged: PermissionItem[]
-  changed: PermissionChange[]
-  requiresApproval: boolean
+  requiresConfirmation: boolean
+  confirmationReason?: "non_official_source" | "access_expanded" | "publisher_changed"
   reason?: string
 }

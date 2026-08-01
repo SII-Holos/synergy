@@ -1292,7 +1292,7 @@ export const pluginMarketplace = {
   installationBuiltIn: { id: "app.plugin.marketplace.installation.builtIn", message: "Built in" },
   versionLabel: { id: "app.plugin.marketplace.version.label", message: "v{version}" },
   apiVersionLabel: { id: "app.plugin.marketplace.apiVersion.label", message: "API {version}" },
-  generationLabel: { id: "app.plugin.marketplace.generation.label", message: "Generation {id}" },
+  buildLabel: { id: "app.plugin.marketplace.build.label", message: "Build {id}" },
   headingLabel: { id: "app.plugin.marketplace.heading.label", message: "{label} plugins" },
   pluginApiLabel: { id: "app.plugin.marketplace.pluginApi.label", message: "Plugin API {version}" },
   statusNeedsApproval: { id: "app.plugin.marketplace.status.needsApproval", message: "Needs approval" },
@@ -1345,17 +1345,6 @@ export const pluginPermission = {
     id: "app.plugin.permission.agentCall.description",
     message: "Send bounded text to approved Sessionless Agents without tools or Session history.",
   },
-} as const satisfies Record<string, AppMessageDescriptor>
-
-// ── Plugin risk labels ────────────────────────────────────────────────────────
-
-export const pluginRisk = {
-  low: { id: "app.plugin.risk.low", message: "Low" },
-  medium: { id: "app.plugin.risk.medium", message: "Medium" },
-  high: { id: "app.plugin.risk.high", message: "High" },
-  ariaLow: { id: "app.plugin.risk.ariaLabel.low", message: "Risk level: Low" },
-  ariaMedium: { id: "app.plugin.risk.ariaLabel.medium", message: "Risk level: Medium" },
-  ariaHigh: { id: "app.plugin.risk.ariaLabel.high", message: "Risk level: High" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Agent Visual ─────────────────────────────────────────────────────────────
@@ -1444,5 +1433,4 @@ export const messages = {
   pluginNav,
   pluginMarketplace,
   pluginPermission,
-  pluginRisk,
 } as const

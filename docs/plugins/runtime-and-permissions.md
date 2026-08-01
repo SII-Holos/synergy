@@ -106,7 +106,9 @@ hook({
 })
 ```
 
-Approval is derived from generated capabilities and trusted UI. Changing the manifest or capability hash requires approval again. Approval never expands the source declaration.
+Installation access is derived from capabilities, contribution `requires`, operation exposure, known constraints, and trusted UI. The grant is compared structurally on update: equal or narrower access continues without confirmation; added or broadened access asks once and shows only the difference. Unknown constraint changes are confirmed conservatively without assigning a plugin risk rating. Approval never expands the source declaration and never bypasses the ordinary runtime permission/sandbox decision.
+
+`chat.system.transform` is the stable API4 system-context hook. The pre-GA `experimental.chat.system.transform` spelling remains accepted for existing early API4 artifacts, but new stable plugins must use the stable point. Other `experimental.*` hook points are not covered by the API4 compatibility promise.
 
 ## Operations
 

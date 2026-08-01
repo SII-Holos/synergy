@@ -7,7 +7,13 @@ export * from "./context.js"
 export * from "./contribution.js"
 export * from "./mcp.js"
 export * from "./descriptor.js"
-export { PluginManifest, hasTrustedUIComponent, manifestHasTrustedUI } from "./manifest.js"
+export {
+  PluginManifest,
+  PluginManifestEnvelope,
+  PluginManifestV4,
+  hasTrustedUIComponent,
+  manifestHasTrustedUI,
+} from "./manifest.js"
 export type { PluginManifest as PluginManifestType, PluginManifestContribution } from "./manifest.js"
 export * from "./artifact.js"
 export * from "./loader.js"

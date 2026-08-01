@@ -1154,36 +1154,6 @@ export const ProviderCatalog = z
   .meta({ ref: "ProviderCatalogConfig" })
 export type ProviderCatalog = z.infer<typeof ProviderCatalog>
 
-export const PluginApprovalPolicy = z
-  .object({
-    allowUnsignedLocal: z.boolean().optional().default(true).describe("Allow unsigned local plugins with user consent"),
-    autoApproveBuiltin: z
-      .boolean()
-      .optional()
-      .default(true)
-      .describe("Auto-approve builtin plugins without user consent"),
-    denyHighRiskThirdParty: z
-      .boolean()
-      .optional()
-      .default(true)
-      .describe("Block third-party plugins with high-risk capabilities"),
-    requireSignatureForMarketplace: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe("Require cryptographic signature for non-local plugins"),
-  })
-  .strict()
-  .meta({ ref: "PluginApprovalPolicyConfig" })
-export type PluginApprovalPolicy = z.infer<typeof PluginApprovalPolicy>
-
-export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
-  allowUnsignedLocal: true,
-  autoApproveBuiltin: true,
-  denyHighRiskThirdParty: true,
-  requireSignatureForMarketplace: false,
-} as const satisfies Required<PluginApprovalPolicy>
-
 export const PluginRuntimeLimits = z
   .object({
     startupTimeoutMs: z
@@ -1601,7 +1571,6 @@ export const Info = z
       })
       .optional(),
     plugin: z.string().array().optional(),
-    pluginApprovalPolicy: PluginApprovalPolicy.optional().describe("Plugin approval policy configuration"),
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),

@@ -10,6 +10,7 @@ export default definePlugin({
   id: "example",
   version: "1.0.0",
   description: "Example plugin",
+  compatibility: { synergy: ">=3.0.11" },
   assets: [{ source: "src/prompts", target: "runtime/prompts" }],
   capabilities: [capability("workspace.read"), capability("ui.hostActions")],
   contributions: [
@@ -43,6 +44,8 @@ export default definePlugin({
 - Zod and JSON Schema are accepted for operation, event, and tool schemas.
 - `activate()` runs once per runtime generation and does not receive Scope or Session state.
 - Top-level `assets` map project-relative files or directories into package-relative targets. Asset contents are integrity-checked and included in the generation hash.
+- `apiVersion` stays `"4.0"` for the stable API4 family. Set `compatibility.synergy` only when the plugin needs a newer additive host feature; otherwise the GA baseline is generated automatically.
+- Stable API4 types and behavior remain backward compatible. Avoid `experimental.*` in published stable plugins because those surfaces may change or disappear.
 
 ## Contribution Factories
 
@@ -84,6 +87,8 @@ export default Panel
 ## Runtime and Data
 
 External plugins run in one process per active `pluginId + version + generation`; enabled Scopes share it and receive separate invocation contexts. Trusted built-ins may use `inProcess`. The process boundary is crash/resource cleanup isolation, not an OS security sandbox.
+
+The runtime transport protocol is host-owned. `runtime.protocolVersion` is diagnostic provenance, not a plugin feature gate or compatibility contract; use `apiVersion` and `compatibility.synergy` instead.
 
 Plugins own their business data, schema, concurrency, backup, migration, and deletion. Synergy stores only installation metadata, approval, Scope enablement, declarative settings, and plugin credentials.
 

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -10,7 +9,7 @@ import { MCP } from "../../src/mcp"
 import { connectClientOrCloseOnFailure, McpSupervisor, probeClientConnection } from "../../src/mcp/supervisor"
 import { PendingOAuth } from "../../src/mcp/pending-oauth"
 import { Plugin } from "../../src/plugin"
-import { saveApproval } from "../../src/plugin/consent/approval-store"
+import { createApprovalRecord, saveApproval } from "../../src/plugin/consent/approval-store"
 import { startForPlugin } from "../../src/plugin/mcp"
 import { ScopeContext } from "../../src/scope/context"
 import { Log } from "../../src/util/log"
@@ -46,6 +45,7 @@ async function writeMcpPlugin(root: string, input: { id: string; serverPath: str
   const manifest = {
     manifestVersion: 1 as const,
     apiVersion: "4.0" as const,
+    compatibility: { synergy: ">=3.0.11" },
     id: input.id,
     name: input.id,
     version: "0.1.0",
@@ -319,19 +319,13 @@ describe.serial("McpSupervisor", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        await saveApproval({
-          pluginId: tmp.extra.manifest.id,
-          source: "local",
-          version: tmp.extra.manifest.version,
-          manifestHash: computeManifestHash(tmp.extra.manifest),
-          capabilitiesHash: computePermissionsHash(tmp.extra.manifest),
-          approvedAt: Date.now(),
-          approvedBy: "user",
-          trustTier: "declarative",
-          approvedCapabilities: [],
-          risk: "low",
-          status: "approved",
-        })
+        await saveApproval(
+          createApprovalRecord({
+            pluginId: tmp.extra.manifest.id,
+            source: "local",
+            manifest: tmp.extra.manifest,
+          }),
+        )
         await Config.update({
           plugin: [pathToFileURL(tmp.extra.pluginDir).href],
         } as any)

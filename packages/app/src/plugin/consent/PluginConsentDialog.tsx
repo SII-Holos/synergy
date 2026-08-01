@@ -9,15 +9,15 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { ApprovalReview } from "@ericsanchezok/synergy-sdk/client"
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
-import { PermissionRiskBadge } from "./PermissionRiskBadge"
+import { presentPluginPermission } from "@/plugin/permission-presentation"
 import "./PluginConsentDialog.css"
 
-const DISPLAY_GROUPS: {
+const DISPLAY_GROUPS: Array<{
   key: string
   label: MessageDescriptor
   categories: string[]
   icon: SemanticIconTokenName
-}[] = [
+}> = [
   {
     key: "tools",
     label: pluginPermission.groupTools,
@@ -45,8 +45,7 @@ const DISPLAY_GROUPS: {
   },
 ]
 
-type ReviewPermissionItem = ApprovalReview["diff"]["added"][number]
-type ReviewSeverity = ApprovalReview["risk"]
+type ReviewAccessItem = ApprovalReview["access"][number]
 
 export type PluginConsentIntent = "install" | "update" | "reapprove"
 
@@ -63,115 +62,75 @@ const INTENT_COPY: Record<
   { title: MessageDescriptor; description: MessageDescriptor; primary: MessageDescriptor; busy: MessageDescriptor }
 > = {
   install: {
-    title: { id: "app.plugin.consent.install.title", message: "Approve Plugin Install" },
-    description: {
-      id: "app.plugin.consent.install.description",
-      message: "Review the permissions before installing this plugin.",
-    },
-    primary: { id: "app.plugin.consent.install.approve", message: "Approve & install" },
-    busy: { id: "app.plugin.consent.approving", message: "Approving..." },
+    title: { id: "app.plugin.consent.install.title", message: "Confirm plugin install" },
+    description: { id: "app.plugin.consent.install.description", message: "Review what this plugin can do." },
+    primary: { id: "app.plugin.consent.install.approve", message: "Confirm & install" },
+    busy: { id: "app.plugin.consent.approving", message: "Confirming..." },
   },
   update: {
-    title: { id: "app.plugin.consent.update.title", message: "Approve Plugin Update" },
-    description: {
-      id: "app.plugin.consent.update.description",
-      message: "Review the permission changes before updating this plugin.",
-    },
-    primary: { id: "app.plugin.consent.update.approve", message: "Approve & update" },
-    busy: { id: "app.plugin.consent.approving", message: "Approving..." },
+    title: { id: "app.plugin.consent.update.title", message: "Confirm plugin update" },
+    description: { id: "app.plugin.consent.update.description", message: "Review the expanded access in this update." },
+    primary: { id: "app.plugin.consent.update.approve", message: "Confirm & update" },
+    busy: { id: "app.plugin.consent.approving", message: "Confirming..." },
   },
   reapprove: {
-    title: { id: "app.plugin.consent.reapprove.title", message: "Review Plugin Permissions" },
-    description: {
-      id: "app.plugin.consent.reapprove.description",
-      message: "Review the current plugin manifest before reloading it.",
-    },
-    primary: { id: "app.plugin.consent.reapprove.approve", message: "Approve & reload" },
-    busy: { id: "app.plugin.consent.approving", message: "Approving..." },
+    title: { id: "app.plugin.consent.reapprove.title", message: "Confirm plugin access" },
+    description: { id: "app.plugin.consent.reapprove.description", message: "Review what this plugin can do." },
+    primary: { id: "app.plugin.consent.reapprove.approve", message: "Confirm & reload" },
+    busy: { id: "app.plugin.consent.approving", message: "Confirming..." },
   },
 }
 
-function groupByDisplayCategory(items: readonly ReviewPermissionItem[]) {
-  const map: Record<string, ReviewPermissionItem[]> = {}
+function iconForItem(item: ReviewAccessItem): SemanticIconTokenName {
+  if (item.category === "tools") return "plugins.permission.tools"
+  if (item.category === "files") return "plugins.permission.filesystem"
+  if (item.category === "network" || item.category === "communication") return "plugins.permission.network"
+  if (["data", "session", "identity"].includes(item.category)) return "plugins.permission.data"
+  if (item.category === "ui" || item.category === "browser") return "plugins.permission.ui"
+  if (item.category === "hooks") return "plugins.permission.hooks"
+  if (item.category === "runtime" || item.category === "platform") return "plugins.permission.runtime"
+  return "state.empty"
+}
+
+function groupByDisplayCategory(items: readonly ReviewAccessItem[]) {
+  const grouped = new Map<string, ReviewAccessItem[]>()
   for (const item of items) {
-    const displayKey = DISPLAY_GROUPS.find((group) => group.categories.includes(item.category))
-    const groupKey = displayKey?.key ?? item.category
-    if (!map[groupKey]) map[groupKey] = []
-    map[groupKey]!.push(item)
+    const group = DISPLAY_GROUPS.find((candidate) => candidate.categories.includes(item.category))
+    const key = group?.key ?? item.category
+    grouped.set(key, [...(grouped.get(key) ?? []), item])
   }
-  return DISPLAY_GROUPS.map((group) => ({ ...group, items: map[group.key] ?? [] })).filter(
+  return DISPLAY_GROUPS.map((group) => ({ ...group, items: grouped.get(group.key) ?? [] })).filter(
     (group) => group.items.length > 0,
   )
 }
 
-function iconForItem(item: ReviewPermissionItem): SemanticIconTokenName {
-  if (item.category === "tools") return "plugins.permission.tools"
-  if (item.category === "files") return "plugins.permission.filesystem"
-  if (item.category === "network" || item.category === "communication") return "plugins.permission.network"
-  if (item.category === "data" || item.category === "session" || item.category === "identity") {
-    return "plugins.permission.data"
-  }
-  if (item.category === "ui" || item.category === "browser") return "plugins.permission.ui"
-  if (item.category === "runtime" || item.category === "platform") return "plugins.permission.runtime"
-  if (item.category === "hooks") return "plugins.permission.hooks"
-  return "state.empty"
-}
-
-function permissionKey(item: ReviewPermissionItem): string {
-  return item.key
-}
-
-function severity(value: string | undefined): ReviewSeverity {
-  if (value === "medium" || value === "high") return value
-  return "low"
-}
-
-function pluginLabel(review: ApprovalReview): string {
-  return review.name || review.pluginId
-}
-
-function versionCopy(review: ApprovalReview): string {
-  const from = review.diff.fromVersion
-  const to = review.diff.toVersion ?? review.version
-  if (from && from !== to) return `v${from} → v${to}`
-  return `v${to}`
-}
-
-function PermissionList(props: {
-  title: string
-  empty: string
-  items: readonly ReviewPermissionItem[]
-  muted?: boolean
-}) {
+function AccessItem(props: { item: ReviewAccessItem; muted?: boolean }) {
   const { _ } = useLingui()
-  const capabilityCopy = (item: ReviewPermissionItem) => {
-    switch (item.key) {
-      case "composer.read":
-        return {
-          title: _(pluginPermission.composerReadTitle),
-          description: _(pluginPermission.composerReadDescription),
-        }
-      case "composer.write":
-        return {
-          title: _(pluginPermission.composerWriteTitle),
-          description: _(pluginPermission.composerWriteDescription),
-        }
-      case "composer.intercept":
-        return {
-          title: _(pluginPermission.composerInterceptTitle),
-          description: _(pluginPermission.composerInterceptDescription),
-        }
-      case "selection.read":
-        return {
-          title: _(pluginPermission.selectionReadTitle),
-          description: _(pluginPermission.selectionReadDescription),
-        }
-      case "agent.call":
-        return { title: _(pluginPermission.agentCallTitle), description: _(pluginPermission.agentCallDescription) }
-      default:
-        return item
-    }
-  }
+  const presentation = createMemo(() => presentPluginPermission(props.item))
+  return (
+    <li classList={{ "consent-item": true, "consent-item-muted": props.muted }}>
+      <div class="consent-item-row">
+        <Icon name={getSemanticIcon(iconForItem(props.item))} size="small" class="consent-item-icon" />
+        <div class="consent-item-body">
+          <span class="consent-item-title">{presentation().title}</span>
+          <Show when={presentation().description}>
+            {(description) => <span class="consent-item-desc">{description()}</span>}
+          </Show>
+          <Show when={presentation().technical}>
+            {(technical) => (
+              <details class="consent-item-technical">
+                <summary>{_({ id: "app.plugin.consent.technicalDetails", message: "Technical details" })}</summary>
+                <code>{technical()}</code>
+              </details>
+            )}
+          </Show>
+        </div>
+      </div>
+    </li>
+  )
+}
+
+function AccessList(props: { title: string; items: readonly ReviewAccessItem[]; empty: string; muted?: boolean }) {
   return (
     <section class="consent-section">
       <div class="consent-section-heading">
@@ -180,22 +139,8 @@ function PermissionList(props: {
       </div>
       <Show when={props.items.length > 0} fallback={<p class="consent-muted">{props.empty}</p>}>
         <ul class="consent-group-items">
-          <For each={[...props.items].toSorted((a, b) => permissionKey(a).localeCompare(permissionKey(b)))}>
-            {(item) => (
-              <li classList={{ "consent-item": true, "consent-item-muted": props.muted }}>
-                <div class="consent-item-row">
-                  <Icon name={getSemanticIcon(iconForItem(item))} size="small" class="consent-item-icon" />
-                  <div class="consent-item-body">
-                    <span class="consent-item-title">{capabilityCopy(item).title}</span>
-                    <span class="consent-item-desc">{capabilityCopy(item).description}</span>
-                  </div>
-                  <PermissionRiskBadge risk={item.severity} />
-                </div>
-                <Show when={item.technical}>
-                  <div class="consent-item-technical">{item.technical}</div>
-                </Show>
-              </li>
-            )}
+          <For each={[...props.items].toSorted((left, right) => left.key.localeCompare(right.key))}>
+            {(item) => <AccessItem item={item} muted={props.muted} />}
           </For>
         </ul>
       </Show>
@@ -211,16 +156,7 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
   const [currentReview, setCurrentReview] = createSignal(props.review)
   const [staleMessage, setStaleMessage] = createSignal(props.staleMessage ?? null)
   const copy = createMemo(() => INTENT_COPY[props.intent])
-  const groupedAdded = createMemo(() => groupByDisplayCategory(currentReview().diff.added))
-  const hasManifestOnlyChange = createMemo(() => {
-    const review = currentReview()
-    return (
-      !review.permissionsChanged &&
-      review.diff.added.length === 0 &&
-      review.diff.removed.length === 0 &&
-      review.diff.changed.length === 0
-    )
-  })
+  const groupedAccess = createMemo(() => groupByDisplayCategory(currentReview().access))
 
   async function approve() {
     if (busy()) return
@@ -231,18 +167,17 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
       if (nextReview) {
         setCurrentReview(nextReview)
         setStaleMessage(
-          _({
-            id: "app.plugin.consent.reviewChanged",
-            message: "Plugin changed while you were reviewing it",
-          }),
+          _({ id: "app.plugin.consent.reviewChanged", message: "Plugin changed while you were reviewing it" }),
         )
         return
       }
       dialog.close()
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : _({ id: "app.plugin.consent.approvalFailed", message: "Approval failed" })
-      setError(message)
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : _({ id: "app.plugin.consent.approvalFailed", message: "Confirmation failed" }),
+      )
     } finally {
       setBusy(false)
     }
@@ -253,26 +188,21 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
       title={translateDescriptor(copy().title, { _ })}
       description={_({
         id: "app.plugin.consent.dialog.description",
-        message: "{plugin} {version}. {description}",
+        message: "{plugin} v{version}. {description}",
         values: {
-          plugin: pluginLabel(currentReview()),
-          version: versionCopy(currentReview()),
+          plugin: currentReview().name || currentReview().pluginId,
+          version: currentReview().version,
           description: translateDescriptor(copy().description, { _ }),
         },
       })}
       class="consent-dialog"
     >
-      <div class="consent-risk-summary">
+      <div class="consent-confirmation-summary">
         <Icon name={getSemanticIcon("permission.required")} size="small" />
         <span>
           {currentReview().reason ??
-            currentReview().diff.reason ??
-            _({
-              id: "app.plugin.consent.approvalRequired",
-              message: "This plugin requires your approval.",
-            })}
+            _({ id: "app.plugin.consent.confirmationRequired", message: "Please confirm this access change." })}
         </span>
-        <PermissionRiskBadge risk={currentReview().diff.riskAfter ?? currentReview().risk} />
       </div>
 
       <Show when={staleMessage()}>
@@ -284,99 +214,35 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
         )}
       </Show>
 
-      <Show when={hasManifestOnlyChange()}>
-        <div class="consent-manifest-note">
-          <Icon name={getSemanticIcon("plugins.permission.diff")} size="small" />
-          <span>
-            {_({
-              id: "app.plugin.consent.manifestChanged",
-              message:
-                "Permissions are unchanged, but the plugin manifest changed. Review the metadata before approving.",
-            })}
-          </span>
-        </div>
-      </Show>
-
-      <Show when={groupedAdded().length > 0}>
-        <div class="consent-groups">
-          <For each={groupedAdded()}>
-            {(group) => (
-              <section class="consent-group">
-                <div class="consent-group-header">
-                  <Icon name={getSemanticIcon(group.icon)} size="small" class="consent-group-icon" />
-                  <span class="consent-group-label">
-                    {_({
-                      id: "app.plugin.consent.addedGroup",
-                      message: "Added {group}",
-                      values: { group: translateDescriptor(group.label, { _ }) },
-                    })}
-                  </span>
-                  <span class="consent-group-count">{group.items.length}</span>
-                </div>
-                <ul class="consent-group-items">
-                  <For each={group.items}>
-                    {(item) => (
-                      <li class="consent-item">
-                        <div class="consent-item-row">
-                          <Icon name={getSemanticIcon(iconForItem(item))} size="small" class="consent-item-icon" />
-                          <div class="consent-item-body">
-                            <span class="consent-item-title">{item.title}</span>
-                            <span class="consent-item-desc">{item.description}</span>
-                          </div>
-                          <PermissionRiskBadge risk={item.severity} />
-                        </div>
-                        <Show when={item.technical}>
-                          <div class="consent-item-technical">{item.technical}</div>
-                        </Show>
-                      </li>
-                    )}
-                  </For>
-                </ul>
-              </section>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      <PermissionList
-        title={_({ id: "app.plugin.consent.removed.title", message: "Removed permissions" })}
-        empty={_({
-          id: "app.plugin.consent.removed.empty",
-          message: "No permissions are being removed.",
-        })}
-        items={currentReview().diff.removed}
-        muted
-      />
-      <PermissionList
-        title={_({ id: "app.plugin.consent.current.title", message: "Current permissions" })}
-        empty={_({
-          id: "app.plugin.consent.current.empty",
-          message: "No existing permissions are unchanged.",
-        })}
-        items={currentReview().diff.unchanged}
-        muted
-      />
-
-      <Show when={currentReview().diff.changed.length > 0}>
-        <section class="consent-changed">
-          <p class="consent-changed-title">
-            <Icon name={getSemanticIcon("plugins.permission.diff")} size="small" class="consent-changed-icon" />
-            {_({ id: "app.plugin.consent.severityChanges", message: "Severity changes" })}
-          </p>
-          <For each={currentReview().diff.changed}>
-            {(change) => (
-              <div class="consent-changed-item">
-                <code>{change.key}</code>
-                <span>
-                  <PermissionRiskBadge risk={severity(change.before)} />
-                  <Icon name={getSemanticIcon("navigation.forward")} size="small" class="consent-arrow" />
-                  <PermissionRiskBadge risk={severity(change.after)} />
-                </span>
+      <div class="consent-groups">
+        <For each={groupedAccess()}>
+          {(group) => (
+            <section class="consent-group">
+              <div class="consent-group-header">
+                <Icon name={getSemanticIcon(group.icon)} size="small" class="consent-group-icon" />
+                <span class="consent-group-label">{translateDescriptor(group.label, { _ })}</span>
+                <span class="consent-group-count">{group.items.length}</span>
               </div>
-            )}
-          </For>
-        </section>
+              <ul class="consent-group-items">
+                <For each={group.items}>{(item) => <AccessItem item={item} />}</For>
+              </ul>
+            </section>
+          )}
+        </For>
+      </div>
+
+      <Show when={currentReview().access.length === 0}>
+        <p class="consent-muted">
+          {_({ id: "app.plugin.consent.noHostAccess", message: "This plugin does not request host access." })}
+        </p>
       </Show>
+
+      <AccessList
+        title={_({ id: "app.plugin.consent.removed.title", message: "Access removed by this update" })}
+        empty={_({ id: "app.plugin.consent.removed.empty", message: "No access is being removed." })}
+        items={currentReview().removed}
+        muted
+      />
 
       <Show when={error()}>
         {(message) => (
