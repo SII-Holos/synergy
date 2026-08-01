@@ -40,23 +40,18 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
   const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 
   const allProviders = await ProviderCatalog.resolve({ config, includeLive: false })
-  const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
-  for (const [key, value] of Object.entries(allProviders)) {
-    if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) filteredProviders[key] = value
-  }
 
-  const connected = await Provider.list()
-  const configProviders = Object.entries(connected)
-    .filter(([id, provider]) => provider.source === "config" && !allProviders[id])
-    .map(([id]) => id)
+  const [connected, configured] = await Promise.all([Provider.list(), Provider.listConfiguredForClient()])
+  const configProviders = Object.keys(configured).filter((id) => !allProviders[id])
   const providers = Object.assign(
-    mapValues(filteredProviders, (provider) => Provider.fromModelsDevProvider(provider)),
+    mapValues(allProviders, (provider) => Provider.fromModelsDevProvider(provider)),
+    configured,
     connected,
   )
   const profiles = Object.fromEntries(
     Object.entries(providers).map(([providerID, provider]) => [
       providerID,
-      ProviderCatalog.providerMetadata(filteredProviders[providerID] ?? provider),
+      ProviderCatalog.providerMetadata(allProviders[providerID] ?? provider),
     ]),
   )
   const entries = await Auth.entries()
@@ -86,7 +81,7 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
     }),
   )
   const runtimeAvailability = mapValues(providers, (provider) => {
-    const disabledProvider = disabled.has(provider.id)
+    const disabledProvider = disabled.has(provider.id) || (enabled ? !enabled.has(provider.id) : false)
     const modelCount = Object.values(provider.models).filter(
       (model) => model.catalogState !== "retained" && model.status !== "deprecated",
     ).length
@@ -134,7 +129,7 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
     default: defaultModels,
     connected: Object.keys(connected),
     configProviders,
-    catalogProviders: Object.keys(filteredProviders),
+    catalogProviders: Object.keys(allProviders),
     profiles,
     authHealth,
     runtimeAvailability,

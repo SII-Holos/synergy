@@ -119,6 +119,55 @@ test("/provider returns catalog, auth health, and runtime availability", async (
   })
 })
 
+test("/provider keeps catalog providers visible when a runtime whitelist excludes them", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      enabled_providers: ["openai"],
+      provider: {
+        "existing-custom": {
+          name: "Existing Custom",
+          npm: "@ai-sdk/openai-compatible",
+          env: [],
+          options: { apiKey: "test-key" },
+          models: {
+            model: {
+              name: "Existing Model",
+              limit: { context: 4000, output: 1000 },
+            },
+          },
+        },
+      },
+    },
+  })
+  const response = await Server.App().request(`/provider?directory=${encodeURIComponent(tmp.path)}`)
+  expect(response.status).toBe(200)
+  const body = await response.json()
+
+  expect(body.connected).toContain("openai")
+  expect(body.connected).not.toContain(CodexProvider.PROVIDER_ID)
+  expect(body.all.some((provider: Provider.Info) => provider.id === CodexProvider.PROVIDER_ID)).toBe(true)
+  expect(body.catalogProviders).toContain(CodexProvider.PROVIDER_ID)
+  expect(body.runtimeAvailability[CodexProvider.PROVIDER_ID]).toMatchObject({
+    providerID: CodexProvider.PROVIDER_ID,
+    available: false,
+    reason: "disabled",
+  })
+  expect(body.connected).not.toContain("existing-custom")
+  const existingCustom = body.all.find((provider: Provider.Info) => provider.id === "existing-custom")
+  expect(existingCustom).toBeDefined()
+  expect(existingCustom.options).toEqual({})
+  expect(existingCustom.models.model.options).toEqual({})
+  expect(existingCustom.models.model.headers).toEqual({})
+  expect(existingCustom.models.model.variants).toEqual({})
+  expect(JSON.stringify(existingCustom)).not.toContain("test-key")
+  expect(body.configProviders).toContain("existing-custom")
+  expect(body.runtimeAvailability["existing-custom"]).toMatchObject({
+    providerID: "existing-custom",
+    available: false,
+    reason: "disabled",
+  })
+})
+
 test("DELETE /provider/:providerID/auth refuses to clear healthy stored credentials", async () => {
   await Auth.set(CodexProvider.PROVIDER_ID, {
     type: "oauth",
