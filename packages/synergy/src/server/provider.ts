@@ -42,6 +42,7 @@ function providerConnectionError(error: unknown) {
   if (error instanceof ProviderConnection.AlreadyExists) return error.toObject()
   if (error instanceof ProviderConnection.NotFound) return error.toObject()
   if (error instanceof ProviderConnection.NotManaged) return error.toObject()
+  if (error instanceof ProviderConnection.InUse) return error.toObject()
 }
 
 export const ProviderRoute = new Hono()

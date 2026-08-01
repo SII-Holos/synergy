@@ -236,6 +236,8 @@ Inherited models are projected onto the connection ID, so model references such 
 
 `modelsDevProviderID` shares model metadata only. Set `profile` separately when the connection should also use the canonical provider's runtime hooks, model factory, auth recovery, usage reporting, and credential-aware live discovery. Credentials, health, live catalog snapshots, and model references remain keyed by the connection ID.
 
+Removing a named connection is rejected with `ProviderConnectionInUseError` while any model role, agent, command, category, Quick Switcher entry, or Feishu/Lark account still names that connection. The error includes the referencing configuration paths; clear or replace those selections before retrying removal.
+
 Keeping these fields separate is intentional: an OpenAI-compatible gateway can inherit a catalog without inheriting the canonical provider's OAuth or request behavior.
 
 ### Model variants and role variants

@@ -197,6 +197,7 @@ export namespace LLM {
 
   export interface PromptLayoutInput {
     model: Provider.Model
+    profileID?: string
     system: string[]
     lateSystem?: string[]
     messages: ModelMessage[]
@@ -212,7 +213,7 @@ export namespace LLM {
 
   function promptLayoutMetadata(input: PromptLayoutInput & { systemCacheBreakpoint?: number }): PromptLayoutMetadata {
     return {
-      mode: PromptCachePolicy.layout(input.model),
+      mode: PromptCachePolicy.layout(input.model, input.profileID),
       stableSystemCount: input.system.filter((content) => content.length > 0).length,
       lateSystemCount: (input.lateSystem ?? []).filter((content) => content.length > 0).length,
       historyMessageCount: input.messages.length,
@@ -230,7 +231,7 @@ export namespace LLM {
     const lateSystem = (input.lateSystem ?? []).filter((content) => content.length > 0)
     if (lateSystem.length === 0) return [...systemMessages, ...input.messages]
 
-    if (PromptCachePolicy.layout(input.model) === "system") {
+    if (PromptCachePolicy.layout(input.model, input.profileID) === "system") {
       return [
         ...systemMessages,
         ...lateSystem.map(
@@ -324,16 +325,6 @@ export namespace LLM {
       afterSystemCount: system.length,
       restoredEmptySystem: emptiedByTransform,
     })
-    l.debug("prompt layout", {
-      ...promptLayoutMetadata({
-        model: input.model,
-        system,
-        lateSystem: input.lateSystem,
-        messages: input.messages,
-        systemCacheBreakpoint:
-          input.systemCacheBreakpoint === undefined ? undefined : baseSystemLength + input.systemCacheBreakpoint,
-      }),
-    })
     systemTimer.stop()
 
     const optionsTimer = l.time("options.assembly")
@@ -342,6 +333,17 @@ export namespace LLM {
       Config.current(),
       TimeoutConfig.resolve(),
     ])
+    l.debug("prompt layout", {
+      ...promptLayoutMetadata({
+        model: input.model,
+        profileID: provider?.profileID,
+        system,
+        lateSystem: input.lateSystem,
+        messages: input.messages,
+        systemCacheBreakpoint:
+          input.systemCacheBreakpoint === undefined ? undefined : baseSystemLength + input.systemCacheBreakpoint,
+      }),
+    })
     const variant = SessionRootVariant.options({
       variant: input.user.variant,
       model: input.model,
@@ -428,6 +430,7 @@ export namespace LLM {
     l.debug("prompt layout", {
       ...promptLayoutMetadata({
         model: input.model,
+        profileID: prepared.provider.profileID,
         system,
         lateSystem: input.lateSystem,
         messages: input.messages,
@@ -500,6 +503,7 @@ export namespace LLM {
         maxRetries: input.retries ?? 0,
         messages: promptMessages({
           model: input.model,
+          profileID: prepared.provider.profileID,
           system,
           lateSystem: input.lateSystem,
           messages: input.messages,

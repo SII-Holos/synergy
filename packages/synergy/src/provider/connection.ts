@@ -73,6 +73,10 @@ export namespace ProviderConnection {
   )
   export const NotFound = NamedError.create("ProviderConnectionNotFoundError", z.object({ providerID: z.string() }))
   export const NotManaged = NamedError.create("ProviderConnectionNotManagedError", z.object({ providerID: z.string() }))
+  export const InUse = NamedError.create(
+    "ProviderConnectionInUseError",
+    z.object({ providerID: z.string(), references: z.array(z.string()) }),
+  )
 
   type ProviderConfig = NonNullable<Config.Info["provider"]>[string]
 
@@ -168,6 +172,51 @@ export namespace ProviderConnection {
     }
   }
 
+  function usesProvider(model: string | undefined, providerID: string) {
+    return model?.startsWith(`${providerID}/`) === true
+  }
+
+  function references(config: Config.Info, providerID: string) {
+    const result: string[] = []
+    const modelRoles = [
+      "model",
+      "nano_model",
+      "mini_model",
+      "mid_model",
+      "thinking_model",
+      "long_context_model",
+      "creative_model",
+      "vision_model",
+    ] as const
+    for (const role of modelRoles) {
+      if (usesProvider(config[role], providerID)) result.push(role)
+    }
+    for (const [agentID, agent] of Object.entries(config.agent ?? {})) {
+      if (usesProvider(agent.model, providerID)) result.push(`agent.${agentID}.model`)
+    }
+    for (const [commandID, command] of Object.entries(config.command ?? {})) {
+      if (usesProvider(command.model, providerID)) result.push(`command.${commandID}.model`)
+    }
+    for (const [agentID, agent] of Object.entries(config.external_agent ?? {})) {
+      if (usesProvider(agent.model, providerID)) result.push(`external_agent.${agentID}.model`)
+    }
+    for (const [categoryID, category] of Object.entries(config.category ?? {})) {
+      if (usesProvider(category.model, providerID)) result.push(`category.${categoryID}.model`)
+    }
+    for (const [index, model] of (config.quick_switcher?.models ?? []).entries()) {
+      if (model.providerID === providerID) result.push(`quick_switcher.models[${index}]`)
+    }
+    for (const [channelID, channel] of Object.entries(config.channel ?? {})) {
+      if (channel.type !== "feishu") continue
+      for (const [accountID, account] of Object.entries(channel.accounts)) {
+        if (usesProvider(account.model, providerID)) {
+          result.push(`channel.${channelID}.accounts.${accountID}.model`)
+        }
+      }
+    }
+    return result
+  }
+
   export async function create(input: CreateInput) {
     const parsed = CreateInput.parse(input)
     let providerID = ""
@@ -261,6 +310,13 @@ export namespace ProviderConnection {
 
   export async function remove(providerID: string) {
     const parsedProviderID = z.string().min(1).parse(providerID)
+    const config = await Config.globalResolved()
+    const current = config.provider?.[parsedProviderID]
+    if (!current) throw new NotFound({ providerID: parsedProviderID })
+    const ownerID = current.profile ?? current.modelsDevProviderID
+    if (!ownerID || parsedProviderID === ownerID) throw new NotManaged({ providerID: parsedProviderID })
+    const referencedBy = references(config, parsedProviderID)
+    if (referencedBy.length > 0) throw new InUse({ providerID: parsedProviderID, references: referencedBy })
     const { change } = await Config.domainMutateWithChange(
       "providers",
       (domain) => {

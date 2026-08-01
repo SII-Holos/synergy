@@ -11,6 +11,7 @@ import { Provider } from "../../src/provider/provider"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { Global } from "../../src/global"
 import { Config } from "../../src/config/config"
+import { ChannelFeishu } from "../../src/config/schema"
 
 const originalCodexHome = process.env.CODEX_HOME
 const originalOpenAIAPIKey = process.env.OPENAI_API_KEY
@@ -279,11 +280,134 @@ test("provider connection routes manage a second account without changing its ca
   }
 })
 
+test("provider connection removal rejects model and Channel references", async () => {
+  const providerID = `deepseek-referenced-${Math.random().toString(36).slice(2)}`
+  const [providersBefore, modelsBefore, agentsBefore, commandsBefore, channelsBefore] = await Promise.all([
+    Config.domainGet("providers"),
+    Config.domainGet("models"),
+    Config.domainGet("agents"),
+    Config.domainGet("commands"),
+    Config.domainGet("channels"),
+  ])
+
+  try {
+    await Config.domainUpdate(
+      "providers",
+      {
+        ...providersBefore,
+        provider: {
+          ...providersBefore.provider,
+          [providerID]: {
+            profile: "deepseek",
+            modelsDevProviderID: "deepseek",
+            name: "Referenced DeepSeek",
+          },
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Config.domainUpdate(
+      "models",
+      {
+        ...modelsBefore,
+        model: `${providerID}/deepseek-chat`,
+        nano_model: `${providerID}/deepseek-chat`,
+        quick_switcher: {
+          models: [{ providerID, modelID: "deepseek-chat", state: "add" }],
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Config.domainUpdate(
+      "agents",
+      {
+        ...agentsBefore,
+        agent: {
+          ...agentsBefore.agent,
+          "referenced-provider-test": { model: `${providerID}/deepseek-chat` },
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Config.domainUpdate(
+      "commands",
+      {
+        ...commandsBefore,
+        command: {
+          ...commandsBefore.command,
+          "referenced-provider-test": {
+            template: "test",
+            model: `${providerID}/deepseek-chat`,
+          },
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Config.domainUpdate(
+      "channels",
+      {
+        ...channelsBefore,
+        channel: {
+          ...channelsBefore.channel,
+          "referenced-provider-test": ChannelFeishu.parse({
+            type: "feishu",
+            accounts: {
+              test: {
+                appId: "test-app",
+                appSecret: "test-secret",
+                model: `${providerID}/deepseek-chat`,
+              },
+            },
+          }),
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Auth.set(providerID, { type: "api", key: "referenced-provider-key" })
+
+    const response = await Server.App().request(`/provider/connections/${providerID}`, { method: "DELETE" })
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({
+      name: "ProviderConnectionInUseError",
+      data: {
+        providerID,
+        references: [
+          "model",
+          "nano_model",
+          "agent.referenced-provider-test.model",
+          "command.referenced-provider-test.model",
+          "quick_switcher.models[0]",
+          "channel.referenced-provider-test.accounts.test.model",
+        ],
+      },
+    })
+    expect((await Config.domainGet("providers")).provider?.[providerID]).toBeDefined()
+    expect(await Auth.get(providerID)).toMatchObject({ type: "api", key: "referenced-provider-key" })
+  } finally {
+    await Auth.remove(providerID)
+    await Promise.all([
+      Config.domainUpdate("providers", providersBefore, { mode: "replace-domain" }),
+      Config.domainUpdate("models", modelsBefore, { mode: "replace-domain" }),
+      Config.domainUpdate("agents", agentsBefore, { mode: "replace-domain" }),
+      Config.domainUpdate("commands", commandsBefore, { mode: "replace-domain" }),
+      Config.domainUpdate("channels", channelsBefore, { mode: "replace-domain" }),
+    ])
+    await Provider.reload()
+  }
+})
+
 test("/provider keeps catalog providers visible when a runtime whitelist excludes them", async () => {
   await using tmp = await tmpdir({
     config: {
       enabled_providers: ["openai"],
       provider: {
+        "project-deepseek": {
+          profile: "deepseek",
+          modelsDevProviderID: "deepseek",
+          name: "Project DeepSeek",
+          api: "https://project-deepseek.invalid/v1",
+        },
         "existing-custom": {
           name: "Existing Custom",
           npm: "@ai-sdk/openai-compatible",
@@ -322,6 +446,15 @@ test("/provider keeps catalog providers visible when a runtime whitelist exclude
   expect(JSON.stringify(existingCustom)).not.toContain("test-key")
   expect(body.configProviders).toContain("existing-custom")
   expect(body.connections["existing-custom"]).toBeUndefined()
+  expect(body.connections["project-deepseek"]).toMatchObject({
+    id: "project-deepseek",
+    name: "Project DeepSeek",
+    profileID: "deepseek",
+    endpoint: "https://project-deepseek.invalid/v1",
+    enabled: false,
+    configured: true,
+    removable: false,
+  })
   expect(body.runtimeAvailability["existing-custom"]).toMatchObject({
     providerID: "existing-custom",
     available: false,

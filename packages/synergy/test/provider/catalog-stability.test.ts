@@ -77,7 +77,7 @@ ProviderProfile.register({
       configuredBaseURL = baseURL
       resolveConfiguredDiscovery?.()
     }
-    return [{ id: "configured-model" }]
+    return [{ id: "configured-model" }, { id: "blocked-live-model" }]
   },
 })
 
@@ -349,6 +349,7 @@ test("connection model rules remain applied after live discovery", async () => {
   const configured = {
     profile: configuredProfileID,
     modelsDevProviderID: "openai",
+    api: "https://configured-catalog.invalid/v1",
     whitelist: ["configured-model"],
     models: {
       "configured-model": {
@@ -378,6 +379,7 @@ test("connection model rules remain applied after live discovery", async () => {
 
       expect(Object.keys(catalog[configuredProviderID].models)).toEqual(["configured-model"])
       expect(catalog[configuredProviderID].models["configured-model"].name).toBe("Account-specific configured model")
+      expect(ProviderCatalog.modelCatalogState(configuredProviderID)?.modelCount).toBe(1)
     },
   })
 })

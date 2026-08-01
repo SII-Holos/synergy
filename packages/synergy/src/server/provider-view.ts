@@ -42,11 +42,27 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
   const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 
   const allProviders = await ProviderCatalog.resolve({ config, includeLive: false })
-  const [connected, configured, connections] = await Promise.all([
+  const [connected, configured, globalConnections] = await Promise.all([
     Provider.list(),
     Provider.listConfiguredForClient(),
     ProviderConnection.list(),
   ])
+  const scopedConnections = ProviderConnection.listFrom(config, allProviders)
+  const connections = Object.fromEntries(
+    Object.entries(scopedConnections).flatMap(([providerID, connection]) => {
+      const globalConnection = globalConnections[providerID]
+      if (!globalConnection && !connection.removable) return []
+      return [
+        [
+          providerID,
+          {
+            ...connection,
+            removable: globalConnection?.removable ?? false,
+          },
+        ] as const,
+      ]
+    }),
+  )
   const configProviders = Object.keys(configured).filter((id) => !allProviders[id])
   const providers = Object.assign(
     mapValues(allProviders, (provider) => Provider.fromModelsDevProvider(provider)),

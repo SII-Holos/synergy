@@ -1045,7 +1045,16 @@ export namespace ProviderCatalog {
       for (const [providerID, target] of liveContexts) {
         const provider = result[providerID]
         if (!provider) continue
-        result[providerID] = await applyCachedDiscovery(provider, target.profile, modelsDev, target.context, providerID)
+        const discovered = await applyCachedDiscovery(provider, target.profile, modelsDev, target.context, providerID)
+        const projected = target.configured ? applyConfiguredModelRules(discovered, target.configured) : discovered
+        result[providerID] = projected
+        const state = catalogStates.get(catalogStateKey(providerID))
+        if (state && target.configured) {
+          catalogStates.set(catalogStateKey(providerID), {
+            ...state,
+            modelCount: Object.values(projected.models).filter((model) => model.catalog_state !== "retained").length,
+          })
+        }
         if (target.profile.fetchModelCatalog || target.profile.fetchModels) {
           const snapshot = (await readSnapshots()).get(snapshotKey(providerID, target.context.identityHash))
           scheduleRefresh(providerID, target.profile, target.context, target.baseURL, target.configured, snapshot)
