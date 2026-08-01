@@ -484,6 +484,40 @@ describe("Feishu replies", () => {
     }
   })
 
+  test("does not force threaded replies for DMs when group_thread is enabled", async () => {
+    const originalFetch = globalThis.fetch
+    let requestBody: Record<string, unknown> = {}
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_dm", {
+        config: accountConfig({ groupSessionScope: "group_thread", responseFormat: "text" }),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_dm",
+        messageId: "message_dm",
+        chatId: "chat_dm",
+        chatType: "dm",
+        parts: [{ type: "text", text: "Direct answer" }],
+      })
+
+      expect(requestBody).not.toHaveProperty("reply_in_thread")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("threads response and question cards when group_thread is enabled", async () => {
     const originalFetch = globalThis.fetch
     const replyBodies: Array<Record<string, unknown>> = []
@@ -513,6 +547,7 @@ describe("Feishu replies", () => {
       await provider.sendResponseCard({
         accountId: "acct_thread_cards",
         chatId: "chat_1",
+        chatType: "group",
         replyToMessageId: "message_origin",
         requestId: "response_1",
         card: { title: "Choose", elements: [{ type: "button", id: "confirm", label: "Confirm", value: "yes" }] },
@@ -520,6 +555,7 @@ describe("Feishu replies", () => {
       await provider.sendQuestionCard({
         accountId: "acct_thread_cards",
         chatId: "chat_1",
+        chatType: "group",
         replyToMessageId: "message_origin",
         requestId: "question_1",
         questions: [
@@ -566,6 +602,7 @@ describe("Feishu replies", () => {
             accountId: "acct_thread",
             messageId: "message_origin",
             chatId: "chat_1",
+            chatType: "group",
             scopeKey: "chat_1:message:message_origin",
             parts: [{ type: "text", text: "Threaded answer" }],
           })
@@ -573,6 +610,81 @@ describe("Feishu replies", () => {
           expect(result.threadId).toBe("thread_created")
           expect(
             await FeishuThreadBinding.get({ accountId: "acct_thread", chatId: "chat_1", threadId: "thread_created" }),
+          ).toBe("chat_1:message:message_origin")
+        } finally {
+          globalThis.fetch = originalFetch
+        }
+      },
+    })
+  })
+
+  test("binds threads created by response and question cards", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalFetch = globalThis.fetch
+        const threadIds = ["thread_response", "thread_question"]
+        globalThis.fetch = (async (input) => {
+          if (String(input).endsWith("/cardkit/v1/cards")) {
+            return new Response(JSON.stringify({ code: 0, data: { card_id: "card_thread" } }), {
+              headers: { "Content-Type": "application/json" },
+            })
+          }
+          return new Response(
+            JSON.stringify({ code: 0, data: { message_id: "msg_card", thread_id: threadIds.shift() } }),
+            { headers: { "Content-Type": "application/json" } },
+          )
+        }) as typeof fetch
+
+        try {
+          const provider = new FeishuProvider()
+          const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+          accounts.set("acct_thread_cards", {
+            config: accountConfig({ groupSessionScope: "group_thread" }),
+            channelConfig: {},
+            apiBase: "https://open.feishu.test/open-apis",
+            tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+          })
+
+          await provider.sendResponseCard({
+            accountId: "acct_thread_cards",
+            chatId: "chat_1",
+            chatType: "group",
+            scopeKey: "chat_1:message:message_origin",
+            replyToMessageId: "message_origin",
+            requestId: "response_1",
+            card: { title: "Choose", elements: [{ type: "button", id: "yes", label: "Yes", value: "yes" }] },
+          })
+          await provider.sendQuestionCard({
+            accountId: "acct_thread_cards",
+            chatId: "chat_1",
+            chatType: "group",
+            scopeKey: "chat_1:message:message_origin",
+            replyToMessageId: "message_origin",
+            requestId: "question_1",
+            questions: [
+              {
+                question: "Continue?",
+                header: "Continue",
+                options: [{ label: "Yes", description: "Continue" }],
+              },
+            ],
+          })
+
+          expect(
+            await FeishuThreadBinding.get({
+              accountId: "acct_thread_cards",
+              chatId: "chat_1",
+              threadId: "thread_response",
+            }),
+          ).toBe("chat_1:message:message_origin")
+          expect(
+            await FeishuThreadBinding.get({
+              accountId: "acct_thread_cards",
+              chatId: "chat_1",
+              threadId: "thread_question",
+            }),
           ).toBe("chat_1:message:message_origin")
         } finally {
           globalThis.fetch = originalFetch

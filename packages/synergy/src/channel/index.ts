@@ -667,6 +667,9 @@ export namespace Channel {
               await replyMessage({
                 accountId: ctx.accountId,
                 messageId: ctx.messageId,
+                chatId: ctx.chatId,
+                chatType: ctx.chatType,
+                scopeKey: ctx.scopeKey,
                 parts: [{ type: "text", text: cmdResult.reply }],
               })
             }
@@ -720,6 +723,7 @@ export namespace Channel {
           let streaming = createStreamingSession({
             accountId: ctx.accountId,
             chatId: ctx.chatId,
+            chatType: ctx.chatType,
             replyToMessageId,
             sessionID,
             scopeKey: ctx.scopeKey,
@@ -732,6 +736,7 @@ export namespace Channel {
               replyMessage,
               accountId: ctx.accountId,
               chatId: ctx.chatId,
+              chatType: ctx.chatType,
               messageId: replyToMessageId,
               scopeKey: ctx.scopeKey,
             })
@@ -829,6 +834,8 @@ export namespace Channel {
               provider,
               accountId: ctx.accountId,
               chatId: ctx.chatId,
+              chatType: ctx.chatType,
+              scopeKey: ctx.scopeKey,
               replyToMessageId,
               sessionID,
               terminal: result,
@@ -868,6 +875,7 @@ export namespace Channel {
     accountId: string
     messageId: string
     chatId: string
+    chatType: "dm" | "group"
     scopeKey?: string
   }): StreamingSession {
     return {
@@ -880,6 +888,7 @@ export namespace Channel {
           accountId: input.accountId,
           messageId: input.messageId,
           chatId: input.chatId,
+          chatType: input.chatType,
           scopeKey: input.scopeKey,
           parts: [{ type: "text", text: finalText }],
         })

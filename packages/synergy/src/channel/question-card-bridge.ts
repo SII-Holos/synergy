@@ -85,6 +85,8 @@ export namespace QuestionCardBridge {
         provider,
         accountId: channel.accountId,
         chatId: channel.chatId,
+        chatType: channel.chatType,
+        scopeKey: channel.scopeKey,
         replyToMessageId,
         requesterId,
         sessionID: request.sessionID,

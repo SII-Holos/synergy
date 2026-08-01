@@ -312,6 +312,7 @@ export interface ConversationCapabilities {
     accountId: string
     messageId: string
     chatId?: string
+    chatType?: "dm" | "group"
     parts: OutboundPart[]
     scopeKey?: string
   }): Promise<SendResult>
@@ -325,6 +326,7 @@ export interface ConversationCapabilities {
   createStreamingSession?(input: {
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
     replyToMessageId?: string
     sessionID: string
     scopeKey?: string
@@ -356,6 +358,7 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
     accountId: string
     messageId: string
     chatId?: string
+    chatType?: "dm" | "group"
     parts: OutboundPart[]
     scopeKey?: string
   }): Promise<SendResult>
@@ -365,6 +368,8 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   sendResponseCard?(input: {
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    scopeKey?: string
     replyToMessageId?: string
     requestId: string
     card: ResponseCard
@@ -373,6 +378,8 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   sendQuestionCard?(input: {
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    scopeKey?: string
     replyToMessageId?: string
     requestId: string
     questions: Question.Info[]
@@ -385,6 +392,7 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   createStreamingSession?(input: {
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
     replyToMessageId?: string
     sessionID: string
     scopeKey?: string
