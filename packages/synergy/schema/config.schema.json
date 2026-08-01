@@ -2405,44 +2405,6 @@
             },
             "required": ["type", "accounts"],
             "additionalProperties": false
-          },
-          {
-            "ref": "ChannelClarusConfig",
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "clarus"
-              },
-              "accounts": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "ref": "ChannelClarusAccountConfig",
-                  "type": "object",
-                  "properties": {
-                    "enabled": {
-                      "default": false,
-                      "type": "boolean"
-                    },
-                    "apiUrl": {
-                      "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
-                      "type": "string"
-                    },
-                    "agent": {
-                      "description": "Primary Synergy agent for project and assignment Sessions",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["enabled"],
-                  "additionalProperties": false
-                }
-              }
-            },
-            "required": ["type", "accounts"],
-            "additionalProperties": false
           }
         ]
       }
