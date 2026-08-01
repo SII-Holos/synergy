@@ -1,3 +1,4 @@
+import { Log } from "../util/log"
 export type PluginAgentCallTerminal = {
   callId: string
   correlationId: string
@@ -32,6 +33,49 @@ export class PluginAgentCallRuntimeError extends Error {
     super(message)
     this.name = "PluginAgentCallRuntimeError"
   }
+}
+
+const log = Log.create({ service: "plugin.agent-call" })
+
+export type PluginAgentCallDeliveryStatus = "rejected" | "plugin_mismatch" | "no_handler" | "failed"
+
+const DELIVERY_ERROR_SUMMARIES: Record<PluginAgentCallDeliveryStatus, string> = {
+  rejected: "delivery_rejected",
+  plugin_mismatch: "plugin_generation_inactive",
+  no_handler: "hook_handler_missing",
+  failed: "hook_handler_failed",
+}
+
+export function pluginAgentCallDeliveryErrorSummary(status: PluginAgentCallDeliveryStatus): string {
+  return DELIVERY_ERROR_SUMMARIES[status]
+}
+
+export function warnPluginAgentCallDelivery(input: {
+  pluginId: string
+  generation: string
+  scopeId: string
+  callId: string
+  terminalStatus: PluginAgentCallTerminal["status"]
+  deliveryStatus: PluginAgentCallDeliveryStatus
+  handlerCount?: number
+  succeededHandlerCount?: number
+}): void {
+  log.warn(
+    input.deliveryStatus === "rejected"
+      ? "plugin Agent call terminal delivery rejected"
+      : "plugin Agent call terminal delivery was not acknowledged",
+    {
+      pluginId: input.pluginId,
+      generation: input.generation,
+      scopeId: input.scopeId,
+      callId: input.callId,
+      terminalStatus: input.terminalStatus,
+      deliveryStatus: input.deliveryStatus,
+      ...(input.handlerCount === undefined ? {} : { handlerCount: input.handlerCount }),
+      ...(input.succeededHandlerCount === undefined ? {} : { succeededHandlerCount: input.succeededHandlerCount }),
+      errorSummary: pluginAgentCallDeliveryErrorSummary(input.deliveryStatus),
+    },
+  )
 }
 
 export class PluginAgentCallRuntime {
@@ -173,17 +217,27 @@ export class PluginAgentCallRuntime {
     call: ActiveCall,
     terminal: Pick<PluginAgentCallTerminal, "status" | "text" | "error">,
   ): Promise<void> {
-    await call
-      .deliver({
+    const delivered = {
+      callId: call.callId,
+      correlationId: call.correlationId,
+      status: terminal.status,
+      ...(terminal.text === undefined ? {} : { text: terminal.text }),
+      ...(terminal.error === undefined ? {} : { error: terminal.error }),
+      startedAt: call.startedAt,
+      completedAt: Date.now(),
+    }
+    try {
+      await call.deliver(delivered)
+    } catch {
+      warnPluginAgentCallDelivery({
+        pluginId: call.pluginId,
+        generation: call.pluginGeneration,
+        scopeId: call.scopeId,
         callId: call.callId,
-        correlationId: call.correlationId,
-        status: terminal.status,
-        ...(terminal.text === undefined ? {} : { text: terminal.text }),
-        ...(terminal.error === undefined ? {} : { error: terminal.error }),
-        startedAt: call.startedAt,
-        completedAt: Date.now(),
+        terminalStatus: terminal.status,
+        deliveryStatus: "rejected",
       })
-      .catch(() => undefined)
+    }
   }
 }
 

@@ -2671,6 +2671,44 @@
   line-height: var(--settings-type-caption-line-height);
 }
 
+.providers-account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.providers-account-actions-copy {
+  min-width: 0;
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
+.provider-account-dialog {
+  --dialog-body-padding: 0;
+}
+
+.provider-account-dialog [data-slot="dialog-form"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.provider-account-dialog-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.provider-account-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--dialog-border-weak);
+}
+
 .providers-auth-warning,
 .settings-request-error {
   display: flex;
@@ -3158,6 +3196,17 @@
   .account-agent-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .providers-account-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .providers-connect-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .usage-window-reading {
