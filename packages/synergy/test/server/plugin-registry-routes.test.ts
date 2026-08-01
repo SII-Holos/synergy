@@ -38,22 +38,23 @@ function buildEntry(overrides: Record<string, any> = {}): Record<string, any> {
     versions: [
       {
         version: "1.0.0",
+        apiVersion: "4.0",
+        compatibility: { synergy: ">=1.0.0" },
         manifestHash: "abc123",
         permissionsHash: "def456",
         integrity: "sha256-xxx",
-        risk: "low",
-        permissionsSummary: [{ key: "file_read", description: "Read workspace files", risk: "low" }],
+        featuresSummary: [{ key: "tool:myTool", title: "Test tool", description: "Runs a test action." }],
+        permissionsSummary: [{ key: "file_read", description: "Read workspace files" }],
         publishedAt: 1700000000000,
       },
     ],
-    risk: "low",
     trustTier: "declarative",
     runtimeMode: "process",
+    featuresSummary: [{ key: "tool:myTool", title: "Test tool", description: "Runs a test action." }],
     permissionsSummary: [
       {
         key: "file_read",
         category: "files",
-        severity: "low",
         title: "Read workspace files",
         description: "Can read files and directories in your workspace.",
       },
@@ -83,7 +84,10 @@ function cleanRegistry(): void {
   } catch {}
 }
 
-async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistry.DEFAULT_REGISTRY_URL): Promise<void> {
+async function writeOfficialRegistryCache(
+  registryUrl = PluginMarketplaceRegistry.DEFAULT_REGISTRY_URL,
+  schemaVersion: 1 | 2 = 1,
+): Promise<void> {
   const marketRoot = PluginMarketplaceRegistry.cachePaths(registryUrl)
   const entriesRoot = marketRoot.entries
   fs.mkdirSync(entriesRoot, { recursive: true })
@@ -92,7 +96,7 @@ async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistr
     marketRoot.registry,
     JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion,
         updatedAt: publishedAt,
         plugins: [
           {
@@ -107,7 +111,7 @@ async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistr
             keywords: ["synergy-plugin", "official"],
             latestVersion: "1.0.0",
             updatedAt: publishedAt,
-            risk: "low",
+            ...(schemaVersion === 1 ? { risk: "low" } : {}),
             runtimeMode: "process",
             tools: ["greet"],
             uiSurfaces: ["toolRenderers"],
@@ -122,7 +126,7 @@ async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistr
     path.join(entriesRoot, "official-test-plugin.json"),
     JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion,
         id: "official-test-plugin",
         name: "official-test-plugin",
         description: "Official cached plugin",
@@ -135,6 +139,7 @@ async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistr
         versions: [
           {
             version: "1.0.0",
+            ...(schemaVersion === 2 ? { apiVersion: "4.0", compatibility: { synergy: ">=2.4.3" } } : {}),
             downloadUrl:
               "https://github.com/SII-Holos/official-test-plugin/releases/download/v1.0.0/official-test-plugin-1.0.0.synergy-plugin.tgz",
             signatureUrl:
@@ -146,9 +151,20 @@ async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistr
             integrity: "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             manifestHash: "manifest-hash",
             permissionsHash: "permissions-hash",
-            risk: "low",
+            ...(schemaVersion === 1 ? { risk: "low" } : {}),
             runtimeMode: "process",
-            permissionsSummary: [{ key: "file_read", description: "Read workspace files", risk: "low" }],
+            ...(schemaVersion === 2
+              ? {
+                  featuresSummary: [{ key: "tool:greet", title: "Greeting", description: "Adds a greeting tool." }],
+                }
+              : {}),
+            permissionsSummary: [
+              {
+                key: "file_read",
+                description: "Read workspace files",
+                ...(schemaVersion === 1 ? { risk: "low" } : { category: "files", title: "Read workspace files" }),
+              },
+            ],
             tools: ["greet"],
             uiSurfaces: ["toolRenderers"],
             publishedAt,
@@ -194,7 +210,7 @@ describe("plugin registry routes v2", () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body.id).toBe("test-plugin")
-        expect(body.risk).toBe("low")
+        expect(body.risk).toBeUndefined()
         expect(body.trustTier).toBe("declarative")
         expect(body.runtimeMode).toBe("process")
         expect(body.uiSurfaces).toEqual(["toolRenderers"])
@@ -204,7 +220,6 @@ describe("plugin registry routes v2", () => {
           {
             key: "file_read",
             category: "files",
-            severity: "low",
             title: "Read workspace files",
             description: "Can read files and directories in your workspace.",
           },
@@ -256,6 +271,8 @@ describe("plugin registry routes v2", () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body.compatibility).toEqual({ synergy: ">=2.4.3" })
+        expect(body.versions[0].apiVersion).toBe("4.0")
+        expect(body.versions[0].compatibility).toEqual({ synergy: ">=1.0.0" })
       },
     })
   })
@@ -280,7 +297,6 @@ describe("plugin registry routes v2", () => {
         // Second publish with updated v2 fields
         const updated = buildEntry({
           description: "Updated description",
-          risk: "medium",
           trustTier: "trusted-import",
           uiSurfaces: ["toolRenderers", "settings"],
           tools: ["myTool", "otherTool"],
@@ -295,7 +311,7 @@ describe("plugin registry routes v2", () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body.description).toBe("Updated description")
-        expect(body.risk).toBe("medium")
+        expect(body.risk).toBeUndefined()
         expect(body.trustTier).toBe("trusted-import")
         expect(body.uiSurfaces).toEqual(["toolRenderers", "settings"])
         expect(body.tools).toEqual(["myTool", "otherTool"])
@@ -326,14 +342,13 @@ describe("plugin registry routes v2", () => {
         expect(res.status).toBe(200)
         const body = await res.json()
         expect(body.id).toBe("test-plugin")
-        expect(body.risk).toBe("low")
+        expect(body.risk).toBeUndefined()
         expect(body.trustTier).toBe("declarative")
         expect(body.runtimeMode).toBe("process")
         expect(body.permissionsSummary).toEqual([
           {
             key: "file_read",
             category: "files",
-            severity: "low",
             title: "Read workspace files",
             description: "Can read files and directories in your workspace.",
           },
@@ -371,7 +386,7 @@ describe("plugin registry routes v2", () => {
         const summary = body.plugins[0]
         expect(summary.id).toBe("test-plugin")
         expect(summary.name).toBe("SearchablePlugin")
-        expect(summary.risk).toBe("low")
+        expect(summary.risk).toBeUndefined()
         expect(summary.trustTier).toBe("declarative")
         expect(summary.runtimeMode).toBe("process")
         expect(summary.uiSurfaces).toEqual(["toolRenderers"])
@@ -452,7 +467,7 @@ describe("plugin registry routes v2", () => {
     const registryUrl = "https://registry.test/synergy/plugins/registry.json"
     const previousDomain = await Config.domainGet("plugins")
     cleanRegistry()
-    await writeOfficialRegistryCache(registryUrl)
+    await writeOfficialRegistryCache(registryUrl, 2)
 
     try {
       await Config.domainUpdate(
@@ -482,6 +497,11 @@ describe("plugin registry routes v2", () => {
           expect(versionsRes.status).toBe(200)
           const versions = await versionsRes.json()
           expect(versions[0].version).toBe("1.0.0")
+          expect(versions[0].apiVersion).toBe("4.0")
+          expect(versions[0].compatibility).toEqual({ synergy: ">=2.4.3" })
+          expect(versions[0].featuresSummary).toEqual([
+            { key: "tool:greet", title: "Greeting", description: "Adds a greeting tool." },
+          ])
         },
       })
     } finally {
@@ -583,8 +603,8 @@ describe("plugin registry routes v2", () => {
           manifestHash: "abc123",
           permissionsHash: "def456",
           integrity: "sha256-xxx",
-          risk: "low",
-          permissionsSummary: [{ key: "file_read", description: "Read workspace files", risk: "low" }],
+          featuresSummary: [],
+          permissionsSummary: [{ key: "file_read", description: "Read workspace files" }],
           publishedAt: 1700000000000,
           downloadUrl,
         },

@@ -66,8 +66,6 @@ export interface ClassifyResult {
 export interface PluginToolCapabilityMap {
   /** Synergy capability classes resolved from the plugin manifest (e.g. "file_read", "shell", "network_request") */
   capabilities: string[]
-  /** Risk level from manifest */
-  risk: "low" | "medium" | "high"
 }
 
 export interface AuditRecord {

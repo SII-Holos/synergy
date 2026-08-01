@@ -21,15 +21,19 @@ export function permissionsHashPayload(
 ) {
   return {
     capabilities: manifest.capabilities.filter((item) => capabilities.includes(item.id)),
-    contributionRequirements: manifest.contributions.map((item) => ({
-      kind: item.kind,
-      id: item.id,
-      requires: item.requires ?? [],
-      ...(item.kind === "operation" ? { expose: item.expose } : {}),
-      ...(hasTrustedUIComponent(item) ? { trustedComponent: true } : {}),
-    })),
+    contributionRequirements: manifest.contributions
+      .filter((item) => Boolean(item.requires?.length) || item.kind === "operation" || hasTrustedUIComponent(item))
+      .map((item) => ({
+        kind: item.kind,
+        id: item.id,
+        requires: item.requires ?? [],
+        ...(item.kind === "operation" ? { expose: item.expose } : {}),
+        ...(hasTrustedUIComponent(item) ? { trustedComponent: true } : {}),
+      })),
   }
 }
+
+export type PluginGrantContract = ReturnType<typeof permissionsHashPayload>
 
 function sha256(value: unknown): string {
   return createHash("sha256").update(stablePluginJson(value)).digest("hex")

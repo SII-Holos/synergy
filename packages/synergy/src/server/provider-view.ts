@@ -42,32 +42,24 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
   const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 
   const allProviders = await ProviderCatalog.resolve({ config, includeLive: false })
-  const connections = ProviderConnection.listFrom(config, allProviders)
-  const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
-  for (const [key, value] of Object.entries(allProviders)) {
-    if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) filteredProviders[key] = value
-  }
-
-  const connected = await Provider.list()
-  const configProviders = Object.keys(config.provider ?? {}).filter((id) => !allProviders[id])
+  const [connected, configured, connections] = await Promise.all([
+    Provider.list(),
+    Provider.listConfiguredForClient(),
+    ProviderConnection.list(),
+  ])
+  const configProviders = Object.keys(configured).filter((id) => !allProviders[id])
   const providers = Object.assign(
-    mapValues(filteredProviders, (provider) => Provider.fromModelsDevProvider(provider)),
+    mapValues(allProviders, (provider) => Provider.fromModelsDevProvider(provider)),
+    Object.fromEntries(configProviders.map((providerID) => [providerID, configured[providerID]])),
     connected,
   )
   const profiles = Object.fromEntries(
-    Object.entries(connections).map(([providerID, connection]) => {
-      const provider = providers[providerID]
-      const source = allProviders[connection.catalogProviderID]
+    Object.entries(providers).map(([providerID, provider]) => {
+      const connection = connections[providerID]
+      const source = connection ? allProviders[connection.catalogProviderID] : undefined
       return [
         providerID,
-        ProviderCatalog.providerMetadata(
-          {
-            ...(source ?? provider ?? { id: providerID, name: connection.name }),
-            id: providerID,
-            name: connection.name,
-          },
-          connection.profileID,
-        ),
+        ProviderCatalog.providerMetadata(source ?? provider, connection?.profileID ?? provider.profileID),
       ]
     }),
   )
@@ -105,29 +97,24 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
       ]
     }),
   )
-  const runtimeAvailability = mapValues(connections, (connection) => {
-    const provider = providers[connection.id]
-    const modelSource =
-      provider?.models ??
-      allProviders[connection.id]?.models ??
-      allProviders[connection.catalogProviderID]?.models ??
-      {}
-    const disabledProvider = !connection.enabled
-    const modelCount = Object.values(modelSource).filter(
+  const runtimeAvailability = mapValues(providers, (provider) => {
+    const disabledProvider = disabled.has(provider.id) || (enabled ? !enabled.has(provider.id) : false)
+    const modelCount = Object.values(provider.models).filter(
       (model) => model.catalogState !== "retained" && model.status !== "deprecated",
     ).length
-    const health = authHealth[connection.id]
+    const health = authHealth[provider.id]
     const authenticationRequired = health?.status === "action_required"
     const credentialExhausted = health?.status === "exhausted"
     const available =
       !disabledProvider &&
       !authenticationRequired &&
       !credentialExhausted &&
-      Object.prototype.hasOwnProperty.call(connected, connection.id) &&
+      Object.prototype.hasOwnProperty.call(connected, provider.id) &&
       modelCount > 0
-    const profile = ProviderProfile.resolve(connection.id, connection.profileID)
+    const connection = connections[provider.id]
+    const profile = ProviderProfile.resolve(provider.id, connection?.profileID ?? provider.profileID)
     return {
-      providerID: connection.id,
+      providerID: provider.id,
       available,
       reason: disabledProvider
         ? ("disabled" as const)
@@ -160,7 +147,7 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
     default: defaultModels,
     connected: Object.keys(connected),
     configProviders,
-    catalogProviders: Object.keys(filteredProviders),
+    catalogProviders: Object.keys(allProviders),
     profiles,
     connections,
     authHealth,

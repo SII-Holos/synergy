@@ -8,6 +8,6 @@ This package is the published plugin-author contract. Load `change-plugin-runtim
 - Capability declarations are Host Service ceilings consumed by approval and enforcement. Do not restore the old nested permission model or imply control over direct OS access.
 - Preserve tool result, hook, shell, UI API-major, and artifact contracts across Bun source exports and built `dist` output.
 - Keep `src/theme` independent from Solid and usable through `@ericsanchezok/synergy-plugin/theme`. Token names, seed/schema validation, reference resolution, color math, and contrast requirements are public plugin-author contracts; runtime registration and DOM application remain in `packages/ui`.
-- Plugin API 4 has no old-package compatibility path. Record breaking migration facts under `docs/migrations/` and keep the public package on one current contract.
+- Keep `PluginManifestV4` and every stable API4 type/semantic backward compatible. Decode each future API family at one boundary; do not scatter compatibility branches through the runtime. Plugin API 3 remains unsupported, while early API4 artifacts remain loadable.
 
 Run `bun run typecheck` and `bun run build`, then the focused host/plugin-kit tests and root `bun run package:check` plus `bun run quality:quick`. Inspect the built package and public exports, not only source compilation.

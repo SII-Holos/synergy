@@ -72,6 +72,10 @@ export const ChannelFeishuAccount = z
       .optional()
       .describe("Project directory whose Scope owns sessions for this Feishu account"),
     streaming: z.boolean().optional().describe("Enable streaming card updates"),
+    responseFormat: z
+      .enum(["text", "markdown"])
+      .optional()
+      .describe("Format for ordinary outbound text messages (markdown renders through a CardKit card)"),
     streamingThrottleMs: z
       .number()
       .int()
@@ -111,6 +115,11 @@ export const ChannelFeishu = z
     accounts: z.record(z.string(), ChannelFeishuAccount),
     domain: z.enum(["feishu", "lark"]).optional().describe("Default domain for all accounts"),
     streaming: z.boolean().optional().default(true).describe("Default streaming setting for all accounts"),
+    responseFormat: z
+      .enum(["text", "markdown"])
+      .optional()
+      .default("markdown")
+      .describe("Default outbound text format for all accounts"),
   })
   .strict()
   .meta({ ref: "ChannelFeishuConfig" })
@@ -1150,36 +1159,6 @@ export const ProviderCatalog = z
   .meta({ ref: "ProviderCatalogConfig" })
 export type ProviderCatalog = z.infer<typeof ProviderCatalog>
 
-export const PluginApprovalPolicy = z
-  .object({
-    allowUnsignedLocal: z.boolean().optional().default(true).describe("Allow unsigned local plugins with user consent"),
-    autoApproveBuiltin: z
-      .boolean()
-      .optional()
-      .default(true)
-      .describe("Auto-approve builtin plugins without user consent"),
-    denyHighRiskThirdParty: z
-      .boolean()
-      .optional()
-      .default(true)
-      .describe("Block third-party plugins with high-risk capabilities"),
-    requireSignatureForMarketplace: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe("Require cryptographic signature for non-local plugins"),
-  })
-  .strict()
-  .meta({ ref: "PluginApprovalPolicyConfig" })
-export type PluginApprovalPolicy = z.infer<typeof PluginApprovalPolicy>
-
-export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
-  allowUnsignedLocal: true,
-  autoApproveBuiltin: true,
-  denyHighRiskThirdParty: true,
-  requireSignatureForMarketplace: false,
-} as const satisfies Required<PluginApprovalPolicy>
-
 export const PluginRuntimeLimits = z
   .object({
     startupTimeoutMs: z
@@ -1597,15 +1576,21 @@ export const Info = z
       })
       .optional(),
     plugin: z.string().array().optional(),
-    pluginApprovalPolicy: PluginApprovalPolicy.optional().describe("Plugin approval policy configuration"),
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
-    disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
+    disabled_providers: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
+      ),
     enabled_providers: z
       .array(z.string())
       .optional()
-      .describe("When set, ONLY these providers will be enabled. All other providers will be ignored"),
+      .describe(
+        "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
+      ),
     providerCatalog: ProviderCatalog.optional().describe("Signed remote provider catalog configuration"),
     model: z
       .string()

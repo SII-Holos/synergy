@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { capability, compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
 import { assertPluginManifestCapability, requestPluginPermission } from "../../src/plugin/host-services"
-import { riskForCapabilities } from "../../src/plugin/capability"
 import { PermissionRules } from "../../src/permission/rules"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -71,16 +70,6 @@ describe("plugin Host Service capability boundary", () => {
       },
     })
   })
-  test("classifies Blueprint and LightLoop delegation as high risk", () => {
-    expect(riskForCapabilities(["blueprint.delegate"])).toBe("high")
-    expect(riskForCapabilities(["lightloop.delegate"])).toBe("high")
-    expect(riskForCapabilities(["composer.write"])).toBe("high")
-    expect(riskForCapabilities(["composer.intercept"])).toBe("high")
-    expect(riskForCapabilities(["agent.call"])).toBe("high")
-    expect(riskForCapabilities(["composer.read"])).toBe("medium")
-    expect(riskForCapabilities(["selection.read"])).toBe("medium")
-  })
-
   test("accepts declared Blueprint and LightLoop capabilities without constraints", async () => {
     await using tmp = await tmpdir()
     const definition = definePlugin({

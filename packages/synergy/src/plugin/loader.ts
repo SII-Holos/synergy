@@ -150,15 +150,16 @@ export const state = ScopedState.create(
           cwd: ScopeContext.current.directory,
           install: !spec.startsWith("file://"),
         })
-        const approval = await getApproval(resolved.manifest.id, resolved.manifest)
-        if (!approval || !verifyApproval(approval, resolved.manifest)) {
+        const lockEntry = lockfile?.plugins[resolved.manifest.id]
+        const resolvedSource = lockEntry?.source ?? resolved.source
+        const approval = await getApproval(resolved.manifest.id)
+        if (!approval || !verifyApproval(approval, resolved.manifest, undefined, { source: resolvedSource })) {
           throw new ApprovalRequiredError(
             `Plugin ${resolved.manifest.id}@${resolved.manifest.version} requires capability approval`,
             resolved.manifest,
           )
         }
         const current = selected.get(resolved.manifest.id)
-        const lockEntry = lockfile?.plugins[resolved.manifest.id]
         const lockedSpec = lockEntry?.spec
         const installed =
           lockedSpec === spec && lockEntry?.source ? { ...resolved, source: lockEntry.source } : resolved

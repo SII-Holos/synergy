@@ -39,7 +39,7 @@ import { groupProviderConnections } from "./provider-groups"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { requestErrorMessage } from "@/utils/error"
-import { removeProviderAccount, saveProviderAccount } from "./provider-account-operations"
+import { canAddProviderAccount, removeProviderAccount, saveProviderAccount } from "./provider-account-operations"
 
 const SETTINGS_RECOMMENDED_PROVIDER_IDS = [
   "deepseek",
@@ -373,15 +373,17 @@ export function ProvidersPanel(props: {
                     <Show when={provider().removable}>{_(accountConnectionDescription)}</Show>
                   </div>
                   <div class="providers-connect-actions">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="small"
-                      icon={getSemanticIcon("action.add")}
-                      onClick={() => openAddAccount(provider())}
-                    >
-                      {_(addAccountAction)}
-                    </Button>
+                    <Show when={canAddProviderAccount(provider())}>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="small"
+                        icon={getSemanticIcon("action.add")}
+                        onClick={() => openAddAccount(provider())}
+                      >
+                        {_(addAccountAction)}
+                      </Button>
+                    </Show>
                     <Show when={provider().removable}>
                       <Button type="button" variant="ghost" size="small" onClick={() => openEditAccount(provider())}>
                         {_(editAccountAction)}

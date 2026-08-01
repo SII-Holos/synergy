@@ -83,10 +83,14 @@ export interface PluginHookPointInputs {
   "cortex.task.after": PluginCortexTaskAfterInput
   "blueprint.after": BlueprintAfterInput
   "session.user-message.after": SessionUserMessageAfterInput
+  "chat.system.transform": PluginSystemTransformInput
+  /** @deprecated Use the stable `chat.system.transform` hook. */
   "experimental.chat.system.transform": PluginSystemTransformInput
 }
 
 export interface PluginHookPointOutputs {
+  "chat.system.transform": { system: string[] }
+  /** @deprecated Use the stable `chat.system.transform` hook. */
   "experimental.chat.system.transform": { system: string[] }
 }
 

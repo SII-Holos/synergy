@@ -156,6 +156,7 @@ export namespace ProviderProfile {
       providerID: string
       auth?: Auth.Info
       manageStoredCredential?: boolean
+      environment?: string[]
       fetch?: FetchLike
     }): Promise<AccountUsage.Snapshot>
   }
@@ -167,6 +168,13 @@ export namespace ProviderProfile {
     profiles.set(profile.id, profile)
     for (const alias of profile.aliases ?? []) {
       aliases.set(alias, profile.id)
+    }
+    return () => {
+      if (profiles.get(profile.id) !== profile) return
+      profiles.delete(profile.id)
+      for (const alias of profile.aliases ?? []) {
+        if (aliases.get(alias) === profile.id) aliases.delete(alias)
+      }
     }
   }
 

@@ -205,6 +205,25 @@ describe("config import apply", () => {
     })
   })
 
+  test("treats imported empty provider filters as unset after reload", async () => {
+    await withProject(async ({ root }) => {
+      const result = await ConfigImport.apply({
+        config: { enabled_providers: [], disabled_providers: [] },
+        scope: "project",
+        yes: true,
+      })
+
+      expect(await Config.domainGet("providers", root)).toMatchObject({
+        enabled_providers: [],
+        disabled_providers: [],
+      })
+      const config = await Config.current()
+      expect(config.enabled_providers).toBeUndefined()
+      expect(config.disabled_providers).toBeUndefined()
+      expect(result.reload.success).toBe(true)
+    })
+  })
+
   test("returns scoped reload results after the commit", async () => {
     await withProject(async ({ root }) => {
       const result = await ConfigImport.apply({

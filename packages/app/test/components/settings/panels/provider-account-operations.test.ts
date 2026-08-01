@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { ProviderConnection } from "@ericsanchezok/synergy-sdk/client"
 import {
+  canAddProviderAccount,
   removeProviderAccount,
   saveProviderAccount,
   type ProviderConnectionClient,
@@ -15,6 +16,7 @@ function connection(overrides: Partial<ProviderConnection> = {}): ProviderConnec
     enabled: true,
     configured: true,
     removable: true,
+    canCreateSibling: true,
     ...overrides,
   }
 }
@@ -38,6 +40,11 @@ function mockClient() {
 }
 
 describe("provider account operations", () => {
+  test("only permits another account when the server reports a reusable catalog", () => {
+    expect(canAddProviderAccount(connection({ canCreateSibling: true }))).toBe(true)
+    expect(canAddProviderAccount(connection({ canCreateSibling: false }))).toBe(false)
+  })
+
   test("creates a named account with its own endpoint and enabled state", async () => {
     const { client, calls } = mockClient()
     const result = await saveProviderAccount(client, {

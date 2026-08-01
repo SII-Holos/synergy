@@ -23,6 +23,7 @@ import { loadFragments } from "./fragment"
 import * as Schema from "./schema"
 import { ConfigDomain } from "./domain"
 import { PluginSpec } from "../util/plugin-spec"
+import { Lock } from "../util/lock"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -160,18 +161,34 @@ export namespace Config {
     return result
   }
 
+  function normalizeProviderFilters(config: Info): Info {
+    const emptyEnabled = Array.isArray(config.enabled_providers) && config.enabled_providers.length === 0
+    const emptyDisabled = Array.isArray(config.disabled_providers) && config.disabled_providers.length === 0
+    if (!emptyEnabled && !emptyDisabled) return config
+
+    const normalized = { ...config }
+    if (emptyEnabled) delete normalized.enabled_providers
+    if (emptyDisabled) delete normalized.disabled_providers
+    return normalized
+  }
+
   // Custom merge function that concatenates array fields instead of replacing them
   function mergeConfigConcatArrays(target: Info, source: Info): Info {
-    const merged = mergeDeep(target, source)
-    if (target.plugin && source.plugin) {
-      merged.plugin = mergePluginSpecList(target.plugin, source.plugin)
+    const normalizedTarget = normalizeProviderFilters(target)
+    const normalizedSource = normalizeProviderFilters(source)
+    const merged = mergeDeep(normalizedTarget, normalizedSource)
+    if (normalizedTarget.plugin && normalizedSource.plugin) {
+      merged.plugin = mergePluginSpecList(normalizedTarget.plugin, normalizedSource.plugin)
     }
-    if (target.instructions && source.instructions) {
-      merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
+    if (normalizedTarget.instructions && normalizedSource.instructions) {
+      merged.instructions = Array.from(new Set([...normalizedTarget.instructions, ...normalizedSource.instructions]))
     }
-    if (target.project_doc_fallback_filenames && source.project_doc_fallback_filenames) {
+    if (normalizedTarget.project_doc_fallback_filenames && normalizedSource.project_doc_fallback_filenames) {
       merged.project_doc_fallback_filenames = Array.from(
-        new Set([...target.project_doc_fallback_filenames, ...source.project_doc_fallback_filenames]),
+        new Set([
+          ...normalizedTarget.project_doc_fallback_filenames,
+          ...normalizedSource.project_doc_fallback_filenames,
+        ]),
       )
     }
     return merged
@@ -1044,6 +1061,16 @@ export namespace Config {
     options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
   ) {
     const parsed = ConfigDomain.Id.parse(id)
+    using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed, options.root)}`)
+    return domainUpdateUnlocked(parsed, patch, options)
+  }
+
+  async function domainUpdateUnlocked(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
+  ) {
+    const parsed = ConfigDomain.Id.parse(id)
     ConfigDomain.validateKeys(patch as Record<string, unknown>, parsed)
     const stored = await domainGet(parsed, options.root)
     const mergedPatch = mergeRedactedSecrets(patch as Info, stored)
@@ -1057,13 +1084,33 @@ export namespace Config {
     return redactForClient(await domainGet(parsed, options.root))
   }
 
+  export async function domainMutateWithChange(
+    id: ConfigDomain.Id,
+    mutate: (current: Info) => Partial<Info> | Promise<Partial<Info>>,
+    options: { mode?: ConfigDomain.MergeMode } = {},
+  ) {
+    const parsed = ConfigDomain.Id.parse(id)
+    using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed)}`)
+    const oldConfig = await globalResolved()
+    const current = await domainGet(parsed)
+    const patch = await mutate(structuredClone(current))
+    const result = await domainUpdateUnlocked(parsed, patch, options)
+    const config = await globalResolved()
+    return {
+      result,
+      change: { oldConfig, config, changedFields: diff(oldConfig, config) } satisfies Change,
+    }
+  }
+
   export async function domainUpdateWithChange(
     id: ConfigDomain.Id,
     patch: Partial<Info>,
     options: { mode?: ConfigDomain.MergeMode } = {},
   ) {
+    const parsed = ConfigDomain.Id.parse(id)
+    using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed)}`)
     const oldConfig = await globalResolved()
-    const result = await domainUpdate(id, patch, options)
+    const result = await domainUpdateUnlocked(parsed, patch, options)
     const config = await globalResolved()
     return {
       result,

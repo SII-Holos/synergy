@@ -24,6 +24,62 @@ test("loads config with defaults when no files exist", async () => {
   })
 })
 
+test("serializes domain mutations with ordinary domain updates", async () => {
+  const before = await Config.domainGet("providers")
+  let releaseMutation!: () => void
+  const release = new Promise<void>((resolve) => {
+    releaseMutation = resolve
+  })
+  let mutationStarted!: () => void
+  const started = new Promise<void>((resolve) => {
+    mutationStarted = resolve
+  })
+
+  try {
+    const mutation = Config.domainMutateWithChange(
+      "providers",
+      async (current) => {
+        mutationStarted()
+        await release
+        return {
+          ...current,
+          provider: {
+            ...(current.provider ?? {}),
+            "atomic-first": {
+              name: "Atomic First",
+              npm: "@ai-sdk/openai-compatible",
+              env: [],
+              models: {},
+            },
+          },
+        }
+      },
+      { mode: "replace-domain" },
+    )
+    await started
+    const update = Config.domainUpdate("providers", {
+      provider: {
+        "atomic-second": {
+          name: "Atomic Second",
+          npm: "@ai-sdk/openai-compatible",
+          env: [],
+          models: {},
+        },
+      },
+    })
+    releaseMutation()
+    await Promise.all([mutation, update])
+
+    expect((await Config.domainGet("providers")).provider).toMatchObject({
+      "atomic-first": { name: "Atomic First" },
+      "atomic-second": { name: "Atomic Second" },
+    })
+  } finally {
+    releaseMutation?.()
+    await Config.domainUpdate("providers", before, { mode: "replace-domain" })
+  }
+})
+
 test("loads JSON config file", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -153,6 +209,104 @@ test("merges multiple config files with correct precedence", async () => {
       expect(config.username).toBe("base")
     },
   })
+})
+
+test("empty provider filters inherit lower-priority config layers", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const fragmentDir = path.join(dir, ".synergy", "synergy.d")
+      await fs.mkdir(fragmentDir, { recursive: true })
+      await Bun.write(
+        path.join(fragmentDir, "10-provider-base.jsonc"),
+        JSON.stringify({ enabled_providers: ["openai"], disabled_providers: ["anthropic"] }),
+      )
+      await Bun.write(
+        path.join(fragmentDir, "20-provider-override.jsonc"),
+        JSON.stringify({ enabled_providers: [], disabled_providers: [] }),
+      )
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.enabled_providers).toEqual(["openai"])
+      expect(config.disabled_providers).toEqual(["anthropic"])
+    },
+  })
+})
+
+test("inline empty provider filters inherit custom config values", async () => {
+  await using tmp = await tmpdir()
+  const baseConfig = path.join(tmp.path, "provider-base.jsonc")
+  await Bun.write(baseConfig, JSON.stringify({ enabled_providers: ["openai"], disabled_providers: ["anthropic"] }))
+  const script = `
+    import { Config } from "./src/config/config"
+    import { Scope } from "./src/scope"
+    import { ScopeContext } from "./src/scope/context"
+    const config = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.current() })
+    console.log(JSON.stringify({
+      enabled_providers: config.enabled_providers,
+      disabled_providers: config.disabled_providers,
+    }))
+  `
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    SYNERGY_CONFIG: baseConfig,
+    SYNERGY_CONFIG_CONTENT: JSON.stringify({ enabled_providers: [], disabled_providers: [] }),
+    SYNERGY_TEST_HOME: tmp.path,
+    SYNERGY_DISABLE_MODELS_FETCH: "true",
+    SYNERGY_DISABLE_FILEWATCHER: "true",
+  }
+  delete env.SYNERGY_HOME
+
+  const proc = Bun.spawn([process.execPath, "--conditions=browser", "-e", script], {
+    cwd: path.resolve(import.meta.dir, "../.."),
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+
+  expect(stderr).toBe("")
+  expect(exitCode).toBe(0)
+  expect(JSON.parse(stdout)).toEqual({
+    enabled_providers: ["openai"],
+    disabled_providers: ["anthropic"],
+  })
+})
+
+test("rejects invalid empty-string provider filters from inline config", async () => {
+  await using tmp = await tmpdir()
+  const script = `
+    import { Config } from "./src/config/config"
+    import { Scope } from "./src/scope"
+    import { ScopeContext } from "./src/scope/context"
+    await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.current() })
+  `
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    SYNERGY_CONFIG_CONTENT: JSON.stringify({ enabled_providers: "", disabled_providers: "" }),
+    SYNERGY_TEST_HOME: tmp.path,
+    SYNERGY_DISABLE_MODELS_FETCH: "true",
+    SYNERGY_DISABLE_FILEWATCHER: "true",
+  }
+  delete env.SYNERGY_HOME
+
+  const proc = Bun.spawn([process.execPath, "--conditions=browser", "-e", script], {
+    cwd: path.resolve(import.meta.dir, "../.."),
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+
+  expect(exitCode).not.toBe(0)
+  expect(stderr).toContain("enabled_providers")
 })
 
 test("handles environment variable substitution", async () => {

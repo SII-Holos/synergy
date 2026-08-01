@@ -345,6 +345,43 @@ test("configured environment credentials participate in live discovery", async (
   expect(environmentDiscoveryByProvider.get(environmentProviderID)).toBe("environment-account-key")
 })
 
+test("connection model rules remain applied after live discovery", async () => {
+  const configured = {
+    profile: configuredProfileID,
+    modelsDevProviderID: "openai",
+    whitelist: ["configured-model"],
+    models: {
+      "configured-model": {
+        name: "Account-specific configured model",
+      },
+    },
+  }
+  await using tmp = await tmpdir()
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await ProviderCatalog.refresh(
+        configuredProviderID,
+        configuredProfileID,
+        "https://configured-catalog.invalid/v1",
+        configured,
+      )
+      const catalog = await ProviderCatalog.resolve({
+        config: {
+          providerCatalog: { enabled: false, offlineCache: false },
+          provider: { [configuredProviderID]: configured },
+        },
+        includeLive: true,
+        forceRefresh: true,
+      })
+
+      expect(Object.keys(catalog[configuredProviderID].models)).toEqual(["configured-model"])
+      expect(catalog[configuredProviderID].models["configured-model"].name).toBe("Account-specific configured model")
+    },
+  })
+})
+
 test("canonical profile environment credentials participate in live discovery", async () => {
   await using tmp = await tmpdir()
 

@@ -9,7 +9,7 @@ export type PluginHostConfirmRequest = {
 export type PluginHostConfirmShow = (options: ConfirmOptions) => void
 
 /**
- * Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
+ * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
  *
  * title and message pass through from the plugin — they are plugin author content.
  * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel

@@ -610,6 +610,7 @@ export function registerBuiltinProviderProfiles() {
       AccountUsage.openrouter(input.providerID, input.fetch, {
         auth: input.auth,
         manageStoredCredential: input.manageStoredCredential,
+        environment: input.environment,
       }),
   })
 }

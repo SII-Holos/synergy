@@ -4,12 +4,13 @@ import { fileURLToPath, pathToFileURL } from "url"
 import { Global } from "../global"
 import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
-import { PluginManifest, normalizePluginArchiveEntry } from "@ericsanchezok/synergy-plugin"
+import { PluginManifestEnvelope, PluginManifestV4, normalizePluginArchiveEntry } from "@ericsanchezok/synergy-plugin"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import type { PluginSource } from "./trust"
 import { sourceFromSpec } from "./source"
 import { sha256File } from "../util/crypto"
 import { isPathContained } from "../util/path-contain"
+import { Installation } from "../global/installation"
 
 export interface ResolvedPluginSpec {
   spec: string
@@ -29,6 +30,23 @@ export interface ResolvePluginSpecOptions {
   install?: boolean
   refresh?: boolean
   stageLocalArchive?: boolean
+}
+
+export function assertPluginCompatibility(
+  envelope: { apiVersion: string; compatibility: { synergy: string }; manifestVersion?: number },
+  hostVersion = Installation.VERSION,
+): void {
+  if (envelope.apiVersion !== "4.0") {
+    throw new Error(
+      `Plugin API ${envelope.apiVersion} is not supported. This Synergy release supports the stable Plugin API 4 family.`,
+    )
+  }
+  if (hostVersion === "local") return
+  if (!Bun.semver.satisfies(hostVersion, envelope.compatibility.synergy)) {
+    throw new Error(
+      `Plugin requires Synergy ${envelope.compatibility.synergy}, but the current version is ${hostVersion}.`,
+    )
+  }
 }
 
 const ARCHIVE_RE = /\.(?:synergy-plugin\.)?t(?:ar\.)?gz$|\.tgz$/i
@@ -95,7 +113,10 @@ export async function readPluginManifest(pluginDir: string): Promise<PluginManif
   if (!text.trim()) {
     throw new Error(`Plugin manifest is empty at ${manifestPath}. Synergy plugins must include a valid plugin.json.`)
   }
-  const manifest = PluginManifest.parse(JSON.parse(text))
+  const raw = JSON.parse(text)
+  const envelope = PluginManifestEnvelope.parse(raw)
+  assertPluginCompatibility(envelope)
+  const manifest = PluginManifestV4.parse(raw)
   for (const [kind, artifact] of Object.entries({ runtime: manifest.artifacts.runtime, ui: manifest.artifacts.ui })) {
     if (!artifact) continue
     const artifactPath = path.resolve(pluginDir, artifact.entry)

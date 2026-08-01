@@ -560,7 +560,6 @@ export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {
   mcp: "explicit",
   mcpDefaults: "explicit",
   plugin: "explicit",
-  pluginApprovalPolicy: "explicit",
   pluginRuntimePolicy: "explicit",
   pluginMarketplace: "explicit",
   channel: "background",

@@ -1,5 +1,7 @@
 import { onCleanup, onMount } from "solid-js"
 import {
+  BROWSER_HOST_INSTALL_TIMEOUT_MS,
+  BROWSER_HOST_START_TIMEOUT_MS,
   BROWSER_PROTOCOL_VERSION,
   BrowserEventSchema,
   type BrowserHostStatus,
@@ -15,6 +17,7 @@ import { normalizeBrowserError } from "./browser-error"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
+const HOST_RETRY_INTERVAL_MS = 1_000
 
 type BrowserWebSocketOptions = {
   sessionID: string
@@ -75,11 +78,119 @@ function isBrowserHostStatus(value: unknown): value is BrowserHostStatus {
   ].includes(String(value))
 }
 
+type ControlAttempt = {
+  command: Record<string, unknown>
+  commandId: string
+  traceId?: string
+  controller: AbortController
+  startedAt: number
+}
+
 function createBrowserHttpControlSender(
   store: BrowserStoreAPI,
   options: BrowserWebSocketUrlOptions & { client: ReturnType<typeof useSDK>["client"] },
   createNativeTicket?: () => Promise<string | undefined>,
 ) {
+  const controllers = new Set<AbortController>()
+  let disposed = false
+  let pending: ControlAttempt | null = null
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+  const execute = async (attempt: ControlAttempt) => {
+    const nativeTicket = await createNativeTicket?.()
+    const payload = await options.client.browser.control(
+      {
+        path_directory: options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey ?? "",
+        query_directory: options.directory,
+        scopeID: options.scopeID,
+        mode: "session",
+        sessionID: options.sessionID,
+        presentation: nativeTicket ? "native" : (options.presentation ?? "auto"),
+        nativeTicket,
+        browserControlRequest: {
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          command: attempt.command,
+          commandId: attempt.commandId,
+          traceId: attempt.traceId,
+        } as BrowserControlRequest,
+      },
+      { signal: attempt.controller.signal },
+    )
+    if (!payload.data) throw payload.error ?? new Error("Browser control failed")
+    store.clearTransientHostError()
+    applyBrowserControlResult(store, payload.data.result)
+  }
+
+  const fail = (attempt: ControlAttempt, error: unknown) => {
+    const normalized = normalizeBrowserError(error, "Browser control failed")
+    browserDebug("control.error", { type: "control", message: normalized.message, code: normalized.code })
+    store.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
+  }
+
+  const clearRetry = () => {
+    if (retryTimer) {
+      clearTimeout(retryTimer)
+      retryTimer = null
+    }
+    pending = null
+  }
+
+  const retryNow = () => {
+    if (!pending || disposed) return
+    const attempt = pending
+    clearRetry()
+    browserDebug("control.retry", { commandId: attempt.commandId })
+    void execute(attempt).catch((error) => {
+      const normalized = normalizeBrowserError(error, "Browser control failed")
+      if (normalized.code === "browser_host_pending" && normalized.retryable && !disposed) {
+        scheduleRetry(attempt)
+        return
+      }
+      fail(attempt, error)
+    })
+  }
+
+  const scheduleRetry = (attempt: ControlAttempt) => {
+    if (disposed) return
+    if (pending) {
+      // Another command is already waiting on the Host. Fail this one loudly
+      // instead of silently dropping it.
+      fail(attempt, new Error("A Browser control command is already waiting for the Host to start."))
+      return
+    }
+    pending = attempt
+    // Surface a transient "host is coming up" state instead of a hard error.
+    store.setBrowserError({
+      severity: "warning",
+      code: "browser_host_pending",
+      message: "Browser Host is starting; retrying automatically…",
+    })
+    const tick = () => {
+      retryTimer = null
+      if (disposed || pending !== attempt) return
+      const status = store.hostStatus()
+      if (status === "ready") {
+        retryNow()
+        return
+      }
+      if (status === "failed" || status === "unavailable") {
+        const attemptToFail = attempt
+        clearRetry()
+        fail(attemptToFail, new Error(`Browser Host is ${status}; the control command was not executed.`))
+        return
+      }
+      const budget = status === "installing" ? BROWSER_HOST_INSTALL_TIMEOUT_MS : BROWSER_HOST_START_TIMEOUT_MS
+      if (Date.now() - attempt.startedAt >= budget) {
+        const attemptToFail = attempt
+        clearRetry()
+        fail(attemptToFail, new Error(`Browser Host did not become ready within ${budget}ms.`))
+        return
+      }
+      retryTimer = setTimeout(tick, HOST_RETRY_INTERVAL_MS)
+    }
+    retryTimer = setTimeout(tick, HOST_RETRY_INTERVAL_MS)
+  }
+
   const send = (msg: Record<string, unknown>) => {
     const command = browserControlCommandFromMessage(msg)
     if (!command) {
@@ -92,36 +203,41 @@ function createBrowserHttpControlSender(
       return
     }
     if (shouldLogBrowserMessage(msg)) browserDebug("control.send", summarizeBrowserMessage(msg))
-    void (async () => {
-      const nativeTicket = await createNativeTicket?.()
-      const traceId = options.traceId
-      const commandId = typeof msg.commandId === "string" ? msg.commandId : createBrowserCommandId()
-      const payload = await options.client.browser.control({
-        path_directory: pathDirectory,
-        query_directory: options.directory,
-        scopeID: options.scopeID,
-        mode: "session",
-        sessionID: options.sessionID,
-        presentation: nativeTicket ? "native" : (options.presentation ?? "auto"),
-        nativeTicket,
-        browserControlRequest: {
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          command,
-          commandId,
-          traceId,
-        } as BrowserControlRequest,
+    const controller = new AbortController()
+    controllers.add(controller)
+    const attempt: ControlAttempt = {
+      command,
+      commandId: typeof msg.commandId === "string" ? msg.commandId : createBrowserCommandId(),
+      traceId: options.traceId,
+      controller,
+      startedAt: Date.now(),
+    }
+    void execute(attempt)
+      .catch((error) => {
+        const normalized = normalizeBrowserError(error, "Browser control failed")
+        if (normalized.code === "browser_host_pending" && normalized.retryable && !disposed) {
+          scheduleRetry(attempt)
+          return
+        }
+        fail(attempt, error)
       })
-      if (!payload.data) throw payload.error ?? new Error("Browser control failed")
-      store.clearTransientHostError()
-      applyBrowserControlResult(store, payload.data.result)
-    })().catch((error) => {
-      const normalized = normalizeBrowserError(error, "Browser control failed")
-      browserDebug("control.error", { type: msg.type, message: normalized.message, code: normalized.code })
-      store.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
-    })
+      .finally(() => {
+        controllers.delete(controller)
+      })
   }
 
-  return { send }
+  const dispose = () => {
+    disposed = true
+    if (retryTimer) {
+      clearTimeout(retryTimer)
+      retryTimer = null
+    }
+    pending = null
+    for (const controller of controllers) controller.abort()
+    controllers.clear()
+  }
+
+  return { send, retryNow, dispose }
 }
 
 export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserWebSocketOptions) {
@@ -258,6 +374,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           const pageId = typeof msg.pageId === "string" ? msg.pageId : store.pageId()
           if (pageId && isBrowserHostStatus(msg.status)) {
             store.setHostStatus(pageId, msg.status)
+            if (msg.status === "ready") controlSender.retryNow()
           }
           break
         }
@@ -386,6 +503,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     browserDebug("ws.cleanup", { sessionID, hasSocket: Boolean(ws) })
     disposed = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
+    controlSender.dispose()
     ws?.close()
     ws = undefined
   })

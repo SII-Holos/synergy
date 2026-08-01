@@ -94,7 +94,7 @@ test("mapped provider live probes run profile auth, options, and model hooks", a
   const calls: string[] = []
   let receivedOptions: Record<string, any> | undefined
 
-  ProviderProfile.register({
+  const unregister = ProviderProfile.register({
     id: profileID,
     name: "Setup probe profile",
     modelsDevProviderID: "openai",
@@ -133,35 +133,40 @@ test("mapped provider live probes run profile auth, options, and model hooks", a
     },
   })
 
-  await using tmp = await tmpdir()
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    async fn() {
-      const result = await ConfigSetup.probeImportedCore({
-        model: `${providerID}/gpt-4o`,
-        provider: {
-          [providerID]: {
-            profile: profileID,
-            modelsDevProviderID: "openai",
-            api: "https://connection.invalid/v1",
-            options: { apiKey: "setup-probe-key", connectionHook: true },
+  try {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      async fn() {
+        const result = await ConfigSetup.probeImportedCore({
+          model: `${providerID}/gpt-4o`,
+          provider: {
+            [providerID]: {
+              profile: profileID,
+              modelsDevProviderID: "openai",
+              api: "https://connection.invalid/v1",
+              options: { apiKey: "setup-probe-key", connectionHook: true },
+            },
           },
-        },
-      })
+        })
 
-      expect(result.fields.model).toMatchObject({
-        valid: true,
-        mode: "live",
-        message: "Default model passed a live probe",
-      })
-      expect(calls).toEqual(["resolveAuth", "modelOptions", "runtimeOptions", "getModel"])
-      expect(receivedOptions).toMatchObject({
-        apiKey: "setup-probe-key",
-        baseURL: "https://connection.invalid/v1",
-        modelHook: true,
-        runtimeHook: true,
-        connectionHook: true,
-      })
-    },
-  })
+        expect(result.fields.model).toMatchObject({
+          valid: true,
+          mode: "live",
+          message: "Default model passed a live probe",
+        })
+        expect(calls).toEqual(["resolveAuth", "modelOptions", "runtimeOptions", "getModel"])
+        expect(receivedOptions).toMatchObject({
+          apiKey: "setup-probe-key",
+          baseURL: "https://connection.invalid/v1",
+          modelHook: true,
+          runtimeHook: true,
+          connectionHook: true,
+        })
+      },
+    })
+  } finally {
+    unregister()
+  }
+  expect(ProviderProfile.get(profileID)).toBeUndefined()
 })

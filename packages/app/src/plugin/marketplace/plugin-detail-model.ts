@@ -73,7 +73,6 @@ export function fallbackPluginSummary(input: {
     keywords: ["plugin"],
     latestVersion: input.installed.version,
     updatedAt: Date.now(),
-    risk: input.detail?.risk ?? input.installed.risk,
     trustTier: input.detail?.trust ?? input.installed.trust,
     runtimeMode: runtimeModeFromManifest(manifest),
     uiSurfaces: uiSurfacesFromManifest(manifest),

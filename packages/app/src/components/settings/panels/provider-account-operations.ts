@@ -44,6 +44,10 @@ export type SaveProviderAccountInput =
       enabled: boolean
     }
 
+export function canAddProviderAccount(connection: Pick<ProviderConnection, "canCreateSibling">) {
+  return connection.canCreateSibling
+}
+
 export async function saveProviderAccount(
   client: ProviderConnectionClient,
   input: SaveProviderAccountInput,

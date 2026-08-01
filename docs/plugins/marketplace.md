@@ -16,7 +16,9 @@ Directory resolution uses `dist/plugin.json` when a built project root is regist
 
 ## Official and Local Registries
 
-The default official index is the reviewed `SII-Holos/synergy-plugins` GitHub registry. Its lightweight index links to per-plugin metadata and release artifacts. The local registry stores development catalog entries and artifacts under the configured Synergy home.
+The default official index is the reviewed `SII-Holos/synergy-plugins` GitHub registry. Registry v2 removes plugin risk fields and records API/host compatibility plus natural-language `featuresSummary` and `permissionsSummary` fields for every version. Features explain what the plugin contributes; permissions separately explain which host access it requests. Synergy accepts both v1 and v2 while the registry rolls forward, normalizing v1 only at the network boundary. The local registry stores development catalog entries and artifacts under the configured Synergy home.
+
+API2/API3 releases may remain in version history, but only non-yanked API4 versions are default installation candidates. A Plugin API 3 installation keeps its plugin ID and can update directly to a published API4 version without uninstalling first.
 
 Registry identity, generated manifest ID, approval ID, lockfile key, signature plugin ID, and UI/runtime namespace must match.
 
@@ -47,15 +49,15 @@ Installation follows this order:
 1. resolve or stage the package;
 2. read generated metadata without importing runtime code;
 3. validate API version, contribution schema, artifact paths, hashes, signature, and registry identity;
-4. compute the manifest and permission hashes and build an approval review when the exact artifact has not been approved;
-5. submit approval through the server-authoritative `reviewToken` contract when required;
+4. verify the manifest and permission hashes, then compare the new structured grant with the saved publisher/grant record;
+5. continue automatically for an official verified first install or same-publisher equal/narrower update; otherwise submit the server-authoritative `reviewToken` confirmation;
 6. update the plugin config domain, lockfile, approval record, and incompatible-package record under the installation lock;
 7. reload and verify exactly one plugin registration;
 8. commit staged artifacts and remove rollback state.
 
 Any failure restores the previous config, lockfile, approvals, incompatible records, artifact directory, and runtime view. Configured approval uses the same transaction and rollback path as install/update. Registry approval completes install or update through the existing upsert transaction. Upgrade lifecycle failure leaves the previous version active.
 
-Old-format packages are recorded as incompatible and require reinstall. They are never loaded through a compatibility reader.
+Plugin API 3 packages are recorded as incompatible and remain disabled until an API4 update is installed. Existing API4 artifacts use the frozen V4 decoder and remain loadable across later Synergy releases; they do not require repacking, reinstalling, or reapproval solely because the host changed.
 
 ## Removal
 

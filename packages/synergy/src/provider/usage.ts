@@ -102,6 +102,7 @@ export namespace AccountUsage {
     options?: {
       auth?: Auth.Info
       manageStoredCredential?: boolean
+      environment?: string[]
     },
   ): Promise<Snapshot> {
     const auth = options?.auth ?? (await Auth.get(providerID))
@@ -113,8 +114,9 @@ export namespace AccountUsage {
       ProviderAuthRecovery.execute({
         providerID,
         manageStoredCredential,
+        environment: options?.environment,
         request: async () => {
-          const current = manageStoredCredential ? await Auth.get(providerID) : auth
+          const current = manageStoredCredential ? ((await Auth.get(providerID)) ?? auth) : auth
           if (current?.type !== "api") return new Response(null, { status: 401 })
           return fetchFn(url, {
             headers: {

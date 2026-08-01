@@ -10,7 +10,7 @@ import { PermissionRules } from "@/permission/rules"
 import { SmartAllow } from "@/permission/smart-allow"
 import { Plugin } from "@/plugin"
 import { PluginToolId } from "../plugin/ids.js"
-import { toolCapabilities, toolRisk } from "../plugin/capability"
+import { toolCapabilities } from "../plugin/capability"
 import { getApproval, type PluginApprovalRecord } from "../plugin/consent/approval-store"
 import { markContributionDegraded } from "../plugin/loader"
 import { ProviderTransform } from "@/provider/transform"
@@ -234,7 +234,7 @@ export namespace ToolResolver {
   }
 
   interface PluginGateData {
-    toolCapabilities: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }>
+    toolCapabilities: Record<string, { capabilities: string[] }>
     approvals: Record<string, PluginApprovalRecord>
   }
 
@@ -249,7 +249,7 @@ export namespace ToolResolver {
   }
 
   async function currentPluginGateData(): Promise<PluginGateData> {
-    const caps: Record<string, { capabilities: string[]; risk: "low" | "medium" | "high" }> = {}
+    const caps: Record<string, { capabilities: string[] }> = {}
     const approvals: Record<string, PluginApprovalRecord> = {}
     for (const plugin of await Plugin.getLoaded()) {
       try {
@@ -259,7 +259,6 @@ export namespace ToolResolver {
           const capabilities = toolCapabilities(manifest, contribution.id)
           caps[PluginToolId.format(plugin.id, contribution.id)] = {
             capabilities,
-            risk: toolRisk(manifest, contribution.id),
           }
         }
         const approval = await getApproval(plugin.id, manifest)
@@ -1530,6 +1529,10 @@ export namespace ToolResolver {
                   sessionID: runtimeInput.session?.id,
                   agentControlProfile: runtimeInput.agent.controlProfile,
                 })
+                // The bash detached-daemon guard reads ctx.extra.controlProfile; carry the
+                // session-effective profile (session > agent config) so full_access sessions
+                // bypass the guard as documented (issue #1006).
+                ;(ctx.extra as any).controlProfile = profileId
                 const synergyRoot = Global.Path.root
                 const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
                 const pluginToolIds = await currentPluginToolIds()
@@ -1785,6 +1788,8 @@ export namespace ToolResolver {
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,
                   })
+                  // Same effective-profile carry as the builtin path (issue #1006).
+                  ;(ctx.extra as any).controlProfile = profileId
                   const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()

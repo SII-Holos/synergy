@@ -9,6 +9,15 @@ describe("release runtime artifact contract", () => {
     )
   })
 
+  test("requires the filesystem-backed ONNX Web embedding runtime", () => {
+    expect(requiredRuntimeArtifactPaths("synergy-linux-x64")).toContain(
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
+    )
+    expect(requiredRuntimeArtifactPaths("synergy-darwin-arm64")).toContain(
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
+    )
+  })
+
   test("requires the Linux sandbox helper in every Linux package variant", () => {
     expect(requiredRuntimeArtifactPaths("synergy-linux-x64")).toContain("sandbox/synergy-sandbox-linux")
     expect(requiredRuntimeArtifactPaths("synergy-linux-x64-baseline-musl")).toContain("sandbox/synergy-sandbox-linux")

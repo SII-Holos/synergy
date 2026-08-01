@@ -6,11 +6,16 @@ import {
   type BrowserPresentation,
 } from "@ericsanchezok/synergy-browser"
 import { BrowserBroker, type BrowserBrokerSocket } from "../../src/browser/broker"
+import { BrowserHostBrokerProcess } from "../../src/browser/host-broker-process"
 import { BrowserNetworkGateway } from "../../src/browser/network-gateway"
+import { BrowserCommandService } from "../../src/browser/command-service"
+import type { BrowserPageBackend } from "../../src/browser/page"
+import type { BrowserSession } from "../../src/browser/types"
 import type { BrowserOwner } from "../../src/browser/owner"
 import { BrowserTicket } from "../../src/browser/ticket"
 import { BrowserWebRTCSignaling } from "../../src/browser/webrtc-signaling"
 import { BrowserWorkspace } from "../../src/browser/workspace"
+import { BunProc } from "../../src/util/bun"
 
 const owner: BrowserOwner.Info = {
   mode: "session",
@@ -43,6 +48,68 @@ class BrokerSocket implements BrowserBrokerSocket {
 
   close(): void {}
 }
+function fakeSession(): BrowserSession {
+  const page: BrowserPageBackend = {
+    id: "page-1",
+    backend: "host",
+    url: "about:blank",
+    title: "",
+    loading: false,
+    lastActiveAt: null,
+    async execute(command) {
+      if (command.type === "navigate") {
+        page.url = command.url
+        return {
+          type: "navigation",
+          page: { id: page.id, url: page.url, title: "", isLoading: false, lastActiveAt: null },
+        }
+      }
+      return { type: "void" }
+    },
+    async close() {},
+    isAlive() {
+      return true
+    },
+  }
+  return {
+    owner,
+    page: null,
+    status: "empty",
+    descriptor: null,
+    annotations: [],
+    checkpoint: null,
+    error: null,
+    async ensurePage() {
+      return page
+    },
+    async resumePage() {
+      return page
+    },
+    async closePage() {},
+    getPage(id) {
+      return id === page.id ? page : undefined
+    },
+    async addAnnotation() {
+      throw new Error("not implemented")
+    },
+    async removeAnnotation() {
+      return false
+    },
+    async clearAnnotations() {},
+    formatAnnotationsForContext() {
+      return ""
+    },
+    async notifyPageNavigated() {},
+    async notifyAgentActivity() {},
+    async notifyControlChanged() {},
+    async save() {},
+    async restore() {
+      return true
+    },
+    async suspend() {},
+    async dispose() {},
+  }
+}
 
 function presentation(kind: "native" | "webrtc"): BrowserPresentation {
   return {
@@ -70,8 +137,16 @@ async function createBrokerPage() {
   })
 }
 
+const originalAutostart = process.env.SYNERGY_BROWSER_HOST_AUTOSTART
+const originalCommand = process.env.SYNERGY_BROWSER_HOST_COMMAND
+
 afterEach(async () => {
+  if (originalAutostart === undefined) delete process.env.SYNERGY_BROWSER_HOST_AUTOSTART
+  else process.env.SYNERGY_BROWSER_HOST_AUTOSTART = originalAutostart
+  if (originalCommand === undefined) delete process.env.SYNERGY_BROWSER_HOST_COMMAND
+  else process.env.SYNERGY_BROWSER_HOST_COMMAND = originalCommand
   BrowserWebRTCSignaling.resetForTest()
+  BrowserHostBrokerProcess.resetForTest()
   BrowserBroker.resetForTest()
   BrowserTicket.resetForTest()
   await BrowserNetworkGateway.stop()
@@ -96,4 +171,86 @@ describe("Browser workspace Host readiness", () => {
 
     expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("native")).hostStatus).toBe("ready")
   })
+})
+
+describe("Browser workspace Host registration wait", () => {
+  test("fails immediately when the WebRTC Host is unavailable", async () => {
+    process.env.SYNERGY_BROWSER_HOST_AUTOSTART = "false"
+    await expect(
+      BrowserWorkspace.executeControl(
+        {
+          directory: "/tmp",
+          owner,
+          presentation: presentation("webrtc"),
+          requestedPresentation: "webrtc",
+          nativePresentation: false,
+        },
+        { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-unavailable" },
+        "http://localhost:4096",
+      ),
+    ).rejects.toMatchObject({ code: "browser_host_unavailable", message: expect.stringContaining("unavailable") })
+  })
+
+  test("returns browser_host_pending after the bounded wait while the WebRTC Host starts", async () => {
+    process.env.SYNERGY_BROWSER_HOST_COMMAND = JSON.stringify([BunProc.which(), "-e", "setInterval(() => {}, 1000)"])
+    const restoreRuntime = BrowserCommandService.useRuntimeForTest({
+      async getOrCreateSession() {
+        return fakeSession()
+      },
+    })
+    try {
+      const control = BrowserWorkspace.executeControl(
+        {
+          directory: "/tmp",
+          owner,
+          presentation: presentation("webrtc"),
+          requestedPresentation: "webrtc",
+          nativePresentation: false,
+        },
+        { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-starting" },
+        "http://localhost:4096",
+      )
+      await expect(control).rejects.toMatchObject({
+        code: "browser_host_pending",
+        retryable: true,
+        message: expect.stringContaining("starting"),
+      })
+    } finally {
+      restoreRuntime()
+    }
+  }, 15_000)
+
+  test("succeeds when the Host registers within the bounded wait", async () => {
+    process.env.SYNERGY_BROWSER_HOST_COMMAND = JSON.stringify([BunProc.which(), "-e", "setInterval(() => {}, 1000)"])
+    const restoreRuntime = BrowserCommandService.useRuntimeForTest({
+      async getOrCreateSession() {
+        return fakeSession()
+      },
+    })
+    try {
+      const control = BrowserWorkspace.executeControl(
+        {
+          directory: "/tmp",
+          owner,
+          presentation: presentation("webrtc"),
+          requestedPresentation: "webrtc",
+          nativePresentation: false,
+        },
+        { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-ready" },
+        "http://localhost:4096",
+      )
+      const broker = new BrokerSocket()
+      BrowserBroker.attach(broker, {
+        type: "host.register",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        hostId: "host-workspace",
+        token: BrowserBroker.secret(),
+        capabilities: { native: false, webrtc: true },
+      })
+      const result = await control
+      expect(result.status).toBe(200)
+    } finally {
+      restoreRuntime()
+    }
+  }, 15_000)
 })

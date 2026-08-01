@@ -38,8 +38,12 @@ async function mcpCandidates(plugins: LoadedPlugin[]) {
 }
 
 function hookContributions(plugin: LoadedPlugin, point: string) {
+  const accepted =
+    point === "chat.system.transform"
+      ? new Set(["chat.system.transform", "experimental.chat.system.transform"])
+      : new Set([point])
   return contributions(plugin, "hook")
-    .filter((item) => item.point === point)
+    .filter((item) => accepted.has(item.point))
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
 }
 
@@ -120,7 +124,7 @@ type PluginTriggerOptions = {
 }
 
 function pluginHookHandlerInput<Input, Output>(pointName: string, input: Input, value: Output): Input | Output {
-  if (pointName !== "experimental.chat.system.transform") return value
+  if (pointName !== "chat.system.transform" && pointName !== "experimental.chat.system.transform") return value
   return { ...(input as Record<string, unknown>), ...(value as Record<string, unknown>) } as Input
 }
 

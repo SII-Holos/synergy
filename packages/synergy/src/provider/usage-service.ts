@@ -24,16 +24,16 @@ export namespace ProviderUsage {
         ? configured.options.apiKey
         : undefined
     const storedAuth = await Auth.get(providerID)
-    const environment = (configured?.env ?? profile.env ?? [])
-      .map((name) => Env.get(name)?.trim())
-      .find((value) => value)
+    const environmentNames = configured?.env ?? profile.env ?? []
+    const environment = environmentNames.map((name) => Env.get(name)?.trim()).find((value) => value)
     const configuredKey = inlineKey ?? (storedAuth ? undefined : environment)
     const configuredAuth = configuredKey ? ({ type: "api", key: configuredKey } satisfies Auth.Info) : undefined
     return {
       ...(await profile.fetchUsage({
         providerID,
         auth: configuredAuth,
-        manageStoredCredential: configuredAuth ? false : undefined,
+        manageStoredCredential: inlineKey ? false : undefined,
+        environment: environmentNames,
       })),
       providerID,
     }

@@ -129,6 +129,7 @@ test("/provider returns catalog, auth health, and runtime availability", async (
 test("provider connection routes manage a second account without changing its canonical provider", async () => {
   const before = await Config.domainGet("providers")
   const providerID = `deepseek-team-${Math.random().toString(36).slice(2)}`
+  const standaloneID = `standalone-${Math.random().toString(36).slice(2)}`
   const app = Server.App()
 
   try {
@@ -155,6 +156,7 @@ test("provider connection routes manage a second account without changing its ca
         enabled: false,
         configured: true,
         removable: true,
+        canCreateSibling: true,
       },
     })
 
@@ -172,6 +174,12 @@ test("provider connection routes manage a second account without changing its ca
               baseURL: "https://stale-deepseek-team.invalid/v1",
             },
           },
+          [standaloneID]: {
+            name: "Standalone Custom",
+            npm: "@ai-sdk/openai-compatible",
+            env: [],
+            models: {},
+          },
         },
       },
       { mode: "replace-domain" },
@@ -184,12 +192,18 @@ test("provider connection routes manage a second account without changing its ca
       enabled: false,
       removable: true,
     })
+    expect(listed.connections[standaloneID]).toMatchObject({
+      id: standaloneID,
+      configured: true,
+      removable: false,
+      canCreateSibling: false,
+    })
     expect(listed.runtimeAvailability[providerID]).toMatchObject({
       available: false,
       reason: "disabled",
       modelCount: 1,
     })
-    expect(listed.all.some((provider: Provider.Info) => provider.id === providerID)).toBe(false)
+    expect(listed.all.some((provider: Provider.Info) => provider.id === providerID)).toBe(true)
 
     const updatedResponse = await app.request(`/provider/connections/${providerID}`, {
       method: "PATCH",
@@ -212,6 +226,27 @@ test("provider connection routes manage a second account without changing its ca
     })
     expect((await Config.domainGet("providers")).provider?.[providerID]?.api).toBeUndefined()
     expect((await Config.domainGet("providers")).provider?.[providerID]?.options?.baseURL).toBeUndefined()
+
+    const enabledDomain = await Config.domainGet("providers")
+    await Config.domainUpdate(
+      "providers",
+      {
+        ...enabledDomain,
+        enabled_providers: [providerID],
+        disabled_providers: (enabledDomain.disabled_providers ?? []).filter((id) => id !== providerID),
+      },
+      { mode: "replace-domain" },
+    )
+    const disabledResponse = await app.request(`/provider/connections/${providerID}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    })
+    expect(disabledResponse.status).toBe(200)
+    expect(await Config.domainGet("providers")).toMatchObject({
+      enabled_providers: [providerID],
+      disabled_providers: expect.arrayContaining([providerID]),
+    })
 
     await Auth.set("deepseek", { type: "api", key: "canonical-connection-test-key" })
     await Auth.set(providerID, { type: "api", key: "connection-test-key" })
@@ -242,6 +277,56 @@ test("provider connection routes manage a second account without changing its ca
     await Config.domainUpdate("providers", before, { mode: "replace-domain" })
     await Provider.reload()
   }
+})
+
+test("/provider keeps catalog providers visible when a runtime whitelist excludes them", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      enabled_providers: ["openai"],
+      provider: {
+        "existing-custom": {
+          name: "Existing Custom",
+          npm: "@ai-sdk/openai-compatible",
+          env: [],
+          options: { apiKey: "test-key" },
+          models: {
+            model: {
+              name: "Existing Model",
+              limit: { context: 4000, output: 1000 },
+            },
+          },
+        },
+      },
+    },
+  })
+  const response = await Server.App().request(`/provider?directory=${encodeURIComponent(tmp.path)}`)
+  expect(response.status).toBe(200)
+  const body = await response.json()
+
+  expect(body.connected).toContain("openai")
+  expect(body.connected).not.toContain(CodexProvider.PROVIDER_ID)
+  expect(body.all.some((provider: Provider.Info) => provider.id === CodexProvider.PROVIDER_ID)).toBe(true)
+  expect(body.catalogProviders).toContain(CodexProvider.PROVIDER_ID)
+  expect(body.runtimeAvailability[CodexProvider.PROVIDER_ID]).toMatchObject({
+    providerID: CodexProvider.PROVIDER_ID,
+    available: false,
+    reason: "disabled",
+  })
+  expect(body.connected).not.toContain("existing-custom")
+  const existingCustom = body.all.find((provider: Provider.Info) => provider.id === "existing-custom")
+  expect(existingCustom).toBeDefined()
+  expect(existingCustom.options).toEqual({})
+  expect(existingCustom.models.model.options).toEqual({})
+  expect(existingCustom.models.model.headers).toEqual({})
+  expect(existingCustom.models.model.variants).toEqual({})
+  expect(JSON.stringify(existingCustom)).not.toContain("test-key")
+  expect(body.configProviders).toContain("existing-custom")
+  expect(body.connections["existing-custom"]).toBeUndefined()
+  expect(body.runtimeAvailability["existing-custom"]).toMatchObject({
+    providerID: "existing-custom",
+    available: false,
+    reason: "disabled",
+  })
 })
 
 test("DELETE /provider/:providerID/auth refuses to clear healthy stored credentials", async () => {

@@ -3,6 +3,7 @@ import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Provider } from "../../src/provider/provider"
+import { Config } from "../../src/config/config"
 import { Env } from "../../src/util/env"
 import { ModelsDev } from "../../src/provider/models"
 import { Provider as ProviderConfig } from "../../src/config/schema"
@@ -11,6 +12,7 @@ import { ProviderProfile } from "../../src/provider/profile"
 import { ProviderUsage } from "../../src/provider/usage-service"
 import { Auth } from "../../src/provider/api-key"
 import { registerBuiltinProviderProfiles } from "../../src/provider/builtin"
+import { ProviderAuthHealth } from "../../src/provider/auth-health"
 
 async function provideTestScope(input: {
   scope: Awaited<ReturnType<Awaited<ReturnType<typeof tmpdir>>["scope"]>>
@@ -815,6 +817,47 @@ test("mapped OpenRouter usage uses inline and environment connection credentials
   ])
 })
 
+test("environment-backed OpenRouter usage rejection requests an environment update", async () => {
+  const providerID = `openrouter-environment-rejected-${Math.random().toString(36).slice(2)}`
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => new Response(null, { status: 401 })) as unknown as typeof fetch
+
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "synergy.json"),
+          JSON.stringify({
+            providerCatalog: { enabled: false, offlineCache: false },
+            provider: {
+              [providerID]: {
+                profile: "openrouter",
+                env: ["MISSING_MAPPED_OPENROUTER_KEY", "MAPPED_OPENROUTER_KEY"],
+              },
+            },
+          }),
+        )
+      },
+    })
+
+    await provideTestScope({
+      scope: await tmp.scope(),
+      init: async () => Env.set("MAPPED_OPENROUTER_KEY", "rejected-environment-openrouter-key"),
+      fn: async () => {
+        expect(await ProviderUsage.get(providerID)).toMatchObject({ status: "error" })
+        expect(ProviderAuthHealth.fromEntry(providerID, undefined)).toMatchObject({
+          status: "action_required",
+          recovery: "update_environment",
+          source: "env",
+        })
+      },
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+    await ProviderAuthHealth.clearObservation(providerID)
+  }
+})
+
 test("custom provider inherits a models.dev catalog without sharing account identity", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -1514,7 +1557,7 @@ test("disabled_providers prevents loading even with env var", async () => {
   })
 })
 
-test("enabled_providers with empty array allows no providers", async () => {
+test("enabled_providers with empty array is treated as unset", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -1533,8 +1576,37 @@ test("enabled_providers with empty array allows no providers", async () => {
       Env.set("OPENAI_API_KEY", "test-openai-key")
     },
     fn: async () => {
+      const config = await Config.current()
+      expect(config.enabled_providers).toBeUndefined()
       const providers = await Provider.list()
-      expect(Object.keys(providers).length).toBe(0)
+      expect(providers["anthropic"]).toBeDefined()
+      expect(providers["openai"]).toBeDefined()
+    },
+  })
+})
+
+test("disabled_providers with empty array is treated as unset", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          disabled_providers: [],
+        }),
+      )
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("OPENAI_API_KEY", "test-openai-key")
+    },
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.disabled_providers).toBeUndefined()
+      const providers = await Provider.list()
+      expect(providers["openai"]).toBeDefined()
     },
   })
 })

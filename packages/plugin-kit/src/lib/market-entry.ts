@@ -13,6 +13,7 @@ import {
   normalizeGitHubRepoUrl,
 } from "@ericsanchezok/synergy-plugin/market"
 import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
+import { PLUGIN_API_4_BASE_SYNERGY_RANGE } from "@ericsanchezok/synergy-plugin/version"
 import { readSignatureFile } from "./signature.js"
 import { sha256File } from "./crypto.js"
 import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets.js"
@@ -21,7 +22,7 @@ export type RegistryIcon = { type: "lucide"; name: string } | { type: "registry-
 export type MarketplaceReleaseBackend = "github" | "manual"
 
 export interface RegistryEntry {
-  schemaVersion: 1
+  schemaVersion: 2
   id: string
   name: string
   description: string
@@ -35,6 +36,8 @@ export interface RegistryEntry {
   compatibility: { synergy: string }
   versions: Array<{
     version: string
+    apiVersion: "4.0"
+    compatibility: { synergy: string }
     downloadUrl: string
     signatureUrl: string
     signature: {
@@ -44,9 +47,9 @@ export interface RegistryEntry {
     integrity: string
     manifestHash: string
     permissionsHash: string
-    risk: "low" | "medium" | "high"
     runtimeMode: "process"
-    permissionsSummary: Array<{ key: string; description: string; risk: string }>
+    featuresSummary: Array<{ key: string; title: string; description: string }>
+    permissionsSummary: Array<{ key: string; title: string; description: string }>
     tools: string[]
     uiSurfaces: string[]
     publishedAt: string
@@ -182,7 +185,90 @@ function iconForManifest(manifest: PluginManifestType, extractedDir: string): Re
 }
 
 function compatibilityForManifest(manifest: PluginManifestType): RegistryEntry["compatibility"] {
-  return { synergy: `plugin-api:${manifest.apiVersion}` }
+  return manifest.compatibility ?? { synergy: PLUGIN_API_4_BASE_SYNERGY_RANGE }
+}
+
+const ACCESS_COPY: Record<string, { title: string; description: string }> = {
+  "asset.write": { title: "Create attachments", description: "Can create files and attachments in Synergy." },
+  "task.delegate": {
+    title: "Run bounded internal tasks",
+    description: "Can delegate bounded work to approved Synergy agents.",
+  },
+  "shell.execute": {
+    title: "Run declared setup commands",
+    description: "Can execute commands only through contributions that explicitly require this access.",
+  },
+  mcp_spawn: { title: "Start MCP services", description: "Can start and manage declared MCP service processes." },
+  mcp_invoke: { title: "Use MCP tools", description: "Can call tools exposed by declared MCP services." },
+  network_request: { title: "Access the network", description: "Can make outbound network requests." },
+  "config:read": { title: "Read configuration", description: "Can read approved Synergy configuration values." },
+  "config:write": { title: "Update configuration", description: "Can update approved Synergy configuration values." },
+  prompt_transform: {
+    title: "Add conversation guidance",
+    description: "Can add plugin guidance to the context sent to the model.",
+  },
+}
+
+function accessCopy(key: string): { key: string; title: string; description: string } {
+  const copy = ACCESS_COPY[key]
+  if (copy) return { key, ...copy }
+  return {
+    key,
+    title: key.replace(/[._:-]+/g, " ").replace(/^./, (value) => value.toUpperCase()),
+    description: `Can use the declared Synergy access ${key}.`,
+  }
+}
+
+function contributionFeatures(manifest: PluginManifestType): RegistryEntry["versions"][number]["featuresSummary"] {
+  const contributions = manifest.contributions
+  const features: RegistryEntry["versions"][number]["featuresSummary"] = []
+  const skills = contributions.filter((item) => item.kind === "skill")
+  const mcpServices = contributions.filter((item) => item.kind === "mcp")
+  const agents = contributions.filter((item) => item.kind === "agent")
+  const ui = contributions.filter((item) => item.kind.startsWith("ui.") && item.kind !== "ui.icon")
+
+  for (const tool of contributions.filter((item) => item.kind === "tool")) {
+    features.push({ key: `tool:${tool.id}`, title: tool.id, description: tool.description })
+  }
+  if (skills.length > 0) {
+    features.push({
+      key: "skills",
+      title: "Packaged skills",
+      description: `Provides ${skills.length} skill${skills.length === 1 ? "" : "s"} that agents can use when relevant.`,
+    })
+  }
+  if (mcpServices.length > 0) {
+    features.push({
+      key: "mcp",
+      title: "Optional MCP services",
+      description: `Provides ${mcpServices.length} MCP service${mcpServices.length === 1 ? "" : "s"}, enabled only when configured.`,
+    })
+  }
+  if (contributions.some((item) => item.kind === "hook" && item.point === "chat.system.transform")) {
+    features.push({
+      key: "chat.system.transform",
+      title: "Conversation guidance",
+      description: "Adds plugin guidance to conversations when the feature is active.",
+    })
+  }
+  for (const command of contributions.filter((item) => item.kind === "cli.command")) {
+    features.push({ key: `cli:${command.id}`, title: `${command.id} command`, description: command.description })
+  }
+  if (agents.length > 0) {
+    features.push({
+      key: "agents",
+      title: "Specialized agents",
+      description: `Provides ${agents.length} specialized agent${agents.length === 1 ? "" : "s"}.`,
+    })
+  }
+  if (ui.length > 0) {
+    features.push({
+      key: "ui",
+      title: "Synergy interface extensions",
+      description: `Adds ${ui.length} interface extension${ui.length === 1 ? "" : "s"}.`,
+    })
+  }
+  return features
 }
 
 export function uiSurfaces(manifest: PluginManifestType): string[] {
@@ -221,34 +307,8 @@ export function registryEntry(input: {
     releaseTagTemplate: input.releaseTagTemplate,
   })
 
-  const capabilityRisk = (key: string): "low" | "medium" | "high" => {
-    if (
-      [
-        "shell.execute",
-        "session.control",
-        "secrets",
-        "task.delegate",
-        "blueprint.delegate",
-        "lightloop.delegate",
-        "tool.invoke",
-      ].includes(key)
-    ) {
-      return "high"
-    }
-    if (["asset.write", "workspace.write", "session.read", "workspace.read", "settings.write"].includes(key)) {
-      return "medium"
-    }
-    return "low"
-  }
-
   const capabilities = manifest.capabilities.map((item) => item.id)
   const tools = manifest.contributions.filter((item) => item.kind === "tool").map((item) => item.id)
-  const capabilityRisks = capabilities.map(capabilityRisk)
-  const risk = capabilityRisks.includes("high")
-    ? ("high" as const)
-    : capabilityRisks.includes("medium")
-      ? ("medium" as const)
-      : ("low" as const)
   const integrity = `sha256-${sha256File(input.tarballPath)}`
   const manifestHash = computeManifestHash(manifest)
   const permissionsHash = computePermissionsHash(manifest, capabilities)
@@ -267,7 +327,7 @@ export function registryEntry(input: {
   const icon = iconForManifest(manifest, extractedDir)
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: manifest.id,
     name: manifest.id,
     description: manifest.description,
@@ -282,6 +342,8 @@ export function registryEntry(input: {
     versions: [
       {
         version: manifest.version,
+        apiVersion: manifest.apiVersion,
+        compatibility: compatibilityForManifest(manifest),
         downloadUrl,
         signatureUrl,
         signature: {
@@ -291,13 +353,9 @@ export function registryEntry(input: {
         integrity,
         manifestHash,
         permissionsHash,
-        risk,
         runtimeMode: "process",
-        permissionsSummary: capabilities.map((key) => ({
-          key,
-          description: `Synergy host capability ${key}`,
-          risk: capabilityRisk(key),
-        })),
+        featuresSummary: contributionFeatures(manifest),
+        permissionsSummary: capabilities.map(accessCopy),
         tools,
         uiSurfaces: uiSurfaces(manifest),
         publishedAt: input.publishedAt ?? new Date().toISOString(),
@@ -336,13 +394,44 @@ export function copyRegistryEntryIcon(input: {
 export function writeRegistryEntry(filepath: string, next: RegistryEntry): RegistryEntry {
   let merged = next
   if (fs.existsSync(filepath)) {
-    const existing = JSON.parse(fs.readFileSync(filepath, "utf-8")) as RegistryEntry
-    const versions = [
-      ...existing.versions.filter((version) => version.version !== next.versions[0]?.version),
-      ...next.versions,
-    ].sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt))
+    const existing = JSON.parse(fs.readFileSync(filepath, "utf-8")) as {
+      verified?: boolean
+      official?: boolean
+      compatibility?: { synergy?: string }
+      versions?: Array<Record<string, unknown>>
+      yankedVersions?: string[]
+    }
+    const versions = (
+      [
+        ...(existing.versions ?? [])
+          .filter((version) => version.version !== next.versions[0]?.version)
+          .map(({ risk: _risk, permissionsSummary, featuresSummary, ...version }) => {
+            const legacyApiVersion = existing.compatibility?.synergy?.match(/^plugin-api:(.+)$/)?.[1] ?? "3.0"
+            return {
+              ...version,
+              apiVersion: typeof version.apiVersion === "string" ? version.apiVersion : legacyApiVersion,
+              compatibility:
+                version.compatibility && typeof version.compatibility === "object"
+                  ? version.compatibility
+                  : { synergy: existing.compatibility?.synergy ?? `plugin-api:${legacyApiVersion}` },
+              featuresSummary: Array.isArray(featuresSummary) ? featuresSummary : [],
+              permissionsSummary: Array.isArray(permissionsSummary)
+                ? permissionsSummary.map((item) => {
+                    if (!item || typeof item !== "object" || Array.isArray(item)) return item
+                    const {
+                      risk: _permissionRisk,
+                      severity: _severity,
+                      ...permission
+                    } = item as Record<string, unknown>
+                    return permission
+                  })
+                : [],
+            }
+          }),
+        ...next.versions,
+      ] as RegistryEntry["versions"]
+    ).sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt))
     merged = {
-      ...existing,
       ...next,
       verified: existing.verified ?? next.verified,
       official: existing.official ?? next.official,

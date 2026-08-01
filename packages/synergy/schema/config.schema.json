@@ -650,40 +650,6 @@
         "type": "string"
       }
     },
-    "pluginApprovalPolicy": {
-      "description": "Plugin approval policy configuration",
-      "ref": "PluginApprovalPolicyConfig",
-      "type": "object",
-      "properties": {
-        "allowUnsignedLocal": {
-          "description": "Allow unsigned local plugins with user consent",
-          "default": true,
-          "type": "boolean"
-        },
-        "autoApproveBuiltin": {
-          "description": "Auto-approve builtin plugins without user consent",
-          "default": true,
-          "type": "boolean"
-        },
-        "denyHighRiskThirdParty": {
-          "description": "Block third-party plugins with high-risk capabilities",
-          "default": true,
-          "type": "boolean"
-        },
-        "requireSignatureForMarketplace": {
-          "description": "Require cryptographic signature for non-local plugins",
-          "default": false,
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "allowUnsignedLocal",
-        "autoApproveBuiltin",
-        "denyHighRiskThirdParty",
-        "requireSignatureForMarketplace"
-      ],
-      "additionalProperties": false
-    },
     "pluginRuntimePolicy": {
       "description": "Plugin runtime isolation policy configuration",
       "ref": "PluginRuntimePolicyConfig",
@@ -830,14 +796,14 @@
       "type": "boolean"
     },
     "disabled_providers": {
-      "description": "Disable providers that are loaded automatically",
+      "description": "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "enabled_providers": {
-      "description": "When set, ONLY these providers will be enabled. All other providers will be ignored",
+      "description": "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
       "type": "array",
       "items": {
         "type": "string"
@@ -2293,6 +2259,11 @@
                       "description": "Enable streaming card updates",
                       "type": "boolean"
                     },
+                    "responseFormat": {
+                      "description": "Format for ordinary outbound text messages (markdown renders through a CardKit card)",
+                      "type": "string",
+                      "enum": ["text", "markdown"]
+                    },
                     "streamingThrottleMs": {
                       "description": "Minimum interval between streaming card updates in ms",
                       "default": 100,
@@ -2357,9 +2328,15 @@
                 "description": "Default streaming setting for all accounts",
                 "default": true,
                 "type": "boolean"
+              },
+              "responseFormat": {
+                "description": "Default outbound text format for all accounts",
+                "default": "markdown",
+                "type": "string",
+                "enum": ["text", "markdown"]
               }
             },
-            "required": ["type", "accounts", "streaming"],
+            "required": ["type", "accounts", "streaming", "responseFormat"],
             "additionalProperties": false
           },
           {
