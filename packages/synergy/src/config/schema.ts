@@ -1605,11 +1605,18 @@ export const Info = z
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
-    disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
+    disabled_providers: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
+      ),
     enabled_providers: z
       .array(z.string())
       .optional()
-      .describe("When set, ONLY these providers will be enabled. All other providers will be ignored"),
+      .describe(
+        "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
+      ),
     providerCatalog: ProviderCatalog.optional().describe("Signed remote provider catalog configuration"),
     model: z
       .string()

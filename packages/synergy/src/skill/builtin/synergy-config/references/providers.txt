@@ -431,8 +431,8 @@ For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and
 ```
 
 - `disabled_providers` — subtractive: listed providers are skipped.
-- `enabled_providers` — exclusive: when set, ONLY listed providers load.
-- An empty array in either key carries no filtering intent and is normalized to "unset" at load time; it behaves the same as omitting the key (matches how the settings UI saves these fields).
+- `enabled_providers` — exclusive when non-empty: ONLY listed providers load.
+- An empty array in either key carries no filtering intent. It is ignored in that config layer, so any lower-priority provider filter remains effective; with no lower-priority value, the key resolves as unset.
 
 ## Troubleshooting
 
