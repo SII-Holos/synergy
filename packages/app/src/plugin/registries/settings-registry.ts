@@ -34,6 +34,10 @@ export function getSettingsSection(id: string): SettingsSection | undefined {
   return registry.get(id)
 }
 
+export function subscribeSettingsSections(listener: () => void): () => void {
+  return registry.subscribe(listener)
+}
+
 // Built-in settings sections — registered at module init, consumed by SettingsPanel via getSettingsSections()
 const BUILTIN_SECTIONS: SettingsSection[] = BUILTIN_SETTINGS_SECTIONS.map((section) => ({ ...section }))
 
