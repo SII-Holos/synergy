@@ -3,10 +3,17 @@ import fs from "fs"
 import path from "path"
 import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
 import { PLAYWRIGHT_CORE_REQUIRED_PATHS } from "../../../packages/synergy/script/playwright-runtime-assets"
+import { EMBEDDING_RUNTIME_REQUIRED_PATHS } from "../../../packages/synergy/script/embedding-runtime-assets"
 
 export function requiredRuntimeArtifactPaths(name: string): string[] {
   const binaryRelative = name.includes("windows") ? "bin/synergy.exe" : "bin/synergy"
-  const required = [binaryRelative, "app/index.html", "schema/config.schema.json", ...PLAYWRIGHT_CORE_REQUIRED_PATHS]
+  const required = [
+    binaryRelative,
+    "app/index.html",
+    "schema/config.schema.json",
+    ...PLAYWRIGHT_CORE_REQUIRED_PATHS,
+    ...EMBEDDING_RUNTIME_REQUIRED_PATHS,
+  ]
   if (name.includes("linux")) required.push("sandbox/synergy-sandbox-linux")
   if (name.includes("windows")) required.push("sandbox/synergy-sandbox-windows.exe")
   return required
@@ -29,8 +36,10 @@ export async function validateLocalArtifacts(platformPackageNames: string[]) {
   if (smokeTarget) {
     const smokeBinary = smokeTarget.includes("windows") ? "./bin/synergy.exe" : "./bin/synergy"
     const playwrightRuntimeCheck = "__browser-playwright-runtime-check"
+    const embeddingRuntimeCheck = "__embedding-runtime-check"
     await $`${smokeBinary} --version`.cwd(path.join(SYNERGY_DIST_DIR, smokeTarget))
     await $`${smokeBinary} ${playwrightRuntimeCheck}`.cwd(path.join(SYNERGY_DIST_DIR, smokeTarget))
+    await $`${smokeBinary} ${embeddingRuntimeCheck}`.cwd(path.join(SYNERGY_DIST_DIR, smokeTarget))
   }
 
   for (const name of platformPackageNames) {
