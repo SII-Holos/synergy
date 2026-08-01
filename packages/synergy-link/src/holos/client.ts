@@ -4,10 +4,7 @@ import { SynergyLinkHolosEnvelope } from "./envelope"
 import { SynergyLinkHolosProtocol } from "./protocol"
 import type { SynergyLinkInboundHandler } from "../inbound/handler"
 import { SynergyLinkLog } from "../log"
-
-const HOLOS_HOST = "www.holosai.io"
-const HOLOS_URL = `https://${HOLOS_HOST}`
-const HOLOS_WS_URL = `wss://${HOLOS_HOST}`
+import { SynergyLinkHolosAuth, type SynergyLinkHolosEndpoints } from "./auth"
 
 export class SynergyLinkHolosClient {
   #ws: WebSocket | null = null
@@ -23,13 +20,24 @@ export class SynergyLinkHolosClient {
     },
   ) {}
 
+  static websocketEndpoint(token: string, endpoints: SynergyLinkHolosEndpoints): string {
+    const endpoint = new URL("/api/v1/holos/agent_tunnel/ws", endpoints.wsUrl)
+    endpoint.searchParams.set("token", token)
+    return endpoint.toString()
+  }
+
+  static sanitizedWebsocketEndpoint(endpoints: SynergyLinkHolosEndpoints): string {
+    return new URL("/api/v1/holos/agent_tunnel/ws", endpoints.wsUrl).toString()
+  }
+
   async connect() {
     this.#disconnecting = false
-    const token = await fetchWsToken(this.auth.agentSecret)
-    const endpoint = `${HOLOS_WS_URL}/api/v1/holos/agent_tunnel/ws?token=${token}`
+    const endpoints = await SynergyLinkHolosAuth.resolveEndpoints()
+    const token = await fetchWsToken(this.auth.agentSecret, endpoints)
+    const endpoint = SynergyLinkHolosClient.websocketEndpoint(token, endpoints)
     SynergyLinkLog.info("holos.connect.begin", {
       agentID: this.auth.agentID,
-      endpoint: `${HOLOS_WS_URL}/api/v1/holos/agent_tunnel/ws`,
+      endpoint: SynergyLinkHolosClient.sanitizedWebsocketEndpoint(endpoints),
     })
     const ws = new WebSocket(endpoint)
     this.#ws = ws
@@ -144,8 +152,8 @@ export class SynergyLinkHolosClient {
   }
 }
 
-async function fetchWsToken(agentSecret: string): Promise<string> {
-  const response = await fetch(`${HOLOS_URL}/api/v1/holos/agent_tunnel/ws_token`, {
+async function fetchWsToken(agentSecret: string, endpoints: SynergyLinkHolosEndpoints): Promise<string> {
+  const response = await fetch(new URL("/api/v1/holos/agent_tunnel/ws_token", endpoints.apiUrl), {
     headers: { Authorization: `Bearer ${agentSecret}` },
   })
   if (!response.ok) {

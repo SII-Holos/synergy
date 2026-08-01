@@ -580,13 +580,12 @@ export class HolosProvider {
           pending.resolve({ sent: false, reason: "not_connected" })
         }
         this.state.pendingSends.clear()
+        Presence.clear()
         this.settleNativePending("disconnected", "Tunnel disconnected")
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close()
         this.state.ws = null
         this.state.peerId = null
       }
-
-      signal.addEventListener("abort", cleanup, { once: true })
 
       ws.addEventListener("open", () => {
         opened = true
@@ -651,12 +650,9 @@ export class HolosProvider {
     if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
       return { sent: false, reason: "not_connected" }
     }
-    const status = Presence.get(targetAgentId)
-    if (status === "offline") {
-      return { sent: false, reason: "offline" }
-    }
     const requestId = crypto.randomUUID()
     this.state.ws.send(Envelope.wsSend({ targetAgentId, event, payload, requestId }))
+    Presence.markOnline(targetAgentId)
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {

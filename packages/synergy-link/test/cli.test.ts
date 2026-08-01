@@ -46,6 +46,19 @@ describe("synergy-link cli", () => {
     }
   })
 
+  test("status reports last-known snapshots as degraded", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-cli-status-"))
+    try {
+      const result = await runCLI(["status"], root)
+      expect(result.exitCode).toBe(1)
+      expect(result.output).toContain("Status source")
+      expect(result.output).toContain("snapshot (last-known)")
+      expect(result.output).toContain("Live Synergy Link status is unavailable")
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("prints the compiled version", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-cli-version-"))
     try {

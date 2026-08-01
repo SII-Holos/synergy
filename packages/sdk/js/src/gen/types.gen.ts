@@ -1103,7 +1103,7 @@ export type SynergyLinkTargetView = {
   lastProbe?: SynergyLinkProbe
   createdAt: number
   updatedAt: number
-  availability: "holos_offline" | "idle" | "connected"
+  availability: "unknown" | "unreachable" | "reachable" | "connected"
   /**
    * Synergy Link session identifier
    */
@@ -1149,6 +1149,11 @@ export type SynergyLinkTargetPatchInput = {
   name?: string
   enabled?: boolean
   allowedAgents?: Array<string>
+  targetAgentID?: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID?: string
 }
 
 export type SynergyLinkTargetRemoveResult = {

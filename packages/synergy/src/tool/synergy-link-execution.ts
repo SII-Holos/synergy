@@ -1,6 +1,9 @@
 import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
 import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
+import { SynergyLinkRemoteError } from "@/remote/client"
 import { SynergyLinkTargetStore } from "@/synergy-link/target-store"
+import { withTimeout } from "@/util/timeout"
+import { ToolTimeout } from "./timeout"
 
 export namespace SynergyLinkExecution {
   export interface SessionRecord {
@@ -13,6 +16,8 @@ export namespace SynergyLinkExecution {
     label?: string
     openedAt: number
     lastUsedAt: number
+    lastAttemptAt?: number
+    lastVerifiedAt?: number
   }
 
   export type ExecutionTarget =
@@ -94,6 +99,67 @@ export namespace SynergyLinkExecution {
     return session
   }
 
+  export const SESSION_VERIFY_TTL_MS = 60_000
+
+  export type SessionVerification =
+    | { kind: "verified"; session: SessionRecord }
+    | { kind: "unverified"; session: SessionRecord; reason: "timeout" | "transport" }
+    | { kind: "missing" }
+
+  /**
+   * Heartbeat-verifies a cached opened session before it is trusted for status
+   * or remote execution. The cached record is a verified cache, never
+   * authority: definitive invalid-session responses clear it, timeouts report
+   * unknown and never refresh lastVerifiedAt.
+   */
+  export async function verifySession(
+    linkID: SynergyLinkIdentity.LinkID,
+    selector?: SessionSelector,
+  ): Promise<SessionVerification> {
+    const session = getSession(linkID, selector)
+    if (!session || session.status !== "opened") return { kind: "missing" }
+    const now = Date.now()
+    if (session.lastVerifiedAt !== undefined && now - session.lastVerifiedAt < SESSION_VERIFY_TTL_MS) {
+      return { kind: "verified", session }
+    }
+    const activeClient = client
+    if (!activeClient) {
+      return { kind: "unverified", session, reason: "transport" }
+    }
+    session.lastAttemptAt = now
+    try {
+      const result = await withTimeout(
+        activeClient.executeSession(
+          linkID,
+          { action: "heartbeat", sessionID: session.sessionID },
+          { targetAgentID: session.targetAgentID },
+        ),
+        ToolTimeout.DEFAULTS.connectMs,
+        {
+          message:
+            `Verifying the cached session for link "${linkID}" timed out. ` +
+            `The remote session may still be active, but its status is unknown.`,
+        },
+      )
+      if (result.metadata.status === "alive") {
+        session.lastVerifiedAt = Date.now()
+        session.lastUsedAt = Date.now()
+        return { kind: "verified", session }
+      }
+      if (result.metadata.status === "closed") {
+        clearSession(linkID, selector)
+        return { kind: "missing" }
+      }
+      return { kind: "unverified", session, reason: "transport" }
+    } catch (error) {
+      if (isInvalidSessionError(error)) {
+        clearSession(linkID, selector)
+        return { kind: "missing" }
+      }
+      return { kind: "unverified", session, reason: isTimeoutError(error) ? "timeout" : "transport" }
+    }
+  }
+
   export async function resolveExecutionTarget(input: {
     targetID?: string
     targetIDSupplied: boolean
@@ -146,23 +212,26 @@ export namespace SynergyLinkExecution {
     })
   }
 
-  function resolveRemoteTarget(input: {
+  async function resolveRemoteTarget(input: {
     linkID: SynergyLinkIdentity.LinkID
     targetID?: string
     targetAgentID?: string
     sourceAgent?: string
     tool: "bash" | "process"
-  }): Extract<ExecutionTarget, { kind: "remote" }> {
+  }): Promise<Extract<ExecutionTarget, { kind: "remote" }>> {
     const activeClient = requireClient(input.linkID, input.tool)
-    const session = getSession(input.linkID, {
+    const verification = await verifySession(input.linkID, {
       targetID: input.targetID,
       targetAgentID: input.targetAgentID,
       sourceAgent: input.sourceAgent,
     })
-    if (!session || session.status !== "opened") {
+    if (verification.kind === "missing") {
       throw new NoSessionError(input.linkID)
     }
-
+    if (verification.kind === "unverified") {
+      throw new UnverifiedSessionError(input.linkID, verification.reason)
+    }
+    const session = verification.session
     session.lastUsedAt = Date.now()
     return { kind: "remote", linkID: input.linkID, session, client: activeClient }
   }
@@ -200,4 +269,27 @@ export namespace SynergyLinkExecution {
       this.name = "SynergyLinkNoSessionError"
     }
   }
+
+  export class UnverifiedSessionError extends Error {
+    constructor(
+      readonly linkID: string,
+      readonly reason: "timeout" | "transport",
+    ) {
+      super(
+        `The remote session for link "${linkID}" could not be verified ` +
+          `(${reason === "timeout" ? "the check timed out" : "transport failure"}). Its status is unknown, so the request was not dispatched. ` +
+          `Retry once the link is reachable, or open a fresh session with connect.`,
+      )
+      this.name = "SynergyLinkUnverifiedSessionError"
+    }
+  }
+  export function isInvalidSessionError(error: unknown): boolean {
+    if (!(error instanceof SynergyLinkRemoteError)) return false
+    return error.code === "session_invalid" || error.code === "session_not_found" || error.code === "session_required"
+  }
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (error instanceof SynergyLinkRemoteError) return /timed out/i.test(error.message)
+  return error instanceof Error && /timed out/i.test(error.message)
 }

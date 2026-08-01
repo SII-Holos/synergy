@@ -12,10 +12,17 @@ export namespace SynergyLinkTargetRuntime {
       targetID: target.id,
       targetAgentID: target.targetAgentID,
     })
+    const availability: SynergyLinkTarget.Availability =
+      session?.status === "opened"
+        ? "connected"
+        : target.lastProbe?.status === "reachable"
+          ? "reachable"
+          : SynergyLinkExecution.getClient()
+            ? "unreachable"
+            : "unknown"
     return SynergyLinkTarget.View.parse({
       ...target,
-      availability:
-        session?.status === "opened" ? "connected" : SynergyLinkExecution.getClient() ? "idle" : "holos_offline",
+      availability,
       sessionID: session?.sessionID,
     })
   }

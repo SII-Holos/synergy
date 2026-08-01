@@ -55,13 +55,19 @@ export namespace SynergyLinkTarget {
       name: z.string().trim().min(1).max(120).optional(),
       enabled: z.boolean().optional(),
       allowedAgents: z.array(z.string().trim().min(1)).optional(),
+      targetAgentID: z.string().trim().min(1).optional(),
+      linkID: SynergyLinkIdentity.LinkID.optional(),
     })
     .strict()
     .refine((value) => Object.keys(value).length > 0, "At least one field is required")
+    .refine(
+      (value) => (value.targetAgentID !== undefined) === (value.linkID !== undefined),
+      "targetAgentID and linkID must be updated together",
+    )
     .meta({ ref: "SynergyLinkTargetPatchInput" })
   export type PatchInput = z.infer<typeof PatchInput>
 
-  export const Availability = z.enum(["holos_offline", "idle", "connected"])
+  export const Availability = z.enum(["unknown", "unreachable", "reachable", "connected"])
   export type Availability = z.infer<typeof Availability>
 
   export const View = Info.extend({

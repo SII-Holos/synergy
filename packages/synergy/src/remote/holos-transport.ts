@@ -2,8 +2,8 @@ import { SynergyLinkBridge, SynergyLinkEnvelope } from "@ericsanchezok/synergy-l
 import { Envelope } from "@/holos/envelope"
 import { HolosRuntime } from "@/holos/runtime"
 import type { HolosProvider } from "@/holos/runtime"
+import { SynergyLinkRemoteError } from "./client"
 import type { SynergyLinkRequest } from "./client"
-
 export class HolosSynergyLinkTransport {
   readonly #pending = new Map<
     string,
@@ -15,8 +15,13 @@ export class HolosSynergyLinkTransport {
     }
   >()
   readonly #unsubscribe: () => void
+  readonly #timeoutMs: number
 
-  constructor(private readonly provider: Pick<HolosProvider, "send">) {
+  constructor(
+    private readonly provider: Pick<HolosProvider, "send">,
+    options?: { timeoutMs?: number },
+  ) {
+    this.#timeoutMs = options?.timeoutMs ?? 30_000
     this.#unsubscribe = HolosRuntime.registerAppEventHandler((input) => this.#handleEvent(input))
   }
 
@@ -24,14 +29,26 @@ export class HolosSynergyLinkTransport {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(input.requestID)
-        reject(new Error(`Timed out waiting for Synergy Link response ${input.requestID}.`))
-      }, 30_000)
+        reject(
+          new SynergyLinkRemoteError(
+            "transport_error",
+            `Timed out waiting for Synergy Link response ${input.requestID}. The request was dispatched and its result is unknown.`,
+            { reason: "timeout", dispatched: true },
+          ),
+        )
+      }, this.#timeoutMs)
       timer.unref?.()
 
       if (!targetAgentID) {
         clearTimeout(timer)
         this.#pending.delete(input.requestID)
-        reject(new Error(`Synergy Link request ${input.requestID} is missing a target agent.`))
+        reject(
+          new SynergyLinkRemoteError(
+            "invalid_request",
+            `Synergy Link request ${input.requestID} is missing a target agent.`,
+            { dispatched: false },
+          ),
+        )
         return
       }
       this.#pending.set(input.requestID, { resolve, reject, timer, targetAgentID })
@@ -42,13 +59,20 @@ export class HolosSynergyLinkTransport {
           if (!result.sent) {
             clearTimeout(timer)
             this.#pending.delete(input.requestID)
-            reject(new Error(`Synergy Link request ${input.requestID} was not delivered.`))
+            const reason = result.reason ?? "delivery_failed"
+            reject(
+              new SynergyLinkRemoteError(
+                reason === "offline" ? "link_inactive" : "transport_error",
+                `Synergy Link request ${input.requestID} was not delivered: ${describeSendReason(reason)}.`,
+                { reason, dispatched: false },
+              ),
+            )
           }
         })
         .catch((error) => {
           clearTimeout(timer)
           this.#pending.delete(input.requestID)
-          reject(error instanceof Error ? error : new Error(String(error)))
+          reject(normalizeSendFailure(error, input.requestID))
         })
     })
   }
@@ -84,4 +108,44 @@ function parseResultCorrelation(input: unknown): SynergyLinkEnvelope.ResultBase 
     ok: candidate.ok,
   })
   return parsed.success ? parsed.data : undefined
+}
+
+function describeSendReason(reason: string): string {
+  switch (reason) {
+    case "not_connected":
+      return "the Synergy Link tunnel is not connected"
+    case "offline":
+      return "the target agent appears to be offline"
+    case "delivery_failed":
+      return "the gateway reported a delivery failure"
+    default:
+      return reason
+  }
+}
+
+function normalizeSendFailure(error: unknown, requestID: string): SynergyLinkRemoteError {
+  if (error instanceof SynergyLinkRemoteError) return error
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    const details = (error as { details?: unknown }).details
+    return new SynergyLinkRemoteError(
+      (error as { code: SynergyLinkRemoteError["code"] }).code,
+      (error as { message: string }).message,
+      {
+        ...(typeof details === "object" && details !== null ? (details as Record<string, unknown>) : {}),
+        dispatched: false,
+      },
+    )
+  }
+  return new SynergyLinkRemoteError(
+    "transport_error",
+    error instanceof Error ? error.message : `Synergy Link request ${requestID} failed to dispatch.`,
+    { dispatched: false },
+  )
 }

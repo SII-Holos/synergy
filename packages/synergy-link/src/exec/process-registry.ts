@@ -3,16 +3,22 @@ import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { SynergyLinkBash, SynergyLinkIdentity, SynergyLinkProcess } from "@ericsanchezok/synergy-link-protocol"
 import { SynergyLinkHost } from "../host"
 import { Platform } from "../platform"
+import { SynergyLinkLog } from "../log"
+import { detectDetachedDaemonRisk, detachedDaemonBlockMessage } from "./detached-daemon"
+import type { ExecutionLease } from "../types"
+import type { SessionRecord } from "../session/manager"
 
 const MAX_OUTPUT_CHARS = 200_000
 const TAIL_CHARS = 2_000
 const DEFAULT_TTL_MS = 30 * 60 * 1000
+const MAX_REMOTE_YIELD_SECONDS = 5
 
 interface ProcessRecord {
   processId: SynergyLinkIdentity.ProcessID
   command: string
   description?: string
   cwd?: string
+  lease: ExecutionLease
   child: ChildProcess
   stdin?: NodeJS.WritableStream
   startedAt: number
@@ -30,6 +36,7 @@ interface FinishedRecord {
   command: string
   description?: string
   cwd?: string
+  lease: ExecutionLease
   status: SynergyLinkProcess.ProcessState
   startedAt: number
   endedAt: number
@@ -66,12 +73,29 @@ export class ProcessRegistry {
     this.#ttlMs = Math.max(60_000, options?.ttlMs ?? DEFAULT_TTL_MS)
   }
 
-  async executeBash(request: SynergyLinkBash.ExecutePayload, linkID: string): Promise<SynergyLinkBash.Result> {
+  async executeBash(
+    request: SynergyLinkBash.ExecutePayload,
+    linkID: string,
+    lease: ExecutionLease,
+  ): Promise<SynergyLinkBash.Result> {
     this.#host.assertLink(linkID)
+    const detachedRisk = detectDetachedDaemonRisk(request.command)
+    if (detachedRisk) {
+      SynergyLinkLog.warn("bash.detached_daemon.blocked", {
+        risk: detachedRisk,
+        sessionID: lease.sessionID,
+        callerAgentID: lease.callerAgentID,
+      })
+      throw {
+        code: "invalid_request" as const,
+        message: detachedDaemonBlockMessage(detachedRisk),
+      }
+    }
     const launched = this.#launchShellProcess({
       command: request.command,
       description: request.description,
       workdir: Platform.resolveWorkdir(request.workdir),
+      lease,
     })
 
     if (request.background) {
@@ -79,22 +103,22 @@ export class ProcessRegistry {
       return this.#backgroundResult(launched.record, linkID, request.description, "Background")
     }
 
-    if (request.yieldSeconds && request.yieldSeconds > 0) {
-      const yieldMs = request.yieldSeconds * 1000
-      const autoBackground = await Promise.race([
-        this.#waitForExit(launched.record.processId).then(() => false),
-        Platform.sleep(yieldMs).then(() => !launched.record.exited),
-      ])
-      if (autoBackground) {
-        launched.record.backgrounded = true
-        return this.#backgroundResult(
-          launched.record,
-          linkID,
-          request.description,
-          "Auto-Background",
-          request.yieldSeconds,
-        )
-      }
+    const requestedYieldSeconds = request.yieldSeconds && request.yieldSeconds > 0 ? request.yieldSeconds : undefined
+    const yieldSeconds = Math.min(requestedYieldSeconds ?? MAX_REMOTE_YIELD_SECONDS, MAX_REMOTE_YIELD_SECONDS)
+    const autoBackground = await Promise.race([
+      this.#waitForExit(launched.record.processId).then(() => false),
+      Platform.sleep(yieldSeconds * 1000).then(() => !launched.record.exited),
+    ])
+    if (autoBackground) {
+      launched.record.backgrounded = true
+      return this.#backgroundResult(
+        launched.record,
+        linkID,
+        request.description,
+        "Auto-Background",
+        yieldSeconds,
+        requestedYieldSeconds && requestedYieldSeconds > yieldSeconds ? requestedYieldSeconds : undefined,
+      )
     }
 
     await this.#waitForExit(launched.record.processId)
@@ -118,11 +142,15 @@ export class ProcessRegistry {
     }
   }
 
-  async execute(request: SynergyLinkProcess.ExecutePayload, linkID: string): Promise<SynergyLinkProcess.Result> {
+  async execute(
+    request: SynergyLinkProcess.ExecutePayload,
+    linkID: string,
+    lease: ExecutionLease,
+  ): Promise<SynergyLinkProcess.Result> {
     this.#host.assertLink(linkID)
 
     if (request.action === "list") {
-      const processes = this.#listAll()
+      const processes = this.#listAll(lease)
       return {
         title: "Process list",
         metadata: {
@@ -146,6 +174,7 @@ export class ProcessRegistry {
         linkID,
       })
     }
+    this.#assertOwned(processId, lease)
 
     switch (request.action) {
       case "poll":
@@ -165,6 +194,24 @@ export class ProcessRegistry {
     }
   }
 
+  has(processId: string) {
+    return this.#running.has(processId) || this.#finished.has(processId)
+  }
+
+  async releaseSession(session: SessionRecord) {
+    const running = [...this.#running.values()].filter((record) => leaseMatchesSession(record.lease, session))
+    await Promise.all(running.map((record) => Platform.killTree(record.child, () => record.exited)))
+    for (const record of running) this.#running.delete(record.processId)
+    for (const [processId, record] of this.#finished) {
+      if (leaseMatchesSession(record.lease, session)) this.#finished.delete(processId)
+    }
+    SynergyLinkLog.info("process.session.released", {
+      sessionID: session.sessionID,
+      callerAgentID: session.remoteAgentID,
+      runningProcessCount: running.length,
+    })
+  }
+
   async reset() {
     await Promise.all([...this.#running.values()].map((record) => Platform.killTree(record.child, () => record.exited)))
     this.#running.clear()
@@ -176,7 +223,7 @@ export class ProcessRegistry {
     }
   }
 
-  #launchShellProcess(input: { command: string; description?: string; workdir: string }) {
+  #launchShellProcess(input: { command: string; description?: string; workdir: string; lease: ExecutionLease }) {
     const launch = Platform.resolveShellLaunch(input.command)
     const options: SpawnOptions = {
       cwd: input.workdir,
@@ -192,6 +239,7 @@ export class ProcessRegistry {
       command: input.command,
       description: input.description,
       cwd: input.workdir,
+      lease: input.lease,
       child,
       stdin: child.stdin || undefined,
       startedAt: Date.now(),
@@ -252,7 +300,8 @@ export class ProcessRegistry {
     }
 
     if (running && block) {
-      await this.#waitForExit(processId, (timeoutSeconds ?? 30) * 1000)
+      const timeout = Math.min(Math.max(timeoutSeconds ?? 30, 1), 30)
+      await this.#waitForExit(processId, timeout * 1000)
     }
 
     const currentRunning = this.#running.get(processId)
@@ -530,10 +579,13 @@ export class ProcessRegistry {
     description: string,
     mode: "Background" | "Auto-Background",
     yieldSeconds?: number,
+    requestedYieldSeconds?: number,
   ): SynergyLinkBash.Result {
     const prefix =
       mode === "Auto-Background"
-        ? `Command auto-backgrounded after ${yieldSeconds}s.`
+        ? requestedYieldSeconds
+          ? `Command auto-backgrounded after ${yieldSeconds}s; yield was clamped from ${requestedYieldSeconds}s to stay within the remote transport deadline.`
+          : `Command auto-backgrounded after ${yieldSeconds}s.`
         : "Command started in background."
     return {
       title: `[${mode}] ${description}`,
@@ -572,6 +624,7 @@ export class ProcessRegistry {
         processId: record.processId,
         command: record.command,
         description: record.description,
+        lease: record.lease,
         cwd: record.cwd,
         status: classifyExit(exitCode, exitSignal),
         startedAt: record.startedAt,
@@ -632,9 +685,9 @@ export class ProcessRegistry {
     return finished
   }
 
-  #listAll(): SynergyLinkProcess.ProcessInfo[] {
+  #listAll(lease: ExecutionLease): SynergyLinkProcess.ProcessInfo[] {
     const running = [...this.#running.values()]
-      .filter((record) => record.backgrounded)
+      .filter((record) => record.backgrounded && sameLease(record.lease, lease))
       .map((record) => ({
         processId: record.processId,
         status: "running" as const,
@@ -643,15 +696,32 @@ export class ProcessRegistry {
         runtimeMs: this.#runtimeMs(record),
       }))
 
-    const finished = [...this.#finished.values()].map((record) => ({
-      processId: record.processId,
-      status: record.status,
-      command: trimCommand(record.command),
-      description: record.description,
-      runtimeMs: record.endedAt - record.startedAt,
-    }))
+    const finished = [...this.#finished.values()]
+      .filter((record) => sameLease(record.lease, lease))
+      .map((record) => ({
+        processId: record.processId,
+        status: record.status,
+        command: trimCommand(record.command),
+        description: record.description,
+        runtimeMs: record.endedAt - record.startedAt,
+      }))
 
     return [...running, ...finished].sort((left, right) => right.runtimeMs - left.runtimeMs)
+  }
+
+  #assertOwned(processId: string, lease: ExecutionLease) {
+    const record = this.#running.get(processId) ?? this.#finished.get(processId)
+    if (record && sameLease(record.lease, lease)) return
+    SynergyLinkLog.warn("process.access.denied", {
+      processId,
+      sessionID: lease.sessionID,
+      callerAgentID: lease.callerAgentID,
+      callerOwnerUserID: lease.callerOwnerUserID,
+    })
+    throw {
+      code: "process_not_found" as const,
+      message: `No process found for ${processId} in the active Synergy Link session.`,
+    }
   }
 
   #runtimeMs(record: { startedAt: number; endedAt?: number }): number {
@@ -672,6 +742,22 @@ export class ProcessRegistry {
     unrefTimer(this.#sweeper)
   }
 }
+function sameLease(left: ExecutionLease, right: ExecutionLease) {
+  return (
+    left.sessionID === right.sessionID &&
+    left.callerAgentID === right.callerAgentID &&
+    left.callerOwnerUserID === right.callerOwnerUserID
+  )
+}
+
+function leaseMatchesSession(lease: ExecutionLease, session: SessionRecord) {
+  return (
+    lease.sessionID === session.sessionID &&
+    lease.callerAgentID === session.remoteAgentID &&
+    lease.callerOwnerUserID === session.remoteOwnerUserID
+  )
+}
+
 function classifyExit(
   exitCode: number | null | undefined,
   exitSignal: NodeJS.Signals | number | null | undefined,

@@ -76,6 +76,10 @@ export class SynergyLinkRuntime {
         runtime.state.blockedAgentIDs = blockedAgentIDs
         await SynergyLinkStore.saveState(runtime.state)
       },
+      onEnd: async (session) => {
+        await rpc.processRegistry.releaseSession(session)
+        rpc.clearSessionRequests(session.sessionID)
+      },
     })
     const inbound = new SynergyLinkInboundHandler(rpc, sessions, (input) => runtime.decideSessionOpen(input))
     const control = new SynergyLinkControlServer((request) => runtime.handleControlRequest(request))
@@ -120,7 +124,7 @@ export class SynergyLinkRuntime {
     state.service.runtimeStatus = "starting"
     state.service.pid = process.pid
     state.service.printLogs = input?.printLogs ?? state.service.printLogs
-    state.service.startedAt = state.service.startedAt ?? Date.now()
+    state.service.startedAt = Date.now()
     state.service.stoppedAt = undefined
     state.logs.filePath = SynergyLinkStore.logsPath()
     state.ownerRegistry = SynergyLinkOwnerRegistry.hydrate(state.ownerRegistry)

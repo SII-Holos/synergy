@@ -24418,7 +24418,7 @@
           },
           "availability": {
             "type": "string",
-            "enum": ["holos_offline", "idle", "connected"]
+            "enum": ["unknown", "unreachable", "reachable", "connected"]
           },
           "sessionID": {
             "description": "Synergy Link session identifier",
@@ -24568,6 +24568,15 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
           }
         },
         "additionalProperties": false

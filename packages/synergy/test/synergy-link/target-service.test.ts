@@ -100,3 +100,100 @@ describe("Synergy Link target service", () => {
     expect(SynergyLinkExecution.getSession(target.linkID)).toBeUndefined()
   })
 })
+
+describe("Synergy Link target service relink", () => {
+  test("probe-verifies the new locator, updates atomically, and clears the old session", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient(
+      client(async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        return {
+          title: payload.action === "open" ? "Opened" : "Closed",
+          metadata: {
+            action: payload.action,
+            status: payload.action === "open" ? "opened" : "closed",
+            sessionID: payload.action === "open" ? "session_new" : "session_old",
+            backend: "remote",
+            host: {
+              type: "synergy_link.host.hello",
+              linkID: "link_new",
+              hostSessionID: "host_new",
+              capabilities: {
+                platform: "linux",
+                arch: "x64",
+                runtime: "bun",
+                defaultShell: "sh",
+                supportedShells: ["sh"],
+                supportsPty: false,
+                supportsSendKeys: true,
+                supportsSoftKill: true,
+                supportsProcessGroups: true,
+                envCaseInsensitive: false,
+                lineEndings: "lf",
+              },
+            },
+          },
+          output: "ok",
+        }
+      }),
+    )
+    const target = await SynergyLinkTargetStore.create({
+      name: "Relink service host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+      allowedAgents: ["build"],
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: target.linkID,
+      targetID: target.id,
+      targetAgentID: target.targetAgentID,
+      sourceAgent: "build",
+      sessionID: "session_old",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+
+    const updated = await SynergyLinkTargetService.update(target.id, {
+      targetAgentID: "agent_new",
+      linkID: "link_new",
+    })
+
+    expect(actions).toEqual(["open", "close"])
+    expect(updated.targetAgentID).toBe("agent_new")
+    expect(updated.linkID).toBe("link_new")
+    expect(updated.name).toBe("Relink service host")
+    expect(updated.allowedAgents).toEqual(["build"])
+    expect(updated.authorization).toBe("approved")
+    expect(updated.lastProbe?.status).toBe("reachable")
+    expect(SynergyLinkExecution.getSession("link_old")).toBeUndefined()
+  })
+
+  test("rolls back and preserves the original target when the new locator probe fails", async () => {
+    SynergyLinkExecution.setClient(
+      client(async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("connection refused")
+      }),
+    )
+    const target = await SynergyLinkTargetStore.create({
+      name: "Relink failure host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+      allowedAgents: ["build"],
+    })
+
+    await expect(
+      SynergyLinkTargetService.update(target.id, {
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+      }),
+    ).rejects.toThrow("connection refused")
+
+    const unchanged = await SynergyLinkTargetStore.require(target.id)
+    expect(unchanged.targetAgentID).toBe("agent_old")
+    expect(unchanged.linkID).toBe("link_old")
+    expect(unchanged.name).toBe("Relink failure host")
+    expect(unchanged.allowedAgents).toEqual(["build"])
+    expect(unchanged.authorization).toBe("unverified")
+  })
+})

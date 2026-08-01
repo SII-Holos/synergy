@@ -229,6 +229,14 @@ async function showStatus(args: string[]): Promise<CommandResult> {
     return invalidUsage("Usage: synergy-link status")
   }
   const status = await SynergyLinkCLIBackend.status()
+  if (status.source === "snapshot") {
+    return {
+      ok: false,
+      message: `Live Synergy Link status is unavailable. Showing a last-known snapshot. ${status.controlError}`,
+      data: status,
+      exitCode: 1,
+    }
+  }
   return {
     ok: true,
     data: status,

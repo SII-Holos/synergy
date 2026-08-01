@@ -4,22 +4,31 @@ import os from "node:os"
 import path from "node:path"
 import { RPCHandler } from "../src/rpc/handler"
 
+const executionLease = {
+  sessionID: "session_test",
+  callerAgentID: "agent_test",
+  callerOwnerUserID: 1,
+}
+
 describe("synergy-link rpc handler", () => {
   test("bash background execution returns process id", async () => {
     const handler = new RPCHandler({ linkID: "link_test" })
-    const result = await handler.handle({
-      version: 2,
-      requestID: "req_1",
-      linkID: "link_test",
-      tool: "bash",
-      action: "execute",
-      sessionID: "session_test",
-      payload: {
-        command: "echo hello && sleep 1",
-        description: "background test",
-        background: true,
+    const result = await handler.handle(
+      {
+        version: 2,
+        requestID: "req_1",
+        linkID: "link_test",
+        tool: "bash",
+        action: "execute",
+        sessionID: "session_test",
+        payload: {
+          command: "echo hello && sleep 1",
+          description: "background test",
+          background: true,
+        },
       },
-    })
+      executionLease,
+    )
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -49,20 +58,23 @@ await Bun.write(${JSON.stringify(readyPath)}, "ready")
 setInterval(() => {}, 1_000)
 `,
       )
-      const result = await handler.handle({
-        version: 2,
-        requestID: "req_reset",
-        linkID: "link_test",
-        tool: "bash",
-        action: "execute",
-        sessionID: "session_test",
-        payload: {
-          command: `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(workerPath)}`,
-          description: "reset cleanup test",
-          workdir: root,
-          background: true,
+      const result = await handler.handle(
+        {
+          version: 2,
+          requestID: "req_reset",
+          linkID: "link_test",
+          tool: "bash",
+          action: "execute",
+          sessionID: "session_test",
+          payload: {
+            command: `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(workerPath)}`,
+            description: "reset cleanup test",
+            workdir: root,
+            background: true,
+          },
         },
-      })
+        executionLease,
+      )
       expect(result.ok).toBe(true)
 
       for (let attempt = 0; attempt < 100 && !(await Bun.file(readyPath).exists()); attempt += 1) {
@@ -82,32 +94,38 @@ setInterval(() => {}, 1_000)
 
   test("process list includes backgrounded process", async () => {
     const handler = new RPCHandler({ linkID: "link_test" })
-    const started = await handler.handle({
-      version: 2,
-      requestID: "req_2",
-      linkID: "link_test",
-      tool: "bash",
-      action: "execute",
-      sessionID: "session_test",
-      payload: {
-        command: "echo hello && sleep 1",
-        description: "background test",
-        background: true,
+    const started = await handler.handle(
+      {
+        version: 2,
+        requestID: "req_2",
+        linkID: "link_test",
+        tool: "bash",
+        action: "execute",
+        sessionID: "session_test",
+        payload: {
+          command: "echo hello && sleep 1",
+          description: "background test",
+          background: true,
+        },
       },
-    })
+      executionLease,
+    )
 
     expect(started.ok).toBe(true)
     if (!started.ok) return
 
-    const listed = await handler.handle({
-      version: 2,
-      requestID: "req_3",
-      linkID: "link_test",
-      tool: "process",
-      action: "list",
-      sessionID: "session_test",
-      payload: { action: "list" },
-    })
+    const listed = await handler.handle(
+      {
+        version: 2,
+        requestID: "req_3",
+        linkID: "link_test",
+        tool: "process",
+        action: "list",
+        sessionID: "session_test",
+        payload: { action: "list" },
+      },
+      executionLease,
+    )
 
     expect(listed.ok).toBe(true)
     if (!listed.ok) return
@@ -120,15 +138,18 @@ setInterval(() => {}, 1_000)
 
   test("link mismatch returns error envelope", async () => {
     const handler = new RPCHandler({ linkID: "link_bound" })
-    const result = await handler.handle({
-      version: 2,
-      requestID: "req_4",
-      linkID: "link_other",
-      tool: "process",
-      action: "list",
-      sessionID: "session_test",
-      payload: { action: "list" },
-    })
+    const result = await handler.handle(
+      {
+        version: 2,
+        requestID: "req_4",
+        linkID: "link_other",
+        tool: "process",
+        action: "list",
+        sessionID: "session_test",
+        payload: { action: "list" },
+      },
+      executionLease,
+    )
 
     expect(result.ok).toBe(false)
     if (result.ok) return

@@ -11,12 +11,21 @@ export namespace Presence {
   }
 
   const cache = new Map<string, Entry>()
-  const MAX_AGE_MS = 24 * 60 * 60 * 1000
+  const MAX_AGE_MS = 5 * 60 * 1000
+  let clock: () => number = () => Date.now()
+
+  export function setClock(next: () => number): void {
+    clock = next
+  }
+
+  export function now(): number {
+    return clock()
+  }
 
   export function get(agentId: string): Status {
     const entry = cache.get(agentId)
     if (!entry) return "unknown"
-    if (Date.now() - entry.lastChecked > MAX_AGE_MS) {
+    if (now() - entry.lastChecked > MAX_AGE_MS) {
       cache.delete(agentId)
       return "unknown"
     }
@@ -24,11 +33,11 @@ export namespace Presence {
   }
 
   export function markOnline(agentId: string): void {
-    cache.set(agentId, { status: "online", lastChecked: Date.now() })
+    cache.set(agentId, { status: "online", lastChecked: now() })
   }
 
   export function markOffline(agentId: string): void {
-    cache.set(agentId, { status: "offline", lastChecked: Date.now() })
+    cache.set(agentId, { status: "offline", lastChecked: now() })
   }
 
   export function remove(agentId: string): void {
@@ -40,9 +49,9 @@ export namespace Presence {
   }
 
   export function prune(): void {
-    const now = Date.now()
+    const current = now()
     for (const [id, entry] of cache) {
-      if (now - entry.lastChecked > MAX_AGE_MS) cache.delete(id)
+      if (current - entry.lastChecked > MAX_AGE_MS) cache.delete(id)
     }
   }
 

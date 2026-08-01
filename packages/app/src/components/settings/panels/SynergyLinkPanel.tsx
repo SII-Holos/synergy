@@ -84,8 +84,9 @@ const copy = {
   authorizationApproved: { id: "settings.synergyLink.authorization.approved", message: "Approved" },
   authorizationUnverified: { id: "settings.synergyLink.authorization.unverified", message: "Unverified" },
   authorizationRevoked: { id: "settings.synergyLink.authorization.revoked", message: "Revoked" },
-  availabilityOffline: { id: "settings.synergyLink.availability.offline", message: "Holos offline" },
-  availabilityIdle: { id: "settings.synergyLink.availability.idle", message: "Ready" },
+  availabilityUnknown: { id: "settings.synergyLink.availability.unknown", message: "Unknown" },
+  availabilityUnreachable: { id: "settings.synergyLink.availability.unreachable", message: "Unreachable" },
+  availabilityReachable: { id: "settings.synergyLink.availability.reachable", message: "Reachable" },
   availabilityConnected: { id: "settings.synergyLink.availability.connected", message: "Connected" },
 }
 
@@ -454,6 +455,7 @@ function authorizationDescriptor(state: SynergyLinkTargetView["authorization"]) 
 
 function availabilityDescriptor(state: SynergyLinkTargetView["availability"]) {
   if (state === "connected") return copy.availabilityConnected
-  if (state === "idle") return copy.availabilityIdle
-  return copy.availabilityOffline
+  if (state === "reachable") return copy.availabilityReachable
+  if (state === "unreachable") return copy.availabilityUnreachable
+  return copy.availabilityUnknown
 }

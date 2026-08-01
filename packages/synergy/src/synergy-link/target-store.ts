@@ -76,6 +76,19 @@ export namespace SynergyLinkTargetStore {
     const patch = SynergyLinkTarget.PatchInput.parse(input)
     using _ = await Lock.write(`${collectionLock}:${id}`)
     const current = await require(id)
+
+    const relink = patch.targetAgentID !== undefined && patch.linkID !== undefined
+    if (relink) {
+      const duplicate = (await list()).find(
+        (target) => target.id !== id && target.linkID === patch.linkID && target.targetAgentID === patch.targetAgentID,
+      )
+      if (duplicate) {
+        throw new Error(
+          `Synergy Link locator already in use: link "${patch.linkID}" for agent "${patch.targetAgentID}" is used by target ${duplicate.id}.`,
+        )
+      }
+    }
+
     const target = SynergyLinkTarget.Info.parse({ ...current, ...patch, updatedAt: Date.now() })
     await Storage.write(StoragePath.synergyLinkTarget(target.id), target)
     return target

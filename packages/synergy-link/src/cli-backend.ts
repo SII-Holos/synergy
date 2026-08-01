@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises"
 import { SynergyLinkControlClient } from "./control/client"
 import { SynergyLinkHolosAuth, type SynergyLinkHolosAuthSource } from "./holos/auth"
 import { SynergyLinkHolosLogin } from "./holos/login"
@@ -36,9 +37,19 @@ export interface SynergyLinkReconnectResult {
 export namespace SynergyLinkCLIBackend {
   export async function status() {
     if (await SynergyLinkControlClient.isAvailable()) {
-      return await SynergyLinkControlClient.request({ action: "runtime.status" })
+      try {
+        const live = await SynergyLinkControlClient.request<Record<string, unknown>>({ action: "runtime.status" })
+        return {
+          ...live,
+          source: "live" as const,
+          stale: false,
+          verifiedAt: Date.now(),
+        }
+      } catch (error) {
+        return await loadSnapshot(`Control socket request failed: ${errorMessage(error)}`)
+      }
     }
-    return await loadSnapshot()
+    return await loadSnapshot("Control socket is unavailable or did not respond.")
   }
 
   export async function mode() {
@@ -146,10 +157,16 @@ export namespace SynergyLinkCLIBackend {
   }
 
   export async function doctor() {
-    const state = await SynergyLinkStore.loadState()
-    const service = await SynergyLinkService.status()
+    const [state, service, authInfo, endpointResult] = await Promise.all([
+      SynergyLinkStore.loadState(),
+      SynergyLinkService.status(),
+      SynergyLinkHolosAuth.inspect(),
+      SynergyLinkHolosAuth.resolveEndpoints().then(
+        (endpoints) => ({ ok: true as const, endpoints }),
+        (error) => ({ ok: false as const, error: error instanceof Error ? error.message : String(error) }),
+      ),
+    ])
     const managed = state.runtimeMode === "managed"
-    const authInfo = await SynergyLinkHolosAuth.inspect()
     const auth = authInfo.auth
     const ownership = SynergyLinkOwnerRegistry.snapshot(state.ownerRegistry)
     const checks = [
@@ -163,11 +180,30 @@ export namespace SynergyLinkCLIBackend {
         ok: true,
         detail: state.runtimeMode,
       },
-      {
-        name: "local_owner",
-        ok: ownership.local.owned,
-        detail: ownership.local.activeOwnerID ?? "No local owner declared",
-      },
+      managed
+        ? {
+            name: "local_owner",
+            ok: ownership.local.owned,
+            detail: SynergyLinkOwnerRegistry.activeOwnerExpired(state.ownerRegistry)
+              ? `Managed owner lease expired for ${ownership.local.activeOwnerID}`
+              : (ownership.local.activeOwnerID ?? "No active managed owner lease"),
+          }
+        : {
+            name: "local_owner",
+            ok: true,
+            detail: "Not applicable in standalone mode",
+          },
+      endpointResult.ok
+        ? {
+            name: "endpoints",
+            ok: true,
+            detail: `API ${endpointResult.endpoints.apiUrl}; WebSocket ${endpointResult.endpoints.wsUrl}; portal ${endpointResult.endpoints.portalUrl}`,
+          }
+        : {
+            name: "endpoints",
+            ok: false,
+            detail: endpointResult.error,
+          },
       {
         name: "auth",
         ok: managed ? true : Boolean(auth),
@@ -450,14 +486,24 @@ async function loadOfflineWritableState(): Promise<SynergyLinkState> {
   return state
 }
 
-async function loadSnapshot() {
-  const [state, service, authInfo] = await Promise.all([
+async function loadSnapshot(controlError?: string) {
+  const capturedAt = Date.now()
+  const [state, service, authInfo, snapshotAt] = await Promise.all([
     SynergyLinkStore.loadState(),
     SynergyLinkService.status(),
     SynergyLinkHolosAuth.inspect(),
+    stat(SynergyLinkStore.statePath())
+      .then((value) => value.mtimeMs)
+      .catch(() => capturedAt),
   ])
 
   return {
+    source: "snapshot" as const,
+    stale: true,
+    capturedAt,
+    snapshotAt,
+    snapshotAgeMs: Math.max(0, capturedAt - snapshotAt),
+    controlError: controlError ?? "Live runtime status was not requested.",
     auth: sanitizeAuth(authInfo.auth, authInfo.source),
     mode: state.runtimeMode,
     ownership: SynergyLinkOwnerRegistry.snapshot(state.ownerRegistry),
@@ -523,4 +569,8 @@ function supported<T>(value: T): SupportedResult<T> {
     available: true,
     value,
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

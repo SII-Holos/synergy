@@ -154,3 +154,97 @@ describe("HolosProvider send delivery", () => {
     }
   })
 })
+
+test("does not block an explicit send on a cached offline presence mark", async () => {
+  const received = Promise.withResolvers<Record<string, unknown>>()
+  using server = Bun.serve({
+    port: 0,
+    fetch(request, server) {
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/ws_token")) {
+        return Response.json({ code: 0, data: { ws_token: "test-token", expires_in: 60 } })
+      }
+      if (url.pathname.endsWith("/ws") && server.upgrade(request)) return
+      return new Response("Not found", { status: 404 })
+    },
+    websocket: {
+      message(_socket, message) {
+        received.resolve(JSON.parse(String(message)) as Record<string, unknown>)
+      },
+    },
+  })
+  const abort = new AbortController()
+  const provider = new HolosProvider()
+
+  try {
+    await HolosAccounts.saveAndActivateAccount(testAgentID, "test-secret")
+    await provider.connect({
+      config: {
+        enabled: true,
+        apiUrl: `http://127.0.0.1:${server.port}`,
+        wsUrl: `ws://127.0.0.1:${server.port}`,
+        portalUrl: `http://127.0.0.1:${server.port}`,
+      },
+      signal: abort.signal,
+    })
+
+    Presence.markOffline("target-agent")
+    const resultPromise = provider.send("target-agent", "test.event", { value: "ok" })
+    const envelope = await received.promise
+
+    expect(envelope).toMatchObject({ type: "ws_send", meta: { target_agent_id: "target-agent" } })
+    await expect(resultPromise).resolves.toEqual({ sent: true })
+    expect(Presence.get("target-agent")).toBe("online")
+  } finally {
+    abort.abort()
+  }
+})
+
+test("invalidates presence when the websocket disconnects", async () => {
+  const connected = Promise.withResolvers<void>()
+  using server = Bun.serve({
+    port: 0,
+    fetch(request, server) {
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/ws_token")) {
+        return Response.json({ code: 0, data: { ws_token: "test-token", expires_in: 60 } })
+      }
+      if (url.pathname.endsWith("/ws") && server.upgrade(request)) return
+      return new Response("Not found", { status: 404 })
+    },
+    websocket: {
+      open() {
+        connected.resolve()
+      },
+      message(socket) {
+        socket.close()
+      },
+    },
+  })
+  const abort = new AbortController()
+  const provider = new HolosProvider()
+
+  try {
+    await HolosAccounts.saveAndActivateAccount(testAgentID, "test-secret")
+    await provider.connect({
+      config: {
+        enabled: true,
+        apiUrl: `http://127.0.0.1:${server.port}`,
+        wsUrl: `ws://127.0.0.1:${server.port}`,
+        portalUrl: `http://127.0.0.1:${server.port}`,
+      },
+      signal: abort.signal,
+    })
+    await connected.promise
+
+    Presence.markOnline("target-agent")
+    Presence.markOffline("other-agent")
+    expect(Presence.all().size).toBe(2)
+
+    await provider.send("target-agent", "test.event", { value: "ok" }).catch(() => undefined)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(Presence.all().size).toBe(0)
+  } finally {
+    abort.abort()
+  }
+})

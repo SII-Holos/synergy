@@ -34,8 +34,9 @@ export class SynergyLinkInboundHandler {
         return this.#handleSession(caller, request)
       }
 
-      await this.sessions.validateCaller(caller, request.sessionID)
-      const result = await this.rpc.handle(request)
+      const lease = await this.sessions.validateCaller(caller, request.sessionID)
+      this.sessions.assertLeaseActive(lease)
+      const result = await this.rpc.handle(request, lease)
       SynergyLinkLog.info("inbound.request.completed", {
         callerAgentID: caller.agentID,
         tool: request.tool,
@@ -80,6 +81,10 @@ export class SynergyLinkInboundHandler {
       })
       return errorResult(correlation, "host_internal_error", error instanceof Error ? error.message : String(error))
     }
+  }
+
+  clearSessionRequests(sessionID: string) {
+    this.rpc.clearSessionRequests(sessionID)
   }
 
   async #handleSession(
