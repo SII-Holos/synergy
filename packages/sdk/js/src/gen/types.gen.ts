@@ -2459,6 +2459,10 @@ export type ProviderConfig = {
   env?: Array<string>
   id?: string
   npm?: string
+  /**
+   * Models.dev provider id to use as this provider connection's model catalog source
+   */
+  modelsDevProviderID?: string
   models?: {
     [key: string]: {
       id?: string

@@ -27294,6 +27294,11 @@
           "npm": {
             "type": "string"
           },
+          "modelsDevProviderID": {
+            "description": "Models.dev provider id to use as this provider connection's model catalog source",
+            "type": "string",
+            "minLength": 1
+          },
           "models": {
             "type": "object",
             "propertyNames": {

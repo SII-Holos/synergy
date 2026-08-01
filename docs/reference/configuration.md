@@ -216,6 +216,26 @@ Startup reads the snapshot immediately and refreshes it asynchronously. A succes
 
 Authentication, account usage, and model-catalog health are independent states. `POST /provider/{providerID}/models/refresh` runs the same single-flight refresh path used by background discovery. Missing models and explicit upstream model rejection produce `ProviderModelUnavailableError`; session execution does not silently switch to another model.
 
+### Multiple account connections
+
+A local provider connection can reuse a canonical Models.dev catalog while keeping a distinct provider ID and credentials:
+
+```jsonc
+{
+  "provider": {
+    "deepseek-team": {
+      "modelsDevProviderID": "deepseek",
+      "name": "DeepSeek Team",
+      "env": ["DEEPSEEK_TEAM_API_KEY"],
+    },
+  },
+}
+```
+
+Inherited models are projected onto the connection ID, so model references such as `deepseek-team/deepseek-chat` select that account. Connection-level `api`, `npm`, `options`, allowlist/blacklist, and explicit model entries override inherited catalog metadata without mutating the canonical provider.
+
+`modelsDevProviderID` shares model metadata only. Provider-specific runtime behavior, authentication strategy, usage reporting, and credential-aware live discovery are not inherited by this field.
+
 ### Model variants and role variants
 
 Automatic reasoning variants are derived from model identity (`model.id`, API model ID, or model family) combined with the direct transport. They are not selected from provider IDs, and a shared npm package alone does not establish option compatibility, so custom provider aliases retain correct behavior.
