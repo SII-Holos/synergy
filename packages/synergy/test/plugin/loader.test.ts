@@ -39,17 +39,15 @@ describe("loader approval identity via Status", () => {
       scope,
       fn: async () => {
         await saveApproval({
+          schemaVersion: 2,
           pluginId: "approval-loader-test",
           source: "local",
-          version: "2.0.0",
-          manifestHash: "wrong-hash-ffff",
-          capabilitiesHash: "wrong-cap-hash",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "old-grant",
           approvedAt: Date.now() - 1000,
           approvedBy: "user",
           trustTier: "declarative",
           approvedCapabilities: ["workspace.write", "session.write"],
-          risk: "high",
-          status: "approved",
         })
 
         await resetAllPluginState()
@@ -64,7 +62,6 @@ describe("loader approval identity via Status", () => {
         expect(disabled.disabledPhase).toBe("approval")
         expect(disabled.loaded).toBe(false)
         expect(disabled.capabilities).toContain("workspace.write")
-        expect(disabled.risk).toBe("high")
         expect(disabled.installation.kind).toBe("directory")
         expect((disabled as any).manifest).toBeUndefined()
       },
@@ -102,17 +99,15 @@ describe("failed plugin registration identity", () => {
       incompatible: [{ pluginId: "synergy-frontend-kit", spec, reason: "reinstallRequired" }],
       approvals: [
         {
+          schemaVersion: 2,
           pluginId: "synergy-frontend-kit",
           source: "official",
-          version: "0.2.4",
-          manifestHash: "old",
-          capabilitiesHash: "",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "old",
           approvedAt: 1,
           approvedBy: "user",
           trustTier: "declarative",
           approvedCapabilities: [],
-          risk: "low",
-          status: "needsApproval",
         },
       ],
     })

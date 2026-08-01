@@ -1,7 +1,6 @@
 export type PluginSource = "local" | "official" | "npm" | "git" | "url" | "builtin"
 export type RuntimeMode = "inProcess" | "process"
 export type TrustTier = "declarative" | "trusted-import"
-export type PolicyRisk = "low" | "medium" | "high"
 
 export interface RuntimeLimits {
   startupTimeoutMs: number
@@ -100,7 +99,6 @@ interface FlatManifest {
 export interface PluginPolicyDecision {
   source: PluginSource
   capabilities: string[]
-  risk: PolicyRisk
   trust: PluginTrustDecision
   runtimeMode: RuntimeMode
 }
@@ -111,22 +109,11 @@ export function resolvePluginPolicyDecision(input: {
   userTrusted?: boolean
   verifiedIntegrity?: boolean
   devMode?: boolean
-  risk?: PolicyRisk
 }): PluginPolicyDecision {
   const capabilities = input.manifest.capabilities?.map((item) => item.id) ?? []
-  const risk =
-    input.risk ??
-    (capabilities.some((item) =>
-      ["workspace.write", "secrets", "task.delegate", "blueprint.delegate", "lightloop.delegate"].includes(item),
-    )
-      ? "high"
-      : capabilities.length
-        ? "medium"
-        : "low")
   return {
     source: input.source,
     capabilities,
-    risk,
     trust: defaultPluginTrustDecision(input),
     runtimeMode: resolveRuntimeMode({ source: input.source }),
   }

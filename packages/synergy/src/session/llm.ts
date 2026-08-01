@@ -300,7 +300,7 @@ export namespace LLM {
 
     const original = clone(system)
     const transformed = await trigger(
-      "experimental.chat.system.transform",
+      "chat.system.transform",
       {
         phase: "final",
         sessionID: input.sessionID,

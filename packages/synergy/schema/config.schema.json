@@ -650,40 +650,6 @@
         "type": "string"
       }
     },
-    "pluginApprovalPolicy": {
-      "description": "Plugin approval policy configuration",
-      "ref": "PluginApprovalPolicyConfig",
-      "type": "object",
-      "properties": {
-        "allowUnsignedLocal": {
-          "description": "Allow unsigned local plugins with user consent",
-          "default": true,
-          "type": "boolean"
-        },
-        "autoApproveBuiltin": {
-          "description": "Auto-approve builtin plugins without user consent",
-          "default": true,
-          "type": "boolean"
-        },
-        "denyHighRiskThirdParty": {
-          "description": "Block third-party plugins with high-risk capabilities",
-          "default": true,
-          "type": "boolean"
-        },
-        "requireSignatureForMarketplace": {
-          "description": "Require cryptographic signature for non-local plugins",
-          "default": false,
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "allowUnsignedLocal",
-        "autoApproveBuiltin",
-        "denyHighRiskThirdParty",
-        "requireSignatureForMarketplace"
-      ],
-      "additionalProperties": false
-    },
     "pluginRuntimePolicy": {
       "description": "Plugin runtime isolation policy configuration",
       "ref": "PluginRuntimePolicyConfig",

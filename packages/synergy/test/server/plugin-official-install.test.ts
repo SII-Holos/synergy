@@ -13,6 +13,7 @@ import { PLUGIN_MARKETPLACE_DEFAULTS } from "../../src/config/schema"
 import { PluginMarketplaceRegistry } from "../../src/plugin/marketplace-registry"
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { Log } from "../../src/util/log"
+import { readApprovals } from "../../src/plugin/consent/approval-store"
 
 Log.init({ print: false })
 
@@ -70,7 +71,7 @@ async function writeOfficialCache(artifact: Awaited<ReturnType<typeof buildSigne
   await Bun.write(
     paths.registry,
     JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       updatedAt: publishedAt,
       plugins: [
         {
@@ -85,7 +86,6 @@ async function writeOfficialCache(artifact: Awaited<ReturnType<typeof buildSigne
           keywords: entry.keywords,
           latestVersion: PLUGIN_VERSION,
           updatedAt: publishedAt,
-          risk: version.risk,
           runtimeMode: "process",
           tools: version.tools,
           uiSurfaces: version.uiSurfaces,
@@ -159,7 +159,7 @@ describe("official registry install verification", () => {
     }
   })
 
-  test("approves and installs an official registry artifact after review", async () => {
+  test("installs an official signed artifact in one step", async () => {
     await using tmp = await tmpdir({ git: true })
     const artifact = await buildSignedArtifact("Official Test Plugin")
     try {
@@ -170,36 +170,32 @@ describe("official registry install verification", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: PLUGIN_ID, version: PLUGIN_VERSION, source: "official" }),
         })
-        expect(installRes.status).toBe(409)
+        expect(installRes.status).toBe(200)
         const installBody = (await installRes.json()) as {
-          review: { target: unknown; reviewToken: string }
-        }
-
-        const approveRes = await app.request("/api/plugins/approve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            target: installBody.review.target,
-            reviewToken: installBody.review.reviewToken,
-          }),
-        })
-        expect(approveRes.status).toBe(200)
-        const approveBody = (await approveRes.json()) as {
           id: string
           loaded: boolean
           health: string
           installation: { kind: string; registry?: string; spec?: string }
           manifest: PluginManifestType
         }
-        expect(approveBody.id).toBe(PLUGIN_ID)
-        expect(approveBody.loaded).toBe(true)
-        expect(approveBody.health).toBe("loaded")
-        expect(approveBody.installation).toEqual({
+        expect(installBody.id).toBe(PLUGIN_ID)
+        expect(installBody.loaded).toBe(true)
+        expect(installBody.health).toBe("loaded")
+        expect(installBody.installation).toEqual({
           kind: "registry",
           registry: "official",
           spec: expect.any(String),
         })
-        expect(approveBody.manifest.version).toBe(PLUGIN_VERSION)
+        expect(installBody.manifest.version).toBe(PLUGIN_VERSION)
+        expect(await readApprovals()).toContainEqual(
+          expect.objectContaining({
+            schemaVersion: 2,
+            pluginId: PLUGIN_ID,
+            source: "official",
+            signer: artifact.entry.versions[0]!.signature.signer,
+            approvedBy: "policy",
+          }),
+        )
       })
     } finally {
       fs.rmSync(artifact.dir, { recursive: true, force: true })

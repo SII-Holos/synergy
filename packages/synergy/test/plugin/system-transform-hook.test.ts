@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import type { Provider } from "../../src/provider/provider"
 import { Config } from "../../src/config/config"
-import { saveApproval } from "../../src/plugin/consent/approval-store"
+import { createApprovalRecord, saveApproval } from "../../src/plugin/consent/approval-store"
 import { resetAllPluginState } from "../../src/plugin/loader"
 import { pluginRuntimeManager } from "../../src/plugin/runtime"
 import { ScopeContext } from "../../src/scope/context"
@@ -67,6 +66,7 @@ export default {
   const manifest = {
     manifestVersion: 1,
     apiVersion: "4.0",
+    compatibility: { synergy: ">=3.0.11" },
     id: "system-transform-plugin",
     name: "system-transform-plugin",
     version: "1.0.0",
@@ -90,19 +90,13 @@ export default {
 }
 
 async function approve(manifest: PluginManifestType) {
-  await saveApproval({
-    pluginId: manifest.id,
-    source: "local",
-    version: manifest.version,
-    manifestHash: computeManifestHash(manifest),
-    capabilitiesHash: computePermissionsHash(manifest),
-    approvedAt: Date.now(),
-    approvedBy: "user",
-    trustTier: "declarative",
-    approvedCapabilities: [],
-    risk: "low",
-    status: "approved",
-  })
+  await saveApproval(
+    createApprovalRecord({
+      pluginId: manifest.id,
+      source: "local",
+      manifest,
+    }),
+  )
 }
 
 describe.serial("process plugin system transform hook", () => {

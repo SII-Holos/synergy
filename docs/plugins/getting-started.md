@@ -89,7 +89,7 @@ If the generated manifest or permissions have not been approved, the plugin rema
 synergy plugin approve my-plugin
 ```
 
-Approval records are tied to the exact manifest and permissions hashes. Rebuilds that change generated metadata, capabilities, trusted UI, handlers, or packaged assets require another approval review.
+Approval records are tied to publisher identity and the structured access grant. Metadata, code, handler, asset, and changelog-only rebuilds keep the existing grant. Removing access or narrowing known constraints updates silently. New Host Services, broader constraints, trusted UI, broader operation exposure, or an unknown constraint change require confirmation of only the added/broadened access. A source or signer change requires publisher confirmation.
 
 ## Live Development
 

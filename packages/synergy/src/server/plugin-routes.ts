@@ -324,9 +324,9 @@ export const ApiPluginRoute = new Hono()
           const persisted = (await readApprovals()).some(
             (approval) =>
               approval.pluginId === candidate.pluginId &&
-              approval.status === "approved" &&
-              approval.manifestHash === candidate.manifestHash &&
-              approval.capabilitiesHash === candidate.capabilitiesHash,
+              approval.source === candidate.source &&
+              approval.signer === candidate.signer &&
+              approval.grantHash === candidate.grantHash,
           )
           if (existing && persisted) {
             const status = await Plugin.getStatus(body.target.pluginId)
@@ -344,12 +344,18 @@ export const ApiPluginRoute = new Hono()
 
         if (body.target.kind === "registry") {
           const approval = await approvePlugin(body.target, body.reviewToken)
-          const { spec, source } = await resolveRegistrySpec(
+          const { spec, source, signer, official } = await resolveRegistrySpec(
             body.target.pluginId,
             body.target.version,
             body.target.source,
           )
-          const plugin = await Plugin.add(spec, { autoReload: true, source, preApproved: approval })
+          const plugin = await Plugin.add(spec, {
+            autoReload: true,
+            source,
+            signer,
+            official,
+            preApproved: approval,
+          })
           return context.json({ ...(await Plugin.getStatus(plugin.id)), manifest: plugin.manifest })
         }
       } catch (err) {
@@ -381,8 +387,8 @@ export const ApiPluginRoute = new Hono()
     async (context) => {
       const body = context.req.valid("json")
       try {
-        const { spec, source } = await resolveRegistrySpec(body.id, body.version, body.source)
-        const plugin = await Plugin.add(spec, { autoReload: true, source })
+        const { spec, source, signer, official } = await resolveRegistrySpec(body.id, body.version, body.source)
+        const plugin = await Plugin.add(spec, { autoReload: true, source, signer, official })
         const status = await Plugin.getStatus(plugin.id)
         return context.json({ ...status, manifest: plugin.manifest })
       } catch (err) {
@@ -426,8 +432,8 @@ export const ApiPluginRoute = new Hono()
     async (context) => {
       const body = context.req.valid("json")
       try {
-        const { spec, source } = await resolveRegistrySpec(body.pluginId, body.version, body.source)
-        const plugin = await Plugin.add(spec, { autoReload: true, source })
+        const { spec, source, signer, official } = await resolveRegistrySpec(body.pluginId, body.version, body.source)
+        const plugin = await Plugin.add(spec, { autoReload: true, source, signer, official })
         const status = await Plugin.getStatus(plugin.id)
         return context.json({ ...status, manifest: plugin.manifest })
       } catch (err) {

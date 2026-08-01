@@ -7,7 +7,7 @@ import {
 } from "./contribution.js"
 import type { PluginActivationContext } from "./context.js"
 import type { PluginManifest, PluginManifestContribution } from "./manifest.js"
-import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
+import { PLUGIN_API_4_BASE_SYNERGY_RANGE, PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
 import { PluginToolId } from "./ids.js"
 import { HOST_OWNED_MESSAGE_TYPES, PLUGIN_MODEL_ROLES } from "./plugin-types.js"
 
@@ -16,6 +16,9 @@ export interface PluginDefinitionInput {
   name?: string
   version: string
   description: string
+  compatibility?: {
+    synergy: string
+  }
   author?: string
   homepage?: string
   repository?: string
@@ -35,6 +38,9 @@ export interface PluginAsset {
 }
 
 export interface PluginDefinition extends PluginDefinitionInput {
+  compatibility: {
+    synergy: string
+  }
   assets: PluginAsset[]
   capabilities: PluginCapability[]
   handlerIds: string[]
@@ -174,7 +180,13 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
     }
   }
 
-  return { ...input, assets, capabilities, handlerIds }
+  return {
+    ...input,
+    compatibility: input.compatibility ?? { synergy: PLUGIN_API_4_BASE_SYNERGY_RANGE },
+    assets,
+    capabilities,
+    handlerIds,
+  }
 }
 
 function compiledComponent(
@@ -362,6 +374,7 @@ export function compilePluginManifest(
   const manifest: PluginManifest = {
     manifestVersion: PLUGIN_MANIFEST_VERSION,
     apiVersion: PLUGIN_API_VERSION,
+    compatibility: definition.compatibility,
     id: definition.id,
     name: definition.name ?? definition.id,
     version: definition.version,

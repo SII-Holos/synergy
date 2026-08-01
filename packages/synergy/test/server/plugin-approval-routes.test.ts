@@ -237,7 +237,7 @@ describe("plugin approval routes", () => {
           expect(review.capabilities).toEqual(["workspace.read"])
           expect(typeof review.reviewToken).toBe("string")
           expect((review.reviewToken as string).length).toBeGreaterThan(0)
-          expect(review.risk).toBe("medium")
+          expect(review.requiresConfirmation).toBe(true)
           expect(review.trust).toBe("declarative")
           expect(review.target).toEqual({ kind: "configured", pluginId: fixture.pluginId })
 
@@ -258,16 +258,15 @@ describe("plugin approval routes", () => {
           expect(status.loaded).toBe(true)
           expect(status.health).toBe("loaded")
 
-          // Step 3: Assert approval hashes verify against actual manifest
+          // Step 3: Assert the persisted grant matches the reviewed access contract
           const approvals = await readApprovals()
           const approval = approvals.find((r) => r.pluginId === fixture.pluginId)
           expect(approval).toBeDefined()
           if (!approval) throw new Error("approval missing")
-          expect(approval.manifestHash).toBe(computeManifestHash(fixture.manifest))
           const capabilities = fixture.manifest.capabilities.map((c) => c.id)
-          expect(approval.capabilitiesHash).toBe(computePermissionsHash(fixture.manifest, capabilities))
+          expect(approval.grantHash).toBe(computePermissionsHash(fixture.manifest, capabilities))
+          expect(approval.schemaVersion).toBe(2)
           expect(approval.approvedBy).toBe("user")
-          expect(approval.status).toBe("approved")
 
           // Step 4: Assert config unchanged by approval
           const configAfter = await Config.domainGet("plugins")
@@ -493,7 +492,7 @@ describe("plugin approval routes", () => {
           })
           expect(replacementApproveRes.status).toBe(200)
           expect(await readApprovals()).toContainEqual(
-            expect.objectContaining({ pluginId: fixture.pluginId, status: "approved" }),
+            expect.objectContaining({ schemaVersion: 2, pluginId: fixture.pluginId }),
           )
         },
       })
@@ -636,7 +635,7 @@ describe("plugin approval routes", () => {
             source: "local" as const,
           }
           const capabilities = fixture.manifest.capabilities.map((c) => c.id)
-          const token = generateReviewToken(registryTarget, fixture.manifest, capabilities)
+          const token = generateReviewToken(registryTarget, fixture.manifest, capabilities, { source: "local" })
 
           // POST /approve with registry target
           const approveRes = await app.request("/api/plugins/approve", {
@@ -656,9 +655,8 @@ describe("plugin approval routes", () => {
           expect(approval).toBeDefined()
           if (!approval) throw new Error("approval missing")
           expect(approval.approvedBy).toBe("user")
-          expect(approval.status).toBe("approved")
           expect(approval.source).toBe("local")
-          expect(approval.version).toBe(registryVersion)
+          expect(approval.schemaVersion).toBe(2)
         },
       })
     } finally {

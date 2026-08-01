@@ -11,12 +11,6 @@ function tierLabel(tier: PluginStatus["trust"]): string {
     : UI.Style.TEXT_SUCCESS + tier + UI.Style.TEXT_NORMAL
 }
 
-function riskLabel(risk: PluginStatus["risk"]): string {
-  if (risk === "high") return UI.Style.TEXT_DANGER + risk + UI.Style.TEXT_NORMAL
-  if (risk === "medium") return UI.Style.TEXT_WARNING + risk + UI.Style.TEXT_NORMAL
-  return UI.Style.TEXT_SUCCESS + risk + UI.Style.TEXT_NORMAL
-}
-
 function installationLabel(installation: PluginStatus["installation"]): string {
   if (installation.kind === "directory") return `directory (${installation.path})`
   if (installation.kind === "archive") return `archive (${installation.path})`
@@ -55,9 +49,7 @@ export const PluginInfoCommand = cmd({
     )
     UI.println(`${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL}           ${status.id}`)
     UI.println(`${UI.Style.TEXT_DIM}Installation:${UI.Style.TEXT_NORMAL} ${installationLabel(status.installation)}`)
-    UI.println(
-      `${UI.Style.TEXT_DIM}Trust:${UI.Style.TEXT_NORMAL}        ${tierLabel(status.trust)}  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${riskLabel(status.risk)}`,
-    )
+    UI.println(`${UI.Style.TEXT_DIM}Trust:${UI.Style.TEXT_NORMAL}        ${tierLabel(status.trust)}`)
     UI.println(`${UI.Style.TEXT_DIM}State:${UI.Style.TEXT_NORMAL}        ${state}`)
     if (status.apiVersion) UI.println(`${UI.Style.TEXT_DIM}Plugin API:${UI.Style.TEXT_NORMAL}   ${status.apiVersion}`)
     if (status.generation) UI.println(`${UI.Style.TEXT_DIM}Generation:${UI.Style.TEXT_NORMAL}   ${status.generation}`)
