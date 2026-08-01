@@ -1,6 +1,7 @@
 import { Log } from "../../../util/log"
 import type * as ChannelTypes from "../../types"
 import type { FeishuApiContext } from "./api-context"
+import { degradeMarkdownImages, materializeMarkdownImages } from "./markdown-image"
 import { FeishuStreamingState } from "./streaming-state"
 
 const log = Log.create({ service: "channel.feishu.streaming-card" })
@@ -23,6 +24,7 @@ type StreamingCardOptions = FeishuApiContext & {
   requestTimeoutMs?: number
   sendFallback?: (text: string) => Promise<void>
   persistence?: { accountId: string; sessionID: string }
+  onThreadCreated?: (threadId: string) => Promise<void>
 }
 
 type RenderedSections = {
@@ -146,7 +148,10 @@ export function renderToolProgress(progress: ChannelTypes.StreamingToolProgress[
 }
 
 function renderAnswerContent(answerText: string): string {
-  return normalizeMarkdown(answerText)
+  // Incremental renders must stay synchronous: degrade image syntax to links
+  // so Feishu never rejects the card element. The final answer is materialized
+  // (downloaded and uploaded to image_key) once in finalize().
+  return normalizeMarkdown(degradeMarkdownImages(answerText))
 }
 
 function renderStatusContent(state: Pick<CardState, "answerText" | "toolProgress" | "error">, closed: boolean): string {
@@ -292,27 +297,28 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
       })
     }
     const cardContent = JSON.stringify({ type: "card", data: { card_id: cardId } })
-    const messageId = await this.sendCardMessage(token, cardContent)
+    const sent = await this.sendCardMessage(token, cardContent)
+    if (sent.threadId) await this.opts.onThreadCreated?.(sent.threadId)
     if (this.opts.persistence) {
       await FeishuStreamingState.persist({
         ...this.opts.persistence,
         cardId,
-        messageId,
+        messageId: sent.messageId,
       })
     }
     this.state = {
       cardId,
-      messageId,
+      messageId: sent.messageId,
       sequence: 1,
       answerText: "",
       toolProgress: [],
       rendered: initialSections,
     }
     this.phase = "active"
-    log.info("streaming card started", { cardId, messageId })
+    log.info("streaming card started", { cardId, messageId: sent.messageId })
   }
 
-  private async sendCardMessage(token: string, cardContent: string): Promise<string> {
+  private async sendCardMessage(token: string, cardContent: string): Promise<ChannelTypes.SendResult> {
     if (this.opts.replyToMessageId) {
       const response = await fetch(`${this.opts.apiBase}/im/v1/messages/${this.opts.replyToMessageId}/reply`, {
         method: "POST",
@@ -327,12 +333,16 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
         }),
         signal: AbortSignal.timeout(this.requestTimeoutMs),
       })
-      const result = (await response.json()) as { code?: number; msg?: string; data?: { message_id?: string } }
+      const result = (await response.json()) as {
+        code?: number
+        msg?: string
+        data?: { message_id?: string; thread_id?: string }
+      }
       if (!response.ok || result.code !== 0) {
         throw new Error(`Failed to reply with card: ${result.msg ?? `code ${result.code ?? response.status}`}`)
       }
       if (!result.data?.message_id) throw new Error("Failed to send streaming card: no message_id returned")
-      return result.data.message_id
+      return { messageId: result.data.message_id, threadId: result.data.thread_id }
     }
 
     const response = await fetch(`${this.opts.apiBase}/im/v1/messages?receive_id_type=chat_id`, {
@@ -353,7 +363,7 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
       throw new Error(`Failed to send card: ${result.msg ?? `code ${result.code ?? response.status}`}`)
     }
     if (!result.data?.message_id) throw new Error("Failed to send streaming card: no message_id returned")
-    return result.data.message_id
+    return { messageId: result.data.message_id }
   }
 
   private enqueueRender(): Promise<void> {
@@ -413,7 +423,12 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     try {
       if (!deliveryFailure && !tooLarge) {
         try {
-          await this.applyRender(desired, finalRendered)
+          // The final answer is written once: materialize image URLs into
+          // image_key so the closed card renders real images instead of links.
+          // Materialize the raw text (the rendered sections are already
+          // degraded), then render it with the same pipeline as increments.
+          const materializedAnswer = renderAnswerContent(await materializeMarkdownImages(desired.answerText, this.opts))
+          await this.applyRender(desired, { ...finalRendered, answerContent: materializedAnswer })
         } catch (cause) {
           deliveryFailure = cause
           log.error("streaming card final content update failed", { error: cause, cardId: this.state.cardId })

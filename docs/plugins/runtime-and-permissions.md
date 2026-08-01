@@ -84,6 +84,8 @@ An `agent.call` capability may declare a `modelRoles` allowlist using Synergy's 
 
 `call()` waits for `{ text }` and is cancelled with its invocation. `start()` accepts an explicit `correlationId`, returns `{ callId }` after the host accepts the work, and continues under a host-owned `AbortController` after the initiating handler returns. A terminal `completed`, `error`, or `cancelled` result is delivered only to the same plugin ID, generation, and Scope through the `agent.call.after` observer. Active identical correlations are idempotent; changed content conflicts. Each plugin may own at most four active lightweight calls, with no waiting queue. Generation replacement, disable, uninstall, and runtime stop cancel the generation's active calls. Inputs, prompts, outputs, and terminal results are memory-only and are not written to the Session store or ordinary plugin logs.
 
+Terminal delivery is exactly-once best effort. The host records a `plugin.agent-call` warning when directed delivery is rejected or acknowledged as `plugin_mismatch`, `no_handler`, or `failed`. Diagnostics are limited to plugin, generation, Scope, and call identity; terminal and delivery status; handler counts; and a stable error summary. They never include transient input or output, operation payloads, credentials, or provider responses. The call is settled and its capacity is released regardless; Core does not retry delivery or persist plugin business recovery state.
+
 Disposing a project Scope disables new detached calls for that exact Scope, synchronously releases their admission capacity, aborts the providers, and then delivers one `cancelled` terminal before scoped plugin state is removed. Calls in other Scopes continue. A provider result that arrives after cancellation is ignored, and only a later explicit Scope activation permits new detached calls.
 
 ```ts
@@ -106,7 +108,9 @@ hook({
 })
 ```
 
-Approval is derived from generated capabilities and trusted UI. Changing the manifest or capability hash requires approval again. Approval never expands the source declaration.
+Installation access is derived from capabilities, contribution `requires`, operation exposure, known constraints, and trusted UI. The grant is compared structurally on update: equal or narrower access continues without confirmation; added or broadened access asks once and shows only the difference. Unknown constraint changes are confirmed conservatively without assigning a plugin risk rating. Approval never expands the source declaration and never bypasses the ordinary runtime permission/sandbox decision.
+
+`chat.system.transform` is the stable API4 system-context hook. The pre-GA `experimental.chat.system.transform` spelling remains accepted for existing early API4 artifacts, but new stable plugins must use the stable point. Other `experimental.*` hook points are not covered by the API4 compatibility promise.
 
 ## Operations
 

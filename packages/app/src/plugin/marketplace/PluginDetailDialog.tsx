@@ -12,10 +12,10 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { uninstallPluginConfirm } from "@/components/dialog/confirm-copy"
 import { usePluginHost } from "@/plugin"
 import { VerifiedBadge } from "./VerifiedBadge"
-import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import { PluginConsentDialog, type PluginConsentIntent } from "../consent/PluginConsentDialog"
 import { checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
+import { formatPluginBuildId, presentPluginPermission } from "@/plugin/permission-presentation"
 import { loadRegistryResource } from "./registry-resource"
 import type { ApprovalReview, RegistryPluginSummary, RegistryPluginVersion } from "@ericsanchezok/synergy-sdk/client"
 import type { InstalledPlugin, PluginDetail } from "./types"
@@ -32,7 +32,6 @@ import {
   installedPluginStatusView,
   isDevelopmentPlugin,
 } from "./view-model"
-import type { PermissionSeverity } from "../consent/schema"
 
 export type RegistrySource = "official" | "local"
 
@@ -68,8 +67,7 @@ function isApprovalReview(input: unknown): input is ApprovalReview {
     typeof review.reviewToken === "string" &&
     typeof review.target === "object" &&
     review.target !== null &&
-    typeof review.diff === "object" &&
-    review.diff !== null
+    Array.isArray(review.access)
   )
 }
 
@@ -175,7 +173,9 @@ export function PluginDetailDialog(props: {
   const latestVersion = createMemo(() => {
     const list = versions()?.data
     if (!list?.length) return null
-    return [...list].toSorted((a, b) => toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt))[0]
+    return [...list]
+      .filter((version) => version.apiVersion === "4.0")
+      .toSorted((a, b) => toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt))[0]
   })
   const installedVersion = createMemo(() => {
     const version = installedInfo()?.version
@@ -191,17 +191,14 @@ export function PluginDetailDialog(props: {
   const pluginToolsCount = createMemo(() => installedInfo()?.tools.length ?? plugin()?.tools.length ?? 0)
   const pluginOperationsCount = createMemo(() => installedInfo()?.operations.length ?? 0)
   const pluginUiCount = createMemo(() => installedInfo()?.uiContributions ?? plugin()?.uiSurfaces.length ?? 0)
+  const features = createMemo(() => latestVersion()?.featuresSummary ?? [])
   const permissions = createMemo(() => {
     const registryPermissions = collectAllPermissions(versions()?.data ?? [])
     if (registryPermissions.length > 0) return registryPermissions
     return (installedDetail()?.capabilities ?? installedInfo()?.capabilities ?? []).map((key) => ({
       key,
-      description: _({
-        id: "app.plugin.detail.permission.hostCapability",
-        message: "Synergy host capability {key}",
-        values: { key },
-      }),
-      risk: installedDetail()?.risk ?? installedInfo()?.risk ?? "low",
+      title: key,
+      technical: key,
     }))
   })
   const busy = createMemo(() => action() !== null)
@@ -212,6 +209,11 @@ export function PluginDetailDialog(props: {
     if (action() === "review") return _({ id: "app.plugin.detail.action.loadingReview", message: "Loading review..." })
     if (installedStatus()?.canReviewPermissions)
       return _({ id: "app.plugin.detail.action.reviewPermissions", message: "Review permissions" })
+    if (!latestVersion()) {
+      return installedVersion()
+        ? _({ id: "app.plugin.detail.action.api4UpdateRequired", message: "API 4 update required" })
+        : _({ id: "app.plugin.detail.action.noApi4Release", message: "No API 4 release" })
+    }
     if (!installedVersion()) return _({ id: "app.plugin.detail.action.install", message: "Install" })
     if (updateAvailable())
       return _({
@@ -404,7 +406,6 @@ export function PluginDetailDialog(props: {
                     </p>
                     <div class="plugin-detail-badges">
                       <VerifiedBadge verified={current().verified} official={current().official} />
-                      <PermissionRiskBadge risk={current().risk as PermissionSeverity} />
                       <span class="plugin-detail-chip">{sourceLabel()}</span>
                     </div>
                   </div>
@@ -530,6 +531,10 @@ export function PluginDetailDialog(props: {
                     value={latestVersion()?.runtimeMode ?? current().runtimeMode ?? "—"}
                   />
                   <DetailMetric
+                    label={_({ id: "app.plugin.detail.metric.compatibility", message: "Requires Synergy" })}
+                    value={latestVersion()?.compatibility?.synergy ?? installedInfo()?.compatibility?.synergy ?? "—"}
+                  />
+                  <DetailMetric
                     label={_({ id: "app.plugin.detail.metric.updated", message: "Updated" })}
                     value={fmt.relative(new Date(toTimestamp(current().updatedAt)))}
                   />
@@ -581,9 +586,9 @@ export function PluginDetailDialog(props: {
                           {(generation) => (
                             <span class="plugin-detail-chip">
                               {_({
-                                id: "app.plugin.marketplace.generation.label",
-                                message: "Generation {id}",
-                                values: { id: generation().slice(0, 12) },
+                                id: "app.plugin.marketplace.build.label",
+                                message: "Build {id}",
+                                values: { id: formatPluginBuildId(generation()) },
                               })}
                             </span>
                           )}
@@ -595,46 +600,89 @@ export function PluginDetailDialog(props: {
 
                 <section class="plugin-detail-section">
                   <div class="plugin-detail-section-heading">
-                    <h3>{_({ id: "app.plugin.detail.section.capabilities", message: "Capabilities" })}</h3>
+                    <h3>{_({ id: "app.plugin.detail.section.capabilities", message: "Features" })}</h3>
                     <span>
-                      {_({
-                        id: "app.plugin.detail.section.capabilitiesSummary",
-                        message: "{tools} tools · {operations} operations · {surfaces} UI surfaces",
-                        values: {
-                          tools: pluginToolsCount(),
-                          operations: pluginOperationsCount(),
-                          surfaces: pluginUiCount(),
-                        },
-                      })}
+                      {features().length > 0
+                        ? _({
+                            id: "app.plugin.detail.section.featuresCount",
+                            message: "{count} features",
+                            values: { count: features().length },
+                          })
+                        : _({
+                            id: "app.plugin.detail.section.capabilitiesSummary",
+                            message: "{tools} tools · {operations} operations · {surfaces} UI surfaces",
+                            values: {
+                              tools: pluginToolsCount(),
+                              operations: pluginOperationsCount(),
+                              surfaces: pluginUiCount(),
+                            },
+                          })}
                     </span>
                   </div>
-                  <div class="plugin-detail-chip-cloud">
-                    <Show
-                      when={pluginToolsCount() > 0}
-                      fallback={
-                        <span class="plugin-detail-muted">
-                          {_({ id: "app.plugin.detail.section.noTools", message: "No tools declared" })}
-                        </span>
-                      }
-                    >
-                      {/* tool names are plugin-author content — pass through */}
-                      <For each={installedInfo()?.tools.map((tool) => tool.id) ?? current().tools}>
-                        {(tool) => <span class="plugin-detail-chip">{tool}</span>}
+                  <Show
+                    when={features().length > 0}
+                    fallback={
+                      <div class="plugin-detail-chip-cloud">
+                        <Show
+                          when={pluginToolsCount() + pluginOperationsCount() + pluginUiCount() > 0}
+                          fallback={
+                            <span class="plugin-detail-muted">
+                              {_({ id: "app.plugin.detail.section.noFeatures", message: "No features declared" })}
+                            </span>
+                          }
+                        >
+                          {/* contribution ids are plugin-author content — pass through */}
+                          <For each={installedInfo()?.tools.map((tool) => tool.id) ?? current().tools}>
+                            {(tool) => <span class="plugin-detail-chip">{tool}</span>}
+                          </For>
+                          <For each={installedInfo()?.operations.map((operation) => operation.id) ?? []}>
+                            {(operation) => <span class="plugin-detail-chip">{operation}</span>}
+                          </For>
+                          <For each={current().uiSurfaces}>
+                            {(surface) => <span class="plugin-detail-chip">{surface}</span>}
+                          </For>
+                        </Show>
+                      </div>
+                    }
+                  >
+                    <div class="plugin-detail-permission-list">
+                      <For each={features()}>
+                        {(feature) => {
+                          const presentation = createMemo(() => presentPluginPermission(feature))
+                          return (
+                            <div class="plugin-detail-permission-row">
+                              <div>
+                                <span class="plugin-detail-permission-key">{presentation().title}</span>
+                                <Show when={presentation().description}>
+                                  {(description) => (
+                                    <span class="plugin-detail-permission-description">{description()}</span>
+                                  )}
+                                </Show>
+                                <Show when={presentation().technical}>
+                                  {(technical) => (
+                                    <details class="plugin-detail-permission-technical">
+                                      <summary>
+                                        {_({
+                                          id: "app.plugin.detail.permission.technicalDetails",
+                                          message: "Technical details",
+                                        })}
+                                      </summary>
+                                      <code>{technical()}</code>
+                                    </details>
+                                  )}
+                                </Show>
+                              </div>
+                            </div>
+                          )
+                        }}
                       </For>
-                    </Show>
-                    <For each={installedInfo()?.operations.map((operation) => operation.id) ?? []}>
-                      {(operation) => <span class="plugin-detail-chip">{operation}</span>}
-                    </For>
-                    {/* ui surface ids are plugin-author content — pass through */}
-                    <For each={current().uiSurfaces}>
-                      {(surface) => <span class="plugin-detail-chip">{surface}</span>}
-                    </For>
-                  </div>
+                    </div>
+                  </Show>
                 </section>
 
                 <section class="plugin-detail-section">
                   <div class="plugin-detail-section-heading">
-                    <h3>{_({ id: "app.plugin.detail.section.permissions", message: "Permissions" })}</h3>
+                    <h3>{_({ id: "app.plugin.detail.section.permissions", message: "This plugin can" })}</h3>
                     <span>
                       {_({
                         id: "app.plugin.detail.section.permissionsCount",
@@ -656,17 +704,34 @@ export function PluginDetailDialog(props: {
                   >
                     <div class="plugin-detail-permission-list">
                       <For each={permissions()}>
-                        {(permission) => (
-                          <div class="plugin-detail-permission-row">
-                            <div>
-                              {/* permission.key is plugin data — pass through */}
-                              <span class="plugin-detail-permission-key">{permission.key}</span>
-                              {/* permission.description is passed through as-is */}
-                              <span class="plugin-detail-permission-description">{permission.description}</span>
+                        {(permission) => {
+                          const presentation = createMemo(() => presentPluginPermission(permission))
+                          return (
+                            <div class="plugin-detail-permission-row">
+                              <div>
+                                <span class="plugin-detail-permission-key">{presentation().title}</span>
+                                <Show when={presentation().description}>
+                                  {(description) => (
+                                    <span class="plugin-detail-permission-description">{description()}</span>
+                                  )}
+                                </Show>
+                                <Show when={presentation().technical}>
+                                  {(technical) => (
+                                    <details class="plugin-detail-permission-technical">
+                                      <summary>
+                                        {_({
+                                          id: "app.plugin.detail.permission.technicalDetails",
+                                          message: "Technical details",
+                                        })}
+                                      </summary>
+                                      <code>{technical()}</code>
+                                    </details>
+                                  )}
+                                </Show>
+                              </div>
                             </div>
-                            <PermissionRiskBadge risk={permission.risk as PermissionSeverity} />
-                          </div>
-                        )}
+                          )
+                        }}
                       </For>
                     </div>
                   </Show>
@@ -711,7 +776,6 @@ export function PluginDetailDialog(props: {
                                   })}
                                 </span>
                               </div>
-                              <PermissionRiskBadge risk={current().risk as PermissionSeverity} />
                             </div>
                           )}
                         </Show>
@@ -735,12 +799,23 @@ export function PluginDetailDialog(props: {
                                   day: "numeric",
                                 })}
                               </span>
+                              <Show when={version.apiVersion || version.compatibility?.synergy}>
+                                <span class="plugin-detail-version-meta">
+                                  {_({
+                                    id: "app.plugin.detail.version.compatibility",
+                                    message: "Plugin API {apiVersion} · Synergy {range}",
+                                    values: {
+                                      apiVersion: version.apiVersion ?? "—",
+                                      range: version.compatibility?.synergy ?? "—",
+                                    },
+                                  })}
+                                </span>
+                              </Show>
                               <Show when={version.changelog}>
                                 {/* changelog content is plugin-author content — pass through */}
                                 <span class="plugin-detail-version-copy">{version.changelog}</span>
                               </Show>
                             </div>
-                            <PermissionRiskBadge risk={version.risk as PermissionSeverity} />
                           </div>
                         )}
                       </For>

@@ -2,11 +2,11 @@ import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { computeManifestHash } from "@ericsanchezok/synergy-plugin/integrity"
+import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import type { Migration } from "../migration"
 import { MigrationRegistry } from "../migration/registry"
 import { Global } from "../global"
-import type { PluginApprovalRecord } from "./consent/approval-store"
+import { createApprovalRecord, type PluginApprovalRecord } from "./consent/approval-store"
 import type { PluginLockEntry, PluginLockfile } from "./lockfile-schema"
 import { sourceFromSpec } from "./source"
 import { IncompatiblePluginStore, type IncompatiblePluginRecord } from "./incompatible-store"
@@ -30,12 +30,77 @@ async function locateManifest(resolved: string) {
     for (const candidate of [path.join(directory, "plugin.json"), path.join(directory, "dist", "plugin.json")]) {
       const raw = await readJson(candidate)
       const parsed = PluginManifest.safeParse(raw)
-      if (parsed.success) return { manifest: parsed.data, directory: path.dirname(candidate) }
+      if (parsed.success)
+        return {
+          manifest: parsed.data,
+          rawManifest: raw as PluginApprovalManifest,
+          directory: path.dirname(candidate),
+        }
     }
     const parent = path.dirname(directory)
     if (parent === directory) break
     directory = parent
   }
+}
+
+type PluginApprovalManifest = Parameters<typeof computeManifestHash>[0]
+
+function pluginSource(value: unknown): PluginApprovalRecord["source"] {
+  return ["local", "official", "npm", "git", "url", "builtin"].includes(String(value))
+    ? (value as PluginApprovalRecord["source"])
+    : "local"
+}
+
+async function migrateApprovalFile(
+  data: string,
+  manifests: Map<string, { manifest: PluginApprovalManifest; rawManifest: PluginApprovalManifest }>,
+) {
+  const value = await readJson(path.join(data, "plugin-approvals.json"))
+  const oldApprovals = Array.isArray(value) ? value : Object.values(record(value))
+  const approvals: PluginApprovalRecord[] = []
+  for (const value of oldApprovals) {
+    const old = record(value)
+    const pluginId = String(old.pluginId ?? old.id ?? "")
+    const found = manifests.get(pluginId)
+    if (!found || found.rawManifest.apiVersion !== "4.0") continue
+    if (old.schemaVersion === 2 && old.grant && typeof old.grantHash === "string") {
+      approvals.push(old as unknown as PluginApprovalRecord)
+      continue
+    }
+    if (old.status !== "approved") continue
+    const capabilities = Array.isArray(old.approvedCapabilities)
+      ? old.approvedCapabilities.filter((item): item is string => typeof item === "string")
+      : found.rawManifest.capabilities.map((item) => item.id)
+    if (String(old.manifestHash ?? "") !== computeManifestHash(found.rawManifest)) continue
+    if (String(old.capabilitiesHash ?? "") !== computePermissionsHash(found.rawManifest, capabilities)) continue
+    approvals.push({
+      ...createApprovalRecord({
+        pluginId,
+        source: pluginSource(old.source),
+        manifest: found.manifest,
+        capabilities,
+        signer: typeof old.signer === "string" ? old.signer : undefined,
+        approvedBy: old.approvedBy === "policy" || old.approvedBy === "builtin" ? old.approvedBy : "user",
+      }),
+      approvedAt: Number.isFinite(Number(old.approvedAt)) ? Number(old.approvedAt) : Date.now(),
+    })
+  }
+  await fs.mkdir(data, { recursive: true })
+  await Bun.write(path.join(data, "plugin-approvals.json"), `${JSON.stringify(approvals, null, 2)}\n`)
+}
+
+export async function migratePluginApprovalsV2(input: { root: string; data: string; cache: string }) {
+  const rawLock = record(await readJson(path.join(input.root, "plugin.lock")))
+  const rawPlugins = record(rawLock.plugins)
+  const manifests = new Map<string, { manifest: PluginApprovalManifest; rawManifest: PluginApprovalManifest }>()
+  for (const [pluginId, value] of Object.entries(rawPlugins)) {
+    const resolved = record(value).resolved
+    if (typeof resolved !== "string") continue
+    const found = await locateManifest(resolved)
+    if (found) manifests.set(pluginId, { manifest: found.manifest, rawManifest: found.rawManifest })
+  }
+  await migrateApprovalFile(input.data, manifests)
+  await fs.rm(path.join(input.cache, "plugin-market"), { recursive: true, force: true }).catch(() => undefined)
 }
 
 export async function migratePluginCatalog(input: {
@@ -50,6 +115,7 @@ export async function migratePluginCatalog(input: {
   const rawPlugins = record(rawLock.plugins)
   const next: PluginLockfile = { version: 2, plugins: {} }
   const incompatible: IncompatiblePluginRecord[] = []
+  const manifests = new Map<string, { manifest: PluginApprovalManifest; rawManifest: PluginApprovalManifest }>()
   const entries = Object.entries(rawPlugins)
   let current = 0
   for (const [pluginId, value] of entries) {
@@ -77,6 +143,7 @@ export async function migratePluginCatalog(input: {
         approvalId: manifest.id,
       }
       next.plugins[manifest.id] = entry
+      manifests.set(manifest.id, { manifest, rawManifest: found.rawManifest })
     }
     progress(++current, Math.max(1, entries.length))
   }
@@ -84,29 +151,9 @@ export async function migratePluginCatalog(input: {
   await Bun.write(lockPath, `${JSON.stringify(next, null, 2)}\n`)
   await IncompatiblePluginStore.write(incompatible, input.data)
 
-  const oldApprovalsValue = await readJson(path.join(input.data, "plugin-approvals.json"))
-  const oldApprovals = Array.isArray(oldApprovalsValue) ? oldApprovalsValue : Object.values(record(oldApprovalsValue))
-  const approvals: PluginApprovalRecord[] = oldApprovals.map((value) => {
-    const old = record(value)
-    const pluginId = String(old.pluginId ?? old.id ?? "unknown")
-    return {
-      pluginId,
-      source: ["local", "official", "npm", "git", "url", "builtin"].includes(String(old.source))
-        ? (old.source as PluginApprovalRecord["source"])
-        : "local",
-      version: String(old.version ?? "0.0.0"),
-      manifestHash: String(old.manifestHash ?? ""),
-      capabilitiesHash: "",
-      approvedAt: Number(old.approvedAt ?? Date.now()),
-      approvedBy: "user",
-      trustTier: "declarative",
-      approvedCapabilities: [],
-      risk: "low",
-      status: "needsApproval",
-    }
-  })
-  await Bun.write(path.join(input.data, "plugin-approvals.json"), `${JSON.stringify(approvals, null, 2)}\n`)
+  await migrateApprovalFile(input.data, manifests)
   await fs.rm(path.join(input.cache, "plugin"), { recursive: true, force: true }).catch(() => undefined)
+  await fs.rm(path.join(input.cache, "plugin-market"), { recursive: true, force: true }).catch(() => undefined)
 }
 
 const migrations: Migration[] = [
@@ -116,6 +163,16 @@ const migrations: Migration[] = [
     version: "3.0.0",
     async up(progress) {
       await migratePluginCatalog({ root: Global.Path.root, data: Global.Path.data, cache: Global.Path.cache, progress })
+    },
+  },
+  {
+    id: "20260801-plugin-api-4-stable-approvals",
+    description: "Migrate Plugin API 4 approvals to stable access grants",
+    version: "3.0.11",
+    async up(progress) {
+      progress(0, 1)
+      await migratePluginApprovalsV2({ root: Global.Path.root, data: Global.Path.data, cache: Global.Path.cache })
+      progress(1, 1)
     },
   },
 ]

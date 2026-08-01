@@ -17,7 +17,6 @@ import {
   type PluginSelectionSurfaceContext,
   type PluginTextActionSurfaceContext,
   type PluginMessageSurfaceContext,
-  type PluginToolMessageSurfaceContext,
   type PluginSurfaceContext,
 } from "@ericsanchezok/synergy-plugin"
 import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
@@ -47,6 +46,7 @@ import { registerSelectionExtension } from "./registries/selection-extension-reg
 import { registerMessageSlot } from "./registries/message-slot-registry"
 import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
 import { createPluginSurfaceSettings } from "./surface-settings"
+import { createPluginToolMessageContext } from "./tool-message-context"
 
 export type PluginUIStatus = PluginLifecycleState
 export interface PluginUIError {
@@ -346,22 +346,7 @@ function registerPluginSurfaces(input: {
             item,
             (props) => props.sessionId ?? currentSessionId(),
             () => undefined,
-            (context, props) =>
-              ({
-                ...context,
-                message: {
-                  id: props.messageId ?? "",
-                  role: "assistant",
-                },
-                tool: {
-                  name: props.tool,
-                  input: props.input,
-                  metadata: props.metadata,
-                  title: props.title,
-                  output: props.output,
-                  status: props.status,
-                },
-              }) satisfies PluginToolMessageSurfaceContext,
+            (context, props) => createPluginToolMessageContext(context, props),
           )
           if (loader) disposers.push(registerPluginToolRenderer(item.tool, loader as never))
           return

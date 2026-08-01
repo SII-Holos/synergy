@@ -23,6 +23,7 @@ import {
 import { stagePlaywrightCoreRuntime } from "./playwright-runtime-assets"
 import { copyHolosCliAsset } from "./holos-cli-assets"
 import { prepareBuildModelsCatalog } from "./models-catalog"
+import { stageEmbeddingRuntimeAssets, standaloneEmbeddingBuildPlugin } from "./embedding-runtime-assets"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -153,6 +154,7 @@ for (const item of targets) {
   if (shouldReusePublishedRuntime(item)) {
     await extractPublishedRuntimePackage(name, Script.version)
     await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
+    await stageEmbeddingRuntimeAssets({ runtimeDir: path.join("dist", name) })
     copyHolosCliAsset(path.join("dist", name))
     if (requireSandboxAssets) assertPackagedSandboxAsset(item, path.join("dist", name))
     binaries[name] = Script.version
@@ -169,6 +171,7 @@ for (const item of targets) {
       tsconfig: "./tsconfig.json",
       sourcemap: "external",
       external: ["@aws-sdk/client-s3", "chromium-bidi", "chromium-bidi/*", "playwright-core", "playwright-core/*"],
+      plugins: [standaloneEmbeddingBuildPlugin()],
       compile: {
         autoloadBunfig: false,
         autoloadDotenv: false,
@@ -187,6 +190,7 @@ for (const item of targets) {
         SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
         SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: JSON.stringify(browserManifestPublicKey),
         SYNERGY_SANDBOX_HELPER_SHA256: JSON.stringify(sandboxAsset?.sha256 ?? ""),
+        SYNERGY_STANDALONE: "true",
       },
     }),
   )
@@ -206,6 +210,7 @@ for (const item of targets) {
   copyHolosCliAsset(path.join("dist", name))
   binaries[name] = Script.version
   await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
+  await stageEmbeddingRuntimeAssets({ runtimeDir: path.join("dist", name) })
 
   if (sandboxAsset) {
     copySandboxAsset(sandboxAsset, path.join("dist", name))

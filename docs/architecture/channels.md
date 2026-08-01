@@ -32,6 +32,8 @@ Target keys include provider type and account ID. Project and Task identities th
 
 Existing Feishu endpoint records retain the legacy `chatId` / `scopeKey` encoding. `Channel.Info` accepts exactly one identity form: the legacy chat fields or a typed target. This preserves existing Feishu keys while preventing new callers from mixing the two contracts.
 
+Feishu derives an endpoint `scopeKey` from the account's `groupSessionScope`. Topic and sender modes encode the topic or sender into the key; `group_thread` uses the Feishu `thread_id` as the only continuity key and falls back to the inbound `message_id` when no thread exists. A durable `channel/feishu/thread_bindings` record maps a returned `thread_id` back to the `scopeKey`, so later messages in the same thread reuse the same session and the first reply is sent with `reply_in_thread: true`.
+
 ## Provider and Transport Lifecycle
 
 Every provider declares one lifecycle:

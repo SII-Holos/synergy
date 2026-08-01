@@ -106,6 +106,26 @@ If a provider IS in the registry but the user wants to customize it (whitelist m
 }
 ```
 
+### Additional account for a registry provider
+
+When the user wants a second, independently selectable account for a provider that already exists in Models.dev, use a unique connection ID and set `modelsDevProviderID` to the canonical provider ID. Save credentials under the unique connection ID. Do not copy the canonical model list into config.
+
+```jsonc
+{
+  "provider": {
+    "deepseek-team": {
+      "modelsDevProviderID": "deepseek",
+      "name": "DeepSeek Team",
+      "env": ["DEEPSEEK_TEAM_API_KEY"]
+    }
+  }
+}
+```
+
+`modelsDevProviderID` inherits model catalog metadata. A registered `profile` can separately enable the canonical provider's runtime, auth recovery, usage, model factory, and credential-aware live-discovery behavior. The connection keeps its own provider ID, credentials, health state, live catalog snapshot, endpoint/SDK overrides, allowlist/blacklist, and explicit model overrides.
+
+Omit `profile` when the connection is only an OpenAI-compatible gateway that should share model metadata without canonical OAuth or request behavior.
+
 **Overriding baseURL for a built-in provider:**
 ```jsonc
 {
@@ -236,6 +256,7 @@ Resolved at config load time. The env var must exist in Synergy's shell.
 Fields:
 - `name` — human-readable display name
 - `npm` — AI SDK package (see bundled list below)
+- `modelsDevProviderID` — canonical Models.dev provider ID whose model catalog this connection inherits
 - `api` — base API URL (alternative to `options.baseURL`)
 - `env` — array of env var names to check for API key
 - `options` — passed to SDK constructor. Common: `apiKey`, `baseURL`, `timeout`, `enterpriseUrl`, `setCacheKey`
@@ -412,12 +433,14 @@ For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and
 ```
 
 - `disabled_providers` — subtractive: listed providers are skipped.
-- `enabled_providers` — exclusive: when set, ONLY listed providers load.
+- `enabled_providers` — exclusive when non-empty: ONLY listed providers load.
+- An empty array in either key carries no filtering intent. It is ignored in that config layer, so any lower-priority provider filter remains effective; with no lower-priority value, the key resolves as unset.
+- These filters control runtime loading and model availability only. The Providers settings list still shows catalog and configured providers, marking filtered entries unavailable so users can inspect and re-enable them.
 
 ## Troubleshooting
 
 - **Provider not loading** — verify the API key is in the credential store with the correct provider ID; check `enabled_providers`/`disabled_providers` are not filtering it out; reload with `runtime_reload(target: "provider")`.
-- **"Model not found" error** — the model ID must match what the provider's API expects; for custom providers, add models manually under `provider.<id>.models`; check `whitelist`/`blacklist` are not filtering the model.
+- **"Model not found" error** — the model ID must match what the provider's API expects; for a registry-backed account, set `modelsDevProviderID` instead of duplicating models; for a fully custom provider, add models under `provider.<id>.models`; check `whitelist`/`blacklist` are not filtering the model.
 - **API key not working** — verify the key format matches the provider variant (e.g., Coding Plan keys need the `-coding-plan` provider variant); check for extra whitespace; try the key with `curl` against the provider's API directly.
 - **Local model connection refused** — verify the server is running and the `baseURL` is correct; check the port number; ensure the server exposes an OpenAI-compatible `/v1` endpoint.
 - **Registry fetch failed** — if `https://models.dev/api.json` is unreachable, Synergy falls back to the local cache at `~/.synergy/cache/models.json`; you can also manually add providers via config.

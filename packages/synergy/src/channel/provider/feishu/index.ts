@@ -11,6 +11,7 @@ import { FeishuStreamingState } from "./streaming-state"
 import { feishuDedup } from "./dedup"
 import { senderNameCache, chatNameCache } from "./sender"
 import { InboundDebouncer } from "./debounce"
+import { FeishuThreadBinding } from "./thread-binding"
 import {
   parseMessageContent,
   normalizeMentions,
@@ -27,6 +28,7 @@ import type { FeishuApiContext } from "./api-context"
 import { FeishuOutboundMedia } from "./outbound-media"
 import { parseFeishuResponseCardAction, renderFeishuResponseCard, sendFeishuResponseCard } from "./response-card"
 import { parseFeishuQuestionCardAction, renderFeishuQuestionCard, sendFeishuQuestionCard } from "./question-card"
+import { sendFeishuMarkdownCard } from "./send-card"
 
 export {
   parseFeishuQuestionCardAction,
@@ -210,11 +212,12 @@ type AccountState = {
 export function resolveGroupScopeKey(input: {
   chatId: string
   senderId: string
+  messageId?: string
   rootId?: string
   threadId?: string
   scope: Config.FeishuGroupSessionScope
 }): string {
-  const { chatId, senderId, rootId, threadId, scope } = input
+  const { chatId, senderId, messageId, rootId, threadId, scope } = input
   const topicId = rootId ?? threadId
 
   switch (scope) {
@@ -224,10 +227,29 @@ export function resolveGroupScopeKey(input: {
       return topicId ? `${chatId}:topic:${topicId}` : chatId
     case "group_topic_sender":
       return topicId ? `${chatId}:topic:${topicId}:sender:${senderId}` : `${chatId}:sender:${senderId}`
+    case "group_thread":
+      return threadId ? `${chatId}:thread:${threadId}` : `${chatId}:message:${messageId ?? "unknown"}`
     case "group":
     default:
       return chatId
   }
+}
+
+export function resolveFeishuQueueKey(input: {
+  chatId: string
+  scopeKey?: string
+  scope: Config.FeishuGroupSessionScope
+}): string {
+  return input.scope === "group_thread" ? (input.scopeKey ?? input.chatId) : input.chatId
+}
+
+export function resolveFeishuDebounceKey(input: {
+  chatId: string
+  senderId: string
+  scopeKey?: string
+  scope: Config.FeishuGroupSessionScope
+}): string {
+  return input.scope === "group_thread" ? (input.scopeKey ?? input.chatId) : `${input.chatId}:${input.senderId}`
 }
 
 export function isSelfSender(senderType?: string): boolean {
@@ -511,29 +533,36 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     }).catch((error) => log.warn("streaming card recovery failed", { accountId, error }))
     if (signal.aborted || this.accounts.get(accountId) !== account) return
 
-    const enqueueChatTask = (chatId: string, task: () => Promise<void>) => {
-      const prev = runtime.perChatQueue.get(chatId) ?? Promise.resolve()
+    const enqueueConversationTask = (key: string, task: () => Promise<void>) => {
+      const prev = runtime.perChatQueue.get(key) ?? Promise.resolve()
       const next = prev.then(task, task).catch((err) => {
-        log.error("chat task failed", { chatId, error: err })
+        log.error("conversation task failed", { key, error: err })
       })
-      runtime.perChatQueue.set(chatId, next)
+      runtime.perChatQueue.set(key, next)
       void next.finally(() => {
-        if (runtime.perChatQueue.get(chatId) === next) runtime.perChatQueue.delete(chatId)
+        if (runtime.perChatQueue.get(key) === next) runtime.perChatQueue.delete(key)
       })
       return next
     }
 
+    const queueKey = (ctx: ChannelTypes.MessageContext) =>
+      resolveFeishuQueueKey({ chatId: ctx.chatId, scopeKey: ctx.scopeKey, scope: accountConfig.groupSessionScope })
     const debounceMs = accountConfig.inboundDebounceMs ?? 0
     const debouncer = new InboundDebouncer<FeishuInboundEvent>({
       debounceMs,
       buildKey: (event) => {
         if (debounceMs <= 0) return null
-        return `${event.ctx.chatId}:${event.ctx.senderId}`
+        return resolveFeishuDebounceKey({
+          chatId: event.ctx.chatId,
+          senderId: event.ctx.senderId,
+          scopeKey: event.ctx.scopeKey,
+          scope: accountConfig.groupSessionScope,
+        })
       },
       resolveText: (event) => event.ctx.text,
       onFlush: async (merged) => {
         const ctx = { ...merged.last.ctx, text: merged.combinedText }
-        await enqueueChatTask(ctx.chatId, () => host.conversations.receive(ctx))
+        await enqueueConversationTask(queueKey(ctx), () => host.conversations.receive(ctx))
       },
       onError: (err) => log.error("debounce flush failed", { accountId, error: err }),
     })
@@ -575,7 +604,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
             if (debounceMs > 0) {
               debouncer.enqueue({ ctx })
             } else {
-              await enqueueChatTask(ctx.chatId, () => host.conversations.receive(ctx))
+              await enqueueConversationTask(queueKey(ctx), () => host.conversations.receive(ctx))
             }
           } catch (err) {
             log.error("failed to process message", { messageId: rawMessageId, error: err })
@@ -803,14 +832,20 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     }
 
     const groupScope = accountConfig.groupSessionScope ?? "group"
+    const boundScopeKey =
+      filterResult.isGroup && groupScope === "group_thread" && msg.thread_id
+        ? await FeishuThreadBinding.get({ accountId, chatId: msg.chat_id!, threadId: msg.thread_id })
+        : undefined
     const scopeKey = filterResult.isGroup
-      ? resolveGroupScopeKey({
+      ? (boundScopeKey ??
+        resolveGroupScopeKey({
           chatId: msg.chat_id!,
           senderId,
+          messageId: msg.message_id,
           rootId: msg.root_id,
           threadId: msg.thread_id,
           scope: groupScope,
-        })
+        }))
       : undefined
 
     return {
@@ -829,6 +864,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       rootId: msg.root_id,
       parentId: msg.parent_id,
       threadId: msg.thread_id,
+      replyToMessageId: groupScope === "group_thread" ? msg.message_id : undefined,
       mentions: mentions.map((m) => ({
         key: m.key,
         id: m.id.open_id,
@@ -853,6 +889,16 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       mediaContext: { apiBase: account.apiBase, getAccessToken: () => this.getAccessToken(input.accountId) },
       sendText: (text) =>
         this.sendCreateMessage(input.accountId, input.chatId, { msgType: "text", content: JSON.stringify({ text }) }),
+      sendMarkdown:
+        this.resolveResponseFormat(account) === "markdown"
+          ? (text) =>
+              sendFeishuMarkdownCard({
+                apiBase: account.apiBase,
+                getAccessToken: () => this.getAccessToken(input.accountId),
+                chatId: input.chatId,
+                text,
+              })
+          : undefined,
       sendMessage: (message) => this.sendCreateMessage(input.accountId, input.chatId, message),
     })
   }
@@ -860,58 +906,109 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
   async replyMessage(input: {
     accountId: string
     messageId: string
+    chatId?: string
+    chatType?: "dm" | "group"
     parts: ChannelTypes.OutboundPart[]
+    scopeKey?: string
   }): Promise<ChannelTypes.SendResult> {
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
 
+    const replyInThread = this.resolveReplyInThread(account, input.chatType)
+    const sendReply = (message: FeishuMessagePayload) =>
+      this.sendReplyMessage(input.accountId, input.messageId, message, replyInThread).then((result) =>
+        this.bindThread(input, result),
+      )
+
     return sendParts({
       parts: input.parts,
       mediaContext: { apiBase: account.apiBase, getAccessToken: () => this.getAccessToken(input.accountId) },
-      sendText: (text) =>
-        this.sendReplyMessage(input.accountId, input.messageId, { msgType: "text", content: JSON.stringify({ text }) }),
-      sendMessage: (message) => this.sendReplyMessage(input.accountId, input.messageId, message),
+      sendText: (text) => sendReply({ msgType: "text", content: JSON.stringify({ text }) }),
+      sendMarkdown:
+        this.resolveResponseFormat(account) === "markdown"
+          ? (text) =>
+              sendFeishuMarkdownCard({
+                apiBase: account.apiBase,
+                getAccessToken: () => this.getAccessToken(input.accountId),
+                chatId: input.chatId ?? "",
+                replyToMessageId: input.messageId,
+                replyInThread,
+                text,
+              }).then((result) => (result ? this.bindThread(input, result) : undefined))
+          : undefined,
+      sendMessage: sendReply,
     })
+  }
+
+  private resolveResponseFormat(account: AccountState): "text" | "markdown" {
+    return account.config.responseFormat ?? account.channelConfig.responseFormat ?? "markdown"
+  }
+
+  private resolveReplyInThread(account: AccountState, chatType?: "dm" | "group"): boolean {
+    if (chatType === "dm") return false
+    if (account.config.replyInThread) return true
+    return chatType === "group" && account.config.groupSessionScope === "group_thread"
+  }
+
+  private async bindThread(
+    input: { accountId: string; chatId?: string; scopeKey?: string },
+    result: ChannelTypes.SendResult,
+  ): Promise<ChannelTypes.SendResult> {
+    if (result.threadId && input.chatId && input.scopeKey) {
+      await FeishuThreadBinding.set({
+        accountId: input.accountId,
+        chatId: input.chatId,
+        threadId: result.threadId,
+        scopeKey: input.scopeKey,
+      })
+    }
+    return result
   }
 
   async sendResponseCard(input: {
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    scopeKey?: string
     replyToMessageId?: string
     requestId: string
     card: ChannelTypes.ResponseCard
   }): Promise<ChannelTypes.SendResult> {
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
-    return sendFeishuResponseCard({
+    const result = await sendFeishuResponseCard({
       apiBase: account.apiBase,
       getAccessToken: () => this.getAccessToken(input.accountId),
       chatId: input.chatId,
       replyToMessageId: input.replyToMessageId,
-      replyInThread: account.config.replyInThread,
+      replyInThread: this.resolveReplyInThread(account, input.chatType),
       requestId: input.requestId,
       card: input.card,
     })
+    return this.bindThread(input, result)
   }
 
   async sendQuestionCard(input: {
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
+    scopeKey?: string
     replyToMessageId?: string
     requestId: string
     questions: import("@/question").Question.Info[]
   }): Promise<ChannelTypes.SendResult> {
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
-    return sendFeishuQuestionCard({
+    const result = await sendFeishuQuestionCard({
       apiBase: account.apiBase,
       getAccessToken: () => this.getAccessToken(input.accountId),
       chatId: input.chatId,
       replyToMessageId: input.replyToMessageId,
-      replyInThread: account.config.replyInThread,
+      replyInThread: this.resolveReplyInThread(account, input.chatType),
       requestId: input.requestId,
       questions: input.questions,
     })
+    return this.bindThread(input, result)
   }
 
   private async sendCreateMessage(accountId: string, chatId: string, payload: FeishuMessagePayload) {
@@ -941,7 +1038,12 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     return { messageId: result.data?.message_id ?? "" }
   }
 
-  private async sendReplyMessage(accountId: string, messageId: string, payload: FeishuMessagePayload) {
+  private async sendReplyMessage(
+    accountId: string,
+    messageId: string,
+    payload: FeishuMessagePayload,
+    replyInThread?: boolean,
+  ) {
     const account = this.accounts.get(accountId)
     if (!account) throw new Error(`Feishu account not found: ${accountId}`)
 
@@ -955,17 +1057,21 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       body: JSON.stringify({
         content: payload.content,
         msg_type: payload.msgType,
-        ...(account.config.replyInThread ? { reply_in_thread: true } : {}),
+        ...(replyInThread ? { reply_in_thread: true } : {}),
       }),
       signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     })
 
-    const result = (await response.json()) as { code?: number; msg?: string; data?: { message_id?: string } }
+    const result = (await response.json()) as {
+      code?: number
+      msg?: string
+      data?: { message_id?: string; thread_id?: string }
+    }
     if (result.code !== 0) {
       throw new Error(`Reply failed: ${result.msg ?? `code ${result.code}`}`)
     }
 
-    return { messageId: result.data?.message_id ?? "" }
+    return { messageId: result.data?.message_id ?? "", threadId: result.data?.thread_id }
   }
 
   async addReaction(input: {
@@ -1019,24 +1125,45 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
   createStreamingSession(input: {
     accountId: string
     chatId: string
+    chatType?: "dm" | "group"
     replyToMessageId?: string
     sessionID: string
+    scopeKey?: string
   }): ChannelTypes.StreamingSession {
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
 
+    const replyInThread = this.resolveReplyInThread(account, input.chatType)
     const sendText = async (text: string) => {
-      if (input.replyToMessageId) {
-        await this.sendReplyMessage(input.accountId, input.replyToMessageId, {
-          msgType: "text",
-          content: JSON.stringify({ text }),
-        })
-        return
-      }
-      await this.sendCreateMessage(input.accountId, input.chatId, {
-        msgType: "text",
-        content: JSON.stringify({ text }),
-      })
+      await sendTextPart(
+        text,
+        async (plain) => {
+          if (input.replyToMessageId) {
+            await this.sendReplyMessage(
+              input.accountId,
+              input.replyToMessageId,
+              { msgType: "text", content: JSON.stringify({ text: plain }) },
+              replyInThread,
+            ).then((result) => this.bindThread(input, result))
+            return
+          }
+          await this.sendCreateMessage(input.accountId, input.chatId, {
+            msgType: "text",
+            content: JSON.stringify({ text: plain }),
+          })
+        },
+        this.resolveResponseFormat(account) === "markdown"
+          ? (markdown) =>
+              sendFeishuMarkdownCard({
+                apiBase: account.apiBase,
+                getAccessToken: () => this.getAccessToken(input.accountId),
+                chatId: input.chatId,
+                replyToMessageId: input.replyToMessageId,
+                replyInThread,
+                text: markdown,
+              }).then((result) => (result ? this.bindThread(input, result) : undefined))
+          : undefined,
+      )
     }
 
     const streamingEnabled = account.config.streaming ?? account.channelConfig.streaming ?? true
@@ -1047,10 +1174,11 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       getAccessToken: () => this.getAccessToken(input.accountId),
       chatId: input.chatId,
       replyToMessageId: input.replyToMessageId,
-      replyInThread: account.config.replyInThread,
+      replyInThread,
       throttleMs: account.config.streamingThrottleMs,
       sendFallback: sendText,
       persistence: { accountId: input.accountId, sessionID: input.sessionID },
+      onThreadCreated: (threadId) => this.bindThread(input, { messageId: "", threadId }).then(() => {}),
     })
   }
 }
@@ -1064,6 +1192,7 @@ async function sendParts(input: {
   parts: ChannelTypes.OutboundPart[]
   mediaContext: FeishuApiContext
   sendText: (text: string) => Promise<ChannelTypes.SendResult>
+  sendMarkdown?: (text: string) => Promise<ChannelTypes.SendResult | undefined>
   sendMessage: (message: FeishuMessagePayload) => Promise<ChannelTypes.SendResult>
 }) {
   let lastResult: ChannelTypes.SendResult | undefined
@@ -1071,7 +1200,7 @@ async function sendParts(input: {
   for (const part of input.parts) {
     if (part.type === "text") {
       if (!part.text.trim()) continue
-      lastResult = await input.sendText(part.text)
+      lastResult = (await sendTextPart(part.text, input.sendText, input.sendMarkdown)) ?? undefined
       continue
     }
 
@@ -1081,6 +1210,21 @@ async function sendParts(input: {
 
   if (lastResult) return lastResult
   throw new Error("Cannot send an empty outbound message")
+}
+
+async function sendTextPart(
+  text: string,
+  sendText: (text: string) => Promise<ChannelTypes.SendResult | void>,
+  sendMarkdown?: (text: string) => Promise<ChannelTypes.SendResult | undefined>,
+): Promise<ChannelTypes.SendResult | void> {
+  if (sendMarkdown) {
+    const card = await sendMarkdown(text).catch((error) => {
+      log.warn("markdown card delivery failed; falling back to plain text", { error })
+      return undefined
+    })
+    if (card) return card
+  }
+  return sendText(text)
 }
 
 class NonStreamingSession implements ChannelTypes.StreamingSession {

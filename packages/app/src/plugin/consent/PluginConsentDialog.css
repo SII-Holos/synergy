@@ -24,7 +24,7 @@
   scrollbar-color: color-mix(in oklch, var(--border-base) 40%, transparent) transparent;
 }
 
-.consent-risk-summary,
+.consent-confirmation-summary,
 .consent-warning,
 .consent-manifest-note,
 .consent-error {
@@ -40,19 +40,19 @@
   letter-spacing: var(--letter-spacing-normal);
 }
 
-.consent-risk-summary {
+.consent-confirmation-summary {
   background: color-mix(in oklch, var(--surface-muted) 60%, transparent);
   color: var(--text-base);
 }
 
-.consent-risk-summary > span:first-of-type,
+.consent-confirmation-summary > span:first-of-type,
 .consent-warning > span,
 .consent-manifest-note > span,
 .consent-error > span {
   flex: 1;
 }
 
-.consent-risk-summary [data-component="icon"],
+.consent-confirmation-summary [data-component="icon"],
 .consent-manifest-note [data-component="icon"] {
   color: var(--text-weak);
 }

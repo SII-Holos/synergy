@@ -74,7 +74,7 @@ export namespace PromptBudgeter {
   export async function buildPlan(input: PromptPlanInput): Promise<PromptPlan> {
     const original = [...input.system]
     const transformed = await Plugin.trigger(
-      "experimental.chat.system.transform",
+      "chat.system.transform",
       {
         phase: "budget",
         sessionID: input.sessionID,

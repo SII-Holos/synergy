@@ -38,6 +38,7 @@ function channelConfig(): Config.ChannelFeishu {
     type: "feishu",
     accounts: {},
     streaming: true,
+    responseFormat: "markdown",
   }
 }
 

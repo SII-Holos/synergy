@@ -3,7 +3,6 @@ import path from "path"
 import { fileURLToPath } from "url"
 import z from "zod"
 import { PluginToolId } from "./ids"
-import { riskForCapabilities } from "./capability"
 import { getDisabledPlugin, getDisabledPlugins, getLoadedPlugins, getPlugin, type LoadedPlugin } from "./loader"
 import { pluginRuntimeManager } from "./runtime"
 import type { PluginSource } from "./trust"
@@ -65,6 +64,7 @@ export const PluginStatusSchema = z
     name: z.string(),
     version: z.string().optional(),
     apiVersion: z.string().optional(),
+    compatibility: z.object({ synergy: z.string() }).optional(),
     generation: z.string().optional(),
     installation: PluginInstallationSchema,
     trust: z.enum(["declarative", "trusted-import"]),
@@ -73,7 +73,6 @@ export const PluginStatusSchema = z
     disabledPhase: z.string().optional(),
     loaded: z.boolean(),
     capabilities: z.array(z.string()),
-    risk: z.enum(["low", "medium", "high"]),
     operations: z.array(z.object({ id: z.string(), type: z.enum(["query", "command"]), expose: z.array(z.string()) })),
     tools: z.array(z.object({ id: z.string(), fullId: z.string(), capabilities: z.array(z.string()) })),
     uiContributions: z.number(),
@@ -104,18 +103,18 @@ export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<Pl
     name: plugin.name,
     version: plugin.manifest.version,
     apiVersion: plugin.manifest.apiVersion,
+    compatibility: plugin.manifest.compatibility,
     generation: plugin.manifest.artifacts.generation,
     installation: classifyPluginInstallation(plugin),
     trust: manifestHasTrustedUI(plugin.manifest) ? "trusted-import" : "declarative",
     health: "loaded",
     loaded: true,
     capabilities,
-    risk: riskForCapabilities(capabilities),
     operations: plugin.manifest.contributions
       .filter((item) => item.kind === "operation")
       .map((item) => ({ id: item.id, type: item.type, expose: item.expose })),
     tools: plugin.manifest.contributions
-      .filter((item) => item.kind === "tool")
+      .filter((item) => item.kind === "tool" && item.exposure?.mode !== "internal")
       .map((item) => ({
         id: item.id,
         fullId: PluginToolId.format(plugin.id, item.id),
@@ -146,6 +145,7 @@ function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & 
       name: plugin.name ?? plugin.pluginId,
       version: manifest.version,
       apiVersion: manifest.apiVersion,
+      compatibility: manifest.compatibility,
       generation: manifest.artifacts.generation,
       installation: classifyPluginInstallation({ spec: plugin.spec ?? plugin.pluginId, source: plugin.source }),
       trust: trusted ? "trusted-import" : "declarative",
@@ -154,12 +154,11 @@ function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & 
       disabledPhase: plugin.phase,
       loaded: false,
       capabilities,
-      risk: riskForCapabilities(capabilities),
       operations: manifest.contributions
         .filter((item) => item.kind === "operation")
         .map((item) => ({ id: item.id, type: item.type as "query" | "command", expose: item.expose })),
       tools: manifest.contributions
-        .filter((item) => item.kind === "tool")
+        .filter((item) => item.kind === "tool" && item.exposure?.mode !== "internal")
         .map((item) => ({
           id: item.id,
           fullId: PluginToolId.format(plugin.pluginId, item.id),
@@ -183,7 +182,6 @@ function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & 
     disabledPhase: plugin.phase,
     loaded: false,
     capabilities: [],
-    risk: "low",
     operations: [],
     tools: [],
     uiContributions: 0,

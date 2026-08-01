@@ -1331,13 +1331,17 @@ describe.serial("Cortex", () => {
       return result
     }
 
-    async function waitForNotification(parentSessionID: string, taskID: string) {
+    async function waitForNotification(parentSessionID: string, taskID: string, taskSessionID?: string) {
       const deliveryKey = `cortex:taskNotification:${taskID}`
-      for (let i = 0; i < 50; i++) {
+      const timeoutAt = Date.now() + 3_000
+      while (Date.now() < timeoutAt) {
         const item = (await SessionInbox.list(parentSessionID)).find(
           (candidate) => candidate.deliveryKey === deliveryKey,
         )
-        if (item) return item
+        const deliveryNotified =
+          taskSessionID === undefined ||
+          typeof (await Session.get(taskSessionID)).cortex?.deliveryNotifiedAt === "number"
+        if (item && deliveryNotified) return item
         await Bun.sleep(10)
       }
       return (await SessionInbox.list(parentSessionID)).find((candidate) => candidate.deliveryKey === deliveryKey)
@@ -1366,7 +1370,7 @@ describe.serial("Cortex", () => {
             })
 
             const completed = await waitUntilCompleted(task.id)
-            const notification = await waitForNotification(parentSession.id, task.id)
+            const notification = await waitForNotification(parentSession.id, task.id, task.sessionID)
 
             expect(completed?.status).toBe("completed")
             expect(notification).toBeDefined()

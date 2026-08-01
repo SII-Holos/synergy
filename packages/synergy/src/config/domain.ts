@@ -76,7 +76,6 @@ export namespace ConfigDomain {
     def("plugins", "50-plugins.jsonc", "Plugins", [
       "plugin",
       "pluginConfig",
-      "pluginApprovalPolicy",
       "pluginRuntimePolicy",
       "pluginMarketplace",
     ]),

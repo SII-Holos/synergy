@@ -57,17 +57,15 @@ describe("plugin uninstall registration selection", () => {
 
 function approval(pluginId: string): PluginApprovalRecord {
   return {
+    schemaVersion: 2,
     pluginId,
     source: "official",
-    version: "1.0.0",
-    manifestHash: "manifest",
-    capabilitiesHash: "capabilities",
+    grant: { capabilities: [], contributionRequirements: [] },
+    grantHash: "capabilities",
     approvedAt: 1,
     approvedBy: "user",
     trustTier: "declarative",
     approvedCapabilities: [],
-    risk: "low",
-    status: "approved",
   }
 }
 

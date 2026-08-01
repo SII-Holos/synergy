@@ -1,23 +1,25 @@
-# Plugin API 4 Migration
+# Plugin API 4 GA Migration
 
-Plugin API 4 extends the generated-manifest and host-runtime contract without a Plugin API 3 compatibility adapter. Plugin packages must be rebuilt with the API 4 public package and plugin-kit before installation or update.
+Plugin API 4 is Synergy's long-term stable plugin baseline. Plugin API 3 is not supported by the GA host: its releases may remain in registry history, but they are not default installation candidates and cannot load. An installed API3 plugin keeps its canonical ID so a published API4 release can replace it directly without uninstalling first.
 
-## Plugin Authors
+## Author Migration
 
-Rebuild and validate the plugin with `@ericsanchezok/synergy-plugin@4` and `@ericsanchezok/synergy-plugin-kit@4`.
+Upgrade to `@ericsanchezok/synergy-plugin@4` and `@ericsanchezok/synergy-plugin-kit@4`, rebuild the artifact, and set the minimum compatible host when it is newer than the API4 baseline:
 
-API 4 adds or tightens these contracts:
+```ts
+export default definePlugin({
+  id: "my-plugin",
+  version: "2.0.0",
+  description: "Example",
+  compatibility: { synergy: ">=3.0.11" },
+  capabilities: [],
+  contributions: [],
+})
+```
 
-- trusted UI ownership is derived from the public contribution schemas, including nested text-action presentation components;
-- manifest and permissions hashes are the canonical update-consent evidence, so any generated manifest or capability change may require approval again;
-- detached `context.agent.start()` calls are Scope-owned, deliver one terminal result through `agent.call.after`, and are cancelled when their Scope runtime is disposed;
-- contribution health is keyed as `<kind>:<id>`, allowing different contribution kinds to reuse a plugin-local ID without overwriting each other;
-- selected-text contributions use the host selection provenance contract, including `code` selections with non-editable `other` origin;
-- plugin Tool renderers are isolated per card and fall back to the host Tool renderer when the trusted component throws.
+`apiVersion` remains `"4.0"` across additive SDK 4.x releases. Published stable plugins must not depend on `experimental.*`. The pre-GA system-context hook is now stable as `chat.system.transform`; the host still accepts the experimental spelling in already-built early API4 artifacts.
 
-Do not preserve or synthesize old hashes, bare contribution-health IDs, or detached calls across a Scope disposal. Treat a refreshed approval review as authoritative and retry only after explicit Scope activation.
-
-Build, validate, and pack again:
+Build and inspect the new artifact:
 
 ```bash
 synergy-plugin build
@@ -25,14 +27,18 @@ synergy-plugin validate --runtime-discovery
 synergy-plugin pack
 ```
 
-## Package Export Contract
+## Compatibility Promise
 
-The repository workspace resolves TypeScript declarations directly from `./src/*.ts` so clean-checkout typechecking does not depend on prebuilt `dist` files. Release packaging rewrites those declaration exports to `./dist/*.d.ts`; published packages contain only built output.
+The host reads a tolerant version/compatibility envelope before strict decoding and executable import. API4 artifacts then pass through the frozen `PluginManifestV4` decoder. Stable API4 fields, contribution kinds, Host Services, hook points, types, and semantics are additive: existing contracts are not deleted, renamed, narrowed, or repurposed. Deprecated stable APIs retain types and implementation.
 
-Plugin projects should consume the published package and must not depend on repository-only source paths.
+Future API families use a separate decoder and one boundary adapter. Compatibility branches do not spread through loaders, registries, or Host Services. Runtime IPC is host-owned; `runtime.protocolVersion` is diagnostic provenance and must not be used as a plugin compatibility gate.
 
-## Synergy Host Data
+CI keeps a first-release API4 artifact fixture and loads it directly with the current host. The fixture is never rebuilt with the current SDK.
 
-API 4 does not add a persisted host-data backfill. Contribution health and detached Agent calls are transient runtime state. Existing installations retain plugin settings, enablement, lockfile entries, and approvals, but an update is re-evaluated against the current manifest and permissions hashes and may require approval again.
+## Approval Migration
 
-Old plugin archives are incompatible and must be replaced by newly built API 4 packages.
+The plugin migration converts valid API4 v1 approval records into v2 publisher/access grants and drops API3, tampered, or already-invalid approvals. The config migration removes `pluginApprovalPolicy`; marketplace caches are invalidated.
+
+The new grant stores plugin ID, source, signer, structured access, grant hash, approval method, and time. Synergy host upgrades do not change it. Equal or narrower same-publisher updates continue automatically; added/broadened access, unknown constraint changes, or publisher/source changes require a concise confirmation. Manifest hashes remain signature/integrity and review-freshness evidence, not the user authorization key.
+
+Registry v2 removes plugin risk ratings and adds per-version `apiVersion`, `compatibility`, and separate natural-language feature and access summaries. Hosts accept registry v1 and v2 during rollout.

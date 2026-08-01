@@ -1,6 +1,6 @@
-import { riskForCapabilities } from "../capability"
+import type { PluginGrantContract } from "@ericsanchezok/synergy-plugin/integrity"
 import { generatePermissionItems } from "./summary"
-import type { PermissionChange, PermissionItem, PluginPermissionDiff } from "./schema"
+import type { PermissionItem, PluginPermissionDiff } from "./schema"
 
 export interface DiffPermissionsState {
   oldVersion?: string
@@ -9,112 +9,180 @@ export interface DiffPermissionsState {
   newCapabilities: string[]
 }
 
-export interface PluginApprovalEvidence {
-  manifestHash: string
-  permissionsHash: string
+export type PluginAccessChange = "equal" | "narrowed" | "broadened"
+
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return JSON.stringify(value.map((entry) => JSON.parse(stable(entry))))
+  if (!value || typeof value !== "object") return JSON.stringify(value)
+  const sorted = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, JSON.parse(stable(entry))]),
+  )
+  return JSON.stringify(sorted)
 }
 
-export function evaluatePluginUpdateConsent(input: {
-  diff: PluginPermissionDiff
-  previous: PluginApprovalEvidence
-  candidate: PluginApprovalEvidence
-}) {
-  const permissionsChanged = input.previous.permissionsHash !== input.candidate.permissionsHash
-  const manifestChanged = input.previous.manifestHash !== input.candidate.manifestHash
-  const requiresApproval = input.diff.requiresApproval || permissionsChanged || manifestChanged
-  const reason = permissionsChanged
-    ? "Plugin permission contract changed and requires approval."
-    : manifestChanged
-      ? "Plugin manifest changed and requires approval."
-      : input.diff.reason
+function setRelation(before: unknown[], after: unknown[]): PluginAccessChange {
+  const oldSet = new Set(before.map(stable))
+  const newSet = new Set(after.map(stable))
+  const added = [...newSet].some((entry) => !oldSet.has(entry))
+  const removed = [...oldSet].some((entry) => !newSet.has(entry))
+  if (added) return "broadened"
+  return removed ? "narrowed" : "equal"
+}
+
+function combine(changes: PluginAccessChange[]): PluginAccessChange {
+  if (changes.includes("broadened")) return "broadened"
+  return changes.includes("narrowed") ? "narrowed" : "equal"
+}
+
+function compareConstraintValue(key: string, before: unknown, after: unknown): PluginAccessChange {
+  if (stable(before) === stable(after)) return "equal"
+  if (before === undefined) return "narrowed"
+  if (after === undefined) return "broadened"
+  if (key === "agents" || key === "modelRoles") {
+    if (!Array.isArray(before) || !Array.isArray(after)) return "broadened"
+    return setRelation(before, after)
+  }
+  if (key === "maxRuntimeMs") {
+    if (typeof before !== "number" || typeof after !== "number") return "broadened"
+    return after > before ? "broadened" : "narrowed"
+  }
+  return "broadened"
+}
+
+function compareConstraints(
+  before: Record<string, unknown> | undefined,
+  after: Record<string, unknown> | undefined,
+): PluginAccessChange {
+  if (stable(before) === stable(after)) return "equal"
+  const keys = new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])
+  return combine([...keys].map((key) => compareConstraintValue(key, before?.[key], after?.[key])))
+}
+
+function compareCapabilities(
+  before: PluginGrantContract["capabilities"],
+  after: PluginGrantContract["capabilities"],
+): PluginAccessChange {
+  const oldById = new Map(before.map((item) => [item.id, item]))
+  const newById = new Map(after.map((item) => [item.id, item]))
+  if ([...newById.keys()].some((id) => !oldById.has(id))) return "broadened"
+  const changes: PluginAccessChange[] = []
+  for (const [id, oldCapability] of oldById) {
+    const newCapability = newById.get(id)
+    if (!newCapability) {
+      changes.push("narrowed")
+      continue
+    }
+    changes.push(compareConstraints(oldCapability.constraints, newCapability.constraints))
+  }
+  return combine(changes)
+}
+
+function compareContributionRequirements(
+  before: PluginGrantContract["contributionRequirements"],
+  after: PluginGrantContract["contributionRequirements"],
+): PluginAccessChange {
+  const identity = (item: (typeof before)[number]) => `${item.kind}:${item.id}`
+  const oldById = new Map(before.map((item) => [identity(item), item]))
+  const newById = new Map(after.map((item) => [identity(item), item]))
+  if ([...newById.keys()].some((id) => !oldById.has(id))) return "broadened"
+  const changes: PluginAccessChange[] = []
+  for (const [id, oldRequirement] of oldById) {
+    const newRequirement = newById.get(id)
+    if (!newRequirement) {
+      changes.push("narrowed")
+      continue
+    }
+    changes.push(setRelation(oldRequirement.requires, newRequirement.requires))
+    changes.push(setRelation(oldRequirement.expose ?? [], newRequirement.expose ?? []))
+    if (!oldRequirement.trustedComponent && newRequirement.trustedComponent) changes.push("broadened")
+    if (oldRequirement.trustedComponent && !newRequirement.trustedComponent) changes.push("narrowed")
+  }
+  return combine(changes)
+}
+
+export function comparePluginAccess(before: PluginGrantContract, after: PluginGrantContract): PluginAccessChange {
+  return combine([
+    compareCapabilities(before.capabilities, after.capabilities),
+    compareContributionRequirements(before.contributionRequirements, after.contributionRequirements),
+  ])
+}
+
+function contributionAccessItem(item: PluginGrantContract["contributionRequirements"][number]): PermissionItem {
+  const trusted = Boolean(item.trustedComponent)
+  const exposed = (item.expose?.length ?? 0) > 0
   return {
-    diff: {
-      ...input.diff,
-      requiresApproval,
-      reason,
-    },
-    permissionsChanged,
-    manifestChanged,
+    key: `contribution:${item.kind}:${item.id}`,
+    category: trusted ? "ui" : "tools",
+    title: trusted
+      ? "Run plugin UI in Synergy"
+      : exposed
+        ? "Expose a plugin operation"
+        : "Use access in a plugin feature",
+    description: trusted
+      ? `The ${item.id} feature adds a trusted UI component.`
+      : exposed
+        ? `The ${item.id} operation is available to additional callers.`
+        : `The ${item.id} feature uses additional declared host access.`,
+    technical: `${item.kind}:${item.id}`,
   }
 }
 
-/**
- * Diff permissions between two states.
- *
- * - `oldVersion === undefined` means a new plugin installation; all items go into "added".
- * - Compares resolved capabilities as sets: added, removed, unchanged.
- * - For unchanged capabilities, checks whether severity changed between versions.
- * - `requiresApproval` is true when there are additions, severity changes, or risk changes.
- */
+export function broadenedPermissionItems(before: PluginGrantContract, after: PluginGrantContract): PermissionItem[] {
+  const changedCapabilities: string[] = []
+  const oldCapabilities = new Map(before.capabilities.map((item) => [item.id, item]))
+  for (const capability of after.capabilities) {
+    const previous = oldCapabilities.get(capability.id)
+    if (!previous || compareConstraints(previous.constraints, capability.constraints) === "broadened") {
+      changedCapabilities.push(capability.id)
+    }
+  }
+
+  const changedContributions: PermissionItem[] = []
+  const identity = (item: PluginGrantContract["contributionRequirements"][number]) => `${item.kind}:${item.id}`
+  const oldContributions = new Map(before.contributionRequirements.map((item) => [identity(item), item]))
+  for (const contribution of after.contributionRequirements) {
+    const previous = oldContributions.get(identity(contribution))
+    if (!previous || compareContributionRequirements([previous], [contribution]) === "broadened") {
+      changedContributions.push(contributionAccessItem(contribution))
+    }
+  }
+
+  return [...generatePermissionItems(changedCapabilities), ...changedContributions]
+}
+
 export function diffPermissions(pluginId: string, state: DiffPermissionsState): PluginPermissionDiff {
   const { oldVersion, newVersion, oldCapabilities, newCapabilities } = state
-
-  // New plugin install: everything is added
-  if (oldVersion === undefined) {
-    const items = generatePermissionItems(newCapabilities)
-    return {
-      pluginId,
-      fromVersion: undefined,
-      toVersion: newVersion,
-      riskBefore: undefined,
-      riskAfter: riskForCapabilities(newCapabilities),
-      added: items,
-      removed: [],
-      unchanged: [],
-      changed: [],
-      requiresApproval: items.length > 0,
-      reason: items.length > 0 ? "New plugin installation — all permissions require approval." : undefined,
-    }
-  }
-
   const oldSet = new Set(oldCapabilities)
   const newSet = new Set(newCapabilities)
-
-  // Capability diff: added = in new but not old, removed = in old but not new, unchanged = both
-  const addedCaps = [...newSet].filter((c) => !oldSet.has(c))
-  const removedCaps = [...oldSet].filter((c) => !newSet.has(c))
-  const unchangedCaps = [...newSet].filter((c) => oldSet.has(c))
-
-  // Generate items from both capability sets
-  const oldItems = generatePermissionItems(oldCapabilities)
-  const newItems = generatePermissionItems(newCapabilities)
-
-  const oldByKey = new Map(oldItems.map((i) => [i.key, i]))
-  const newByKey = new Map(newItems.map((i) => [i.key, i]))
-
-  const added = addedCaps.map((k) => newByKey.get(k)).filter((i): i is PermissionItem => i != null)
-  const removed = removedCaps.map((k) => oldByKey.get(k)).filter((i): i is PermissionItem => i != null)
-  const unchanged = unchangedCaps.map((k) => newByKey.get(k)).filter((i): i is PermissionItem => i != null)
-
-  // Find severity changes in unchanged capabilities
-  const changed: PermissionChange[] = []
-  for (const key of unchangedCaps) {
-    const oldItem = oldByKey.get(key)
-    const newItem = newByKey.get(key)
-    if (oldItem && newItem && oldItem.severity !== newItem.severity) {
-      changed.push({
-        key,
-        before: oldItem.severity,
-        after: newItem.severity,
-      })
-    }
-  }
-
-  const riskBefore = riskForCapabilities(oldCapabilities)
-  const riskAfter = riskForCapabilities(newCapabilities)
-  const requiresApproval = added.length > 0 || removed.length > 0 || changed.length > 0 || riskBefore !== riskAfter
-
+  const access = generatePermissionItems(newCapabilities)
+  const oldItems = new Map(generatePermissionItems(oldCapabilities).map((item) => [item.key, item]))
+  const newItems = new Map(access.map((item) => [item.key, item]))
+  const added = [...newSet]
+    .filter((capability) => !oldSet.has(capability))
+    .map((capability) => newItems.get(capability))
+    .filter((item): item is PermissionItem => item !== undefined)
+  const removed = [...oldSet]
+    .filter((capability) => !newSet.has(capability))
+    .map((capability) => oldItems.get(capability))
+    .filter((item): item is PermissionItem => item !== undefined)
+  const newInstall = oldVersion === undefined
+  const requiresConfirmation = newInstall || added.length > 0
   return {
     pluginId,
     fromVersion: oldVersion,
     toVersion: newVersion,
-    riskBefore,
-    riskAfter,
+    access,
     added,
+    broadened: [],
     removed,
-    unchanged,
-    changed,
-    requiresApproval,
-    reason: requiresApproval ? "Permission changes detected between versions." : undefined,
+    requiresConfirmation,
+    confirmationReason: requiresConfirmation ? (newInstall ? "non_official_source" : "access_expanded") : undefined,
+    reason: requiresConfirmation
+      ? newInstall
+        ? "Confirm access for this third-party plugin."
+        : "This update expands plugin access."
+      : undefined,
   }
 }

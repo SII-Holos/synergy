@@ -19,7 +19,8 @@ const PermissionItem = z
   .object({
     key: z.string(),
     description: z.string(),
-    risk: z.enum(["low", "medium", "high"]),
+    category: z.string().optional(),
+    title: z.string().optional(),
     granted: z.boolean().optional(),
   })
   .meta({ ref: "RegistryPermissionItem" })
@@ -28,11 +29,18 @@ const RegistryPermissionSummary = z
   .object({
     key: z.string(),
     category: z.string(),
-    severity: z.string(),
     title: z.string(),
     description: z.string(),
   })
   .meta({ ref: "RegistryPermissionSummary" })
+
+const RegistryFeatureSummary = z
+  .object({
+    key: z.string(),
+    title: z.string(),
+    description: z.string(),
+  })
+  .meta({ ref: "RegistryFeatureSummary" })
 
 const RegistryPluginCompatibility = z
   .object({
@@ -65,6 +73,8 @@ const RegistryPluginIcon = z
 const RegistryPluginVersion = z
   .object({
     version: z.string(),
+    apiVersion: z.string().optional(),
+    compatibility: RegistryPluginCompatibility.optional(),
     manifestHash: z.string(),
     permissionsHash: z.string(),
     signature: PluginSignature.optional(),
@@ -72,8 +82,8 @@ const RegistryPluginVersion = z
     downloadUrl: z.string().optional(),
     installSpec: z.string().optional(),
     integrity: z.string().optional(),
-    risk: z.enum(["low", "medium", "high"]),
     runtimeMode: z.literal("process").optional(),
+    featuresSummary: z.array(RegistryFeatureSummary),
     permissionsSummary: z.array(PermissionItem),
     tools: z.array(z.string()).optional(),
     uiSurfaces: z.array(z.string()).optional(),
@@ -104,10 +114,9 @@ const RegistryPluginEntry = z
     versions: z.array(RegistryPluginVersion),
     createdAt: z.number(),
     updatedAt: z.number(),
-    // v2 fields
-    risk: z.enum(["low", "medium", "high"]),
     trustTier: z.enum(["declarative", "trusted-import"]),
     runtimeMode: z.literal("process"),
+    featuresSummary: z.array(RegistryFeatureSummary),
     permissionsSummary: z.array(RegistryPermissionSummary),
     uiSurfaces: z.array(z.string()),
     tools: z.array(z.string()),
@@ -141,9 +150,9 @@ const RegistryPluginSummary = z
     official: z.boolean(),
     keywords: z.array(z.string()),
     latestVersion: z.string().optional(),
+    apiVersion: z.string().optional(),
+    compatibility: RegistryPluginCompatibility.optional(),
     updatedAt: z.number(),
-    // v2 fields
-    risk: z.enum(["low", "medium", "high"]),
     trustTier: z.enum(["declarative", "trusted-import"]),
     runtimeMode: z.literal("process"),
     uiSurfaces: z.array(z.string()),
@@ -183,12 +192,52 @@ async function loadRegistry(): Promise<RegistryPluginEntry[]> {
   }
   const text = await file.text()
   const parsed = JSON.parse(text)
-  if (Array.isArray(parsed)) return z.array(RegistryPluginEntry).parse(parsed)
-  if (parsed && Array.isArray(parsed.plugins)) return z.array(RegistryPluginEntry).parse(parsed.plugins)
-  return []
+  const plugins = Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.plugins) ? parsed.plugins : []
+  return z.array(RegistryPluginEntry).parse(plugins.map(normalizeLegacyRegistryEntry))
+}
+
+function normalizeLegacyRegistryEntry(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+  const { risk: _risk, featuresSummary, permissionsSummary, versions, ...entry } = value as Record<string, unknown>
+  return {
+    ...entry,
+    featuresSummary: Array.isArray(featuresSummary) ? featuresSummary : [],
+    permissionsSummary: Array.isArray(permissionsSummary)
+      ? permissionsSummary.map((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return item
+          const { severity: _severity, risk: _permissionRisk, ...permission } = item as Record<string, unknown>
+          return permission
+        })
+      : [],
+    versions: Array.isArray(versions)
+      ? versions.map((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return item
+          const {
+            risk: _versionRisk,
+            featuresSummary: versionFeatures,
+            permissionsSummary: versionPermissions,
+            ...version
+          } = item as Record<string, unknown>
+          return {
+            ...version,
+            featuresSummary: Array.isArray(versionFeatures) ? versionFeatures : [],
+            permissionsSummary: Array.isArray(versionPermissions)
+              ? versionPermissions.map((permission) => {
+                  if (!permission || typeof permission !== "object" || Array.isArray(permission)) return permission
+                  const { risk: _itemRisk, ...rest } = permission as Record<string, unknown>
+                  return rest
+                })
+              : [],
+          }
+        })
+      : [],
+  }
 }
 
 function localSummary(p: RegistryPluginEntry): RegistryPluginSummary {
+  const latest = [...p.versions]
+    .filter((version) => version.apiVersion === "4.0" && !p.yankedVersions?.includes(version.version))
+    .sort((left, right) => right.publishedAt - left.publishedAt)[0]
   return {
     id: p.id,
     name: p.name,
@@ -199,9 +248,10 @@ function localSummary(p: RegistryPluginEntry): RegistryPluginSummary {
     verified: p.verified,
     official: p.official,
     keywords: p.keywords,
-    latestVersion: p.versions.length > 0 ? p.versions[p.versions.length - 1].version : undefined,
+    latestVersion: latest?.version,
+    apiVersion: latest?.apiVersion,
+    compatibility: latest?.compatibility ?? p.compatibility,
     updatedAt: p.updatedAt,
-    risk: p.risk,
     trustTier: p.trustTier,
     runtimeMode: p.runtimeMode,
     uiSurfaces: p.uiSurfaces,

@@ -157,3 +157,5 @@ The host namespaces theme and icon IDs as `<plugin-id>:<contribution-id>`. Surfa
 ## Scope and Reload
 
 The Web host fetches contributions for the active Scope. Switching Scope rebuilds registrations with a new context. Runtime generations and asset URLs include the generation so stale bundles are not reused. A failure in one surface is reported for that contribution and does not remove unrelated plugin contributions.
+
+Registration lifecycle changes are observable to already-mounted message resolvers. Unregistering a renderer, installing or replacing its loader, and completing the current lazy load each invalidate the registry. A Tool card that briefly falls back during reload therefore retries resolution and restores its custom renderer without a page refresh; completion from a stale loader remains ignored.

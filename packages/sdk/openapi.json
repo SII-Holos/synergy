@@ -9115,6 +9115,193 @@
         ]
       }
     },
+    "/provider/connections": {
+      "post": {
+        "operationId": "provider.connection.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create provider account connection",
+        "description": "Create a named account connection that reuses a canonical provider profile and model catalog. Credentials are connected separately.",
+        "responses": {
+          "200": {
+            "description": "Provider account connection created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnection"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionCreateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.connection.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/connections/{providerID}": {
+      "patch": {
+        "operationId": "provider.connection.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Update provider account connection",
+        "description": "Update the name, endpoint, or enabled state of a managed provider account connection.",
+        "responses": {
+          "200": {
+            "description": "Provider account connection updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnection"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionUpdateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.connection.update({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "provider.connection.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Remove provider account connection",
+        "description": "Remove a managed provider account connection and its Synergy-managed credentials without changing its canonical provider profile or sibling accounts.",
+        "responses": {
+          "200": {
+            "description": "Provider account connection removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnectionRemoveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.connection.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/{providerID}/models/refresh": {
       "post": {
         "operationId": "provider.models.refresh",
@@ -25640,6 +25827,9 @@
           "id": {
             "type": "string"
           },
+          "profileID": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -25749,6 +25939,49 @@
           }
         },
         "required": ["id", "name"],
+        "additionalProperties": false
+      },
+      "ProviderConnection": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profileID": {
+            "type": "string"
+          },
+          "catalogProviderID": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "removable": {
+            "type": "boolean"
+          },
+          "canCreateSibling": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "profileID",
+          "catalogProviderID",
+          "enabled",
+          "configured",
+          "removable",
+          "canCreateSibling"
+        ],
         "additionalProperties": false
       },
       "ProviderAuthHealth": {
@@ -25880,6 +26113,15 @@
               "$ref": "#/components/schemas/ProviderProfileMetadata"
             }
           },
+          "connections": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProviderConnection"
+            }
+          },
           "authHealth": {
             "type": "object",
             "propertyNames": {
@@ -25915,6 +26157,7 @@
           "configProviders",
           "catalogProviders",
           "profiles",
+          "connections",
           "authHealth",
           "runtimeAvailability",
           "modelCatalog"
@@ -26789,33 +27032,6 @@
         },
         "additionalProperties": false
       },
-      "PluginApprovalPolicyConfig": {
-        "description": "Plugin approval policy configuration",
-        "type": "object",
-        "properties": {
-          "allowUnsignedLocal": {
-            "description": "Allow unsigned local plugins with user consent",
-            "default": true,
-            "type": "boolean"
-          },
-          "autoApproveBuiltin": {
-            "description": "Auto-approve builtin plugins without user consent",
-            "default": true,
-            "type": "boolean"
-          },
-          "denyHighRiskThirdParty": {
-            "description": "Block third-party plugins with high-risk capabilities",
-            "default": true,
-            "type": "boolean"
-          },
-          "requireSignatureForMarketplace": {
-            "description": "Require cryptographic signature for non-local plugins",
-            "default": false,
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
       "PluginRuntimeLimitsConfig": {
         "description": "Default plugin runtime resource and request limits",
         "default": {
@@ -27337,6 +27553,7 @@
                   }
                 },
                 "temperature": {
+                  "default": false,
                   "type": "boolean"
                 },
                 "tool_call": {
@@ -27447,6 +27664,7 @@
                   "enum": ["active", "retained"]
                 },
                 "options": {
+                  "default": {},
                   "type": "object",
                   "propertyNames": {
                     "type": "string"
@@ -27468,8 +27686,7 @@
                     "npm": {
                       "type": "string"
                     }
-                  },
-                  "required": ["npm"]
+                  }
                 },
                 "variants": {
                   "description": "Variant-specific configuration",
@@ -27490,6 +27707,16 @@
                 }
               }
             }
+          },
+          "profile": {
+            "description": "Canonical provider profile whose runtime behavior this account connection uses",
+            "type": "string",
+            "minLength": 1
+          },
+          "modelsDevProviderID": {
+            "description": "Models.dev provider id to use as this provider connection's model catalog source",
+            "type": "string",
+            "minLength": 1
           },
           "whitelist": {
             "type": "array",
@@ -28281,6 +28508,11 @@
             "description": "Enable streaming card updates",
             "type": "boolean"
           },
+          "responseFormat": {
+            "description": "Format for ordinary outbound text messages (markdown renders through a CardKit card)",
+            "type": "string",
+            "enum": ["text", "markdown"]
+          },
           "streamingThrottleMs": {
             "description": "Minimum interval between streaming card updates in ms",
             "default": 100,
@@ -28292,7 +28524,7 @@
             "description": "Session scoping strategy for group chats",
             "default": "group",
             "type": "string",
-            "enum": ["group", "group_sender", "group_topic", "group_topic_sender"]
+            "enum": ["group", "group_sender", "group_topic", "group_topic_sender", "group_thread"]
           },
           "inboundDebounceMs": {
             "description": "Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)",
@@ -28348,6 +28580,12 @@
             "description": "Default streaming setting for all accounts",
             "default": true,
             "type": "boolean"
+          },
+          "responseFormat": {
+            "description": "Default outbound text format for all accounts",
+            "default": "markdown",
+            "type": "string",
+            "enum": ["text", "markdown"]
           }
         },
         "required": ["type", "accounts"],
@@ -29129,9 +29367,6 @@
               "type": "string"
             }
           },
-          "pluginApprovalPolicy": {
-            "$ref": "#/components/schemas/PluginApprovalPolicyConfig"
-          },
           "pluginRuntimePolicy": {
             "$ref": "#/components/schemas/PluginRuntimePolicyConfig"
           },
@@ -29142,14 +29377,14 @@
             "type": "boolean"
           },
           "disabled_providers": {
-            "description": "Disable providers that are loaded automatically",
+            "description": "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
             "type": "array",
             "items": {
               "type": "string"
             }
           },
           "enabled_providers": {
-            "description": "When set, ONLY these providers will be enabled. All other providers will be ignored",
+            "description": "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
             "type": "array",
             "items": {
               "type": "string"
@@ -35357,6 +35592,72 @@
           "queued"
         ]
       },
+      "ProviderConnectionCreateInput": {
+        "type": "object",
+        "properties": {
+          "profileID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{1,63}$"
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["profileID", "name"],
+        "additionalProperties": false
+      },
+      "ProviderConnectionUpdateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProviderConnectionRemoveResponse": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["providerID", "removed"],
+        "additionalProperties": false
+      },
       "AccountUsageWindow": {
         "type": "object",
         "properties": {
@@ -40008,6 +40309,15 @@
           "apiVersion": {
             "type": "string"
           },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "synergy": {
+                "type": "string"
+              }
+            },
+            "required": ["synergy"]
+          },
           "generation": {
             "type": "string"
           },
@@ -40117,10 +40427,6 @@
               "type": "string"
             }
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "operations": {
             "type": "array",
             "items": {
@@ -40224,7 +40530,6 @@
           "health",
           "loaded",
           "capabilities",
-          "risk",
           "operations",
           "tools",
           "uiContributions",
@@ -40288,195 +40593,181 @@
           "generation": {
             "type": "string"
           },
+          "source": {
+            "type": "string",
+            "enum": ["local", "official", "npm", "git", "url", "builtin"]
+          },
+          "signer": {
+            "type": "string"
+          },
           "capabilities": {
             "type": "array",
             "items": {
               "type": "string"
             }
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "trust": {
             "type": "string",
             "enum": ["declarative", "trusted-import"]
           },
-          "diff": {
-            "type": "object",
-            "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "fromVersion": {
-                "type": "string"
-              },
-              "toVersion": {
-                "type": "string"
-              },
-              "riskBefore": {
-                "type": "string",
-                "enum": ["low", "medium", "high"]
-              },
-              "riskAfter": {
-                "type": "string",
-                "enum": ["low", "medium", "high"]
-              },
-              "added": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "category": {
-                      "type": "string",
-                      "enum": [
-                        "tools",
-                        "files",
-                        "network",
-                        "data",
-                        "ui",
-                        "runtime",
-                        "hooks",
-                        "session",
-                        "browser",
-                        "identity",
-                        "communication",
-                        "platform"
-                      ]
-                    },
-                    "severity": {
-                      "type": "string",
-                      "enum": ["low", "medium", "high"]
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "technical": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["key", "category", "severity", "title", "description"]
+          "access": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "files",
+                    "network",
+                    "data",
+                    "ui",
+                    "runtime",
+                    "hooks",
+                    "session",
+                    "browser",
+                    "identity",
+                    "communication",
+                    "platform"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "technical": {
+                  "type": "string"
                 }
               },
-              "removed": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "category": {
-                      "type": "string",
-                      "enum": [
-                        "tools",
-                        "files",
-                        "network",
-                        "data",
-                        "ui",
-                        "runtime",
-                        "hooks",
-                        "session",
-                        "browser",
-                        "identity",
-                        "communication",
-                        "platform"
-                      ]
-                    },
-                    "severity": {
-                      "type": "string",
-                      "enum": ["low", "medium", "high"]
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "technical": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["key", "category", "severity", "title", "description"]
-                }
-              },
-              "unchanged": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "category": {
-                      "type": "string",
-                      "enum": [
-                        "tools",
-                        "files",
-                        "network",
-                        "data",
-                        "ui",
-                        "runtime",
-                        "hooks",
-                        "session",
-                        "browser",
-                        "identity",
-                        "communication",
-                        "platform"
-                      ]
-                    },
-                    "severity": {
-                      "type": "string",
-                      "enum": ["low", "medium", "high"]
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "technical": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["key", "category", "severity", "title", "description"]
-                }
-              },
-              "changed": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "before": {
-                      "type": "string"
-                    },
-                    "after": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["key"]
-                }
-              },
-              "requiresApproval": {
-                "type": "boolean"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": ["pluginId", "added", "removed", "unchanged", "changed", "requiresApproval"]
+              "required": ["key", "category", "title", "description"]
+            }
           },
-          "permissionsChanged": {
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "files",
+                    "network",
+                    "data",
+                    "ui",
+                    "runtime",
+                    "hooks",
+                    "session",
+                    "browser",
+                    "identity",
+                    "communication",
+                    "platform"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "technical": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "category", "title", "description"]
+            }
+          },
+          "broadened": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "files",
+                    "network",
+                    "data",
+                    "ui",
+                    "runtime",
+                    "hooks",
+                    "session",
+                    "browser",
+                    "identity",
+                    "communication",
+                    "platform"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "technical": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "category", "title", "description"]
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "files",
+                    "network",
+                    "data",
+                    "ui",
+                    "runtime",
+                    "hooks",
+                    "session",
+                    "browser",
+                    "identity",
+                    "communication",
+                    "platform"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "technical": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "category", "title", "description"]
+            }
+          },
+          "requiresConfirmation": {
             "type": "boolean"
+          },
+          "confirmationReason": {
+            "type": "string",
+            "enum": ["non_official_source", "access_expanded", "publisher_changed"]
           },
           "reason": {
             "type": "string"
@@ -40490,11 +40781,16 @@
           "pluginId",
           "name",
           "version",
+          "apiVersion",
+          "generation",
+          "source",
           "capabilities",
-          "risk",
           "trust",
-          "diff",
-          "permissionsChanged",
+          "access",
+          "added",
+          "broadened",
+          "removed",
+          "requiresConfirmation",
           "reviewToken"
         ]
       },
@@ -40571,6 +40867,17 @@
           }
         ]
       },
+      "RegistryPluginCompatibility": {
+        "type": "object",
+        "properties": {
+          "synergy": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["synergy"],
+        "additionalProperties": false
+      },
       "RegistryPluginSummary": {
         "type": "object",
         "properties": {
@@ -40619,12 +40926,14 @@
           "latestVersion": {
             "type": "string"
           },
+          "apiVersion": {
+            "type": "string"
+          },
+          "compatibility": {
+            "$ref": "#/components/schemas/RegistryPluginCompatibility"
+          },
           "updatedAt": {
             "type": "number"
-          },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
           },
           "trustTier": {
             "type": "string",
@@ -40666,7 +40975,6 @@
           "official",
           "keywords",
           "updatedAt",
-          "risk",
           "trustTier",
           "runtimeMode",
           "uiSurfaces",
@@ -40674,17 +40982,6 @@
           "downloads",
           "source"
         ]
-      },
-      "RegistryPluginCompatibility": {
-        "type": "object",
-        "properties": {
-          "synergy": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": ["synergy"],
-        "additionalProperties": false
       },
       "RegistryPluginSignature": {
         "type": "object",
@@ -40700,6 +40997,21 @@
         },
         "required": ["algorithm", "signer"]
       },
+      "RegistryFeatureSummary": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": ["key", "title", "description"]
+      },
       "RegistryPermissionItem": {
         "type": "object",
         "properties": {
@@ -40709,21 +41021,29 @@
           "description": {
             "type": "string"
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
+          "category": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
           },
           "granted": {
             "type": "boolean"
           }
         },
-        "required": ["key", "description", "risk"]
+        "required": ["key", "description"]
       },
       "RegistryPluginVersion": {
         "type": "object",
         "properties": {
           "version": {
             "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "compatibility": {
+            "$ref": "#/components/schemas/RegistryPluginCompatibility"
           },
           "manifestHash": {
             "type": "string"
@@ -40746,13 +41066,15 @@
           "integrity": {
             "type": "string"
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "runtimeMode": {
             "type": "string",
             "const": "process"
+          },
+          "featuresSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryFeatureSummary"
+            }
           },
           "permissionsSummary": {
             "type": "array",
@@ -40783,7 +41105,14 @@
             "enum": ["official", "local"]
           }
         },
-        "required": ["version", "manifestHash", "permissionsHash", "risk", "permissionsSummary", "publishedAt"],
+        "required": [
+          "version",
+          "manifestHash",
+          "permissionsHash",
+          "featuresSummary",
+          "permissionsSummary",
+          "publishedAt"
+        ],
         "additionalProperties": false
       },
       "RegistryPermissionSummary": {
@@ -40795,9 +41124,6 @@
           "category": {
             "type": "string"
           },
-          "severity": {
-            "type": "string"
-          },
           "title": {
             "type": "string"
           },
@@ -40805,7 +41131,7 @@
             "type": "string"
           }
         },
-        "required": ["key", "category", "severity", "title", "description"]
+        "required": ["key", "category", "title", "description"]
       },
       "RegistryPluginEntry": {
         "type": "object",
@@ -40870,10 +41196,6 @@
           "updatedAt": {
             "type": "number"
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "trustTier": {
             "type": "string",
             "enum": ["declarative", "trusted-import"]
@@ -40881,6 +41203,12 @@
           "runtimeMode": {
             "type": "string",
             "const": "process"
+          },
+          "featuresSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryFeatureSummary"
+            }
           },
           "permissionsSummary": {
             "type": "array",
@@ -40937,9 +41265,9 @@
           "versions",
           "createdAt",
           "updatedAt",
-          "risk",
           "trustTier",
           "runtimeMode",
+          "featuresSummary",
           "permissionsSummary",
           "uiSurfaces",
           "tools",
@@ -41004,10 +41332,6 @@
               "$ref": "#/components/schemas/RegistryPluginVersion"
             }
           },
-          "risk": {
-            "type": "string",
-            "enum": ["low", "medium", "high"]
-          },
           "trustTier": {
             "type": "string",
             "enum": ["declarative", "trusted-import"]
@@ -41015,6 +41339,12 @@
           "runtimeMode": {
             "type": "string",
             "const": "process"
+          },
+          "featuresSummary": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryFeatureSummary"
+            }
           },
           "permissionsSummary": {
             "type": "array",
@@ -41069,9 +41399,9 @@
           "official",
           "keywords",
           "versions",
-          "risk",
           "trustTier",
           "runtimeMode",
+          "featuresSummary",
           "permissionsSummary",
           "uiSurfaces",
           "tools",
@@ -41593,6 +41923,32 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -41627,32 +41983,6 @@
               }
             },
             "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -43312,13 +43642,13 @@
             "$ref": "#/components/schemas/Event.provider.auth.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.config.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
             "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.mcp.tools.changed"

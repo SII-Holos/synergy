@@ -1,6 +1,7 @@
 import {
   PluginArtifact,
   PluginManifest,
+  PluginManifestEnvelope,
   normalizePluginArchiveEntry,
   type PluginManifest as PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
@@ -16,9 +17,9 @@ import { PLUGIN_MARKETPLACE_DEFAULTS, PluginMarketplace as PluginMarketplaceConf
 import { Global } from "../global"
 import { sha256Content, sha256File } from "../util/crypto"
 import { baseCapabilities } from "./capability"
-import { riskForCapabilities } from "./capability"
 import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
 import { defaultPluginTrustDecision } from "./trust"
+import { assertPluginCompatibility } from "./spec-resolver"
 
 export namespace PluginMarketplaceRegistry {
   export const Source = z.enum(["official", "local"])
@@ -34,7 +35,6 @@ export namespace PluginMarketplaceRegistry {
     return new ArtifactVerificationError(message)
   }
 
-  const Risk = z.enum(["low", "medium", "high"])
   const RuntimeMode = z.literal("process")
   const Author = z.object({
     name: z.string(),
@@ -46,12 +46,26 @@ export namespace PluginMarketplaceRegistry {
       synergy: z.string().min(1),
     })
     .strict()
-  const RemotePermission = z.object({
+  const RemotePermissionV1 = z.object({
     key: z.string(),
     description: z.string(),
-    risk: Risk,
+    risk: z.enum(["low", "medium", "high"]),
     granted: z.boolean().optional(),
   })
+  const RemotePermissionV2 = z.object({
+    key: z.string(),
+    description: z.string(),
+    category: z.string().optional(),
+    title: z.string().optional(),
+    granted: z.boolean().optional(),
+  })
+  const RemoteFeatureV2 = z
+    .object({
+      key: z.string(),
+      title: z.string(),
+      description: z.string(),
+    })
+    .strict()
   const RemoteSignature = z.object({
     algorithm: z.literal("ed25519"),
     signer: z.string().regex(/^[a-f0-9]{64}$/i),
@@ -60,43 +74,54 @@ export namespace PluginMarketplaceRegistry {
     z.object({ type: z.literal("lucide"), name: z.string().min(1) }),
     z.object({ type: z.literal("registry-svg"), path: z.string().min(1) }),
   ])
-  const RemoteVersion = z
-    .object({
-      version: z.string(),
-      downloadUrl: z.string().url(),
-      signatureUrl: z.string().url(),
-      signature: RemoteSignature,
-      integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
-      manifestHash: z.string(),
-      permissionsHash: z.string(),
-      risk: Risk,
-      runtimeMode: RuntimeMode,
-      permissionsSummary: z.array(RemotePermission),
-      tools: z.array(z.string()),
-      uiSurfaces: z.array(z.string()),
-      publishedAt: z.string(),
-      changelog: z.string().optional(),
-    })
-    .strict()
-  const RemoteEntry = z
-    .object({
-      schemaVersion: z.literal(1),
-      id: z.string(),
-      name: z.string(),
-      description: z.string(),
-      repo: z.string().url(),
-      homepage: z.string().url().optional(),
-      author: Author,
-      icon: RemoteIcon.optional(),
-      verified: z.boolean(),
-      official: z.boolean(),
-      keywords: z.array(z.string()),
-      compatibility: Compatibility.optional(),
-      versions: z.array(RemoteVersion),
-      yankedVersions: z.array(z.string()).optional().default([]),
-    })
-    .strict()
-  const RemoteSummary = z.object({
+  const RemoteVersionBase = z.object({
+    version: z.string(),
+    downloadUrl: z.string().url(),
+    signatureUrl: z.string().url(),
+    signature: RemoteSignature,
+    integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
+    manifestHash: z.string(),
+    permissionsHash: z.string(),
+    runtimeMode: RuntimeMode,
+    tools: z.array(z.string()),
+    uiSurfaces: z.array(z.string()),
+    publishedAt: z.string(),
+    changelog: z.string().optional(),
+  })
+  const RemoteVersionV1 = RemoteVersionBase.extend({
+    risk: z.enum(["low", "medium", "high"]),
+    permissionsSummary: z.array(RemotePermissionV1),
+  }).strict()
+  const RemoteVersionV2 = RemoteVersionBase.extend({
+    apiVersion: z.string().min(1),
+    compatibility: Compatibility,
+    featuresSummary: z.array(RemoteFeatureV2).optional().default([]),
+    permissionsSummary: z.array(RemotePermissionV2),
+  }).strict()
+  const RemoteEntryBase = z.object({
+    id: z.string(),
+    name: z.string(),
+    description: z.string(),
+    repo: z.string().url(),
+    homepage: z.string().url().optional(),
+    author: Author,
+    icon: RemoteIcon.optional(),
+    verified: z.boolean(),
+    official: z.boolean(),
+    keywords: z.array(z.string()),
+    compatibility: Compatibility.optional(),
+    yankedVersions: z.array(z.string()).optional().default([]),
+  })
+  const RemoteEntryV1 = RemoteEntryBase.extend({
+    schemaVersion: z.literal(1),
+    versions: z.array(RemoteVersionV1),
+  }).strict()
+  const RemoteEntryV2 = RemoteEntryBase.extend({
+    schemaVersion: z.literal(2),
+    versions: z.array(RemoteVersionV2),
+  }).strict()
+  const RemoteEntry = z.union([RemoteEntryV1, RemoteEntryV2])
+  const RemoteSummaryBase = z.object({
     id: z.string(),
     name: z.string(),
     description: z.string(),
@@ -107,36 +132,55 @@ export namespace PluginMarketplaceRegistry {
     verified: z.boolean(),
     official: z.boolean(),
     keywords: z.array(z.string()),
-    latestVersion: z.string(),
     updatedAt: z.string(),
-    risk: Risk,
     runtimeMode: RuntimeMode,
     tools: z.array(z.string()),
     uiSurfaces: z.array(z.string()),
   })
-  const RemoteRegistry = z.object({
-    schemaVersion: z.literal(1),
-    updatedAt: z.string(),
-    plugins: z.array(RemoteSummary),
+  const RemoteSummaryV1 = RemoteSummaryBase.extend({
+    latestVersion: z.string(),
+    risk: z.enum(["low", "medium", "high"]),
   })
+  const RemoteSummaryV2 = RemoteSummaryBase.extend({
+    latestVersion: z.string().optional(),
+    apiVersion: z.string().optional(),
+    compatibility: Compatibility.optional(),
+  })
+  const RemoteSummary = z.union([RemoteSummaryV1, RemoteSummaryV2])
+  const RemoteRegistry = z.union([
+    z.object({
+      schemaVersion: z.literal(1),
+      updatedAt: z.string(),
+      plugins: z.array(RemoteSummaryV1),
+    }),
+    z.object({ schemaVersion: z.literal(2), updatedAt: z.string(), plugins: z.array(RemoteSummaryV2) }),
+  ])
 
   export type RemoteEntry = z.infer<typeof RemoteEntry>
-  export type RemoteVersion = z.infer<typeof RemoteVersion>
+  export type RemoteVersion = z.infer<typeof RemoteVersionV1> | z.infer<typeof RemoteVersionV2>
   export type RemoteSummary = z.infer<typeof RemoteSummary>
 
   export type NormalizedIcon = { type: "lucide"; name: string } | { type: "image"; url: string; alt?: string }
 
   export interface NormalizedVersion {
     version: string
+    apiVersion?: string
+    compatibility?: { synergy: string }
     manifestHash: string
     permissionsHash: string
     signature?: { algorithm: "ed25519"; signer: string }
     signatureUrl?: string
     downloadUrl?: string
     integrity: string
-    risk: "low" | "medium" | "high"
     runtimeMode?: "process"
-    permissionsSummary: Array<{ key: string; description: string; risk: "low" | "medium" | "high"; granted?: boolean }>
+    featuresSummary: Array<{ key: string; title: string; description: string }>
+    permissionsSummary: Array<{
+      key: string
+      description: string
+      category?: string
+      title?: string
+      granted?: boolean
+    }>
     tools?: string[]
     uiSurfaces?: string[]
     publishedAt: number
@@ -159,10 +203,10 @@ export namespace PluginMarketplaceRegistry {
     versions: NormalizedVersion[]
     createdAt: number
     updatedAt: number
-    risk: "low" | "medium" | "high"
     trustTier: "declarative" | "trusted-import"
     runtimeMode: "process"
-    permissionsSummary: Array<{ key: string; category: string; severity: string; title: string; description: string }>
+    featuresSummary: Array<{ key: string; title: string; description: string }>
+    permissionsSummary: Array<{ key: string; category: string; title: string; description: string }>
     uiSurfaces: string[]
     tools: string[]
     downloads: number
@@ -185,8 +229,9 @@ export namespace PluginMarketplaceRegistry {
     official: boolean
     keywords: string[]
     latestVersion?: string
+    apiVersion?: string
+    compatibility?: { synergy: string }
     updatedAt: number
-    risk: "low" | "medium" | "high"
     trustTier: "declarative" | "trusted-import"
     runtimeMode: "process"
     uiSurfaces: string[]
@@ -204,7 +249,6 @@ export namespace PluginMarketplaceRegistry {
     cacheKey: string
     manifest: PluginManifestType
     capabilities: string[]
-    risk: "low" | "medium" | "high"
     signature: SignatureMetadata
   }
 
@@ -260,9 +304,8 @@ export namespace PluginMarketplaceRegistry {
   function normalizePermissionSummary(items: NormalizedVersion["permissionsSummary"]) {
     return items.map((item) => ({
       key: item.key,
-      category: permissionCategoryForKey(item.key),
-      severity: item.risk,
-      title: SYNERGY_CAPABILITY_DETAILS[item.key]?.title ?? item.key,
+      category: item.category ?? permissionCategoryForKey(item.key),
+      title: item.title ?? SYNERGY_CAPABILITY_DETAILS[item.key]?.title ?? item.key,
       description: item.description,
     }))
   }
@@ -276,18 +319,38 @@ export namespace PluginMarketplaceRegistry {
     return { type: "image", url: resolveEntryUrl(registryUrl, icon.path) }
   }
 
-  function normalizeVersion(version: RemoteVersion, source: Source): NormalizedVersion {
+  function normalizeVersion(
+    version: RemoteVersion,
+    source: Source,
+    entryCompatibility?: { synergy: string },
+  ): NormalizedVersion {
+    const permissionsSummary = version.permissionsSummary.map(({ key, description, granted, ...item }) => {
+      const metadata = item as { category?: unknown; title?: unknown }
+      return {
+        key,
+        description,
+        ...(typeof metadata.category === "string" ? { category: metadata.category } : {}),
+        ...(typeof metadata.title === "string" ? { title: metadata.title } : {}),
+        ...(granted === undefined ? {} : { granted }),
+      }
+    })
     return {
       version: version.version,
+      ...("apiVersion" in version ? { apiVersion: version.apiVersion } : {}),
+      ...("compatibility" in version
+        ? { compatibility: version.compatibility }
+        : entryCompatibility
+          ? { compatibility: entryCompatibility }
+          : {}),
       manifestHash: version.manifestHash,
       permissionsHash: version.permissionsHash,
       signature: version.signature,
       signatureUrl: version.signatureUrl,
       downloadUrl: version.downloadUrl,
       integrity: version.integrity,
-      risk: version.risk,
       runtimeMode: version.runtimeMode,
-      permissionsSummary: version.permissionsSummary,
+      featuresSummary: "featuresSummary" in version ? version.featuresSummary : [],
+      permissionsSummary,
       tools: version.tools,
       uiSurfaces: version.uiSurfaces,
       publishedAt: timestamp(version.publishedAt),
@@ -302,7 +365,7 @@ export namespace PluginMarketplaceRegistry {
     entryUrl?: string,
     registryUrl: string = DEFAULT_REGISTRY_URL,
   ): NormalizedEntry {
-    const versions = entry.versions.map((version) => normalizeVersion(version, source))
+    const versions = entry.versions.map((version) => normalizeVersion(version, source, entry.compatibility))
     const latest = [...versions].sort((a, b) => b.publishedAt - a.publishedAt)[0]
     return {
       id: entry.id,
@@ -319,9 +382,9 @@ export namespace PluginMarketplaceRegistry {
       versions,
       createdAt: versions.length ? Math.min(...versions.map((version) => version.publishedAt)) : 0,
       updatedAt: latest?.publishedAt ?? 0,
-      risk: latest?.risk ?? "low",
       trustTier: trustTier(source),
       runtimeMode: latest?.runtimeMode ?? "process",
+      featuresSummary: latest?.featuresSummary ?? [],
       permissionsSummary: normalizePermissionSummary(latest?.permissionsSummary ?? []),
       uiSurfaces: latest?.uiSurfaces ?? [],
       tools: latest?.tools ?? [],
@@ -345,8 +408,9 @@ export namespace PluginMarketplaceRegistry {
       official: summary.official,
       keywords: summary.keywords,
       latestVersion: summary.latestVersion,
+      ...("apiVersion" in summary && summary.apiVersion ? { apiVersion: summary.apiVersion } : {}),
+      ...("compatibility" in summary && summary.compatibility ? { compatibility: summary.compatibility } : {}),
       updatedAt: timestamp(summary.updatedAt),
-      risk: summary.risk,
       trustTier: trustTier("official"),
       runtimeMode: summary.runtimeMode,
       uiSurfaces: summary.uiSurfaces,
@@ -657,7 +721,10 @@ export namespace PluginMarketplaceRegistry {
 
       extractedDir = await extractArchive(tarballPath)
       const manifestPath = path.join(extractedDir, "plugin.json")
-      const manifest = PluginManifest.parse(JSON.parse(await Bun.file(manifestPath).text())) as PluginManifestType
+      const rawManifest = JSON.parse(await Bun.file(manifestPath).text())
+      const envelope = PluginManifestEnvelope.parse(rawManifest)
+      assertPluginCompatibility(envelope)
+      const manifest = PluginManifest.parse(rawManifest) as PluginManifestType
       if (manifest.id !== id) throw verificationError(`Remote plugin artifact manifest id mismatch`)
       if (manifest.version !== version) throw verificationError(`Remote plugin artifact manifest version mismatch`)
 
@@ -679,7 +746,6 @@ export namespace PluginMarketplaceRegistry {
         cacheKey: `official:${id}@${version}:${tarballHash}`,
         manifest,
         capabilities,
-        risk: riskForCapabilities(capabilities),
         signature,
       }
     } catch (err) {

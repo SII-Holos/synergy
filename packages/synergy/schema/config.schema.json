@@ -650,40 +650,6 @@
         "type": "string"
       }
     },
-    "pluginApprovalPolicy": {
-      "description": "Plugin approval policy configuration",
-      "ref": "PluginApprovalPolicyConfig",
-      "type": "object",
-      "properties": {
-        "allowUnsignedLocal": {
-          "description": "Allow unsigned local plugins with user consent",
-          "default": true,
-          "type": "boolean"
-        },
-        "autoApproveBuiltin": {
-          "description": "Auto-approve builtin plugins without user consent",
-          "default": true,
-          "type": "boolean"
-        },
-        "denyHighRiskThirdParty": {
-          "description": "Block third-party plugins with high-risk capabilities",
-          "default": true,
-          "type": "boolean"
-        },
-        "requireSignatureForMarketplace": {
-          "description": "Require cryptographic signature for non-local plugins",
-          "default": false,
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "allowUnsignedLocal",
-        "autoApproveBuiltin",
-        "denyHighRiskThirdParty",
-        "requireSignatureForMarketplace"
-      ],
-      "additionalProperties": false
-    },
     "pluginRuntimePolicy": {
       "description": "Plugin runtime isolation policy configuration",
       "ref": "PluginRuntimePolicyConfig",
@@ -697,7 +663,9 @@
             "hostServiceRequestTimeoutMs": 120000,
             "taskRunTimeoutMs": 120000,
             "shutdownGraceMs": 1500,
-            "heartbeatIntervalMs": 5000
+            "heartbeatIntervalMs": 5000,
+            "maxMemoryMb": 512,
+            "memorySampleIntervalMs": 5000
           },
           "ref": "PluginRuntimeLimitsConfig",
           "type": "object",
@@ -734,6 +702,18 @@
             },
             "heartbeatIntervalMs": {
               "description": "Heartbeat interval in milliseconds",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxMemoryMb": {
+              "description": "External plugin runtime RSS limit in megabytes",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "memorySampleIntervalMs": {
+              "description": "External plugin runtime RSS sampling interval in milliseconds",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
@@ -816,14 +796,14 @@
       "type": "boolean"
     },
     "disabled_providers": {
-      "description": "Disable providers that are loaded automatically",
+      "description": "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "enabled_providers": {
-      "description": "When set, ONLY these providers will be enabled. All other providers will be ignored",
+      "description": "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
       "type": "array",
       "items": {
         "type": "string"
@@ -1126,6 +1106,7 @@
                   }
                 },
                 "temperature": {
+                  "default": false,
                   "type": "boolean"
                 },
                 "tool_call": {
@@ -1240,6 +1221,7 @@
                   "enum": ["active", "retained"]
                 },
                 "options": {
+                  "default": {},
                   "type": "object",
                   "propertyNames": {
                     "type": "string"
@@ -1262,7 +1244,6 @@
                       "type": "string"
                     }
                   },
-                  "required": ["npm"],
                   "additionalProperties": false
                 },
                 "variants": {
@@ -1285,6 +1266,16 @@
               },
               "additionalProperties": false
             }
+          },
+          "profile": {
+            "description": "Canonical provider profile whose runtime behavior this account connection uses",
+            "type": "string",
+            "minLength": 1
+          },
+          "modelsDevProviderID": {
+            "description": "Models.dev provider id to use as this provider connection's model catalog source",
+            "type": "string",
+            "minLength": 1
           },
           "whitelist": {
             "type": "array",
@@ -2259,10 +2250,19 @@
                       "description": "Bot open_id used to verify real @mentions in group chats",
                       "type": "string"
                     },
+                    "projectDir": {
+                      "description": "Project directory whose Scope owns sessions for this Feishu account",
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "streaming": {
                       "description": "Enable streaming card updates",
-                      "default": true,
                       "type": "boolean"
+                    },
+                    "responseFormat": {
+                      "description": "Format for ordinary outbound text messages (markdown renders through a CardKit card)",
+                      "type": "string",
+                      "enum": ["text", "markdown"]
                     },
                     "streamingThrottleMs": {
                       "description": "Minimum interval between streaming card updates in ms",
@@ -2275,7 +2275,7 @@
                       "description": "Session scoping strategy for group chats",
                       "default": "group",
                       "type": "string",
-                      "enum": ["group", "group_sender", "group_topic", "group_topic_sender"]
+                      "enum": ["group", "group_sender", "group_topic", "group_topic_sender", "group_thread"]
                     },
                     "inboundDebounceMs": {
                       "description": "Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)",
@@ -2310,7 +2310,6 @@
                     "allowDM",
                     "allowGroup",
                     "requireMention",
-                    "streaming",
                     "streamingThrottleMs",
                     "groupSessionScope",
                     "inboundDebounceMs",
@@ -2329,9 +2328,53 @@
                 "description": "Default streaming setting for all accounts",
                 "default": true,
                 "type": "boolean"
+              },
+              "responseFormat": {
+                "description": "Default outbound text format for all accounts",
+                "default": "markdown",
+                "type": "string",
+                "enum": ["text", "markdown"]
               }
             },
-            "required": ["type", "accounts", "streaming"],
+            "required": ["type", "accounts", "streaming", "responseFormat"],
+            "additionalProperties": false
+          },
+          {
+            "ref": "ChannelClarusConfig",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "clarus"
+              },
+              "accounts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "ref": "ChannelClarusAccountConfig",
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "apiUrl": {
+                      "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
+                      "type": "string"
+                    },
+                    "agent": {
+                      "description": "Primary Synergy agent for project and assignment Sessions",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["type", "accounts"],
             "additionalProperties": false
           }
         ]

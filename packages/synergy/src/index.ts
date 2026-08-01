@@ -5,6 +5,13 @@ async function bootstrap(): Promise<void> {
     return
   }
 
+  if (process.argv.includes("__embedding-runtime-check")) {
+    const { verifyStandaloneEmbeddingRuntime } = await import("./vector/embedding-runtime.js")
+    await verifyStandaloneEmbeddingRuntime()
+    console.log("Standalone embedding runtime ready")
+    return
+  }
+
   if (process.argv.includes("__browser-install-deps-runner")) {
     if (process.platform !== "linux")
       throw new Error("Browser system dependency installation is only available on Linux.")

@@ -1593,6 +1593,7 @@ export type Model = {
 
 export type Provider = {
   id: string
+  profileID?: string
   name: string
   source: "env" | "config" | "custom" | "api"
   env: Array<string>
@@ -1627,6 +1628,18 @@ export type ProviderProfileMetadata = {
   authKind?: string
   environment?: Array<string>
   recommendation?: ProviderRecommendation
+}
+
+export type ProviderConnection = {
+  id: string
+  name: string
+  profileID: string
+  catalogProviderID: string
+  endpoint?: string
+  enabled: boolean
+  configured: boolean
+  removable: boolean
+  canCreateSibling: boolean
 }
 
 export type ProviderAuthHealth = {
@@ -1668,6 +1681,9 @@ export type ProviderListResponse = {
   catalogProviders: Array<string>
   profiles: {
     [key: string]: ProviderProfileMetadata
+  }
+  connections: {
+    [key: string]: ProviderConnection
   }
   authHealth: {
     [key: string]: ProviderAuthHealth
@@ -2156,28 +2172,6 @@ export type GitHubIntegrationConfig = {
 }
 
 /**
- * Plugin approval policy configuration
- */
-export type PluginApprovalPolicyConfig = {
-  /**
-   * Allow unsigned local plugins with user consent
-   */
-  allowUnsignedLocal?: boolean
-  /**
-   * Auto-approve builtin plugins without user consent
-   */
-  autoApproveBuiltin?: boolean
-  /**
-   * Block third-party plugins with high-risk capabilities
-   */
-  denyHighRiskThirdParty?: boolean
-  /**
-   * Require cryptographic signature for non-local plugins
-   */
-  requireSignatureForMarketplace?: boolean
-}
-
-/**
  * Default plugin runtime resource and request limits
  */
 export type PluginRuntimeLimitsConfig = {
@@ -2525,6 +2519,14 @@ export type ProviderConfig = {
       }
     }
   }
+  /**
+   * Canonical provider profile whose runtime behavior this account connection uses
+   */
+  profile?: string
+  /**
+   * Models.dev provider id to use as this provider connection's model catalog source
+   */
+  modelsDevProviderID?: string
   whitelist?: Array<string>
   blacklist?: Array<string>
   options?: {
@@ -3054,13 +3056,17 @@ export type ChannelFeishuAccountConfig = {
    */
   streaming?: boolean
   /**
+   * Format for ordinary outbound text messages (markdown renders through a CardKit card)
+   */
+  responseFormat?: "text" | "markdown"
+  /**
    * Minimum interval between streaming card updates in ms
    */
   streamingThrottleMs?: number
   /**
    * Session scoping strategy for group chats
    */
-  groupSessionScope?: "group" | "group_sender" | "group_topic" | "group_topic_sender"
+  groupSessionScope?: "group" | "group_sender" | "group_topic" | "group_topic_sender" | "group_thread"
   /**
    * Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)
    */
@@ -3096,6 +3102,10 @@ export type ChannelFeishuConfig = {
    * Default streaming setting for all accounts
    */
   streaming?: boolean
+  /**
+   * Default outbound text format for all accounts
+   */
+  responseFormat?: "text" | "markdown"
 }
 
 export type ChannelClarusAccountConfig = {
@@ -3622,16 +3632,15 @@ export type Config = {
     ignore?: Array<string>
   }
   plugin?: Array<string>
-  pluginApprovalPolicy?: PluginApprovalPolicyConfig
   pluginRuntimePolicy?: PluginRuntimePolicyConfig
   pluginMarketplace?: PluginMarketplaceConfig
   snapshot?: boolean
   /**
-   * Disable providers that are loaded automatically
+   * Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */
   disabled_providers?: Array<string>
   /**
-   * When set, ONLY these providers will be enabled. All other providers will be ignored
+   * When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */
   enabled_providers?: Array<string>
   providerCatalog?: ProviderCatalogConfig
@@ -5858,6 +5867,25 @@ export type CortexConcurrencyStatus = {
   queued: number
 }
 
+export type ProviderConnectionCreateInput = {
+  profileID: string
+  name: string
+  id?: string
+  endpoint?: string
+  enabled?: boolean
+}
+
+export type ProviderConnectionUpdateInput = {
+  name?: string
+  endpoint?: string | null
+  enabled?: boolean
+}
+
+export type ProviderConnectionRemoveResponse = {
+  providerID: string
+  removed: true
+}
+
 export type AccountUsageWindow = {
   label: string
   usedPercent?: number
@@ -7330,6 +7358,9 @@ export type PluginStatus = {
   name: string
   version?: string
   apiVersion?: string
+  compatibility?: {
+    synergy: string
+  }
   generation?: string
   installation:
     | {
@@ -7362,7 +7393,6 @@ export type PluginStatus = {
   disabledPhase?: string
   loaded: boolean
   capabilities: Array<string>
-  risk: "low" | "medium" | "high"
   operations: Array<{
     id: string
     type: "query" | "command"
@@ -7406,86 +7436,90 @@ export type ApprovalReview = {
   pluginId: string
   name: string
   version: string
-  apiVersion?: string
-  generation?: string
+  apiVersion: string
+  generation: string
+  source: "local" | "official" | "npm" | "git" | "url" | "builtin"
+  signer?: string
   capabilities: Array<string>
-  risk: "low" | "medium" | "high"
   trust: "declarative" | "trusted-import"
-  diff: {
-    pluginId: string
-    fromVersion?: string
-    toVersion?: string
-    riskBefore?: "low" | "medium" | "high"
-    riskAfter?: "low" | "medium" | "high"
-    added: Array<{
-      key: string
-      category:
-        | "tools"
-        | "files"
-        | "network"
-        | "data"
-        | "ui"
-        | "runtime"
-        | "hooks"
-        | "session"
-        | "browser"
-        | "identity"
-        | "communication"
-        | "platform"
-      severity: "low" | "medium" | "high"
-      title: string
-      description: string
-      technical?: string
-    }>
-    removed: Array<{
-      key: string
-      category:
-        | "tools"
-        | "files"
-        | "network"
-        | "data"
-        | "ui"
-        | "runtime"
-        | "hooks"
-        | "session"
-        | "browser"
-        | "identity"
-        | "communication"
-        | "platform"
-      severity: "low" | "medium" | "high"
-      title: string
-      description: string
-      technical?: string
-    }>
-    unchanged: Array<{
-      key: string
-      category:
-        | "tools"
-        | "files"
-        | "network"
-        | "data"
-        | "ui"
-        | "runtime"
-        | "hooks"
-        | "session"
-        | "browser"
-        | "identity"
-        | "communication"
-        | "platform"
-      severity: "low" | "medium" | "high"
-      title: string
-      description: string
-      technical?: string
-    }>
-    changed: Array<{
-      key: string
-      before?: string
-      after?: string
-    }>
-    requiresApproval: boolean
-    reason?: string
-  }
-  permissionsChanged: boolean
+  access: Array<{
+    key: string
+    category:
+      | "tools"
+      | "files"
+      | "network"
+      | "data"
+      | "ui"
+      | "runtime"
+      | "hooks"
+      | "session"
+      | "browser"
+      | "identity"
+      | "communication"
+      | "platform"
+    title: string
+    description: string
+    technical?: string
+  }>
+  added: Array<{
+    key: string
+    category:
+      | "tools"
+      | "files"
+      | "network"
+      | "data"
+      | "ui"
+      | "runtime"
+      | "hooks"
+      | "session"
+      | "browser"
+      | "identity"
+      | "communication"
+      | "platform"
+    title: string
+    description: string
+    technical?: string
+  }>
+  broadened: Array<{
+    key: string
+    category:
+      | "tools"
+      | "files"
+      | "network"
+      | "data"
+      | "ui"
+      | "runtime"
+      | "hooks"
+      | "session"
+      | "browser"
+      | "identity"
+      | "communication"
+      | "platform"
+    title: string
+    description: string
+    technical?: string
+  }>
+  removed: Array<{
+    key: string
+    category:
+      | "tools"
+      | "files"
+      | "network"
+      | "data"
+      | "ui"
+      | "runtime"
+      | "hooks"
+      | "session"
+      | "browser"
+      | "identity"
+      | "communication"
+      | "platform"
+    title: string
+    description: string
+    technical?: string
+  }>
+  requiresConfirmation: boolean
+  confirmationReason?: "non_official_source" | "access_expanded" | "publisher_changed"
   reason?: string
   reviewToken: string
 }
@@ -7514,6 +7548,10 @@ export type RegistryPluginIcon =
       alt?: string
     }
 
+export type RegistryPluginCompatibility = {
+  synergy: string
+}
+
 export type RegistryPluginSummary = {
   id: string
   name: string
@@ -7529,8 +7567,9 @@ export type RegistryPluginSummary = {
   official: boolean
   keywords: Array<string>
   latestVersion?: string
+  apiVersion?: string
+  compatibility?: RegistryPluginCompatibility
   updatedAt: number
-  risk: "low" | "medium" | "high"
   trustTier: "declarative" | "trusted-import"
   runtimeMode: "process"
   uiSurfaces: Array<string>
@@ -7540,24 +7579,29 @@ export type RegistryPluginSummary = {
   source: "official" | "local"
 }
 
-export type RegistryPluginCompatibility = {
-  synergy: string
-}
-
 export type RegistryPluginSignature = {
   algorithm: "ed25519"
   signer: string
 }
 
+export type RegistryFeatureSummary = {
+  key: string
+  title: string
+  description: string
+}
+
 export type RegistryPermissionItem = {
   key: string
   description: string
-  risk: "low" | "medium" | "high"
+  category?: string
+  title?: string
   granted?: boolean
 }
 
 export type RegistryPluginVersion = {
   version: string
+  apiVersion?: string
+  compatibility?: RegistryPluginCompatibility
   manifestHash: string
   permissionsHash: string
   signature?: RegistryPluginSignature
@@ -7565,8 +7609,8 @@ export type RegistryPluginVersion = {
   downloadUrl?: string
   installSpec?: string
   integrity?: string
-  risk: "low" | "medium" | "high"
   runtimeMode?: "process"
+  featuresSummary: Array<RegistryFeatureSummary>
   permissionsSummary: Array<RegistryPermissionItem>
   tools?: Array<string>
   uiSurfaces?: Array<string>
@@ -7578,7 +7622,6 @@ export type RegistryPluginVersion = {
 export type RegistryPermissionSummary = {
   key: string
   category: string
-  severity: string
   title: string
   description: string
 }
@@ -7602,9 +7645,9 @@ export type RegistryPluginEntry = {
   versions: Array<RegistryPluginVersion>
   createdAt: number
   updatedAt: number
-  risk: "low" | "medium" | "high"
   trustTier: "declarative" | "trusted-import"
   runtimeMode: "process"
+  featuresSummary: Array<RegistryFeatureSummary>
   permissionsSummary: Array<RegistryPermissionSummary>
   uiSurfaces: Array<string>
   tools: Array<string>
@@ -7634,9 +7677,9 @@ export type RegistryPublishInput = {
   keywords: Array<string>
   compatibility?: RegistryPluginCompatibility
   versions: Array<RegistryPluginVersion>
-  risk: "low" | "medium" | "high"
   trustTier: "declarative" | "trusted-import"
   runtimeMode: "process"
+  featuresSummary: Array<RegistryFeatureSummary>
   permissionsSummary: Array<RegistryPermissionSummary>
   uiSurfaces: Array<string>
   tools: Array<string>
@@ -7837,6 +7880,14 @@ export type EventProviderAuthUpdated = {
   }
 }
 
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -7848,14 +7899,6 @@ export type EventInstallationUpdateAvailable = {
   type: "installation.update-available"
   properties: {
     version: string
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
   }
 }
 
@@ -8445,9 +8488,9 @@ export type Event =
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
   | EventProviderAuthUpdated
+  | EventConfigUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
-  | EventConfigUpdated
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
@@ -12716,6 +12759,97 @@ export type ProviderListResponses = {
 }
 
 export type ProviderListResponse2 = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderConnectionCreateData = {
+  body?: ProviderConnectionCreateInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections"
+}
+
+export type ProviderConnectionCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderConnectionCreateError = ProviderConnectionCreateErrors[keyof ProviderConnectionCreateErrors]
+
+export type ProviderConnectionCreateResponses = {
+  /**
+   * Provider account connection created
+   */
+  200: ProviderConnection
+}
+
+export type ProviderConnectionCreateResponse =
+  ProviderConnectionCreateResponses[keyof ProviderConnectionCreateResponses]
+
+export type ProviderConnectionRemoveData = {
+  body?: never
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections/{providerID}"
+}
+
+export type ProviderConnectionRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderConnectionRemoveError = ProviderConnectionRemoveErrors[keyof ProviderConnectionRemoveErrors]
+
+export type ProviderConnectionRemoveResponses = {
+  /**
+   * Provider account connection removed
+   */
+  200: ProviderConnectionRemoveResponse
+}
+
+export type ProviderConnectionRemoveResponse2 =
+  ProviderConnectionRemoveResponses[keyof ProviderConnectionRemoveResponses]
+
+export type ProviderConnectionUpdateData = {
+  body?: ProviderConnectionUpdateInput
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections/{providerID}"
+}
+
+export type ProviderConnectionUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderConnectionUpdateError = ProviderConnectionUpdateErrors[keyof ProviderConnectionUpdateErrors]
+
+export type ProviderConnectionUpdateResponses = {
+  /**
+   * Provider account connection updated
+   */
+  200: ProviderConnection
+}
+
+export type ProviderConnectionUpdateResponse =
+  ProviderConnectionUpdateResponses[keyof ProviderConnectionUpdateResponses]
 
 export type ProviderModelsRefreshData = {
   body?: never

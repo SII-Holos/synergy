@@ -49,9 +49,9 @@ export const McpDefaults = z.object(McpLifecycleFields).strict().meta({ ref: "Mc
 export type McpDefaults = z.infer<typeof McpDefaults>
 
 export const FeishuGroupSessionScope = z
-  .enum(["group", "group_sender", "group_topic", "group_topic_sender"])
+  .enum(["group", "group_sender", "group_topic", "group_topic_sender", "group_thread"])
   .describe(
-    "How group chat sessions are scoped: group = shared, group_sender = per sender, group_topic = per thread/topic, group_topic_sender = per thread+sender",
+    "How group chat sessions are scoped: group = shared, group_sender = per sender, group_topic = per topic, group_topic_sender = per topic+sender, group_thread = one session per Feishu thread or top-level request",
   )
 export type FeishuGroupSessionScope = z.infer<typeof FeishuGroupSessionScope>
 
@@ -72,6 +72,10 @@ export const ChannelFeishuAccount = z
       .optional()
       .describe("Project directory whose Scope owns sessions for this Feishu account"),
     streaming: z.boolean().optional().describe("Enable streaming card updates"),
+    responseFormat: z
+      .enum(["text", "markdown"])
+      .optional()
+      .describe("Format for ordinary outbound text messages (markdown renders through a CardKit card)"),
     streamingThrottleMs: z
       .number()
       .int()
@@ -111,6 +115,11 @@ export const ChannelFeishu = z
     accounts: z.record(z.string(), ChannelFeishuAccount),
     domain: z.enum(["feishu", "lark"]).optional().describe("Default domain for all accounts"),
     streaming: z.boolean().optional().default(true).describe("Default streaming setting for all accounts"),
+    responseFormat: z
+      .enum(["text", "markdown"])
+      .optional()
+      .default("markdown")
+      .describe("Default outbound text format for all accounts"),
   })
   .strict()
   .meta({ ref: "ChannelFeishuConfig" })
@@ -1077,6 +1086,16 @@ export type LibraryConfig = z.infer<typeof LibraryConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
+    profile: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Canonical provider profile whose runtime behavior this account connection uses"),
+    modelsDevProviderID: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Models.dev provider id to use as this provider connection's model catalog source"),
     whitelist: z.array(z.string()).optional(),
     blacklist: z.array(z.string()).optional(),
     models: z
@@ -1139,36 +1158,6 @@ export const ProviderCatalog = z
   .strict()
   .meta({ ref: "ProviderCatalogConfig" })
 export type ProviderCatalog = z.infer<typeof ProviderCatalog>
-
-export const PluginApprovalPolicy = z
-  .object({
-    allowUnsignedLocal: z.boolean().optional().default(true).describe("Allow unsigned local plugins with user consent"),
-    autoApproveBuiltin: z
-      .boolean()
-      .optional()
-      .default(true)
-      .describe("Auto-approve builtin plugins without user consent"),
-    denyHighRiskThirdParty: z
-      .boolean()
-      .optional()
-      .default(true)
-      .describe("Block third-party plugins with high-risk capabilities"),
-    requireSignatureForMarketplace: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe("Require cryptographic signature for non-local plugins"),
-  })
-  .strict()
-  .meta({ ref: "PluginApprovalPolicyConfig" })
-export type PluginApprovalPolicy = z.infer<typeof PluginApprovalPolicy>
-
-export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
-  allowUnsignedLocal: true,
-  autoApproveBuiltin: true,
-  denyHighRiskThirdParty: true,
-  requireSignatureForMarketplace: false,
-} as const satisfies Required<PluginApprovalPolicy>
 
 export const PluginRuntimeLimits = z
   .object({
@@ -1587,15 +1576,21 @@ export const Info = z
       })
       .optional(),
     plugin: z.string().array().optional(),
-    pluginApprovalPolicy: PluginApprovalPolicy.optional().describe("Plugin approval policy configuration"),
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
-    disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
+    disabled_providers: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
+      ),
     enabled_providers: z
       .array(z.string())
       .optional()
-      .describe("When set, ONLY these providers will be enabled. All other providers will be ignored"),
+      .describe(
+        "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
+      ),
     providerCatalog: ProviderCatalog.optional().describe("Signed remote provider catalog configuration"),
     model: z
       .string()

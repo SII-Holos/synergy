@@ -7,10 +7,11 @@ import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
 describe("ChannelCommand", () => {
+  const endpointSuffix = crypto.randomUUID()
   const baseContext = {
     channelType: "feishu",
-    accountId: "acct_test",
-    chatId: "chat_test",
+    accountId: `acct_test_${endpointSuffix}`,
+    chatId: `chat_test_${endpointSuffix}`,
     chatType: "group" as const,
     chatName: "Synergy Dev",
     senderId: "user_test",

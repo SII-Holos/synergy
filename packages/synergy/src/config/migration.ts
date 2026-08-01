@@ -155,7 +155,7 @@ async function migrateSchemaUrl(filepath: string): Promise<boolean> {
   return true
 }
 
-async function removeTopLevelConfigKeys(filepath: string, keys: string[]): Promise<boolean> {
+export async function removeTopLevelConfigKeys(filepath: string, keys: string[]): Promise<boolean> {
   const file = Bun.file(filepath)
   if (!(await file.exists())) return false
 
@@ -1160,6 +1160,18 @@ export const migrations: Migration[] = [
       progress(0, 1)
       await removeDeprecatedAutoupdateConfig()
       progress(1, 1)
+    },
+  },
+  {
+    id: "20260801-config-remove-plugin-approval-policy",
+    description: "Remove retired plugin risk approval policy config",
+    async up(progress) {
+      const files = await findConfigFiles()
+      let done = 0
+      for (const filepath of files) {
+        await removeTopLevelConfigKeys(filepath, ["pluginApprovalPolicy"])
+        progress(++done, Math.max(1, files.length))
+      }
     },
   },
   {

@@ -4,6 +4,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
+import { loadEmbeddingTransformersRuntime } from "./embedding-runtime"
 
 export interface LocalExtractor {
   (input: string, options: { pooling: "mean"; normalize: true }): Promise<{ data: Float32Array }>
@@ -98,6 +99,7 @@ export namespace Embedding {
     dtype: "q8"
     progress_callback: (info: ProgressInfo) => void
     local_files_only?: true
+    device?: "wasm"
   }
   type LocalRuntime = {
     pipeline(task: string, model: string, options: PipelineOptions): Promise<LocalExtractor>
@@ -165,10 +167,12 @@ export namespace Embedding {
   function defaultRuntimeControls(): LocalRuntimeControls {
     return {
       async loadRuntime() {
-        const transformersPackage = "@huggingface/transformers"
-        const runtime = await import(transformersPackage)
+        const loaded = await loadEmbeddingTransformersRuntime()
+        const runtime = loaded.runtime
+        const pipeline = runtime.pipeline as unknown as LocalRuntime["pipeline"]
         return {
-          pipeline: runtime.pipeline as unknown as LocalRuntime["pipeline"],
+          pipeline: (task, model, options) =>
+            pipeline(task, model, loaded.device ? { ...options, device: loaded.device } : options),
           isCached: (task, model, options) => runtime.ModelRegistry.is_pipeline_cached(task, model, options),
           configure({ remoteHost }) {
             runtime.env.remoteHost = remoteHost

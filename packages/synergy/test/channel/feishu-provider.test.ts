@@ -9,11 +9,16 @@ import {
   normalizeBotOpenId,
   resolveSenderOpenId,
   isBotMentioned,
+  resolveFeishuDebounceKey,
+  resolveFeishuQueueKey,
   resolveGroupScopeKey,
 } from "../../src/channel/provider/feishu"
 import { createStatusReactionController } from "../../src/channel/status-reactions"
+import { FeishuThreadBinding } from "../../src/channel/provider/feishu/thread-binding"
 import type { StreamingSession } from "../../src/channel/types"
 import { Config } from "../../src/config/config"
+import { ScopeContext } from "../../src/scope/context"
+import { tmpdir } from "../fixture/fixture"
 
 function accountConfig(overrides: Partial<Config.ChannelFeishuAccount> = {}): Config.ChannelFeishuAccount {
   return {
@@ -48,6 +53,21 @@ describe("Feishu streaming configuration", () => {
 
     expect(provider.streaming).toBe(false)
     expect(provider.accounts.default?.streaming).toBeUndefined()
+  })
+
+  test("defaults provider responseFormat to markdown while preserving an omitted account setting", () => {
+    const provider = Config.ChannelFeishu.parse({
+      type: "feishu",
+      accounts: {
+        default: {
+          appId: "app",
+          appSecret: "secret",
+        },
+      },
+    })
+
+    expect(provider.responseFormat).toBe("markdown")
+    expect(provider.accounts.default?.responseFormat).toBeUndefined()
   })
 })
 
@@ -159,6 +179,87 @@ describe("resolveGroupScopeKey", () => {
 
   test("group_topic_sender falls back to sender when no topic", () => {
     expect(resolveGroupScopeKey({ chatId: "c1", senderId: "s1", scope: "group_topic_sender" })).toBe("c1:sender:s1")
+  })
+  test("group_thread scope uses only threadId for continuity", () => {
+    expect(
+      resolveGroupScopeKey({
+        chatId: "c1",
+        senderId: "s1",
+        messageId: "m1",
+        rootId: "r1",
+        threadId: "t1",
+        scope: "group_thread",
+      }),
+    ).toBe("c1:thread:t1")
+  })
+
+  test("group_thread scope anchors a threadless message to its own messageId", () => {
+    expect(
+      resolveGroupScopeKey({
+        chatId: "c1",
+        senderId: "s1",
+        messageId: "m1",
+        rootId: "r1",
+        scope: "group_thread",
+      }),
+    ).toBe("c1:message:m1")
+  })
+})
+
+describe("Feishu thread scope isolation", () => {
+  test("uses the resolved Session key for queueing and debouncing", () => {
+    const firstScope = "chat_1:message:message_1"
+    const secondScope = "chat_1:message:message_2"
+
+    expect(resolveFeishuQueueKey({ chatId: "chat_1", scopeKey: firstScope, scope: "group_thread" })).toBe(firstScope)
+    expect(resolveFeishuQueueKey({ chatId: "chat_1", scopeKey: secondScope, scope: "group_thread" })).toBe(secondScope)
+    expect(
+      resolveFeishuDebounceKey({ chatId: "chat_1", senderId: "sender_1", scopeKey: firstScope, scope: "group_thread" }),
+    ).toBe(firstScope)
+    expect(
+      resolveFeishuDebounceKey({
+        chatId: "chat_1",
+        senderId: "sender_1",
+        scopeKey: secondScope,
+        scope: "group_thread",
+      }),
+    ).toBe(secondScope)
+  })
+
+  test("preserves legacy queue and debounce keys for existing scopes", () => {
+    expect(resolveFeishuQueueKey({ chatId: "chat_1", scopeKey: "ignored", scope: "group_topic" })).toBe("chat_1")
+    expect(
+      resolveFeishuDebounceKey({
+        chatId: "chat_1",
+        senderId: "sender_1",
+        scopeKey: "ignored",
+        scope: "group_topic_sender",
+      }),
+    ).toBe("chat_1:sender_1")
+  })
+})
+
+describe("Feishu thread bindings", () => {
+  test("persist the original Session scope across provider instances", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await FeishuThreadBinding.set({
+          accountId: "acct_test",
+          chatId: "chat_1",
+          threadId: "thread_1",
+          scopeKey: "chat_1:message:message_1",
+        })
+
+        expect(await FeishuThreadBinding.get({ accountId: "acct_test", chatId: "chat_1", threadId: "thread_1" })).toBe(
+          "chat_1:message:message_1",
+        )
+        expect(
+          await FeishuThreadBinding.get({ accountId: "acct_test", chatId: "chat_1", threadId: "thread_other" }),
+        ).toBeUndefined()
+      },
+    })
   })
 })
 
@@ -361,7 +462,7 @@ describe("Feishu replies", () => {
         }
       ).accounts
       accounts.set("acct_test", {
-        config: accountConfig({ replyInThread: true }),
+        config: accountConfig({ replyInThread: true, responseFormat: "text" }),
         channelConfig: {},
         apiBase: "https://open.feishu.test/open-apis",
         tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
@@ -381,6 +482,215 @@ describe("Feishu replies", () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+
+  test("does not force threaded replies for DMs when group_thread is enabled", async () => {
+    const originalFetch = globalThis.fetch
+    let requestBody: Record<string, unknown> = {}
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_dm", {
+        config: accountConfig({ groupSessionScope: "group_thread", responseFormat: "text" }),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_dm",
+        messageId: "message_dm",
+        chatId: "chat_dm",
+        chatType: "dm",
+        parts: [{ type: "text", text: "Direct answer" }],
+      })
+
+      expect(requestBody).not.toHaveProperty("reply_in_thread")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("threads response and question cards when group_thread is enabled", async () => {
+    const originalFetch = globalThis.fetch
+    const replyBodies: Array<Record<string, unknown>> = []
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      if (url.endsWith("/cardkit/v1/cards")) {
+        return new Response(JSON.stringify({ code: 0, data: { card_id: "card_thread" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      replyBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_card" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_thread_cards", {
+        config: accountConfig({ groupSessionScope: "group_thread", replyInThread: false }),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.sendResponseCard({
+        accountId: "acct_thread_cards",
+        chatId: "chat_1",
+        chatType: "group",
+        replyToMessageId: "message_origin",
+        requestId: "response_1",
+        card: { title: "Choose", elements: [{ type: "button", id: "confirm", label: "Confirm", value: "yes" }] },
+      })
+      await provider.sendQuestionCard({
+        accountId: "acct_thread_cards",
+        chatId: "chat_1",
+        chatType: "group",
+        replyToMessageId: "message_origin",
+        requestId: "question_1",
+        questions: [
+          {
+            question: "Continue?",
+            header: "Continue",
+            options: [
+              { label: "Yes", description: "Continue" },
+              { label: "No", description: "Stop" },
+            ],
+          },
+        ],
+      })
+
+      expect(replyBodies).toHaveLength(2)
+      expect(replyBodies.every((body) => body.reply_in_thread === true)).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("binds a newly created Feishu thread to the originating Session scope", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalFetch = globalThis.fetch
+        globalThis.fetch = (async () =>
+          new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply", thread_id: "thread_created" } }), {
+            headers: { "Content-Type": "application/json" },
+          })) as unknown as typeof fetch
+
+        try {
+          const provider = new FeishuProvider()
+          const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+          accounts.set("acct_thread", {
+            config: accountConfig({ groupSessionScope: "group_thread", responseFormat: "text" }),
+            channelConfig: {},
+            apiBase: "https://open.feishu.test/open-apis",
+            tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+          })
+
+          const result = await provider.replyMessage({
+            accountId: "acct_thread",
+            messageId: "message_origin",
+            chatId: "chat_1",
+            chatType: "group",
+            scopeKey: "chat_1:message:message_origin",
+            parts: [{ type: "text", text: "Threaded answer" }],
+          })
+
+          expect(result.threadId).toBe("thread_created")
+          expect(
+            await FeishuThreadBinding.get({ accountId: "acct_thread", chatId: "chat_1", threadId: "thread_created" }),
+          ).toBe("chat_1:message:message_origin")
+        } finally {
+          globalThis.fetch = originalFetch
+        }
+      },
+    })
+  })
+
+  test("binds threads created by response and question cards", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalFetch = globalThis.fetch
+        const threadIds = ["thread_response", "thread_question"]
+        globalThis.fetch = (async (input) => {
+          if (String(input).endsWith("/cardkit/v1/cards")) {
+            return new Response(JSON.stringify({ code: 0, data: { card_id: "card_thread" } }), {
+              headers: { "Content-Type": "application/json" },
+            })
+          }
+          return new Response(
+            JSON.stringify({ code: 0, data: { message_id: "msg_card", thread_id: threadIds.shift() } }),
+            { headers: { "Content-Type": "application/json" } },
+          )
+        }) as typeof fetch
+
+        try {
+          const provider = new FeishuProvider()
+          const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+          accounts.set("acct_thread_cards", {
+            config: accountConfig({ groupSessionScope: "group_thread" }),
+            channelConfig: {},
+            apiBase: "https://open.feishu.test/open-apis",
+            tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+          })
+
+          await provider.sendResponseCard({
+            accountId: "acct_thread_cards",
+            chatId: "chat_1",
+            chatType: "group",
+            scopeKey: "chat_1:message:message_origin",
+            replyToMessageId: "message_origin",
+            requestId: "response_1",
+            card: { title: "Choose", elements: [{ type: "button", id: "yes", label: "Yes", value: "yes" }] },
+          })
+          await provider.sendQuestionCard({
+            accountId: "acct_thread_cards",
+            chatId: "chat_1",
+            chatType: "group",
+            scopeKey: "chat_1:message:message_origin",
+            replyToMessageId: "message_origin",
+            requestId: "question_1",
+            questions: [
+              {
+                question: "Continue?",
+                header: "Continue",
+                options: [{ label: "Yes", description: "Continue" }],
+              },
+            ],
+          })
+
+          expect(
+            await FeishuThreadBinding.get({
+              accountId: "acct_thread_cards",
+              chatId: "chat_1",
+              threadId: "thread_response",
+            }),
+          ).toBe("chat_1:message:message_origin")
+          expect(
+            await FeishuThreadBinding.get({
+              accountId: "acct_thread_cards",
+              chatId: "chat_1",
+              threadId: "thread_question",
+            }),
+          ).toBe("chat_1:message:message_origin")
+        } finally {
+          globalThis.fetch = originalFetch
+        }
+      },
+    })
   })
 
   test("uploads SVG attachments as files instead of unsupported Feishu images", async () => {
@@ -451,6 +761,216 @@ describe("Feishu replies", () => {
     } finally {
       globalThis.fetch = originalFetch
       if (assetPath) await fs.rm(assetPath, { force: true })
+    }
+  })
+})
+
+describe("Feishu markdown replies", () => {
+  function markdownAccount(overrides: Partial<Config.ChannelFeishuAccount> = {}) {
+    return {
+      config: accountConfig(overrides),
+      channelConfig: {},
+      apiBase: "https://open.feishu.test/open-apis",
+      tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+    }
+  }
+
+  function mockCardFlow(requests: Array<{ url: string; body: Record<string, unknown> }>) {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+      if (url.endsWith("/cardkit/v1/cards")) {
+        return new Response(JSON.stringify({ code: 0, data: { card_id: "card_md" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+    return originalFetch
+  }
+
+  test("sends text replies as a CardKit markdown card by default", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_md", markdownAccount())
+
+      await provider.replyMessage({
+        accountId: "acct_md",
+        messageId: "msg_root",
+        parts: [
+          {
+            type: "text",
+            text: "**bold** answer with `code` — see https://example.com/docs and [linked](https://example.com/ref)",
+          },
+        ],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/cardkit/v1/cards",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      const cardJson = JSON.parse(String(requests[0]?.body.data)) as {
+        body: { elements: Array<{ tag: string; content: string }> }
+      }
+      expect(cardJson.body.elements[0]?.tag).toBe("markdown")
+      expect(cardJson.body.elements[0]?.content).toBe(
+        "**bold** answer with `code` — see https://example.com/docs and [linked](https://example.com/ref)",
+      )
+      const reply = requests[1]?.body
+      expect(reply?.msg_type).toBe("interactive")
+      expect(JSON.parse(String(reply?.content))).toEqual({ type: "card", data: { card_id: "card_md" } })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("sends pushed text as a markdown card by default", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_md", markdownAccount())
+
+      await provider.pushMessage({
+        accountId: "acct_md",
+        chatId: "chat_1",
+        parts: [{ type: "text", text: "pushed **markdown**" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/cardkit/v1/cards",
+        "https://open.feishu.test/open-apis/im/v1/messages?receive_id_type=chat_id",
+      ])
+      const create = requests[1]?.body
+      expect(create?.receive_id).toBe("chat_1")
+      expect(create?.msg_type).toBe("interactive")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("keeps plain text replies when the account sets responseFormat text", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_text", markdownAccount({ responseFormat: "text" }))
+
+      await provider.replyMessage({
+        accountId: "acct_text",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: "**bold** stays raw" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      expect(requests[0]?.body.msg_type).toBe("text")
+      expect(JSON.parse(String(requests[0]?.body.content))).toEqual({ text: "**bold** stays raw" })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("honors the provider-level responseFormat when the account omits it", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_provider_text", {
+        ...markdownAccount(),
+        channelConfig: { responseFormat: "text" },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_provider_text",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: "plain" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      expect(requests[0]?.body.msg_type).toBe("text")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("falls back to plain text when the markdown card API fails", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+      if (url.endsWith("/cardkit/v1/cards")) {
+        return new Response(JSON.stringify({ code: 500, msg: "card unavailable" }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_fallback", markdownAccount())
+
+      const result = await provider.replyMessage({
+        accountId: "acct_fallback",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: "fallback **text**" }],
+      })
+
+      expect(result.messageId).toBe("msg_reply")
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/cardkit/v1/cards",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      expect(requests[1]?.body.msg_type).toBe("text")
+      expect(JSON.parse(String(requests[1]?.body.content))).toEqual({ text: "fallback **text**" })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("falls back to plain text when the answer exceeds the card size limit", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    const originalFetch = mockCardFlow(requests)
+
+    try {
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_large", markdownAccount())
+
+      const oversized = "x".repeat(31 * 1024)
+      await provider.replyMessage({
+        accountId: "acct_large",
+        messageId: "msg_root",
+        parts: [{ type: "text", text: oversized }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_root/reply",
+      ])
+      expect(requests[0]?.body.msg_type).toBe("text")
+    } finally {
+      globalThis.fetch = originalFetch
     }
   })
 })

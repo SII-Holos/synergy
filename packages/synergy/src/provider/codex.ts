@@ -38,7 +38,7 @@ export namespace CodexProvider {
   export const AuthError = NamedError.create(
     "CodexAuthError",
     z.object({
-      providerID: z.literal(PROVIDER_ID),
+      providerID: z.string(),
       code: z.string(),
       message: z.string(),
       reloginRequired: z.boolean(),
@@ -48,7 +48,7 @@ export namespace CodexProvider {
   export const RateLimitError = NamedError.create(
     "CodexRateLimitError",
     z.object({
-      providerID: z.literal(PROVIDER_ID),
+      providerID: z.string(),
       code: z.literal("rate_limited"),
       message: z.string(),
       retryAfterSeconds: z.number().optional(),
@@ -369,10 +369,14 @@ export namespace CodexProvider {
     }
   }
 
-  export async function refreshOAuth(auth: OAuthAuth, fetchFn: FetchLike = fetch): Promise<TokenPayload> {
+  export async function refreshOAuth(
+    auth: OAuthAuth,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ): Promise<TokenPayload> {
     if (!auth.refresh) {
       throw new AuthError({
-        providerID: PROVIDER_ID,
+        providerID,
         code: "missing_refresh_token",
         message: "Codex credentials are missing a refresh token. Sign in again with ChatGPT.",
         reloginRequired: true,
@@ -394,7 +398,7 @@ export namespace CodexProvider {
     if (response.status === 429) {
       const retryAfterSeconds = parseRetryAfterSeconds(response.headers)
       throw new RateLimitError({
-        providerID: PROVIDER_ID,
+        providerID,
         code: "rate_limited",
         message: retryAfterSeconds
           ? `Codex provider quota exhausted or rate-limited. Retry after ${retryAfterSeconds}s. Credentials are still valid.`
@@ -410,7 +414,7 @@ export namespace CodexProvider {
         response.status === 401 ||
         response.status === 403
       throw new AuthError({
-        providerID: PROVIDER_ID,
+        providerID,
         code,
         message: errorMessage(payload, `Codex token refresh failed with status ${response.status}.`),
         reloginRequired,
@@ -420,17 +424,19 @@ export namespace CodexProvider {
   }
 
   export async function resolveToken(options?: {
+    providerID?: string
     forceRefresh?: boolean
     refreshIfExpiring?: boolean
     allowMissing?: boolean
     fetch?: FetchLike
   }): Promise<string | undefined> {
-    const selected = await Auth.select(PROVIDER_ID)
+    const providerID = options?.providerID ?? PROVIDER_ID
+    const selected = await Auth.select(providerID)
     const auth = selected?.auth
     if (!selected || !auth || auth.type !== "oauth") {
       if (options?.allowMissing) return undefined
       throw new AuthError({
-        providerID: PROVIDER_ID,
+        providerID,
         code: "codex_auth_missing",
         message: "No Codex credentials stored. Run `synergy auth login` and choose OpenAI Codex.",
         reloginRequired: true,
@@ -445,10 +451,12 @@ export namespace CodexProvider {
 
     if (!shouldRefresh) return auth.access
 
+    let refreshCredentialID = selected.credentialID
     try {
-      return await Auth.withLock(`${PROVIDER_ID}:oauth-refresh`, async () => {
-        const latestSelected = await Auth.select(PROVIDER_ID)
+      return await Auth.withLock(`${providerID}:oauth-refresh`, async () => {
+        const latestSelected = await Auth.select(providerID)
         const latest = latestSelected?.auth
+        refreshCredentialID = latestSelected?.credentialID ?? refreshCredentialID
         if (latest?.type === "oauth" && !options?.forceRefresh) {
           const latestExpires = accessTokenExpiresAt(latest.access) ?? latest.expires
           const latestShouldRefresh =
@@ -458,9 +466,9 @@ export namespace CodexProvider {
         }
 
         const refreshSource = latest?.type === "oauth" ? latest : auth
-        const refreshed = await refreshOAuth(refreshSource, options?.fetch)
+        const refreshed = await refreshOAuth(refreshSource, options?.fetch, providerID)
         await Auth.replaceSelectedCredential(
-          PROVIDER_ID,
+          providerID,
           {
             type: "oauth",
             access: refreshed.access,
@@ -473,14 +481,15 @@ export namespace CodexProvider {
       })
     } catch (error) {
       if (RateLimitError.isInstance(error)) {
-        await Auth.markExhausted(PROVIDER_ID, {
+        await Auth.markExhausted(providerID, {
           failureCode: error.data.code,
           cooldownUntil: error.data.retryAfterSeconds ? nowSeconds() + error.data.retryAfterSeconds : undefined,
+          credentialID: refreshCredentialID,
         }).catch(() => {})
         if (auth.access) return auth.access
       }
       if (AuthError.isInstance(error) && error.data.reloginRequired) {
-        await Auth.markDead(PROVIDER_ID, error.data.code).catch(() => {})
+        await Auth.markDead(providerID, error.data.code, { credentialID: refreshCredentialID }).catch(() => {})
       }
       if (options?.allowMissing && AuthError.isInstance(error) && error.data.reloginRequired) return undefined
       throw error
@@ -612,13 +621,18 @@ export namespace CodexProvider {
     }
   }
 
-  async function fetchModelPayload(accessToken: string, fetchFn: FetchLike = fetch) {
+  async function fetchModelPayload(
+    accessToken: string,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+    discoveryBaseURL = baseURL(),
+  ) {
     const response = await ProviderAuthRecovery.execute({
-      providerID: PROVIDER_ID,
+      providerID,
       request: async () => {
         const current =
-          (await resolveToken({ allowMissing: true, fetch: fetchFn }).catch(() => undefined)) ?? accessToken
-        return fetchFn(`${baseURL()}/models?client_version=1.0.0`, {
+          (await resolveToken({ providerID, allowMissing: true, fetch: fetchFn }).catch(() => undefined)) ?? accessToken
+        return fetchFn(`${discoveryBaseURL.trim().replace(/\/+$/, "")}/models?client_version=1.0.0`, {
           headers: {
             Authorization: `Bearer ${current}`,
             Accept: "application/json",
@@ -627,7 +641,7 @@ export namespace CodexProvider {
           signal: AbortSignal.timeout(10_000),
         })
       },
-      refresh: (auth) => refreshAuth(auth, fetchFn),
+      refresh: (auth) => refreshAuth(auth, fetchFn, providerID),
       classify: classifyError,
       reloadOnTransition: false,
       throwOnActionRequired: false,
@@ -640,8 +654,10 @@ export namespace CodexProvider {
   export async function fetchModelCatalog(
     accessToken: string,
     fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+    discoveryBaseURL = baseURL(),
   ): Promise<ProviderProfile.ModelCatalogEntry[]> {
-    const entries = await fetchModelPayload(accessToken, fetchFn)
+    const entries = await fetchModelPayload(accessToken, fetchFn, providerID, discoveryBaseURL)
     const models: Array<ProviderProfile.ModelCatalogEntry & { rank: number }> = []
     for (const entry of entries) {
       if (!entry || typeof entry !== "object") continue
@@ -661,8 +677,13 @@ export namespace CodexProvider {
     return models.sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id))
   }
 
-  export async function fetchModelIDs(accessToken: string, fetchFn: FetchLike = fetch): Promise<string[]> {
-    const payload = await fetchModelCatalog(accessToken, fetchFn)
+  export async function fetchModelIDs(
+    accessToken: string,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+    discoveryBaseURL = baseURL(),
+  ): Promise<string[]> {
+    const payload = await fetchModelCatalog(accessToken, fetchFn, providerID, discoveryBaseURL)
     return payload.map((item) => item.id)
   }
 
@@ -706,48 +727,51 @@ export namespace CodexProvider {
     return input.clone().text()
   }
 
-  export async function codexFetch(input: RequestInfo | URL, init?: RequestInit) {
-    return ProviderAuthRecovery.execute({
-      providerID: PROVIDER_ID,
-      request: async () => {
-        const access = await resolveToken({ refreshIfExpiring: true })
-        if (!access) {
-          throw new AuthError({
-            providerID: PROVIDER_ID,
-            code: "codex_auth_missing",
-            message: "No Codex credentials stored. Run `synergy auth login` and choose OpenAI Codex.",
-            reloginRequired: true,
-          })
-        }
+  export function codexFetchFor(providerID = PROVIDER_ID) {
+    return async (input: RequestInfo | URL, init?: RequestInit) =>
+      ProviderAuthRecovery.execute({
+        providerID,
+        request: async () => {
+          const access = await resolveToken({ providerID, refreshIfExpiring: true })
+          if (!access) {
+            throw new AuthError({
+              providerID,
+              code: "codex_auth_missing",
+              message: "No Codex credentials stored. Run `synergy auth login` and choose OpenAI Codex.",
+              reloginRequired: true,
+            })
+          }
 
-        const headers = new Headers(input instanceof Request ? input.headers : init?.headers)
-        if (input instanceof Request && init?.headers) {
-          for (const [key, value] of new Headers(init.headers)) headers.set(key, value)
-        }
-        headers.set("Authorization", `Bearer ${access}`)
-        for (const [key, value] of Object.entries(codexHeaders(access))) {
-          headers.set(key, value)
-        }
+          const headers = new Headers(input instanceof Request ? input.headers : init?.headers)
+          if (input instanceof Request && init?.headers) {
+            for (const [key, value] of new Headers(init.headers)) headers.set(key, value)
+          }
+          headers.set("Authorization", `Bearer ${access}`)
+          for (const [key, value] of Object.entries(codexHeaders(access))) {
+            headers.set(key, value)
+          }
 
-        const rewritten = rewriteCodexBody(await codexRequestBody(input, init))
-        if (rewritten.promptCacheKey) {
-          headers.set("session_id", rewritten.promptCacheKey)
-          headers.set("x-client-request-id", rewritten.promptCacheKey)
-        }
+          const rewritten = rewriteCodexBody(await codexRequestBody(input, init))
+          if (rewritten.promptCacheKey) {
+            headers.set("session_id", rewritten.promptCacheKey)
+            headers.set("x-client-request-id", rewritten.promptCacheKey)
+          }
 
-        const requestInit: RequestInit = {
-          ...init,
-          headers,
-        }
-        if (rewritten.body !== undefined) requestInit.body = rewritten.body
-        return fetch(input, requestInit)
-      },
-      refresh: async (auth) => {
-        return refreshAuth(auth)
-      },
-      classify: classifyError,
-    })
+          const requestInit: RequestInit = {
+            ...init,
+            headers,
+          }
+          if (rewritten.body !== undefined) requestInit.body = rewritten.body
+          return fetch(input, requestInit)
+        },
+        refresh: async (auth) => {
+          return refreshAuth(auth, fetch, providerID)
+        },
+        classify: classifyError,
+      })
   }
+
+  export const codexFetch = codexFetchFor(PROVIDER_ID)
 
   export function classifyError(input: {
     status?: number
@@ -765,9 +789,13 @@ export namespace CodexProvider {
     return undefined
   }
 
-  export async function refreshAuth(auth: Auth.Info, fetchFn: FetchLike = fetch): Promise<Auth.Info | undefined> {
+  export async function refreshAuth(
+    auth: Auth.Info,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ): Promise<Auth.Info | undefined> {
     if (auth.type !== "oauth") return undefined
-    const refreshed = await refreshOAuth(auth, fetchFn)
+    const refreshed = await refreshOAuth(auth, fetchFn, providerID)
     return {
       type: "oauth",
       access: refreshed.access,
@@ -800,18 +828,21 @@ export namespace CodexProvider {
     return `${normalized}/api/codex/usage`
   }
 
-  export async function fetchUsage(fetchFn: FetchLike = fetch): Promise<AccountUsage.Snapshot> {
-    const access = await resolveToken({ refreshIfExpiring: true, allowMissing: true, fetch: fetchFn })
+  export async function fetchUsage(
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ): Promise<AccountUsage.Snapshot> {
+    const access = await resolveToken({ providerID, refreshIfExpiring: true, allowMissing: true, fetch: fetchFn })
     if (!access) {
-      return AccountUsage.unavailable(PROVIDER_ID, "OpenAI Codex is not connected.", { reloginRequired: true })
+      return AccountUsage.unavailable(providerID, "OpenAI Codex is not connected.", { reloginRequired: true })
     }
     let response: Response
     try {
       response = await ProviderAuthRecovery.execute({
-        providerID: PROVIDER_ID,
+        providerID,
         request: async () => {
           const current =
-            (await resolveToken({ refreshIfExpiring: true, allowMissing: true, fetch: fetchFn })) ?? access
+            (await resolveToken({ providerID, refreshIfExpiring: true, allowMissing: true, fetch: fetchFn })) ?? access
           return fetchFn(usageURL(), {
             headers: {
               Authorization: `Bearer ${current}`,
@@ -822,24 +853,24 @@ export namespace CodexProvider {
             signal: AbortSignal.timeout(15_000),
           })
         },
-        refresh: (auth) => refreshAuth(auth, fetchFn),
+        refresh: (auth) => refreshAuth(auth, fetchFn, providerID),
         classify: classifyError,
         throwOnActionRequired: false,
       })
     } catch {
-      return AccountUsage.error(PROVIDER_ID, "OpenAI Codex usage request failed.")
+      return AccountUsage.error(providerID, "OpenAI Codex usage request failed.")
     }
     if (!response.ok) {
       const failure = await classifyError({ status: response.status, body: await safeJson(response.clone()) })
       if (failure?.reloginRequired) {
-        return AccountUsage.error(PROVIDER_ID, "OpenAI rejected these credentials. Reconnect to restore usage.", {
+        return AccountUsage.error(providerID, "OpenAI rejected these credentials. Reconnect to restore usage.", {
           reloginRequired: true,
         })
       }
       if (failure?.exhausted) {
-        return AccountUsage.unavailable(PROVIDER_ID, "OpenAI Codex usage is temporarily rate limited.")
+        return AccountUsage.unavailable(providerID, "OpenAI Codex usage is temporarily rate limited.")
       }
-      return AccountUsage.error(PROVIDER_ID, "OpenAI Codex usage is temporarily unavailable.")
+      return AccountUsage.error(providerID, "OpenAI Codex usage is temporarily unavailable.")
     }
     const payload = await safeJson(response)
     const rateLimit = payload.rate_limit ?? {}
@@ -869,7 +900,7 @@ export namespace CodexProvider {
     if (credits?.unlimited) details.push("Credits balance: unlimited")
     if (typeof credits?.balance === "number") details.push(`Credits balance: $${credits.balance.toFixed(2)}`)
     return {
-      providerID: PROVIDER_ID,
+      providerID,
       status: "available",
       source: "usage_api",
       fetchedAt: new Date().toISOString(),

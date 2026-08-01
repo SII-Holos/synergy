@@ -1197,7 +1197,7 @@ msgstr ""
 msgid "app.command.title"
 msgstr ""
 
-#. * Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
+#. * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
  *
  * title and message pass through from the plugin — they are plugin author content.
  * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
@@ -1205,7 +1205,7 @@ msgstr ""
 msgid "app.common.cancel"
 msgstr ""
 
-#. * Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
+#. * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
  *
  * title and message pass through from the plugin — they are plugin author content.
  * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
@@ -5525,15 +5525,7 @@ msgid "app.plugin.builtin.plugins"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.addedGroup"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.plugin.consent.approvalFailed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.plugin.consent.approvalRequired"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5541,11 +5533,7 @@ msgid "app.plugin.consent.approving"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.current.empty"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.plugin.consent.current.title"
+msgid "app.plugin.consent.confirmationRequired"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5565,7 +5553,7 @@ msgid "app.plugin.consent.install.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.manifestChanged"
+msgid "app.plugin.consent.noHostAccess"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5597,7 +5585,7 @@ msgid "app.plugin.consent.reviewChanged"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.severityChanges"
+msgid "app.plugin.consent.technicalDetails"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5610,6 +5598,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.update.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.api4UpdateRequired"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5626,6 +5618,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.loadingReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.noApi4Release"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5658,6 +5654,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.metric.author"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.metric.compatibility"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5705,7 +5705,7 @@ msgid "app.plugin.detail.notFoundInRegistry"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.permission.hostCapability"
+msgid "app.plugin.detail.permission.technicalDetails"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5729,11 +5729,15 @@ msgid "app.plugin.detail.section.developmentRegistration"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.section.noPermissions"
+msgid "app.plugin.detail.section.featuresCount"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.detail.section.noTools"
+msgid "app.plugin.detail.section.noFeatures"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.section.noPermissions"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5785,6 +5789,10 @@ msgid "app.plugin.detail.state.needsApproval"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.plugin.detail.version.compatibility"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.plugin.detail.version.installedLocally"
 msgstr ""
 
@@ -5806,6 +5814,10 @@ msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.apiVersion.label"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.build.label"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5866,10 +5878,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.empty.officialEmpty"
-msgstr ""
-
-#. ── Plugin marketplace ────────────────────────────────────────────────────────
-msgid "app.plugin.marketplace.generation.label"
 msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
@@ -5938,6 +5946,10 @@ msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.registryUnavailable.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.marketplace.row.compatibility"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6066,30 +6078,6 @@ msgstr ""
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.ui"
-msgstr ""
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.high"
-msgstr ""
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.low"
-msgstr ""
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.ariaLabel.medium"
-msgstr ""
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.high"
-msgstr ""
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.low"
-msgstr ""
-
-#. ── Plugin risk labels ────────────────────────────────────────────────────────
-msgid "app.plugin.risk.medium"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -16243,6 +16231,110 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.connection"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.connection.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.created"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.creating"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.dialog.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.name.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.requestFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.saving"
 msgstr ""
 
 #. js-lingui-explicit-id

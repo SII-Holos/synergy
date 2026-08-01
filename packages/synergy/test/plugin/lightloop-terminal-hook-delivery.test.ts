@@ -3,10 +3,9 @@ import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { Config } from "../../src/config/config"
 import { Plugin } from "../../src/plugin"
-import { saveApproval } from "../../src/plugin/consent/approval-store"
+import { createApprovalRecord, saveApproval } from "../../src/plugin/consent/approval-store"
 import { resetAllPluginState } from "../../src/plugin/loader"
 import { pluginRuntimeManager } from "../../src/plugin/runtime"
 import { ScopeContext } from "../../src/scope/context"
@@ -19,6 +18,7 @@ async function writeNoHookPlugin(root: string) {
   const manifest = {
     manifestVersion: 1,
     apiVersion: "4.0",
+    compatibility: { synergy: ">=3.0.11" },
     id: "no-terminal-hook-plugin",
     name: "no-terminal-hook-plugin",
     version: "1.0.0",
@@ -32,19 +32,13 @@ async function writeNoHookPlugin(root: string) {
 }
 
 async function approve(manifest: PluginManifestType) {
-  await saveApproval({
-    pluginId: manifest.id,
-    source: "local",
-    version: manifest.version,
-    manifestHash: computeManifestHash(manifest),
-    capabilitiesHash: computePermissionsHash(manifest),
-    approvedAt: Date.now(),
-    approvedBy: "user",
-    trustTier: "declarative",
-    approvedCapabilities: [],
-    risk: "low",
-    status: "approved",
-  })
+  await saveApproval(
+    createApprovalRecord({
+      pluginId: manifest.id,
+      source: "local",
+      manifest,
+    }),
+  )
 }
 
 async function writeHookPlugin(root: string) {
@@ -84,6 +78,7 @@ export default {
   const manifest = {
     manifestVersion: 1,
     apiVersion: "4.0",
+    compatibility: { synergy: ">=3.0.11" },
     id: "terminal-hook-plugin",
     name: "terminal-hook-plugin",
     version: "1.0.0",

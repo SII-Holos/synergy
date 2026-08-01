@@ -1,6 +1,9 @@
 import z from "zod"
 
 export const BROWSER_PROTOCOL_VERSION = 2 as const
+export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
+export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
+export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
 
 export function browserOwnerKey(owner: { mode: "session" | "scope"; scopeID: string; sessionID?: string }): string {
   const encodePart = (value: string) => encodeURIComponent(toWellFormed(value))

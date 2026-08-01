@@ -111,7 +111,6 @@ export interface InstalledPluginPolicyInput {
   devMode?: boolean
   policy?: PluginRuntimePolicyInput
   forceProcess?: boolean
-  risk?: "low" | "medium" | "high"
 }
 
 export interface InstalledPluginPolicyDecision extends PluginPolicyDecision {
@@ -135,7 +134,6 @@ export async function resolveInstalledPluginPolicy(
     userTrusted,
     verifiedIntegrity,
     devMode: input.devMode ?? Installation.isLocal(),
-    risk: input.risk,
   })
   return {
     ...policy,

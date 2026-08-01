@@ -1,5 +1,6 @@
 import { Auth } from "../provider/api-key"
 import { ModelsDev } from "../provider/models"
+import { ProviderCatalog } from "../provider/catalog"
 import { Provider } from "../provider/provider"
 import { ProviderTransform } from "../provider/transform"
 import { Config } from "./config"
@@ -192,6 +193,7 @@ export namespace ConfigSetup {
 
   interface LanguageProbeTarget {
     ref: string
+    provider?: Provider.Info
     model: Provider.Model
     runtimeModel: Awaited<ReturnType<typeof Provider.getLanguage>>
   }
@@ -199,6 +201,7 @@ export namespace ConfigSetup {
   interface ImportedProviderModelTarget {
     provider: Provider.Info
     model: Provider.Model
+    catalogProvider?: ModelsDev.Provider
   }
 
   export async function init() {
@@ -752,9 +755,20 @@ export namespace ConfigSetup {
     ref: string,
   ): Promise<ImportedProviderModelTarget> {
     const { providerID, modelID } = Provider.parseModel(ref)
-    const database = await ModelsDev.get()
+    const database = await ProviderCatalog.resolve({ config, includeLive: false })
     const imported = config.provider?.[providerID]
-    const base = database[providerID]
+    const sourceProviderID = imported?.modelsDevProviderID ?? providerID
+    const source = database[providerID] ?? database[sourceProviderID]
+    const base =
+      source && source.id !== providerID
+        ? {
+            ...source,
+            id: providerID,
+            env: [],
+            api: imported?.api ?? source.api,
+            npm: imported?.npm ?? source.npm,
+          }
+        : source
 
     if (!imported && !base) {
       throw new Error(`Provider \"${providerID}\" was not found in the imported config or known provider catalog`)
@@ -806,18 +820,22 @@ export namespace ConfigSetup {
 
     const provider: Provider.Info = {
       id: providerID,
+      profileID: imported?.profile,
       name: imported?.name ?? existing?.name ?? providerID,
       source: "config",
       env: imported?.env ?? existing?.env ?? [],
       key: undefined,
-      options: mergeDeep(existing?.options ?? {}, imported?.options ?? {}),
+      options: mergeDeep(
+        existing?.options ?? {},
+        mergeDeep(imported?.api ? { baseURL: imported.api } : {}, imported?.options ?? {}),
+      ),
       models: {
         ...(existing?.models ?? {}),
         [modelID]: model,
       },
     }
 
-    return { provider, model }
+    return { provider, model, catalogProvider: base }
   }
 
   async function resolveImportedProviderModel(config: Config.Info, ref: string): Promise<ImportedProviderModelTarget> {
@@ -841,6 +859,7 @@ export namespace ConfigSetup {
 
     return {
       ref: value,
+      provider,
       model,
       runtimeModel: await Provider.getLanguage(model),
     }
@@ -960,8 +979,6 @@ export namespace ConfigSetup {
     target: ImportedProviderModelTarget,
     authChanges?: Record<string, StagedAuthChange>,
   ) {
-    const modelOptions = (target.model.options ?? {}) as Record<string, unknown>
-    const providerOptions = (target.provider.options ?? {}) as Record<string, unknown>
     const apiKey = await resolveProviderAPIKey(target.provider, target.model, authChanges)
 
     if (!apiKey) {
@@ -972,12 +989,13 @@ export namespace ConfigSetup {
       )
     }
 
-    const sdk = Provider.createSDKFromSpec(target.model, {
-      options: { ...providerOptions, ...modelOptions, apiKey },
+    return Provider.createLanguageFromSpec(target.model, {
+      profileID: target.provider.profileID,
+      options: target.provider.options,
       key: apiKey,
+      auth: { type: "api", key: apiKey },
+      catalogProvider: target.catalogProvider,
     })
-
-    return sdk.languageModel(target.model.api.id)
   }
 
   async function probeLanguageModel(
@@ -994,7 +1012,10 @@ export namespace ConfigSetup {
         "runtimeModel" in target
           ? target.runtimeModel
           : await createImportedLanguageRuntime(target, options?.importContext?.auth)
-      const providerOptions = ProviderTransform.providerOptions(model, ProviderTransform.smallOptions(model))
+      const providerOptions = ProviderTransform.providerOptions(
+        model,
+        ProviderTransform.smallOptions(model, target.provider?.profileID),
+      )
 
       const messages: ModelMessage[] = options?.requireImageInput
         ? [

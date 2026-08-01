@@ -44,8 +44,8 @@ Usage notes:
 
   **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
   - Use the bash tool's tracked `background` / `yieldSeconds` flow so Synergy can show a processId and later poll, log, or kill the process.
-  - Do not launch detached shell daemons with `tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, or shell `&`. These processes stay charged to the Synergy service cgroup and are blocked by default.
-  - Operator-managed runtimes that intentionally allow detached daemons can set `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`; the guard is also bypassed under `full_access` profiles.
+  - Do not launch detached shell daemons with `tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, or shell `&`. These processes stay charged to the Synergy service cgroup and are blocked by default, unless the session runs under a `full_access` control profile.
+  - Operator-managed runtimes that intentionally allow detached daemons can set `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`.
 
   - Avoid using Bash with the `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use Glob (NOT find or ls)

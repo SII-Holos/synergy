@@ -1,4 +1,3 @@
-import { riskForCapabilities } from "../capability"
 import type { PermissionItem } from "./schema"
 
 const labels: Record<string, { title: string; description: string; category: PermissionItem["category"] }> = {
@@ -16,6 +15,16 @@ const labels: Record<string, { title: string; description: string; category: Per
     title: "Run delegated tasks",
     description: "Start Synergy tasks from plugin tools invoked by an agent.",
     category: "tools",
+  },
+  "asset.write": {
+    title: "Create attachments",
+    description: "Create files and attachments owned by Synergy.",
+    category: "files",
+  },
+  "shell.execute": {
+    title: "Run declared commands",
+    description: "Run argv-based commands only from contributions that explicitly require this access.",
+    category: "runtime",
   },
   "blueprint.delegate": {
     title: "Run Blueprint workflows",
@@ -96,6 +105,6 @@ export function generatePermissionItems(capabilities: string[]): PermissionItem[
       description: `Use the Synergy host capability ${key}.`,
       category: "platform" as const,
     }
-    return { key, ...label, severity: riskForCapabilities([key]) }
+    return { key, ...label, technical: key }
   })
 }

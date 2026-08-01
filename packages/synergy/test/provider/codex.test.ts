@@ -13,6 +13,7 @@ import { tmpdir } from "../fixture/fixture"
 
 const originalFetch = globalThis.fetch
 const originalCodexHome = process.env.CODEX_HOME
+const secondaryProviderID = "openai-codex-secondary-test"
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -55,6 +56,7 @@ async function resetCodexState() {
   }
   delete process.env.SYNERGY_CODEX_BASE_URL
   await Auth.remove(CodexProvider.PROVIDER_ID)
+  await Auth.remove(secondaryProviderID)
   await fs.rm(Global.Path.providerModelCatalogCache, { force: true })
   ProviderCatalog.reset()
   await Provider.reload()
@@ -260,6 +262,38 @@ test("codexFetch rewrites authorization, Codex headers, session headers, and req
   expect(body.max_output_tokens).toBeUndefined()
 })
 
+test("codexFetchFor binds requests to the selected connection credential", async () => {
+  const canonicalToken = accessToken({ accountID: "acct_canonical" })
+  const secondaryToken = accessToken({ accountID: "acct_secondary" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: canonicalToken,
+    refresh: "refresh-canonical",
+    expires: nowSeconds() + 60 * 60,
+  })
+  await Auth.set(secondaryProviderID, {
+    type: "oauth",
+    access: secondaryToken,
+    refresh: "refresh-secondary",
+    expires: nowSeconds() + 60 * 60,
+  })
+
+  globalThis.fetch = asFetch(async (_input, init) => {
+    const headers = new Headers(init?.headers)
+    expect(headers.get("authorization")).toBe(`Bearer ${secondaryToken}`)
+    expect(headers.get("chatgpt-account-id")).toBe("acct_secondary")
+    return jsonResponse({ ok: true })
+  })
+
+  await CodexProvider.codexFetchFor(secondaryProviderID)("https://chatgpt.com/backend-api/codex/responses", {
+    method: "POST",
+    body: JSON.stringify({ model: "gpt-5.6-sol", input: "hello" }),
+  })
+
+  expect(await Auth.get(CodexProvider.PROVIDER_ID)).toMatchObject({ type: "oauth", access: canonicalToken })
+  expect(await Auth.get(secondaryProviderID)).toMatchObject({ type: "oauth", access: secondaryToken })
+})
+
 test("codexFetch rewrites Request input bodies", async () => {
   const token = accessToken({ accountID: "acct_request" })
   await Auth.set(CodexProvider.PROVIDER_ID, {
@@ -400,6 +434,21 @@ test("fetchModelIDs preserves future account-visible model slugs", async () => {
   )
 
   expect(ids).toEqual(["gpt-5.6-sol", "future-codex-model"])
+})
+
+test("Codex discovery uses the configured connection endpoint", async () => {
+  const token = accessToken({ accountID: "acct_custom_endpoint" })
+  const catalog = await CodexProvider.fetchModelCatalog(
+    token,
+    async (input) => {
+      expect(String(input)).toBe("https://codex-proxy.invalid/custom/models?client_version=1.0.0")
+      return jsonResponse({ models: [{ slug: "proxy-model", priority: 1 }] })
+    },
+    secondaryProviderID,
+    "https://codex-proxy.invalid/custom/",
+  )
+
+  expect(catalog.map((entry) => entry.id)).toEqual(["proxy-model"])
 })
 
 test("fetchModelCatalog parses Codex context windows without filtering supported_in_api false", async () => {
@@ -563,6 +612,54 @@ test("provider auth registry exposes built-in Codex OAuth method", async () => {
       ])
     },
   })
+})
+
+test("provider auth registry exposes mapped Codex methods under the connection ID", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          provider: {
+            [secondaryProviderID]: {
+              profile: CodexProvider.PROVIDER_ID,
+              modelsDevProviderID: CodexProvider.PROVIDER_ID,
+            },
+          },
+        }),
+      )
+      await Bun.write(
+        path.join(dir, "auth.json"),
+        JSON.stringify({
+          tokens: {
+            access_token: token,
+            refresh_token: "refresh-secondary-import",
+          },
+        }),
+      )
+    },
+  })
+  process.env.CODEX_HOME = tmp.path
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    async fn() {
+      const methods = await ProviderAuth.methods()
+      expect(methods[secondaryProviderID]).toEqual(methods[CodexProvider.PROVIDER_ID])
+      await ProviderAuth.importCredentials({
+        providerID: secondaryProviderID,
+        method: 1,
+      })
+    },
+  })
+
+  expect(await Auth.get(secondaryProviderID)).toMatchObject({
+    type: "oauth",
+    access: token,
+    refresh: "refresh-secondary-import",
+  })
+  expect(await Auth.get(CodexProvider.PROVIDER_ID)).toBeUndefined()
 })
 
 test("provider auth imports Codex CLI credentials into the Synergy auth store", async () => {
@@ -737,6 +834,35 @@ test("quota remains available when the model catalog refresh times out", async (
   expect(catalog.failure).toBe("timeout")
   expect(usage).toMatchObject({ providerID: CodexProvider.PROVIDER_ID, status: "available", plan: "pro" })
   expect(await Auth.get(CodexProvider.PROVIDER_ID)).toBeDefined()
+})
+
+test("Codex usage reads and reports the selected connection", async () => {
+  const canonicalToken = accessToken({ accountID: "acct_usage_canonical" })
+  const secondaryToken = accessToken({ accountID: "acct_usage_secondary" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: canonicalToken,
+    refresh: "refresh-usage-canonical",
+    expires: nowSeconds() + 60 * 60,
+  })
+  await Auth.set(secondaryProviderID, {
+    type: "oauth",
+    access: secondaryToken,
+    refresh: "refresh-usage-secondary",
+    expires: nowSeconds() + 60 * 60,
+  })
+
+  const usage = await CodexProvider.fetchUsage(async (_input, init) => {
+    const headers = new Headers(init?.headers)
+    expect(headers.get("authorization")).toBe(`Bearer ${secondaryToken}`)
+    expect(headers.get("chatgpt-account-id")).toBe("acct_usage_secondary")
+    return jsonResponse({
+      plan_type: "pro",
+      rate_limit: { primary_window: { used_percent: 10, reset_at: nowSeconds() + 3600 } },
+    })
+  }, secondaryProviderID)
+
+  expect(usage).toMatchObject({ providerID: secondaryProviderID, status: "available", plan: "pro" })
 })
 
 test("live catalog cache isolates Codex accounts without exposing credential secrets", async () => {

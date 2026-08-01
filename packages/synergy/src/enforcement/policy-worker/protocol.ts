@@ -41,7 +41,6 @@ export namespace PolicyWorkerProtocol {
   const PluginToolCapabilitySchema = z
     .object({
       capabilities: z.array(z.string()),
-      risk: z.enum(["low", "medium", "high"]),
     })
     .strict()
 

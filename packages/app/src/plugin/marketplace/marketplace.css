@@ -191,6 +191,11 @@
   line-height: 1.125rem;
 }
 
+.plugin-detail-development-path + .plugin-detail-chip-cloud {
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
+
 .plugin-marketplace-list {
   display: flex;
   min-height: 0;
@@ -483,16 +488,18 @@
 }
 
 [data-component="dialog"] [data-slot="dialog-content"].plugin-detail-dialog [data-slot="dialog-header"] {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
+  position: relative;
   z-index: 2;
-  padding: 0;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.5rem 0.75rem 0;
   border: 0;
 }
 
 [data-component="dialog"] [data-slot="dialog-content"].plugin-detail-dialog [data-slot="dialog-body"] {
   min-height: 0;
+  overflow: hidden;
 }
 
 .plugin-detail-close {
@@ -512,9 +519,9 @@
 }
 
 .plugin-detail-shell {
-  max-height: min(calc(100vh - 48px), 760px);
+  max-height: min(calc(100vh - 96px), 712px);
   overflow-y: auto;
-  padding: 3rem 1.5rem 1.5rem;
+  padding: 0 1.5rem 1.5rem;
   scrollbar-width: none;
 }
 
@@ -740,10 +747,15 @@
 
 .plugin-detail-section-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 0.625rem;
+}
+
+.plugin-detail-section > .plugin-detail-chip-cloud {
+  justify-content: flex-start;
 }
 
 .plugin-detail-section-heading h3 {
@@ -828,6 +840,24 @@
   white-space: nowrap;
 }
 
+.plugin-detail-permission-technical {
+  margin-top: 0.25rem;
+  color: var(--text-weaker);
+  font-size: 0.6875rem;
+  line-height: 1rem;
+}
+
+.plugin-detail-permission-technical summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.plugin-detail-permission-technical code {
+  display: block;
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
 .plugin-detail-loading,
 .plugin-detail-empty {
   display: flex;
@@ -888,7 +918,7 @@
 
 @media (max-width: 520px) {
   .plugin-detail-shell {
-    padding: 2.75rem 1rem 1rem;
+    padding: 0 1rem 1rem;
   }
 
   .plugin-detail-action-row {

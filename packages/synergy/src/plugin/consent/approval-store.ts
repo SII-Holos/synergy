@@ -1,22 +1,26 @@
 import path from "path"
 import fs from "fs/promises"
-import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
+import { manifestHasTrustedUI, type PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  computePermissionsHash,
+  permissionsHashPayload,
+  type PluginGrantContract,
+} from "@ericsanchezok/synergy-plugin/integrity"
 import { Global } from "../../global/index.js"
 import type { PluginSource, TrustTier } from "../trust.js"
+import { comparePluginAccess } from "./diff.js"
 
 export interface PluginApprovalRecord {
+  schemaVersion: 2
   pluginId: string
   source: PluginSource
-  version: string
-  manifestHash: string
-  capabilitiesHash: string
+  signer?: string
+  grant: PluginGrantContract
+  grantHash: string
   approvedAt: number
   approvedBy: "user" | "policy" | "builtin"
   trustTier: TrustTier
   approvedCapabilities: string[]
-  risk: "low" | "medium" | "high"
-  status: "approved" | "needsApproval"
 }
 
 function approvalPath() {
@@ -26,7 +30,16 @@ function approvalPath() {
 async function readAll(): Promise<PluginApprovalRecord[]> {
   try {
     const value = JSON.parse(await Bun.file(approvalPath()).text())
-    return Array.isArray(value) ? value : []
+    return Array.isArray(value)
+      ? value.filter(
+          (record): record is PluginApprovalRecord =>
+            record?.schemaVersion === 2 &&
+            typeof record.pluginId === "string" &&
+            typeof record.grantHash === "string" &&
+            record.grant &&
+            typeof record.grant === "object",
+        )
+      : []
   } catch {
     return []
   }
@@ -43,6 +56,29 @@ async function writeAll(records: PluginApprovalRecord[]) {
 export const readApprovals = readAll
 export const writeApprovals = writeAll
 
+export function createApprovalRecord(input: {
+  pluginId: string
+  source: PluginSource
+  manifest: PluginManifestType
+  capabilities?: string[]
+  signer?: string
+  approvedBy?: PluginApprovalRecord["approvedBy"]
+}): PluginApprovalRecord {
+  const capabilities = input.capabilities ?? input.manifest.capabilities.map((item) => item.id)
+  return {
+    schemaVersion: 2,
+    pluginId: input.pluginId,
+    source: input.source,
+    ...(input.signer ? { signer: input.signer } : {}),
+    grant: permissionsHashPayload(input.manifest, capabilities),
+    grantHash: computePermissionsHash(input.manifest, capabilities),
+    approvedAt: Date.now(),
+    approvedBy: input.approvedBy ?? "user",
+    trustTier: manifestHasTrustedUI(input.manifest) ? "trusted-import" : "declarative",
+    approvedCapabilities: capabilities,
+  }
+}
+
 export async function getApproval(pluginId: string, manifest?: PluginManifestType) {
   const records = (await readAll())
     .filter((record) => record.pluginId === pluginId)
@@ -51,12 +87,8 @@ export async function getApproval(pluginId: string, manifest?: PluginManifestTyp
 }
 
 export async function saveApproval(record: PluginApprovalRecord) {
-  const records = await readAll()
-  const index = records.findIndex(
-    (item) => item.pluginId === record.pluginId && item.manifestHash === record.manifestHash,
-  )
-  if (index >= 0) records[index] = record
-  else records.push(record)
+  const records = (await readAll()).filter((item) => item.pluginId !== record.pluginId)
+  records.push(record)
   await writeAll(records)
 }
 
@@ -68,10 +100,10 @@ export function verifyApproval(
   record: PluginApprovalRecord,
   manifest: PluginManifestType,
   capabilities = manifest.capabilities.map((item) => item.id),
+  identity: { source?: PluginSource; signer?: string } = {},
 ) {
-  return (
-    record.status === "approved" &&
-    record.manifestHash === computeManifestHash(manifest) &&
-    record.capabilitiesHash === computePermissionsHash(manifest, capabilities)
-  )
+  if ("source" in identity && record.source !== identity.source) return false
+  if ("signer" in identity && record.signer !== identity.signer) return false
+  const candidate = permissionsHashPayload(manifest, capabilities)
+  return comparePluginAccess(record.grant, candidate) !== "broadened"
 }

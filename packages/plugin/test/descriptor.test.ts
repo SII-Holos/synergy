@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test"
 import z from "zod"
 import {
   PLUGIN_API_VERSION,
+  PLUGIN_API_4_BASE_SYNERGY_RANGE,
   PluginManifest,
+  PluginManifestEnvelope,
+  PluginManifestV4,
   capability,
   composerExtension,
   compilePluginManifest,
@@ -74,6 +77,7 @@ describe("definePlugin", () => {
     })
 
     expect(manifest.apiVersion).toBe(PLUGIN_API_VERSION)
+    expect(manifest.compatibility).toEqual({ synergy: PLUGIN_API_4_BASE_SYNERGY_RANGE })
     expect(manifest.id).toBe("research")
     expect(manifest.capabilities).toEqual([{ id: "workspace.read" }])
     expect(manifest.contributions.map((item) => `${item.kind}:${item.id}`)).toEqual([
@@ -95,6 +99,24 @@ describe("definePlugin", () => {
     })
     expect(JSON.stringify(manifest)).not.toContain("handler")
     expect(JSON.stringify(manifest)).not.toContain("src/ui.tsx")
+  })
+
+  test("keeps Plugin API 4 as a versioned compatibility family", () => {
+    const plugin = definePlugin({
+      id: "compatibility-fixture",
+      version: "1.0.0",
+      description: "Plugin API 4 compatibility fixture",
+      compatibility: { synergy: ">=3.2.0" },
+      contributions: [],
+    })
+    const manifest = compilePluginManifest(plugin, { generation: "generation-1" })
+
+    expect(PluginManifestEnvelope.parse(manifest)).toMatchObject({
+      apiVersion: "4.0",
+      compatibility: { synergy: ">=3.2.0" },
+    })
+    expect(PluginManifestV4.parse(manifest)).toEqual(manifest)
+    expect(PluginManifestV4.safeParse({ ...manifest, apiVersion: "3.0" }).success).toBe(false)
   })
 
   test("compiles setting-gated tools against a declared setting", () => {
