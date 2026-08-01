@@ -6,7 +6,6 @@ import {
   createSignal,
   For,
   onCleanup,
-  onMount,
   Show,
   type Component,
   type JSX,
@@ -36,7 +35,11 @@ import { usePlatform } from "@/context/platform"
 import { useLocale } from "@/context/locale"
 import { useHolos } from "@/context/holos"
 import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
-import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
+import {
+  getSettingsSections,
+  subscribeSettingsSections,
+  type SettingsSection as RegisteredSettingsSection,
+} from "@/plugin"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
 import { AppPanel } from "@/components/app-panel"
 import { translateDescriptor } from "@/locales/translate"
@@ -50,6 +53,7 @@ import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
+import { createSettingsComponentLoader } from "./settings-component-loader"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { rollbackFailedLocalePatch } from "./panels/locale-preference-change"
 import { ModelsPanel } from "./panels/ModelsPanel"
@@ -203,6 +207,21 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
   const [settingsPopoverLayer, setSettingsPopoverLayer] = createSignal<HTMLElement>()
   const [developerMode, setDeveloperMode] = createSignal(readDeveloperMode())
+  const [settingsRegistryVersion, setSettingsRegistryVersion] = createSignal(0)
+  let settingsRegistryRefreshScheduled = false
+  let settingsRegistryDisposed = false
+  const unsubscribeSettingsSections = subscribeSettingsSections(() => {
+    if (settingsRegistryRefreshScheduled) return
+    settingsRegistryRefreshScheduled = true
+    queueMicrotask(() => {
+      settingsRegistryRefreshScheduled = false
+      if (!settingsRegistryDisposed) setSettingsRegistryVersion((version) => version + 1)
+    })
+  })
+  onCleanup(() => {
+    settingsRegistryDisposed = true
+    unsubscribeSettingsSections()
+  })
 
   const [settings, setSettings] = createStore<SettingsState>(defaultSettingsState(input.sendShortcut()))
 
@@ -713,6 +732,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
 
   const settingsSections = createMemo(() => {
+    settingsRegistryVersion()
     const components = builtinSettingsComponents()
     return filterSettingsSections(getSettingsSections(), developerMode())
       .map((section) => {
@@ -907,8 +927,9 @@ type SettingsComponentProps = {
 function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
-  const [comp, setComp] = createSignal<Component<SettingsComponentProps> | null>(null)
-  const [loading, setLoading] = createSignal(true)
+  const componentLoader = createSettingsComponentLoader<Component<SettingsComponentProps>>()
+  const comp = componentLoader.component
+  const loading = componentLoader.loading
 
   const section = () => props.section
   const [values, { mutate }] = createResource(
@@ -936,24 +957,12 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
     )
   }
 
-  onMount(() => {
-    const s = section()
-    if (s.component) {
-      setComp(() => s.component! as Component<SettingsComponentProps>)
-      setLoading(false)
-      return
-    }
-    if (s.loader) {
-      s.loader().then(
-        (mod) => {
-          setComp(() => mod.default as Component<SettingsComponentProps>)
-          setLoading(false)
-        },
-        () => setLoading(false),
-      )
-      return
-    }
-    setLoading(false)
+  createEffect(() => {
+    const current = section()
+    void componentLoader.load({
+      component: current.component as Component<SettingsComponentProps> | undefined,
+      loader: current.loader as (() => Promise<{ default: Component<SettingsComponentProps> }>) | undefined,
+    })
   })
 
   return (
