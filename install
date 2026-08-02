@@ -6,6 +6,7 @@ MUTED='\033[0;2m'
 RED='\033[0;31m'
 ORANGE='\033[38;5;214m'
 NC='\033[0m' # No Color
+CHECKSUM_ASSET_NOT_FOUND=4
 
 usage() {
     cat <<EOF
@@ -342,33 +343,59 @@ archive_member_name_is_safe() {
     done
 }
 
-validate_archive_members() {
+validated_archive_members() {
     local archive="$1"
     local archive_type="$2"
+    local members
     local member
     if [ "$archive_type" = "tar" ]; then
         if tar -tvzf "$archive" | grep -Eq '^[lh]'; then
-            print_message error "Release archive contains a symbolic or hard link."
+            print_message error "Release archive contains a symbolic or hard link." >&2
             return 1
         fi
-        while IFS= read -r member; do
-            if ! archive_member_name_is_safe "$member"; then
-                print_message error "Release archive contains an unsafe path: $member"
-                return 1
-            fi
-        done < <(tar -tzf "$archive")
-        return
-    fi
-    if unzip -Z -l "$archive" | grep -Eq '^l'; then
-        print_message error "Release archive contains a symbolic link."
-        return 1
+        members=$(tar -tzf "$archive") || return 1
+    else
+        if unzip -Z -l "$archive" | grep -Eq '^l'; then
+            print_message error "Release archive contains a symbolic link." >&2
+            return 1
+        fi
+        members=$(unzip -Z1 "$archive") || return 1
     fi
     while IFS= read -r member; do
         if ! archive_member_name_is_safe "$member"; then
-            print_message error "Release archive contains an unsafe path: $member"
+            print_message error "Release archive contains an unsafe path: $member" >&2
             return 1
         fi
-    done < <(unzip -Z1 "$archive")
+    done <<< "$members"
+    printf '%s\n' "$members"
+}
+
+validate_archive_members() {
+    validated_archive_members "$1" "$2" >/dev/null
+}
+
+require_published_checksum_before_extraction() {
+    local archive="$1"
+    local archive_type="$2"
+    local checksum_verified="$3"
+    local checksum_name="$4"
+    local members
+    local member
+    members=$(validated_archive_members "$archive" "$archive_type") || return 1
+    if [ "$checksum_verified" = "true" ]; then
+        return 0
+    fi
+    while IFS= read -r member; do
+        while [[ "$member" == */ ]]; do
+            member="${member%/}"
+        done
+        case "$member" in
+            runtime-manifest.sha256|./runtime-manifest.sha256)
+                print_message error "Published CLI checksum is unavailable for this manifest-backed Synergy release: $checksum_name"
+                return 1
+                ;;
+        esac
+    done <<< "$members"
 }
 
 replace_bundle_directory() {
@@ -461,7 +488,7 @@ apply_bundle_contents() {
         replace_bundle_directory "$bundle_root/sandbox" "$ROOT_DIR/sandbox" || return 1
     fi
 
-    rm -f "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll" || return 1
+    rm -f "$INSTALL_DIR/ast-grep" "$INSTALL_DIR/ast-grep.exe" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll" || return 1
     for vec in "$bundle_root/vec0.so" "$bundle_root/vec0.dylib" "$bundle_root/vec0.dll"; do
         if [ -f "$vec" ]; then
             cp "$vec" "$ROOT_DIR/" || return 1
@@ -711,21 +738,26 @@ download_archive_standard() {
 download_cli_checksums() {
     local url="$1"
     local output="$2"
-    if ! curl --proto '=https' -sSfL -o "$output" "$url"; then
+    local status
+    if ! status=$(curl --proto '=https' -sSL -w '%{http_code}' -o "$output" "$url"); then
         rm -f "$output"
+        print_message error "Failed to download the published CLI checksum asset."
         return 1
     fi
+    case "$status" in
+        2??) return 0 ;;
+        404)
+            rm -f "$output"
+            return "$CHECKSUM_ASSET_NOT_FOUND"
+            ;;
+        *)
+            rm -f "$output"
+            print_message error "Failed to download the published CLI checksum asset (HTTP $status)."
+            return 1
+            ;;
+    esac
 }
 
-require_published_checksum_for_manifest() {
-    local bundle_root="$1"
-    local checksum_verified="$2"
-    local checksum_name="$3"
-    if [ -f "$bundle_root/runtime-manifest.sha256" ] && [ "$checksum_verified" != "true" ]; then
-        print_message error "Published CLI checksum is unavailable for this manifest-backed Synergy release: $checksum_name"
-        return 1
-    fi
-}
 
 
 progress_trace_file() {
@@ -965,29 +997,40 @@ download_and_install() {
         fi
     fi
 
-    if download_cli_checksums "$checksum_url" "$tmp_dir/$checksum_name"; then
+    local checksum_status=0
+    download_cli_checksums "$checksum_url" "$tmp_dir/$checksum_name" || checksum_status=$?
+    if [ "$checksum_status" -eq 0 ]; then
         if ! verify_downloaded_archive_checksum "$tmp_dir/$filename" "$tmp_dir/$checksum_name" "$filename"; then
             rm -rf "$tmp_dir"
             return 1
         fi
         checksum_verified=true
+    elif [ "$checksum_status" -eq "$CHECKSUM_ASSET_NOT_FOUND" ]; then
+        print_message warning "${ORANGE}Warning: published CLI checksum is unavailable; installing a legacy Synergy release only if its archive has no runtime manifest.${NC}"
+    else
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    local archive_type=zip
+    if [ "$os" = "linux" ]; then
+        archive_type=tar
+    fi
+    if ! require_published_checksum_before_extraction "$tmp_dir/$filename" "$archive_type" "$checksum_verified" "$checksum_name"; then
+        rm -rf "$tmp_dir"
+        return 1
     fi
 
     if [ "$os" = "linux" ]; then
-        if ! validate_archive_members "$tmp_dir/$filename" tar || ! tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"; then
+        if ! tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"; then
             rm -rf "$tmp_dir"
             return 1
         fi
     else
-        if ! validate_archive_members "$tmp_dir/$filename" zip || ! unzip -q "$tmp_dir/$filename" -d "$tmp_dir"; then
+        if ! unzip -q "$tmp_dir/$filename" -d "$tmp_dir"; then
             rm -rf "$tmp_dir"
             return 1
         fi
-    fi
-
-    if ! require_published_checksum_for_manifest "$tmp_dir" "$checksum_verified" "$checksum_name"; then
-        rm -rf "$tmp_dir"
-        return 1
     fi
 
     local install_status=0

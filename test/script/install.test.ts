@@ -184,6 +184,12 @@ describe("CLI bundle installer", () => {
     temporaryDirectories.push(root)
     const home = path.join(root, "home")
     const bundle = path.join(root, "bundle")
+    const installedBin = path.join(home, ".synergy", "bin")
+    await fs.mkdir(installedBin, { recursive: true })
+    await Promise.all([
+      fs.writeFile(path.join(installedBin, "ast-grep"), "old-glibc-helper"),
+      fs.writeFile(path.join(installedBin, "ast-grep.exe"), "old-windows-helper"),
+    ])
     const files = ["bin/synergy", "sandbox/synergy-sandbox-linux", ...sharedRuntimeFiles]
     for (const relative of files) {
       await fs.mkdir(path.dirname(path.join(bundle, relative)), { recursive: true })
@@ -197,7 +203,8 @@ describe("CLI bundle installer", () => {
     })
 
     expect(result.exitCode).toBe(0)
-    expect(await Bun.file(path.join(home, ".synergy", "bin", "ast-grep")).exists()).toBe(false)
+    expect(await Bun.file(path.join(installedBin, "ast-grep")).exists()).toBe(false)
+    expect(await Bun.file(path.join(installedBin, "ast-grep.exe")).exists()).toBe(false)
     expect(await Bun.file(path.join(home, ".synergy", "vec0.so")).exists()).toBe(false)
   })
 
@@ -765,6 +772,25 @@ describe("CLI bundle installer", () => {
     expect(await Bun.file(installedApp).text()).toBe("old-app")
   })
 
+  test("fails closed when the CLI checksum request returns a non-404 response", () => {
+    const result = runInstallFunction(
+      'curl() { printf "500"; }; download_cli_checksums https://example.invalid/checksums.txt "$1"',
+      ["/tmp/synergy-checksums-test"],
+    )
+
+    expect(result.exitCode).not.toBe(0)
+    expect(outputText(result)).toContain("HTTP 500")
+  })
+
+  test("treats only a missing CLI checksum asset as a legacy release", () => {
+    const result = runInstallFunction(
+      'curl() { printf "404"; }; download_cli_checksums https://example.invalid/checksums.txt "$1"',
+      ["/tmp/synergy-checksums-test"],
+    )
+
+    expect(result.exitCode).toBe(4)
+  })
+
   test("accepts a downloaded archive that matches the published CLI checksum", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-install-archive-checksum-valid-"))
     temporaryDirectories.push(root)
@@ -842,12 +868,12 @@ describe("CLI bundle installer", () => {
     expect(outputText(result)).toContain("CLI checksum manifest contains an invalid entry")
   })
 
-  test("requires a published checksum for a manifest-backed archive", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-install-checksum-required-"))
-    temporaryDirectories.push(root)
-    await fs.writeFile(path.join(root, "runtime-manifest.sha256"), "manifest")
-
-    const result = runInstallFunction('require_published_checksum_for_manifest "$1" false checksums.txt', [root])
+  test("requires a published checksum for a manifest-backed archive", () => {
+    const command = [
+      'tar() { case "$1" in -tvzf) printf -- "-rw-r--r-- runtime-manifest.sha256\\n" ;; -tzf) printf "runtime-manifest.sha256\\n" ;; esac; }',
+      "require_published_checksum_before_extraction archive.tar.gz tar false checksums.txt",
+    ].join("; ")
+    const result = runInstallFunction(command)
 
     expect(result.exitCode).not.toBe(0)
     expect(outputText(result)).toContain(
@@ -855,13 +881,83 @@ describe("CLI bundle installer", () => {
     )
   })
 
-  test("allows a legacy archive without a published checksum", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-install-checksum-legacy-"))
-    temporaryDirectories.push(root)
+  test("treats a runtime-manifest directory entry as manifest-backed", () => {
+    const command = [
+      'tar() { case "$1" in -tvzf) printf -- "drwxr-xr-x runtime-manifest.sha256/\\n" ;; -tzf) printf "runtime-manifest.sha256/\\n" ;; esac; }',
+      "require_published_checksum_before_extraction archive.tar.gz tar false checksums.txt",
+    ].join("; ")
+    const result = runInstallFunction(command)
 
-    const result = runInstallFunction('require_published_checksum_for_manifest "$1" false checksums.txt', [root])
+    expect(result.exitCode).not.toBe(0)
+    expect(outputText(result)).toContain("Published CLI checksum is unavailable")
+  })
+
+  test("allows a legacy archive without a published checksum", () => {
+    const command = [
+      'tar() { case "$1" in -tvzf) printf -- "-rw-r--r-- bin/synergy\\n" ;; -tzf) printf "bin/synergy\\n" ;; esac; }',
+      "require_published_checksum_before_extraction archive.tar.gz tar false checksums.txt",
+    ].join("; ")
+    const result = runInstallFunction(command)
 
     expect(result.exitCode).toBe(0)
+  })
+
+  test("rejects a manifest-backed archive without a published checksum before extraction", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-install-pre-extraction-checksum-"))
+    temporaryDirectories.push(root)
+    const home = path.join(root, "home")
+    const fakeBin = path.join(root, "bin")
+    const tmp = path.join(root, "tmp")
+    await Promise.all([
+      fs.mkdir(home, { recursive: true }),
+      fs.mkdir(fakeBin, { recursive: true }),
+      fs.mkdir(tmp, { recursive: true }),
+    ])
+    await writeExecutable(
+      path.join(fakeBin, "uname"),
+      'if [ "${1:-}" = "-s" ]; then printf "Linux"; else printf "x86_64"; fi',
+    )
+    await writeExecutable(
+      path.join(fakeBin, "curl"),
+      [
+        'output=""',
+        'previous=""',
+        'for argument in "$@"; do',
+        '  if [ "$previous" = "-o" ]; then output="$argument"; fi',
+        '  previous="$argument"',
+        "done",
+        'case "${!#}" in *-cli-checksums.txt) printf "404"; exit 0 ;; esac',
+        'if [ -n "$output" ]; then mkdir -p "$(dirname "$output")"; printf "archive" > "$output"; fi',
+        'case " $* " in *" -w "*) printf "200" ;; esac',
+      ].join("\n"),
+    )
+    await writeExecutable(
+      path.join(fakeBin, "tar"),
+      [
+        'case "$1" in',
+        '  -tvzf) printf -- "-rw-r--r-- runtime-manifest.sha256\\n" ;;',
+        '  -tzf) printf "runtime-manifest.sha256\\n" ;;',
+        '  -xzf) printf "unexpected-extraction\\n" ;;',
+        "esac",
+      ].join("\n"),
+    )
+
+    const result = Bun.spawnSync({
+      cmd: ["bash", installScript, "--version", "1.2.3", "--no-modify-path"],
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        SHELL: "/bin/bash",
+        TMPDIR: tmp,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    expect(result.exitCode).not.toBe(0)
+    expect(outputText(result)).toContain("Published CLI checksum is unavailable")
+    expect(outputText(result)).not.toContain("unexpected-extraction")
   })
 
   test("propagates a download failure without continuing post-install setup", () => {

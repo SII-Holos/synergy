@@ -82,6 +82,7 @@ Updater metadata expected on stable releases:
 - `latest-mac.yml`
 - `latest.yml`
 - `latest-linux.yml`
+- `latest-linux-arm64.yml`
 
 ## CLI Exposure
 
@@ -105,7 +106,12 @@ macOS:
 - `CSC_INSTALLER_LINK`
 - `CSC_INSTALLER_KEY_PASSWORD`
 
-Windows artifacts are currently unsigned. The release workflow does not pass CSC signing material to `electron-builder` on Windows. `WINDOWS_CERTIFICATE` and `WINDOWS_CERTIFICATE_PASSWORD` are reserved for re-enabling Windows signing later.
+Windows:
+
+- `WINDOWS_CERTIFICATE` — base64-encoded PKCS#12 certificate provided to `electron-builder` as `CSC_LINK`
+- `WINDOWS_CERTIFICATE_PASSWORD` — password provided as `CSC_KEY_PASSWORD`
+
+Product release packaging requires Windows code signing, and `electron-builder` verifies update signatures before applying downloaded updates.
 
 GitHub upload/update feed:
 
@@ -116,7 +122,7 @@ Browser artifact trust:
 - `BROWSER_HOST_MANIFEST_SIGNING_KEY` — base64 PKCS#8 Ed25519 private key used only by the release matrix to sign Browser Host and Chromium manifests; the workflow passes it to the Chromium generator as `SYNERGY_BROWSER_MANIFEST_SIGNING_KEY`
 - `BROWSER_HOST_MANIFEST_PUBLIC_KEY` — base64 raw Ed25519 public key passed to runtime builds as `SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY` and embedded in product binaries
 
-PR/package validation works without signing secrets. A product Release validates every required macOS signing secret before publishing a candidate and verifies the one private/public key pair shared by Browser Host and Chromium manifest signing.
+PR/package validation works without signing secrets. A product Release validates every required macOS and Windows signing secret before publishing a candidate and verifies the one private/public key pair shared by Browser Host and Chromium manifest signing.
 
 ## GitHub Actions Flow
 
@@ -125,7 +131,7 @@ Product release keeps the existing candidate/finalize model:
 1. `stable_sandbox_assets` builds Linux x64/arm64 helpers for glibc and musl plus the Windows x64 helper, then uploads target-keyed assets. It never commits generated hashes.
 2. `stable_candidate` validates signing material, downloads the helper assets, selects the requested bump after the highest stable version already published by any release-managed npm package, runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, packages the CLI archives (validating each against its `runtime-manifest.sha256` after extraction), generates and uploads `Synergy-${version}-cli-checksums.txt`, creates the draft GitHub Release, verifies the draft asset names, downloads each published CLI archive and the checksum asset, rejects any missing, extra, malformed, or mismatched checksum entry, and repeats the archive path/link and extracted runtime-manifest validation against the downloaded bytes.
 3. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. macOS and Linux build x64/arm64 Desktop artifacts; Windows builds x64 Desktop artifacts. Every platform still builds x64/arm64 minimal Browser Host zips.
-4. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key and helper hash embedded, assembles their Web application, schema, and native runtime assets, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle.
+4. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key and helper hash embedded, assembles their Web application, schema, and native runtime assets, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle. Windows packaging requires the configured PKCS#12 certificate, forces code signing, and verifies that the resulting executable has a valid Authenticode signature before upload.
 5. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt` for the Desktop artifacts, and uploads them to the draft GitHub Release. The CLI checksum asset is separate and was already uploaded by `stable_candidate`.
 6. `stable_finalize` verifies npm candidates, downloads every CLI runtime archive, recomputes its SHA-256 against the published CLI checksum asset, rejects unsafe archive paths or links, extracts it into a private temporary directory, and re-validates its `runtime-manifest.sha256` and required target contract. It then verifies recommended Desktop installer artifacts, portable artifacts, Desktop checksum, and updater metadata from the draft GitHub Release before promoting npm tags and publishing the GitHub Release.
 
@@ -139,7 +145,7 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 - If desktop upload fails, rerun `stable_desktop_publish`; it uses `gh release upload --clobber`.
 - If Desktop checksum generation is wrong, delete `Synergy-${version}-checksums.txt` from the draft release, rerun `stable_desktop_publish`, then rerun finalize.
 - If the CLI checksum asset is missing or wrong, replace `Synergy-${version}-cli-checksums.txt` in the draft release (regenerate it from the packaged CLI archives and upload with `gh release upload --clobber`), then rerun `stable_finalize`. Do not rerun `stable_candidate` to fix it: the candidate version is already published, so a rerun computes the next version instead of repairing this draft.
-- If notarization or code signing fails, verify the signing secrets and rerun only the affected platform matrix job before finalize.
+- If notarization or code signing fails, verify the affected platform's signing secrets and rerun only that platform matrix job before finalize. For Windows, confirm that `WINDOWS_CERTIFICATE` is a base64-encoded PKCS#12 certificate, its password matches, and the packaged executable reports a valid Authenticode signature.
 - If Browser manifest signing fails, verify that the private/public key pair matches, rerun every affected platform matrix job, and replace the corresponding Host or Chromium manifest/signature assets together. Never reuse a manifest for a rebuilt archive.
 - If finalize fails because desktop assets are missing, do not publish the draft release manually; restore the missing assets first, then rerun `stable_finalize`.
 
@@ -158,7 +164,9 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 - Confirm Linux `.deb` installs Bubblewrap and portable Linux checks report a clear prerequisite when it is absent
 - Confirm the packaged macOS Dock badge, Windows taskbar overlay, and Linux launcher/tray indicators appear for unread completion notices and clear after acknowledgement
 - Confirm Windows does not expose internal runtime helper binaries through PATH
+- Confirm Windows product-release packaging fails without signing material, the packaged executable has a valid Authenticode signature, and updater signature verification remains enabled
+- Confirm a downloaded Desktop update installs only through the explicit install-and-restart action and does not install automatically when the user quits
 - Confirm Linux provides both `/usr/bin/synergy-desktop` for the desktop shell and `/usr/bin/synergy` for the runtime CLI
-- Draft GitHub Release contains all expected recommended installer artifacts, portable artifacts, both checksum assets (`Synergy-${version}-checksums.txt` and `Synergy-${version}-cli-checksums.txt`), and updater metadata before finalize
+- Draft GitHub Release contains all expected recommended installer artifacts, portable artifacts, both checksum assets (`Synergy-${version}-checksums.txt` and `Synergy-${version}-cli-checksums.txt`), and all four updater metadata files before finalize
 - Draft GitHub Release contains six Browser Host zips, six exact-version manifests, and six signatures; every manifest executable exists at its exact platform path inside the matching zip, and tampered zip/signature tests pass before finalize
 - Draft GitHub Release contains five exact-version Chromium manifests and five signatures for the supported standalone install targets; signature, target-substitution, and archive-tampering tests pass before finalize.

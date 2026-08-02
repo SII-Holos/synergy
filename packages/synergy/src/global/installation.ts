@@ -53,7 +53,7 @@ export namespace Installation {
   }
 
   export function isPreview() {
-    return CHANNEL !== "latest"
+    return npmDistTagForChannel(CHANNEL) !== "latest"
   }
 
   export function isLocal() {
