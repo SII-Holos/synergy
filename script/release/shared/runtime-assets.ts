@@ -4,6 +4,7 @@ import { createRequire } from "node:module"
 import path from "node:path"
 import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "./packages"
 import { stagePlaywrightCoreRuntime } from "../../../packages/synergy/script/playwright-runtime-assets"
+import { writeRuntimeManifest } from "./runtime-contract"
 
 type RuntimeCoreAssetOptions = {
   runtimeDir: string
@@ -54,17 +55,33 @@ export async function prepareRuntimeAssets(name: string) {
   await prepareRuntimeCoreAssets({ runtimeDir })
 
   const dependencies = await runtimeDependencies()
-  const { targetOs, targetArch } = runtimeTarget(name)
-  await copySqliteVec(runtimeDir, targetOs, targetArch, dependencies)
-  await copyAstGrep(runtimeDir, targetOs, targetArch, dependencies)
+  const { targetOs, targetArch, musl } = runtimeTarget(name)
+  if (musl) {
+    await removeUnsupportedMuslAssets(runtimeDir)
+    console.warn(`Skipping ast-grep and sqlite-vec for ${name}; no musl-compatible release assets are available`)
+  } else {
+    await copySqliteVec(runtimeDir, targetOs, targetArch, dependencies)
+    await copyAstGrep(runtimeDir, targetOs, targetArch, dependencies)
+  }
+  await writeRuntimeManifest(runtimeDir, name)
 }
 
 function runtimeTarget(name: string) {
-  const [packageName, targetOs, targetArch] = name.split("-")
+  const [packageName, targetOs, targetArch, ...variants] = name.split("-")
   if (packageName !== "synergy" || !targetOs || !targetArch) {
     throw new Error(`Invalid Synergy runtime package name: ${name}`)
   }
-  return { targetOs, targetArch }
+  return { targetOs, targetArch, musl: variants.includes("musl") }
+}
+
+async function removeUnsupportedMuslAssets(runtimeDir: string) {
+  await Promise.all([
+    fs.rm(path.join(runtimeDir, "bin", "ast-grep"), { force: true }),
+    fs.rm(path.join(runtimeDir, "bin", "ast-grep.exe"), { force: true }),
+    fs.rm(path.join(runtimeDir, "vec0.so"), { force: true }),
+    fs.rm(path.join(runtimeDir, "vec0.dylib"), { force: true }),
+    fs.rm(path.join(runtimeDir, "vec0.dll"), { force: true }),
+  ])
 }
 
 async function runtimeDependencies() {

@@ -315,6 +315,21 @@ describe("resolveTheme (synergy)", () => {
     ).toThrow("Theme contrast requirement failed")
   })
 
+  test("theme parsing rejects overrides that hide selected marker foregrounds", () => {
+    expect(() =>
+      parseTheme({
+        ...synergyTheme,
+        light: {
+          ...synergyTheme.light,
+          overrides: {
+            ...synergyTheme.light.overrides,
+            "surface-inset-strong-hover": "var(--text-strong)",
+          },
+        },
+      }),
+    ).toThrow("Theme contrast requirement failed: text-strong on surface-inset-strong-hover")
+  })
+
   // ── Contract: every consumer-referenced token exists ────
 
   for (const token of CONSUMER_REQUIRED_TOKENS) {

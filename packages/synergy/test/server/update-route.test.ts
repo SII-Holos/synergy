@@ -116,6 +116,48 @@ describe("server update route", () => {
     expect(script).toContain("start")
   })
 
+  test.each(["999.0.0&calc", "999.0.0; touch /tmp/pwned", "999.0.0 > escaped", "999.0.0'bad"])(
+    "rejects unsafe managed update version %s before creating a worker",
+    async (version) => {
+      process.env.SYNERGY_DAEMON = "1"
+      await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
+
+      const app = testApp()
+      const response = await app.request("/global/update/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ version }),
+      })
+
+      expect(response.status).toBe(400)
+      const body = await response.json()
+      expect(body.phase).toBe("error")
+      expect(body.error).toContain("Invalid Synergy version")
+      expect(spawned).toEqual([])
+      expect(await Bun.file(path.join(DaemonPaths.root(), "update-state.json")).exists()).toBe(false)
+      expect(
+        await Bun.file(
+          path.join(DaemonPaths.root(), process.platform === "win32" ? "update-worker.cmd" : "update-worker.sh"),
+        ).exists(),
+      ).toBe(false)
+    },
+  )
+
+  test("allows safe prerelease versions for managed updates", async () => {
+    process.env.SYNERGY_DAEMON = "1"
+    await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])
+
+    const app = testApp()
+    const response = await app.request("/global/update/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version: "999.0.0-beta.1" }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(spawned).toHaveLength(1)
+  })
+
   test("uses the detected package manager for managed daemon updates", async () => {
     process.env.SYNERGY_DAEMON = "1"
     await writeManifest(["/usr/local/bin/synergy", "server", "--port", "4096"])

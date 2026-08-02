@@ -6,6 +6,7 @@ MUTED='\033[0;2m'
 RED='\033[0;31m'
 ORANGE='\033[38;5;214m'
 NC='\033[0m' # No Color
+CHECKSUM_ASSET_NOT_FOUND=4
 
 usage() {
     cat <<EOF
@@ -66,10 +67,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 INSTALL_DIR=$HOME/.synergy-link/bin
-mkdir -p "$INSTALL_DIR"
+if [ "${SYNERGY_LINK_INSTALL_LIBRARY_MODE:-}" != "1" ]; then
+    mkdir -p "$INSTALL_DIR"
+fi
 
 # If --binary is provided, skip all download/detection logic
-if [ -n "$binary_path" ]; then
+if [ "${SYNERGY_LINK_INSTALL_LIBRARY_MODE:-}" = "1" ]; then
+    specific_version="library"
+    os="linux"
+    filename="$APP-linux-x64.tar.gz"
+    url="https://example.invalid/$filename"
+elif [ -n "$binary_path" ]; then
     if [ ! -f "$binary_path" ]; then
         echo -e "${RED}Error: Binary not found at ${binary_path}${NC}"
         exit 1
@@ -203,6 +211,131 @@ print_message() {
     echo -e "${color}${message}${NC}"
 }
 
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d ' ' -f 1
+        return
+    fi
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d ' ' -f 1
+        return
+    fi
+    print_message error "No SHA-256 tool is available; install sha256sum or shasum."
+    return 1
+}
+
+verify_downloaded_archive_checksum() {
+    local archive="$1"
+    local checksum_manifest="$2"
+    local archive_name="$3"
+    local line expected name actual
+    local matches=0
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ ! "$line" =~ ^([a-f0-9]{64})\ \ ([^/\\[:space:]]+)$ ]]; then
+            print_message error "CLI checksum manifest contains an invalid entry: $checksum_manifest"
+            return 1
+        fi
+        expected="${BASH_REMATCH[1]}"
+        name="${BASH_REMATCH[2]}"
+        if [ "$name" = "$archive_name" ]; then
+            matches=$((matches + 1))
+        fi
+    done < "$checksum_manifest"
+
+    if [ "$matches" -ne 1 ]; then
+        print_message error "CLI checksum manifest must contain exactly one entry for: $archive_name"
+        return 1
+    fi
+
+    expected=$(while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" =~ ^([a-f0-9]{64})\ \ ([^/\\[:space:]]+)$ ]] && [ "${BASH_REMATCH[2]}" = "$archive_name" ]; then
+            printf "%s\n" "${BASH_REMATCH[1]}"
+        fi
+    done < "$checksum_manifest")
+    actual=$(sha256_file "$archive") || return 1
+    if [ "$actual" != "$expected" ]; then
+        print_message error "Downloaded synergy-link archive checksum mismatch: $archive_name"
+        return 1
+    fi
+}
+
+archive_member_name_is_safe() {
+    local member="$1"
+    local component
+    case "$member" in
+        ""|/*|*\\*|[A-Za-z]:*) return 1 ;;
+    esac
+    while [[ "$member" == ./* ]]; do
+        member="${member#./}"
+    done
+    IFS='/' read -r -a components <<< "$member"
+    for component in "${components[@]}"; do
+        if [ "$component" = ".." ]; then
+            return 1
+        fi
+    done
+}
+
+validate_archive_members() {
+    local archive="$1"
+    local archive_type="$2"
+    local members
+    local member
+    if [ "$archive_type" = "tar" ]; then
+        if tar -tvzf "$archive" | grep -Eq '^[lh]'; then
+            print_message error "Release archive contains a symbolic or hard link."
+            return 1
+        fi
+        members=$(tar -tzf "$archive") || return 1
+    else
+        if unzip -Z -l "$archive" | grep -Eq '^l'; then
+            print_message error "Release archive contains a symbolic link."
+            return 1
+        fi
+        members=$(unzip -Z1 "$archive") || return 1
+    fi
+    while IFS= read -r member; do
+        if ! archive_member_name_is_safe "$member"; then
+            print_message error "Release archive contains an unsafe path: $member"
+            return 1
+        fi
+    done <<< "$members"
+}
+
+download_archive_standard() {
+    local archive_url="$1"
+    local output="$2"
+    if ! curl --proto '=https' -# -fL -o "$output" "$archive_url"; then
+        rm -f "$output"
+        print_message error "Failed to download synergy-link release archive: $archive_url"
+        return 1
+    fi
+}
+
+download_cli_checksums() {
+    local checksum_url="$1"
+    local output="$2"
+    local status
+    if ! status=$(curl --proto '=https' -sSL -w '%{http_code}' -o "$output" "$checksum_url"); then
+        rm -f "$output"
+        print_message error "Failed to download the published CLI checksum asset."
+        return 1
+    fi
+    case "$status" in
+        2??) return 0 ;;
+        404)
+            rm -f "$output"
+            return "$CHECKSUM_ASSET_NOT_FOUND"
+            ;;
+        *)
+            rm -f "$output"
+            print_message error "Failed to download the published CLI checksum asset (HTTP $status)."
+            return 1
+            ;;
+    esac
+}
+
 check_version() {
     if command -v synergy-link >/dev/null 2>&1; then
         meta_synergy_path=$(which synergy-link)
@@ -249,6 +382,14 @@ print_progress() {
     printf "\r${ORANGE}%s%s %3d%%${NC}" "$filled" "$empty" "$percent" >&4
 }
 
+progress_trace_file() {
+    printf "%s/.synergy-link-install-progress.trace\n" "$(dirname "$1")"
+}
+
+extracted_bundle_contains_symlink() {
+    [ -n "$(find "$1" -type l -print -quit 2>/dev/null)" ]
+}
+
 download_with_progress() {
     local url="$1"
     local output="$2"
@@ -259,9 +400,8 @@ download_with_progress() {
         exec 4>/dev/null
     fi
 
-    local tmp_dir=${TMPDIR:-/tmp}
-    local basename="${tmp_dir}/synergy-link_install_$$"
-    local tracefile="${basename}.trace"
+    local tracefile
+    tracefile=$(progress_trace_file "$output")
 
     rm -f "$tracefile"
     mkfifo "$tracefile"
@@ -272,7 +412,7 @@ download_with_progress() {
     trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
 
     (
-        curl --trace-ascii "$tracefile" -s -L -o "$output" "$url"
+        curl --proto '=https' --fail --trace-ascii "$tracefile" -s -L -o "$output" "$url"
     ) &
     local curl_pid=$!
 
@@ -311,26 +451,58 @@ download_with_progress() {
 
 download_and_install() {
     print_message info "\n${MUTED}Installing ${NC}synergy-link ${MUTED}version: ${NC}$specific_version"
-    local tmp_dir="${TMPDIR:-/tmp}/meta_synergy_install_$$"
-    mkdir -p "$tmp_dir"
+    local tmp_dir
+    local checksum_name="Synergy-${specific_version}-cli-checksums.txt"
+    local checksum_url="${url%/*}/$checksum_name"
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/synergy-link_install.XXXXXX") || return 1
+    chmod 700 "$tmp_dir"
 
     if [[ "$os" == "windows" ]] || ! [ -t 2 ] || ! download_with_progress "$url" "$tmp_dir/$filename"; then
-        # Fallback to standard curl on Windows, non-TTY environments, or if custom progress fails
-        curl -# -L -o "$tmp_dir/$filename" "$url"
+        if ! download_archive_standard "$url" "$tmp_dir/$filename"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    fi
+
+    local checksum_status=0
+    download_cli_checksums "$checksum_url" "$tmp_dir/$checksum_name" || checksum_status=$?
+    if [ "$checksum_status" -eq 0 ]; then
+        if ! verify_downloaded_archive_checksum "$tmp_dir/$filename" "$tmp_dir/$checksum_name" "$filename"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    elif [ "$checksum_status" -eq "$CHECKSUM_ASSET_NOT_FOUND" ]; then
+        print_message warning "${ORANGE}Warning: published CLI checksum is unavailable; installing a legacy synergy-link release without archive verification.${NC}"
+    else
+        rm -rf "$tmp_dir"
+        return 1
     fi
 
     if [ "$os" = "linux" ]; then
-        tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"
+        if ! validate_archive_members "$tmp_dir/$filename" tar || ! tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
     else
-        unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
+        if ! validate_archive_members "$tmp_dir/$filename" zip || ! unzip -q "$tmp_dir/$filename" -d "$tmp_dir"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    fi
+    if extracted_bundle_contains_symlink "$tmp_dir"; then
+        print_message error "Extracted release archive contains symbolic links."
+        rm -rf "$tmp_dir"
+        return 1
     fi
 
     local archive_binary="synergy-link"
     if [ "$os" = "windows" ]; then
         archive_binary="synergy-link.exe"
     fi
-    mv "$tmp_dir/bin/$archive_binary" "$INSTALL_DIR/synergy-link"
-    chmod 755 "${INSTALL_DIR}/synergy-link"
+    if ! mv "$tmp_dir/bin/$archive_binary" "$INSTALL_DIR/synergy-link" || ! chmod 755 "${INSTALL_DIR}/synergy-link"; then
+        rm -rf "$tmp_dir"
+        return 1
+    fi
     rm -rf "$tmp_dir"
 }
 
@@ -339,6 +511,11 @@ install_from_binary() {
     cp "$binary_path" "${INSTALL_DIR}/synergy-link"
     chmod 755 "${INSTALL_DIR}/synergy-link"
 }
+
+
+if [ "${SYNERGY_LINK_INSTALL_LIBRARY_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 if [ -n "$binary_path" ]; then
     install_from_binary

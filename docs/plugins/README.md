@@ -2,7 +2,7 @@
 
 Synergy Plugin API 4 has one authoring source and one host path. A plugin exports `definePlugin()` with a flat contribution list. plugin-kit validates that definition and generates the installable manifest and bundles. Synergy reads generated metadata before it imports executable code, records approval, registers contributions, and starts one runtime generation lazily when an executable contribution is invoked.
 
-Plugin API 4 is the stable compatibility baseline. Future Synergy releases keep loading valid API4 artifacts without requiring authors to rebuild or users to reinstall. SDK 4.x may add optional fields, contribution kinds, and Host Services while `apiVersion` remains `"4.0"`. Existing fields are not removed, renamed, narrowed, or given new semantics; deprecated APIs retain their implementation and types. Only `experimental.*` surfaces are outside this guarantee.
+Plugin API 4 is the stable compatibility baseline. Future Synergy releases keep loading valid API4 artifacts without requiring authors to rebuild or users to reinstall. The `@ericsanchezok/synergy-plugin` and `@ericsanchezok/synergy-plugin-kit` package versions follow the Synergy product release version, while generated artifacts keep `apiVersion: "4.0"`. Later package releases may add optional fields, contribution kinds, and Host Services without changing the API family. Existing fields are not removed, renamed, narrowed, or given new semantics; deprecated APIs retain their implementation and types. Only `experimental.*` surfaces are outside this guarantee.
 
 ## Start Here
 
