@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import { Asset } from "../../src/asset/asset"
 import {
   FeishuProvider,
+  enqueueFeishuConversationTask,
   filterInboundMessage,
   isSelfSender,
   isOwnBotMessage,
@@ -1163,6 +1164,111 @@ describe("Feishu markdown replies", () => {
   })
 })
 
+describe("Feishu conversation acceptance queue", () => {
+  test("serializes acceptance for the same key without waiting for background execution", async () => {
+    const perChatQueue = new Map<string, Promise<void>>()
+    const backgroundExecutions = new Set<Promise<void>>()
+    const firstAcceptance = Promise.withResolvers<void>()
+    const firstExecution = Promise.withResolvers<void>()
+    const calls: string[] = []
+
+    const first = enqueueFeishuConversationTask({
+      key: "thread_a",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        calls.push("first:start")
+        await firstAcceptance.promise
+        calls.push("first:accepted")
+        return { accepted: true, execution: firstExecution.promise }
+      },
+    })
+    const second = enqueueFeishuConversationTask({
+      key: "thread_a",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        calls.push("second:accepted")
+        return { accepted: true, execution: Promise.resolve() }
+      },
+    })
+
+    await Bun.sleep(0)
+    expect(calls).toEqual(["first:start"])
+    firstAcceptance.resolve()
+    await Promise.all([first, second])
+    expect(calls).toEqual(["first:start", "first:accepted", "second:accepted"])
+    expect(backgroundExecutions.size).toBe(1)
+
+    firstExecution.resolve()
+    await Promise.allSettled(Array.from(backgroundExecutions))
+    await Bun.sleep(0)
+    expect(backgroundExecutions.size).toBe(0)
+  })
+
+  test("accepts different keys independently", async () => {
+    const perChatQueue = new Map<string, Promise<void>>()
+    const backgroundExecutions = new Set<Promise<void>>()
+    const firstAcceptance = Promise.withResolvers<void>()
+    let secondAccepted = false
+
+    const first = enqueueFeishuConversationTask({
+      key: "thread_a",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        await firstAcceptance.promise
+        return { accepted: true, execution: Promise.resolve() }
+      },
+    })
+    const second = enqueueFeishuConversationTask({
+      key: "thread_b",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        secondAccepted = true
+        return { accepted: true, execution: Promise.resolve() }
+      },
+    })
+
+    await second
+    expect(secondAccepted).toBe(true)
+    expect(perChatQueue.has("thread_a")).toBe(true)
+    firstAcceptance.resolve()
+    await first
+  })
+
+  test("observes acceptance and execution failures through their owning callbacks", async () => {
+    const perChatQueue = new Map<string, Promise<void>>()
+    const backgroundExecutions = new Set<Promise<void>>()
+    const acceptanceFailure = new Error("acceptance failed")
+    const executionFailure = new Error("execution failed")
+    const acceptanceErrors: unknown[] = []
+    const executionErrors: unknown[] = []
+
+    await enqueueFeishuConversationTask({
+      key: "thread_acceptance_failure",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        throw acceptanceFailure
+      },
+      onAcceptanceError: (error) => acceptanceErrors.push(error),
+    })
+    await enqueueFeishuConversationTask({
+      key: "thread_execution_failure",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => ({ accepted: true, execution: Promise.reject(executionFailure) }),
+      onExecutionError: (error) => executionErrors.push(error),
+    })
+    await Promise.allSettled(Array.from(backgroundExecutions))
+
+    expect(acceptanceErrors).toEqual([acceptanceFailure])
+    expect(executionErrors).toEqual([executionFailure])
+  })
+})
+
 describe("Feishu account drain", () => {
   test("closes transport, flushes debounce work, and drains chat tasks to a fixed point", async () => {
     const provider = new FeishuProvider()
@@ -1194,6 +1300,7 @@ describe("Feishu account drain", () => {
               acceptingInbound: boolean
               inboundTasks: Set<Promise<void>>
               perChatQueue: Map<string, Promise<void>>
+              backgroundExecutions: Set<Promise<void>>
               debouncer: { flush(): Promise<void> }
               wsClient: { close(): void }
               drain?: Promise<void>
@@ -1207,6 +1314,7 @@ describe("Feishu account drain", () => {
         acceptingInbound: true,
         inboundTasks: new Set(),
         perChatQueue,
+        backgroundExecutions: new Set(),
         debouncer: {
           async flush() {
             calls.push("flush")

@@ -18,6 +18,9 @@ import { SessionProcessor } from "../../src/session/processor"
 import { Identifier } from "../../src/id/id"
 import { Cortex } from "../../src/cortex/manager"
 import { Embedding } from "../../src/vector/embedding"
+import { LibraryDB } from "../../src/library/database"
+import { RECALL_TIMEOUT_MS } from "../../src/session/recall"
+import { MemoryRecall } from "../../src/library/memory-recall"
 import { Worktree } from "../../src/project/worktree"
 import { SessionMessageCache } from "../../src/session/message-cache"
 import { Bus } from "../../src/bus"
@@ -757,6 +760,177 @@ describe("SessionInvoke system prompt assembly", () => {
       ;(Cortex.list as any) = originalCortexList
       ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
       ;(Embedding.generate as any) = originalEmbeddingGenerate
+    }
+  })
+})
+
+describe.serial("SessionInvoke memory recall", () => {
+  test("keeps always memories when contextual recall times out", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let capturedLateSystem: string[] | undefined
+    const restore = installBasicLoopMocks({
+      config: { library: { memory: { enabled: true }, experience: { retrieve: false } } },
+      onBuildPlan: (input) => {
+        capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
+      },
+    })
+    const originalSetTimeout = globalThis.setTimeout
+    const memoryID = "mem_always_recall_timeout"
+
+    ;(Embedding.generate as any) = mock(async () => new Promise<never>(() => {}))
+    ;(globalThis as any).setTimeout = (handler: (...args: any[]) => void, timeout?: number, ...args: any[]) => {
+      if (timeout === RECALL_TIMEOUT_MS) {
+        queueMicrotask(() => handler(...args))
+        return 0
+      }
+      return originalSetTimeout(handler, timeout, ...args)
+    }
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          LibraryDB.Memory.insert(
+            {
+              id: memoryID,
+              title: "Always workflow memory",
+              content: "Keep the workflow contract in every top-level turn.",
+              category: "workflow",
+              recallMode: "always",
+            },
+            { id: "embedding", vector: [1, 0, 0, 0, 0, 0, 0, 0], model: "test-embedding" },
+          )
+
+          const { session } = await createSessionWithUser()
+          try {
+            await SessionInvoke.loop.force(session.id)
+
+            const lateSystemPrompt = capturedLateSystem?.join("\n") ?? ""
+            expect(lateSystemPrompt).toContain('<entry title="Always workflow memory">')
+            expect(lateSystemPrompt).toContain("Keep the workflow contract in every top-level turn.")
+
+            const messages = await Session.messages({ sessionID: session.id })
+            const user = messages.find((message) => message.info.role === "user")
+            const injectedContext = user?.info.role === "user" ? user.info.metadata?.injectedContext : undefined
+            expect(injectedContext?.memory).toContain('<entry title="Always workflow memory">')
+          } finally {
+            await Session.remove(session.id)
+          }
+        },
+      })
+    } finally {
+      LibraryDB.Memory.remove(memoryID)
+      ;(globalThis as any).setTimeout = originalSetTimeout
+      restore()
+    }
+  })
+  test("continues the turn when always-memory storage fails", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let processCalled = false
+    const restore = installBasicLoopMocks({
+      config: { library: { memory: { enabled: true }, experience: { retrieve: false } } },
+      onProcess: () => {
+        processCalled = true
+      },
+    })
+    const originalMemoryList = LibraryDB.Memory.list
+
+    ;(LibraryDB.Memory as any).list = mock(() => {
+      throw new Error("memory storage unavailable")
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          try {
+            await SessionInvoke.loop.force(session.id)
+            expect(processCalled).toBe(true)
+          } finally {
+            await Session.remove(session.id)
+          }
+        },
+      })
+    } finally {
+      ;(LibraryDB.Memory as any).list = originalMemoryList
+      restore()
+    }
+  })
+
+  test("merges always and contextual memories with one always-memory read", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let capturedLateSystem: string[] | undefined
+    let memoryListCalls = 0
+    const restore = installBasicLoopMocks({
+      config: { library: { memory: { enabled: true }, experience: { retrieve: false } } },
+      onBuildPlan: (input) => {
+        capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
+      },
+    })
+    const originalMemoryList = LibraryDB.Memory.list
+    const originalMemorySearch = MemoryRecall.search
+    const memoryID = "mem_always_recall_success"
+
+    ;(LibraryDB.Memory as any).list = mock((input: LibraryDB.Memory.ListInput) => {
+      memoryListCalls++
+      return originalMemoryList(input)
+    })
+    ;(MemoryRecall as any).search = mock(async (input: MemoryRecall.SearchInput) => {
+      if (!input.categories?.includes("workflow")) return []
+      return [
+        {
+          id: "mem_contextual_recall_success",
+          title: "Contextual workflow memory",
+          content: "Use the contextual workflow for this request.",
+          category: "workflow",
+          recallMode: "contextual",
+          similarity: 0.9,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          LibraryDB.Memory.insert(
+            {
+              id: memoryID,
+              title: "Always workflow memory",
+              content: "Keep the workflow contract in every top-level turn.",
+              category: "workflow",
+              recallMode: "always",
+            },
+            { id: "embedding", vector: [1, 0, 0, 0, 0, 0, 0, 0], model: "test-embedding" },
+          )
+
+          const { session } = await createSessionWithUser()
+          try {
+            await SessionInvoke.loop.force(session.id)
+
+            const lateSystemPrompt = capturedLateSystem?.join("\n") ?? ""
+            expect(lateSystemPrompt).toContain('<entry title="Always workflow memory">')
+            expect(lateSystemPrompt).toContain('<entry title="Contextual workflow memory" similarity="0.900">')
+            expect(memoryListCalls).toBe(1)
+
+            const messages = await Session.messages({ sessionID: session.id })
+            const user = messages.find((message) => message.info.role === "user")
+            const injectedContext = user?.info.role === "user" ? user.info.metadata?.injectedContext : undefined
+            expect(injectedContext?.memory).toContain('<entry title="Always workflow memory">')
+            expect(injectedContext?.memory).toContain('<entry title="Contextual workflow memory" similarity="0.900">')
+          } finally {
+            await Session.remove(session.id)
+          }
+        },
+      })
+    } finally {
+      LibraryDB.Memory.remove(memoryID)
+      ;(LibraryDB.Memory as any).list = originalMemoryList
+      ;(MemoryRecall as any).search = originalMemorySearch
+      restore()
     }
   })
 })

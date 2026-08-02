@@ -262,6 +262,43 @@ describe("AgentTurnProtocol", () => {
     ).toThrow()
   })
 
+  test("serializes the complete Control Plane provider worker plan", () => {
+    const envelope = {
+      scope: {
+        type: "home" as const,
+        id: "home" as const,
+        directory: "/tmp/home",
+        worktree: "/tmp/home",
+      },
+      input: {
+        user: { id: "msg_user" },
+        sessionID: "ses_test",
+        model: { id: "model", providerID: "provider" },
+        agent: { name: "synergy" },
+        system: [],
+        messages: [],
+        toolDefinitions: [],
+        prepared: {
+          system: [],
+          baseSystemLength: 0,
+          provider: {
+            profileID: "provider-profile",
+            key: "provider-key",
+            env: ["PROVIDER_API_KEY"],
+            options: { apiKey: "provider-key" },
+            baseOptions: { baseURL: "https://catalog.invalid/v1" },
+            explicitOptions: { baseURL: "https://connection.invalid/v1" },
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
+          },
+          params: { options: {} },
+        },
+      },
+    }
+
+    const payload = AgentTurnProtocol.serializeTurn(envelope)
+    expect(AgentTurnProtocol.deserializeTurn(payload)).toEqual(envelope)
+  })
+
   test("keeps Context Usage provenance and drafts out of the Agent worker protocol", () => {
     const input = {
       user: { id: "msg_user" },

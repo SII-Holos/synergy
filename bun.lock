@@ -137,7 +137,7 @@
     },
     "packages/plugin": {
       "name": "@ericsanchezok/synergy-plugin",
-      "version": "4.0.0",
+      "version": "1.1.26",
       "dependencies": {
         "@ericsanchezok/synergy-sdk": "workspace:*",
       },
@@ -154,7 +154,7 @@
     },
     "packages/plugin-kit": {
       "name": "@ericsanchezok/synergy-plugin-kit",
-      "version": "4.0.0",
+      "version": "1.1.26",
       "bin": {
         "synergy-plugin": "./dist/cli.js",
         "synergy-plugin-kit": "./dist/cli.js",

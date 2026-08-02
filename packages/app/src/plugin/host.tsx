@@ -17,16 +17,15 @@ import {
   type PluginSelectionSurfaceContext,
   type PluginTextActionSurfaceContext,
   type PluginMessageSurfaceContext,
-  type PluginToolMessageSurfaceContext,
   type PluginSurfaceContext,
 } from "@ericsanchezok/synergy-plugin"
 import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
-import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { fetchUIContributions, type PluginContribution } from "./api"
+import { resolvePluginAssetUrl } from "./asset-url"
 import type { PluginLifecycleState } from "./lifecycle"
 import { loadPluginExport } from "./loaders"
 import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
@@ -47,6 +46,7 @@ import { registerSelectionExtension } from "./registries/selection-extension-reg
 import { registerMessageSlot } from "./registries/message-slot-registry"
 import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
 import { createPluginSurfaceSettings } from "./surface-settings"
+import { createPluginToolMessageContext } from "./tool-message-context"
 
 export type PluginUIStatus = PluginLifecycleState
 export interface PluginUIError {
@@ -202,7 +202,7 @@ function registerPluginSurfaces(input: {
   replacePluginThemes(input.assets.themes.values())
 
   for (const plugin of input.contributions) {
-    const asset = (file: string) => pluginAssetUrl(plugin.pluginId, plugin.generation, file)
+    const asset = (file: string) => resolvePluginAssetUrl(input.serverUrl, plugin.pluginId, plugin.generation, file)
     const componentLoader = <Props extends object>(
       item: PluginManifestContribution,
       session: (props: Props) => string | undefined = () => currentSessionId(),
@@ -346,22 +346,7 @@ function registerPluginSurfaces(input: {
             item,
             (props) => props.sessionId ?? currentSessionId(),
             () => undefined,
-            (context, props) =>
-              ({
-                ...context,
-                message: {
-                  id: props.messageId ?? "",
-                  role: "assistant",
-                },
-                tool: {
-                  name: props.tool,
-                  input: props.input,
-                  metadata: props.metadata,
-                  title: props.title,
-                  output: props.output,
-                  status: props.status,
-                },
-              }) satisfies PluginToolMessageSurfaceContext,
+            (context, props) => createPluginToolMessageContext(context, props),
           )
           if (loader) disposers.push(registerPluginToolRenderer(item.tool, loader as never))
           return
@@ -568,7 +553,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     reloadController = controller
     try {
       const next = await fetchUIContributions(server.url, scopeKey())
-      const assets = await loadPluginUIAssets(next, { signal: controller.signal })
+      const assets = await loadPluginUIAssets(next, { serverUrl: server.url, signal: controller.signal })
       if (generation !== reloadGeneration) return
       dispose()
       const registered = registerPluginSurfaces({

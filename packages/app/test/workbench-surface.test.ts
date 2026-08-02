@@ -216,6 +216,13 @@ describe("workbench surface polarity", () => {
     expect(libraryShared).not.toContain("uppercase tracking-[0.16em]")
   })
 
+  test("ported library filter surfaces retain grounded styling outside the workbench scope", () => {
+    expect(libraryCss).toContain("background: var(--library-popover-bg, var(--surface-raised-stronger-non-alpha));")
+    expect(libraryCss).toContain("border: 1px solid var(--library-line-strong, var(--border-weak-base));")
+    expect(libraryCss).toContain("background: var(--library-control-bg-hover, var(--surface-raised-stronger-hover));")
+    expect(libraryCss).toContain("background: var(--library-selected-bg, var(--surface-raised-stronger-hover));")
+  })
+
   test("question prompts use a dedicated decision surface instead of a generic tool card", () => {
     expect(questionPrompt).toContain('class="question-prompt-shell"')
     expect(questionPrompt).toContain("question-prompt-option")

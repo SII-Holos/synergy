@@ -15,6 +15,7 @@ import { GitHubStore } from "../../src/github/store"
 import { AgentTurn } from "../../src/session/agent-turn"
 import { Agent } from "../../src/agent/agent"
 import { Provider } from "../../src/provider/provider"
+import { ProviderAuth } from "../../src/provider/auth"
 import { Channel } from "../../src/channel"
 
 const originalConfigReload = Config.reload
@@ -22,6 +23,7 @@ const originalNotifyConfigHooks = Plugin.notifyConfigHooks
 const originalAgentTurnResize = (AgentTurn as any).resize
 const originalAgentReload = Agent.reload
 const originalProviderReload = Provider.reload
+const originalProviderAuthReload = ProviderAuth.reload
 const originalChannelReload = Channel.reload
 
 afterEach(() => {
@@ -30,6 +32,7 @@ afterEach(() => {
   ;(AgentTurn as any).resize = originalAgentTurnResize
   Agent.reload = originalAgentReload
   Provider.reload = originalProviderReload
+  ProviderAuth.reload = originalProviderAuthReload
   Channel.reload = originalChannelReload
   GlobalBus.removeAllListeners("event")
   CortexConcurrency.reset()
@@ -189,6 +192,33 @@ describe("runtime.reload", () => {
         expect(result.liveApplied).toContain("cortex")
         expect(result.restartRequired).not.toContain("cortex")
         expect(CortexConcurrency.globalStatus()).toMatchObject({ configured: 3, effective: 3, source: "config" })
+      },
+    })
+  })
+
+  test("provider config changes rebuild the account auth registry", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        Config.reload = mock(async () => ({
+          config: { provider: {} },
+          changedFields: ["provider"],
+          oldConfig: {},
+        })) as typeof Config.reload
+        const authReload = mock(async () => {})
+        const providerReload = mock(async () => {})
+        const agentReload = mock(async () => {})
+        ProviderAuth.reload = authReload
+        Provider.reload = providerReload
+        Agent.reload = agentReload
+
+        const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+        expect(authReload).toHaveBeenCalledTimes(1)
+        expect(providerReload).toHaveBeenCalledTimes(1)
+        expect(agentReload).toHaveBeenCalledTimes(1)
+        expect(result.success).toBe(true)
       },
     })
   })

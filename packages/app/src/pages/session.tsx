@@ -86,8 +86,8 @@ import { ResourceOpenProvider } from "@/context/resource-open"
 import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
 import { useSessionTransition } from "@/context/session-transition"
 import {
-  messagesBefore,
   messagesFrom,
+  messagesHiddenByRollback,
   previousMessage,
   selectMessagesInCanonicalOrder,
 } from "@/components/session/session-message-order"
@@ -391,15 +391,6 @@ function SessionPageContent() {
   onCleanup(() => {
     if (rollbackDialogID && dialog.active?.id === rollbackDialogID) dialog.close()
   })
-  const hiddenMessageIDs = createMemo(() => {
-    const rb = rollback()
-    if (!rb) return null as { cutMessageID: string } | null | Set<string>
-    // While redo is still possible, use prefix-cut: hide the cut message and
-    // everything after it. Once a new root invalidates redo, only the original
-    // dropped set remains hidden so the new branch is visible.
-    if (rb.cutMessageID && rb.canUnrollback) return { cutMessageID: rb.cutMessageID }
-    return new Set(rb.droppedMessageIDs ?? [])
-  })
   const messageSnapshot = createMemo(() => {
     const id = params.id
     if (!id) return [] as Message[]
@@ -408,15 +399,12 @@ function SessionPageContent() {
   })
   const messages = createMemo(() => {
     const raw = messageSnapshot() ?? []
-    // Rollback filtering is gated by hiddenMessageIDs: the prefix-cut only
-    // applies while redo is possible (canUnrollback). Once a new root has been
-    // started the cut is superseded by the dropped-id set so the new branch —
-    // including messages sent after undoing the first message — stays visible.
-    const hidden = hiddenMessageIDs()
-    if (!hidden) return raw
-    if ("cutMessageID" in hidden) return messagesBefore(raw, hidden.cutMessageID)
-    if (hidden.size === 0) return raw
-    return raw.filter((message) => !hidden.has(message.id))
+    // A resent root can arrive through message.updated before session.updated
+    // invalidates redo. Keep that replacement visible while continuing to
+    // prefix-hide post-rollback non-root injections.
+    const rb = rollback()
+    if (!rb) return raw
+    return messagesHiddenByRollback(raw, rb)
   })
   const openRewindConfirm = (message: UserMessage | undefined) => {
     if (!message?.id) return

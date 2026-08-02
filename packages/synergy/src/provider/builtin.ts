@@ -78,28 +78,40 @@ export function registerBuiltinProviderProfiles() {
       if (!accountID) return undefined
       return `${CodexProvider.runtimeBaseURL()}:${accountID}`
     },
-    runtimeOptions: async () => {
-      const access = await CodexProvider.resolveToken({ allowMissing: true }).catch(() => undefined)
+    runtimeOptions: async (input) => {
+      const access = await CodexProvider.resolveToken({
+        providerID: input.providerID,
+        allowMissing: true,
+      }).catch(() => undefined)
       if (!access) return {}
       return {
         apiKey: "synergy-codex-oauth",
         baseURL: CodexProvider.runtimeBaseURL(),
-        fetch: ProviderAuthRecovery.handled(CodexProvider.codexFetch),
+        fetch: ProviderAuthRecovery.handled(CodexProvider.codexFetchFor(input.providerID)),
         setCacheKey: true,
       }
     },
     fetchModels: async (input) => {
-      const access = await CodexProvider.resolveToken({ allowMissing: true, fetch: input.fetch }).catch(() => undefined)
+      const access = await CodexProvider.resolveToken({
+        providerID: input.providerID,
+        allowMissing: true,
+        fetch: input.fetch,
+      }).catch(() => undefined)
       if (!access) return []
-      return CodexProvider.fetchModelIDs(access, input.fetch)
+      return CodexProvider.fetchModelIDs(access, input.fetch, input.providerID, input.baseURL)
     },
     fetchModelCatalog: async (input) => {
-      const access = await CodexProvider.resolveToken({ allowMissing: true, fetch: input.fetch }).catch(() => undefined)
+      const access = await CodexProvider.resolveToken({
+        providerID: input.providerID,
+        allowMissing: true,
+        fetch: input.fetch,
+      }).catch(() => undefined)
       if (!access) return []
-      return CodexProvider.fetchModelCatalog(access, input.fetch)
+      return CodexProvider.fetchModelCatalog(access, input.fetch, input.providerID, input.baseURL)
     },
-    fetchUsage: (input) => CodexProvider.fetchUsage(input?.fetch),
-    refreshAuth: (input) => (input.auth ? CodexProvider.refreshAuth(input.auth) : Promise.resolve(undefined)),
+    fetchUsage: (input) => CodexProvider.fetchUsage(input.fetch, input.providerID),
+    refreshAuth: (input) =>
+      input.auth ? CodexProvider.refreshAuth(input.auth, fetch, input.providerID) : Promise.resolve(undefined),
     classifyError: CodexProvider.classifyError,
   })
 
@@ -132,15 +144,16 @@ export function registerBuiltinProviderProfiles() {
       }
       return {
         apiKey: "synergy-anthropic-oauth",
-        fetch: ProviderAuthRecovery.handled(AnthropicOAuthProvider.anthropicFetch),
+        fetch: ProviderAuthRecovery.handled(AnthropicOAuthProvider.anthropicFetchFor(input.providerID)),
         headers: {
           "anthropic-beta":
             "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
         },
       }
     },
-    fetchUsage: (input) => AnthropicOAuthProvider.fetchUsage(input?.fetch),
-    refreshAuth: (input) => (input.auth ? AnthropicOAuthProvider.refreshAuth(input.auth) : Promise.resolve(undefined)),
+    fetchUsage: (input) => AnthropicOAuthProvider.fetchUsage(input.fetch, input.providerID),
+    refreshAuth: (input) =>
+      input.auth ? AnthropicOAuthProvider.refreshAuth(input.auth, fetch, input.providerID) : Promise.resolve(undefined),
     classifyError: AnthropicOAuthProvider.classifyError,
   })
 
@@ -186,26 +199,26 @@ export function registerBuiltinProviderProfiles() {
       "gemini-3-pro-preview",
     ],
     liveModelDiscovery: "copilot",
-    runtimeOptions: async () => ({
+    runtimeOptions: async (input) => ({
       apiKey: "synergy-copilot",
       baseURL: CopilotProvider.BASE_URL,
-      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor("github-copilot")),
+      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor(input.providerID, input.auth)),
     }),
-    getModel: async ({ sdk, modelID }) => {
+    getModel: async ({ sdk, modelID, options }) => {
       if (modelID.toLowerCase().includes("claude")) {
         return createAnthropic({
           name: "github-copilot",
           apiKey: "synergy-copilot",
-          baseURL: CopilotProvider.BASE_URL,
-          fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor("github-copilot")) as typeof fetch,
+          baseURL: (options?.baseURL as string | undefined) ?? CopilotProvider.BASE_URL,
+          fetch: options?.fetch as typeof fetch,
         }).languageModel(modelID)
       }
       if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
       return sdk.chat(modelID)
     },
-    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog("github-copilot", input.fetch),
+    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog(input.providerID, input.fetch, input.auth),
     refreshAuth: (input) =>
-      input.auth ? CopilotProvider.refreshAuth("github-copilot", input.auth) : Promise.resolve(undefined),
+      input.auth ? CopilotProvider.refreshAuth(input.providerID, input.auth) : Promise.resolve(undefined),
     classifyError: CopilotProvider.classifyError,
   })
 
@@ -220,28 +233,26 @@ export function registerBuiltinProviderProfiles() {
     modelFactory: "copilotAuto",
     modelsDevProviderID: "github-copilot",
     fallbackModels: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "claude-sonnet-4.6"],
-    runtimeOptions: async () => ({
+    runtimeOptions: async (input) => ({
       apiKey: "synergy-copilot-enterprise",
       baseURL: CopilotProvider.BASE_URL,
-      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor("github-copilot-enterprise")),
+      fetch: ProviderAuthRecovery.handled(CopilotProvider.copilotFetchFor(input.providerID, input.auth)),
     }),
-    getModel: async ({ sdk, modelID }) => {
+    getModel: async ({ sdk, modelID, options }) => {
       if (modelID.toLowerCase().includes("claude")) {
         return createAnthropic({
           name: "github-copilot-enterprise",
           apiKey: "synergy-copilot-enterprise",
-          baseURL: CopilotProvider.BASE_URL,
-          fetch: ProviderAuthRecovery.handled(
-            CopilotProvider.copilotFetchFor("github-copilot-enterprise"),
-          ) as typeof fetch,
+          baseURL: (options?.baseURL as string | undefined) ?? CopilotProvider.BASE_URL,
+          fetch: options?.fetch as typeof fetch,
         }).languageModel(modelID)
       }
       if (modelID.includes("codex") || modelID.startsWith("gpt-5")) return sdk.responses(modelID)
       return sdk.chat(modelID)
     },
-    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog("github-copilot-enterprise", input.fetch),
+    fetchModelCatalog: (input) => CopilotProvider.fetchModelCatalog(input.providerID, input.fetch, input.auth),
     refreshAuth: (input) =>
-      input.auth ? CopilotProvider.refreshAuth("github-copilot-enterprise", input.auth) : Promise.resolve(undefined),
+      input.auth ? CopilotProvider.refreshAuth(input.providerID, input.auth) : Promise.resolve(undefined),
     classifyError: CopilotProvider.classifyError,
   })
 
@@ -276,38 +287,43 @@ export function registerBuiltinProviderProfiles() {
     aiSdkPackage: "@ai-sdk/amazon-bedrock",
     modelFactory: "languageModel",
     modelsDevProviderID: "amazon-bedrock",
-    autoload: async () => {
+    autoload: async (input) => {
       const { Config } = await import("@/config/config")
       const config = await Config.current()
-      const providerConfig = config.provider?.["amazon-bedrock"]
+      const providerConfig = config.provider?.[input.providerID]
       const profile = providerConfig?.options?.profile ?? Env.get("AWS_PROFILE")
       const awsAccessKeyId = Env.get("AWS_ACCESS_KEY_ID")
-      const auth = await Auth.get("amazon-bedrock")
-      const awsBearerToken = Env.get("AWS_BEARER_TOKEN_BEDROCK") ?? (auth?.type === "api" ? auth.key : undefined)
+      const stored = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = stored?.type === "api" ? stored.key : undefined
+      const awsBearerToken =
+        input.providerID === "amazon-bedrock"
+          ? (Env.get("AWS_BEARER_TOKEN_BEDROCK") ?? authKey)
+          : (authKey ?? Env.get("AWS_BEARER_TOKEN_BEDROCK"))
       return Boolean(profile || awsAccessKeyId || awsBearerToken)
     },
-    runtimeOptions: async () => {
+    runtimeOptions: async (input) => {
       const { Config } = await import("@/config/config")
       const config = await Config.current()
-      const providerConfig = config.provider?.["amazon-bedrock"]
-      const auth = await Auth.get("amazon-bedrock")
+      const providerConfig = config.provider?.[input.providerID]
+      const stored = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = stored?.type === "api" ? stored.key : undefined
       const defaultRegion = providerConfig?.options?.region ?? Env.get("AWS_REGION") ?? "us-east-1"
       const profile = providerConfig?.options?.profile ?? Env.get("AWS_PROFILE")
-      const awsBearerToken = iife(() => {
-        const envToken = Env.get("AWS_BEARER_TOKEN_BEDROCK")
-        if (envToken) return envToken
-        if (auth?.type === "api") {
-          Env.set("AWS_BEARER_TOKEN_BEDROCK", auth.key)
-          return auth.key
-        }
-        return undefined
-      })
+      const awsBearerToken =
+        input.providerID === "amazon-bedrock"
+          ? (Env.get("AWS_BEARER_TOKEN_BEDROCK") ?? authKey)
+          : (authKey ?? Env.get("AWS_BEARER_TOKEN_BEDROCK"))
       if (!profile && !Env.get("AWS_ACCESS_KEY_ID") && !awsBearerToken) return {}
 
-      const { fromNodeProviderChain } = await import((await BunProc.install("@aws-sdk/credential-providers")).entryPath)
       const providerOptions: AmazonBedrockProviderSettings = {
         region: defaultRegion,
-        credentialProvider: fromNodeProviderChain(profile ? { profile } : {}),
+      }
+      if (awsBearerToken) providerOptions.apiKey = awsBearerToken
+      else {
+        const { fromNodeProviderChain } = await import(
+          (await BunProc.install("@aws-sdk/credential-providers")).entryPath
+        )
+        providerOptions.credentialProvider = fromNodeProviderChain(profile ? { profile } : {})
       }
       const endpoint = providerConfig?.options?.endpoint ?? providerConfig?.options?.baseURL
       if (endpoint) providerOptions.baseURL = endpoint
@@ -409,18 +425,23 @@ export function registerBuiltinProviderProfiles() {
     aiSdkPackage: "@ai-sdk/openai-compatible",
     modelFactory: "call",
     modelsDevProviderID: "sap-ai-core",
-    autoload: async () => {
-      const auth = await Auth.get("sap-ai-core")
-      return Boolean(Env.get("AICORE_SERVICE_KEY") ?? (auth?.type === "api" ? auth.key : undefined))
+    autoload: async (input) => {
+      const auth = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = auth?.type === "api" ? auth.key : undefined
+      return Boolean(input.providerID === "sap-ai-core" ? (Env.get("AICORE_SERVICE_KEY") ?? authKey) : authKey)
     },
-    runtimeOptions: async () => {
-      const auth = await Auth.get("sap-ai-core")
-      const envServiceKey = Env.get("AICORE_SERVICE_KEY") ?? (auth?.type === "api" ? auth.key : undefined)
-      if (envServiceKey) Env.set("AICORE_SERVICE_KEY", envServiceKey)
-      return envServiceKey
+    runtimeOptions: async (input) => {
+      const { Config } = await import("@/config/config")
+      const config = await Config.current()
+      const providerConfig = config.provider?.[input.providerID]
+      const auth = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = auth?.type === "api" ? auth.key : undefined
+      const serviceKey = input.providerID === "sap-ai-core" ? (Env.get("AICORE_SERVICE_KEY") ?? authKey) : authKey
+      return serviceKey
         ? {
-            deploymentId: Env.get("AICORE_DEPLOYMENT_ID"),
-            resourceGroup: Env.get("AICORE_RESOURCE_GROUP"),
+            apiKey: serviceKey,
+            deploymentId: providerConfig?.options?.deploymentId ?? Env.get("AICORE_DEPLOYMENT_ID"),
+            resourceGroup: providerConfig?.options?.resourceGroup ?? Env.get("AICORE_RESOURCE_GROUP"),
           }
         : {}
     },
@@ -434,12 +455,14 @@ export function registerBuiltinProviderProfiles() {
     modelFactory: "languageModel",
     modelsDevProviderID: "cloudflare-ai-gateway",
     autoload: async () => Boolean(Env.get("CLOUDFLARE_ACCOUNT_ID") && Env.get("CLOUDFLARE_GATEWAY_ID")),
-    runtimeOptions: async ({ providerID }) => {
+    runtimeOptions: async (input) => {
       const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
       const gateway = Env.get("CLOUDFLARE_GATEWAY_ID")
       if (!accountId || !gateway) return {}
-      const auth = await Auth.get(providerID)
-      const apiToken = Env.get("CLOUDFLARE_API_TOKEN") ?? (auth?.type === "api" ? auth.key : undefined)
+      const auth = input.auth ?? (await Auth.get(input.providerID))
+      const authKey = auth?.type === "api" ? auth.key : undefined
+      const apiToken =
+        input.providerID === "cloudflare-ai-gateway" ? (authKey ?? Env.get("CLOUDFLARE_API_TOKEN")) : authKey
       return {
         baseURL: `https://gateway.ai.cloudflare.com/v1/${accountId}/${gateway}/compat`,
         headers: {
@@ -515,12 +538,13 @@ export function registerBuiltinProviderProfiles() {
     modelFactory: "languageModel",
     modelsDevProviderID: "minimax",
     fallbackModels: ["MiniMax-M2.7", "MiniMax-M3"],
-    runtimeOptions: async () => ({
+    runtimeOptions: async (input) => ({
       apiKey: "synergy-minimax-oauth",
       baseURL: MiniMaxProvider.GLOBAL_INFERENCE,
-      fetch: ProviderAuthRecovery.handled(MiniMaxProvider.minimaxFetch),
+      fetch: ProviderAuthRecovery.handled(MiniMaxProvider.minimaxFetchFor(input.providerID)),
     }),
-    refreshAuth: (input) => (input.auth ? MiniMaxProvider.refreshAuth(input.auth) : Promise.resolve(undefined)),
+    refreshAuth: (input) =>
+      input.auth ? MiniMaxProvider.refreshAuth(input.auth, fetch, input.providerID) : Promise.resolve(undefined),
     classifyError: MiniMaxProvider.classifyError,
   })
 
@@ -582,6 +606,11 @@ export function registerBuiltinProviderProfiles() {
         "X-OpenRouter-Categories": "cli-agent,personal-agent",
       },
     }),
-    fetchUsage: () => AccountUsage.openrouter("openrouter"),
+    fetchUsage: (input) =>
+      AccountUsage.openrouter(input.providerID, input.fetch, {
+        auth: input.auth,
+        manageStoredCredential: input.manageStoredCredential,
+        environment: input.environment,
+      }),
   })
 }

@@ -220,6 +220,35 @@ describe("ChannelCommand", () => {
     })
   })
 
+  test("/new refuses to archive a session with an active generation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type: baseContext.channelType,
+            accountId: baseContext.accountId,
+            chatId: baseContext.chatId,
+          }),
+        })
+        const lease = SessionManager.acquire(session.id)
+        if (!lease) throw new Error("expected active session lease")
+
+        try {
+          expect(await ChannelCommand.execute("/new", baseContext, ScopeContext.current.scope)).toEqual({
+            action: "handled",
+            reply: "⚠️ Wait for the current response to finish before starting a new conversation.",
+          })
+          expect((await Session.get(session.id)).time.archived).toBeUndefined()
+        } finally {
+          await SessionManager.release(lease, { requestNextWork: false })
+          SessionManager.unregisterRuntime(session.id)
+        }
+      },
+    })
+  })
+
   test("/new archives the existing channel session", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

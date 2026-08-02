@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { requiredRuntimeArtifactPaths } from "../../../../script/release/nodes/validate-local-artifacts"
+import { requiredRuntimeArtifactPaths } from "../../../../script/release/shared/runtime-contract"
 
 describe("release runtime artifact contract", () => {
   test("requires the filesystem-backed Playwright Core runtime", () => {

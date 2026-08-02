@@ -6,6 +6,7 @@ MUTED='\033[0;2m'
 RED='\033[0;31m'
 ORANGE='\033[38;5;214m'
 NC='\033[0m' # No Color
+CHECKSUM_ASSET_NOT_FOUND=4
 
 usage() {
     cat <<EOF
@@ -69,28 +70,366 @@ ROOT_DIR=$HOME/.synergy
 INSTALL_DIR=$ROOT_DIR/bin
 mkdir -p "$INSTALL_DIR"
 
-has_bundled_assets() {
-    [ -f "$ROOT_DIR/app/index.html" ] && \
-    [ -f "$ROOT_DIR/schema/config.schema.json" ] && \
-    [ -f "$ROOT_DIR/browser-runtime/playwright-core/package.json" ] && \
-    [ -f "$ROOT_DIR/browser-runtime/playwright-core/index.js" ] && \
-    [ -f "$ROOT_DIR/browser-runtime/playwright-core/lib/coreBundle.js" ] && \
-    [ -f "$ROOT_DIR/lib/resvg-wasm/index_bg.wasm" ] && \
-    [ -f "$ROOT_DIR/lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2" ] && \
-    [ -f "$ROOT_DIR/lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2" ]
+has_bundled_assets_at() {
+    local root="$1"
+    [ -f "$root/app/index.html" ] && \
+    [ -f "$root/schema/config.schema.json" ] && \
+    [ -f "$root/browser-runtime/playwright-core/package.json" ] && \
+    [ -f "$root/browser-runtime/playwright-core/index.js" ] && \
+    [ -f "$root/browser-runtime/playwright-core/lib/coreBundle.js" ] && \
+    [ -f "$root/lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs" ] && \
+    [ -f "$root/lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm" ] && \
+    [ -f "$root/lib/resvg-wasm/index_bg.wasm" ] && \
+    [ -f "$root/lib/resvg-wasm/LICENSE-MPL-2.0.txt" ] && \
+    [ -f "$root/lib/resvg-wasm/THIRD_PARTY_NOTICES.txt" ] && \
+    [ -f "$root/lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt" ] && \
+    [ -f "$root/lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2" ] && \
+    [ -f "$root/lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2" ] && \
+    [ -f "$root/lib/holos-cli/index.js" ]
 }
 
-has_required_sandbox_asset() {
+has_legacy_bundled_assets_at() {
+    local root="$1"
+    [ -f "$root/app/index.html" ] && \
+    [ -f "$root/schema/config.schema.json" ] && \
+    [ -f "$root/browser-runtime/playwright-core/package.json" ] && \
+    [ -f "$root/browser-runtime/playwright-core/index.js" ] && \
+    [ -f "$root/browser-runtime/playwright-core/lib/coreBundle.js" ]
+}
+
+has_bundled_assets() {
+    has_bundled_assets_at "$ROOT_DIR"
+}
+
+has_required_sandbox_asset_at() {
+    local root="$1"
     local platform="${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}"
     case "$platform" in
-        Linux*) [ -f "$ROOT_DIR/sandbox/synergy-sandbox-linux" ] ;;
-        MINGW*|MSYS*|CYGWIN*|Windows*) [ -f "$ROOT_DIR/sandbox/synergy-sandbox-windows.exe" ] ;;
+        Linux*) [ -f "$root/sandbox/synergy-sandbox-linux" ] ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*) [ -f "$root/sandbox/synergy-sandbox-windows.exe" ] ;;
         *) return 0 ;;
     esac
 }
 
+
+has_runtime_executable_at() {
+    local root="$1"
+    local platform="${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}"
+    case "$platform" in
+        MINGW*|MSYS*|CYGWIN*|Windows*) [ -f "$root/bin/synergy.exe" ] ;;
+        *) [ -f "$root/bin/synergy" ] ;;
+    esac
+}
+
+has_complete_bundle_at() {
+    local root="$1"
+    has_runtime_executable_at "$root" && has_bundled_assets_at "$root" && has_required_sandbox_asset_at "$root" || return 1
+    if [ -f "$root/runtime-manifest.sha256" ]; then
+        verify_runtime_manifest "$root"
+    fi
+}
+
+has_legacy_complete_bundle_at() {
+    local root="$1"
+    has_runtime_executable_at "$root" && has_legacy_bundled_assets_at "$root" && has_required_sandbox_asset_at "$root"
+}
+
+has_installable_bundle_at() {
+    local root="$1"
+    if [ -f "$root/runtime-manifest.sha256" ]; then
+        has_complete_bundle_at "$root"
+        return
+    fi
+    has_legacy_complete_bundle_at "$root"
+}
+
 has_complete_bundle() {
-    has_bundled_assets && has_required_sandbox_asset
+    has_complete_bundle_at "$ROOT_DIR"
+}
+
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d ' ' -f 1
+        return
+    fi
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d ' ' -f 1
+        return
+    fi
+    print_message error "No SHA-256 tool is available; install sha256sum or shasum."
+    return 1
+}
+
+verify_downloaded_archive_checksum() {
+    local archive="$1"
+    local checksum_manifest="$2"
+    local archive_name="$3"
+    local line expected name actual
+    local matches=0
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ ! "$line" =~ ^([a-f0-9]{64})\ \ ([^/\\[:space:]]+)$ ]]; then
+            print_message error "CLI checksum manifest contains an invalid entry: $checksum_manifest"
+            return 1
+        fi
+        expected="${BASH_REMATCH[1]}"
+        name="${BASH_REMATCH[2]}"
+        if [ "$name" = "$archive_name" ]; then
+            matches=$((matches + 1))
+        fi
+    done < "$checksum_manifest"
+
+    if [ "$matches" -ne 1 ]; then
+        print_message error "CLI checksum manifest must contain exactly one entry for: $archive_name"
+        return 1
+    fi
+
+    expected=$(while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" =~ ^([a-f0-9]{64})\ \ ([^/\\[:space:]]+)$ ]] && [ "${BASH_REMATCH[2]}" = "$archive_name" ]; then
+            printf "%s\n" "${BASH_REMATCH[1]}"
+        fi
+    done < "$checksum_manifest")
+    actual=$(sha256_file "$archive") || return 1
+    if [ "$actual" != "$expected" ]; then
+        print_message error "Downloaded Synergy archive checksum mismatch: $archive_name"
+        return 1
+    fi
+}
+
+runtime_manifest_has_entry() {
+    local manifest="$1"
+    local wanted="$2"
+    local line relative
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ ! "$line" =~ ^[a-f0-9]{64}\ \ ([^[:space:]]+)$ ]]; then
+            return 1
+        fi
+        relative="${BASH_REMATCH[1]}"
+        if [ "$relative" = "$wanted" ]; then
+            return 0
+        fi
+    done < "$manifest"
+    return 1
+}
+
+verify_runtime_manifest_contract() {
+    local manifest="$1"
+    local required
+    local platform="${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}"
+    local musl="${is_musl:-false}"
+    local native_helpers=()
+    case "$platform" in
+        Linux*)
+            for required in "bin/synergy" "sandbox/synergy-sandbox-linux"; do
+                if ! runtime_manifest_has_entry "$manifest" "$required"; then
+                    print_message error "runtime manifest is missing required entry: $required"
+                    return 1
+                fi
+            done
+            native_helpers=("bin/ast-grep" "vec0.so")
+            ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*)
+            for required in "bin/synergy.exe" "sandbox/synergy-sandbox-windows.exe"; do
+                if ! runtime_manifest_has_entry "$manifest" "$required"; then
+                    print_message error "runtime manifest is missing required entry: $required"
+                    return 1
+                fi
+            done
+            native_helpers=("bin/ast-grep.exe" "vec0.dll")
+            ;;
+        *)
+            if ! runtime_manifest_has_entry "$manifest" "bin/synergy"; then
+                print_message error "runtime manifest is missing required entry: bin/synergy"
+                return 1
+            fi
+            native_helpers=("bin/ast-grep" "vec0.dylib")
+            ;;
+    esac
+    for required in \
+        "app/index.html" \
+        "schema/config.schema.json" \
+        "browser-runtime/playwright-core/package.json" \
+        "browser-runtime/playwright-core/index.js" \
+        "browser-runtime/playwright-core/lib/coreBundle.js" \
+        "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs" \
+        "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm" \
+        "lib/resvg-wasm/index_bg.wasm" \
+        "lib/resvg-wasm/LICENSE-MPL-2.0.txt" \
+        "lib/resvg-wasm/THIRD_PARTY_NOTICES.txt" \
+        "lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt" \
+        "lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2" \
+        "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2" \
+        "lib/holos-cli/index.js" \
+        "lib/holos-cli/vendor/clarus-shared/index.js" \
+        "lib/holos-cli/node_modules/ws/package.json" \
+        "lib/holos-cli/node_modules/zod/package.json"; do
+        if ! runtime_manifest_has_entry "$manifest" "$required"; then
+            print_message error "runtime manifest is missing required entry: $required"
+            return 1
+        fi
+    done
+    if [ "$musl" != "true" ]; then
+        for required in "${native_helpers[@]}"; do
+            if ! runtime_manifest_has_entry "$manifest" "$required"; then
+                print_message error "runtime manifest is missing required entry: $required"
+                return 1
+            fi
+        done
+    fi
+}
+
+runtime_file_is_safe() {
+    local root="$1"
+    local relative="$2"
+    local current="$root"
+    local component index
+    local components=()
+    IFS='/' read -r -a components <<< "$relative"
+    for index in "${!components[@]}"; do
+        component="${components[$index]}"
+        current="$current/$component"
+        if [ -L "$current" ]; then
+            return 1
+        fi
+        if [ "$index" -lt "$((${#components[@]} - 1))" ]; then
+            [ -d "$current" ] || return 1
+        else
+            [ -f "$current" ] || return 1
+        fi
+    done
+}
+
+verify_runtime_manifest() {
+    local bundle_root="$1"
+    local manifest="$bundle_root/runtime-manifest.sha256"
+    [ -f "$manifest" ] || return 0
+    verify_runtime_manifest_contract "$manifest" || return 1
+
+    local line expected relative actual
+    local seen=$'\n'
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ ! "$line" =~ ^([a-f0-9]{64})\ \ ([^[:space:]]+)$ ]]; then
+            print_message error "runtime manifest contains an invalid entry: $manifest"
+            return 1
+        fi
+        expected="${BASH_REMATCH[1]}"
+        relative="${BASH_REMATCH[2]}"
+        case "$relative" in
+            ""|.|..|./*|/*|*\\*|[A-Za-z]:*|../*|*/../*|*/..|*/./*|*/.) print_message error "runtime manifest contains an unsafe path: $relative"; return 1 ;;
+        esac
+        if [[ "$seen" == *$'\n'"$relative"$'\n'* ]]; then
+            print_message error "runtime manifest contains a duplicate entry: $relative"
+            return 1
+        fi
+        seen+="$relative"$'\n'
+        if ! runtime_file_is_safe "$bundle_root" "$relative"; then
+            print_message error "runtime manifest file is missing or unsafe: $relative"
+            return 1
+        fi
+        actual=$(sha256_file "$bundle_root/$relative") || return 1
+        if [ "$actual" != "$expected" ]; then
+            print_message error "runtime manifest checksum mismatch: $relative"
+            return 1
+        fi
+    done < "$manifest"
+}
+
+bundle_contains_symlink() {
+    [ -n "$(find "$1" -type l -print -quit 2>/dev/null)" ]
+}
+
+archive_member_name_is_safe() {
+    local member="$1"
+    local component
+    case "$member" in
+        ""|/*|*\\*|[A-Za-z]:*) return 1 ;;
+    esac
+    while [[ "$member" == ./* ]]; do
+        member="${member#./}"
+    done
+    IFS='/' read -r -a components <<< "$member"
+    for component in "${components[@]}"; do
+        if [ "$component" = ".." ]; then
+            return 1
+        fi
+    done
+}
+
+validated_archive_members() {
+    local archive="$1"
+    local archive_type="$2"
+    local members
+    local member
+    if [ "$archive_type" = "tar" ]; then
+        if tar -tvzf "$archive" | grep -Eq '^[lh]'; then
+            print_message error "Release archive contains a symbolic or hard link." >&2
+            return 1
+        fi
+        members=$(tar -tzf "$archive") || return 1
+    else
+        if unzip -Z -l "$archive" | grep -Eq '^l'; then
+            print_message error "Release archive contains a symbolic link." >&2
+            return 1
+        fi
+        members=$(unzip -Z1 "$archive") || return 1
+    fi
+    while IFS= read -r member; do
+        if ! archive_member_name_is_safe "$member"; then
+            print_message error "Release archive contains an unsafe path: $member" >&2
+            return 1
+        fi
+    done <<< "$members"
+    printf '%s\n' "$members"
+}
+
+validate_archive_members() {
+    validated_archive_members "$1" "$2" >/dev/null
+}
+
+require_published_checksum_before_extraction() {
+    local archive="$1"
+    local archive_type="$2"
+    local checksum_verified="$3"
+    local checksum_name="$4"
+    local members
+    local member
+    members=$(validated_archive_members "$archive" "$archive_type") || return 1
+    if [ "$checksum_verified" = "true" ]; then
+        return 0
+    fi
+    while IFS= read -r member; do
+        while [[ "$member" == */ ]]; do
+            member="${member%/}"
+        done
+        case "$member" in
+            runtime-manifest.sha256|./runtime-manifest.sha256)
+                print_message error "Published CLI checksum is unavailable for this manifest-backed Synergy release: $checksum_name"
+                return 1
+                ;;
+        esac
+    done <<< "$members"
+}
+
+replace_bundle_directory() {
+    local source="$1"
+    local destination="$2"
+    local staged="${destination}.install.$$"
+    local backup="${destination}.backup.$$"
+
+    rm -rf "$staged" "$backup"
+    cp -R "$source" "$staged"
+    if [ -e "$destination" ]; then
+        mv "$destination" "$backup"
+    fi
+    if mv "$staged" "$destination"; then
+        rm -rf "$backup"
+        return 0
+    fi
+    rm -rf "$staged"
+    if [ -e "$backup" ]; then
+        mv "$backup" "$destination"
+    fi
+    return 1
 }
 
 install_bin_contents() {
@@ -115,61 +454,119 @@ install_bin_contents() {
     done
 }
 
-install_bundle_contents() {
+backup_managed_runtime() {
+    local backup="$1"
+    local name
+    rm -rf "$backup"
+    mkdir -p "$backup" || return 1
+    for name in app schema browser-runtime lib sandbox bin runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll; do
+        if [ -e "$ROOT_DIR/$name" ] || [ -L "$ROOT_DIR/$name" ]; then
+            cp -RP "$ROOT_DIR/$name" "$backup/$name" || return 1
+        fi
+    done
+}
+
+restore_managed_runtime() {
+    local backup="$1"
+    local name
+    rm -rf "$ROOT_DIR/app" "$ROOT_DIR/schema" "$ROOT_DIR/browser-runtime" "$ROOT_DIR/lib" "$ROOT_DIR/sandbox" "$ROOT_DIR/bin"
+    rm -f "$ROOT_DIR/runtime-manifest.sha256" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll"
+    mkdir -p "$ROOT_DIR" || return 1
+    for name in app schema browser-runtime lib sandbox bin runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll; do
+        if [ -e "$backup/$name" ] || [ -L "$backup/$name" ]; then
+            cp -RP "$backup/$name" "$ROOT_DIR/$name" || return 1
+        fi
+    done
+}
+
+apply_bundle_contents() {
     local bundle_root="$1"
-
-    mkdir -p "$ROOT_DIR" "$INSTALL_DIR" "$ROOT_DIR/schema"
-
-    if [ -d "$bundle_root/bin" ]; then
-        install_bin_contents "$bundle_root/bin"
-    fi
+    local vec
+    mkdir -p "$ROOT_DIR" "$INSTALL_DIR" || return 1
 
     if [ -d "$bundle_root/app" ]; then
-        rm -rf "$ROOT_DIR/app"
-        cp -R "$bundle_root/app" "$ROOT_DIR/app"
+        replace_bundle_directory "$bundle_root/app" "$ROOT_DIR/app" || return 1
     fi
-
     if [ -d "$bundle_root/schema" ]; then
-        cp -R "$bundle_root/schema/." "$ROOT_DIR/schema/"
+        replace_bundle_directory "$bundle_root/schema" "$ROOT_DIR/schema" || return 1
     fi
-
-    rm -rf "$ROOT_DIR/browser-runtime"
     if [ -d "$bundle_root/browser-runtime" ]; then
-        cp -R "$bundle_root/browser-runtime" "$ROOT_DIR/browser-runtime"
+        replace_bundle_directory "$bundle_root/browser-runtime" "$ROOT_DIR/browser-runtime" || return 1
     fi
-
-    rm -rf "$ROOT_DIR/lib"
     if [ -d "$bundle_root/lib" ]; then
-        cp -R "$bundle_root/lib" "$ROOT_DIR/lib"
+        replace_bundle_directory "$bundle_root/lib" "$ROOT_DIR/lib" || return 1
     fi
-
-    rm -rf "$ROOT_DIR/sandbox"
     if [ -d "$bundle_root/sandbox" ]; then
-        cp -R "$bundle_root/sandbox" "$ROOT_DIR/sandbox"
+        replace_bundle_directory "$bundle_root/sandbox" "$ROOT_DIR/sandbox" || return 1
     fi
 
-    rm -f "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll"
+    rm -f "$INSTALL_DIR/ast-grep" "$INSTALL_DIR/ast-grep.exe" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll" || return 1
     for vec in "$bundle_root/vec0.so" "$bundle_root/vec0.dylib" "$bundle_root/vec0.dll"; do
         if [ -f "$vec" ]; then
-            cp "$vec" "$ROOT_DIR/"
+            cp "$vec" "$ROOT_DIR/" || return 1
         fi
     done
 
+    if [ -d "$bundle_root/bin" ]; then
+        install_bin_contents "$bundle_root/bin" || return 1
+    fi
+    if [ -f "$bundle_root/runtime-manifest.sha256" ]; then
+        cp "$bundle_root/runtime-manifest.sha256" "$ROOT_DIR/runtime-manifest.sha256" || return 1
+        verify_runtime_manifest "$ROOT_DIR" || return 1
+    else
+        rm -f "$ROOT_DIR/runtime-manifest.sha256" || return 1
+    fi
+    if ! has_installable_bundle_at "$ROOT_DIR"; then
+        print_message error "Installed Synergy runtime is incomplete."
+        return 1
+    fi
+
     if [ -f "$INSTALL_DIR/synergy" ]; then
-        chmod 755 "$INSTALL_DIR/synergy"
+        chmod 755 "$INSTALL_DIR/synergy" || return 1
     fi
     if [ -f "$INSTALL_DIR/synergy.exe" ]; then
-        chmod 755 "$INSTALL_DIR/synergy.exe"
+        chmod 755 "$INSTALL_DIR/synergy.exe" || return 1
     fi
     if [ -f "$INSTALL_DIR/ast-grep" ]; then
-        chmod 755 "$INSTALL_DIR/ast-grep"
+        chmod 755 "$INSTALL_DIR/ast-grep" || return 1
     fi
     if [ -f "$INSTALL_DIR/ast-grep.exe" ]; then
-        chmod 755 "$INSTALL_DIR/ast-grep.exe"
+        chmod 755 "$INSTALL_DIR/ast-grep.exe" || return 1
     fi
     if [ -f "$ROOT_DIR/sandbox/synergy-sandbox-linux" ]; then
-        chmod 755 "$ROOT_DIR/sandbox/synergy-sandbox-linux"
+        chmod 755 "$ROOT_DIR/sandbox/synergy-sandbox-linux" || return 1
     fi
+}
+
+install_bundle_contents() {
+    local bundle_root="$1"
+    local backup="${ROOT_DIR}.runtime-backup.$$"
+    if [ ! -f "$bundle_root/runtime-manifest.sha256" ]; then
+        print_message warning "${ORANGE}Warning: legacy archive has no runtime manifest; verifying required files only.${NC}"
+    fi
+    verify_runtime_manifest "$bundle_root" || return 1
+    if ! has_installable_bundle_at "$bundle_root"; then
+        print_message error "Release archive is incomplete; required runtime assets are missing."
+        return 1
+    fi
+    if bundle_contains_symlink "$bundle_root"; then
+        print_message error "Release archive contains symbolic links."
+        return 1
+    fi
+
+    backup_managed_runtime "$backup" || return 1
+    if apply_bundle_contents "$bundle_root"; then
+        rm -rf "$backup"
+        return 0
+    fi
+
+    print_message error "Synergy installation failed; restoring the previous runtime."
+    if restore_managed_runtime "$backup"; then
+        rm -rf "$backup"
+    else
+        print_message error "Failed to restore the previous Synergy runtime. Recovery backup preserved at: $backup"
+    fi
+    return 1
 }
 
 print_message() {
@@ -340,6 +737,45 @@ install_synergy() {
     ensure_linux_bubblewrap
 }
 
+download_archive_standard() {
+    local url="$1"
+    local output="$2"
+    if ! curl --proto '=https' -# -fL -o "$output" "$url"; then
+        rm -f "$output"
+        print_message error "Failed to download Synergy release archive: $url"
+        return 1
+    fi
+}
+
+download_cli_checksums() {
+    local url="$1"
+    local output="$2"
+    local status
+    if ! status=$(curl --proto '=https' -sSL -w '%{http_code}' -o "$output" "$url"); then
+        rm -f "$output"
+        print_message error "Failed to download the published CLI checksum asset."
+        return 1
+    fi
+    case "$status" in
+        2??) return 0 ;;
+        404)
+            rm -f "$output"
+            return "$CHECKSUM_ASSET_NOT_FOUND"
+            ;;
+        *)
+            rm -f "$output"
+            print_message error "Failed to download the published CLI checksum asset (HTTP $status)."
+            return 1
+            ;;
+    esac
+}
+
+
+
+progress_trace_file() {
+    printf "%s/.synergy-install-progress.trace\n" "$(dirname "$1")"
+}
+
 if [ "${SYNERGY_INSTALL_LIBRARY_MODE:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
@@ -498,6 +934,7 @@ print_progress() {
     printf "\r${ORANGE}%s%s %3d%%${NC}" "$filled" "$empty" "$percent" >&4
 }
 
+
 download_with_progress() {
     local url="$1"
     local output="$2"
@@ -508,9 +945,8 @@ download_with_progress() {
         exec 4>/dev/null
     fi
 
-    local tmp_dir=${TMPDIR:-/tmp}
-    local basename="${tmp_dir}/synergy_install_$$"
-    local tracefile="${basename}.trace"
+    local tracefile
+    tracefile=$(progress_trace_file "$output")
 
     rm -f "$tracefile"
     mkfifo "$tracefile"
@@ -521,7 +957,7 @@ download_with_progress() {
     trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
 
     (
-        curl --trace-ascii "$tracefile" -s -L -o "$output" "$url"
+        curl --proto '=https' --fail --trace-ascii "$tracefile" -s -L -o "$output" "$url"
     ) &
     local curl_pid=$!
 
@@ -559,23 +995,60 @@ download_with_progress() {
 }
 
 download_and_install() {
-    print_message info "\n${MUTED}Installing ${NC}synergy ${MUTED}version: ${NC}$specific_version"
-    local tmp_dir="${TMPDIR:-/tmp}/synergy_install_$$"
-    mkdir -p "$tmp_dir"
+    local tmp_dir
+    local checksum_name="Synergy-${specific_version}-cli-checksums.txt"
+    local checksum_url="${url%/*}/$checksum_name"
+    local checksum_verified=false
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/synergy_install.XXXXXX") || return 1
+    chmod 700 "$tmp_dir"
 
     if [[ "$os" == "windows" ]] || ! [ -t 2 ] || ! download_with_progress "$url" "$tmp_dir/$filename"; then
-        # Fallback to standard curl on Windows, non-TTY environments, or if custom progress fails
-        curl -# -L -o "$tmp_dir/$filename" "$url"
+        if ! download_archive_standard "$url" "$tmp_dir/$filename"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    fi
+
+    local checksum_status=0
+    download_cli_checksums "$checksum_url" "$tmp_dir/$checksum_name" || checksum_status=$?
+    if [ "$checksum_status" -eq 0 ]; then
+        if ! verify_downloaded_archive_checksum "$tmp_dir/$filename" "$tmp_dir/$checksum_name" "$filename"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+        checksum_verified=true
+    elif [ "$checksum_status" -eq "$CHECKSUM_ASSET_NOT_FOUND" ]; then
+        print_message warning "${ORANGE}Warning: published CLI checksum is unavailable; installing a legacy Synergy release only if its archive has no runtime manifest.${NC}"
+    else
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    local archive_type=zip
+    if [ "$os" = "linux" ]; then
+        archive_type=tar
+    fi
+    if ! require_published_checksum_before_extraction "$tmp_dir/$filename" "$archive_type" "$checksum_verified" "$checksum_name"; then
+        rm -rf "$tmp_dir"
+        return 1
     fi
 
     if [ "$os" = "linux" ]; then
-        tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"
+        if ! tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
     else
-        unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
+        if ! unzip -q "$tmp_dir/$filename" -d "$tmp_dir"; then
+            rm -rf "$tmp_dir"
+            return 1
+        fi
     fi
 
-    install_bundle_contents "$tmp_dir"
+    local install_status=0
+    install_bundle_contents "$tmp_dir" || install_status=$?
     rm -rf "$tmp_dir"
+    return "$install_status"
 }
 
 install_from_binary() {
@@ -585,7 +1058,7 @@ install_from_binary() {
     chmod 755 "${INSTALL_DIR}/synergy"
 
     if ! has_bundled_assets; then
-        print_message warning "${ORANGE}Warning: Installed only the binary. Web UI, schema, and Browser runtime assets were not provided.${NC}"
+        print_message warning "${ORANGE}Warning: Installed only the binary. Web UI, schema, Browser, and local embedding runtime assets were not provided.${NC}"
         print_message warning "${MUTED}Use the release archive installer to install all bundled runtime assets.${NC}"
     fi
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import type { ToolComponent, ToolProps } from "@ericsanchezok/synergy-ui/tool-registry-lazy"
-import { createComponent } from "solid-js"
+import { createComponent, createMemo, createRoot } from "solid-js"
 import { render } from "solid-js/web"
 
 const fallbackProps: ToolProps[] = []
@@ -20,6 +20,9 @@ const { getPluginToolRenderer, registerPluginToolRenderer } = await import(
 )
 const { registerPartRenderer } = await import("../../../src/plugin/registries/part-registry")
 const { PART_MAPPING } = await import("@ericsanchezok/synergy-ui/message-part")
+const { externalLoadNotify, resolveToolRenderer, ToolRegistry } = await import(
+  "@ericsanchezok/synergy-ui/tool-registry-lazy"
+)
 
 async function loadRenderer(name: string): Promise<ToolComponent> {
   getPluginToolRenderer(name)
@@ -29,6 +32,14 @@ async function loadRenderer(name: string): Promise<ToolComponent> {
     await Bun.sleep(1)
   }
   throw new Error(`Renderer did not load: ${name}`)
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
 }
 
 afterEach(() => {
@@ -55,6 +66,88 @@ describe("plugin tool renderer registry", () => {
       unregister()
     }
     expect(getPluginToolRenderer(name)).toBeUndefined()
+  })
+
+  test("reacts when a renderer loader is registered after fallback resolution", async () => {
+    const name = "plugin__vibe-lingo__late-card"
+    const renderer = (() => null) as unknown as ToolComponent
+    let disposeRoot = () => {}
+    const resolved = createRoot((dispose) => {
+      disposeRoot = dispose
+      return createMemo(() =>
+        resolveToolRenderer(name, ToolRegistry, {
+          externalLookup: getPluginToolRenderer,
+          externalLoadNotify,
+        }),
+      )
+    })
+
+    expect(resolved()).toBeUndefined()
+    const unregister = registerPluginToolRenderer(name, async () => ({ default: renderer }))
+    try {
+      for (let attempt = 0; attempt < 20 && !resolved(); attempt++) await Bun.sleep(1)
+      expect(resolved()).toBeFunction()
+    } finally {
+      unregister()
+      disposeRoot()
+    }
+  })
+
+  test("restores a mounted resolver after unregistering and re-registering the same tool", async () => {
+    const name = "plugin__vibe-lingo__reloaded-card"
+    const firstRenderer = (() => null) as unknown as ToolComponent
+    const secondRenderer = (() => null) as unknown as ToolComponent
+    let disposeRoot = () => {}
+    const resolved = createRoot((dispose) => {
+      disposeRoot = dispose
+      return createMemo(() =>
+        resolveToolRenderer(name, ToolRegistry, {
+          externalLookup: getPluginToolRenderer,
+          externalLoadNotify,
+        }),
+      )
+    })
+    const unregisterFirst = registerPluginToolRenderer(name, async () => ({ default: firstRenderer }))
+    try {
+      for (let attempt = 0; attempt < 20 && !resolved(); attempt++) await Bun.sleep(1)
+      const firstResolved = resolved()
+      expect(firstResolved).toBeFunction()
+
+      unregisterFirst()
+      expect(resolved()).toBeUndefined()
+
+      const unregisterSecond = registerPluginToolRenderer(name, async () => ({ default: secondRenderer }))
+      try {
+        for (let attempt = 0; attempt < 20 && !resolved(); attempt++) await Bun.sleep(1)
+        expect(resolved()).toBeFunction()
+        expect(resolved()).not.toBe(firstResolved)
+      } finally {
+        unregisterSecond()
+      }
+    } finally {
+      unregisterFirst()
+      disposeRoot()
+    }
+  })
+
+  test("ignores a stale loader that completes after its replacement", async () => {
+    const name = "plugin__vibe-lingo__stale-card"
+    const stale = deferred<{ default: ToolComponent }>()
+    const staleRenderer = (() => null) as unknown as ToolComponent
+    const currentRenderer = (() => null) as unknown as ToolComponent
+    const unregisterStale = registerPluginToolRenderer(name, () => stale.promise)
+    getPluginToolRenderer(name)
+
+    const unregisterCurrent = registerPluginToolRenderer(name, async () => ({ default: currentRenderer }))
+    try {
+      const current = await loadRenderer(name)
+      stale.resolve({ default: staleRenderer })
+      await Bun.sleep(1)
+      expect(getPluginToolRenderer(name)).toBe(current)
+    } finally {
+      unregisterCurrent()
+      unregisterStale()
+    }
   })
 
   test("preserves host-owned message part renderers", () => {
