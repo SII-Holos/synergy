@@ -40,7 +40,6 @@ export class RPCHandler {
         }
       }
 
-      this.#pruneRequestCache()
       const key = requestCacheKey(lease, request.requestID)
       const fingerprint = requestFingerprint(request)
       const cached = this.#requests.get(key)
@@ -61,6 +60,7 @@ export class RPCHandler {
         })
         return await cached.result
       }
+      this.#pruneRequestCache()
       if (this.#requests.size >= MAX_REQUEST_CACHE_ENTRIES) {
         SynergyLinkLog.warn("rpc.request.rejected.capacity", {
           requestID: request.requestID,

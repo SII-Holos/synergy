@@ -273,6 +273,10 @@ await appendFile(${JSON.stringify(counterPath)}, "executed\\n")
       const [original, deduped] = await Promise.all([pending[0], retried])
       expect(deduped).toBe(original)
       await Promise.all(pending)
+
+      const recovered = await handler.handle({ ...requests[0], requestID: "req_after_capacity" }, executionLease)
+      expect(recovered.ok).toBe(true)
+      expect(executeSpy).toHaveBeenCalledTimes(513)
     } finally {
       execution.resolve({
         title: "Process list",
@@ -285,6 +289,55 @@ await appendFile(${JSON.stringify(counterPath)}, "executed\\n")
         },
         output: "No running or recent processes.",
       })
+      executeSpy.mockRestore()
+    }
+  })
+  test("dedupes the oldest settled request before capacity pruning", async () => {
+    const handler = new RPCHandler({ linkID: "link_test" })
+    const blocked = Promise.withResolvers<{
+      title: string
+      metadata: { action: "list"; processes: never[]; hostSessionID: string; linkID: string; backend: "remote" }
+      output: string
+    }>()
+    const processResult = {
+      title: "Process list",
+      metadata: {
+        action: "list" as const,
+        processes: [] as never[],
+        hostSessionID: handler.host.hostSessionID,
+        linkID: "link_test",
+        backend: "remote" as const,
+      },
+      output: "No running or recent processes.",
+    }
+    let executionCount = 0
+    const executeSpy = spyOn(handler.processRegistry, "execute").mockImplementation(async () => {
+      executionCount += 1
+      if (executionCount === 1) return processResult
+      return await blocked.promise
+    })
+    const settledRequest = {
+      version: 2,
+      requestID: "req_oldest_settled",
+      linkID: "link_test",
+      tool: "process",
+      action: "list",
+      sessionID: "session_test",
+      payload: { action: "list" },
+    }
+    const original = await handler.handle(settledRequest, executionLease)
+    const pending = Array.from({ length: 511 }, (_, index) =>
+      handler.handle({ ...settledRequest, requestID: `req_pending_after_settled_${index}` }, executionLease),
+    )
+    const retried = handler.handle(settledRequest, executionLease)
+
+    try {
+      expect(executeSpy).toHaveBeenCalledTimes(512)
+      const deduped = await Promise.race([retried, Bun.sleep(100).then(() => "timeout" as const)])
+      expect(deduped).toBe(original)
+    } finally {
+      blocked.resolve(processResult)
+      await Promise.all([...pending, retried])
       executeSpy.mockRestore()
     }
   })
