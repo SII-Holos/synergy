@@ -17,6 +17,12 @@ const sharedRuntimeFiles = [
   "browser-runtime/playwright-core/lib/coreBundle.js",
   "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
   "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
+  "lib/resvg-wasm/index_bg.wasm",
+  "lib/resvg-wasm/LICENSE-MPL-2.0.txt",
+  "lib/resvg-wasm/THIRD_PARTY_NOTICES.txt",
+  "lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt",
+  "lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
+  "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2",
   "lib/holos-cli/index.js",
   "lib/holos-cli/vendor/clarus-shared/index.js",
   "lib/holos-cli/node_modules/ws/package.json",
@@ -81,6 +87,7 @@ describe("CLI bundle installer", () => {
       fs.mkdir(path.join(bundle, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
       fs.mkdir(path.join(bundle, "lib", "onnxruntime-web"), { recursive: true }),
       fs.mkdir(path.join(bundle, "lib", "holos-cli"), { recursive: true }),
+      fs.mkdir(path.join(bundle, "lib", "resvg-wasm", "fonts"), { recursive: true }),
     ])
     await Promise.all([
       fs.writeFile(path.join(bundle, "bin", "synergy"), "runtime"),
@@ -93,6 +100,15 @@ describe("CLI bundle installer", () => {
       fs.writeFile(path.join(bundle, "browser-runtime", "playwright-core", "lib", "coreBundle.js"), "runtime"),
       fs.writeFile(path.join(bundle, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.mjs"), "runtime"),
       fs.writeFile(path.join(bundle, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"), "runtime"),
+      fs.writeFile(path.join(bundle, "lib", "resvg-wasm", "index_bg.wasm"), "wasm"),
+      fs.writeFile(path.join(bundle, "lib", "resvg-wasm", "LICENSE-MPL-2.0.txt"), "license"),
+      fs.writeFile(path.join(bundle, "lib", "resvg-wasm", "THIRD_PARTY_NOTICES.txt"), "notice"),
+      fs.writeFile(path.join(bundle, "lib", "resvg-wasm", "fonts", "LICENSE-OFL-1.1.txt"), "license"),
+      fs.writeFile(
+        path.join(bundle, "lib", "resvg-wasm", "fonts", "noto-sans-sc-chinese-simplified-400-normal.woff2"),
+        "font",
+      ),
+      fs.writeFile(path.join(bundle, "lib", "resvg-wasm", "fonts", "noto-sans-sc-latin-400-normal.woff2"), "font"),
       fs.writeFile(path.join(bundle, "lib", "holos-cli", "index.js"), "runtime"),
     ])
 
@@ -117,6 +133,12 @@ describe("CLI bundle installer", () => {
         path.join(home, ".synergy", "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"),
       ).text(),
     ).toBe("runtime")
+    expect(await Bun.file(path.join(home, ".synergy", "lib", "resvg-wasm", "index_bg.wasm")).text()).toBe("wasm")
+    expect(
+      await Bun.file(
+        path.join(home, ".synergy", "lib", "resvg-wasm", "fonts", "noto-sans-sc-chinese-simplified-400-normal.woff2"),
+      ).text(),
+    ).toBe("font")
   })
 
   test("installs and verifies a complete local release archive", async () => {
@@ -398,23 +420,7 @@ describe("CLI bundle installer", () => {
     const bundle = path.join(root, "bundle")
     await fs.mkdir(path.dirname(installedApp), { recursive: true })
     await fs.writeFile(installedApp, "old-app")
-    const files = [
-      "bin/synergy",
-      "app/index.html",
-      "schema/config.schema.json",
-      "browser-runtime/playwright-core/package.json",
-      "browser-runtime/playwright-core/index.js",
-      "browser-runtime/playwright-core/lib/coreBundle.js",
-      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
-      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
-      "lib/holos-cli/index.js",
-      "lib/holos-cli/vendor/clarus-shared/index.js",
-      "lib/holos-cli/node_modules/ws/package.json",
-      "lib/holos-cli/node_modules/zod/package.json",
-      "bin/ast-grep",
-      "vec0.so",
-      "sandbox/synergy-sandbox-linux",
-    ]
+    const files = ["bin/synergy", "bin/ast-grep", "vec0.so", "sandbox/synergy-sandbox-linux", ...sharedRuntimeFiles]
     for (const relative of files) {
       await fs.mkdir(path.dirname(path.join(bundle, relative)), { recursive: true })
       await fs.writeFile(path.join(bundle, relative), relative)
@@ -998,6 +1004,7 @@ describe("CLI installer guidance", () => {
       fs.mkdir(path.join(home, ".synergy", "browser-runtime", "playwright-core", "lib"), { recursive: true }),
       fs.mkdir(path.join(home, ".synergy", "lib", "onnxruntime-web"), { recursive: true }),
       fs.mkdir(path.join(home, ".synergy", "lib", "holos-cli"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "lib", "resvg-wasm", "fonts"), { recursive: true }),
       fs.mkdir(bin, { recursive: true }),
     ])
     await Promise.all([
@@ -1017,6 +1024,18 @@ describe("CLI installer guidance", () => {
       fs.writeFile(
         path.join(home, ".synergy", "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.mjs"),
         "runtime",
+      ),
+      fs.writeFile(path.join(home, ".synergy", "lib", "resvg-wasm", "index_bg.wasm"), "wasm"),
+      fs.writeFile(path.join(home, ".synergy", "lib", "resvg-wasm", "LICENSE-MPL-2.0.txt"), "license"),
+      fs.writeFile(path.join(home, ".synergy", "lib", "resvg-wasm", "THIRD_PARTY_NOTICES.txt"), "notice"),
+      fs.writeFile(path.join(home, ".synergy", "lib", "resvg-wasm", "fonts", "LICENSE-OFL-1.1.txt"), "license"),
+      fs.writeFile(
+        path.join(home, ".synergy", "lib", "resvg-wasm", "fonts", "noto-sans-sc-chinese-simplified-400-normal.woff2"),
+        "font",
+      ),
+      fs.writeFile(
+        path.join(home, ".synergy", "lib", "resvg-wasm", "fonts", "noto-sans-sc-latin-400-normal.woff2"),
+        "font",
       ),
       fs.writeFile(path.join(home, ".synergy", "lib", "holos-cli", "index.js"), "runtime"),
       writeExecutable(path.join(bin, "synergy"), 'printf "1.2.3\\n"'),
@@ -1086,6 +1105,39 @@ describe("CLI installer guidance", () => {
       fs.writeFile(path.join(home, ".synergy", "app", "index.html"), "app"),
       fs.writeFile(path.join(home, ".synergy", "schema", "config.schema.json"), "{}"),
       fs.writeFile(path.join(home, ".synergy", "sandbox", "synergy-sandbox-linux"), "helper"),
+    ])
+
+    const command = 'install_script="$1"; set --; source "$install_script"; has_complete_bundle'
+    const result = Bun.spawnSync({
+      cmd: ["bash", "-c", command, "bash", installScript],
+      env: { ...process.env, HOME: home, SYNERGY_INSTALL_LIBRARY_MODE: "1", SYNERGY_INSTALL_PLATFORM: "Linux" },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    expect(result.exitCode).not.toBe(0)
+  })
+
+  test("does not treat an install without the SVG raster runtime as complete", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-svg-raster-incomplete-"))
+    temporaryDirectories.push(root)
+    const home = path.join(root, "home")
+    await Promise.all([
+      fs.mkdir(path.join(home, ".synergy", "app"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "schema"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "sandbox"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "browser-runtime", "playwright-core", "lib"), { recursive: true }),
+    ])
+    await Promise.all([
+      fs.writeFile(path.join(home, ".synergy", "app", "index.html"), "app"),
+      fs.writeFile(path.join(home, ".synergy", "schema", "config.schema.json"), "{}"),
+      fs.writeFile(path.join(home, ".synergy", "sandbox", "synergy-sandbox-linux"), "helper"),
+      fs.writeFile(path.join(home, ".synergy", "browser-runtime", "playwright-core", "package.json"), "{}"),
+      fs.writeFile(path.join(home, ".synergy", "browser-runtime", "playwright-core", "index.js"), "runtime"),
+      fs.writeFile(
+        path.join(home, ".synergy", "browser-runtime", "playwright-core", "lib", "coreBundle.js"),
+        "runtime",
+      ),
     ])
 
     const command = 'install_script="$1"; set --; source "$install_script"; has_complete_bundle'

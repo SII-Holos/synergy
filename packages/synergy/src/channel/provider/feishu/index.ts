@@ -1229,8 +1229,14 @@ async function sendParts(input: {
       continue
     }
 
-    const prepared = await FeishuOutboundMedia.prepare(part, input.mediaContext)
-    lastResult = await input.sendMessage(prepared)
+    for await (const prepared of FeishuOutboundMedia.prepare(part, input.mediaContext)) {
+      try {
+        lastResult = await input.sendMessage(prepared)
+      } catch (error) {
+        if (!prepared.bestEffort) throw error
+        log.warn("SVG preview delivery failed; sending the original file", { error })
+      }
+    }
   }
 
   if (lastResult) return lastResult

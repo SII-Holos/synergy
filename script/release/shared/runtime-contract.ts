@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { EMBEDDING_RUNTIME_REQUIRED_PATHS } from "../../../packages/synergy/script/embedding-runtime-assets"
 import { PLAYWRIGHT_CORE_REQUIRED_PATHS } from "../../../packages/synergy/script/playwright-runtime-assets"
+import { SVG_RASTER_RUNTIME_REQUIRED_PATHS } from "../../../packages/synergy/script/svg-raster-runtime-assets"
 
 export const RUNTIME_MANIFEST_NAME = "runtime-manifest.sha256"
 export const HOLOS_CLI_REQUIRED_PATHS = [
@@ -24,6 +25,7 @@ export function requiredRuntimeArtifactPaths(name: string): string[] {
     "schema/config.schema.json",
     ...PLAYWRIGHT_CORE_REQUIRED_PATHS,
     ...EMBEDDING_RUNTIME_REQUIRED_PATHS,
+    ...SVG_RASTER_RUNTIME_REQUIRED_PATHS,
     ...HOLOS_CLI_REQUIRED_PATHS,
     ...(target.os === "linux" ? ["sandbox/synergy-sandbox-linux"] : []),
     ...(target.os === "windows" ? ["sandbox/synergy-sandbox-windows.exe"] : []),
