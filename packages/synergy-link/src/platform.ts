@@ -13,14 +13,15 @@ const PROCESS_LIST_TIMEOUT_MS = 5_000
 // numeric process topology and marker matches; never simplify this into JS-side env parsing.
 const PROCESS_OWNER_SCAN_SCRIPT = String.raw`
 include_no_tty=$1
-shift
+exec 3<&0
 ps eww "$include_no_tty" -o pid=,ppid=,pgid=,command= 2>/dev/null |
   awk '
     BEGIN {
-      for (argumentIndex = 1; argumentIndex < ARGC; argumentIndex += 1) {
-        markers[argumentIndex] = "SYNERGY_LINK_PROCESS_OWNER=" ARGV[argumentIndex]
-        delete ARGV[argumentIndex]
+      markerPrefix = "SYNERGY_LINK_PROCESS_OWNER="
+      while ((getline marker < "/dev/fd/3") > 0) {
+        markers[marker] = 1
       }
+      close("/dev/fd/3")
     }
     {
       pid = $1
@@ -28,19 +29,19 @@ ps eww "$include_no_tty" -o pid=,ppid=,pgid=,command= 2>/dev/null |
       processGroupId = $3
       command = $0
       sub(/^[[:space:]]*[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+/, "", command)
+      fieldCount = split(command, fields, /[[:space:]]+/)
       owned = 0
-      for (markerIndex in markers) {
-        start = index(command, markers[markerIndex])
-        if (start == 0) continue
-        nextCharacter = substr(command, start + length(markers[markerIndex]), 1)
-        if (nextCharacter == "" || nextCharacter ~ /[[:space:]]/) {
+      for (fieldIndex = 1; fieldIndex <= fieldCount; fieldIndex += 1) {
+        if (index(fields[fieldIndex], markerPrefix) != 1) continue
+        marker = substr(fields[fieldIndex], length(markerPrefix) + 1)
+        if (marker in markers) {
           owned = 1
           break
         }
       }
       print pid, parentPid, processGroupId, owned
     }
-  ' "$@"
+  '
 `
 const PROCESS_SCAN_PATH = "/usr/bin:/bin"
 const ESC = "\u001b"
@@ -240,17 +241,14 @@ function ownedProcessGroups(ownerMarkers: Iterable<string>): number[] {
   const markers = [...new Set(ownerMarkers)].filter(Boolean)
   if (markers.length === 0) return []
   const includeNoTty = process.platform === "darwin" ? "-x" : "x"
-  const result = spawnSync(
-    "/bin/sh",
-    ["-c", PROCESS_OWNER_SCAN_SCRIPT, "synergy-link-process-scan", includeNoTty, ...markers],
-    {
-      stdio: ["ignore", "pipe", "ignore"],
-      encoding: "utf8",
-      env: { PATH: PROCESS_SCAN_PATH },
-      maxBuffer: PROCESS_LIST_MAX_BUFFER,
-      timeout: PROCESS_LIST_TIMEOUT_MS,
-    },
-  )
+  const result = spawnSync("/bin/sh", ["-c", PROCESS_OWNER_SCAN_SCRIPT, "synergy-link-process-scan", includeNoTty], {
+    stdio: ["pipe", "pipe", "ignore"],
+    input: `${markers.join("\n")}\n`,
+    encoding: "utf8",
+    env: { PATH: PROCESS_SCAN_PATH },
+    maxBuffer: PROCESS_LIST_MAX_BUFFER,
+    timeout: PROCESS_LIST_TIMEOUT_MS,
+  })
   if (result.error || result.status !== 0 || typeof result.stdout !== "string") return []
 
   const processes = new Map<number, ProcessTableEntry>()

@@ -54,6 +54,20 @@ describe("Platform.killTree", () => {
     workerPids.delete(second.workerPid)
   })
 
+  test.skipIf(process.platform === "win32")(
+    "reaps a marked process when retained markers exceed the OS argument limit",
+    async () => {
+      const launched = await launchDetachedWorker("argv-boundary")
+      const retainedMarkers = Array.from({ length: 80_000 }, () => crypto.randomUUID())
+
+      await Platform.killOwnedByMarkers([...retainedMarkers, launched.ownerMarker])
+
+      await waitFor(() => !isProcessAlive(launched.workerPid))
+      workerPids.delete(launched.workerPid)
+    },
+    30_000,
+  )
+
   test.skipIf(process.platform === "win32")("does not reap a process owned by a different marker", async () => {
     const launched = await launchDetachedWorker("isolated")
 
