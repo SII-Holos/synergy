@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, test } from "bun:test"
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -6,6 +6,7 @@ import process from "node:process"
 import { SynergyLinkCLIBackend } from "../src/cli-backend"
 import { SynergyLinkRuntime } from "../src/runtime"
 import { SynergyLinkLog } from "../src/log"
+import type { HolosCaller } from "../src/types"
 
 const originalHome = process.env.SYNERGY_LINK_HOME
 const tempRoots: string[] = []
@@ -181,11 +182,11 @@ describe("synergy-link runtime approval", () => {
     const openStarted = Promise.withResolvers<void>()
     const continueOpen = Promise.withResolvers<void>()
     const originalOpen = runtime.sessions.open.bind(runtime.sessions)
-    runtime.sessions.open = async (...args) => {
+    const openSpy = spyOn(runtime.sessions, "open").mockImplementation(async (caller: HolosCaller, label?: string) => {
       openStarted.resolve()
       await continueOpen.promise
-      return await originalOpen(...args)
-    }
+      return await originalOpen(caller, label)
+    })
 
     const openRequest = runtime.inbound.handle({
       caller: { type: "holos", agentID: "agent_opening", ownerUserID: 10 },
@@ -198,21 +199,79 @@ describe("synergy-link runtime approval", () => {
         payload: { action: "open" },
       },
     })
-    await openStarted.promise
+    try {
+      await openStarted.promise
 
-    let policyCompleted = false
-    const policyChange = runtime.setApproval("trusted-only").then(() => {
-      policyCompleted = true
+      let policyCompleted = false
+      const policyChange = runtime.setApproval("trusted-only").then(() => {
+        policyCompleted = true
+      })
+      await Promise.resolve()
+      expect(policyCompleted).toBe(false)
+
+      continueOpen.resolve()
+      const opened = await openRequest
+      expect(opened.ok).toBe(true)
+      await policyChange
+
+      expect(runtime.sessions.current()).toBeNull()
+      expect(runtime.state?.approvalMode).toBe("trusted-only")
+    } finally {
+      continueOpen.resolve()
+      await openRequest.catch(() => undefined)
+      openSpy.mockRestore()
+    }
+  })
+
+  test("serializes blocking kicks with an in-progress session open", async () => {
+    await SynergyLinkCLIBackend.setApproval("auto")
+    const runtime = await SynergyLinkRuntime.create()
+    const linkID = runtime.state?.linkID
+    expect(linkID).toBeTruthy()
+
+    const openStarted = Promise.withResolvers<void>()
+    const continueOpen = Promise.withResolvers<void>()
+    const originalOpen = runtime.sessions.open.bind(runtime.sessions)
+    const openSpy = spyOn(runtime.sessions, "open").mockImplementation(async (caller: HolosCaller, label?: string) => {
+      openStarted.resolve()
+      await continueOpen.promise
+      return await originalOpen(caller, label)
     })
-    await Promise.resolve()
-    expect(policyCompleted).toBe(false)
+    const kickSpy = spyOn(runtime.sessions, "kickCurrent")
 
-    continueOpen.resolve()
-    const opened = await openRequest
-    expect(opened.ok).toBe(true)
-    await policyChange
+    const openRequest = runtime.inbound.handle({
+      caller: { type: "holos", agentID: "agent_opening", ownerUserID: 10 },
+      body: {
+        version: 2,
+        requestID: "req_open_during_blocking_kick",
+        linkID,
+        tool: "session",
+        action: "open",
+        payload: { action: "open" },
+      },
+    })
+    await openStarted.promise
+    const kickRequest = runtime.kickCurrentSession(true)
 
-    expect(runtime.sessions.current()).toBeNull()
-    expect(runtime.state?.approvalMode).toBe("trusted-only")
+    try {
+      expect(kickSpy).toHaveBeenCalledTimes(0)
+
+      continueOpen.resolve()
+      const [opened, kicked] = await Promise.all([openRequest, kickRequest])
+
+      expect(opened.ok).toBe(true)
+      expect(kicked).toMatchObject({
+        requested: true,
+        block: true,
+        session: { remoteAgentID: "agent_opening", remoteOwnerUserID: 10 },
+      })
+      expect(runtime.sessions.current()).toBeNull()
+      expect(runtime.sessions.isBlocked("agent_opening")).toBe(true)
+    } finally {
+      continueOpen.resolve()
+      await Promise.allSettled([openRequest, kickRequest])
+      openSpy.mockRestore()
+      kickSpy.mockRestore()
+    }
   })
 })

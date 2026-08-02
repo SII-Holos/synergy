@@ -63,15 +63,7 @@ export class SessionManager {
       currentRemoteAgentID: this.#current?.remoteAgentID,
     })
     if (this.#blocked.has(caller.agentID)) {
-      SynergyLinkLog.warn("session.open.blocked", {
-        callerAgentID: caller.agentID,
-      })
-      return this.#sessionResult({
-        action: "open",
-        status: "refused",
-        title: "Session refused",
-        output: `Remote agent ${caller.agentID} is blocked.`,
-      })
+      return this.#blockedResult(caller.agentID)
     }
 
     if (
@@ -115,7 +107,7 @@ export class SessionManager {
     }
 
     const now = Date.now()
-    this.#current = {
+    const opened: SessionRecord = {
       sessionID: crypto.randomUUID(),
       remoteAgentID: caller.agentID,
       remoteOwnerUserID: caller.ownerUserID,
@@ -123,24 +115,32 @@ export class SessionManager {
       lastSeenAt: now,
       label,
     }
+    this.#current = opened
 
     SynergyLinkLog.info("session.open.created", {
       callerAgentID: caller.agentID,
       callerOwnerUserID: caller.ownerUserID,
-      sessionID: this.#current.sessionID,
+      sessionID: opened.sessionID,
       label,
     })
     await this.#emitChange()
 
+    if (this.#blocked.has(caller.agentID)) {
+      if (this.#current?.sessionID === opened.sessionID) {
+        await this.#endCurrent(opened, "kicked")
+      }
+      return this.#blockedResult(caller.agentID)
+    }
+
     return this.#sessionResult({
       action: "open",
       status: "opened",
-      sessionID: this.#current.sessionID,
-      remoteAgentID: this.#current.remoteAgentID,
-      remoteOwnerUserID: this.#current.remoteOwnerUserID,
-      label: this.#current.label,
+      sessionID: opened.sessionID,
+      remoteAgentID: opened.remoteAgentID,
+      remoteOwnerUserID: opened.remoteOwnerUserID,
+      label: opened.label,
       title: "Session opened",
-      output: `Opened session ${this.#current.sessionID} for ${caller.agentID}.`,
+      output: `Opened session ${opened.sessionID} for ${caller.agentID}.`,
     })
   }
 
@@ -261,6 +261,18 @@ export class SessionManager {
     if (this.#current.remoteAgentID !== caller.agentID || this.#current.remoteOwnerUserID !== caller.ownerUserID) {
       throw envelopeError("session_caller_mismatch", `Session ${sessionID} does not belong to ${caller.agentID}.`)
     }
+  }
+
+  #blockedResult(agentID: string): SynergyLinkSession.Result {
+    SynergyLinkLog.warn("session.open.blocked", {
+      callerAgentID: agentID,
+    })
+    return this.#sessionResult({
+      action: "open",
+      status: "refused",
+      title: "Session refused",
+      output: `Remote agent ${agentID} is blocked.`,
+    })
   }
 
   #sessionResult(input: {

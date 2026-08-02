@@ -15,6 +15,7 @@ export class SynergyLinkInboundHandler {
   ) {}
   #sessionPolicyTail: Promise<void> = Promise.resolve()
 
+  // This lock is not reentrant; operations that hold it must call SessionManager methods directly.
   async withSessionPolicyLock<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.#sessionPolicyTail
     let release!: () => void

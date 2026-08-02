@@ -253,24 +253,26 @@ export class SynergyLinkRuntime {
   }
 
   async kickCurrentSession(block = false) {
-    const kicked = await this.sessions.kickCurrent(block)
-    const state = requireState(this)
-    state.blockedAgentIDs = this.sessions.blockedAgentIDs()
-    await SynergyLinkStore.saveState(state)
-    return {
-      requested: Boolean(kicked),
-      block,
-      session: kicked
-        ? {
-            sessionID: kicked.sessionID,
-            remoteAgentID: kicked.remoteAgentID,
-            remoteOwnerUserID: kicked.remoteOwnerUserID,
-            createdAt: kicked.createdAt,
-            lastSeenAt: kicked.lastSeenAt,
-            label: kicked.label,
-          }
-        : null,
-    }
+    return await this.inbound.withSessionPolicyLock(async () => {
+      const kicked = await this.sessions.kickCurrent(block)
+      const state = requireState(this)
+      state.blockedAgentIDs = this.sessions.blockedAgentIDs()
+      await SynergyLinkStore.saveState(state)
+      return {
+        requested: Boolean(kicked),
+        block,
+        session: kicked
+          ? {
+              sessionID: kicked.sessionID,
+              remoteAgentID: kicked.remoteAgentID,
+              remoteOwnerUserID: kicked.remoteOwnerUserID,
+              createdAt: kicked.createdAt,
+              lastSeenAt: kicked.lastSeenAt,
+              label: kicked.label,
+            }
+          : null,
+      }
+    })
   }
 
   async reconnect() {

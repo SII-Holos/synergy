@@ -63,6 +63,29 @@ describe("synergy-link session manager", () => {
     expect(retry.metadata.status).toBe("opened")
   })
 
+  test("refuses an opening session when the caller is blocked during persistence", async () => {
+    const openPersistStarted = Promise.withResolvers<void>()
+    const continueOpenPersist = Promise.withResolvers<void>()
+    let changeCount = 0
+    const manager = new SessionManager({
+      onChange: async ({ current }) => {
+        changeCount += 1
+        if (changeCount !== 1 || !current) return
+        openPersistStarted.resolve()
+        await continueOpenPersist.promise
+      },
+    })
+
+    const opening = manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
+    await openPersistStarted.promise
+    await manager.setBlockedAgentIDs(["agent_a"])
+    continueOpenPersist.resolve()
+
+    await expect(opening).resolves.toMatchObject({ metadata: { status: "refused" } })
+    expect(manager.current()).toBeNull()
+    expect(manager.isBlocked("agent_a")).toBe(true)
+  })
+
   test("idle sessions expire after timeout", async () => {
     const manager = new SessionManager({ timeoutMs: 60_000 })
     const opened = await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
