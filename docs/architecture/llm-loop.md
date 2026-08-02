@@ -128,7 +128,7 @@ Prompt assembly is ordered from stable to volatile to maximize provider cache re
 | Environment                 | Scope, workspace, platform, date, session, endpoint, and worktree facts.                            |
 | Diagnostics and reminders   | Git health, coauthor reminder, Agenda wake-ups, Cortex status, planning reminder, and elapsed time. |
 
-Stable system content and a cache breakpoint remain early. Volatile advisory context is placed according to provider prompt-cache policy: either as later system content or as a final `<runtime-context>` user message. Advisory context cannot override agent, permission, workflow, developer, or tool instructions.
+Stable system content and a cache breakpoint remain early. Volatile advisory context is placed according to provider prompt-cache policy: either as later system content or as a final `<runtime-context>` user message. The policy uses the resolved runtime profile identity for named account connections, so an account retains its canonical provider's proven cache layout even when its connection ID and generic SDK transport do not identify that provider. Advisory context cannot override agent, permission, workflow, developer, or tool instructions.
 
 Plugins can transform the system prompt at budget and final phases. If a transform removes every system message, Synergy restores the pre-transform system prompt rather than sending an empty safety/instruction context.
 

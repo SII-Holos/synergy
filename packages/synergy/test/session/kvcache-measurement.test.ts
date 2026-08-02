@@ -77,6 +77,20 @@ function deepSeekMessages(turn: "a" | "b") {
   })
 }
 
+function namedDeepSeekMessages(turn: "a" | "b") {
+  return LLM.promptMessages({
+    model: {
+      ...createModel("deepseek"),
+      id: "deepseek-team/deepseek-v4-flash",
+      providerID: "deepseek-team",
+    },
+    profileID: "deepseek",
+    system: stableSystem,
+    lateSystem: lateSystem(turn),
+    messages: history,
+  })
+}
+
 describe("KV-cache measurement prompt-shape harness", () => {
   test("production OpenAI-style layout preserves stable prefix through reusable history", () => {
     const first = openAIMessages("a")
@@ -113,6 +127,13 @@ describe("KV-cache measurement prompt-shape harness", () => {
     expect(first.map((message) => message.role)).toEqual(["system", "system", "system", "user", "assistant", "user"])
     expect(commonPrefixLength(serialize(first), serialize(second))).toBeGreaterThanOrEqual(stablePrefix.length - 1)
     expect(String(first.at(-1)?.content)).toContain("<runtime-context>")
+  })
+
+  test("named DeepSeek connections preserve the profile cache layout", () => {
+    const messages = namedDeepSeekMessages("a")
+
+    expect(messages.map((message) => message.role)).toEqual(["system", "system", "system", "user", "assistant", "user"])
+    expect(String(messages.at(-1)?.content)).toContain("<runtime-context>")
   })
 
   test("production layout keeps tool-call history before volatile advisory context", () => {

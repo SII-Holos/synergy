@@ -1,20 +1,42 @@
 import { Config } from "@/config/config"
 import { Log } from "@/util/log"
 import { AccountUsage } from "./usage"
+import { Auth } from "./api-key"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
 import { ProviderProfile } from "./profile"
+import { Env } from "@/util/env"
 
 export namespace ProviderUsage {
   const log = Log.create({ service: "provider.usage" })
 
-  export async function get(providerID: string): Promise<AccountUsage.Snapshot> {
+  export async function get(providerID: string, profileID?: string): Promise<AccountUsage.Snapshot> {
     registerBuiltinProviderProfiles()
-    const profile = ProviderProfile.get(providerID)
+    const config = await Config.current()
+    const configured = config.provider?.[providerID]
+    const resolvedProfileID = profileID ?? configured?.profile
+    const profile = ProviderProfile.resolve(providerID, resolvedProfileID)
     if (!profile?.fetchUsage) {
       return AccountUsage.unavailable(providerID, "This provider does not expose account usage through Synergy.")
     }
-    return profile.fetchUsage()
+    const inlineKey =
+      typeof configured?.options?.apiKey === "string" && configured.options.apiKey
+        ? configured.options.apiKey
+        : undefined
+    const storedAuth = await Auth.get(providerID)
+    const environmentNames = configured?.env ?? profile.env ?? []
+    const environment = environmentNames.map((name) => Env.get(name)?.trim()).find((value) => value)
+    const configuredKey = inlineKey ?? (storedAuth ? undefined : environment)
+    const configuredAuth = configuredKey ? ({ type: "api", key: configuredKey } satisfies Auth.Info) : undefined
+    return {
+      ...(await profile.fetchUsage({
+        providerID,
+        auth: configuredAuth,
+        manageStoredCredential: inlineKey ? false : undefined,
+        environment: environmentNames,
+      })),
+      providerID,
+    }
   }
 
   export async function all(): Promise<Record<string, AccountUsage.Snapshot>> {
@@ -26,10 +48,10 @@ export namespace ProviderUsage {
     for (const providerID of Object.keys(providers)) {
       if (disabled.has(providerID)) continue
       if (enabled && !enabled.has(providerID)) continue
-      const profile = ProviderProfile.get(providerID)
+      const profile = ProviderProfile.resolve(providerID, providers[providerID]?.profileID)
       if (!profile?.fetchUsage) continue
       try {
-        result[providerID] = await get(providerID)
+        result[providerID] = await get(providerID, providers[providerID]?.profileID)
       } catch (error) {
         result[providerID] = AccountUsage.error(providerID, "Failed to load usage data.")
         log.error("provider usage fetch failed", { providerID, error })

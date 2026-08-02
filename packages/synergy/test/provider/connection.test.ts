@@ -80,8 +80,8 @@ async function compose(input: ProviderConnection.ComposeInput) {
 }
 
 describe("ProviderConnection.resolveConnection", () => {
-  test("canonical provider config does not expose profile mapping before runtime consumers migrate", () => {
-    expect(ProviderConfig.safeParse({ profile: profileID }).success).toBe(false)
+  test("managed connections accept a canonical runtime profile mapping", () => {
+    expect(ProviderConfig.safeParse({ profile: profileID }).success).toBe(true)
   })
 
   test("maps a configured connection to its profile and inherits profile env/baseURL", () => {
