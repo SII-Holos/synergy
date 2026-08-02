@@ -85,8 +85,7 @@ export namespace SynergyLinkTargetStore {
 
   export async function update(id: string, input: SynergyLinkTarget.PatchInput): Promise<SynergyLinkTarget.Info> {
     const patch = SynergyLinkTarget.PatchInput.parse(input)
-    const relink = "targetAgentID" in patch
-    using _ = await Lock.write(relink ? collectionLock : `${collectionLock}:${id}`)
+    using _ = await Lock.write(collectionLock)
     const current = await require(id)
 
     if ("targetAgentID" in patch) {
@@ -105,7 +104,7 @@ export namespace SynergyLinkTargetStore {
       host?: SynergyLinkTarget.HostObservation
     },
   ): Promise<SynergyLinkTarget.Info> {
-    using _ = await Lock.write(`${collectionLock}:${id}`)
+    using _ = await Lock.write(collectionLock)
     const current = await require(id)
     if (input.host && input.host.linkID !== current.linkID) {
       throw new Error(`Synergy Link host identity mismatch for target ${id}`)
@@ -124,7 +123,7 @@ export namespace SynergyLinkTargetStore {
   }
 
   export async function remove(id: string): Promise<void> {
-    using _ = await Lock.write(`${collectionLock}:${id}`)
+    using _ = await Lock.write(collectionLock)
     await Storage.remove(StoragePath.synergyLinkTarget(id))
   }
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import type {
   SynergyLinkBash,
   SynergyLinkClient,
@@ -138,6 +138,87 @@ describe("Synergy Link target relink", () => {
     expect(unchanged.targetAgentID).toBe("agent_second")
     expect(unchanged.linkID).toBe("link_second")
     expect(await SynergyLinkTargetStore.require(first.id)).toEqual(first)
+  })
+
+  test("serializes relinks with probes so neither update is lost", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Concurrent probe",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    const writeStarted = Promise.withResolvers<void>()
+    const continueWrite = Promise.withResolvers<void>()
+    const write = Storage.write
+    let paused = false
+    const writeSpy = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+      const candidate = content as { id?: string; linkID?: string }
+      if (!paused && candidate.id === target.id && candidate.linkID === "link_new") {
+        paused = true
+        writeStarted.resolve()
+        await continueWrite.promise
+      }
+      return await write(key, content, options)
+    })
+
+    try {
+      const relink = SynergyLinkTargetStore.update(target.id, {
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+      })
+      await writeStarted.promise
+      const probe = SynergyLinkTargetStore.recordProbe(target.id, { status: "reachable" })
+
+      continueWrite.resolve()
+      await Promise.all([relink, probe])
+
+      expect(await SynergyLinkTargetStore.require(target.id)).toMatchObject({
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+        authorization: "approved",
+        lastProbe: { status: "reachable" },
+      })
+    } finally {
+      continueWrite.resolve()
+      writeSpy.mockRestore()
+    }
+  })
+
+  test("serializes relinks with removal so deleted targets are not resurrected", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Concurrent removal",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    const writeStarted = Promise.withResolvers<void>()
+    const continueWrite = Promise.withResolvers<void>()
+    const write = Storage.write
+    let paused = false
+    const writeSpy = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+      const candidate = content as { id?: string; linkID?: string }
+      if (!paused && candidate.id === target.id && candidate.linkID === "link_new") {
+        paused = true
+        writeStarted.resolve()
+        await continueWrite.promise
+      }
+      return await write(key, content, options)
+    })
+
+    try {
+      const relink = SynergyLinkTargetStore.update(target.id, {
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+      })
+      await writeStarted.promise
+      const remove = SynergyLinkTargetStore.remove(target.id)
+
+      continueWrite.resolve()
+      await Promise.all([relink, remove])
+
+      expect(await SynergyLinkTargetStore.get(target.id)).toBeUndefined()
+    } finally {
+      continueWrite.resolve()
+      writeSpy.mockRestore()
+    }
   })
 })
 
