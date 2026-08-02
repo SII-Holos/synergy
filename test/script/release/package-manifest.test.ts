@@ -33,7 +33,7 @@ describe("publishable package manifest", () => {
 
       const publishable = createPublishablePackageJson({
         packageJson,
-        version: "4.0.0",
+        version: "3.0.11",
         catalog: await readCatalog(),
       })
       const publishedExports = publishable.exports as Record<string, { types: string; import: string }>

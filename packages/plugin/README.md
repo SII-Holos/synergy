@@ -44,6 +44,7 @@ export default definePlugin({
 - Zod and JSON Schema are accepted for operation, event, and tool schemas.
 - `activate()` runs once per runtime generation and does not receive Scope or Session state.
 - Top-level `assets` map project-relative files or directories into package-relative targets. Asset contents are integrity-checked and included in the generation hash.
+- The plugin and plugin-kit npm package versions follow the Synergy product release version; package major versions do not select a Plugin API family.
 - `apiVersion` stays `"4.0"` for the stable API4 family. Set `compatibility.synergy` only when the plugin needs a newer additive host feature; otherwise the GA baseline is generated automatically.
 - Stable API4 types and behavior remain backward compatible. Avoid `experimental.*` in published stable plugins because those surfaces may change or disappear.
 

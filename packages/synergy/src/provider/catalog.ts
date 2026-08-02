@@ -1,5 +1,6 @@
 import { Global } from "@/global"
 import { Installation } from "@/global/installation"
+import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import fs from "fs/promises"
 import { mergeDeep } from "remeda"
@@ -10,6 +11,7 @@ import { CodexProvider } from "./codex"
 import { ModelsDev } from "./models-schemas"
 import { ProviderProfile } from "./profile"
 import { normalizeImageMediaTypes } from "./image-capability"
+import { Env } from "@/util/env"
 
 export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
@@ -111,6 +113,26 @@ export namespace ProviderCatalog {
     identityHash: string
   }
 
+  type LiveDiscoveryTarget = {
+    profile: ProviderProfile.Profile
+    context: LiveDiscoveryContext
+    baseURL?: string
+    configured?: ConfiguredProvider
+  }
+
+  type ConfiguredProvider = {
+    profile?: string
+    modelsDevProviderID?: string
+    name?: string
+    api?: string
+    npm?: string
+    env?: string[]
+    options?: Record<string, unknown>
+    models?: Record<string, Record<string, any>>
+    whitelist?: string[]
+    blacklist?: string[]
+  }
+
   type CacheEntry = {
     value: Record<string, ModelsDev.Provider>
     createdAt: number
@@ -132,8 +154,89 @@ export namespace ProviderCatalog {
     return `${providerID}:${identityHash}`
   }
 
-  async function hashIdentity(providerID: string, identity: string) {
-    const bytes = new TextEncoder().encode(`${providerID}\u0000${identity}`)
+  function catalogStateKey(providerID: string) {
+    return `${ScopeContext.tryScope()?.id ?? "global"}:${providerID}`
+  }
+
+  function isSensitiveConfiguredKey(key: string) {
+    const normalized = key.replace(/[-_.]/g, "").toLowerCase()
+    return (
+      normalized === "auth" ||
+      normalized === "cookie" ||
+      normalized === "setcookie" ||
+      normalized === "key" ||
+      normalized === "keys" ||
+      normalized === "credential" ||
+      normalized === "credentials" ||
+      normalized.endsWith("apikey") ||
+      normalized.endsWith("apitoken") ||
+      normalized.endsWith("sessiontoken") ||
+      normalized.endsWith("accesskey") ||
+      normalized.endsWith("accesskeyid") ||
+      normalized.endsWith("privatekey") ||
+      normalized.endsWith("password") ||
+      normalized.includes("secret") ||
+      normalized === "token" ||
+      normalized.endsWith("token") ||
+      normalized.endsWith("credential") ||
+      normalized.endsWith("credentials") ||
+      normalized.endsWith("authorization")
+    )
+  }
+
+  function publicConfiguredValue(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(publicConfiguredValue)
+    if (!value || typeof value !== "object") return value
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([key, entry]) =>
+        isSensitiveConfiguredKey(key) ? [] : [[key, publicConfiguredValue(entry)] as const],
+      ),
+    )
+  }
+
+  function modelRulesIdentity(provider: ConfiguredProvider) {
+    const rules = {
+      whitelist: provider.whitelist,
+      blacklist: provider.blacklist,
+      models: publicConfiguredValue(provider.models),
+    }
+    return new Bun.CryptoHasher("sha256").update(JSON.stringify(rules)).digest("hex")
+  }
+
+  function applyConfiguredModelRules(provider: ModelsDev.Provider, configured: ConfiguredProvider) {
+    const result = structuredClone(provider)
+    for (const [modelID, raw] of Object.entries(configured.models ?? {})) {
+      const model = publicConfiguredValue(raw) as Record<string, any>
+      const sourceID = typeof model.id === "string" ? model.id : modelID
+      const source = result.models[sourceID] ?? result.models[modelID] ?? fallbackModel(result, sourceID)
+      result.models[modelID] = {
+        ...(mergeDeep(source, model) as ModelsDev.Model),
+        id: modelID,
+      }
+    }
+    for (const modelID of Object.keys(result.models)) {
+      if (configured.whitelist && !configured.whitelist.includes(modelID)) delete result.models[modelID]
+      if (configured.blacklist?.includes(modelID)) delete result.models[modelID]
+    }
+    return result
+  }
+
+  function normalizeDiscoveryEndpoint(baseURL: string | undefined) {
+    const value = baseURL?.trim()
+    if (!value) return ""
+    try {
+      const url = new URL(value)
+      url.hash = ""
+      url.pathname = url.pathname.replace(/\/+$/, "") || "/"
+      return url.toString().replace(/\/$/, "")
+    } catch {
+      return value.replace(/\/+$/, "")
+    }
+  }
+
+  async function hashIdentity(providerID: string, profileID: string, baseURL: string | undefined, identity: string) {
+    const endpoint = normalizeDiscoveryEndpoint(baseURL)
+    const bytes = new TextEncoder().encode(`${providerID}\u0000${profileID}\u0000${endpoint}\u0000${identity}`)
     const digest = await crypto.subtle.digest("SHA-256", bytes)
     return Buffer.from(digest).toString("hex")
   }
@@ -158,7 +261,7 @@ export namespace ProviderCatalog {
     const protectedKeys = new Set([currentKey])
     for (const profile of ProviderProfile.all()) {
       if (!profile.fetchModelCatalog && !profile.fetchModels) continue
-      const context = await resolveLiveDiscoveryContext(profile).catch(() => undefined)
+      const context = await resolveLiveDiscoveryContext(profile, profile.id, profile.baseURL).catch(() => undefined)
       if (context?.auth) protectedKeys.add(snapshotKey(profile.id, context.identityHash))
     }
     if (store.size > MAX_SNAPSHOT_ENTRIES) {
@@ -352,8 +455,8 @@ export namespace ProviderCatalog {
     recommendation?: ProviderProfile.Recommendation
   }
 
-  export function providerMetadata(provider: ProviderMetadataSource): ProviderProfile.Metadata {
-    const profile = ProviderProfile.get(provider.id)
+  export function providerMetadata(provider: ProviderMetadataSource, profileID?: string): ProviderProfile.Metadata {
+    const profile = ProviderProfile.resolve(provider.id, profileID)
     return {
       id: provider.id,
       name: profile?.name ?? provider.name,
@@ -477,34 +580,104 @@ export namespace ProviderCatalog {
     return JSON.stringify({ credentialID, credential })
   }
 
-  async function resolveLiveDiscoveryContext(profile: ProviderProfile.Profile): Promise<LiveDiscoveryContext> {
-    const selected = await Auth.select(profile.id)
-    const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
+  async function resolveLiveDiscoveryContext(
+    profile: ProviderProfile.Profile,
+    providerID = profile.id,
+    baseURL = profile.baseURL,
+    configured?: ConfiguredProvider,
+  ): Promise<LiveDiscoveryContext> {
+    const selected = await Auth.select(providerID)
+    const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+    const environmentNames = configured?.env ?? (providerID === profile.id ? (profile.env ?? []) : [])
+    const environment = environmentNames
+      .map((name) => ({ name, value: environmentValues[name]?.trim() }))
+      .find((entry) => entry.value)
+    const environmentAuth = environment?.value
+      ? ({ type: "api", key: environment.value } satisfies Auth.Info)
+      : undefined
+    const inlineKey =
+      typeof configured?.options?.apiKey === "string" && configured.options.apiKey
+        ? configured.options.apiKey
+        : undefined
+    const inlineAuth = inlineKey ? ({ type: "api", key: inlineKey } satisfies Auth.Info) : undefined
+    const resolvedCredential = inlineAuth
+      ? {
+          auth: inlineAuth,
+          credentialID: "config:options.apiKey",
+          authUpdatedAt: undefined,
+        }
+      : selected
+        ? {
+            auth: selected.auth,
+            credentialID: selected.credentialID,
+            authUpdatedAt: selected.poolEntry?.updatedAt ?? selected.entry.updatedAt,
+          }
+        : environmentAuth
+          ? {
+              auth: environmentAuth,
+              credentialID: `env:${environment?.name}`,
+              authUpdatedAt: undefined,
+            }
+          : undefined
+    const auth = resolvedCredential?.auth
+    const credentialID = resolvedCredential?.credentialID
+    const authUpdatedAt = resolvedCredential?.authUpdatedAt
     const customIdentity = await profile.modelCatalogIdentity?.({
-      auth: selected?.auth,
-      credentialID: selected?.credentialID,
+      providerID,
+      auth,
+      credentialID,
       authUpdatedAt,
     })
     const identity =
       customIdentity ??
-      (selected
-        ? defaultCredentialIdentity(selected.credentialID, selected.auth)
+      (auth && credentialID
+        ? defaultCredentialIdentity(credentialID, auth)
         : profile.authKind === "none"
           ? "anonymous"
           : "unauthenticated")
-    return { auth: selected?.auth, identityHash: await hashIdentity(profile.id, identity) }
+    return { auth, identityHash: await hashIdentity(providerID, profile.id, baseURL, identity) }
   }
 
-  async function resolveLiveDiscoveryContexts(includeLive: boolean | undefined) {
-    const contexts = new Map<string, LiveDiscoveryContext>()
-    if (!includeLive) return contexts
+  function configuredProviders(config: unknown): Record<string, ConfiguredProvider> {
+    return config && typeof config === "object" && "provider" in config
+      ? ((config.provider as Record<string, ConfiguredProvider> | undefined) ?? {})
+      : {}
+  }
+
+  function configuredProfiles(config: unknown) {
+    return Object.entries(configuredProviders(config)).flatMap(([providerID, provider]) => {
+      if (!provider?.profile) return []
+      const profile = ProviderProfile.get(provider.profile)
+      if (!profile) {
+        log.warn("configured provider profile not found", { providerID, profileID: provider.profile })
+        return []
+      }
+      return [[providerID, profile] as const]
+    })
+  }
+
+  async function resolveLiveDiscoveryContexts(includeLive: boolean | undefined, config: unknown) {
+    const targets = new Map<string, LiveDiscoveryTarget>()
+    if (!includeLive) return targets
 
     registerBuiltinProviderProfiles()
-    for (const profile of ProviderProfile.all()) {
+    const profiles = new Map(ProviderProfile.all().map((profile) => [profile.id, profile]))
+    for (const [providerID, profile] of configuredProfiles(config)) profiles.set(providerID, profile)
+    for (const [providerID, profile] of profiles) {
       if (!profile.fetchModelCatalog && !profile.fetchModels) continue
-      contexts.set(profile.id, await resolveLiveDiscoveryContext(profile))
+      const configured = configuredProviders(config)[providerID]
+      const baseURL =
+        (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
+        configured?.api ??
+        profile.baseURL
+      targets.set(providerID, {
+        profile,
+        context: await resolveLiveDiscoveryContext(profile, providerID, baseURL, configured),
+        baseURL,
+        configured,
+      })
     }
-    return contexts
+    return targets
   }
 
   async function applyCachedDiscovery(
@@ -512,17 +685,18 @@ export namespace ProviderCatalog {
     profile: ProviderProfile.Profile,
     modelsDev: Record<string, ModelsDev.Provider>,
     context: LiveDiscoveryContext | undefined,
+    providerID = profile.id,
   ): Promise<ModelsDev.Provider> {
     if (!profile.fetchModelCatalog && !profile.fetchModels) return provider
     const auth = context?.auth
     if (!auth && profile.authKind !== "none") {
-      catalogStates.delete(profile.id)
+      catalogStates.delete(catalogStateKey(providerID))
       return provider
     }
-    const key = context ? snapshotKey(profile.id, context.identityHash) : undefined
+    const key = context ? snapshotKey(providerID, context.identityHash) : undefined
     const snapshot = key ? (await readSnapshots()).get(key) : undefined
     const modelCount = snapshot?.activeModels.length ?? Object.keys(provider.models).length
-    catalogStates.set(profile.id, {
+    catalogStates.set(catalogStateKey(providerID), {
       source: snapshot && key && freshlyVerified.has(key) ? "live" : snapshot ? "cached" : "bundled",
       refreshing: key ? refreshInFlight.has(key) || scheduledRefreshes.has(key) : false,
       modelCount,
@@ -541,13 +715,20 @@ export namespace ProviderCatalog {
     return undefined
   }
 
-  function scheduleRetry(providerID: string, failure: Failure, error?: unknown) {
+  function scheduleRetry(
+    providerID: string,
+    profileID: string,
+    baseURL: string | undefined,
+    configured: ConfiguredProvider | undefined,
+    failure: Failure,
+    error?: unknown,
+  ) {
     const current = retryTimers.get(providerID)
     if (current) clearTimeout(current)
     const timer = setTimeout(
       () => {
         retryTimers.delete(providerID)
-        void refreshAndReload(providerID)
+        void refreshAndReload(providerID, profileID, baseURL, configured)
       },
       retryDelay({ failure, retryAfterMs: retryAfterMs(error) }),
     )
@@ -581,15 +762,33 @@ export namespace ProviderCatalog {
     }
   }
 
-  export async function refresh(providerID: string): Promise<ModelCatalogState> {
+  export async function refresh(
+    providerID: string,
+    profileID?: string,
+    baseURL?: string,
+    configuredInput?: ConfiguredProvider,
+  ): Promise<ModelCatalogState> {
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
-    const profile = ProviderProfile.get(providerID)
+    let profile = ProviderProfile.resolve(providerID, profileID)
+    let configured = configuredInput
+    if (ScopeContext.tryScope() && (!configured || profileID === undefined || baseURL === undefined)) {
+      const { Config } = await import("@/config/config")
+      const config = await Config.current()
+      configured ??= config.provider?.[providerID]
+      if (profileID === undefined && configured?.profile) profile = ProviderProfile.get(configured.profile)
+      else if (!profile) profile = ProviderProfile.get(configured?.profile ?? "")
+    }
     if (!profile?.fetchModelCatalog && !profile?.fetchModels) {
       return { source: "bundled", refreshing: false, modelCount: 0 }
     }
-    const context = await resolveLiveDiscoveryContext(profile)
-    const key = snapshotKey(profile.id, context.identityHash)
+    const resolvedBaseURL =
+      baseURL ??
+      (typeof configured?.options?.baseURL === "string" ? configured.options.baseURL : undefined) ??
+      configured?.api ??
+      profile.baseURL
+    const context = await resolveLiveDiscoveryContext(profile, providerID, resolvedBaseURL, configured)
+    const key = snapshotKey(providerID, context.identityHash)
     const pending = refreshInFlight.get(key)
     if (pending) return pending
 
@@ -598,7 +797,7 @@ export namespace ProviderCatalog {
       const store = await readSnapshots()
       const previous = store.get(key)
       const now = Date.now()
-      catalogStates.set(profile.id, {
+      catalogStates.set(catalogStateKey(providerID), {
         source: previous ? (freshlyVerified.has(key) ? "live" : "cached") : "bundled",
         refreshing: true,
         modelCount: previous?.activeModels.length ?? 0,
@@ -609,8 +808,10 @@ export namespace ProviderCatalog {
       let entries: ProviderProfile.ModelCatalogEntry[]
       try {
         entries = profile.fetchModelCatalog
-          ? await profile.fetchModelCatalog({ auth: context.auth, fetch, baseURL: profile.baseURL })
-          : (await profile.fetchModels!({ auth: context.auth, fetch, baseURL: profile.baseURL })).map((id) => ({ id }))
+          ? await profile.fetchModelCatalog({ providerID, auth: context.auth, fetch, baseURL: resolvedBaseURL })
+          : (await profile.fetchModels!({ providerID, auth: context.auth, fetch, baseURL: resolvedBaseURL })).map(
+              (id) => ({ id }),
+            )
         if (entries.length === 0)
           throw Object.assign(new Error("provider returned an empty model catalog"), {
             catalogFailure: "invalid_response",
@@ -622,7 +823,7 @@ export namespace ProviderCatalog {
             : classifyFailure(error)
         const failed: Snapshot = {
           version: 1,
-          providerID: profile.id,
+          providerID,
           identityHash: context.identityHash,
           activeModels: previous?.activeModels ?? [],
           retainedModels: previous?.retainedModels ?? [],
@@ -640,27 +841,27 @@ export namespace ProviderCatalog {
           lastVerifiedAt: failed.lastVerifiedAt,
           failure,
         }
-        catalogStates.set(profile.id, state)
-        scheduleRetry(profile.id, failure, error)
-        log.warn("failed to refresh provider model catalog", { providerID: profile.id, failure, error })
+        catalogStates.set(catalogStateKey(providerID), state)
+        scheduleRetry(providerID, profile.id, resolvedBaseURL, configured, failure, error)
+        log.warn("failed to refresh provider model catalog", { providerID, profileID: profile.id, failure, error })
         return state
       }
 
-      const next = mergeRefresh(previous, entries, { providerID: profile.id, identityHash: context.identityHash, now })
+      const next = mergeRefresh(previous, entries, { providerID, identityHash: context.identityHash, now })
       store.set(key, next)
       await persistSnapshots(key)
       memoryCache.clear()
       freshlyVerified.add(key)
-      const retry = retryTimers.get(profile.id)
+      const retry = retryTimers.get(providerID)
       if (retry) clearTimeout(retry)
-      retryTimers.delete(profile.id)
+      retryTimers.delete(providerID)
       const state: ModelCatalogState = {
         source: "live",
         refreshing: false,
         modelCount: next.activeModels.length,
         lastVerifiedAt: next.lastVerifiedAt,
       }
-      catalogStates.set(profile.id, state)
+      catalogStates.set(catalogStateKey(providerID), state)
       return state
     })().finally(() => {
       if (refreshInFlight.get(key) === request) refreshInFlight.delete(key)
@@ -670,9 +871,14 @@ export namespace ProviderCatalog {
     return request
   }
 
-  async function refreshAndReload(providerID: string) {
+  async function refreshAndReload(
+    providerID: string,
+    profileID?: string,
+    baseURL?: string,
+    configured?: ConfiguredProvider,
+  ) {
     try {
-      await refresh(providerID)
+      await refresh(providerID, profileID, baseURL, configured)
       const { RuntimeReload } = await import("@/runtime/reload")
       await RuntimeReload.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
     } catch (error) {
@@ -681,8 +887,11 @@ export namespace ProviderCatalog {
   }
 
   function scheduleRefresh(
+    providerID: string,
     profile: ProviderProfile.Profile,
     context: LiveDiscoveryContext,
+    baseURL: string | undefined,
+    configured: ConfiguredProvider | undefined,
     snapshot: Snapshot | undefined,
   ) {
     if (!context.auth && profile.authKind !== "none") return
@@ -690,11 +899,11 @@ export namespace ProviderCatalog {
     const verifiedRecently = snapshot?.lastVerifiedAt && now - snapshot.lastVerifiedAt < DEFAULT_CACHE_TTL_MS
     const failedRecently = snapshot?.failure && now - snapshot.lastAttemptAt < RETRY_DELAY_MS
     if (verifiedRecently || failedRecently) return
-    const key = snapshotKey(profile.id, context.identityHash)
+    const key = snapshotKey(providerID, context.identityHash)
     if (refreshInFlight.has(key) || scheduledRefreshes.has(key)) return
     scheduledRefreshes.add(key)
     queueMicrotask(() => {
-      void refreshAndReload(profile.id).finally(() => scheduledRefreshes.delete(key))
+      void refreshAndReload(providerID, profile.id, baseURL, configured).finally(() => scheduledRefreshes.delete(key))
     })
   }
 
@@ -705,7 +914,7 @@ export namespace ProviderCatalog {
   }): Promise<Record<string, ModelsDev.Provider>> {
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
-    const liveContexts = await resolveLiveDiscoveryContexts(input?.includeLive)
+    const liveContexts = await resolveLiveDiscoveryContexts(input?.includeLive, input?.config)
     const key = cacheKey(input, liveContexts)
     const cached = memoryCache.get(key)
     if (!input?.forceRefresh && cached && Date.now() - cached.createdAt < cached.ttlMs) {
@@ -724,18 +933,38 @@ export namespace ProviderCatalog {
 
   function cacheKey(
     input: { config?: unknown; includeLive?: boolean } | undefined,
-    liveContexts: Map<string, LiveDiscoveryContext>,
+    liveContexts: Map<string, LiveDiscoveryTarget>,
   ) {
     const providerCatalog = (input?.config as { providerCatalog?: unknown } | undefined)?.providerCatalog ?? {}
-    const liveIdentities = Object.fromEntries(
-      [...liveContexts.entries()].map(([providerID, context]) => [providerID, context.identityHash]),
+    const connections = Object.fromEntries(
+      Object.entries(configuredProviders(input?.config)).flatMap(([providerID, provider]) =>
+        provider.profile || provider.modelsDevProviderID
+          ? [
+              [
+                providerID,
+                {
+                  profile: provider.profile,
+                  modelsDevProviderID: provider.modelsDevProviderID,
+                  name: provider.name,
+                  api: provider.api,
+                  npm: provider.npm,
+                  env: provider.env,
+                  modelRules: modelRulesIdentity(provider),
+                },
+              ],
+            ]
+          : [],
+      ),
     )
-    return JSON.stringify({ includeLive: input?.includeLive === true, providerCatalog, liveIdentities })
+    const liveIdentities = Object.fromEntries(
+      [...liveContexts.entries()].map(([providerID, target]) => [providerID, target.context.identityHash]),
+    )
+    return JSON.stringify({ includeLive: input?.includeLive === true, providerCatalog, connections, liveIdentities })
   }
 
   async function doResolve(
     input: { config?: unknown; includeLive?: boolean } | undefined,
-    liveContexts: Map<string, LiveDiscoveryContext>,
+    liveContexts: Map<string, LiveDiscoveryTarget>,
     key: string,
     generation: number,
   ): Promise<Record<string, ModelsDev.Provider>> {
@@ -786,15 +1015,49 @@ export namespace ProviderCatalog {
       }
     }
 
+    for (const [providerID, provider] of Object.entries(configuredProviders(input?.config))) {
+      const profile = provider.profile ? ProviderProfile.get(provider.profile) : undefined
+      if (provider.profile && !profile) continue
+      const sourceID = provider.modelsDevProviderID ?? profile?.modelsDevProviderID ?? profile?.id
+      if (!sourceID) continue
+      const source = result[sourceID]
+      if (!source) {
+        log.warn("configured provider catalog source not found", {
+          providerID,
+          profileID: profile?.id,
+          modelsDevProviderID: sourceID,
+        })
+        continue
+      }
+      result[providerID] = applyConfiguredModelRules(
+        mergeProvider(structuredClone(source), {
+          id: providerID,
+          name: provider.name ?? source.name,
+          api: provider.api ?? source.api,
+          npm: provider.npm ?? source.npm,
+          env: provider.env ?? [],
+        }),
+        provider,
+      )
+    }
+
     if (input?.includeLive) {
-      for (const profile of ProviderProfile.all()) {
-        const provider = result[profile.id]
+      for (const [providerID, target] of liveContexts) {
+        const provider = result[providerID]
         if (!provider) continue
-        const context = liveContexts.get(profile.id)
-        result[profile.id] = await applyCachedDiscovery(provider, profile, modelsDev, context)
-        if (context && (profile.fetchModelCatalog || profile.fetchModels)) {
-          const snapshot = (await readSnapshots()).get(snapshotKey(profile.id, context.identityHash))
-          scheduleRefresh(profile, context, snapshot)
+        const discovered = await applyCachedDiscovery(provider, target.profile, modelsDev, target.context, providerID)
+        const projected = target.configured ? applyConfiguredModelRules(discovered, target.configured) : discovered
+        result[providerID] = projected
+        const state = catalogStates.get(catalogStateKey(providerID))
+        if (state && target.configured) {
+          catalogStates.set(catalogStateKey(providerID), {
+            ...state,
+            modelCount: Object.values(projected.models).filter((model) => model.catalog_state !== "retained").length,
+          })
+        }
+        if (target.profile.fetchModelCatalog || target.profile.fetchModels) {
+          const snapshot = (await readSnapshots()).get(snapshotKey(providerID, target.context.identityHash))
+          scheduleRefresh(providerID, target.profile, target.context, target.baseURL, target.configured, snapshot)
         }
       }
     }
@@ -874,6 +1137,6 @@ export namespace ProviderCatalog {
     })
 
   export function modelCatalogState(providerID: string) {
-    return catalogStates.get(providerID)
+    return catalogStates.get(catalogStateKey(providerID))
   }
 }
