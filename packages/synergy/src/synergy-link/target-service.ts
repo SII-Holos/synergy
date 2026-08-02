@@ -108,7 +108,6 @@ export namespace SynergyLinkTargetService {
             throw new Error(`Synergy Link host identity mismatch for target ${id}`)
           }
 
-          await SynergyLinkTargetStore.update(id, parsed)
           if (existingNewSession) {
             const verifiedAt = Date.now()
             SynergyLinkExecution.upsertSession({
@@ -139,12 +138,11 @@ export namespace SynergyLinkTargetService {
             targetID: current.id,
             targetAgentID: current.targetAgentID,
           })
-          const probed = await SynergyLinkTargetStore.recordProbe(id, {
-            status: "reachable",
+          const target = await SynergyLinkTargetStore.update(id, parsed, {
             host: probe.metadata.host ? { ...probe.metadata.host, observedAt: Date.now() } : undefined,
           })
-          await Bus.publish(Event.Updated, { target: probed })
-          return probed
+          await Bus.publish(Event.Updated, { target })
+          return target
         } finally {
           if (temporarySessionID) {
             await withTimeout(

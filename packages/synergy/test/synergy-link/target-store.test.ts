@@ -127,6 +127,93 @@ describe("Synergy Link target relink", () => {
     expect(relinked.name).toBe("Relink host")
   })
 
+  test("clears observations when a locator changes without a verified observation", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Observed host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    await SynergyLinkTargetStore.recordProbe(target.id, {
+      status: "reachable",
+      host: {
+        type: "synergy_link.host.hello",
+        linkID: "link_old",
+        hostSessionID: "host_old",
+        capabilities: {
+          platform: "linux",
+          arch: "x64",
+          runtime: "bun",
+          defaultShell: "sh",
+          supportedShells: ["sh"],
+          supportsPty: false,
+          supportsSendKeys: true,
+          supportsSoftKill: true,
+          supportsProcessGroups: true,
+          envCaseInsensitive: false,
+          lineEndings: "lf",
+        },
+        observedAt: 1,
+      },
+    })
+
+    const relinked = await SynergyLinkTargetStore.update(target.id, {
+      kind: "relink",
+      targetAgentID: "agent_new",
+      linkID: "link_new",
+    })
+
+    expect(relinked.authorization).toBe("unverified")
+    expect(relinked.host).toBeUndefined()
+    expect(relinked.lastProbe).toBeUndefined()
+  })
+
+  test("persists a verified relink and its observations in one write", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Verified host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    const writeSpy = spyOn(Storage, "write")
+    try {
+      const relinked = await SynergyLinkTargetStore.update(
+        target.id,
+        { kind: "relink", targetAgentID: "agent_new", linkID: "link_new" },
+        {
+          host: {
+            type: "synergy_link.host.hello",
+            linkID: "link_new",
+            hostSessionID: "host_new",
+            capabilities: {
+              platform: "linux",
+              arch: "x64",
+              runtime: "bun",
+              defaultShell: "sh",
+              supportedShells: ["sh"],
+              supportsPty: false,
+              supportsSendKeys: true,
+              supportsSoftKill: true,
+              supportsProcessGroups: true,
+              envCaseInsensitive: false,
+              lineEndings: "lf",
+            },
+            observedAt: 2,
+          },
+        },
+      )
+
+      expect(writeSpy).toHaveBeenCalledTimes(1)
+      expect(relinked).toMatchObject({
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+        authorization: "approved",
+        host: { linkID: "link_new", hostSessionID: "host_new" },
+        lastProbe: { status: "reachable" },
+      })
+    } finally {
+      writeSpy.mockRestore()
+    }
+  })
+
   test("rejects a relink whose new locator collides with another target", async () => {
     const first = await SynergyLinkTargetStore.create({
       name: "First",

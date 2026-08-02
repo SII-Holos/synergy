@@ -79,16 +79,35 @@ export namespace SynergyLinkTargetStore {
     return target
   }
 
-  export async function update(id: string, input: SynergyLinkTarget.PatchInput): Promise<SynergyLinkTarget.Info> {
+  export async function update(
+    id: string,
+    input: SynergyLinkTarget.PatchInput,
+    verified?: { host?: SynergyLinkTarget.HostObservation },
+  ): Promise<SynergyLinkTarget.Info> {
     const patch = SynergyLinkTarget.PatchInput.parse(input)
     using _ = await Lock.write(collectionLock)
     const current = await require(id)
+    const now = Date.now()
 
+    let observations: Partial<SynergyLinkTarget.Info> = {}
     if (patch.kind === "relink") {
       await assertLocatorAvailable(id, patch.linkID)
+      if (verified?.host && verified.host.linkID !== patch.linkID) {
+        throw new Error(`Synergy Link host identity mismatch for target ${id}`)
+      }
+      const locatorChanged = patch.linkID !== current.linkID || patch.targetAgentID !== current.targetAgentID
+      if (verified) {
+        observations = {
+          authorization: "approved",
+          host: verified.host,
+          lastProbe: { status: "reachable", checkedAt: now },
+        }
+      } else if (locatorChanged) {
+        observations = { authorization: "unverified", host: undefined, lastProbe: undefined }
+      }
     }
 
-    const target = SynergyLinkTarget.Info.parse({ ...current, ...patch, updatedAt: Date.now() })
+    const target = SynergyLinkTarget.Info.parse({ ...current, ...patch, ...observations, updatedAt: now })
     await Storage.write(StoragePath.synergyLinkTarget(target.id), target)
     return target
   }

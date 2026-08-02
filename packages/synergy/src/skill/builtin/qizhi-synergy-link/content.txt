@@ -104,7 +104,7 @@ Standalone Link hosts send a Holos heartbeat every 60 seconds and use a 180-seco
 From the controlling Synergy runtime:
 
 1. Open Synergy Link Settings and create a target with the host's `targetAgentID` and `linkID` from `whoami`, or use the `connect` tool bootstrap path (`connect open` with `linkID` + `targetAgentID`).
-2. Test the target; a successful probe records the host observation and sets authorization to `approved`. A `refused` probe sets authorization to `revoked`. A host identity mismatch (observed `linkID` differs from the target) fails the probe — investigate before re-testing.
+2. Test the target; a successful probe records the host observation and sets authorization to `approved`. A routine probe whose observed `linkID` differs from the target records failed reachability while preserving the prior authorization state; an identity mismatch during relink aborts and preserves the original target. Only a `refused` probe sets authorization to `revoked`.
 3. After approval, run `connect list_targets` and confirm the target is enabled for the local agent, then open a session: `connect open` with the persisted `targetID`.
 4. Run a trivial remote command to confirm execution and output routing.
 

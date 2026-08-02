@@ -217,6 +217,28 @@ describe("Synergy Link target service relink", () => {
       targetAgentID: "agent_old",
       linkID: "link_old",
     })
+    await SynergyLinkTargetStore.recordProbe(target.id, {
+      status: "reachable",
+      host: {
+        type: "synergy_link.host.hello",
+        linkID: "link_old",
+        hostSessionID: "host_old",
+        capabilities: {
+          platform: "linux",
+          arch: "x64",
+          runtime: "bun",
+          defaultShell: "sh",
+          supportedShells: ["sh"],
+          supportsPty: false,
+          supportsSendKeys: true,
+          supportsSoftKill: true,
+          supportsProcessGroups: true,
+          envCaseInsensitive: false,
+          lineEndings: "lf",
+        },
+        observedAt: 1,
+      },
+    })
     SynergyLinkExecution.upsertSession({
       linkID: "link_new",
       targetAgentID: "agent_new",
@@ -236,6 +258,9 @@ describe("Synergy Link target service relink", () => {
 
     expect(calls).toEqual([{ action: "open", label: "Relink verification: Cache-cleared reuse host" }])
     expect(updated.linkID).toBe("link_new")
+    expect(updated.authorization).toBe("approved")
+    expect(updated.lastProbe?.status).toBe("reachable")
+    expect(updated.host).toBeUndefined()
   })
 
   test("heartbeats but does not close a reused session for the new locator", async () => {

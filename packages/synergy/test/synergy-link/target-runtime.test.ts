@@ -157,9 +157,14 @@ describe("Synergy Link target runtime", () => {
       targetAgentID: "agent_mismatch",
       linkID: "link_expected",
     })
+    await SynergyLinkTargetStore.recordProbe(target.id, { status: "reachable" })
 
     await expect(SynergyLinkTargetRuntime.probe(target.id)).rejects.toThrow("host identity mismatch")
     expect(actions).toEqual(["open", "close"])
+    expect(await SynergyLinkTargetStore.require(target.id)).toMatchObject({
+      authorization: "approved",
+      lastProbe: { status: "failed" },
+    })
   })
 
   test("records a closed heartbeat response as a failed probe", async () => {
