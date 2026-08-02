@@ -634,7 +634,7 @@ test("routes question card callbacks into the account project Scope", async () =
 test("cleans inbound attachments when provider conversation capabilities are unavailable", async () => {
   await using tmp = await tmpdir({ git: true })
   const type = `missing-conversation-${crypto.randomUUID()}`
-  let receive: ((message: ChannelHost.ConversationMessage) => Promise<void>) | undefined
+  let receive: ((message: ChannelHost.ConversationMessage) => Promise<ChannelHost.ReceiveResult>) | undefined
   const provider: Provider = {
     type,
     lifecycle: "self_connected",
@@ -675,7 +675,7 @@ test("cleans inbound attachments when provider conversation capabilities are una
 test("cleans inbound attachments after a handled channel command", async () => {
   await using tmp = await tmpdir({ git: true })
   const type = `command-cleanup-${crypto.randomUUID()}`
-  let receive: ((message: ChannelHost.ConversationMessage) => Promise<void>) | undefined
+  let receive: ((message: ChannelHost.ConversationMessage) => Promise<ChannelHost.ReceiveResult>) | undefined
   let replyInput: Parameters<NonNullable<ConversationCapabilities["replyMessage"]>>[0] | undefined
   const provider: Provider = {
     type,
@@ -728,7 +728,7 @@ test("cleans inbound attachments after a handled channel command", async () => {
 test("cleans inbound attachments when streaming session creation fails", async () => {
   await using tmp = await tmpdir({ git: true })
   const type = `streaming-cleanup-${crypto.randomUUID()}`
-  let receive: ((message: ChannelHost.ConversationMessage) => Promise<void>) | undefined
+  let receive: ((message: ChannelHost.ConversationMessage) => Promise<ChannelHost.ReceiveResult>) | undefined
   const provider: Provider = {
     type,
     lifecycle: "self_connected",
@@ -751,17 +751,18 @@ test("cleans inbound attachments when streaming session creation fails", async (
 
   const attachmentPath = path.join(tmp.path, "streaming-attachment.txt")
   await fs.writeFile(attachmentPath, "temporary streaming attachment")
-  await expect(
-    receive!({
-      chatId: "chat_test",
-      chatType: "dm",
-      senderId: "sender_test",
-      text: "hello",
-      messageId: "message_test",
-      timestamp: Date.now(),
-      attachments: [{ path: attachmentPath, filename: "streaming-attachment.txt", contentType: "text/plain" }],
-    }),
-  ).rejects.toThrow("streaming unavailable")
+  const accepted = await receive!({
+    chatId: "chat_test",
+    chatType: "dm",
+    senderId: "sender_test",
+    text: "hello",
+    messageId: "message_test",
+    timestamp: Date.now(),
+    attachments: [{ path: attachmentPath, filename: "streaming-attachment.txt", contentType: "text/plain" }],
+  })
+  expect(accepted.accepted).toBe(true)
+  if (!accepted.accepted) throw new Error("expected accepted conversation")
+  await expect(accepted.execution).rejects.toThrow("streaming unavailable")
 
   expect(
     await fs.stat(attachmentPath).then(

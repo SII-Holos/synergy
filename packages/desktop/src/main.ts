@@ -45,7 +45,7 @@ import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
 import { DesktopStartupOverlay } from "./startup-overlay.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
-import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
+import { DesktopUpdateMode, DesktopUpdater, desktopUpdateInstallActive } from "./updater.js"
 import {
   applyDesktopThemeToWindow,
   defaultDesktopSkinState,
@@ -193,8 +193,17 @@ async function createWindow() {
       currentVersion: app.getVersion(),
       userDataDir: app.getPath("userData"),
       stopServer: () => serverManager?.stop() ?? Promise.resolve(),
+      restartServer: async () => {
+        if (!serverManager) return
+        const url = await serverManager.start()
+        currentAppURL = url
+        await mainWindow?.loadURL(url)
+      },
     })
-    updater.onEvent((event) => mainRendererDelivery?.sendLatest("desktop-update", "desktop-update:event", event))
+    updater.onEvent((event) => {
+      isUpdateQuit = desktopUpdateInstallActive(isUpdateQuit, event.status)
+      mainRendererDelivery?.sendLatest("desktop-update", "desktop-update:event", event)
+    })
     await updater.init()
   }
 
@@ -466,10 +475,7 @@ function registerIpcHandlers() {
     return updater?.check({ manual })
   })
   ipcMain.handle("desktop.update.download", () => updater?.download())
-  ipcMain.handle("desktop.update.installAndRestart", async () => {
-    isUpdateQuit = true
-    return updater?.installAndRestart()
-  })
+  ipcMain.handle("desktop.update.installAndRestart", () => updater?.installAndRestart())
   ipcMain.handle("desktop.badge.setState", (event, input: unknown) => {
     applyDesktopUnreadUpdate({
       mainWindow,

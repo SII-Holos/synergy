@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 const { EnforcementGate } = await import("../../src/enforcement/gate")
+const { SmartAllow } = await import("../../src/permission/smart-allow")
 
 // ---------------------------------------------------------------------------
 // enforcement/mcp-plugin.test.ts
@@ -219,15 +220,14 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(result.capabilities.find((cap: any) => cap.class === "network_request")?.approved).toBe(false)
   })
 
-  test("autonomous denies unapproved plugin sub-capabilities and allows approved ones", async () => {
+  test("maps approved plugin Host Service capabilities to control-profile capabilities", async () => {
+    const capabilities = ["task.delegate", "asset.write"]
     const unapprovedGate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
       pluginToolCapabilities: {
-        plugin__meme__generate_meme: {
-          capabilities: ["file_read", "task"],
-        },
+        plugin__meme__generate_meme: { capabilities },
       },
       pluginApprovals: {},
     })
@@ -235,16 +235,13 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const unapprovedEnvelope = unapprovedGate.evaluate("plugin__meme__generate_meme", {})
     expect(unapprovedEnvelope.decision).toBe("deny")
     expect(unapprovedEnvelope.opaque).toBe(true)
-    expect(unapprovedEnvelope.refusal?.matchedPermission).toBe("file_read")
 
-    const approvedGate = await EnforcementGate.create({
+    const partiallyApprovedGate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
       pluginToolCapabilities: {
-        plugin__meme__generate_meme: {
-          capabilities: ["file_read", "task"],
-        },
+        plugin__meme__generate_meme: { capabilities },
       },
       pluginApprovals: {
         meme: {
@@ -256,14 +253,88 @@ describe("EnforcementGate plugin opaque strategy", () => {
           approvedAt: 1700000000000,
           approvedBy: "user",
           trustTier: "declarative",
-          approvedCapabilities: ["file_read", "task"],
+          approvedCapabilities: ["task.delegate"],
+        },
+      },
+    })
+    const partialClassification = partiallyApprovedGate.classify("plugin__meme__generate_meme", {})
+    expect(partialClassification.capabilities.find((capability) => capability.class === "task")?.approved).toBe(true)
+    expect(partialClassification.capabilities.find((capability) => capability.class === "file_write")?.approved).toBe(
+      false,
+    )
+    expect(partiallyApprovedGate.evaluate("plugin__meme__generate_meme", {}).decision).toBe("deny")
+
+    const approvedGate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      pluginToolCapabilities: {
+        plugin__meme__generate_meme: { capabilities },
+      },
+      pluginApprovals: {
+        meme: {
+          schemaVersion: 2,
+          pluginId: "meme",
+          source: "official",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "permissions",
+          approvedAt: 1700000000000,
+          approvedBy: "user",
+          trustTier: "declarative",
+          approvedCapabilities: capabilities,
         },
       },
     })
 
+    const classification = approvedGate.classify("plugin__meme__generate_meme", {})
+    expect(new Set(classification.capabilities.map((capability) => capability.class))).toEqual(
+      new Set(["task", "file_write"]),
+    )
+    expect(classification.capabilities.every((capability) => capability.approved)).toBe(true)
+
     const approvedEnvelope = approvedGate.evaluate("plugin__meme__generate_meme", {})
     expect(approvedEnvelope.decision).toBe("allow")
     expect(approvedEnvelope.opaque).toBe(false)
+
+    const isolatedEnvelope = await approvedGate.evaluateIsolated("plugin__meme__generate_meme", {})
+    expect(isolatedEnvelope.decision).toBe("allow")
+    expect(new Set(isolatedEnvelope.capabilities.map((capability) => capability.class))).toEqual(
+      new Set(["task", "file_write"]),
+    )
+  })
+
+  test("keeps unknown plugin Host Service capabilities behind a hard boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+      pluginToolCapabilities: {
+        plugin__future__run: { capabilities: ["future.unmapped"] },
+      },
+      pluginApprovals: {
+        future: {
+          schemaVersion: 2,
+          pluginId: "future",
+          source: "npm",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "permissions",
+          approvedAt: 1700000000000,
+          approvedBy: "user",
+          trustTier: "declarative",
+          approvedCapabilities: ["future.unmapped"],
+        },
+      },
+    })
+
+    const classification = gate.classify("plugin__future__run", {})
+    const capability = classification.capabilities.find((item) => item.class === "future.unmapped")
+    expect(capability?.approved).toBe(true)
+    expect(capability?.nonBypassable).toBe(true)
+    expect(capability?.opaque).toBe(true)
+    expect(SmartAllow.isEligible("ask", classification.capabilities)).toBe(false)
+
+    const envelope = gate.evaluate("plugin__future__run", {})
+    expect(envelope.decision).toBe("ask")
   })
 })
 

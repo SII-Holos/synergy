@@ -42,6 +42,7 @@ import {
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 import { PluginToolId } from "../plugin/ids.js"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
+import { controlProfileCapability, hasControlProfileCapability } from "../plugin/capability"
 import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { BashVirtualPath } from "@/tool/bash/virtual-path"
@@ -64,7 +65,7 @@ export interface ClassifyResult {
 }
 
 export interface PluginToolCapabilityMap {
-  /** Synergy capability classes resolved from the plugin manifest (e.g. "file_read", "shell", "network_request") */
+  /** Plugin Host Service capability IDs declared by the tool contribution. */
   capabilities: string[]
 }
 
@@ -285,10 +286,6 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_trigger",
 ])
 
-function pushUniqueCapability(caps: Capability[], cap: Omit<Capability, "approved" | "reason">) {
-  if (caps.some((existing) => existing.class === cap.class)) return
-  caps.push({ ...cap })
-}
 function stringPathArgs(value: unknown): string[] {
   if (typeof value === "string") return value.length > 0 ? [value] : []
   if (!Array.isArray(value)) return []
@@ -556,32 +553,36 @@ export namespace EnforcementGate {
           return { capabilities: caps }
         }
 
-        // Plugin capabilities are already Synergy capability classes.
         if (entry) {
-          for (const capabilityClass of entry.capabilities) {
-            pushUniqueCapability(caps, {
-              class: capabilityClass,
-              nonBypassable: capabilityNonBypassable(capabilityClass),
-            })
-          }
-        }
-
-        // Approval check: mark sub-capabilities that haven't been approved by the user
-        if (pluginApprovals) {
           const parsed = PluginToolId.parse(toolName)
-          if (parsed) {
-            const approval = pluginApprovals[parsed.pluginId]
-            const approvedSet = new Set(approval?.approvedCapabilities ?? [])
-            for (let i = 0; i < caps.length; i++) {
-              const cap = caps[i]
-              if (!approvedSet.has(cap.class)) {
-                cap.opaque = true
-                cap.approved = false
-                cap.reason = "unapproved"
-              } else {
-                cap.approved = true
+          const approvedSet = parsed
+            ? new Set(pluginApprovals?.[parsed.pluginId]?.approvedCapabilities ?? [])
+            : undefined
+          for (const hostCapability of entry.capabilities) {
+            const capabilityClass = controlProfileCapability(hostCapability)
+            const mapped = hasControlProfileCapability(hostCapability)
+            const approved = pluginApprovals ? approvedSet?.has(hostCapability) === true : undefined
+            const existing = caps.find((capability) => capability.class === capabilityClass)
+            if (existing) {
+              existing.nonBypassable ||= !mapped || capabilityNonBypassable(capabilityClass)
+              if (!mapped) {
+                existing.opaque = true
+                existing.reason ??= "unmapped Host Service capability"
               }
+              if (approved === false) {
+                existing.opaque = true
+                existing.approved = false
+                existing.reason = "unapproved"
+              }
+              continue
             }
+            caps.push({
+              class: capabilityClass,
+              nonBypassable: !mapped || capabilityNonBypassable(capabilityClass),
+              ...(approved === undefined ? {} : { approved }),
+              ...(!mapped ? { opaque: true, reason: "unmapped Host Service capability" } : {}),
+              ...(approved === false ? { opaque: true, reason: "unapproved" } : {}),
+            })
           }
         }
 

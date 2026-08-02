@@ -9,6 +9,9 @@ export async function uploadBinaryAssets(state: ReleaseState) {
   for (const assetPath of state.binaryAssets) {
     await uploadReleaseAsset(state.releaseTag, assetPath)
   }
+  if (state.binaryChecksums) {
+    await uploadReleaseAsset(state.releaseTag, state.binaryChecksums)
+  }
   for (const assetPath of state.desktopAssets) {
     await uploadReleaseAsset(state.releaseTag, assetPath)
   }

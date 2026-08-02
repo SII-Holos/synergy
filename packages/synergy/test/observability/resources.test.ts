@@ -11,6 +11,14 @@ describe("ObservabilityResources", () => {
     cleanupObservabilityHomes()
   })
 
+  test("resetting the observability home stops an existing resource sampler", () => {
+    ObservabilityResources.start()
+
+    resetObservabilityHome()
+
+    expect(ObservabilityResources.stats().running).toBe(false)
+  })
+
   test("records finite process resource samples and metrics", () => {
     ObservabilityResources.addRead(128)
     ObservabilityResources.addWrite(256)

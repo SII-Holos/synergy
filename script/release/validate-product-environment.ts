@@ -13,17 +13,18 @@ const REQUIRED_RELEASE_ENV = [
   "CSC_KEY_PASSWORD",
   "CSC_INSTALLER_LINK",
   "CSC_INSTALLER_KEY_PASSWORD",
+  "WINDOWS_CERTIFICATE",
+  "WINDOWS_CERTIFICATE_PASSWORD",
 ] as const
-
-const OPTIONAL_RELEASE_ENV_GROUPS = [["WINDOWS_CERTIFICATE", "WINDOWS_CERTIFICATE_PASSWORD"]] as const
 
 export function validateProductReleaseEnvironment(env: Record<string, string | undefined>): void {
   const missing: string[] = REQUIRED_RELEASE_ENV.filter((name) => !env[name]?.trim())
-  for (const group of OPTIONAL_RELEASE_ENV_GROUPS) {
-    if (!group.some((name) => env[name]?.trim())) continue
-    missing.push(...group.filter((name) => !env[name]?.trim()))
-  }
   if (missing.length > 0) throw new Error(`Product release environment is missing: ${missing.join(", ")}`)
+
+  const windowsCertificate = Buffer.from(env.WINDOWS_CERTIFICATE!, "base64")
+  if (windowsCertificate.byteLength < 2 || windowsCertificate[0] !== 0x30) {
+    throw new Error("WINDOWS_CERTIFICATE must be a base64-encoded PKCS#12 certificate")
+  }
 
   const privateKey = createPrivateKey({
     key: Buffer.from(env.BROWSER_HOST_MANIFEST_SIGNING_KEY!, "base64"),

@@ -367,6 +367,48 @@ export namespace SessionInbox {
     return !!(await latestRootID(sessionID))
   }
 
+  /**
+   * Startup discovery: enumerate existing sessions in a scope and return the
+   * ones that still hold at least one runnable (task-mode) inbox item.
+   * Malformed session or inbox reads are isolated and logged so one corrupt
+   * session never blocks recovery of the rest.
+   */
+  export async function listRunnableSessions(scopeID?: string): Promise<string[]> {
+    const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"]).catch(() => [])
+    const runnable = new Set<string>()
+    for (const scope of scopeRoots) {
+      const sid = Identifier.asScopeID(scope)
+      const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(sid)).catch(() => [])
+      for (const sessionID of sessionIDs) {
+        const key = Identifier.asSessionID(sessionID)
+        const itemIDs = await Storage.scan(StoragePath.sessionInboxRoot(sid, key)).catch((error) => {
+          log.warn("startup inbox discovery could not scan session inbox", { sessionID: key, scopeID: sid, error })
+          return []
+        })
+        if (itemIDs.length === 0) continue
+        const keys = itemIDs.map((itemID) => StoragePath.sessionInboxItem(sid, key, itemID))
+        const items = await Storage.readMany<StoredItem>(keys).catch((error) => {
+          log.warn("startup inbox discovery could not read session inbox items", {
+            sessionID: key,
+            scopeID: sid,
+            error,
+          })
+          return []
+        })
+        const info = await Storage.read<Info>(StoragePath.sessionInfo(sid, key)).catch((error) => {
+          log.warn("startup inbox discovery could not read session info", { sessionID: key, scopeID: sid, error })
+          return undefined
+        })
+        if (!info?.time || info.time.archived) continue
+
+        if (items.some((item) => item && item.id && normalizeStored(item).mode === "task")) {
+          runnable.add(key)
+        }
+      }
+    }
+    return [...runnable].sort()
+  }
+
   export async function list(sessionID: string): Promise<Item[]> {
     return (await listStored(sessionID)).map(publicItem)
   }
@@ -455,29 +497,77 @@ export namespace SessionInbox {
     return { ...ids, created: true }
   })
 
-  export async function deliverUnique(
-    input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
+  async function findExistingDelivery(sessionID: string, deliveryKey: string) {
+    const itemID = stableDeliveryItemID(sessionID, deliveryKey)
+    const existing = await getStored(sessionID, itemID).catch(() => undefined)
+    if (existing) return { itemID: existing.id, messageID: existing.messageID }
+
+    const legacyMessageID = legacyStableMessageID(sessionID, deliveryKey)
+    const materialized = (await SessionHistory.messageInfos(sessionID)).find(
+      (info) => info.id === legacyMessageID || info.metadata?.inboxDeliveryKey === deliveryKey,
+    )
+    if (!materialized) return undefined
+    return { itemID, messageID: materialized.id }
+  }
+
+  async function deliverUniqueWithPreparedMessage(
+    input: {
+      sessionID: string
+      deliveryKey: string
+      mode: z.infer<typeof Deliver.Input>["mode"]
+      prepareMessage: (messageID: string) => Promise<z.infer<typeof Deliver.Input>["message"]>
+    },
+    persistItem: (item: StoredItem) => Promise<unknown>,
   ): Promise<{ itemID: string; messageID: string; created: boolean }> {
     const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
     using _ = await Lock.write(`session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`)
 
-    const existing = await getStored(input.sessionID, itemID).catch(() => undefined)
-    if (existing) return { itemID: existing.id, messageID: existing.messageID, created: false }
-
-    const legacyMessageID = legacyStableMessageID(input.sessionID, input.deliveryKey)
-    const materialized = (await SessionHistory.messageInfos(input.sessionID)).find(
-      (info) => info.id === legacyMessageID || info.metadata?.inboxDeliveryKey === input.deliveryKey,
-    )
-    if (materialized) return { itemID, messageID: materialized.id, created: false }
+    const existing = await findExistingDelivery(input.sessionID, input.deliveryKey)
+    if (existing) return { ...existing, created: false }
 
     const ids = { itemID, messageID: Identifier.ascending("message") }
-    const item = deliveryItem(input, ids)
-    if (input.message.role === "assistant") {
-      await materializeItem(item, await latestRootID(input.sessionID))
-    } else {
-      await writeItem(item)
-    }
+    const message = await input.prepareMessage(ids.messageID)
+    await persistItem(
+      deliveryItem(
+        {
+          sessionID: input.sessionID,
+          deliveryKey: input.deliveryKey,
+          mode: input.mode,
+          message,
+        },
+        ids,
+      ),
+    )
     return { ...ids, created: true }
+  }
+
+  export async function deliverUnique(
+    input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
+  ): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    return deliverUniqueWithPreparedMessage(
+      {
+        sessionID: input.sessionID,
+        deliveryKey: input.deliveryKey,
+        mode: input.mode,
+        prepareMessage: async () => input.message,
+      },
+      async (item) => {
+        if (input.message.role === "assistant") {
+          await materializeItem(item, await latestRootID(input.sessionID))
+          return
+        }
+        await writeItem(item)
+      },
+    )
+  }
+
+  export async function deliverUniquePrepared(input: {
+    sessionID: string
+    deliveryKey: string
+    mode: z.infer<typeof Deliver.Input>["mode"]
+    prepareMessage: (messageID: string) => Promise<z.infer<typeof Deliver.Input>["message"]>
+  }): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    return deliverUniqueWithPreparedMessage(input, writeItem)
   }
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {
