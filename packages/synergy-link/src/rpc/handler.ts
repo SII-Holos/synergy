@@ -13,6 +13,7 @@ interface CachedRequest {
   createdAt: number
   fingerprint: string
   result: Promise<RPCResult>
+  isSettled: () => boolean
 }
 
 export class RPCHandler {
@@ -60,9 +61,33 @@ export class RPCHandler {
         })
         return await cached.result
       }
+      if (this.#requests.size >= MAX_REQUEST_CACHE_ENTRIES) {
+        SynergyLinkLog.warn("rpc.request.rejected.capacity", {
+          requestID: request.requestID,
+          tool: request.tool,
+          action: request.action,
+          sessionID: lease.sessionID,
+          callerAgentID: lease.callerAgentID,
+        })
+        return errorResult(
+          { requestID: request.requestID, tool: request.tool, action: request.action },
+          "execution_failed",
+          "The Synergy Link host has too many in-flight requests. Retry this request after capacity becomes available.",
+          { reason: "request_capacity_exhausted", retryable: true },
+        )
+      }
 
+      let settled = false
       const result = this.#execute(request as Exclude<typeof request, { tool: "session" }>, lease)
-      this.#requests.set(key, { createdAt: Date.now(), fingerprint, result })
+      result.then(
+        () => {
+          settled = true
+        },
+        () => {
+          settled = true
+        },
+      )
+      this.#requests.set(key, { createdAt: Date.now(), fingerprint, result, isSettled: () => settled })
       return await result
     } catch (error) {
       return this.#errorResult(error, request)
@@ -162,12 +187,12 @@ export class RPCHandler {
 
   #pruneRequestCache(now = Date.now()) {
     for (const [key, entry] of this.#requests) {
-      if (now - entry.createdAt > REQUEST_CACHE_TTL_MS) this.#requests.delete(key)
+      if (entry.isSettled() && now - entry.createdAt > REQUEST_CACHE_TTL_MS) this.#requests.delete(key)
     }
-    while (this.#requests.size >= MAX_REQUEST_CACHE_ENTRIES) {
-      const oldest = this.#requests.keys().next().value
-      if (oldest === undefined) break
-      this.#requests.delete(oldest)
+    if (this.#requests.size < MAX_REQUEST_CACHE_ENTRIES) return
+    for (const [key, entry] of this.#requests) {
+      if (this.#requests.size < MAX_REQUEST_CACHE_ENTRIES) break
+      if (entry.isSettled()) this.#requests.delete(key)
     }
   }
 }
