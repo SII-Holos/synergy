@@ -22,6 +22,16 @@ function fakeClient(): SynergyLinkClient.ExecutionClient {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 afterEach(() => {
   SynergyLinkExecution.setClient(null)
 })
@@ -207,6 +217,96 @@ describe("Synergy Link verified session cache", () => {
     expect(SynergyLinkExecution.getSession("link_invalid")).toBeUndefined()
   })
 
+  test("does not clear a replacement session for a stale invalid heartbeat response", async () => {
+    const heartbeat = deferred<SynergyLinkSession.Result>()
+    let heartbeatStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      heartbeatStarted = resolve
+    })
+    SynergyLinkExecution.setClient({
+      ...fakeClient(),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        heartbeatStarted()
+        return heartbeat.promise
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_invalid_replaced",
+      targetAgentID: "agent_invalid_replaced",
+      sourceAgent: "build",
+      sessionID: "session_stale",
+      status: "opened",
+      openedAt: 1,
+      lastUsedAt: 1,
+    })
+
+    const verification = SynergyLinkExecution.verifySession("link_invalid_replaced", {
+      targetAgentID: "agent_invalid_replaced",
+      sourceAgent: "build",
+    })
+    await started
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_invalid_replaced",
+      targetAgentID: "agent_invalid_replaced",
+      sourceAgent: "build",
+      sessionID: "session_replacement",
+      status: "opened",
+      openedAt: 2,
+      lastUsedAt: 2,
+    })
+    heartbeat.reject(new SynergyLinkRemoteError("session_invalid", "Session is not active."))
+
+    expect(await verification).toEqual({ kind: "missing" })
+    expect(SynergyLinkExecution.getSession("link_invalid_replaced")?.sessionID).toBe("session_replacement")
+  })
+
+  test("does not clear a replacement session for a stale closed heartbeat response", async () => {
+    const heartbeat = deferred<SynergyLinkSession.Result>()
+    let heartbeatStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      heartbeatStarted = resolve
+    })
+    SynergyLinkExecution.setClient({
+      ...fakeClient(),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        heartbeatStarted()
+        return heartbeat.promise
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_closed_replaced",
+      targetAgentID: "agent_closed_replaced",
+      sourceAgent: "build",
+      sessionID: "session_stale",
+      status: "opened",
+      openedAt: 1,
+      lastUsedAt: 1,
+    })
+
+    const verification = SynergyLinkExecution.verifySession("link_closed_replaced", {
+      targetAgentID: "agent_closed_replaced",
+      sourceAgent: "build",
+    })
+    await started
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_closed_replaced",
+      targetAgentID: "agent_closed_replaced",
+      sourceAgent: "build",
+      sessionID: "session_replacement",
+      status: "opened",
+      openedAt: 2,
+      lastUsedAt: 2,
+    })
+    heartbeat.resolve({
+      title: "Session closed",
+      metadata: { action: "heartbeat", status: "closed", sessionID: "session_stale", backend: "remote" },
+      output: "closed",
+    })
+
+    expect(await verification).toEqual({ kind: "missing" })
+    expect(SynergyLinkExecution.getSession("link_closed_replaced")?.sessionID).toBe("session_replacement")
+  })
+
   test("reports unverified on verification timeout without refreshing lastVerifiedAt", async () => {
     const lastVerifiedAt = 1_000
     SynergyLinkExecution.setClient({
@@ -238,6 +338,28 @@ describe("Synergy Link verified session cache", () => {
     const session = SynergyLinkExecution.getSession("link_timeout")
     expect(session?.lastVerifiedAt).toBe(lastVerifiedAt)
     expect(session?.lastAttemptAt).toBeGreaterThan(lastVerifiedAt)
+  })
+
+  test("does not clear a replacement session for a stale invalid response", () => {
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_replaced",
+      targetAgentID: "agent_replaced",
+      sourceAgent: "build",
+      sessionID: "session_replacement",
+      status: "opened",
+      openedAt: 2,
+      lastUsedAt: 2,
+    })
+
+    const cleared = SynergyLinkExecution.clearSessionOnInvalidError(
+      "link_replaced",
+      "session_stale",
+      { targetAgentID: "agent_replaced", sourceAgent: "build" },
+      new SynergyLinkRemoteError("session_invalid", "Session is not active."),
+    )
+
+    expect(cleared).toBe(false)
+    expect(SynergyLinkExecution.getSession("link_replaced")?.sessionID).toBe("session_replacement")
   })
 
   test("verifySession reports missing without a cached session", async () => {

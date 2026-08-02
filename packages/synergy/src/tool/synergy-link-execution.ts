@@ -92,6 +92,27 @@ export namespace SynergyLinkExecution {
     return session
   }
 
+  function clearMatchingSession(
+    linkID: SynergyLinkIdentity.LinkID,
+    sessionID: SynergyLinkIdentity.SessionID,
+    selector?: SessionSelector,
+  ): boolean {
+    const session = getSession(linkID, selector)
+    if (!session || session.sessionID !== sessionID) return false
+    clearSession(linkID, selector)
+    return true
+  }
+
+  export function clearSessionOnInvalidError(
+    linkID: SynergyLinkIdentity.LinkID,
+    sessionID: SynergyLinkIdentity.SessionID,
+    selector: SessionSelector,
+    error: unknown,
+  ): boolean {
+    if (!isInvalidSessionError(error)) return false
+    return clearMatchingSession(linkID, sessionID, selector)
+  }
+
   export function requireSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
     const session = getSession(linkID, selector)
     if (!session || session.status !== "opened") {
@@ -149,13 +170,13 @@ export namespace SynergyLinkExecution {
         return { kind: "verified", session }
       }
       if (result.metadata.status === "closed") {
-        clearSession(linkID, selector)
+        clearMatchingSession(linkID, session.sessionID, selector)
         return { kind: "missing" }
       }
       return { kind: "unverified", session, reason: "transport" }
     } catch (error) {
       if (isInvalidSessionError(error)) {
-        clearSession(linkID, selector)
+        clearMatchingSession(linkID, session.sessionID, selector)
         return { kind: "missing" }
       }
       return { kind: "unverified", session, reason: isTimeoutError(error) ? "timeout" : "transport" }
