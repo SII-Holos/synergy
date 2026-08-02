@@ -171,4 +171,48 @@ describe("synergy-link runtime approval", () => {
 
     expect(runtime.sessions.current()).toBeNull()
   })
+
+  test("serializes policy tightening with an in-progress session open", async () => {
+    await SynergyLinkCLIBackend.setApproval("auto")
+    const runtime = await SynergyLinkRuntime.create()
+    const linkID = runtime.state?.linkID
+    expect(linkID).toBeTruthy()
+
+    const openStarted = Promise.withResolvers<void>()
+    const continueOpen = Promise.withResolvers<void>()
+    const originalOpen = runtime.sessions.open.bind(runtime.sessions)
+    runtime.sessions.open = async (...args) => {
+      openStarted.resolve()
+      await continueOpen.promise
+      return await originalOpen(...args)
+    }
+
+    const openRequest = runtime.inbound.handle({
+      caller: { type: "holos", agentID: "agent_opening", ownerUserID: 10 },
+      body: {
+        version: 2,
+        requestID: "req_open_during_policy_change",
+        linkID,
+        tool: "session",
+        action: "open",
+        payload: { action: "open" },
+      },
+    })
+    await openStarted.promise
+
+    let policyCompleted = false
+    const policyChange = runtime.setApproval("trusted-only").then(() => {
+      policyCompleted = true
+    })
+    await Promise.resolve()
+    expect(policyCompleted).toBe(false)
+
+    continueOpen.resolve()
+    const opened = await openRequest
+    expect(opened.ok).toBe(true)
+    await policyChange
+
+    expect(runtime.sessions.current()).toBeNull()
+    expect(runtime.state?.approvalMode).toBe("trusted-only")
+  })
 })

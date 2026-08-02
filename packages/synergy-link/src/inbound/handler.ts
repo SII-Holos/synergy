@@ -13,6 +13,21 @@ export class SynergyLinkInboundHandler {
     readonly sessions: SessionManager,
     readonly decideOpen: (input: { caller: HolosCaller; label?: string }) => Promise<SessionOpenDecision>,
   ) {}
+  #sessionPolicyTail: Promise<void> = Promise.resolve()
+
+  async withSessionPolicyLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.#sessionPolicyTail
+    let release!: () => void
+    this.#sessionPolicyTail = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await previous
+    try {
+      return await operation()
+    } finally {
+      release()
+    }
+  }
 
   async handle(input: { caller: HolosCaller | unknown; body: unknown }): Promise<RPCResult> {
     const correlation = extractRequestCorrelation(input.body)
@@ -100,6 +115,16 @@ export class SynergyLinkInboundHandler {
     })
     this.rpc.host.assertLink(request.linkID)
 
+    if (request.payload.action === "open") {
+      return await this.withSessionPolicyLock(() => this.#executeSessionRequest(caller, request))
+    }
+    return await this.#executeSessionRequest(caller, request)
+  }
+
+  async #executeSessionRequest(
+    caller: HolosCaller,
+    request: SynergyLinkSession.ExecuteRequest,
+  ): Promise<SynergyLinkSession.ExecuteResult | SynergyLinkEnvelope.ErrorResult> {
     if (request.payload.action === "open" && !this.sessions.current()) {
       const decision = await this.decideOpen({
         caller,
