@@ -144,6 +144,42 @@ describe("SessionInbox", () => {
     })
   })
 
+  test("keeps a unique delivery durable when inbox materialization fails", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const input = {
+          sessionID: session.id,
+          deliveryKey: "test:materialization-failure:once",
+          mode: "task" as const,
+          message: {
+            role: "user" as const,
+            agent: "missing-inbox-agent",
+            parts: [{ type: "text" as const, text: "retry after materialization failure" }],
+          },
+        }
+        const delivery = await SessionInbox.deliverUnique(input)
+        const lease = SessionManager.acquire(session.id)
+        if (!lease) throw new Error("expected session lease")
+
+        try {
+          await expect(
+            SessionInvoke.invokeInboxWithLease({ sessionID: session.id, itemID: delivery.itemID }, lease),
+          ).rejects.toBeInstanceOf(Error)
+
+          expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([delivery.itemID])
+          expect(await Session.messages({ sessionID: session.id })).toEqual([])
+          expect(await SessionInbox.deliverUnique(input)).toEqual({ ...delivery, created: false })
+        } finally {
+          await SessionManager.release(lease, { requestNextWork: false })
+          SessionManager.unregisterRuntime(session.id)
+        }
+      },
+    })
+  })
+
   test("locks the first queued task until its canonical root is durable", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -880,6 +916,34 @@ describe("SessionInbox startup discovery", () => {
 
         SessionManager.unregisterRuntime(taskSession.id)
         SessionManager.unregisterRuntime(steerSession.id)
+      },
+    })
+  })
+
+  test("listRunnableSessions skips archived sessions with queued tasks", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const scopeID = ScopeContext.current.scope.id
+        const session = await Session.create({ title: "archived-task" })
+        await SessionInbox.deliverUnique({
+          sessionID: session.id,
+          deliveryKey: "discovery:archived:once",
+          mode: "task",
+          message: {
+            role: "user",
+            parts: [{ type: "text", text: "must stay archived" }],
+          },
+        })
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+
+        expect(await SessionInbox.listRunnableSessions(scopeID)).toEqual([])
+        expect(await SessionInbox.list(session.id)).toHaveLength(1)
+
+        SessionManager.unregisterRuntime(session.id)
       },
     })
   })

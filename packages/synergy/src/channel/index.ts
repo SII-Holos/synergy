@@ -717,11 +717,11 @@ export namespace Channel {
           const acceptance = await ChannelConversationAcceptance.accept({
             sessionID,
             deliveryKey,
-            prepareParts: () => buildPromptParts(ctx, { sessionID, messageID: undefined }),
+            prepareParts: (messageID) => buildPromptParts(ctx, { sessionID, messageID }),
             metadata,
             model: accountInvocation.model,
             variant: accountInvocation.variant,
-            execute: async (lease, invocationParts) => {
+            execute: async (lease, delivery) => {
               const reactionController = createStatusReactionController({
                 adapter: {
                   setReaction: async (emoji: string) => {
@@ -833,16 +833,10 @@ export namespace Channel {
               })
 
               try {
-                const result = await SessionInvoke.invokeWithLease(
+                const result = await SessionInvoke.invokeInboxWithLease(
                   {
                     sessionID,
-                    ...accountInvocation,
-                    metadata: {
-                      channelReplyToMessageId: replyToMessageId,
-                      channelRequesterId: ctx.senderId,
-                      inboxDeliveryKey: deliveryKey,
-                    },
-                    parts: invocationParts,
+                    itemID: delivery.itemID,
                   },
                   lease,
                 )
@@ -885,7 +879,7 @@ export namespace Channel {
                   error: err,
                   sessionID,
                   deliveryKey,
-                  parts: invocationParts,
+                  parts: delivery.parts,
                   metadata,
                   model: accountInvocation.model,
                   variant: accountInvocation.variant,

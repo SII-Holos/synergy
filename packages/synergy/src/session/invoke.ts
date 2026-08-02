@@ -202,6 +202,36 @@ export namespace SessionInvoke {
   export async function invokeWithLease(input: InvokeInput, lease: SessionManager.LoopLease) {
     return invokeWithInternalTools(InvokeInput.parse(input), lease)
   }
+  export async function invokeInboxWithLease(
+    input: { sessionID: string; itemID: string },
+    lease: SessionManager.LoopLease,
+  ) {
+    return SessionManager.run(
+      input.sessionID,
+      async (runLease) => {
+        const item = await SessionInbox.getStored(input.sessionID, input.itemID)
+        const message = await SessionInbox.materializeItem(item)
+        if (!message || message.info.role !== "user") {
+          throw new Error(`Session inbox task could not be materialized: ${input.itemID}`)
+        }
+        await SessionInbox.commitReady(input.sessionID, [item.id])
+
+        await Session.update(input.sessionID, (draft) => {
+          draft.pendingReply = true
+        })
+
+        try {
+          return await loopBodyWithIncident(input.sessionID, runLease)
+        } catch (error) {
+          await writeErrorAssistantIfMissing(input.sessionID, message.info, error).catch((err) => {
+            log.error("failed to persist inbox invocation error", { sessionID: input.sessionID, error: err })
+          })
+          throw error
+        }
+      },
+      { lease, releaseLease: false },
+    )
+  }
 
   export async function invokeInternal(input: InternalInvokeInput) {
     return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })

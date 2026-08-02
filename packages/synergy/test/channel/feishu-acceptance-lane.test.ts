@@ -39,6 +39,24 @@ describe("Channel conversation acceptance lane", () => {
         expect(await Promise.race([acceptance.execution.then(() => "done"), Promise.resolve("pending")])).toBe(
           "pending",
         )
+        const accepted = await SessionInbox.list(session.id)
+        expect(accepted).toHaveLength(1)
+        expect(accepted[0]?.deliveryKey).toBe("channel:feishu:acct:msg_first")
+
+        let replayExecuted = false
+        const replay = await ChannelConversationAcceptance.accept({
+          sessionID: session.id,
+          deliveryKey: "channel:feishu:acct:msg_first",
+          parts: [{ type: "text", text: "first" }],
+          metadata: { channelReply: true },
+          execute: async () => {
+            replayExecuted = true
+          },
+        })
+        expect(replay.accepted).toBe(true)
+        expect(replayExecuted).toBe(false)
+        expect(await SessionInbox.list(session.id)).toHaveLength(1)
+
         execution.resolve()
         await acceptance.execution
       },
@@ -112,8 +130,10 @@ describe("Channel conversation acceptance lane", () => {
         expect(secondExecuted).toBe(false)
 
         const items = await SessionInbox.list(session.id)
-        expect(items).toHaveLength(1)
-        expect(items[0]?.deliveryKey).toBe("channel:feishu:acct:msg_b")
+        expect(items.map((item) => item.deliveryKey)).toEqual([
+          "channel:feishu:acct:msg_a",
+          "channel:feishu:acct:msg_b",
+        ])
 
         gate.resolve()
         if (first.accepted) await first.execution

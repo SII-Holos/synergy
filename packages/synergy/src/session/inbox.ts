@@ -395,6 +395,12 @@ export namespace SessionInbox {
           })
           return []
         })
+        const info = await Storage.read<Info>(StoragePath.sessionInfo(sid, key)).catch((error) => {
+          log.warn("startup inbox discovery could not read session info", { sessionID: key, scopeID: sid, error })
+          return undefined
+        })
+        if (!info?.time || info.time.archived) continue
+
         if (items.some((item) => item && item.id && normalizeStored(item).mode === "task")) {
           runnable.add(key)
         }
@@ -504,16 +510,14 @@ export namespace SessionInbox {
     return { itemID, messageID: materialized.id }
   }
 
-  export async function findDelivery(
-    sessionID: string,
-    deliveryKey: string,
-  ): Promise<{ itemID: string; messageID: string } | undefined> {
-    using _ = await Lock.write(`session-inbox-delivery:${sessionID}:${deliveryKey}`)
-    return findExistingDelivery(sessionID, deliveryKey)
-  }
-
-  export async function deliverUnique(
-    input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
+  async function deliverUniqueWithPreparedMessage(
+    input: {
+      sessionID: string
+      deliveryKey: string
+      mode: z.infer<typeof Deliver.Input>["mode"]
+      prepareMessage: (messageID: string) => Promise<z.infer<typeof Deliver.Input>["message"]>
+    },
+    persistItem: (item: StoredItem) => Promise<unknown>,
   ): Promise<{ itemID: string; messageID: string; created: boolean }> {
     const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
     using _ = await Lock.write(`session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`)
@@ -522,13 +526,48 @@ export namespace SessionInbox {
     if (existing) return { ...existing, created: false }
 
     const ids = { itemID, messageID: Identifier.ascending("message") }
-    const item = deliveryItem(input, ids)
-    if (input.message.role === "assistant") {
-      await materializeItem(item, await latestRootID(input.sessionID))
-    } else {
-      await writeItem(item)
-    }
+    const message = await input.prepareMessage(ids.messageID)
+    await persistItem(
+      deliveryItem(
+        {
+          sessionID: input.sessionID,
+          deliveryKey: input.deliveryKey,
+          mode: input.mode,
+          message,
+        },
+        ids,
+      ),
+    )
     return { ...ids, created: true }
+  }
+
+  export async function deliverUnique(
+    input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
+  ): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    return deliverUniqueWithPreparedMessage(
+      {
+        sessionID: input.sessionID,
+        deliveryKey: input.deliveryKey,
+        mode: input.mode,
+        prepareMessage: async () => input.message,
+      },
+      async (item) => {
+        if (input.message.role === "assistant") {
+          await materializeItem(item, await latestRootID(input.sessionID))
+          return
+        }
+        await writeItem(item)
+      },
+    )
+  }
+
+  export async function deliverUniquePrepared(input: {
+    sessionID: string
+    deliveryKey: string
+    mode: z.infer<typeof Deliver.Input>["mode"]
+    prepareMessage: (messageID: string) => Promise<z.infer<typeof Deliver.Input>["message"]>
+  }): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    return deliverUniqueWithPreparedMessage(input, writeItem)
   }
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {

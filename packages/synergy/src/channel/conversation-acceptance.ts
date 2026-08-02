@@ -1,16 +1,14 @@
 import { Log } from "../util/log"
-import { BusyError } from "../session/error"
 import { SessionManager } from "../session/manager"
 import { SessionInbox } from "../session/inbox"
 import { InvokeInput } from "../session/invoke"
-import { ChannelBusyHandoff } from "./busy-handoff"
 
 const log = Log.create({ service: "channel.conversation" })
 
 /**
- * Separates durable acceptance from background execution. Acceptance either
- * reserves the Session lease synchronously or persists the message in the
- * SessionInbox before the provider lane is released.
+ * Separates durable acceptance from background execution. Every delivery is
+ * persisted before the provider lane is released, then an idle Session lease
+ * is reserved for immediate execution when no older work is queued.
  */
 export namespace ChannelConversationAcceptance {
   export type Acceptance = { accepted: true; execution: Promise<void> } | { accepted: false }
@@ -19,76 +17,73 @@ export namespace ChannelConversationAcceptance {
     sessionID: string
     deliveryKey: string
     parts?: InvokeInput["parts"]
-    prepareParts?: () => Promise<InvokeInput["parts"]>
+    prepareParts?: (messageID: string) => Promise<InvokeInput["parts"]>
     metadata: Record<string, unknown>
     model?: { providerID: string; modelID: string }
     variant?: string
-    execute: (lease: SessionManager.LoopLease, parts: InvokeInput["parts"]) => Promise<void>
+    execute: (
+      lease: SessionManager.LoopLease,
+      delivery: { itemID: string; messageID: string; parts: InvokeInput["parts"] },
+    ) => Promise<void>
   }): Promise<Acceptance> {
     const prepareParts = input.prepareParts ?? (() => Promise.resolve(input.parts ?? []))
-    const existing = await SessionInbox.findDelivery(input.sessionID, input.deliveryKey)
-    if (existing) {
+    let preparedParts: InvokeInput["parts"] | undefined
+    const delivery = await SessionInbox.deliverUniquePrepared({
+      sessionID: input.sessionID,
+      deliveryKey: input.deliveryKey,
+      mode: "task",
+      prepareMessage: async (messageID) => {
+        preparedParts = await prepareParts(messageID)
+        return {
+          origin: { type: "channel" as const, label: "Channel" },
+          role: "user" as const,
+          parts: preparedParts,
+          visible: true,
+          metadata: input.metadata,
+          model: input.model,
+          variant: input.variant,
+        }
+      },
+    })
+    if (!delivery.created) {
       log.info("duplicate conversation delivery already accepted", {
         sessionID: input.sessionID,
-        itemID: existing.itemID,
+        itemID: delivery.itemID,
       })
       return { accepted: true, execution: Promise.resolve() }
-    }
-    const queue = async () => {
-      const duplicate = await SessionInbox.findDelivery(input.sessionID, input.deliveryKey)
-      if (duplicate) return { status: "duplicate" as const, ...duplicate }
-      return ChannelBusyHandoff.deliverBusyTaskToInbox({
-        error: new BusyError(input.sessionID),
-        sessionID: input.sessionID,
-        deliveryKey: input.deliveryKey,
-        parts: await prepareParts(),
-        metadata: input.metadata,
-        model: input.model,
-        variant: input.variant,
-      })
     }
 
     const lease = SessionManager.acquire(input.sessionID)
     if (!lease) {
-      const queued = await queue()
-      if (queued.status === "not-busy") return { accepted: false }
       log.info("busy session message durably queued", {
         sessionID: input.sessionID,
-        itemID: queued.status === "queued" ? queued.itemID : undefined,
-        duplicate: queued.status === "duplicate",
+        itemID: delivery.itemID,
       })
-      if (!SessionManager.isRunning(input.sessionID)) {
-        const { SessionDrive } = await import("../session/drive")
-        await SessionDrive.request(input.sessionID, "channel-busy-acceptance")
-      }
       return { accepted: true, execution: Promise.resolve() }
     }
 
-    if (await SessionInbox.hasRunnableItem(input.sessionID)) {
-      try {
-        const queued = await queue()
-        if (queued.status === "not-busy") return { accepted: false }
-        log.info("queued conversation behind existing session work", {
-          sessionID: input.sessionID,
-          itemID: queued.status === "queued" ? queued.itemID : undefined,
-          duplicate: queued.status === "duplicate",
-        })
-        return { accepted: true, execution: Promise.resolve() }
-      } finally {
-        await SessionManager.finish(lease)
-      }
+    if (await SessionInbox.hasRunnableItem(input.sessionID, { excludeIDs: new Set([delivery.itemID]) })) {
+      await SessionManager.finish(lease)
+      log.info("queued conversation behind existing session work", {
+        sessionID: input.sessionID,
+        itemID: delivery.itemID,
+      })
+      return { accepted: true, execution: Promise.resolve() }
     }
 
-    let parts: InvokeInput["parts"]
-    try {
-      parts = await prepareParts()
-    } catch (error) {
-      await SessionManager.finish(lease)
-      throw error
-    }
+    let completed = false
     const execution = Promise.resolve()
-      .then(() => input.execute(lease, parts))
-      .finally(() => SessionManager.finish(lease))
+      .then(() =>
+        input.execute(lease, {
+          itemID: delivery.itemID,
+          messageID: delivery.messageID,
+          parts: preparedParts!,
+        }),
+      )
+      .then(() => {
+        completed = true
+      })
+      .finally(() => SessionManager.finish(lease, { requestNextWork: !completed }))
     void execution.catch((error) => {
       log.error("conversation execution failed", { sessionID: input.sessionID, error })
     })
