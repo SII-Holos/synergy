@@ -83,7 +83,13 @@ export class ProcessRegistry {
     lease: ExecutionLease,
   ): Promise<SynergyLinkBash.Result> {
     this.#host.assertLink(linkID)
-    const detachedRisk = detectDetachedDaemonRisk(request.command)
+    const workdir = Platform.resolveWorkdir(request.workdir)
+    const detachedRisk = detectDetachedDaemonRisk(request.command, process.platform, {
+      windowsResolution: {
+        workdir,
+        env: process.env,
+      },
+    })
     if (detachedRisk) {
       SynergyLinkLog.warn("bash.detached_daemon.blocked", {
         risk: detachedRisk,
@@ -98,7 +104,7 @@ export class ProcessRegistry {
     const launched = this.#launchShellProcess({
       command: request.command,
       description: request.description,
-      workdir: Platform.resolveWorkdir(request.workdir),
+      workdir,
       lease,
     })
 

@@ -1,3 +1,5 @@
+import { statSync } from "node:fs"
+import path from "node:path"
 import process from "node:process"
 
 export type DetachedDaemonRisk = {
@@ -16,6 +18,16 @@ export type DetachedDaemonRisk = {
     | "powershell_encoded_command"
     | "powershell_dynamic_command"
   pattern: string
+}
+
+export type WindowsCommandResolution = {
+  workdir: string
+  env: Record<string, string | undefined>
+  isFile?: (candidate: string) => boolean
+}
+
+export type DetachedDaemonDetectionOptions = {
+  windowsResolution?: WindowsCommandResolution
 }
 
 const commandBoundary = String.raw`(?:^|(?:&&|\|\||[;|\n\r(])\s*)`
@@ -52,14 +64,21 @@ const checks: Array<{ kind: DetachedDaemonRisk["kind"]; pattern: string; regex: 
   },
 ]
 
-export function detectDetachedDaemonRisk(command: string, platform = process.platform): DetachedDaemonRisk | undefined {
+export function detectDetachedDaemonRisk(
+  command: string,
+  platform = process.platform,
+  options?: DetachedDaemonDetectionOptions,
+): DetachedDaemonRisk | undefined {
   if (platform === "win32" && command.length > maxWindowsCommandChars) return windowsCommandTooComplexRisk()
   const unquoted = maskQuotedShellText(command)
   for (const check of checks) {
     if (check.regex.test(unquoted)) return { kind: check.kind, pattern: check.pattern }
   }
   if (platform === "win32") {
-    const windowsRisk = detectWindowsDetachedDaemonRisk(command)
+    const windowsResolution =
+      options?.windowsResolution ??
+      (platform === process.platform ? { workdir: process.cwd(), env: process.env } : undefined)
+    const windowsRisk = detectWindowsDetachedDaemonRisk(command, windowsResolution)
     if (windowsRisk) return windowsRisk
   }
   if (hasTopLevelBackgroundOperator(unquoted)) return { kind: "shell_background", pattern: "&" }
@@ -69,7 +88,7 @@ export function detachedDaemonBlockMessage(risk: DetachedDaemonRisk) {
   if (risk.kind === "windows_command_too_complex") {
     return [
       `Blocked Windows command before spawn: ${risk.pattern}`,
-      "Windows Synergy Link inspects at most 16 KiB per command, 64 nested shell bodies, and 128 KiB cumulatively.",
+      "Windows Synergy Link inspects at most 16 KiB per command, 64 nested shell bodies, 128 KiB cumulatively, and 256 filesystem probes.",
       "Split the work into smaller tracked bash/process operations.",
     ].join("\n")
   }
@@ -127,13 +146,30 @@ type WindowsWorkItem = {
 const maxWindowsCommandChars = 16_384
 const maxWindowsNestingDepth = 64
 const maxWindowsInspectionChars = 131_072
+const maxWindowsResolutionProbes = 256
 
-function detectWindowsDetachedDaemonRisk(command: string): DetachedDaemonRisk | undefined {
+type CmdScriptResolution = "cmd_script" | "other" | "budget_exhausted"
+
+type WindowsCommandResolutionContext = {
+  workdir: string
+  env: Map<string, string>
+  pathDirectories: string[]
+  extensions: string[]
+  isFile: (candidate: string) => boolean
+  commandCache: Map<string, CmdScriptResolution>
+  fileCache: Map<string, boolean>
+  probes: number
+}
+
+function detectWindowsDetachedDaemonRisk(
+  command: string,
+  windowsResolution?: WindowsCommandResolution,
+): DetachedDaemonRisk | undefined {
   const pending: WindowsWorkItem[] = [{ command, shell: "cmd", depth: 0 }]
   const seen = new Set<string>()
+  const resolutionContext = windowsResolution ? createWindowsCommandResolutionContext(windowsResolution) : undefined
   let cursor = 0
   let inspectedChars = 0
-
   while (cursor < pending.length) {
     const current = pending[cursor++]!
     const source = current.command.trim()
@@ -154,8 +190,18 @@ function detectWindowsDetachedDaemonRisk(command: string): DetachedDaemonRisk | 
 
       const dynamicRisk = dynamicWindowsInvocationRisk(invocation.executable, invocation.remainder, current.shell)
       if (dynamicRisk) return dynamicRisk
-      if (current.shell === "cmd" && isCmdScript(invocation.executable)) {
-        return { kind: "windows_dynamic_command", pattern: "opaque cmd script invocation" }
+      if (current.shell === "cmd" && cmdWrapperStateRisk(segment, invocation)) {
+        return { kind: "windows_dynamic_command", pattern: "opaque cmd state mutation" }
+      }
+      if (current.shell === "cmd") {
+        if (isOpaqueCmdCall(invocation)) {
+          return { kind: "windows_dynamic_command", pattern: "opaque cmd call invocation" }
+        }
+        const scriptResolution = resolvesToCmdScript(invocation.commandToken, resolutionContext)
+        if (scriptResolution === "budget_exhausted") return windowsCommandTooComplexRisk()
+        if (isCmdScript(invocation.executable) || scriptResolution === "cmd_script") {
+          return { kind: "windows_dynamic_command", pattern: "opaque cmd script invocation" }
+        }
       }
       if (current.shell === "powershell" && isPowerShellDynamicSegment(segment, invocation.executable)) {
         return { kind: "powershell_dynamic_command", pattern: "dynamic PowerShell process invocation" }
@@ -186,6 +232,7 @@ function detectWindowsDetachedDaemonRisk(command: string): DetachedDaemonRisk | 
 
       if (current.shell === "cmd") {
         for (const body of cmdWrapperBodies(invocation)) enqueue(body, "cmd")
+        applyCmdResolutionMutation(invocation, resolutionContext)
       }
     }
   }
@@ -255,6 +302,235 @@ function isCmdScript(executable: string): boolean {
   return executable.endsWith(".bat") || executable.endsWith(".cmd")
 }
 
+const cmdBuiltins = new Set([
+  "assoc",
+  "break",
+  "call",
+  "cd",
+  "chdir",
+  "cls",
+  "color",
+  "copy",
+  "date",
+  "del",
+  "dir",
+  "echo",
+  "endlocal",
+  "erase",
+  "exit",
+  "for",
+  "ftype",
+  "goto",
+  "if",
+  "md",
+  "mkdir",
+  "mklink",
+  "move",
+  "path",
+  "pause",
+  "popd",
+  "prompt",
+  "pushd",
+  "rd",
+  "rem",
+  "ren",
+  "rename",
+  "rmdir",
+  "set",
+  "setlocal",
+  "shift",
+  "start",
+  "time",
+  "title",
+  "type",
+  "ver",
+  "verify",
+  "vol",
+])
+
+function createWindowsCommandResolutionContext(resolution: WindowsCommandResolution): WindowsCommandResolutionContext {
+  const env = new Map<string, string>()
+  for (const [name, value] of Object.entries(resolution.env)) {
+    if (value !== undefined) env.set(name.toUpperCase(), value)
+  }
+  return {
+    workdir: resolution.workdir,
+    env,
+    pathDirectories: windowsPathDirectories(env),
+    extensions: windowsPathExtensions(env),
+    isFile: resolution.isFile ?? isRegularFile,
+    commandCache: new Map(),
+    fileCache: new Map(),
+    probes: 0,
+  }
+}
+
+function windowsPathDirectories(env: Map<string, string>): string[] {
+  return uniqueWindowsValues(
+    (env.get("PATH") ?? "")
+      .split(";")
+      .map((directory) => expandWindowsEnvVariables(stripOuterQuotes(directory.trim()), env))
+      .filter(Boolean),
+  )
+}
+
+function windowsPathExtensions(env: Map<string, string>): string[] {
+  return uniqueWindowsValues(
+    (env.get("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
+      .split(";")
+      .map((extension) => extension.trim())
+      .filter(Boolean)
+      .map((extension) => (extension.startsWith(".") ? extension : `.${extension}`)),
+  )
+}
+
+function expandWindowsEnvVariables(value: string, env: Map<string, string>): string {
+  let expanded = value
+  for (let pass = 0; pass < 8; pass += 1) {
+    const next = expanded.replace(/%([^%]+)%/g, (match, name: string) => env.get(name.toUpperCase()) ?? match)
+    if (next === expanded) return expanded
+    expanded = next
+  }
+  return expanded
+}
+
+function resolvesToCmdScript(commandToken: string, context?: WindowsCommandResolutionContext): CmdScriptResolution {
+  if (!context || isBareCmdBuiltin(commandToken)) return "other"
+
+  const executable = commandToken.replaceAll("/", "\\").replace(/[. ]+$/, "")
+  const explicitExtension = path.win32.extname(executable).toLowerCase()
+  const cacheKey = executable.toLowerCase()
+  const cached = context.commandCache.get(cacheKey)
+  if (cached) return cached
+
+  const hasDirectory = executable.includes("\\")
+  const bases = hasDirectory
+    ? [path.win32.resolve(context.workdir, executable)]
+    : [
+        path.win32.resolve(context.workdir, executable),
+        ...context.pathDirectories.map((directory) => path.win32.resolve(context.workdir, directory, executable)),
+      ]
+
+  // cmd checks an explicit dotted file first, then searches cwd and PATH using the first PATHEXT match.
+  for (const base of bases) {
+    const candidates = [
+      ...(explicitExtension ? [base] : []),
+      ...context.extensions.map((extension) => `${base}${extension}`),
+    ]
+    for (const candidate of candidates) {
+      const exists = probeWindowsCommandCandidate(candidate, context)
+      if (exists === "budget_exhausted") {
+        context.commandCache.set(cacheKey, "budget_exhausted")
+        return "budget_exhausted"
+      }
+      if (!exists) continue
+      const result = isCmdScript(path.win32.extname(candidate).toLowerCase()) ? "cmd_script" : "other"
+      context.commandCache.set(cacheKey, result)
+      return result
+    }
+  }
+  context.commandCache.set(cacheKey, "other")
+  return "other"
+}
+
+function probeWindowsCommandCandidate(
+  candidate: string,
+  context: WindowsCommandResolutionContext,
+): boolean | "budget_exhausted" {
+  const candidateKey = candidate.toLowerCase()
+  const cached = context.fileCache.get(candidateKey)
+  if (cached !== undefined) return cached
+  if (context.probes >= maxWindowsResolutionProbes) return "budget_exhausted"
+  context.probes += 1
+  const exists = context.isFile(candidate)
+  context.fileCache.set(candidateKey, exists)
+  return exists
+}
+
+function isOpaqueCmdCall(invocation: WindowsInvocation): boolean {
+  if (invocation.executable !== "call") return false
+  const target = readWindowsInvocation(invocation.remainder.trim())
+  if (!target || target.commandToken.startsWith(":")) return false
+  return !isBareCmdBuiltin(target.commandToken)
+}
+
+function cmdWrapperStateRisk(segment: string, invocation: WindowsInvocation): boolean {
+  if (["popd", "setlocal", "endlocal", "goto"].includes(invocation.executable)) return true
+  if (invocation.executable === "call") {
+    const target = readWindowsInvocation(invocation.remainder.trim())
+    if (target?.commandToken.startsWith(":")) return true
+  }
+  if (cmdWrapperBodies(invocation).some((body) => containsCmdResolutionMutation(body))) return true
+  const grouped = stripOuterCmdGroup(segment.trim())
+  return grouped !== segment.trim() && containsCmdResolutionMutation(grouped)
+}
+
+function containsCmdResolutionMutation(command: string, depth = 0): boolean {
+  if (depth > 8) return true
+  const source = stripOuterCmdGroup(command.trim())
+  for (const segment of windowsCommandSegments(source, "cmd")) {
+    const grouped = stripOuterCmdGroup(segment.trim())
+    const invocation = readWindowsInvocation(grouped)
+    if (!invocation) continue
+    if (["cd", "chdir", "pushd", "popd", "setlocal", "endlocal", "goto"].includes(invocation.executable)) return true
+    if (invocation.executable === "set") {
+      const assignment = stripOuterQuotes(invocation.remainder.trim()).toUpperCase()
+      if (assignment.startsWith("PATH=") || assignment.startsWith("PATHEXT=")) return true
+    }
+    if (invocation.executable === "call") {
+      const target = readWindowsInvocation(invocation.remainder.trim())
+      if (target?.commandToken.startsWith(":")) return true
+    }
+    if (cmdWrapperBodies(invocation).some((body) => containsCmdResolutionMutation(body, depth + 1))) return true
+  }
+  return false
+}
+
+function applyCmdResolutionMutation(invocation: WindowsInvocation, context?: WindowsCommandResolutionContext): void {
+  if (!context) return
+  if (["cd", "chdir", "pushd"].includes(invocation.executable)) {
+    const target = windowsTokens(invocation.remainder)
+      .map((token) => stripOuterQuotes(token.value))
+      .find((token) => token.toLowerCase() !== "/d")
+    if (!target) return
+    context.workdir = path.win32.resolve(context.workdir, expandWindowsEnvVariables(target, context.env))
+    context.commandCache.clear()
+    return
+  }
+  if (invocation.executable !== "set") return
+  const assignment = stripOuterQuotes(invocation.remainder.trim())
+  const equals = assignment.indexOf("=")
+  if (equals <= 0) return
+  const name = assignment.slice(0, equals).trim().toUpperCase()
+  const value = expandWindowsEnvVariables(assignment.slice(equals + 1), context.env)
+  context.env.set(name, value)
+  if (name === "PATH") context.pathDirectories = windowsPathDirectories(context.env)
+  if (name === "PATHEXT") context.extensions = windowsPathExtensions(context.env)
+  if (name === "PATH" || name === "PATHEXT") context.commandCache.clear()
+}
+
+function uniqueWindowsValues(values: string[]): string[] {
+  const seen = new Set<string>()
+  return values.filter((value) => {
+    const key = value.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function isBareCmdBuiltin(commandToken: string): boolean {
+  return !/[\\/]/.test(commandToken) && cmdBuiltins.has(commandToken.toLowerCase())
+}
+
+function isRegularFile(candidate: string): boolean {
+  try {
+    return statSync(candidate).isFile()
+  } catch {
+    return false
+  }
+}
+
 function isPowerShellDynamicSegment(segment: string, executable: string): boolean {
   if (["iex", "invoke-expression"].includes(executable)) return true
   if (executable.endsWith(".ps1") || executable.endsWith(".psm1")) return true
@@ -297,7 +573,13 @@ function windowsCommandSegments(command: string, shell: WindowsShell): string[] 
   return segments
 }
 
-function readWindowsInvocation(segment: string): { executable: string; remainder: string } | undefined {
+type WindowsInvocation = {
+  executable: string
+  commandToken: string
+  remainder: string
+}
+
+function readWindowsInvocation(segment: string): WindowsInvocation | undefined {
   let index = 0
   while (index < segment.length && (/\s/.test(segment[index] ?? "") || segment[index] === "@")) index += 1
   if (index >= segment.length) return
@@ -317,11 +599,11 @@ function readWindowsInvocation(segment: string): { executable: string; remainder
     while (index < segment.length && !/\s/.test(segment[index] ?? "")) index += 1
   }
   const rawToken = segment.slice(tokenStart, index)
-  const token = quote ? rawToken : rawToken.replace(/[)}]+$/, "")
+  const commandToken = quote ? rawToken : rawToken.replace(/[)}]+$/, "")
   if (quote && segment[index] === quote) index += 1
-  const executable = token.replaceAll("/", "\\").split("\\").at(-1)?.toLowerCase()
+  const executable = commandToken.replaceAll("/", "\\").split("\\").at(-1)?.toLowerCase()
   if (!executable) return
-  return { executable, remainder: segment.slice(index) }
+  return { executable, commandToken, remainder: segment.slice(index) }
 }
 
 function shellCommandBody(remainder: string, shellFlag: RegExp): string | undefined {
@@ -363,7 +645,7 @@ function isPowerShellExecutable(executable: string): boolean {
   return ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(executable)
 }
 
-function cmdWrapperBodies(invocation: { executable: string; remainder: string }): string[] {
+function cmdWrapperBodies(invocation: WindowsInvocation): string[] {
   if (invocation.executable === "call") {
     const body = invocation.remainder.trim()
     return body ? [body] : []

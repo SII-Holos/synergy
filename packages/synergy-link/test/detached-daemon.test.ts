@@ -56,6 +56,116 @@ describe("detectDetachedDaemonRisk", () => {
     }
   })
 
+  test("blocks extensionless commands that resolve to opaque cmd scripts", () => {
+    const files = new Set([
+      "c:\\work\\setup.cmd",
+      "c:\\work\\setup.v1.cmd",
+      "c:\\work\\shim.exe.cmd",
+      "c:\\work\\echo.cmd",
+      "c:\\bin\\build.bat",
+      "c:\\bin\\node.exe",
+      "c:\\bin\\node.cmd",
+      "c:\\tools\\deploy.cmd",
+      "c:\\windows\\system32\\system-setup.cmd",
+      "c:\\next\\local.cmd",
+      "c:\\path-next\\path-local.cmd",
+      "c:\\scripts\\wrapped.cmd",
+    ])
+    const windowsResolution = {
+      workdir: "C:\\work",
+      env: {
+        Path: "%SystemRoot%\\System32;C:\\bin;C:\\tools",
+        PATHEXT: ".EXE;.CMD;.BAT",
+        SystemRoot: "C:\\Windows",
+      },
+      isFile: (candidate: string) => files.has(candidate.toLowerCase()),
+    }
+
+    expect(detectDetachedDaemonRisk("setup --quiet", "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(detectDetachedDaemonRisk("build", "win32", { windowsResolution })?.kind).toBe("windows_dynamic_command")
+    expect(detectDetachedDaemonRisk("node script.js", "win32", { windowsResolution })).toBeUndefined()
+    expect(detectDetachedDaemonRisk("echo ok", "win32", { windowsResolution })).toBeUndefined()
+    expect(detectDetachedDaemonRisk(String.raw`C:\tools\deploy --quiet`, "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(detectDetachedDaemonRisk("missing", "win32", { windowsResolution })).toBeUndefined()
+    expect(detectDetachedDaemonRisk("setup.v1 --quiet", "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(detectDetachedDaemonRisk("shim.exe --quiet", "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(detectDetachedDaemonRisk("setup. --quiet", "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(detectDetachedDaemonRisk("system-setup", "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(detectDetachedDaemonRisk(String.raw`cd /d C:\next && local`, "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(
+      detectDetachedDaemonRisk(String.raw`set PATH=C:\path-next && path-local`, "win32", { windowsResolution })?.kind,
+    ).toBe("windows_dynamic_command")
+    expect(detectDetachedDaemonRisk("call setup.txt", "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(
+      detectDetachedDaemonRisk(String.raw`if exist marker (cd /d C:\scripts) && wrapped`, "win32", {
+        windowsResolution,
+      })?.kind,
+    ).toBe("windows_dynamic_command")
+    expect(
+      detectDetachedDaemonRisk(String.raw`for %i in (1) do cd /d C:\scripts && wrapped`, "win32", {
+        windowsResolution,
+      })?.kind,
+    ).toBe("windows_dynamic_command")
+    expect(
+      detectDetachedDaemonRisk(String.raw`(cd /d C:\scripts) && wrapped`, "win32", { windowsResolution })?.kind,
+    ).toBe("windows_dynamic_command")
+    expect(detectDetachedDaemonRisk("call :label && wrapped", "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+    expect(detectDetachedDaemonRisk("goto :skip && wrapped", "win32", { windowsResolution })?.kind).toBe(
+      "windows_dynamic_command",
+    )
+  })
+
+  test("bounds and caches Windows command resolution probes", () => {
+    let repeatedProbeCount = 0
+    const windowsResolution = {
+      workdir: "C:\\work",
+      env: {
+        Path: "C:\\bin;C:\\tools",
+        PATHEXT: ".EXE;.CMD;.BAT",
+      },
+      isFile: () => {
+        repeatedProbeCount += 1
+        return false
+      },
+    }
+
+    expect(detectDetachedDaemonRisk("missing && missing", "win32", { windowsResolution })).toBeUndefined()
+    expect(repeatedProbeCount).toBe(9)
+
+    let boundedProbeCount = 0
+    const boundedResolution = {
+      ...windowsResolution,
+      isFile: () => {
+        boundedProbeCount += 1
+        return false
+      },
+    }
+    const command = Array.from({ length: 30 }, (_, index) => `missing${index}`).join(" && ")
+
+    expect(detectDetachedDaemonRisk(command, "win32", { windowsResolution: boundedResolution })?.kind).toBe(
+      "windows_command_too_complex",
+    )
+    expect(boundedProbeCount).toBe(256)
+  })
+
   test("explains why Windows detached launchers are rejected", () => {
     const risk = detectDetachedDaemonRisk('start "" /b long-running.exe', "win32")
     if (!risk) throw new Error("Expected a Windows detached launcher risk")
@@ -70,7 +180,7 @@ describe("detectDetachedDaemonRisk", () => {
     if (!risk) throw new Error("Expected a Windows command inspection risk")
 
     expect(detachedDaemonBlockMessage(risk)).toContain(
-      "Windows Synergy Link inspects at most 16 KiB per command, 64 nested shell bodies, and 128 KiB cumulatively.",
+      "Windows Synergy Link inspects at most 16 KiB per command, 64 nested shell bodies, 128 KiB cumulatively, and 256 filesystem probes.",
     )
   })
 
