@@ -64,6 +64,7 @@ export type ReleaseState = {
   createdAt: string
   registryPackages: string[]
   binaryAssets: string[]
+  binaryChecksums: string | null
   desktopAssets: string[]
   desktopChecksums: string | null
   desktopUpdateMetadata: string[]

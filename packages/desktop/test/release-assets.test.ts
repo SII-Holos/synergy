@@ -46,6 +46,7 @@ describe("desktop release asset names", () => {
     expect(isDesktopUpdateMetadata("latest.yml")).toBe(true)
     expect(isDesktopUpdateMetadata("latest-mac.yml")).toBe(true)
     expect(isDesktopUpdateMetadata("notes.md")).toBe(false)
+    expect(isDesktopUpdateMetadata("latest-linux-arm64.yml")).toBe(true)
   })
 
   test("names version-locked Browser Host artifacts and signed manifests", () => {

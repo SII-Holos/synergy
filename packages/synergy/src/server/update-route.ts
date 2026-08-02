@@ -10,6 +10,7 @@ import { Installation } from "../global/installation"
 const NPM_PACKAGE = "@ericsanchezok/synergy"
 const NPM_REGISTRY = "https://registry.npmjs.org"
 const DESKTOP_UPDATE_MESSAGE = "This service uses the Synergy Desktop runtime. Update it from the Desktop app."
+const SAFE_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 
 const ServerUpdateCapability = z.enum(["managed", "not-managed", "remote"])
 const ServerUpdatePhase = z.enum(["idle", "checking", "available", "updating", "restarting", "error"])
@@ -129,6 +130,16 @@ export const UpdateRoute = new Hono()
       if (persisted && isActivePhase(persisted.phase)) return c.json(persisted)
       const body = c.req.valid("json")
       const latestVersion = body?.version ?? (await workerControls.latestVersion())
+      if (!SAFE_VERSION_PATTERN.test(latestVersion)) {
+        const error = `Invalid Synergy version: ${latestVersion}`
+        return c.json(
+          {
+            ...managedStatus("error", latestVersion, error, null),
+            message: error,
+          },
+          400,
+        )
+      }
       if (!isNewerVersion(latestVersion, Installation.VERSION)) {
         return c.json({
           ...managedStatus("idle", latestVersion, null, 100),
