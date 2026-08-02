@@ -25,7 +25,7 @@ bun run desktop:pack
 bun run desktop:dist
 ```
 
-`desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform Synergy runtime with the Web application, schema, and native runtime assets, and run `electron-builder`. Release workflows build the exact runtime targets with `SYNERGY_BUILD_TARGETS`, run the same runtime preparation step, and inject each complete runtime with `packages/desktop/script/after-pack.cjs`. Packaging fails before copying when the runtime lacks its executable, `app/index.html`, schema, or required sandbox helper.
+`desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform Synergy runtime with the Web application, schema, and native runtime assets, and run `electron-builder`. Release workflows build the exact runtime targets with `SYNERGY_BUILD_TARGETS`, run the same runtime preparation step, and inject each complete runtime with `packages/desktop/script/after-pack.cjs`. Packaging fails before copying when the runtime lacks its executable, `app/index.html`, schema, required sandbox helper, or a valid `runtime-manifest.sha256`.
 
 Native unread indicators use `build/unread-overlay.png` for the Windows taskbar overlay and `build/icon-unread.png` for the Linux tray fallback. `electron-builder.json` copies both fixed assets into `resources/icons`; keep the source assets and packaging assertions together when changing their runtime paths.
 
@@ -39,6 +39,7 @@ Recommended Desktop installer artifacts:
 - `Synergy-linux-amd64-${version}.deb`
 - `Synergy-linux-arm64-${version}.deb`
 - `Synergy-${version}-checksums.txt`
+- `Synergy-${version}-cli-checksums.txt` — SHA-256 of every CLI runtime archive (`synergy-*` and `synergy-link-*`), generated and uploaded by `stable_candidate`
 
 Windows ARM64 Browser Host artifacts remain published, but the full Windows ARM64 Desktop/runtime is not a Stable target until all native runtime dependencies are available for that architecture.
 
@@ -69,6 +70,12 @@ The same release also publishes signed Chromium installation metadata for `darwi
 Each Chromium manifest binds the Synergy version and target to the exact Playwright-pinned browser version, revision, upstream archive URL, executable path, SHA-256, and byte size. Release runners download and hash only their own platform archives; the Chromium archives remain on the Playwright CDN. `synergy browser install` verifies the signed manifest and archive before an atomic managed install.
 
 Every packaged runtime also includes the matching Playwright Core package under `browser-runtime/playwright-core` and the platform-independent ONNX Web module and WASM binary under `lib/onnxruntime-web`. Artifact validation requires both sidecars. The curl installer and Desktop packaging must preserve these directories so Browser startup and local embedding never resolve runtime dependencies from the release runner's checkout.
+
+Every runtime archive and Desktop runtime carries `runtime-manifest.sha256` with one `<sha256>  <relative-path>` entry per line covering the executable, the native helpers (`bin/ast-grep` or `bin/ast-grep.exe`, and `vec0.so`, `vec0.dylib`, or `vec0.dll`), `app/index.html`, `schema/config.schema.json`, the Playwright Core and ONNX Web sidecars, the Holos CLI files, and the platform sandbox helper. Release packaging verifies the manifest against the runtime directory before archiving and re-verifies every checksum against the extracted archive contents; Desktop packaging refuses to copy a runtime whose manifest is missing, incomplete, or fails checksum validation. The curl installer verifies each manifest entry (rejecting absolute or `..` paths) on the extracted bundle before replacing the installed runtime, and `synergy upgrade` verifies the installed manifest when present. An archive without a manifest is treated as legacy: the installer accepts it with a warning, and both the installer and upgrade verification fall back to required-file checks.
+
+The curl installer downloads the CLI checksum asset beside the selected archive and verifies that archive before extraction. Manifest-backed releases fail closed when the published checksum is unavailable, malformed, duplicated, or mismatched; historical archives without a runtime manifest remain installable through the legacy required-file contract. The installer uses a private temporary directory, rejects absolute paths, drive-letter paths, parent-directory traversal, backslash paths, and archive symbolic or hard links before extraction, then rejects any extracted symbolic link. It validates the runtime manifest and required-file contract before touching the current installation, backs up the complete managed runtime, verifies the installed copy, and restores the backup if any apply or post-install verification step fails. A successful restore removes the backup; if restoration itself fails, the recovery backup is preserved and its path is reported for manual recovery.
+
+musl Linux archives (`synergy-linux-*-musl`) intentionally exclude `bin/ast-grep` and the `vec0` SQLite vector extension because no musl-compatible release assets exist for them; their manifests omit those entries and runtime preparation removes any residual copies. glibc Linux, macOS, and Windows archives require both helpers and fail packaging when they are missing.
 
 Updater metadata expected on stable releases:
 
@@ -116,11 +123,11 @@ PR/package validation works without signing secrets. A product Release validates
 Product release keeps the existing candidate/finalize model:
 
 1. `stable_sandbox_assets` builds Linux x64/arm64 helpers for glibc and musl plus the Windows x64 helper, then uploads target-keyed assets. It never commits generated hashes.
-2. `stable_candidate` validates signing material, downloads the helper assets, selects the requested bump after the highest stable version already published by any release-managed npm package, runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, creates the draft GitHub Release, and uploads release state. This prevents an immutable package version from being reused after a dist-tag rollback. Missing helpers or Browser Host trust material fail before publication.
+2. `stable_candidate` validates signing material, downloads the helper assets, selects the requested bump after the highest stable version already published by any release-managed npm package, runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, packages the CLI archives (validating each against its `runtime-manifest.sha256` after extraction), generates and uploads `Synergy-${version}-cli-checksums.txt`, creates the draft GitHub Release, verifies the draft asset names, downloads each published CLI archive and the checksum asset, rejects any missing, extra, malformed, or mismatched checksum entry, and repeats the archive path/link and extracted runtime-manifest validation against the downloaded bytes.
 3. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. macOS and Linux build x64/arm64 Desktop artifacts; Windows builds x64 Desktop artifacts. Every platform still builds x64/arm64 minimal Browser Host zips.
 4. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key and helper hash embedded, assembles their Web application, schema, and native runtime assets, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle.
-5. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt`, and uploads the desktop assets to the draft GitHub Release.
-6. `stable_finalize` verifies npm candidates, runtime assets, recommended Desktop installer artifacts, portable artifacts, checksum, and updater metadata by reading the draft GitHub Release assets, then promotes npm tags and publishes the GitHub Release.
+5. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt` for the Desktop artifacts, and uploads them to the draft GitHub Release. The CLI checksum asset is separate and was already uploaded by `stable_candidate`.
+6. `stable_finalize` verifies npm candidates, downloads every CLI runtime archive, recomputes its SHA-256 against the published CLI checksum asset, rejects unsafe archive paths or links, extracts it into a private temporary directory, and re-validates its `runtime-manifest.sha256` and required target contract. It then verifies recommended Desktop installer artifacts, portable artifacts, Desktop checksum, and updater metadata from the draft GitHub Release before promoting npm tags and publishing the GitHub Release.
 
 Within that flow, each platform matrix job also generates and signs Chromium manifests for its supported target archives. `stable_desktop_publish` uploads the Browser Host and Chromium manifests, and `stable_finalize` verifies those Browser assets before publication.
 
@@ -130,7 +137,8 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 
 - If desktop packaging fails before upload, rerun the failed `stable_desktop_package` matrix job.
 - If desktop upload fails, rerun `stable_desktop_publish`; it uses `gh release upload --clobber`.
-- If checksum generation is wrong, delete the checksum asset from the draft release, rerun `stable_desktop_publish`, then rerun finalize.
+- If Desktop checksum generation is wrong, delete `Synergy-${version}-checksums.txt` from the draft release, rerun `stable_desktop_publish`, then rerun finalize.
+- If the CLI checksum asset is missing or wrong, replace `Synergy-${version}-cli-checksums.txt` in the draft release (regenerate it from the packaged CLI archives and upload with `gh release upload --clobber`), then rerun `stable_finalize`. Do not rerun `stable_candidate` to fix it: the candidate version is already published, so a rerun computes the next version instead of repairing this draft.
 - If notarization or code signing fails, verify the signing secrets and rerun only the affected platform matrix job before finalize.
 - If Browser manifest signing fails, verify that the private/public key pair matches, rerun every affected platform matrix job, and replace the corresponding Host or Chromium manifest/signature assets together. Never reuse a manifest for a rebuilt archive.
 - If finalize fails because desktop assets are missing, do not publish the draft release manually; restore the missing assets first, then rerun `stable_finalize`.
@@ -144,12 +152,13 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 - `bun run --cwd packages/desktop browser-host:dist`
 - `cd packages/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
 - Install `.pkg`, `.exe`, and `.deb` in platform runners or VMs and check `synergy --version` plus `synergy doctor`
-- Confirm every packaged Desktop runtime contains `app/index.html` and `schema/config.schema.json`, and that its managed server returns HTML from `/` after `/global/health` becomes healthy.
+- Confirm every packaged Desktop runtime contains `app/index.html`, `schema/config.schema.json`, and a valid `runtime-manifest.sha256`, and that its managed server returns HTML from `/` after `/global/health` becomes healthy.
 - Confirm every Linux/Windows runtime archive contains `sandbox/synergy-sandbox-*` and `synergy doctor` reports a verified helper
+- Confirm every CLI archive passes `runtime-manifest.sha256` validation after extraction both during local packaging and after download in `stable_finalize`; unsafe member paths and symbolic or hard links must fail before extraction. musl Linux archives omit `bin/ast-grep` and `vec0.*`, while glibc, macOS, and Windows archives contain both.
 - Confirm Linux `.deb` installs Bubblewrap and portable Linux checks report a clear prerequisite when it is absent
 - Confirm the packaged macOS Dock badge, Windows taskbar overlay, and Linux launcher/tray indicators appear for unread completion notices and clear after acknowledgement
 - Confirm Windows does not expose internal runtime helper binaries through PATH
 - Confirm Linux provides both `/usr/bin/synergy-desktop` for the desktop shell and `/usr/bin/synergy` for the runtime CLI
-- Draft GitHub Release contains all expected recommended installer artifacts, portable artifacts, checksum, and updater metadata before finalize
+- Draft GitHub Release contains all expected recommended installer artifacts, portable artifacts, both checksum assets (`Synergy-${version}-checksums.txt` and `Synergy-${version}-cli-checksums.txt`), and updater metadata before finalize
 - Draft GitHub Release contains six Browser Host zips, six exact-version manifests, and six signatures; every manifest executable exists at its exact platform path inside the matching zip, and tampered zip/signature tests pass before finalize
 - Draft GitHub Release contains five exact-version Chromium manifests and five signatures for the supported standalone install targets; signature, target-substitution, and archive-tampering tests pass before finalize.

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { createRequire } from "node:module"
 import fs from "node:fs/promises"
 import os from "node:os"
@@ -52,9 +53,12 @@ const afterPack = require("../script/after-pack.cjs") as {
   assertRuntimeAssets(runtimeDir: string, platform: string): void
 }
 
-async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy") {
+async function createRuntimeFixture(platform: "darwin" | "linux" | "win32" = "darwin", includeBinary = true) {
   const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-desktop-after-pack-"))
   temporaryDirectories.push(runtimeDir)
+  const binary = platform === "win32" ? "synergy.exe" : "synergy"
+  const astGrep = platform === "win32" ? "ast-grep.exe" : "ast-grep"
+  const sqliteVec = platform === "win32" ? "vec0.dll" : platform === "darwin" ? "vec0.dylib" : "vec0.so"
   await Promise.all([
     fs.mkdir(path.join(runtimeDir, "bin"), { recursive: true }),
     fs.mkdir(path.join(runtimeDir, "app"), { recursive: true }),
@@ -63,7 +67,11 @@ async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy
     fs.mkdir(path.join(runtimeDir, "lib", "onnxruntime-web"), { recursive: true }),
   ])
   await Promise.all([
-    fs.writeFile(path.join(runtimeDir, "bin", binary), "runtime"),
+    fs.mkdir(path.join(runtimeDir, "lib", "holos-cli", "vendor", "clarus-shared"), { recursive: true }),
+    fs.mkdir(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "ws"), { recursive: true }),
+    fs.mkdir(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "zod"), { recursive: true }),
+  ])
+  await Promise.all([
     fs.writeFile(path.join(runtimeDir, "app", "index.html"), "<!doctype html>"),
     fs.writeFile(path.join(runtimeDir, "schema", "config.schema.json"), "{}"),
     fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "package.json"), "{}"),
@@ -71,8 +79,35 @@ async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy
     fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib", "coreBundle.js"), "runtime"),
     fs.writeFile(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.mjs"), "runtime"),
     fs.writeFile(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "bin", astGrep), "runtime"),
+    fs.writeFile(path.join(runtimeDir, sqliteVec), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "index.js"), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "vendor", "clarus-shared", "index.js"), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "ws", "package.json"), "{}"),
+    fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "zod", "package.json"), "{}"),
   ])
+  if (includeBinary) await fs.writeFile(path.join(runtimeDir, "bin", binary), "runtime")
+  await writeRuntimeManifest(runtimeDir)
   return runtimeDir
+}
+
+async function writeRuntimeManifest(runtimeDir: string) {
+  const files: string[] = []
+  async function collect(directory: string) {
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name)
+      if (entry.isDirectory()) await collect(absolute)
+      else if (entry.name !== "runtime-manifest.sha256") files.push(path.relative(runtimeDir, absolute))
+    }
+  }
+  await collect(runtimeDir)
+  const lines = await Promise.all(
+    files.sort().map(async (relative) => {
+      const data = await fs.readFile(path.join(runtimeDir, relative))
+      return `${createHash("sha256").update(data).digest("hex")}  ${relative}`
+    }),
+  )
+  await fs.writeFile(path.join(runtimeDir, "runtime-manifest.sha256"), `${lines.join("\n")}\n`)
 }
 
 describe("desktop packaging", () => {
@@ -166,6 +201,61 @@ describe("desktop packaging", () => {
     expect(afterPackScript).toContain("appInfo?.version")
   })
 
+  test("rejects a runtime without its integrity manifest", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.rm(path.join(runtimeDir, "runtime-manifest.sha256"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(/runtime manifest is missing/i)
+  })
+
+  test("rejects a runtime whose manifest checksum no longer matches", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.writeFile(path.join(runtimeDir, "app", "index.html"), "tampered")
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /runtime manifest checksum mismatch.*app\/index\.html/i,
+    )
+  })
+
+  test("rejects a drive-letter path in the runtime manifest", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.appendFile(path.join(runtimeDir, "runtime-manifest.sha256"), `${"0".repeat(64)}  C:/outside-runtime\n`)
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /runtime manifest contains an invalid entry/i,
+    )
+  })
+
+  test("rejects a runtime manifest entry that resolves through a symbolic link", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    const appPath = path.join(runtimeDir, "app", "index.html")
+    const linkedApp = path.join(runtimeDir, "linked-app.html")
+    await fs.rename(appPath, linkedApp)
+    await fs.symlink(linkedApp, appPath)
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /runtime contains a symbolic link.*app\/index\.html/i,
+    )
+  })
+
+  test("rejects a symbolic link outside the Desktop runtime manifest", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.symlink(path.join(runtimeDir, "app", "index.html"), path.join(runtimeDir, "extra-link"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /runtime contains a symbolic link.*extra-link/i,
+    )
+  })
+
+  test("rejects a runtime without the packaged Holos CLI", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.rm(path.join(runtimeDir, "lib", "holos-cli", "vendor", "clarus-shared", "index.js"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /lib\/holos-cli\/vendor\/clarus-shared\/index\.js/,
+    )
+  })
+
   test("rejects a runtime that cannot serve the Desktop application", async () => {
     const runtimeDir = await createRuntimeFixture()
     await fs.rm(path.join(runtimeDir, "app", "index.html"))
@@ -174,16 +264,17 @@ describe("desktop packaging", () => {
   })
 
   test("requires the Linux sandbox helper", async () => {
-    const runtimeDir = await createRuntimeFixture()
+    const runtimeDir = await createRuntimeFixture("linux")
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "linux")).toThrow(/sandbox\/synergy-sandbox-linux/)
   })
 
   test("requires the Windows executable and sandbox helper", async () => {
-    const runtimeDir = await createRuntimeFixture()
+    const runtimeDir = await createRuntimeFixture("win32", false)
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(/bin\/synergy\.exe/)
     await fs.writeFile(path.join(runtimeDir, "bin", "synergy.exe"), "runtime")
+    await writeRuntimeManifest(runtimeDir)
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(/sandbox\/synergy-sandbox-windows\.exe/)
   })
 

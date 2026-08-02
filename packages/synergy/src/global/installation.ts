@@ -143,20 +143,21 @@ export namespace Installation {
 
   export async function upgrade(method: Method, target: string) {
     if (method === "standalone") {
-      const realExecPath = await fs.realpath(process.execPath).catch(() => process.execPath)
+      const [realExecPath, libc] = await Promise.all([
+        fs.realpath(process.execPath).catch(() => process.execPath),
+        StandaloneInstallation.detectLibc(process.platform),
+      ])
       const result = await StandaloneInstallation.upgrade({
         target,
         context: {
           platform: process.platform,
+          libc,
           execPath: process.execPath,
           realExecPath,
           env: process.env,
         },
       })
       log.info("upgraded", { method, target, stdout: result.stdout, stderr: result.stderr })
-      if (result.exitCode !== 0) {
-        throw new UpgradeFailedError({ stderr: result.stderr || result.stdout })
-      }
       await $`${process.execPath} --version`.nothrow().quiet().text()
       return
     }

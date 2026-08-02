@@ -27,7 +27,7 @@ import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
 // synergy-link npm publish removed — package too large for npm registry
 // import { publishSynergyLinkCandidate } from "./nodes/publish-synergy-link-candidate"
-import { packageBinaryAssets } from "./nodes/package-binary-assets"
+import { createBinaryChecksums, packageBinaryAssets } from "./nodes/package-binary-assets"
 import { ensureDraftRelease } from "./nodes/create-draft-release"
 import { ensureStableTag } from "./nodes/ensure-stable-tag"
 import { uploadBinaryAssets } from "./nodes/upload-binary-assets"
@@ -77,6 +77,7 @@ try {
   const synergyAssets = await packageBinaryAssets(SYNERGY_DIST_DIR, synergy.platformNames)
   const synergyLinkAssets = await packageBinaryAssets(SYNERGY_LINK_DIST_DIR, synergyLinkPlatformNames)
   state.binaryAssets = [...synergyAssets, ...synergyLinkAssets]
+  state.binaryChecksums = await createBinaryChecksums(version, state.binaryAssets, SYNERGY_DIST_DIR)
   await ensureStableTag(state.version)
 
   const withRelease = await ensureDraftRelease(state)

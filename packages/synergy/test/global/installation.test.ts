@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import { Installation } from "../../src/global/installation"
 import { StandaloneInstallation } from "../../src/global/standalone-installation"
 
@@ -95,6 +99,44 @@ describe("standalone installation", () => {
     }
   })
 
+  test("detects musl from Alpine or ldd output", async () => {
+    expect(
+      await StandaloneInstallation.detectLibc("linux", {
+        alpineReleaseExists: async () => true,
+        lddVersion: async () => {
+          throw new Error("ldd must not run after Alpine detection")
+        },
+      }),
+    ).toBe("musl")
+
+    expect(
+      await StandaloneInstallation.detectLibc("linux", {
+        alpineReleaseExists: async () => false,
+        lddVersion: async () => "musl libc (x86_64)",
+      }),
+    ).toBe("musl")
+  })
+
+  test("defaults Linux to glibc and leaves other platforms unspecified", async () => {
+    expect(
+      await StandaloneInstallation.detectLibc("linux", {
+        alpineReleaseExists: async () => false,
+        lddVersion: async () => "ldd (GNU libc) 2.39",
+      }),
+    ).toBe("glibc")
+
+    expect(
+      await StandaloneInstallation.detectLibc("darwin", {
+        alpineReleaseExists: async () => {
+          throw new Error("non-Linux detection must not inspect Alpine")
+        },
+        lddVersion: async () => {
+          throw new Error("non-Linux detection must not run ldd")
+        },
+      }),
+    ).toBeUndefined()
+  })
+
   test("runs the current installer against the requested standalone version and home", async () => {
     const fetched: string[] = []
     const invocations: StandaloneInstallation.InstallerInvocation[] = []
@@ -118,6 +160,7 @@ describe("standalone installation", () => {
           invocations.push(invocation)
           return { exitCode: 0, stdout: "installed", stderr: "" }
         },
+        verify: async () => true,
       },
     )
 
@@ -130,5 +173,347 @@ describe("standalone installation", () => {
       },
     ])
     expect(result).toEqual({ exitCode: 0, stdout: "installed", stderr: "" })
+  })
+
+  test("rejects a standalone upgrade when the installer exits unsuccessfully", async () => {
+    const upgrade = StandaloneInstallation.upgrade(
+      {
+        target: "3.0.9",
+        context: {
+          platform: "linux",
+          execPath: "/root/.synergy/bin/synergy",
+          realExecPath: "/root/.synergy/bin/synergy",
+          env,
+        },
+      },
+      {
+        fetch: async () => new Response("#!/usr/bin/env bash\n"),
+        run: async () => ({ exitCode: 22, stdout: "", stderr: "archive download failed" }),
+        verify: async () => {
+          throw new Error("verification must not run after installer failure")
+        },
+      },
+    )
+
+    await expect(upgrade).rejects.toThrow(/archive download failed/)
+  })
+
+  test("rejects a standalone upgrade when the installed bundle is incomplete", async () => {
+    const upgrade = StandaloneInstallation.upgrade(
+      {
+        target: "3.0.9",
+        context: {
+          platform: "linux",
+          execPath: "/root/.synergy/bin/synergy",
+          realExecPath: "/root/.synergy/bin/synergy",
+          env,
+        },
+      },
+      {
+        fetch: async () => new Response("#!/usr/bin/env bash\n"),
+        run: async () => ({ exitCode: 0, stdout: "installed", stderr: "" }),
+        verify: async () => false,
+      },
+    )
+
+    await expect(upgrade).rejects.toThrow(/incomplete standalone installation/i)
+  })
+
+  test("verifies a complete legacy standalone installation without a manifest", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-standalone-legacy-"))
+    const required = [
+      "bin/synergy",
+      "app/index.html",
+      "schema/config.schema.json",
+      "browser-runtime/playwright-core/package.json",
+      "browser-runtime/playwright-core/index.js",
+      "browser-runtime/playwright-core/lib/coreBundle.js",
+      "sandbox/synergy-sandbox-linux",
+    ]
+    try {
+      for (const relative of required) {
+        const file = path.join(home, ".synergy", relative)
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        await fs.writeFile(file, relative)
+      }
+
+      expect(
+        await StandaloneInstallation.verify(home, {
+          platform: "linux",
+          execPath: path.join(home, ".synergy", "bin", "synergy"),
+          realExecPath: path.join(home, ".synergy", "bin", "synergy"),
+          env,
+        }),
+      ).toBe(true)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects an empty manifest instead of treating it as a legacy installation", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-standalone-empty-manifest-"))
+    const installationRoot = path.join(home, ".synergy")
+    const required = [
+      "bin/synergy",
+      "app/index.html",
+      "schema/config.schema.json",
+      "browser-runtime/playwright-core/package.json",
+      "browser-runtime/playwright-core/index.js",
+      "browser-runtime/playwright-core/lib/coreBundle.js",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
+      "lib/holos-cli/index.js",
+      "lib/holos-cli/vendor/clarus-shared/index.js",
+      "lib/holos-cli/node_modules/ws/package.json",
+      "lib/holos-cli/node_modules/zod/package.json",
+    ]
+    try {
+      for (const relative of required) {
+        const file = path.join(installationRoot, relative)
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        await fs.writeFile(file, relative)
+      }
+      await fs.writeFile(path.join(installationRoot, "runtime-manifest.sha256"), "")
+
+      expect(
+        await StandaloneInstallation.verify(home, {
+          platform: "darwin",
+          execPath: path.join(installationRoot, "bin", "synergy"),
+          realExecPath: path.join(installationRoot, "bin", "synergy"),
+          env,
+        }),
+      ).toBe(false)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects symbolic links in a legacy standalone installation", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-standalone-legacy-link-"))
+    const installationRoot = path.join(home, ".synergy")
+    const required = [
+      "bin/synergy",
+      "schema/config.schema.json",
+      "browser-runtime/playwright-core/package.json",
+      "browser-runtime/playwright-core/index.js",
+      "browser-runtime/playwright-core/lib/coreBundle.js",
+    ]
+    try {
+      for (const relative of required) {
+        const file = path.join(installationRoot, relative)
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        await fs.writeFile(file, relative)
+      }
+      const linkedApp = path.join(installationRoot, "linked-app.html")
+      await fs.writeFile(linkedApp, "app")
+      await fs.mkdir(path.join(installationRoot, "app"), { recursive: true })
+      await fs.symlink(linkedApp, path.join(installationRoot, "app", "index.html"))
+
+      expect(
+        await StandaloneInstallation.verify(home, {
+          platform: "darwin",
+          execPath: path.join(installationRoot, "bin", "synergy"),
+          realExecPath: path.join(installationRoot, "bin", "synergy"),
+          env,
+        }),
+      ).toBe(false)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects a manifest that omits a required standalone runtime entry", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-standalone-manifest-"))
+    const installationRoot = path.join(home, ".synergy")
+    const files = ["bin/synergy", "app/index.html"]
+    try {
+      const lines: string[] = []
+      for (const relative of files) {
+        const file = path.join(installationRoot, relative)
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        const data = Buffer.from(relative)
+        await fs.writeFile(file, data)
+        lines.push(`${createHash("sha256").update(data).digest("hex")}  ${relative}`)
+      }
+      await fs.writeFile(path.join(installationRoot, "runtime-manifest.sha256"), `${lines.join("\n")}\n`)
+
+      expect(
+        await StandaloneInstallation.verify(home, {
+          platform: "darwin",
+          execPath: path.join(installationRoot, "bin", "synergy"),
+          realExecPath: path.join(installationRoot, "bin", "synergy"),
+          env,
+        }),
+      ).toBe(false)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects a drive-letter path in a standalone runtime manifest", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-standalone-drive-manifest-"))
+    const installationRoot = path.join(home, ".synergy")
+    const required = [
+      "bin/synergy",
+      "app/index.html",
+      "schema/config.schema.json",
+      "browser-runtime/playwright-core/package.json",
+      "browser-runtime/playwright-core/index.js",
+      "browser-runtime/playwright-core/lib/coreBundle.js",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
+      "lib/holos-cli/index.js",
+      "lib/holos-cli/vendor/clarus-shared/index.js",
+      "lib/holos-cli/node_modules/ws/package.json",
+      "lib/holos-cli/node_modules/zod/package.json",
+    ]
+    try {
+      const lines: string[] = []
+      for (const relative of required) {
+        const file = path.join(installationRoot, relative)
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        const data = Buffer.from(relative)
+        await fs.writeFile(file, data)
+        lines.push(`${createHash("sha256").update(data).digest("hex")}  ${relative}`)
+      }
+      lines.push(`${"0".repeat(64)}  C:/outside-runtime`)
+      await fs.writeFile(path.join(installationRoot, "runtime-manifest.sha256"), `${lines.join("\n")}\n`)
+
+      expect(
+        await StandaloneInstallation.verify(home, {
+          platform: "darwin",
+          execPath: path.join(installationRoot, "bin", "synergy"),
+          realExecPath: path.join(installationRoot, "bin", "synergy"),
+          env,
+        }),
+      ).toBe(false)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects a standalone runtime whose manifest checksum is stale", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-standalone-tamper-"))
+    const installationRoot = path.join(home, ".synergy")
+    const required = [
+      "bin/synergy",
+      "app/index.html",
+      "schema/config.schema.json",
+      "browser-runtime/playwright-core/package.json",
+      "browser-runtime/playwright-core/index.js",
+      "browser-runtime/playwright-core/lib/coreBundle.js",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
+      "lib/holos-cli/index.js",
+      "lib/holos-cli/vendor/clarus-shared/index.js",
+      "lib/holos-cli/node_modules/ws/package.json",
+      "lib/holos-cli/node_modules/zod/package.json",
+    ]
+    try {
+      const lines: string[] = []
+      for (const relative of required) {
+        const file = path.join(installationRoot, relative)
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        const data = Buffer.from(relative)
+        await fs.writeFile(file, data)
+        lines.push(`${createHash("sha256").update(data).digest("hex")}  ${relative}`)
+      }
+      await fs.writeFile(path.join(installationRoot, "runtime-manifest.sha256"), `${lines.join("\n")}\n`)
+      await fs.writeFile(path.join(installationRoot, "app", "index.html"), "tampered")
+
+      expect(
+        await StandaloneInstallation.verify(home, {
+          platform: "darwin",
+          execPath: path.join(installationRoot, "bin", "synergy"),
+          realExecPath: path.join(installationRoot, "bin", "synergy"),
+          env,
+        }),
+      ).toBe(false)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+  test("rejects a modern non-musl standalone runtime without native helpers", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-standalone-native-helpers-"))
+    const installationRoot = path.join(home, ".synergy")
+    const required = [
+      "bin/synergy",
+      "app/index.html",
+      "schema/config.schema.json",
+      "browser-runtime/playwright-core/package.json",
+      "browser-runtime/playwright-core/index.js",
+      "browser-runtime/playwright-core/lib/coreBundle.js",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
+      "lib/holos-cli/index.js",
+      "lib/holos-cli/vendor/clarus-shared/index.js",
+      "lib/holos-cli/node_modules/ws/package.json",
+      "lib/holos-cli/node_modules/zod/package.json",
+    ]
+    try {
+      const lines: string[] = []
+      for (const relative of required) {
+        const file = path.join(installationRoot, relative)
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        const data = Buffer.from(relative)
+        await fs.writeFile(file, data)
+        lines.push(`${createHash("sha256").update(data).digest("hex")}  ${relative}`)
+      }
+      await fs.writeFile(path.join(installationRoot, "runtime-manifest.sha256"), `${lines.join("\n")}\n`)
+
+      expect(
+        await StandaloneInstallation.verify(home, {
+          platform: "darwin",
+          execPath: path.join(installationRoot, "bin", "synergy"),
+          realExecPath: path.join(installationRoot, "bin", "synergy"),
+          env,
+        }),
+      ).toBe(false)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("allows a modern musl standalone runtime without native helpers", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-standalone-musl-"))
+    const installationRoot = path.join(home, ".synergy")
+    const required = [
+      "bin/synergy",
+      "sandbox/synergy-sandbox-linux",
+      "app/index.html",
+      "schema/config.schema.json",
+      "browser-runtime/playwright-core/package.json",
+      "browser-runtime/playwright-core/index.js",
+      "browser-runtime/playwright-core/lib/coreBundle.js",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
+      "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
+      "lib/holos-cli/index.js",
+      "lib/holos-cli/vendor/clarus-shared/index.js",
+      "lib/holos-cli/node_modules/ws/package.json",
+      "lib/holos-cli/node_modules/zod/package.json",
+    ]
+    try {
+      const lines: string[] = []
+      for (const relative of required) {
+        const file = path.join(installationRoot, relative)
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        const data = Buffer.from(relative)
+        await fs.writeFile(file, data)
+        lines.push(`${createHash("sha256").update(data).digest("hex")}  ${relative}`)
+      }
+      await fs.writeFile(path.join(installationRoot, "runtime-manifest.sha256"), `${lines.join("\n")}\n`)
+
+      expect(
+        await StandaloneInstallation.verify(home, {
+          platform: "linux",
+          libc: "musl",
+          execPath: path.join(installationRoot, "bin", "synergy"),
+          realExecPath: path.join(installationRoot, "bin", "synergy"),
+          env,
+        }),
+      ).toBe(true)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
   })
 })
