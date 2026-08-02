@@ -154,6 +154,8 @@ The Sidebar groups managed Projects under Channel account rows. Feishu conversat
 
 Settings refetches canonical Channel status on `channel.connected` and `channel.disconnected`, so an open account panel converges without requiring the user to reopen it or trigger Project refresh.
 
+Feishu keeps unsupported image-format adaptation inside the provider boundary. Outbound SVG attachments remain canonical file parts in Channel core; the provider renders a bounded PNG preview in an isolated Worker with a five-second hard timeout, then sends it before the byte-identical SVG file. Preview conversion, upload, or delivery failure is non-fatal and preserves file delivery.
+
 ## Invariants
 
 - Channel core owns Scope and Session integration; providers own remote protocol state.

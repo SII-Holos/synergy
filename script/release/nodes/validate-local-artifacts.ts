@@ -4,6 +4,7 @@ import path from "path"
 import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
 import { PLAYWRIGHT_CORE_REQUIRED_PATHS } from "../../../packages/synergy/script/playwright-runtime-assets"
 import { EMBEDDING_RUNTIME_REQUIRED_PATHS } from "../../../packages/synergy/script/embedding-runtime-assets"
+import { SVG_RASTER_RUNTIME_REQUIRED_PATHS } from "../../../packages/synergy/script/svg-raster-runtime-assets"
 
 export function requiredRuntimeArtifactPaths(name: string): string[] {
   const binaryRelative = name.includes("windows") ? "bin/synergy.exe" : "bin/synergy"
@@ -13,6 +14,7 @@ export function requiredRuntimeArtifactPaths(name: string): string[] {
     "schema/config.schema.json",
     ...PLAYWRIGHT_CORE_REQUIRED_PATHS,
     ...EMBEDDING_RUNTIME_REQUIRED_PATHS,
+    ...SVG_RASTER_RUNTIME_REQUIRED_PATHS,
   ]
   if (name.includes("linux")) required.push("sandbox/synergy-sandbox-linux")
   if (name.includes("windows")) required.push("sandbox/synergy-sandbox-windows.exe")

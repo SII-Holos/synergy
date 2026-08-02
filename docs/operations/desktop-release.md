@@ -68,7 +68,7 @@ The same release also publishes signed Chromium installation metadata for `darwi
 
 Each Chromium manifest binds the Synergy version and target to the exact Playwright-pinned browser version, revision, upstream archive URL, executable path, SHA-256, and byte size. Release runners download and hash only their own platform archives; the Chromium archives remain on the Playwright CDN. `synergy browser install` verifies the signed manifest and archive before an atomic managed install.
 
-Every packaged runtime also includes the matching Playwright Core package under `browser-runtime/playwright-core` and the platform-independent ONNX Web module and WASM binary under `lib/onnxruntime-web`. Artifact validation requires both sidecars. The curl installer and Desktop packaging must preserve these directories so Browser startup and local embedding never resolve runtime dependencies from the release runner's checkout.
+Every packaged runtime also includes the matching Playwright Core package under `browser-runtime/playwright-core`, the platform-independent ONNX Web module and WASM binary under `lib/onnxruntime-web`, and the SVG raster WASM binary under `lib/resvg-wasm`. The SVG raster sidecar carries its MPL-2.0 license text and exact-version Source Code Form pointer in the same directory. Artifact validation requires all three sidecars and the SVG notice files. The curl installer and Desktop packaging must preserve these directories so Browser startup, local embedding, and SVG preview rendering never resolve runtime dependencies from the release runner's checkout.
 
 Updater metadata expected on stable releases:
 

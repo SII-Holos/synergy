@@ -61,6 +61,7 @@ async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy
     fs.mkdir(path.join(runtimeDir, "schema"), { recursive: true }),
     fs.mkdir(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
     fs.mkdir(path.join(runtimeDir, "lib", "onnxruntime-web"), { recursive: true }),
+    fs.mkdir(path.join(runtimeDir, "lib", "resvg-wasm"), { recursive: true }),
   ])
   await Promise.all([
     fs.writeFile(path.join(runtimeDir, "bin", binary), "runtime"),
@@ -71,6 +72,9 @@ async function createRuntimeFixture(binary: "synergy" | "synergy.exe" = "synergy
     fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib", "coreBundle.js"), "runtime"),
     fs.writeFile(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.mjs"), "runtime"),
     fs.writeFile(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "index_bg.wasm"), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "LICENSE-MPL-2.0.txt"), "license"),
+    fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "THIRD_PARTY_NOTICES.txt"), "notice"),
   ])
   return runtimeDir
 }
@@ -202,6 +206,21 @@ describe("desktop packaging", () => {
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
       /lib\/onnxruntime-web\/ort-wasm-simd-threaded\.asyncify\.wasm/,
+    )
+  })
+
+  test("rejects a runtime without its SVG raster sidecar", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.rm(path.join(runtimeDir, "lib", "resvg-wasm", "index_bg.wasm"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(/lib\/resvg-wasm\/index_bg\.wasm/)
+  })
+  test("rejects a runtime without its SVG raster license notice", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.rm(path.join(runtimeDir, "lib", "resvg-wasm", "THIRD_PARTY_NOTICES.txt"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /lib\/resvg-wasm\/THIRD_PARTY_NOTICES\.txt/,
     )
   })
 })

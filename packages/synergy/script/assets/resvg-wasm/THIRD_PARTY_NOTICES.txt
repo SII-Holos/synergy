@@ -1,0 +1,3 @@
+@resvg/resvg-wasm 2.6.2
+License: Mozilla Public License Version 2.0 (see LICENSE-MPL-2.0.txt)
+Source Code Form: https://github.com/yisibl/resvg-js/tree/v2.6.2
