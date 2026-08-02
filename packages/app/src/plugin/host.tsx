@@ -20,12 +20,12 @@ import {
   type PluginSurfaceContext,
 } from "@ericsanchezok/synergy-plugin"
 import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
-import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { fetchUIContributions, type PluginContribution } from "./api"
+import { resolvePluginAssetUrl } from "./asset-url"
 import type { PluginLifecycleState } from "./lifecycle"
 import { loadPluginExport } from "./loaders"
 import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
@@ -202,7 +202,7 @@ function registerPluginSurfaces(input: {
   replacePluginThemes(input.assets.themes.values())
 
   for (const plugin of input.contributions) {
-    const asset = (file: string) => pluginAssetUrl(plugin.pluginId, plugin.generation, file)
+    const asset = (file: string) => resolvePluginAssetUrl(input.serverUrl, plugin.pluginId, plugin.generation, file)
     const componentLoader = <Props extends object>(
       item: PluginManifestContribution,
       session: (props: Props) => string | undefined = () => currentSessionId(),
@@ -553,7 +553,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     reloadController = controller
     try {
       const next = await fetchUIContributions(server.url, scopeKey())
-      const assets = await loadPluginUIAssets(next, { signal: controller.signal })
+      const assets = await loadPluginUIAssets(next, { serverUrl: server.url, signal: controller.signal })
       if (generation !== reloadGeneration) return
       dispose()
       const registered = registerPluginSurfaces({
