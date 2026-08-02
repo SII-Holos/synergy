@@ -1,4 +1,5 @@
 import process from "node:process"
+import { readFile, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage } from "node:http"
 import { spawn } from "node:child_process"
 import { createInterface } from "node:readline/promises"
@@ -8,6 +9,7 @@ import { HOLOS_PORTAL_URL, holosEndpointURL, SynergyLinkHolosAuth } from "./auth
 import { SynergyLinkHolosProtocol } from "./protocol"
 
 const LOGIN_TIMEOUT_MS = 5 * 60_000
+const MAX_AGENT_SECRET_BYTES = 4096
 
 export namespace SynergyLinkHolosLogin {
   export function createBindURL(input: { callbackURL: string; state: string; portalUrl?: string }) {
@@ -17,6 +19,58 @@ export namespace SynergyLinkHolosLogin {
     endpoint.searchParams.set("local_callback", input.callbackURL)
     endpoint.searchParams.set("state", input.state)
     return endpoint.toString()
+  }
+
+  export async function readAgentSecretInput(source: string): Promise<string> {
+    if (source === "-") {
+      return validateAgentSecret(await readSecretLine())
+    }
+    return await readAgentSecretFile(source)
+  }
+
+  export async function readAgentSecretFile(filePath: string): Promise<string> {
+    let metadata
+    try {
+      metadata = await stat(filePath)
+    } catch {
+      throw new Error("Could not read agent secret file.")
+    }
+    if (!metadata.isFile()) {
+      throw new Error("Could not read agent secret file.")
+    }
+    if (metadata.size > MAX_AGENT_SECRET_BYTES) {
+      throw new Error(`Agent secret file exceeds ${MAX_AGENT_SECRET_BYTES} bytes.`)
+    }
+    if (process.platform !== "win32" && (metadata.mode & 0o077) !== 0) {
+      console.error("warning: agent secret file is readable by group or other users; restrict it to mode 0600.")
+    }
+
+    let content: string
+    try {
+      content = await readFile(filePath, "utf8")
+    } catch {
+      throw new Error("Could not read agent secret file.")
+    }
+    return validateAgentSecret(content)
+  }
+
+  function validateAgentSecret(content: string): string {
+    if (Buffer.byteLength(content, "utf8") > MAX_AGENT_SECRET_BYTES) {
+      throw new Error(`Agent secret file exceeds ${MAX_AGENT_SECRET_BYTES} bytes.`)
+    }
+
+    const value = content.endsWith("\r\n")
+      ? content.slice(0, -2)
+      : content.endsWith("\n")
+        ? content.slice(0, -1)
+        : content
+    if (value.length === 0) {
+      throw new Error("Agent secret file is empty.")
+    }
+    if (value.includes("\u0000") || value.includes("\r") || value.includes("\n")) {
+      throw new Error("Agent secret file contains invalid content.")
+    }
+    return value
   }
 
   export async function verifySecret(agentSecret: string): Promise<{ valid: true } | { valid: false; reason: string }> {
@@ -270,7 +324,13 @@ async function readLine(): Promise<string> {
 
 async function readSecretLine(): Promise<string> {
   if (!input.isTTY) {
-    return await readLine()
+    const rl = createInterface({ input, terminal: false })
+    try {
+      for await (const line of rl) return line
+      return ""
+    } finally {
+      rl.close()
+    }
   }
 
   const previousRawMode = typeof input.setRawMode === "function" ? input.isRaw : undefined

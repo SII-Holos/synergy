@@ -69,9 +69,9 @@ Rules:
 ## Deploy and Start
 
 1. Place the `synergy-link` binary under the per-instance bin path; keep the shared mount read-only.
-2. Start the host: `synergy-link start` (background service) or `synergy-link server [--print-logs]` (foreground debugging).
-3. Log in explicitly on non-interactive containers: `synergy-link login --agent-id <AGENT_ID> --agent-secret <SECRET>` on a secure console, or the interactive flow when a TTY exists. Credential import asks Holos to authenticate the secret and verifies that `/me` returns the supplied Agent ID before it replaces any saved credential. Never paste a secret into a prompt, log, or chat.
-   The host reads Holos endpoint settings from the canonical `~/.synergy/config/synergy.d/100-holos.jsonc` domain file; legacy monolithic config is read only as migration fallback.
+2. Before starting a fresh non-interactive host, provide the Agent Secret through an instance-local protected file with mode `0600`, then run `synergy-link login --agent-id <AGENT_ID> --agent-secret-file <SECRET_FILE>`. `--agent-secret-file -` reads one secret line from stdin for an operator-controlled handoff. Never put the Secret in command arguments, prompts, logs, or chat; remove the input file after successful login. Interactive TTY sessions may use `synergy-link login` instead.
+   Credential import asks Holos to authenticate the secret and verifies that `/me` returns the supplied Agent ID before replacing any saved credential. The host reads Holos endpoint settings from the canonical `~/.synergy/config/synergy.d/100-holos.jsonc` domain file; legacy monolithic config is read only as migration fallback.
+3. Start the authenticated host: `synergy-link start` (background service) or `synergy-link server [--print-logs]` (foreground debugging).
 4. Confirm the service stayed up: `synergy-link status` must show `Status source: live` and exit zero. `snapshot (last-known)` is degraded diagnostic data, exits nonzero, and is not proof that the service is healthy.
 
 ## Verification
@@ -130,7 +130,7 @@ Symptom: sender sees `unknown` or `unreachable` availability, timeouts, an error
 
 1. On the old host, run `synergy-link stop`. If it cannot be reached, revoke its Agent credential before continuing.
 2. Create a distinct Holos Agent identity and Secret for the replacement device. Never copy or reuse the old host's Agent ID or Secret.
-3. On the replacement host's secure console, log in with the new identity: `synergy-link login` (interactive) or `synergy-link login --agent-id <NEW_AGENT_ID> --agent-secret <NEW_SECRET>`. Keep the Secret out of logs and chat.
+3. On the replacement host's secure console, provide the new Secret through an instance-local protected file with mode `0600`, then run `synergy-link login --agent-id <NEW_AGENT_ID> --agent-secret-file <SECRET_FILE>` before starting the service. Remove the input file after successful login. An operator with a TTY may use interactive `synergy-link login` instead.
 4. Run `synergy-link start`, then verify `whoami`, `doctor`, and the Link ID.
 5. On the sender, atomically relink the persisted target to the replacement `targetAgentID` and `linkID`, and require a successful probe before remote work.
 6. Confirm the old host remains stopped, revoke its credential, and retire its state only after the replacement target passes verification.

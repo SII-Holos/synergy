@@ -306,6 +306,25 @@ describe("synergy-link CLI hardening", () => {
     })
   })
 
+  test("reads a protected agent secret file without exposing or trimming its payload", async () => {
+    const secretPath = path.join(process.env.SYNERGY_LINK_HOME!, "agent-secret")
+    await writeFile(secretPath, "  candidate-secret  \r\n", { mode: 0o600 })
+
+    await expect(SynergyLinkHolosLogin.readAgentSecretFile(secretPath)).resolves.toBe("  candidate-secret  ")
+  })
+
+  test("rejects empty, nul-containing, and oversized agent secret files", async () => {
+    const secretPath = path.join(process.env.SYNERGY_LINK_HOME!, "agent-secret")
+    for (const [content, message] of [
+      ["\r\n", "Agent secret file is empty."],
+      ["secret\u0000suffix", "Agent secret file contains invalid content."],
+      ["x".repeat(4097), "Agent secret file exceeds 4096 bytes."],
+    ] as const) {
+      await writeFile(secretPath, content, { mode: 0o600 })
+      await expect(SynergyLinkHolosLogin.readAgentSecretFile(secretPath)).rejects.toThrow(message)
+    }
+  })
+
   test("treats local ownership as not applicable in standalone doctor mode", async () => {
     const state = await SynergyLinkStore.loadState()
     state.runtimeMode = "standalone"

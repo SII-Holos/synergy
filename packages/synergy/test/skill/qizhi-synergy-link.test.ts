@@ -80,6 +80,15 @@ describe.serial("qizhi-synergy-link builtin skill", () => {
     expect(builtin.content).toContain("## Rollback")
     expect(builtin.content).toContain("distinct from the Synergy application")
     expect(builtin.content).toContain('bash targetID=<TARGET_ID> yieldSeconds=5 command="hostname"')
+    expect(builtin.content).toContain("--agent-secret-file")
+    expect(builtin.content).not.toContain("--agent-secret <")
+
+    const deploySection = builtin.content.slice(
+      builtin.content.indexOf("## Deploy and Start"),
+      builtin.content.indexOf("## Verify"),
+    )
+    expect(deploySection.indexOf("synergy-link login")).toBeGreaterThanOrEqual(0)
+    expect(deploySection.indexOf("synergy-link login")).toBeLessThan(deploySection.indexOf("synergy-link start"))
 
     // Operational workflow sections must remain loadable guidance.
     for (const section of [
