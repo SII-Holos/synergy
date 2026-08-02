@@ -1,6 +1,6 @@
 import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
 import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
-import { SynergyLinkRemoteError } from "@/remote/client"
+import { SynergyLinkRemoteError, type SynergyLinkTransportFailureReason } from "@/remote/client"
 import { SynergyLinkTargetStore } from "@/synergy-link/target-store"
 import { withTimeout } from "@/util/timeout"
 import { ToolTimeout } from "./timeout"
@@ -29,14 +29,16 @@ export namespace SynergyLinkExecution {
         client: SynergyLinkClient.ExecutionClient
       }
 
-  type DisposableExecutionClient = SynergyLinkClient.ExecutionClient & { dispose?: () => void }
+  type DisposableExecutionClient = SynergyLinkClient.ExecutionClient & {
+    dispose?: (reason?: SynergyLinkTransportFailureReason) => void
+  }
 
   let client: DisposableExecutionClient | null = null
   const sessions = new Map<SynergyLinkIdentity.LinkID, Map<string, SessionRecord>>()
 
-  export function setClient(next: DisposableExecutionClient | null) {
+  export function setClient(next: DisposableExecutionClient | null, reason?: SynergyLinkTransportFailureReason) {
     if (client === next) return
-    client?.dispose?.()
+    client?.dispose?.(reason)
     client = next
     sessions.clear()
   }

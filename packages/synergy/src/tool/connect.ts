@@ -55,7 +55,7 @@ type ConnectMetadata = {
 
 export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("connect", {
   description:
-    "Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are heartbeat-verified before they are reported open; unknown results never claim a session. Remote lifecycle actions never fall back locally.",
+    "Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are heartbeat-verified before they are reported open; a timeout or missed-pong liveness loss leaves already-dispatched results unknown and never authorizes an automatic mutating retry. Remote lifecycle actions never fall back locally.",
   parameters,
   async execute(params, ctx) {
     if (params.action === "list_targets") {
@@ -181,7 +181,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
             sessionID: session.sessionID,
             status: "unknown",
           },
-          output: `The cached session for link "${linkID}" could not be verified (${verification.reason === "timeout" ? "the check timed out" : "transport failure"}). It may still be active remotely, but its status is unknown.`,
+          output: `The cached session for link "${linkID}" could not be verified (${verification.reason === "timeout" ? "the check timed out" : "transport failure or heartbeat liveness loss"}). It may still be active remotely, but its status and any dispatched result are unknown. Reconnect and inspect state instead of automatically retrying mutating work.`,
         }
       }
       return {
@@ -223,7 +223,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
               sessionID: activeSession.sessionID,
               status: "unknown",
             },
-            output: `The cached session for link "${linkID}" could not be verified (${verification.reason === "timeout" ? "the check timed out" : "transport failure"}). It may still be open remotely, so a fresh open was not attempted. Retry once the link is reachable.`,
+            output: `The cached session for link "${linkID}" could not be verified (${verification.reason === "timeout" ? "the check timed out" : "transport failure or heartbeat liveness loss"}). It may still be open remotely, so a fresh open was not attempted. Retry verification once the link is reachable; do not automatically repeat mutating work.`,
           }
         }
         if (verification.kind === "verified") {
@@ -250,7 +250,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
           client.executeSession(linkID, { action: "open", label: params.label }, { targetAgentID }),
           ToolTimeout.DEFAULTS.connectMs,
           {
-            message: `Connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s. The Synergy Link host may be unreachable or slow to respond.`,
+            message: `Connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s. The host may be unreachable, but a remote session may still have opened; the result is unknown, so verify before retrying.`,
           },
         )
       } catch (error) {
@@ -350,7 +350,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         ),
         ToolTimeout.DEFAULTS.connectMs,
         {
-          message: `Closing connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s.`,
+          message: `Closing connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s. The remote close may have completed; its result is unknown, so verify before retrying.`,
         },
       )
     } catch (error) {

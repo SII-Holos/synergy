@@ -9,6 +9,8 @@ const SIGKILL_TIMEOUT_MS = 1_000
 const PROCESS_GROUP_EXIT_POLL_MS = 25
 const PROCESS_LIST_MAX_BUFFER = 8 * 1024 * 1024
 const PROCESS_LIST_TIMEOUT_MS = 5_000
+// Keep raw process command/environment text inside the child pipeline so Link receives only
+// numeric process topology and marker matches; never simplify this into JS-side env parsing.
 const PROCESS_OWNER_SCAN_SCRIPT = String.raw`
 include_no_tty=$1
 shift

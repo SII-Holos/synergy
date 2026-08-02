@@ -14,11 +14,12 @@ describe("HolosSynergyLinkTransport", () => {
   test("resolves a pending request from a valid typed response sent by the target agent", async () => {
     const requestID = crypto.randomUUID()
     const targetAgentID = "target-agent"
-    const transport = new HolosSynergyLinkTransport({
+    const provider = {
       async send() {
         return { sent: true }
       },
-    })
+    }
+    const transport = new HolosSynergyLinkTransport(provider)
 
     try {
       const resultPromise = transport.request(targetAgentID, {
@@ -47,6 +48,7 @@ describe("HolosSynergyLinkTransport", () => {
           event: SynergyLinkBridge.RESPONSE_EVENT,
           payload: response,
           caller: caller(targetAgentID),
+          source: provider,
         }),
       ).resolves.toBe(true)
       await expect(resultPromise).resolves.toEqual(response)
@@ -58,11 +60,12 @@ describe("HolosSynergyLinkTransport", () => {
   test("ignores an otherwise valid response sent by a different agent", async () => {
     const requestID = crypto.randomUUID()
     const targetAgentID = "target-agent"
-    const transport = new HolosSynergyLinkTransport({
+    const provider = {
       async send() {
         return { sent: true }
       },
-    })
+    }
+    const transport = new HolosSynergyLinkTransport(provider)
 
     try {
       const resultPromise = transport.request(targetAgentID, {
@@ -91,6 +94,7 @@ describe("HolosSynergyLinkTransport", () => {
           event: SynergyLinkBridge.RESPONSE_EVENT,
           payload: response,
           caller: caller("different-agent"),
+          source: provider,
         }),
       ).resolves.toBe(false)
       await expect(
@@ -98,6 +102,7 @@ describe("HolosSynergyLinkTransport", () => {
           event: SynergyLinkBridge.RESPONSE_EVENT,
           payload: response,
           caller: caller(targetAgentID),
+          source: provider,
         }),
       ).resolves.toBe(true)
       await expect(resultPromise).resolves.toEqual(response)
@@ -135,13 +140,14 @@ describe("HolosSynergyLinkTransport error preservation", () => {
 
   test("preserves delivery_failed and allows a retry to succeed in the same process", async () => {
     let sendCount = 0
-    const transport = new HolosSynergyLinkTransport({
+    const provider = {
       async send() {
         sendCount++
         if (sendCount === 1) return { sent: false, reason: "delivery_failed" }
         return { sent: true }
       },
-    })
+    }
+    const transport = new HolosSynergyLinkTransport(provider)
     try {
       await expect(transport.request("target-agent", request(crypto.randomUUID()))).rejects.toMatchObject({
         details: { reason: "delivery_failed", dispatched: false },
@@ -166,6 +172,7 @@ describe("HolosSynergyLinkTransport error preservation", () => {
           event: SynergyLinkBridge.RESPONSE_EVENT,
           payload: response,
           caller: caller("target-agent"),
+          source: provider,
         }),
       ).resolves.toBe(true)
       await expect(second).resolves.toEqual(response)
@@ -188,5 +195,44 @@ describe("HolosSynergyLinkTransport error preservation", () => {
     } finally {
       transport.dispose()
     }
+  })
+
+  test("terminalizes pending requests as ambiguous when transport liveness is lost", async () => {
+    const provider = {
+      async send() {
+        return { sent: true }
+      },
+    }
+    const transport = new HolosSynergyLinkTransport(provider)
+    const requestID = crypto.randomUUID()
+    const pending = transport.request("target-agent", request(requestID))
+
+    transport.dispose("transport_liveness_lost")
+
+    await expect(pending).rejects.toMatchObject({
+      name: "SynergyLinkRemoteError",
+      code: "transport_error",
+      details: { reason: "transport_liveness_lost", dispatched: true },
+    })
+    await expect(
+      HolosRuntime.dispatchAppEvent({
+        event: SynergyLinkBridge.RESPONSE_EVENT,
+        payload: {
+          version: SynergyLinkEnvelope.VERSION,
+          requestID,
+          ok: true,
+          tool: "session",
+          action: "open",
+          result: {
+            title: "Late response",
+            metadata: { action: "open", status: "opened", backend: "remote" },
+            output: "Late",
+          },
+        },
+        caller: caller("target-agent"),
+        source: provider,
+      }),
+    ).resolves.toBe(false)
+    transport.dispose("transport_liveness_lost")
   })
 })

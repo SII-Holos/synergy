@@ -3,7 +3,7 @@ import { Envelope } from "@/holos/envelope"
 import { HolosRuntime } from "@/holos/runtime"
 import type { HolosProvider } from "@/holos/runtime"
 import { SynergyLinkRemoteError } from "./client"
-import type { SynergyLinkRequest } from "./client"
+import type { SynergyLinkRequest, SynergyLinkTransportFailureReason } from "./client"
 export class HolosSynergyLinkTransport {
   readonly #pending = new Map<
     string,
@@ -16,9 +16,10 @@ export class HolosSynergyLinkTransport {
   >()
   readonly #unsubscribe: () => void
   readonly #timeoutMs: number
+  #disposed = false
 
   constructor(
-    private readonly provider: Pick<HolosProvider, "send">,
+    private readonly provider: Pick<HolosProvider, "send"> & object,
     options?: { timeoutMs?: number },
   ) {
     this.#timeoutMs = options?.timeoutMs ?? 30_000
@@ -60,11 +61,14 @@ export class HolosSynergyLinkTransport {
             clearTimeout(timer)
             this.#pending.delete(input.requestID)
             const reason = result.reason ?? "delivery_failed"
+            const livenessLost = reason === "transport_liveness_lost"
             reject(
               new SynergyLinkRemoteError(
                 reason === "offline" ? "link_inactive" : "transport_error",
-                `Synergy Link request ${input.requestID} was not delivered: ${describeSendReason(reason)}.`,
-                { reason, dispatched: false },
+                livenessLost
+                  ? `Synergy Link request ${input.requestID} was dispatched, but the Holos transport lost liveness before a response arrived. Its result is unknown.`
+                  : `Synergy Link request ${input.requestID} was not delivered: ${describeSendReason(reason)}.`,
+                { reason, dispatched: livenessLost },
               ),
             )
           }
@@ -77,17 +81,28 @@ export class HolosSynergyLinkTransport {
     })
   }
 
-  dispose() {
+  dispose(reason: SynergyLinkTransportFailureReason = "disconnected") {
+    if (this.#disposed) return
+    this.#disposed = true
     this.#unsubscribe()
-    for (const pending of this.#pending.values()) {
+    for (const [requestID, pending] of this.#pending) {
       clearTimeout(pending.timer)
-      pending.reject(new Error("Holos Synergy Link transport disposed."))
+      const message =
+        reason === "transport_liveness_lost"
+          ? `Synergy Link request ${requestID} was dispatched, but the Holos transport lost liveness before a response arrived. Its result is unknown.`
+          : `Synergy Link request ${requestID} was dispatched, but the Holos transport disconnected before a response arrived. Its result is unknown.`
+      pending.reject(new SynergyLinkRemoteError("transport_error", message, { reason, dispatched: true }))
     }
     this.#pending.clear()
   }
 
-  async #handleEvent(input: { event: string; payload: unknown; caller: Envelope.Caller }): Promise<boolean> {
-    if (input.event !== SynergyLinkBridge.RESPONSE_EVENT) return false
+  async #handleEvent(input: {
+    event: string
+    payload: unknown
+    caller: Envelope.Caller
+    source: object
+  }): Promise<boolean> {
+    if (input.source !== this.provider || input.event !== SynergyLinkBridge.RESPONSE_EVENT) return false
     const parsed = parseResultCorrelation(input.payload)
     if (!parsed) return false
     const pending = this.#pending.get(parsed.requestID)

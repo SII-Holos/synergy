@@ -850,20 +850,20 @@ export class SynergyLinkRuntime {
     }
     let client!: SynergyLinkHolosClient
     client = new SynergyLinkHolosClient(auth, this.inbound, {
-      onClose: ({ intentional }) => {
+      onClose: ({ intentional, reason }) => {
         if (this.#client !== client) return
-        void this.#handleClientClosed({ intentional })
+        void this.#handleClientClosed({ intentional, reason })
       },
     })
     this.#client = client
   }
 
-  async #handleClientClosed(input: { intentional: boolean }) {
+  async #handleClientClosed(input: { intentional: boolean; reason: string }) {
     await this.#setConnectionStatus("disconnected")
     if (input.intentional || this.#stopping || this.#manualReconnectInFlight || this.state?.runtimeMode === "managed") {
       return
     }
-    this.#scheduleReconnect("socket_closed")
+    this.#scheduleReconnect(input.reason)
   }
 
   #scheduleReconnect(reason: string) {

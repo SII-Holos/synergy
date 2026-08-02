@@ -292,3 +292,120 @@ test("invalidates presence when the websocket disconnects", async () => {
     abort.abort()
   }
 })
+
+describe("HolosProvider heartbeat liveness", () => {
+  test("keeps the tunnel open while the gateway returns pong frames", async () => {
+    let pingCount = 0
+    const disconnected = Promise.withResolvers<string | undefined>()
+    using server = Bun.serve({
+      port: 0,
+      fetch(request, server) {
+        const url = new URL(request.url)
+        if (url.pathname.endsWith("/ws_token")) {
+          return Response.json({ code: 0, data: { ws_token: "test-token", expires_in: 60 } })
+        }
+        if (url.pathname.endsWith("/ws") && server.upgrade(request)) return
+        return new Response("Not found", { status: 404 })
+      },
+      websocket: {
+        message(socket, message) {
+          const envelope = JSON.parse(String(message)) as { type?: string }
+          if (envelope.type !== "ping") return
+          pingCount++
+          socket.send(
+            JSON.stringify({
+              type: "pong",
+              request_id: null,
+              meta: { timestamp: Date.now() },
+              payload: null,
+              caller: null,
+            }),
+          )
+        },
+      },
+    })
+    const abort = new AbortController()
+    const provider = new HolosProvider()
+
+    try {
+      await HolosAccounts.saveAndActivateAccount(testAgentID, "test-secret")
+      await provider.connect({
+        config: {
+          enabled: true,
+          apiUrl: `http://127.0.0.1:${server.port}`,
+          wsUrl: `ws://127.0.0.1:${server.port}`,
+          portalUrl: `http://127.0.0.1:${server.port}`,
+        },
+        signal: abort.signal,
+        onDisconnect: (reason) => disconnected.resolve(reason),
+        heartbeat: { intervalMs: 20, pongDeadlineMs: 80 },
+      })
+
+      await Bun.sleep(180)
+
+      expect(pingCount).toBeGreaterThanOrEqual(4)
+      await expect(Promise.race([disconnected.promise, Bun.sleep(20).then(() => "still_connected")])).resolves.toBe(
+        "still_connected",
+      )
+    } finally {
+      abort.abort()
+    }
+  })
+
+  test("closes a silent tunnel and terminalizes pending native work as ambiguous", async () => {
+    const disconnected = Promise.withResolvers<string | undefined>()
+    using server = Bun.serve({
+      port: 0,
+      fetch(request, server) {
+        const url = new URL(request.url)
+        if (url.pathname.endsWith("/ws_token")) {
+          return Response.json({ code: 0, data: { ws_token: "test-token", expires_in: 60 } })
+        }
+        if (url.pathname.endsWith("/ws") && server.upgrade(request)) return
+        return new Response("Not found", { status: 404 })
+      },
+      websocket: { message() {} },
+    })
+    const abort = new AbortController()
+    const provider = new HolosProvider()
+
+    try {
+      await HolosAccounts.saveAndActivateAccount(testAgentID, "test-secret")
+      await provider.connect({
+        config: {
+          enabled: true,
+          apiUrl: `http://127.0.0.1:${server.port}`,
+          wsUrl: `ws://127.0.0.1:${server.port}`,
+          portalUrl: `http://127.0.0.1:${server.port}`,
+        },
+        signal: abort.signal,
+        onDisconnect: (reason) => disconnected.resolve(reason),
+        heartbeat: { intervalMs: 20, pongDeadlineMs: 80 },
+      })
+
+      const requestID = crypto.randomUUID()
+      const pending = provider.sendNativeRequest({
+        type: "clarus.runtime.task.result.record",
+        payload: { success: true },
+        requestID,
+        expectedResponseType: "clarus.runtime.task.result.recorded",
+      })
+      const pendingFailure = expect(pending).rejects.toMatchObject({
+        disposition: "ambiguous",
+        requestID,
+        reason: "transport_liveness_lost",
+      })
+
+      await expect(Promise.race([disconnected.promise, Bun.sleep(1_000).then(() => "timeout")])).resolves.toBe(
+        "transport_liveness_lost",
+      )
+      await pendingFailure
+      await expect(provider.send("target-agent", "test.event", {})).resolves.toEqual({
+        sent: false,
+        reason: "not_connected",
+      })
+    } finally {
+      abort.abort()
+    }
+  })
+})

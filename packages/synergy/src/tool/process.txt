@@ -8,14 +8,14 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 - **write**: Write raw data to a process's stdin
 - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"])
 - **kill**: Terminate a running process
-- **clear**: Remove a finished process from the list
-- **remove**: Remove a process (kills if running, then removes)
+- **clear**: Remove a finished process from the list. On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants before deleting retained output.
+- **remove**: Remove a process (kills if running, then removes). On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants.
 
 ## Usage
 
 `linkID` is optional. Omit it to manage processes in the current local environment; provide it to target a Synergy Link target. Prefer the stable `targetID` returned by `connect list_targets` over raw `linkID` locators.
 For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely.
-When targeting a remote `synergy-link` host, open a remote collaboration session first using the `connect` tool and use a heartbeat-verified session. Remote process management does not implicitly create sessions, never falls back locally, and a transport timeout means the result is unknown — it does not prove the remote action was not applied, so never auto-retry mutating actions after an ambiguous timeout.
+When targeting a remote `synergy-link` host, open a remote collaboration session first using the `connect` tool and use a heartbeat-verified session. The controlling tunnel sends heartbeats every 30 seconds with a 90-second missed-pong deadline; the standalone host uses 60 seconds and 180 seconds. Remote process management does not implicitly create sessions, never falls back locally, and a timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote action was not applied. Reconnect and inspect state; never auto-retry mutating actions after an ambiguous failure.
 
 After a bash command auto-backgrounds:
 ```

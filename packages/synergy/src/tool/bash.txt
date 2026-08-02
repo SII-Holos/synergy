@@ -39,7 +39,7 @@ Usage notes:
 
   - Use `background` (boolean) to run a command in the background immediately; it returns a processId for use with the process tool.
   - Use `yieldSeconds` to delay before auto-backgrounding a command that runs longer than the given number of seconds. Default is 10. If the command completes before yieldSeconds, it returns normally.
-  - For remote Synergy Link execution, the host clamps `yieldSeconds` to at most 5 seconds so it can return a tracked process handle before the transport deadline. A timeout means the result is unknown — it does not prove the remote command was cancelled. Never auto-retry a mutating or ambiguous remote command after a timeout.
+  - For remote Synergy Link execution, the host clamps `yieldSeconds` to at most 5 seconds so it can return a tracked process handle before the transport deadline. The controlling tunnel sends heartbeats every 30 seconds with a 90-second missed-pong deadline; the standalone host uses 60 seconds and 180 seconds. A timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote command was cancelled. Reconnect and inspect session/process state; never auto-retry a mutating or ambiguous remote command.
   - After backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
   - Example: bash(command: "npm run dev", background: true, yieldSeconds: 30) → { processId: "proc_xxx" }
 

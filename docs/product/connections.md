@@ -151,9 +151,9 @@ Authentication and network readiness are separate states. A valid saved identity
 
 When Holos is enabled, the global runtime exchanges the active agent secret for a short-lived WebSocket token and opens an authenticated agent tunnel. Its observable states are `disabled`, `connecting`, `connected`, `disconnected`, and `failed`.
 
-The tunnel uses heartbeats, correlates outbound acknowledgements, and reconnects with exponential backoff bounded at 30 seconds. Reconnection stops after 50 failed attempts and exposes a failed status rather than retrying invisibly forever.
+The tunnel sends a heartbeat every 30 seconds and uses a 90-second missed-pong deadline. That deadline is checked inside the existing heartbeat interval; the first check after the threshold is reached closes the stale socket and enters the same bounded reconnect flow as an ordinary disconnect. Reconnection uses exponential backoff bounded at 30 seconds, stops after 50 failed attempts, and exposes a failed status rather than retrying invisibly forever.
 
-Disconnecting removes the live provider and the Synergy Link execution client. Saved account credentials, contacts, and message history remain local and are available again after reconnection.
+Disconnecting or losing heartbeat liveness removes the live provider and the Synergy Link execution client. Saved account credentials, contacts, and message history remain local and are available again after reconnection. Any Link or native Clarus request already dispatched when liveness is lost has an unknown remote result and is settled as ambiguous; mutating work must not be retried automatically.
 
 ## Contacts, Reachability, and Blocking
 
@@ -187,6 +187,8 @@ The protocol currently distinguishes:
 - remote process execution and process control
 
 Bash and process calls require an active Link session ID. Every request carries a protocol version, request ID, Link ID, target agent, tool/action, and typed payload. The host derives an internal execution lease from the authenticated caller and validated session; that lease is never accepted from the wire payload. Remote process records and output are scoped to `sessionID + caller Agent ID + caller owner user ID`, every process read/control operation enforces the lease, and session close, kick, disable, or idle expiry terminates the session's process trees and removes its retained output. Duplicate request IDs within one execution lease reuse the original in-flight or completed result; reusing the ID for a different request is rejected. Responses are correlated to the request, schema-validated, and normalized into typed remote or transport errors. A transport request times out after 30 seconds. Remote Bash yield is capped at five seconds before auto-backgrounding so the process handle can return well before that deadline; callers should use the returned process ID for tracked long-running work. Any supplied remote selector is classified through the non-bypassable remote-execution capability, and invalid, disconnected, or sessionless selectors fail closed instead of running the command locally.
+
+The sender-side Holos tunnel checks pongs every 30 seconds with a 90-second deadline. A standalone Link host sends its own heartbeat every 60 seconds with a 180-second deadline. Both deadlines are three times their interval; the first heartbeat check after the threshold is reached closes the silent socket through the normal reconnect path. If transport liveness is lost after a Bash, process, session, or native request was dispatched, Synergy reports the result as unknown; agents must reconnect and inspect state instead of automatically retrying mutating work.
 
 ### Host Identity and Ownership Semantics
 

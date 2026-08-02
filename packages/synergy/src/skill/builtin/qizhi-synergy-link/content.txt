@@ -96,6 +96,8 @@ Run all three checks and require every one to pass:
 
 Then confirm reachability from the network side: `synergy-link reconnect` forces a reconnect, and `doctor` shows `connection: connected` again.
 
+Standalone Link hosts send a Holos heartbeat every 60 seconds and use a 180-second missed-pong deadline; the controlling Synergy runtime uses a coordinated 30-second interval and 90-second deadline. Both deadlines are three times their interval and are enforced at the next heartbeat check after the threshold is reached. A missed-pong reconnect restores future reachability but cannot prove whether an already-dispatched remote operation ran.
+
 ## Sender Target Setup and Test
 
 From the controlling Synergy runtime:
@@ -110,13 +112,13 @@ From the controlling Synergy runtime:
 - Remote Bash clamps `yieldSeconds` to five seconds so the auto-background result and process ID can return before the 30-second transport deadline.
 - Remote blocking `process poll` waits are clamped to at most 30 seconds.
 - For genuinely long work, use the tracked background flow (`bash` with `background`/`yieldSeconds`, then `process` for poll/write/kill). Direct detached-daemon patterns are rejected on a best-effort basis before spawn; this guard is not a shell security boundary. Platform-supervised service lifetime and session-owned cleanup remain the enforcement boundaries.
-- Every remote process belongs to the authenticated collaboration session that created it. Closing, kicking, disabling, or expiring that session terminates the tracked process tree; on POSIX, cleanup also reaps descendant process groups carrying the session-owned marker after an intermediate shell exits. Cleanup removes retained output, and a later session cannot list or control those process IDs.
-- Duplicate delivery retries with the same request ID are idempotent inside one session. A transport timeout still does not prove that the remote command failed, so reconnect and verify session state rather than changing the request and blindly retrying.
+- Every remote process belongs to the authenticated collaboration session that created it. Closing, kicking, disabling, or expiring that session terminates the tracked process tree. On POSIX, cleanup also reaps descendant process groups carrying the session-owned marker after an intermediate shell exits, and `process clear` or `process remove` reaps any still-live marked descendants before retained output is deleted. A later session cannot list or control those process IDs.
+- Duplicate delivery retries with the same request ID are idempotent inside one session. A transport timeout or missed-pong liveness loss still does not prove that the remote command failed. Treat the result as unknown, reconnect, and inspect the collaboration session and process state; never automatically retry a mutating request with a new request ID.
 - Never copy agent secrets, tunnel URLs, bind tokens, or callback state into prompts, logs, target names, or chat.
 
 ## Incident Recovery
 
-Symptom: sender sees `unknown` or `unreachable` availability, timeouts, or `refused`; or the wrong host answers.
+Symptom: sender sees `unknown` or `unreachable` availability, timeouts, an error that a dispatched request's result is unknown (for example, the Holos transport lost liveness before a response arrived), or `refused`; or the wrong host answers.
 
 1. Check the host: `synergy-link status` and `synergy-link doctor`. If the service is down, read `synergy-link logs --tail 200` and `$SYNERGY_LINK_HOME/logs/runtime.log`.
 2. Check identity: `synergy-link whoami`. If `agentID` is not the expected device identity, the instance's auth store is wrong or shared — do not continue; rotate credentials (below).
