@@ -50,20 +50,40 @@ export namespace SynergyLinkTarget {
     .meta({ ref: "SynergyLinkTargetCreateInput" })
   export type CreateInput = z.input<typeof CreateInput>
 
-  export const PatchInput = z
+  const PatchMetadata = z
     .object({
       name: z.string().trim().min(1).max(120).optional(),
       enabled: z.boolean().optional(),
       allowedAgents: z.array(z.string().trim().min(1)).optional(),
-      targetAgentID: z.string().trim().min(1).optional(),
-      linkID: SynergyLinkIdentity.LinkID.optional(),
     })
     .strict()
     .refine((value) => Object.keys(value).length > 0, "At least one field is required")
-    .refine(
-      (value) => (value.targetAgentID !== undefined) === (value.linkID !== undefined),
-      "targetAgentID and linkID must be updated together",
-    )
+    .meta({ ref: "SynergyLinkTargetPatchMetadata" })
+
+  const PatchRelink = z
+    .object({
+      name: z.string().trim().min(1).max(120).optional(),
+      enabled: z.boolean().optional(),
+      allowedAgents: z.array(z.string().trim().min(1)).optional(),
+      targetAgentID: z.string().trim().min(1),
+      linkID: SynergyLinkIdentity.LinkID,
+    })
+    .strict()
+    .meta({ ref: "SynergyLinkTargetPatchRelink" })
+
+  export const PatchInput = z
+    .union([PatchMetadata, PatchRelink], {
+      error: (issue) => {
+        const input = issue.input
+        if (typeof input !== "object" || input === null) return undefined
+        const record = input as Record<string, unknown>
+        if (Object.keys(record).length === 0) return "At least one field is required"
+        const hasTargetAgentID = "targetAgentID" in record
+        const hasLinkID = "linkID" in record
+        if (hasTargetAgentID !== hasLinkID) return "targetAgentID and linkID must be updated together"
+        return undefined
+      },
+    })
     .meta({ ref: "SynergyLinkTargetPatchInput" })
   export type PatchInput = z.infer<typeof PatchInput>
 

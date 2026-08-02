@@ -35,13 +35,13 @@ export namespace SynergyLinkTargetService {
       scope: Scope.home(),
       fn: async () => {
         const parsed = SynergyLinkTarget.PatchInput.parse(input)
-        const nextLinkID = parsed.linkID
-        const nextTargetAgentID = parsed.targetAgentID
-        if (nextLinkID === undefined || nextTargetAgentID === undefined) {
+        if (!("targetAgentID" in parsed)) {
           const target = await SynergyLinkTargetStore.update(id, parsed)
           await Bus.publish(Event.Updated, { target })
           return target
         }
+        const nextLinkID = parsed.linkID
+        const nextTargetAgentID = parsed.targetAgentID
 
         const current = await SynergyLinkTargetStore.require(id)
         if (current.linkID === nextLinkID && current.targetAgentID === nextTargetAgentID) {

@@ -1145,16 +1145,24 @@ export type NotFoundError = {
   }
 }
 
-export type SynergyLinkTargetPatchInput = {
+export type SynergyLinkTargetPatchMetadata = {
   name?: string
   enabled?: boolean
   allowedAgents?: Array<string>
-  targetAgentID?: string
+}
+
+export type SynergyLinkTargetPatchRelink = {
+  name?: string
+  enabled?: boolean
+  allowedAgents?: Array<string>
+  targetAgentID: string
   /**
    * Synergy Link target identifier
    */
-  linkID?: string
+  linkID: string
 }
+
+export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | SynergyLinkTargetPatchRelink
 
 export type SynergyLinkTargetRemoveResult = {
   success: true

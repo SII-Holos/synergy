@@ -24551,7 +24551,28 @@
         },
         "required": ["name", "data"]
       },
-      "SynergyLinkTargetPatchInput": {
+      "SynergyLinkTargetPatchMetadata": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "allowedAgents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SynergyLinkTargetPatchRelink": {
         "type": "object",
         "properties": {
           "name": {
@@ -24579,7 +24600,18 @@
             "minLength": 1
           }
         },
+        "required": ["targetAgentID", "linkID"],
         "additionalProperties": false
+      },
+      "SynergyLinkTargetPatchInput": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SynergyLinkTargetPatchMetadata"
+          },
+          {
+            "$ref": "#/components/schemas/SynergyLinkTargetPatchRelink"
+          }
+        ]
       },
       "SynergyLinkTargetRemoveResult": {
         "type": "object",

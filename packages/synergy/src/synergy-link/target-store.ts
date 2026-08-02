@@ -85,11 +85,11 @@ export namespace SynergyLinkTargetStore {
 
   export async function update(id: string, input: SynergyLinkTarget.PatchInput): Promise<SynergyLinkTarget.Info> {
     const patch = SynergyLinkTarget.PatchInput.parse(input)
-    const relink = patch.targetAgentID !== undefined && patch.linkID !== undefined
+    const relink = "targetAgentID" in patch
     using _ = await Lock.write(relink ? collectionLock : `${collectionLock}:${id}`)
     const current = await require(id)
 
-    if (patch.targetAgentID !== undefined && patch.linkID !== undefined) {
+    if ("targetAgentID" in patch) {
       await assertLocatorAvailable(id, patch.linkID, patch.targetAgentID)
     }
 

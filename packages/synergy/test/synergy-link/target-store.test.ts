@@ -100,12 +100,12 @@ describe("Synergy Link target relink", () => {
       linkID: "link_old",
     })
 
-    await expect(SynergyLinkTargetStore.update(target.id, { targetAgentID: "agent_new" })).rejects.toThrow(
-      "targetAgentID and linkID must be updated together",
-    )
-    await expect(SynergyLinkTargetStore.update(target.id, { linkID: "link_new" })).rejects.toThrow(
-      "targetAgentID and linkID must be updated together",
-    )
+    await expect(
+      SynergyLinkTargetStore.update(target.id, { targetAgentID: "agent_new" } as SynergyLinkTarget.PatchInput),
+    ).rejects.toThrow("targetAgentID and linkID must be updated together")
+    await expect(
+      SynergyLinkTargetStore.update(target.id, { linkID: "link_new" } as SynergyLinkTarget.PatchInput),
+    ).rejects.toThrow("targetAgentID and linkID must be updated together")
 
     const relinked = await SynergyLinkTargetStore.update(target.id, {
       targetAgentID: "agent_new",
