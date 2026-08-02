@@ -51,7 +51,11 @@ describe("Synergy Link target store", () => {
       linkID: "link_second",
     })
 
-    const updated = await SynergyLinkTargetStore.update(first.id, { name: "Primary", enabled: false })
+    const updated = await SynergyLinkTargetStore.update(first.id, {
+      kind: "metadata",
+      name: "Primary",
+      enabled: false,
+    })
     expect(updated.name).toBe("Primary")
     expect(updated.enabled).toBe(false)
     expect(await SynergyLinkTargetStore.get(second.id)).toEqual(second)
@@ -101,13 +105,20 @@ describe("Synergy Link target relink", () => {
     })
 
     await expect(
-      SynergyLinkTargetStore.update(target.id, { targetAgentID: "agent_new" } as SynergyLinkTarget.PatchInput),
+      SynergyLinkTargetStore.update(target.id, {
+        kind: "relink",
+        targetAgentID: "agent_new",
+      } as SynergyLinkTarget.PatchInput),
     ).rejects.toThrow("targetAgentID and linkID must be updated together")
     await expect(
-      SynergyLinkTargetStore.update(target.id, { linkID: "link_new" } as SynergyLinkTarget.PatchInput),
+      SynergyLinkTargetStore.update(target.id, {
+        kind: "relink",
+        linkID: "link_new",
+      } as SynergyLinkTarget.PatchInput),
     ).rejects.toThrow("targetAgentID and linkID must be updated together")
 
     const relinked = await SynergyLinkTargetStore.update(target.id, {
+      kind: "relink",
       targetAgentID: "agent_new",
       linkID: "link_new",
     })
@@ -130,6 +141,7 @@ describe("Synergy Link target relink", () => {
 
     await expect(
       SynergyLinkTargetStore.update(second.id, {
+        kind: "relink",
         targetAgentID: "agent_first",
         linkID: "link_first",
       }),
@@ -137,6 +149,29 @@ describe("Synergy Link target relink", () => {
     const unchanged = await SynergyLinkTargetStore.require(second.id)
     expect(unchanged.targetAgentID).toBe("agent_second")
     expect(unchanged.linkID).toBe("link_second")
+    expect(await SynergyLinkTargetStore.require(first.id)).toEqual(first)
+  })
+
+  test("rejects a relink that reuses another target's linkID with a different agent", async () => {
+    const first = await SynergyLinkTargetStore.create({
+      name: "First",
+      targetAgentID: "agent_first",
+      linkID: "link_first",
+    })
+    const second = await SynergyLinkTargetStore.create({
+      name: "Second",
+      targetAgentID: "agent_second",
+      linkID: "link_second",
+    })
+
+    await expect(
+      SynergyLinkTargetStore.update(second.id, {
+        kind: "relink",
+        targetAgentID: "agent_third",
+        linkID: first.linkID,
+      }),
+    ).rejects.toThrow("already in use")
+    expect(await SynergyLinkTargetStore.require(second.id)).toEqual(second)
     expect(await SynergyLinkTargetStore.require(first.id)).toEqual(first)
   })
 
@@ -162,6 +197,7 @@ describe("Synergy Link target relink", () => {
 
     try {
       const relink = SynergyLinkTargetStore.update(target.id, {
+        kind: "relink",
         targetAgentID: "agent_new",
         linkID: "link_new",
       })
@@ -205,6 +241,7 @@ describe("Synergy Link target relink", () => {
 
     try {
       const relink = SynergyLinkTargetStore.update(target.id, {
+        kind: "relink",
         targetAgentID: "agent_new",
         linkID: "link_new",
       })

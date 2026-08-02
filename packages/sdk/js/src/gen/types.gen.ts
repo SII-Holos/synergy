@@ -1145,13 +1145,43 @@ export type NotFoundError = {
   }
 }
 
-export type SynergyLinkTargetPatchMetadata = {
-  name?: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-}
+export type SynergyLinkTargetPatchMetadata =
+  | {
+      kind: "metadata"
+      name: string
+    }
+  | {
+      kind: "metadata"
+      enabled: boolean
+    }
+  | {
+      kind: "metadata"
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      name: string
+      enabled: boolean
+    }
+  | {
+      kind: "metadata"
+      name: string
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      enabled: boolean
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      name: string
+      enabled: boolean
+      allowedAgents: Array<string>
+    }
 
 export type SynergyLinkTargetPatchRelink = {
+  kind: "relink"
   name?: string
   enabled?: boolean
   allowedAgents?: Array<string>

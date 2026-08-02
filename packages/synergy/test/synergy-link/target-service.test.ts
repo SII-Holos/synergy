@@ -159,6 +159,7 @@ describe("Synergy Link target service relink", () => {
     })
 
     const updated = await SynergyLinkTargetService.update(target.id, {
+      kind: "relink",
       name: "Relinked service host",
       enabled: false,
       allowedAgents: ["ops"],
@@ -191,6 +192,50 @@ describe("Synergy Link target service relink", () => {
     expect(updated.authorization).toBe("approved")
     expect(updated.lastProbe?.status).toBe("reachable")
     expect(SynergyLinkExecution.getSession("link_old")).toBeUndefined()
+  })
+
+  test("does not close a remotely reused relink session when the local cache is empty", async () => {
+    const calls: SynergyLinkSession.ExecutePayload[] = []
+    SynergyLinkExecution.setClient(
+      client(async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        calls.push(payload)
+        return {
+          title: payload.action === "open" ? "Opened" : "Closed",
+          metadata: {
+            action: payload.action,
+            status: payload.action === "open" ? "opened" : "closed",
+            sessionID: "session_reused",
+            reused: payload.action === "open" ? true : undefined,
+            backend: "remote",
+          },
+          output: "ok",
+        } as SynergyLinkSession.Result
+      }),
+    )
+    const target = await SynergyLinkTargetStore.create({
+      name: "Cache-cleared reuse host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_new",
+      targetAgentID: "agent_new",
+      sourceAgent: "build",
+      sessionID: "session_reused",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    SynergyLinkExecution.clearSession("link_new", { targetAgentID: "agent_new" })
+
+    const updated = await SynergyLinkTargetService.update(target.id, {
+      kind: "relink",
+      targetAgentID: "agent_new",
+      linkID: "link_new",
+    })
+
+    expect(calls).toEqual([{ action: "open", label: "Relink verification: Cache-cleared reuse host" }])
+    expect(updated.linkID).toBe("link_new")
   })
 
   test("heartbeats but does not close a reused session for the new locator", async () => {
@@ -248,6 +293,7 @@ describe("Synergy Link target service relink", () => {
     })
 
     await SynergyLinkTargetService.update(target.id, {
+      kind: "relink",
       targetAgentID: "agent_new",
       linkID: "link_new",
     })
@@ -323,6 +369,7 @@ describe("Synergy Link target service relink", () => {
     })
 
     const updated = await SynergyLinkTargetService.update(target.id, {
+      kind: "relink",
       targetAgentID: "agent_new",
       linkID: "link_new",
     })
@@ -390,6 +437,7 @@ describe("Synergy Link target service relink", () => {
     })
 
     const updated = await SynergyLinkTargetService.update(target.id, {
+      kind: "relink",
       targetAgentID: "agent_new",
       linkID: "link_new",
     })
@@ -435,6 +483,7 @@ describe("Synergy Link target service relink", () => {
 
     await expect(
       SynergyLinkTargetService.update(relinked.id, {
+        kind: "relink",
         targetAgentID: existing.targetAgentID,
         linkID: existing.linkID,
       }),
@@ -445,6 +494,57 @@ describe("Synergy Link target service relink", () => {
       "session_existing",
     )
     expect(await SynergyLinkTargetStore.require(relinked.id)).toEqual(relinked)
+  })
+
+  test("serializes removal with the complete relink transaction", async () => {
+    const probeStarted = Promise.withResolvers<void>()
+    const continueProbe = Promise.withResolvers<void>()
+    SynergyLinkExecution.setClient(
+      client(async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        if (payload.action === "open") {
+          probeStarted.resolve()
+          await continueProbe.promise
+        }
+        return {
+          title: payload.action === "open" ? "Opened" : "Closed",
+          metadata: {
+            action: payload.action,
+            status: payload.action === "open" ? "opened" : "closed",
+            sessionID: payload.action === "open" ? "session_new" : payload.sessionID,
+            backend: "remote",
+          },
+          output: "ok",
+        }
+      }),
+    )
+    const target = await SynergyLinkTargetStore.create({
+      name: "Concurrent relink host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+
+    const relink = SynergyLinkTargetService.update(target.id, {
+      kind: "relink",
+      targetAgentID: "agent_new",
+      linkID: "link_new",
+    })
+    try {
+      await probeStarted.promise
+      let removalSettled = false
+      const removal = SynergyLinkTargetService.remove(target.id).then(() => {
+        removalSettled = true
+      })
+      await Bun.sleep(0)
+
+      expect(removalSettled).toBe(false)
+      continueProbe.resolve()
+      await expect(relink).resolves.toMatchObject({ linkID: "link_new" })
+      await removal
+      expect(await SynergyLinkTargetStore.get(target.id)).toBeUndefined()
+    } finally {
+      continueProbe.resolve()
+      await relink.catch(() => undefined)
+    }
   })
 
   test("rolls back and preserves the original target when the new locator probe fails", async () => {
@@ -462,6 +562,7 @@ describe("Synergy Link target service relink", () => {
 
     await expect(
       SynergyLinkTargetService.update(target.id, {
+        kind: "relink",
         targetAgentID: "agent_new",
         linkID: "link_new",
       }),

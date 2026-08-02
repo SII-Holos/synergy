@@ -28,14 +28,17 @@ describe("synergy-link session manager", () => {
     await expect(opening).resolves.toMatchObject({ metadata: { status: "opened" } })
   })
 
-  test("reuses the active session when the same Holos caller reconnects", async () => {
+  test("marks only a same-caller open as a reused session", async () => {
     const manager = new SessionManager()
     const caller = { type: "agent" as const, agentID: "agent_a", ownerUserID: 1 }
     const opened = await manager.open(caller, "build")
     const reopened = await manager.open(caller, "build again")
 
+    expect(opened.metadata.status).toBe("opened")
+    expect((opened.metadata as { reused?: boolean }).reused).toBeUndefined()
     expect(reopened.metadata.status).toBe("opened")
     expect(reopened.metadata.sessionID).toBe(opened.metadata.sessionID)
+    expect((reopened.metadata as { reused?: boolean }).reused).toBe(true)
     expect(manager.current()?.label).toBe("build")
   })
 

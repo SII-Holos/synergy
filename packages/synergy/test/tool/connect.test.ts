@@ -344,7 +344,7 @@ describe("tool.connect", () => {
       openedAt: Date.now(),
       lastUsedAt: Date.now(),
     })
-    await SynergyLinkTargetStore.update(target.id, { enabled: false })
+    await SynergyLinkTargetStore.update(target.id, { kind: "metadata", enabled: false })
     try {
       const tool = await ConnectTool.init()
       const result = await tool.execute({ action: "close", targetID: target.id }, ctx)

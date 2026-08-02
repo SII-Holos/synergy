@@ -36,6 +36,7 @@ export namespace SynergyLinkSession {
     action: Action,
     status: Status,
     sessionID: SynergyLinkIdentity.SessionID.optional(),
+    reused: z.boolean().optional(),
     remoteAgentID: z.string().optional(),
     remoteOwnerUserID: z.number().optional(),
     label: z.string().optional(),

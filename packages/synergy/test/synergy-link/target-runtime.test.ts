@@ -72,6 +72,42 @@ describe("Synergy Link target runtime", () => {
     expect(observed.lastProbe?.status).toBe("reachable")
     expect(observed.host?.capabilities).toEqual(expect.objectContaining({ platform: "linux", arch: "x64" }))
   })
+
+  test("does not close a remotely reused probe session when the local cache is empty", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient({
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        throw new Error("unexpected bash execution")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        return {
+          title: payload.action === "open" ? "Opened" : "Closed",
+          metadata: {
+            action: payload.action,
+            status: payload.action === "open" ? "opened" : "closed",
+            sessionID: "session_reused",
+            reused: payload.action === "open" ? true : undefined,
+            backend: "remote",
+          },
+          output: "ok",
+        } as SynergyLinkSession.Result
+      },
+    })
+    const target = await SynergyLinkTargetStore.create({
+      name: "Reused probe host",
+      targetAgentID: "agent_probe",
+      linkID: "link_probe_reused",
+    })
+
+    const observed = await SynergyLinkTargetRuntime.probe(target.id)
+
+    expect(actions).toEqual(["open"])
+    expect(observed.lastProbe?.status).toBe("reachable")
+  })
   test("closes a temporary session when recording the host observation fails", async () => {
     const actions: SynergyLinkSession.Action[] = []
     SynergyLinkExecution.setClient({

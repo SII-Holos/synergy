@@ -24552,29 +24552,153 @@
         "required": ["name", "data"]
       },
       "SynergyLinkTargetPatchMetadata": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              }
+            },
+            "required": ["kind", "name"],
+            "additionalProperties": false
           },
-          "enabled": {
-            "type": "boolean"
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": ["kind", "enabled"],
+            "additionalProperties": false
           },
-          "allowedAgents": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": ["kind", "name", "enabled"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "name", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "enabled", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "name", "enabled", "allowedAgents"],
+            "additionalProperties": false
           }
-        },
-        "additionalProperties": false
+        ]
       },
       "SynergyLinkTargetPatchRelink": {
         "type": "object",
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "relink"
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -24600,7 +24724,7 @@
             "minLength": 1
           }
         },
-        "required": ["targetAgentID", "linkID"],
+        "required": ["kind", "targetAgentID", "linkID"],
         "additionalProperties": false
       },
       "SynergyLinkTargetPatchInput": {

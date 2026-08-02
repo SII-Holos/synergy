@@ -48,14 +48,10 @@ export namespace SynergyLinkTargetStore {
     )
   }
 
-  export async function assertLocatorAvailable(id: string, linkID: string, targetAgentID: string): Promise<void> {
-    const duplicate = (await list()).find(
-      (target) => target.id !== id && target.linkID === linkID && target.targetAgentID === targetAgentID,
-    )
+  export async function assertLocatorAvailable(id: string, linkID: string): Promise<void> {
+    const duplicate = (await list()).find((target) => target.id !== id && target.linkID === linkID)
     if (duplicate) {
-      throw new Error(
-        `Synergy Link locator already in use: link "${linkID}" for agent "${targetAgentID}" is used by target ${duplicate.id}.`,
-      )
+      throw new Error(`Synergy Link locator already in use: link "${linkID}" is used by target ${duplicate.id}.`)
     }
   }
 
@@ -88,8 +84,8 @@ export namespace SynergyLinkTargetStore {
     using _ = await Lock.write(collectionLock)
     const current = await require(id)
 
-    if ("targetAgentID" in patch) {
-      await assertLocatorAvailable(id, patch.linkID, patch.targetAgentID)
+    if (patch.kind === "relink") {
+      await assertLocatorAvailable(id, patch.linkID)
     }
 
     const target = SynergyLinkTarget.Info.parse({ ...current, ...patch, updatedAt: Date.now() })

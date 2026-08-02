@@ -81,6 +81,7 @@ export class SessionManager {
       return this.#sessionResult({
         action: "open",
         status: "opened",
+        reused: true,
         sessionID: this.#current.sessionID,
         remoteAgentID: this.#current.remoteAgentID,
         remoteOwnerUserID: this.#current.remoteOwnerUserID,
@@ -284,6 +285,7 @@ export class SessionManager {
     remoteAgentID?: string
     remoteOwnerUserID?: number
     label?: string
+    reused?: boolean
   }): SynergyLinkSession.Result {
     return {
       title: input.title,
@@ -291,6 +293,7 @@ export class SessionManager {
         action: input.action,
         status: input.status,
         sessionID: input.sessionID,
+        reused: input.reused,
         remoteAgentID: input.remoteAgentID,
         remoteOwnerUserID: input.remoteOwnerUserID,
         label: input.label,

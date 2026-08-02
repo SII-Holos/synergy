@@ -50,18 +50,56 @@ export namespace SynergyLinkTarget {
     .meta({ ref: "SynergyLinkTargetCreateInput" })
   export type CreateInput = z.input<typeof CreateInput>
 
-  const PatchMetadata = z
+  const PatchName = z.object({ kind: z.literal("metadata"), name: z.string().trim().min(1).max(120) }).strict()
+  const PatchEnabled = z.object({ kind: z.literal("metadata"), enabled: z.boolean() }).strict()
+  const PatchAllowedAgents = z
+    .object({ kind: z.literal("metadata"), allowedAgents: z.array(z.string().trim().min(1)) })
+    .strict()
+  const PatchNameEnabled = z
     .object({
-      name: z.string().trim().min(1).max(120).optional(),
-      enabled: z.boolean().optional(),
-      allowedAgents: z.array(z.string().trim().min(1)).optional(),
+      kind: z.literal("metadata"),
+      name: z.string().trim().min(1).max(120),
+      enabled: z.boolean(),
     })
     .strict()
-    .refine((value) => Object.keys(value).length > 0, "At least one field is required")
+  const PatchNameAllowedAgents = z
+    .object({
+      kind: z.literal("metadata"),
+      name: z.string().trim().min(1).max(120),
+      allowedAgents: z.array(z.string().trim().min(1)),
+    })
+    .strict()
+  const PatchEnabledAllowedAgents = z
+    .object({
+      kind: z.literal("metadata"),
+      enabled: z.boolean(),
+      allowedAgents: z.array(z.string().trim().min(1)),
+    })
+    .strict()
+  const PatchMetadataFields = z
+    .object({
+      kind: z.literal("metadata"),
+      name: z.string().trim().min(1).max(120),
+      enabled: z.boolean(),
+      allowedAgents: z.array(z.string().trim().min(1)),
+    })
+    .strict()
+
+  const PatchMetadata = z
+    .union([
+      PatchName,
+      PatchEnabled,
+      PatchAllowedAgents,
+      PatchNameEnabled,
+      PatchNameAllowedAgents,
+      PatchEnabledAllowedAgents,
+      PatchMetadataFields,
+    ])
     .meta({ ref: "SynergyLinkTargetPatchMetadata" })
 
   const PatchRelink = z
     .object({
+      kind: z.literal("relink"),
       name: z.string().trim().min(1).max(120).optional(),
       enabled: z.boolean().optional(),
       allowedAgents: z.array(z.string().trim().min(1)).optional(),
@@ -77,10 +115,18 @@ export namespace SynergyLinkTarget {
         const input = issue.input
         if (typeof input !== "object" || input === null) return undefined
         const record = input as Record<string, unknown>
-        if (Object.keys(record).length === 0) return "At least one field is required"
-        const hasTargetAgentID = "targetAgentID" in record
-        const hasLinkID = "linkID" in record
-        if (hasTargetAgentID !== hasLinkID) return "targetAgentID and linkID must be updated together"
+        if (!("kind" in record)) return 'Patch kind is required: "metadata" or "relink"'
+        if (record.kind === "metadata" && Object.keys(record).length === 1) {
+          return "At least one metadata field is required (name, enabled, allowedAgents)"
+        }
+        if (record.kind === "relink") {
+          const hasTargetAgentID = "targetAgentID" in record
+          const hasLinkID = "linkID" in record
+          if (hasTargetAgentID !== hasLinkID) return "targetAgentID and linkID must be updated together"
+        }
+        if (record.kind !== "metadata" && record.kind !== "relink") {
+          return `Invalid patch kind "${String(record.kind)}": expected "metadata" or "relink"`
+        }
         return undefined
       },
     })

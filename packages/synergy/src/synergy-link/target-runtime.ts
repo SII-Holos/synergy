@@ -66,7 +66,7 @@ export namespace SynergyLinkTargetRuntime {
             { message: `Connection test for target "${target.name}" timed out.` },
           )
 
-      if (!existing && result.metadata.status === "opened" && result.metadata.sessionID) {
+      if (!existing && result.metadata.status === "opened" && !result.metadata.reused && result.metadata.sessionID) {
         temporarySessionID = result.metadata.sessionID
       }
       const probeStatus =

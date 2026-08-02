@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import type { SynergyLinkTargetView } from "@ericsanchezok/synergy-sdk/client"
+import type { SynergyLinkTargetPatchInput, SynergyLinkTargetView } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -343,7 +343,7 @@ function SynergyLinkTargetCard(props: {
     previousAgents = nextAgents
   })
 
-  async function update(patch: { name?: string; enabled?: boolean; allowedAgents?: string[] }) {
+  async function update(patch: SynergyLinkTargetPatchInput) {
     setBusy(true)
     try {
       await globalSDK.client.synergyLink.targetUpdate(
@@ -361,7 +361,7 @@ function SynergyLinkTargetCard(props: {
   }
 
   async function save() {
-    if (await update({ name: name().trim(), allowedAgents: normalizeAllowedAgents(agents()) })) {
+    if (await update({ kind: "metadata", name: name().trim(), allowedAgents: normalizeAllowedAgents(agents()) })) {
       showToast({ type: "success", title: _(copy.saved) })
     }
   }
@@ -415,7 +415,11 @@ function SynergyLinkTargetCard(props: {
       </div>
 
       <div class="settings-link-card-footer">
-        <Switch checked={props.target.enabled} disabled={busy()} onChange={(enabled) => void update({ enabled })}>
+        <Switch
+          checked={props.target.enabled}
+          disabled={busy()}
+          onChange={(enabled) => void update({ kind: "metadata", enabled })}
+        >
           {_(copy.enabled)}
         </Switch>
         <div class="settings-link-actions">

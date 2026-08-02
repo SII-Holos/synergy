@@ -260,13 +260,24 @@ describe("OpenAPI spec generation", () => {
     ])
 
     const metadata = schemas.SynergyLinkTargetPatchMetadata as
-      | { properties?: Record<string, unknown>; additionalProperties?: boolean }
+      | {
+          anyOf?: Array<{
+            properties?: Record<string, unknown>
+            required?: string[]
+            additionalProperties?: boolean
+          }>
+        }
       | undefined
-    expect(metadata?.properties?.targetAgentID).toBeUndefined()
-    expect(metadata?.properties?.linkID).toBeUndefined()
-    expect(metadata?.additionalProperties).toBe(false)
+    expect(metadata?.anyOf).toHaveLength(7)
+    for (const variant of metadata?.anyOf ?? []) {
+      expect(variant.required).toEqual(expect.arrayContaining(["kind"]))
+      expect(variant.required?.length).toBeGreaterThan(1)
+      expect(variant.properties?.targetAgentID).toBeUndefined()
+      expect(variant.properties?.linkID).toBeUndefined()
+      expect(variant.additionalProperties).toBe(false)
+    }
 
     const relink = schemas.SynergyLinkTargetPatchRelink as { required?: string[] } | undefined
-    expect(relink?.required).toEqual(expect.arrayContaining(["targetAgentID", "linkID"]))
+    expect(relink?.required).toEqual(expect.arrayContaining(["kind", "targetAgentID", "linkID"]))
   })
 })
