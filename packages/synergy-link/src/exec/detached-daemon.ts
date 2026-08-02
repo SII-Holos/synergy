@@ -252,6 +252,7 @@ function dynamicWindowsInvocationRisk(
   const dynamic =
     executable.startsWith("%") ||
     executable.startsWith("!") ||
+    (shell === "cmd" && executable.includes("^")) ||
     (shell === "powershell" &&
       powerShellVariable !== undefined &&
       !isPowerShellValueExpression(remainder) &&

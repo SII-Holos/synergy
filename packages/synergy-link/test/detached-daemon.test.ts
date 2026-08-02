@@ -8,6 +8,8 @@ describe("detectDetachedDaemonRisk", () => {
       ["START /MIN long-running.exe", "windows_cmd_start"],
       ['cmd.exe /d /s /c "start \"\" /b long-running.exe"', "windows_cmd_start"],
       ['cmd /k "start \"\" /b long-running.exe"', "windows_cmd_start"],
+      ['st^art "" /b long-running.exe', "windows_dynamic_command"],
+      ['cmd /c "st^art \"\" /b long-running.exe"', "windows_dynamic_command"],
       ['if 1==1 start "" /b long-running.exe', "windows_cmd_start"],
       ['cmd /c "if 1==1 start \"\" /b long-running.exe"', "windows_cmd_start"],
       ["if 1==2 (echo hi) else start /b long-running.exe", "windows_cmd_start"],
