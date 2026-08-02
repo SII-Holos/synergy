@@ -4,14 +4,16 @@ import { spawn } from "node:child_process"
 import { createInterface } from "node:readline/promises"
 import { stdin as input, stdout as output } from "node:process"
 import { SynergyLinkStore, type SynergyLinkAuthState } from "../state/store"
-import { HOLOS_PORTAL_URL, SynergyLinkHolosAuth } from "./auth"
+import { HOLOS_PORTAL_URL, holosEndpointURL, SynergyLinkHolosAuth } from "./auth"
 import { SynergyLinkHolosProtocol } from "./protocol"
 
 const LOGIN_TIMEOUT_MS = 5 * 60_000
 
 export namespace SynergyLinkHolosLogin {
   export function createBindURL(input: { callbackURL: string; state: string; portalUrl?: string }) {
-    const endpoint = new URL("/api/v1/holos/agent_tunnel/bind/start", input.portalUrl ?? HOLOS_PORTAL_URL)
+    const endpoint = new URL(
+      holosEndpointURL("/api/v1/holos/agent_tunnel/bind/start", input.portalUrl ?? HOLOS_PORTAL_URL),
+    )
     endpoint.searchParams.set("local_callback", input.callbackURL)
     endpoint.searchParams.set("state", input.state)
     return endpoint.toString()
@@ -20,7 +22,7 @@ export namespace SynergyLinkHolosLogin {
   export async function verifySecret(agentSecret: string): Promise<{ valid: true } | { valid: false; reason: string }> {
     try {
       const endpoints = await SynergyLinkHolosAuth.resolveEndpoints()
-      const response = await fetch(new URL("/api/v1/holos/agent_tunnel/ws_token", endpoints.apiUrl), {
+      const response = await fetch(holosEndpointURL("/api/v1/holos/agent_tunnel/ws_token", endpoints.apiUrl), {
         headers: { Authorization: `Bearer ${agentSecret}` },
       })
       const body = SynergyLinkHolosProtocol.WsTokenResponse.safeParse(await readResponseJson(response))
@@ -40,7 +42,7 @@ export namespace SynergyLinkHolosLogin {
     if (!secret.valid) return secret
     try {
       const endpoints = await SynergyLinkHolosAuth.resolveEndpoints()
-      const response = await fetch(new URL("/api/v1/holos/agent_tunnel/me", endpoints.apiUrl), {
+      const response = await fetch(holosEndpointURL("/api/v1/holos/agent_tunnel/me", endpoints.apiUrl), {
         headers: { Authorization: `Bearer ${auth.agentSecret}` },
       })
       const body = SynergyLinkHolosProtocol.AgentMeResponse.safeParse(await readResponseJson(response))
@@ -172,15 +174,18 @@ export namespace SynergyLinkHolosLogin {
       throw new Error("State mismatch during Holos login.")
     }
 
-    const exchangeResponse = await fetch(new URL("/api/v1/holos/agent_tunnel/bind/exchange", endpoints.apiUrl), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: params.code,
-        state: params.state,
-        profile: { name: "Synergy Link Host" },
-      }),
-    })
+    const exchangeResponse = await fetch(
+      holosEndpointURL("/api/v1/holos/agent_tunnel/bind/exchange", endpoints.apiUrl),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: params.code,
+          state: params.state,
+          profile: { name: "Synergy Link Host" },
+        }),
+      },
+    )
     if (!exchangeResponse.ok) {
       throw new Error(`Exchange failed: ${exchangeResponse.status} ${exchangeResponse.statusText}`)
     }

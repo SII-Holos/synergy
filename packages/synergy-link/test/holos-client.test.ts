@@ -10,12 +10,14 @@ import type { SynergyLinkInboundHandler } from "../src/inbound/handler"
 const originalSynergyHome = process.env.SYNERGY_TEST_HOME
 const inbound = {} as SynergyLinkInboundHandler
 
+const HOLOS_BASE_PATH = "/tunnel"
+
 afterEach(() => {
   if (originalSynergyHome === undefined) delete process.env.SYNERGY_TEST_HOME
   else process.env.SYNERGY_TEST_HOME = originalSynergyHome
 })
 
-async function configureEndpoints(port: number) {
+async function configureEndpoints(port: number, basePath = "") {
   process.env.SYNERGY_TEST_HOME = await mkdtemp(path.join(os.tmpdir(), "synergy-link-holos-client-test-"))
   const configPath = SynergyLinkHolosAuth.globalConfigPath()
   await mkdir(path.dirname(configPath), { recursive: true })
@@ -23,9 +25,9 @@ async function configureEndpoints(port: number) {
     configPath,
     JSON.stringify({
       holos: {
-        apiUrl: `http://127.0.0.1:${port}`,
-        wsUrl: `ws://127.0.0.1:${port}`,
-        portalUrl: `http://127.0.0.1:${port}`,
+        apiUrl: `http://127.0.0.1:${port}${basePath}`,
+        wsUrl: `ws://127.0.0.1:${port}${basePath}`,
+        portalUrl: `http://127.0.0.1:${port}${basePath}`,
       },
     }),
   )
@@ -39,10 +41,10 @@ describe("SynergyLinkHolosClient heartbeat liveness", () => {
       port: 0,
       fetch(request, server) {
         const url = new URL(request.url)
-        if (url.pathname.endsWith("/ws_token")) {
+        if (url.pathname === `${HOLOS_BASE_PATH}/api/v1/holos/agent_tunnel/ws_token`) {
           return Response.json({ code: 0, data: { ws_token: "test-token", expires_in: 60 } })
         }
-        if (url.pathname.endsWith("/ws") && server.upgrade(request)) return
+        if (url.pathname === `${HOLOS_BASE_PATH}/api/v1/holos/agent_tunnel/ws` && server.upgrade(request)) return
         return new Response("Not found", { status: 404 })
       },
       websocket: {
@@ -62,7 +64,7 @@ describe("SynergyLinkHolosClient heartbeat liveness", () => {
         },
       },
     })
-    await configureEndpoints(server.port)
+    await configureEndpoints(server.port, HOLOS_BASE_PATH)
     const client = new SynergyLinkHolosClient(
       { agentID: "host-agent", agentSecret: "test-secret" },
       inbound,
@@ -90,15 +92,15 @@ describe("SynergyLinkHolosClient heartbeat liveness", () => {
       port: 0,
       fetch(request, server) {
         const url = new URL(request.url)
-        if (url.pathname.endsWith("/ws_token")) {
+        if (url.pathname === `${HOLOS_BASE_PATH}/api/v1/holos/agent_tunnel/ws_token`) {
           return Response.json({ code: 0, data: { ws_token: "test-token", expires_in: 60 } })
         }
-        if (url.pathname.endsWith("/ws") && server.upgrade(request)) return
+        if (url.pathname === `${HOLOS_BASE_PATH}/api/v1/holos/agent_tunnel/ws` && server.upgrade(request)) return
         return new Response("Not found", { status: 404 })
       },
       websocket: { message() {} },
     })
-    await configureEndpoints(server.port)
+    await configureEndpoints(server.port, HOLOS_BASE_PATH)
     const client = new SynergyLinkHolosClient(
       { agentID: "host-agent", agentSecret: "test-secret" },
       inbound,

@@ -25,6 +25,10 @@ export const DEFAULT_HOLOS_ENDPOINTS: SynergyLinkHolosEndpoints = {
   portalUrl: HOLOS_PORTAL_URL,
 }
 
+export function holosEndpointURL(route: string, baseURL: string): string {
+  return new URL(route.replace(/^\//, ""), baseURL.endsWith("/") ? baseURL : `${baseURL}/`).toString()
+}
+
 const HOLOS_CONFIG_FILENAME = "100-holos.jsonc"
 const JSONC_FORMATTING = {
   insertSpaces: true,

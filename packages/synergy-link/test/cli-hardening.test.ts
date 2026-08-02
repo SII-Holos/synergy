@@ -57,10 +57,10 @@ describe("synergy-link CLI hardening", () => {
       portalUrl: "https://portal.example.test",
     })
     expect(SynergyLinkHolosClient.websocketEndpoint("secret-token", endpoints)).toBe(
-      "wss://holos.example.test/api/v1/holos/agent_tunnel/ws?token=secret-token",
+      "wss://holos.example.test/tunnel/api/v1/holos/agent_tunnel/ws?token=secret-token",
     )
     expect(SynergyLinkHolosClient.sanitizedWebsocketEndpoint(endpoints)).toBe(
-      "wss://holos.example.test/api/v1/holos/agent_tunnel/ws",
+      "wss://holos.example.test/tunnel/api/v1/holos/agent_tunnel/ws",
     )
     const doctor = await SynergyLinkCLIBackend.doctor()
     expect(doctor.checks.find((check) => check.name === "endpoints")).toEqual({
@@ -69,6 +69,44 @@ describe("synergy-link CLI hardening", () => {
       detail:
         "API https://holos.example.test/base; WebSocket wss://holos.example.test/tunnel; portal https://portal.example.test",
     })
+  })
+
+  test("keeps the configured API base prefix on token and identity requests", async () => {
+    const configPath = await SynergyLinkHolosAuth.globalConfigPath()
+    await mkdir(path.dirname(configPath), { recursive: true })
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        holos: {
+          enabled: true,
+          apiUrl: "https://holos.example.test/base/",
+          wsUrl: "wss://holos.example.test/tunnel/",
+          portalUrl: "https://portal.example.test/",
+        },
+      }),
+    )
+    const calls: string[] = []
+    globalThis.fetch = (async (input) => {
+      const url = String(input)
+      calls.push(url)
+      if (url.endsWith("/base/api/v1/holos/agent_tunnel/ws_token")) {
+        return Response.json({ code: 0, data: { ws_token: "opaque-token", expires_in: 60 } })
+      }
+      if (url.endsWith("/base/api/v1/holos/agent_tunnel/me")) {
+        return Response.json({ code: 0, data: { agent_id: "agent_matching", profile: {} } })
+      }
+      return new Response("not found", { status: 404 })
+    }) as typeof fetch
+
+    await expect(
+      SynergyLinkHolosLogin.loginWithExistingCredentials({
+        agentID: "agent_matching",
+        agentSecret: "candidate-secret",
+      }),
+    ).resolves.toEqual({ agentID: "agent_matching" })
+
+    expect(calls.some((url) => url.includes("/base/api/v1/holos/agent_tunnel/ws_token"))).toBe(true)
+    expect(calls.some((url) => url.includes("/base/api/v1/holos/agent_tunnel/me"))).toBe(true)
   })
 
   test("prefers canonical Holos endpoints and only falls back when that file is absent", async () => {

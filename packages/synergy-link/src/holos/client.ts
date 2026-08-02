@@ -4,7 +4,7 @@ import { SynergyLinkHolosEnvelope } from "./envelope"
 import { SynergyLinkHolosProtocol } from "./protocol"
 import type { SynergyLinkInboundHandler } from "../inbound/handler"
 import { SynergyLinkLog } from "../log"
-import { SynergyLinkHolosAuth, type SynergyLinkHolosEndpoints } from "./auth"
+import { holosEndpointURL, SynergyLinkHolosAuth, type SynergyLinkHolosEndpoints } from "./auth"
 
 export const SYNERGY_LINK_HEARTBEAT_INTERVAL_MS = 60_000
 export const SYNERGY_LINK_HEARTBEAT_PONG_DEADLINE_MS = 180_000
@@ -33,13 +33,13 @@ export class SynergyLinkHolosClient {
   ) {}
 
   static websocketEndpoint(token: string, endpoints: SynergyLinkHolosEndpoints): string {
-    const endpoint = new URL("/api/v1/holos/agent_tunnel/ws", endpoints.wsUrl)
+    const endpoint = new URL(holosEndpointURL("/api/v1/holos/agent_tunnel/ws", endpoints.wsUrl))
     endpoint.searchParams.set("token", token)
     return endpoint.toString()
   }
 
   static sanitizedWebsocketEndpoint(endpoints: SynergyLinkHolosEndpoints): string {
-    return new URL("/api/v1/holos/agent_tunnel/ws", endpoints.wsUrl).toString()
+    return holosEndpointURL("/api/v1/holos/agent_tunnel/ws", endpoints.wsUrl)
   }
 
   async connect() {
@@ -181,7 +181,7 @@ export class SynergyLinkHolosClient {
 }
 
 async function fetchWsToken(agentSecret: string, endpoints: SynergyLinkHolosEndpoints): Promise<string> {
-  const response = await fetch(new URL("/api/v1/holos/agent_tunnel/ws_token", endpoints.apiUrl), {
+  const response = await fetch(holosEndpointURL("/api/v1/holos/agent_tunnel/ws_token", endpoints.apiUrl), {
     headers: { Authorization: `Bearer ${agentSecret}` },
   })
   if (!response.ok) {
