@@ -30,6 +30,24 @@ describe("standalone SVG raster runtime", () => {
     await expect(rasterizeSvgPreview(svg, { timeoutMs: 1 })).rejects.toThrow("SVG preview rasterization exceeded 1ms")
   })
 
+  test("renders Latin and Simplified Chinese text with bundled fonts", async () => {
+    const render = (text: string) =>
+      rasterizeSvgPreview(
+        new TextEncoder().encode(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120"><rect width="100%" height="100%" fill="white"/><text x="20" y="78" font-size="48" fill="black">${text}</text></svg>`,
+        ),
+      )
+    const [blank, english, chinese, mixed] = await Promise.all([
+      render(""),
+      render("Hello SVG"),
+      render("中文测试"),
+      render("Hello 中文 123"),
+    ])
+    expect(english.byteLength).toBeGreaterThan(blank.byteLength)
+    expect(chinese.byteLength).toBeGreaterThan(blank.byteLength)
+    expect(mixed.byteLength).toBeGreaterThan(english.byteLength)
+  })
+
   test("rasterizes SVG from a compiled artifact", async () => {
     const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-svg-raster-standalone-"))
     temporaryDirectories.push(runtimeDir)

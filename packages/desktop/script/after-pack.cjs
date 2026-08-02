@@ -34,6 +34,9 @@ function assertRuntimeAssets(runtimeDir, platform) {
     "lib/resvg-wasm/index_bg.wasm",
     "lib/resvg-wasm/LICENSE-MPL-2.0.txt",
     "lib/resvg-wasm/THIRD_PARTY_NOTICES.txt",
+    "lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
+    "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2",
+    "lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt",
   ]
   if (platform === "linux") required.push("sandbox/synergy-sandbox-linux")
   if (platform === "win32") required.push("sandbox/synergy-sandbox-windows.exe")

@@ -74,7 +74,10 @@ has_bundled_assets() {
     [ -f "$ROOT_DIR/schema/config.schema.json" ] && \
     [ -f "$ROOT_DIR/browser-runtime/playwright-core/package.json" ] && \
     [ -f "$ROOT_DIR/browser-runtime/playwright-core/index.js" ] && \
-    [ -f "$ROOT_DIR/browser-runtime/playwright-core/lib/coreBundle.js" ]
+    [ -f "$ROOT_DIR/browser-runtime/playwright-core/lib/coreBundle.js" ] && \
+    [ -f "$ROOT_DIR/lib/resvg-wasm/index_bg.wasm" ] && \
+    [ -f "$ROOT_DIR/lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2" ] && \
+    [ -f "$ROOT_DIR/lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2" ]
 }
 
 has_required_sandbox_asset() {
@@ -133,6 +136,11 @@ install_bundle_contents() {
     rm -rf "$ROOT_DIR/browser-runtime"
     if [ -d "$bundle_root/browser-runtime" ]; then
         cp -R "$bundle_root/browser-runtime" "$ROOT_DIR/browser-runtime"
+    fi
+
+    rm -rf "$ROOT_DIR/lib"
+    if [ -d "$bundle_root/lib" ]; then
+        cp -R "$bundle_root/lib" "$ROOT_DIR/lib"
     fi
 
     rm -rf "$ROOT_DIR/sandbox"

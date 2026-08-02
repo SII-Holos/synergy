@@ -18,12 +18,15 @@ describe("release runtime artifact contract", () => {
     )
   })
 
-  test("requires the filesystem-backed SVG raster runtime and license metadata", () => {
+  test("requires the filesystem-backed SVG raster runtime, fallback fonts, and license metadata", () => {
     expect(requiredRuntimeArtifactPaths("synergy-linux-x64")).toEqual(
       expect.arrayContaining([
         "lib/resvg-wasm/index_bg.wasm",
         "lib/resvg-wasm/LICENSE-MPL-2.0.txt",
         "lib/resvg-wasm/THIRD_PARTY_NOTICES.txt",
+        "lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
+        "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2",
+        "lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt",
       ]),
     )
     expect(requiredRuntimeArtifactPaths("synergy-darwin-arm64")).toContain("lib/resvg-wasm/index_bg.wasm")

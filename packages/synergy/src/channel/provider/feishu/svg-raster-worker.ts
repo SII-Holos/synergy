@@ -1,6 +1,12 @@
 import path from "node:path"
 import { Resvg, initWasm } from "@resvg/resvg-wasm"
-import { SVG_RASTER_RUNTIME_PATH, SVG_RASTER_RUNTIME_WASM } from "./svg-raster-runtime"
+import {
+  SVG_RASTER_RUNTIME_FONT_FAMILY,
+  SVG_RASTER_RUNTIME_FONT_FILES,
+  SVG_RASTER_RUNTIME_FONT_PATH,
+  SVG_RASTER_RUNTIME_PATH,
+  SVG_RASTER_RUNTIME_WASM,
+} from "./svg-raster-runtime"
 
 declare const SYNERGY_STANDALONE: boolean | undefined
 
@@ -8,6 +14,7 @@ const MAX_PREVIEW_EDGE = 2048
 const MAX_PREVIEW_BYTES = 10 * 1024 * 1024
 
 let initialized: Promise<void> | undefined
+let fontBuffers: Promise<Uint8Array[]> | undefined
 
 self.onmessage = async (event: MessageEvent<{ svg: Uint8Array }>) => {
   try {
@@ -19,8 +26,9 @@ self.onmessage = async (event: MessageEvent<{ svg: Uint8Array }>) => {
 }
 
 async function renderSvg(svg: Uint8Array): Promise<Uint8Array> {
-  await initialize()
-  const probe = new Resvg(svg)
+  const [, fonts] = await Promise.all([initialize(), loadFonts()])
+  const font = { fontBuffers: fonts, defaultFontFamily: SVG_RASTER_RUNTIME_FONT_FAMILY }
+  const probe = new Resvg(svg, { font })
   let fitTo: { mode: "width" | "height"; value: number } | undefined
   try {
     fitTo = previewFit(probe.width, probe.height)
@@ -28,7 +36,7 @@ async function renderSvg(svg: Uint8Array): Promise<Uint8Array> {
     probe.free()
   }
 
-  const renderer = new Resvg(svg, fitTo ? { fitTo } : undefined)
+  const renderer = new Resvg(svg, { ...(fitTo ? { fitTo } : {}), font })
   try {
     const rendered = renderer.render()
     try {
@@ -62,6 +70,24 @@ function initialize(): Promise<void> {
     await initWasm(wasm)
   })()
   return initialized
+}
+
+function loadFonts(): Promise<Uint8Array[]> {
+  fontBuffers ??= Promise.all(
+    SVG_RASTER_RUNTIME_FONT_FILES.map(async (font) => {
+      const fontPath = isStandalone()
+        ? path.resolve(
+            path.dirname(process.execPath),
+            "..",
+            SVG_RASTER_RUNTIME_PATH,
+            SVG_RASTER_RUNTIME_FONT_PATH,
+            font,
+          )
+        : path.resolve(import.meta.dir, "../../../../script/assets/resvg-wasm", SVG_RASTER_RUNTIME_FONT_PATH, font)
+      return new Uint8Array(await Bun.file(fontPath).arrayBuffer())
+    }),
+  )
+  return fontBuffers
 }
 
 function isStandalone(): boolean {
