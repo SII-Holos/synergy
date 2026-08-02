@@ -1,5 +1,18 @@
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 
+const CONTROL_PROFILE_CAPABILITY_BY_HOST_CAPABILITY: Record<string, string> = {
+  "task.delegate": "task",
+  "asset.write": "file_write",
+}
+
+export function controlProfileCapability(capability: string): string {
+  return CONTROL_PROFILE_CAPABILITY_BY_HOST_CAPABILITY[capability] ?? capability
+}
+
+export function hasControlProfileCapability(capability: string): boolean {
+  return Object.hasOwn(CONTROL_PROFILE_CAPABILITY_BY_HOST_CAPABILITY, capability)
+}
+
 export interface CapabilityWarning {
   type: "undeclared_tool" | "capability_mismatch"
   message: string
