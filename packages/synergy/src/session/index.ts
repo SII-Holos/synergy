@@ -311,9 +311,12 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    const storedRollback = session.history?.rollback
     const [working, history] = await Promise.all([
       SessionWorking.resolve(session.id),
-      session.history?.rollback ? SessionHistory.storedInfo(session.id).catch(() => session.history) : session.history,
+      storedRollback?.canUnrollback === true
+        ? SessionHistory.storedInfo(session.id).catch(() => session.history)
+        : session.history,
     ])
     const result = { ...withoutRuntimeInfo(session), history }
     if (!working) return result
@@ -1093,6 +1096,31 @@ export namespace Session {
     })
   }
 
+  // A root user message written after a rollback invalidates redo, but that
+  // derived state lives in the persisted session projection. Publish the flip
+  // once so the frontend stops prefix-hiding the replacement branch.
+  const rollbackInvalidationPending = new Set<string>()
+
+  async function publishRollbackInvalidation(canonical: MessageV2.Info, history: Info["history"]) {
+    if (canonical.role !== "user") return
+    if ((canonical as MessageV2.User).isRoot === false) return
+    const rollback = history?.rollback
+    if (!rollback?.canUnrollback) return
+    if (canonical.time.created <= rollback.created) return
+    if (rollbackInvalidationPending.has(canonical.sessionID)) return
+    rollbackInvalidationPending.add(canonical.sessionID)
+    try {
+      await update(canonical.sessionID, (draft) => {
+        if (draft.history?.rollback?.id !== rollback.id) return
+        draft.history.rollback.canUnrollback = false
+      })
+    } catch (error) {
+      log.warn("failed to publish rollback invalidation", { sessionID: canonical.sessionID, error })
+    } finally {
+      rollbackInvalidationPending.delete(canonical.sessionID)
+    }
+  }
+
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     const canonical = MessageV2.canonicalMessage(msg)
     const session = await SessionManager.requireSession(msg.sessionID)
@@ -1102,6 +1130,7 @@ export namespace Session {
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
     })
+    await publishRollbackInvalidation(canonical, session.history)
     return canonical
   })
 
