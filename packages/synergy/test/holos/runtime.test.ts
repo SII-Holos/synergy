@@ -147,7 +147,7 @@ describe("HolosProvider send delivery", () => {
 
       await expect(provider.send("target-agent", "test.event", { value: "ok" })).resolves.toEqual({
         sent: false,
-        reason: "not_connected",
+        reason: "disconnected",
       })
     } finally {
       abort.abort()
@@ -190,7 +190,7 @@ describe("HolosProvider send delivery", () => {
     const pending = provider.send("target-agent", "test.event", { value: "ok" })
     abort.abort()
 
-    await expect(pending).resolves.toEqual({ sent: false, reason: "not_connected" })
+    await expect(pending).resolves.toEqual({ sent: false, reason: "disconnected" })
     await expect(Promise.race([closed.promise, Bun.sleep(500).then(() => "timeout")])).resolves.not.toBe("timeout")
     await expect(provider.send("target-agent", "test.event", { value: "after-abort" })).resolves.toEqual({
       sent: false,

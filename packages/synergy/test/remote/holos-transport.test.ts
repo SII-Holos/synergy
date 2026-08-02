@@ -138,6 +138,23 @@ describe("HolosSynergyLinkTransport error preservation", () => {
     }
   })
 
+  test("classifies an ordinary disconnect after dispatch as result-unknown", async () => {
+    const transport = new HolosSynergyLinkTransport({
+      async send() {
+        return { sent: false, reason: "disconnected" }
+      },
+    })
+    try {
+      await expect(transport.request("target-agent", request(crypto.randomUUID()))).rejects.toMatchObject({
+        name: "SynergyLinkRemoteError",
+        code: "transport_error",
+        details: { reason: "disconnected", dispatched: true },
+      })
+    } finally {
+      transport.dispose()
+    }
+  })
+
   test("preserves delivery_failed and allows a retry to succeed in the same process", async () => {
     let sendCount = 0
     const provider = {

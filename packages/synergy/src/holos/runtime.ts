@@ -592,7 +592,7 @@ export class HolosProvider {
         if (cleanedUp) return
         cleanedUp = true
         if (this.state.heartbeatTimer) clearInterval(this.state.heartbeatTimer)
-        const failureReason = this.state.livenessLost ? "transport_liveness_lost" : "not_connected"
+        const failureReason = this.state.livenessLost ? "transport_liveness_lost" : "disconnected"
         for (const pending of this.state.pendingSends.values()) {
           clearTimeout(pending.timer)
           pending.resolve({ sent: false, reason: failureReason })

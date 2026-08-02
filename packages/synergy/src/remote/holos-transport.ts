@@ -61,15 +61,17 @@ export class HolosSynergyLinkTransport {
             clearTimeout(timer)
             this.#pending.delete(input.requestID)
             const reason = result.reason ?? "delivery_failed"
-            const livenessLost = reason === "transport_liveness_lost"
+            const resultUnknown = reason === "transport_liveness_lost" || reason === "disconnected"
+            const message = resultUnknown
+              ? `Synergy Link request ${input.requestID} was dispatched, but the Holos transport ${
+                  reason === "transport_liveness_lost" ? "lost liveness" : "disconnected"
+                } before a response arrived. Its result is unknown.`
+              : `Synergy Link request ${input.requestID} was not delivered: ${describeSendReason(reason)}.`
             reject(
-              new SynergyLinkRemoteError(
-                reason === "offline" ? "link_inactive" : "transport_error",
-                livenessLost
-                  ? `Synergy Link request ${input.requestID} was dispatched, but the Holos transport lost liveness before a response arrived. Its result is unknown.`
-                  : `Synergy Link request ${input.requestID} was not delivered: ${describeSendReason(reason)}.`,
-                { reason, dispatched: livenessLost },
-              ),
+              new SynergyLinkRemoteError(reason === "offline" ? "link_inactive" : "transport_error", message, {
+                reason,
+                dispatched: resultUnknown,
+              }),
             )
           }
         })
