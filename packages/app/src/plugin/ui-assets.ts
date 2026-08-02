@@ -1,6 +1,6 @@
-import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { parseTheme, type PluginThemeDefinition } from "@ericsanchezok/synergy-ui/theme"
 import type { PluginContribution } from "./api"
+import { resolvePluginAssetUrl } from "./asset-url"
 import type { IconEntry } from "./registries/icon-registry"
 import { pluginSurfaceId } from "./surface-id"
 
@@ -24,6 +24,7 @@ export function resolvePluginIconReference(contribution: PluginContribution, ico
 }
 
 interface PluginUIAssetLoadOptions {
+  serverUrl: string
   signal?: AbortSignal
   fetcher?: (input: string, init?: RequestInit) => Promise<Response>
 }
@@ -35,7 +36,7 @@ type LoadedAsset = LoadedAssetSuccess | { status: "error"; error: PluginUIAssetE
 
 export async function loadPluginUIAssets(
   contributions: PluginContribution[],
-  options: PluginUIAssetLoadOptions = {},
+  options: PluginUIAssetLoadOptions,
 ): Promise<PluginUIAssets> {
   const fetcher = options.fetcher ?? fetch
   const requests: Array<Promise<LoadedAsset>> = []
@@ -45,7 +46,12 @@ export async function loadPluginUIAssets(
       if (definition.kind === "ui.theme") {
         requests.push(
           loadAsset(contribution.pluginId, `Theme "${definition.id}"`, options.signal, async () => {
-            const url = pluginAssetUrl(contribution.pluginId, contribution.generation, definition.path)
+            const url = resolvePluginAssetUrl(
+              options.serverUrl,
+              contribution.pluginId,
+              contribution.generation,
+              definition.path,
+            )
             const response = await fetcher(url, { signal: options.signal })
             if (!response.ok) throw new Error(`HTTP ${response.status}`)
             const theme = parseTheme(await response.json())
@@ -71,7 +77,12 @@ export async function loadPluginUIAssets(
       if (definition.kind === "ui.icon") {
         requests.push(
           loadAsset(contribution.pluginId, `Icon "${definition.id}"`, options.signal, async () => {
-            const url = pluginAssetUrl(contribution.pluginId, contribution.generation, definition.path)
+            const url = resolvePluginAssetUrl(
+              options.serverUrl,
+              contribution.pluginId,
+              contribution.generation,
+              definition.path,
+            )
             const response = await fetcher(url, { signal: options.signal })
             if (!response.ok) throw new Error(`HTTP ${response.status}`)
             const svgContent = await response.text()
