@@ -11,6 +11,10 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 - **clear**: Remove a finished process from the list. On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants before deleting retained output.
 - **remove**: Remove a process (kills if running, then removes). On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants.
 
+## Notes
+
+On Windows Synergy Link hosts, remote Bash rejects known detached launchers, dynamic or opaque script entry points, and commands beyond the 16 KiB per-command, 64 nested-shell, or 128 KiB cumulative inspection budgets. Use the tracked Bash background flow and split oversized work into smaller `bash`/`process` operations because a detached descendant cannot be recovered safely after its launcher exits.
+
 ## Usage
 
 `linkID` is optional. Omit it to manage processes in the current local environment; provide it to target a Synergy Link target. Prefer the stable `targetID` returned by `connect list_targets` over raw `linkID` locators.
