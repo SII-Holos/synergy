@@ -162,39 +162,77 @@ export namespace SessionInvoke {
     origin?: MessageV2.OriginUser
   }
 
-  async function invokeWithInternalTools(input: InternalInvokeInput) {
-    return SessionManager.run(input.sessionID, async (lease) => {
-      const message = await createUserMessage(input)
-      if (input.ephemeralTools?.length) {
-        ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
-      }
-      if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
+  async function invokeWithInternalTools(input: InternalInvokeInput, lease?: SessionManager.LoopLease) {
+    return SessionManager.run(
+      input.sessionID,
+      async (runLease) => {
+        const message = await createUserMessage(input)
+        if (input.ephemeralTools?.length) {
+          ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
+        }
+        if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
 
-      await Session.update(input.sessionID, (draft) => {
-        draft.pendingReply = input.noReply !== true || undefined
-      })
-
-      if (input.noReply === true) {
-        ephemeralToolsByMessage.delete(message.info.id)
-        maxOutputTokensByMessage.delete(message.info.id)
-        return message
-      }
-
-      try {
-        return await loopBodyWithIncident(input.sessionID, lease)
-      } catch (error) {
-        await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
-          log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
+        await Session.update(input.sessionID, (draft) => {
+          draft.pendingReply = input.noReply !== true || undefined
         })
-        throw error
-      } finally {
-        ephemeralToolsByMessage.delete(message.info.id)
-        maxOutputTokensByMessage.delete(message.info.id)
-      }
-    })
+
+        if (input.noReply === true) {
+          ephemeralToolsByMessage.delete(message.info.id)
+          maxOutputTokensByMessage.delete(message.info.id)
+          return message
+        }
+
+        try {
+          return await loopBodyWithIncident(input.sessionID, runLease)
+        } catch (error) {
+          await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
+            log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
+          })
+          throw error
+        } finally {
+          ephemeralToolsByMessage.delete(message.info.id)
+          maxOutputTokensByMessage.delete(message.info.id)
+        }
+      },
+      lease ? { lease, releaseLease: false } : undefined,
+    )
   }
 
   export const invoke = fn(InvokeInput, async (input) => invokeWithInternalTools(input))
+
+  export async function invokeWithLease(input: InvokeInput, lease: SessionManager.LoopLease) {
+    return invokeWithInternalTools(InvokeInput.parse(input), lease)
+  }
+  export async function invokeInboxWithLease(
+    input: { sessionID: string; itemID: string },
+    lease: SessionManager.LoopLease,
+  ) {
+    return SessionManager.run(
+      input.sessionID,
+      async (runLease) => {
+        const item = await SessionInbox.getStored(input.sessionID, input.itemID)
+        const message = await SessionInbox.materializeItem(item)
+        if (!message || message.info.role !== "user") {
+          throw new Error(`Session inbox task could not be materialized: ${input.itemID}`)
+        }
+        await SessionInbox.commitReady(input.sessionID, [item.id])
+
+        await Session.update(input.sessionID, (draft) => {
+          draft.pendingReply = true
+        })
+
+        try {
+          return await loopBodyWithIncident(input.sessionID, runLease)
+        } catch (error) {
+          await writeErrorAssistantIfMissing(input.sessionID, message.info, error).catch((err) => {
+            log.error("failed to persist inbox invocation error", { sessionID: input.sessionID, error: err })
+          })
+          throw error
+        }
+      },
+      { lease, releaseLease: false },
+    )
+  }
 
   export async function invokeInternal(input: InternalInvokeInput) {
     return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })
@@ -2018,12 +2056,28 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     },
   )
 
-  export async function resumePending(input?: { scopeID?: string }): Promise<void> {
+  export async function resumePending(input?: { scopeID?: string; waitForProcessing?: boolean }): Promise<void> {
     await reconcileInterruptedCortexDelegations(input?.scopeID)
     const { SessionRecovery } = await import("./recovery")
     await SessionRecovery.resumePendingStopRequests(input?.scopeID)
     const { Cortex } = await import("../cortex/manager")
     await Cortex.reconcileParentNotifications(input?.scopeID)
+
+    // Startup inbox discovery: sessions with a durable queued task are driven
+    // through the existing SessionDrive/wake path so the owning loop performs
+    // the peek/materialize/commit work. No direct materialization here.
+    const { SessionDrive } = await import("./drive")
+    for (const sessionID of await SessionInbox.listRunnableSessions(input?.scopeID)) {
+      if (SessionManager.isRunning(sessionID)) continue
+      try {
+        const handled = await SessionDrive.request(sessionID, "inbox-recovery", {
+          waitForProcessing: input?.waitForProcessing,
+        })
+        log.info("startup inbox recovery drive request", { sessionID, handled })
+      } catch (error) {
+        log.warn("startup inbox recovery drive failed", { sessionID, error })
+      }
+    }
 
     const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
     for (const sessionID of sessionIDs) {

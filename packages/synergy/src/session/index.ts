@@ -1475,12 +1475,16 @@ export namespace Session {
     }
   }
 
-  export async function archiveForEndpoint(endpoint: SessionEndpoint.Info, options: { scope: Scope }) {
+  export async function archiveForEndpoint(
+    endpoint: SessionEndpoint.Info,
+    options: { scope: Scope; requireIdle?: boolean },
+  ) {
     using _ = await Lock.write(endpointLockKey(endpoint))
     const session = await SessionManager.getSession(endpoint)
 
     if (!session) return
     assertEndpointScope(session, options.scope)
+    if (options.requireIdle) SessionManager.assertIdle(session.id)
     await ScopeContext.provide({
       scope: options.scope,
       fn: () =>

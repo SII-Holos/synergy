@@ -129,7 +129,17 @@ export namespace ChannelCommand {
       name: "new",
       triggers: ["/new", "/reset", "/重置", "/清空", "/新对话"],
       async execute(ctx, scope) {
-        await Session.archiveForEndpoint(endpointForContext(ctx), { scope })
+        try {
+          await Session.archiveForEndpoint(endpointForContext(ctx), { scope, requireIdle: true })
+        } catch (error) {
+          if (error instanceof BusyError) {
+            return {
+              action: "handled",
+              reply: "⚠️ Wait for the current response to finish before starting a new conversation.",
+            }
+          }
+          throw error
+        }
         log.info("session reset", { channelType: ctx.channelType, chatHash: externalIdentityHash(ctx.chatId) })
 
         if (ctx.remainder) {
