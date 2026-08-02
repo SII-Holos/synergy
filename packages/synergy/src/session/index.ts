@@ -1093,6 +1093,44 @@ export namespace Session {
     })
   }
 
+  // A root user message written after a rollback invalidates redo, but that
+  // derived state lives in the session info and no message-write path used to
+  // republish it. Frontends only received message.updated, so the rollback
+  // prefix-cut kept hiding the new branch until a forced refresh. Persist the
+  // flip once and publish the session update carrying canUnrollback: false.
+  //
+  // The stored projection can be stale (the derived flip is only recomputed on
+  // rollback/unrollback), so trust canUnrollback only while it is still true.
+  // Once the persisted summary flips to false, trust the projection itself: a
+  // fresh derivation can disagree when callers write messages with backdated
+  // timestamps, and unrollback already validates against the fresh derivation.
+  const rollbackInvalidationPending = new Set<string>()
+
+  async function publishRollbackInvalidation(canonical: MessageV2.Info) {
+    if (canonical.role !== "user") return
+    if ((canonical as MessageV2.User).isRoot === false) return
+    if (rollbackInvalidationPending.has(canonical.sessionID)) return
+    const stored = await SessionHistory.storedInfo(canonical.sessionID).catch(() => undefined)
+    const rollback = stored?.rollback
+    if (!rollback) return
+    if (rollback.canUnrollback !== true) {
+      if (canonical.time.created <= rollback.created) return
+      await SessionHistory.rewriteStoredInfo(canonical.sessionID).catch(() => undefined)
+      return
+    }
+    if (canonical.time.created <= rollback.created) return
+    rollbackInvalidationPending.add(canonical.sessionID)
+    try {
+      await update(canonical.sessionID, (draft) => {
+        if (draft.history?.rollback) draft.history.rollback.canUnrollback = false
+      })
+    } catch (error) {
+      log.warn("failed to publish rollback invalidation", { sessionID: canonical.sessionID, error })
+    } finally {
+      rollbackInvalidationPending.delete(canonical.sessionID)
+    }
+  }
+
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     const canonical = MessageV2.canonicalMessage(msg)
     const session = await SessionManager.requireSession(msg.sessionID)
@@ -1102,6 +1140,7 @@ export namespace Session {
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
     })
+    await publishRollbackInvalidation(canonical)
     return canonical
   })
 
