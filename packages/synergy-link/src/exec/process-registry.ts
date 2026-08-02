@@ -66,6 +66,7 @@ export class ProcessRegistry {
   readonly #running = new Map<SynergyLinkIdentity.ProcessID, ProcessRecord>()
   readonly #finished = new Map<SynergyLinkIdentity.ProcessID, FinishedRecord>()
   readonly #waiters = new Map<SynergyLinkIdentity.ProcessID, Set<() => void>>()
+  // Markers outlive finished process history so session cleanup can still reap escaped descendants.
   readonly #sessionOwnerMarkers = new Map<string, Set<string>>()
   readonly #ttlMs: number
   readonly #host: SynergyLinkHost
@@ -537,7 +538,9 @@ export class ProcessRegistry {
       })
     }
 
+    await Platform.killOwnedByMarker(finished.ownerMarker)
     this.#finished.delete(processId)
+    this.#forgetOwnerMarker(finished.lease, finished.ownerMarker)
     return this.#result({
       action: "clear",
       title: `Cleared ${processId}`,
@@ -553,13 +556,13 @@ export class ProcessRegistry {
   async #remove(processId: string, linkID: string): Promise<SynergyLinkProcess.Result> {
     const running = this.#running.get(processId)
     const finished = this.#finished.get(processId)
+    const record = running ?? finished
     if (running) {
       await Platform.killTree(running.child, () => running.exited, { ownerMarker: running.ownerMarker })
       this.#running.delete(processId)
     }
     if (!running && finished) await Platform.killOwnedByMarker(finished.ownerMarker)
-    const ownerMarker = running?.ownerMarker ?? finished?.ownerMarker
-    if (ownerMarker) this.#forgetOwnerMarker((running ?? finished)!.lease, ownerMarker)
+    if (record) this.#forgetOwnerMarker(record.lease, record.ownerMarker)
     this.#finished.delete(processId)
 
     return this.#result({

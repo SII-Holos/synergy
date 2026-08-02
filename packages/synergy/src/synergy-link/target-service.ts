@@ -52,24 +52,45 @@ export namespace SynergyLinkTargetService {
 
         await SynergyLinkTargetStore.assertLocatorAvailable(id, nextLinkID, nextTargetAgentID)
         const client = SynergyLinkExecution.requireClient(nextLinkID, "connect")
-        const existingNewSession = SynergyLinkExecution.getSession(nextLinkID, { targetAgentID: nextTargetAgentID })
+        const newSessionSelector = { targetAgentID: nextTargetAgentID }
+        let existingNewSession = SynergyLinkExecution.getSession(nextLinkID, newSessionSelector)
         let temporarySessionID: string | undefined
+        const probeTimeout = { message: `Verifying the new locator for target "${current.name}" timed out.` }
+        const openProbe = () =>
+          withTimeout(
+            client.executeSession(
+              nextLinkID,
+              { action: "open", label: `Relink verification: ${current.name}` },
+              newSessionSelector,
+            ),
+            ToolTimeout.DEFAULTS.connectMs,
+            probeTimeout,
+          )
         try {
-          const probe = await withTimeout(
-            existingNewSession
-              ? client.executeSession(
+          let probe: Awaited<ReturnType<typeof openProbe>> | undefined
+          if (existingNewSession) {
+            try {
+              probe = await withTimeout(
+                client.executeSession(
                   nextLinkID,
                   { action: "heartbeat", sessionID: existingNewSession.sessionID },
-                  { targetAgentID: nextTargetAgentID },
-                )
-              : client.executeSession(
-                  nextLinkID,
-                  { action: "open", label: `Relink verification: ${current.name}` },
-                  { targetAgentID: nextTargetAgentID },
+                  newSessionSelector,
                 ),
-            ToolTimeout.DEFAULTS.connectMs,
-            { message: `Verifying the new locator for target "${current.name}" timed out.` },
-          )
+                ToolTimeout.DEFAULTS.connectMs,
+                probeTimeout,
+              )
+            } catch (error) {
+              if (!SynergyLinkExecution.isInvalidSessionError(error)) throw error
+              SynergyLinkExecution.clearSession(nextLinkID, newSessionSelector)
+              existingNewSession = undefined
+            }
+            if (probe?.metadata.status === "closed") {
+              SynergyLinkExecution.clearSession(nextLinkID, newSessionSelector)
+              existingNewSession = undefined
+              probe = undefined
+            }
+          }
+          probe ??= await openProbe()
           const verified = probe.metadata.status === "opened" || probe.metadata.status === "alive"
           if (!verified || !probe.metadata.sessionID) {
             throw new Error(
@@ -82,6 +103,15 @@ export namespace SynergyLinkTargetService {
           }
 
           await SynergyLinkTargetStore.update(id, parsed)
+          if (existingNewSession) {
+            const verifiedAt = Date.now()
+            SynergyLinkExecution.upsertSession({
+              ...existingNewSession,
+              targetID: id,
+              lastUsedAt: verifiedAt,
+              lastVerifiedAt: verifiedAt,
+            })
+          }
           const oldSession = SynergyLinkExecution.getSession(current.linkID, {
             targetID: current.id,
             targetAgentID: current.targetAgentID,

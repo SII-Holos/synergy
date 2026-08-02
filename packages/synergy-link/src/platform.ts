@@ -9,6 +9,38 @@ const SIGKILL_TIMEOUT_MS = 1_000
 const PROCESS_GROUP_EXIT_POLL_MS = 25
 const PROCESS_LIST_MAX_BUFFER = 8 * 1024 * 1024
 const PROCESS_LIST_TIMEOUT_MS = 5_000
+const PROCESS_OWNER_SCAN_SCRIPT = String.raw`
+include_no_tty=$1
+shift
+ps eww "$include_no_tty" -o pid=,ppid=,pgid=,command= 2>/dev/null |
+  awk '
+    BEGIN {
+      for (argumentIndex = 1; argumentIndex < ARGC; argumentIndex += 1) {
+        markers[argumentIndex] = "SYNERGY_LINK_PROCESS_OWNER=" ARGV[argumentIndex]
+        delete ARGV[argumentIndex]
+      }
+    }
+    {
+      pid = $1
+      parentPid = $2
+      processGroupId = $3
+      command = $0
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+/, "", command)
+      owned = 0
+      for (markerIndex in markers) {
+        start = index(command, markers[markerIndex])
+        if (start == 0) continue
+        nextCharacter = substr(command, start + length(markers[markerIndex]), 1)
+        if (nextCharacter == "" || nextCharacter ~ /[[:space:]]/) {
+          owned = 1
+          break
+        }
+      }
+      print pid, parentPid, processGroupId, owned
+    }
+  ' "$@"
+`
+const PROCESS_SCAN_PATH = "/usr/bin:/bin"
 const ESC = "\u001b"
 
 export type ProcessEnv = Record<string, string | undefined>
@@ -119,13 +151,15 @@ export namespace Platform {
       : waitForChildExit(exited, SIGTERM_GRACE_MS)
     await trackedProcessExited
 
+    const killProcessGroups = new Set<number>()
+    if (trackedProcessAlive && pid && !exited?.()) killProcessGroups.add(pid)
     if (options?.ownerMarker) {
-      for (const processGroupId of ownedProcessGroups([options.ownerMarker])) processGroups.add(processGroupId)
+      for (const processGroupId of ownedProcessGroups([options.ownerMarker])) killProcessGroups.add(processGroupId)
     }
-    signalExistingProcessGroups(processGroups, "SIGKILL")
+    signalExistingProcessGroups(killProcessGroups, "SIGKILL")
     if (trackedProcessAlive && !exited?.() && !trackedGroupSignaled) child.kill("SIGKILL")
     await Promise.all([
-      waitForProcessGroupsExit(processGroups, SIGKILL_TIMEOUT_MS),
+      waitForProcessGroupsExit(killProcessGroups, SIGKILL_TIMEOUT_MS),
       trackedGroupSignaled ? Promise.resolve(true) : waitForChildExit(exited, SIGKILL_TIMEOUT_MS),
     ])
   }
@@ -143,9 +177,9 @@ export namespace Platform {
 
     signalProcessGroups(processGroups, "SIGTERM")
     await waitForProcessGroupsExit(processGroups, SIGTERM_GRACE_MS)
-    for (const processGroupId of ownedProcessGroups(markers)) processGroups.add(processGroupId)
-    signalExistingProcessGroups(processGroups, "SIGKILL")
-    await waitForProcessGroupsExit(processGroups, SIGKILL_TIMEOUT_MS)
+    const killProcessGroups = new Set(ownedProcessGroups(markers))
+    signalExistingProcessGroups(killProcessGroups, "SIGKILL")
+    await waitForProcessGroupsExit(killProcessGroups, SIGKILL_TIMEOUT_MS)
   }
 
   export function encodeKeySequence(keys: string[]): { data: string; warnings: string[] } {
@@ -201,24 +235,27 @@ interface ProcessTableEntry {
 }
 
 function ownedProcessGroups(ownerMarkers: Iterable<string>): number[] {
-  const markers = [...new Set(ownerMarkers)]
-    .filter(Boolean)
-    .map((ownerMarker) => `${SYNERGY_LINK_PROCESS_OWNER_ENV}=${ownerMarker}`)
+  const markers = [...new Set(ownerMarkers)].filter(Boolean)
   if (markers.length === 0) return []
   const includeNoTty = process.platform === "darwin" ? "-x" : "x"
-  const result = spawnSync("ps", ["eww", includeNoTty, "-o", "pid=,ppid=,pgid=,command="], {
-    stdio: ["ignore", "pipe", "ignore"],
-    encoding: "utf8",
-    maxBuffer: PROCESS_LIST_MAX_BUFFER,
-    timeout: PROCESS_LIST_TIMEOUT_MS,
-  })
+  const result = spawnSync(
+    "/bin/sh",
+    ["-c", PROCESS_OWNER_SCAN_SCRIPT, "synergy-link-process-scan", includeNoTty, ...markers],
+    {
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+      env: { PATH: PROCESS_SCAN_PATH },
+      maxBuffer: PROCESS_LIST_MAX_BUFFER,
+      timeout: PROCESS_LIST_TIMEOUT_MS,
+    },
+  )
   if (result.error || result.status !== 0 || typeof result.stdout !== "string") return []
 
   const processes = new Map<number, ProcessTableEntry>()
   const descendants = new Set<number>()
   const processGroups = new Set<number>()
   for (const line of result.stdout.split("\n")) {
-    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/)
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+([01])$/)
     if (!match) continue
     const pid = Number(match[1])
     const parentPid = Number(match[2])
@@ -227,16 +264,9 @@ function ownedProcessGroups(ownerMarkers: Iterable<string>): number[] {
       continue
     }
     processes.set(pid, { parentPid, processGroupId })
-    if (!markers.some((marker) => hasExactOwnerMarker(match[4] ?? "", marker))) continue
+    if (match[4] !== "1") continue
     descendants.add(pid)
     if (processGroupId > 0) processGroups.add(processGroupId)
-  }
-
-  function hasExactOwnerMarker(command: string, marker: string): boolean {
-    const start = command.indexOf(marker)
-    if (start < 0) return false
-    const next = command[start + marker.length]
-    return next === undefined || /\s/.test(next)
   }
 
   let changed = true

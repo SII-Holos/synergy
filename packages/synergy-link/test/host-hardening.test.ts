@@ -279,6 +279,56 @@ describe("synergy-link host hardening", () => {
     10_000,
   )
 
+  test.skipIf(process.platform === "win32")(
+    "clearing finished process history reaps its detached descendants",
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-detached-clear-"))
+      const pidPath = path.join(root, "worker.pid")
+      const workerPath = path.join(root, "worker.ts")
+      const launcherPath = path.join(root, "launcher.ts")
+      const host = createHost()
+      let workerPid: number | undefined
+      try {
+        await Bun.write(workerPath, "setInterval(() => {}, 1_000)\n")
+        await Bun.write(
+          launcherPath,
+          `const child = Bun.spawn([process.execPath, ${JSON.stringify(workerPath)}], {\n  env: process.env,\n  stdin: "ignore",\n  stdout: "ignore",\n  stderr: "ignore",\n  detached: true,\n})\nchild.unref()\nawait Bun.write(${JSON.stringify(pidPath)}, String(child.pid))\n`,
+        )
+        const sessionID = await openSession(host)
+        const nestedCommand = `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(launcherPath)}`
+        const started = await execute(host, sessionID, "req_detached_clear", `sh -c ${JSON.stringify(nestedCommand)}`)
+        const id = processID(started)
+        await waitForCondition(async () => Bun.file(pidPath).exists())
+        workerPid = Number(await Bun.file(pidPath).text())
+        await waitForCondition(() => processIsAlive(workerPid))
+        await waitForCondition(async () => {
+          const response = await processRequest(host, leaseA(sessionID), "poll", id)
+          return response.ok && response.tool === "process" && response.result.metadata.status !== "running"
+        })
+
+        const cleared = await processRequest(host, leaseA(sessionID), "clear", id)
+
+        expect(cleared.ok).toBe(true)
+        if (cleared.ok && cleared.tool === "process") expect(cleared.result.metadata.status).toBe("cleared")
+        await waitForCondition(() => !processIsAlive(workerPid))
+        expect(host.rpc.processRegistry.has(id)).toBe(false)
+      } finally {
+        await host.rpc.processRegistry.reset()
+        if (workerPid && processIsAlive(workerPid)) {
+          try {
+            process.kill(-workerPid, "SIGKILL")
+          } catch {
+            try {
+              process.kill(workerPid, "SIGKILL")
+            } catch {}
+          }
+        }
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    10_000,
+  )
+
   test("session kick and idle expiry reap their background processes", async () => {
     for (const reason of ["kick", "expire"] as const) {
       const host = createHost()

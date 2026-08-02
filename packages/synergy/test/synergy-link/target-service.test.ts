@@ -5,6 +5,7 @@ import type {
   SynergyLinkProcess,
   SynergyLinkSession,
 } from "@ericsanchezok/synergy-link-protocol"
+import { SynergyLinkRemoteError } from "../../src/remote/client"
 import { StoragePath } from "../../src/storage/path"
 import { Storage } from "../../src/storage/storage"
 import { SynergyLinkTargetService } from "../../src/synergy-link/target-service"
@@ -237,6 +238,7 @@ describe("Synergy Link target service relink", () => {
     })
     SynergyLinkExecution.upsertSession({
       linkID: "link_new",
+      targetID: "target_stale",
       targetAgentID: "agent_new",
       sourceAgent: "build",
       sessionID: "session_reused",
@@ -256,9 +258,150 @@ describe("Synergy Link target service relink", () => {
         payload: { action: "heartbeat", sessionID: "session_reused" },
       },
     ])
-    expect(SynergyLinkExecution.getSession("link_new", { targetAgentID: "agent_new" })?.sessionID).toBe(
-      "session_reused",
+    expect(
+      SynergyLinkExecution.getSession("link_new", { targetID: target.id, targetAgentID: "agent_new" }),
+    ).toMatchObject({
+      sessionID: "session_reused",
+      targetID: target.id,
+      lastVerifiedAt: expect.any(Number),
+    })
+  })
+  test("clears an invalid reused session and opens a fresh relink verification session", async () => {
+    const calls: SynergyLinkSession.ExecutePayload[] = []
+    SynergyLinkExecution.setClient(
+      client(async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        calls.push(payload)
+        if (payload.action === "heartbeat") {
+          throw new SynergyLinkRemoteError("session_invalid", "Session is not active.")
+        }
+        return {
+          title: payload.action === "open" ? "Opened" : "Closed",
+          metadata: {
+            action: payload.action,
+            status: payload.action === "open" ? "opened" : "closed",
+            sessionID: payload.action === "open" ? "session_fresh" : payload.sessionID,
+            backend: "remote",
+            host:
+              payload.action === "open"
+                ? {
+                    type: "synergy_link.host.hello",
+                    linkID: "link_new",
+                    hostSessionID: "host_new",
+                    capabilities: {
+                      platform: "linux",
+                      arch: "x64",
+                      runtime: "bun",
+                      defaultShell: "sh",
+                      supportedShells: ["sh"],
+                      supportsPty: false,
+                      supportsSendKeys: true,
+                      supportsSoftKill: true,
+                      supportsProcessGroups: true,
+                      envCaseInsensitive: false,
+                      lineEndings: "lf",
+                    },
+                  }
+                : undefined,
+          },
+          output: "ok",
+        }
+      }),
     )
+    const target = await SynergyLinkTargetStore.create({
+      name: "Stale session host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_new",
+      targetAgentID: "agent_new",
+      sourceAgent: "build",
+      sessionID: "session_stale",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+
+    const updated = await SynergyLinkTargetService.update(target.id, {
+      targetAgentID: "agent_new",
+      linkID: "link_new",
+    })
+
+    expect(calls).toEqual([
+      { action: "heartbeat", sessionID: "session_stale" },
+      { action: "open", label: "Relink verification: Stale session host" },
+      { action: "close", sessionID: "session_fresh" },
+    ])
+    expect(updated.linkID).toBe("link_new")
+    expect(updated.lastProbe?.status).toBe("reachable")
+    expect(SynergyLinkExecution.getSession("link_new", { targetAgentID: "agent_new" })).toBeUndefined()
+  })
+  test("reopens relink verification when a reused session heartbeat reports closed", async () => {
+    const calls: SynergyLinkSession.ExecutePayload[] = []
+    SynergyLinkExecution.setClient(
+      client(async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        calls.push(payload)
+        return {
+          title: payload.action === "open" ? "Opened" : "Closed",
+          metadata: {
+            action: payload.action,
+            status: payload.action === "open" ? "opened" : "closed",
+            sessionID: payload.action === "open" ? "session_fresh" : payload.sessionID,
+            backend: "remote",
+            host:
+              payload.action === "open"
+                ? {
+                    type: "synergy_link.host.hello",
+                    linkID: "link_new",
+                    hostSessionID: "host_new",
+                    capabilities: {
+                      platform: "linux",
+                      arch: "x64",
+                      runtime: "bun",
+                      defaultShell: "sh",
+                      supportedShells: ["sh"],
+                      supportsPty: false,
+                      supportsSendKeys: true,
+                      supportsSoftKill: true,
+                      supportsProcessGroups: true,
+                      envCaseInsensitive: false,
+                      lineEndings: "lf",
+                    },
+                  }
+                : undefined,
+          },
+          output: "ok",
+        }
+      }),
+    )
+    const target = await SynergyLinkTargetStore.create({
+      name: "Closed session host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_new",
+      targetAgentID: "agent_new",
+      sourceAgent: "build",
+      sessionID: "session_closed",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+
+    const updated = await SynergyLinkTargetService.update(target.id, {
+      targetAgentID: "agent_new",
+      linkID: "link_new",
+    })
+
+    expect(calls).toEqual([
+      { action: "heartbeat", sessionID: "session_closed" },
+      { action: "open", label: "Relink verification: Closed session host" },
+      { action: "close", sessionID: "session_fresh" },
+    ])
+    expect(updated.linkID).toBe("link_new")
+    expect(updated.lastProbe?.status).toBe("reachable")
+    expect(SynergyLinkExecution.getSession("link_new", { targetAgentID: "agent_new" })).toBeUndefined()
   })
 
   test("rejects a locator collision before probing or closing a reused session", async () => {
