@@ -311,9 +311,12 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    const storedRollback = session.history?.rollback
     const [working, history] = await Promise.all([
       SessionWorking.resolve(session.id),
-      session.history?.rollback ? SessionHistory.storedInfo(session.id).catch(() => session.history) : session.history,
+      storedRollback?.canUnrollback === true
+        ? SessionHistory.storedInfo(session.id).catch(() => session.history)
+        : session.history,
     ])
     const result = { ...withoutRuntimeInfo(session), history }
     if (!working) return result
@@ -1094,35 +1097,22 @@ export namespace Session {
   }
 
   // A root user message written after a rollback invalidates redo, but that
-  // derived state lives in the session info and no message-write path used to
-  // republish it. Frontends only received message.updated, so the rollback
-  // prefix-cut kept hiding the new branch until a forced refresh. Persist the
-  // flip once and publish the session update carrying canUnrollback: false.
-  //
-  // The stored projection can be stale (the derived flip is only recomputed on
-  // rollback/unrollback), so trust canUnrollback only while it is still true.
-  // Once the persisted summary flips to false, trust the projection itself: a
-  // fresh derivation can disagree when callers write messages with backdated
-  // timestamps, and unrollback already validates against the fresh derivation.
+  // derived state lives in the persisted session projection. Publish the flip
+  // once so the frontend stops prefix-hiding the replacement branch.
   const rollbackInvalidationPending = new Set<string>()
 
-  async function publishRollbackInvalidation(canonical: MessageV2.Info) {
+  async function publishRollbackInvalidation(canonical: MessageV2.Info, history: Info["history"]) {
     if (canonical.role !== "user") return
     if ((canonical as MessageV2.User).isRoot === false) return
-    if (rollbackInvalidationPending.has(canonical.sessionID)) return
-    const stored = await SessionHistory.storedInfo(canonical.sessionID).catch(() => undefined)
-    const rollback = stored?.rollback
-    if (!rollback) return
-    if (rollback.canUnrollback !== true) {
-      if (canonical.time.created <= rollback.created) return
-      await SessionHistory.rewriteStoredInfo(canonical.sessionID).catch(() => undefined)
-      return
-    }
+    const rollback = history?.rollback
+    if (!rollback?.canUnrollback) return
     if (canonical.time.created <= rollback.created) return
+    if (rollbackInvalidationPending.has(canonical.sessionID)) return
     rollbackInvalidationPending.add(canonical.sessionID)
     try {
       await update(canonical.sessionID, (draft) => {
-        if (draft.history?.rollback) draft.history.rollback.canUnrollback = false
+        if (draft.history?.rollback?.id !== rollback.id) return
+        draft.history.rollback.canUnrollback = false
       })
     } catch (error) {
       log.warn("failed to publish rollback invalidation", { sessionID: canonical.sessionID, error })
@@ -1140,7 +1130,7 @@ export namespace Session {
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
     })
-    await publishRollbackInvalidation(canonical)
+    await publishRollbackInvalidation(canonical, session.history)
     return canonical
   })
 

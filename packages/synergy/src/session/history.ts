@@ -621,15 +621,6 @@ export namespace SessionHistory {
     return infoFromMessageInfo(messages, events)
   }
 
-  // Recompute the derived history projection and persist it onto the session
-  // info. Message writes can invalidate redo without any rollback/unrollback
-  // API call, so the persisted summary needs this refresh path too.
-  export async function rewriteStoredInfo(sessionID: string): Promise<Info["history"] | undefined> {
-    const history = await storedInfo(sessionID)
-    await updateSessionHistory(sessionID, history)
-    return history
-  }
-
   async function latestInfo(sessionID: string, raw: MessageV2.WithParts[], events: Event[]) {
     await updateSessionHistory(sessionID, info(sessionID, raw, events))
     return info(sessionID, raw, events)

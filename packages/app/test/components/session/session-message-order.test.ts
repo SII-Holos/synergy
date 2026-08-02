@@ -34,32 +34,42 @@ describe("session message order", () => {
 })
 
 describe("rollback message filtering", () => {
-  const history = [{ id: "msg_1" }, { id: "msg_2" }, { id: "msg_3" }, { id: "msg_4" }]
+  const history = [
+    { id: "msg_1", role: "user" as const, isRoot: true, time: { created: 1 } },
+    { id: "msg_2", role: "assistant" as const, time: { created: 2 } },
+    { id: "msg_3", role: "user" as const, isRoot: true, time: { created: 3 } },
+    { id: "msg_4", role: "assistant" as const, time: { created: 4 } },
+  ]
   const rollback = {
+    created: 5,
     cutMessageID: "msg_3",
     canUnrollback: true,
     droppedMessageIDs: ["msg_3", "msg_4"],
   }
 
   test("prefix-cuts the dropped branch while redo is possible", () => {
-    expect(messagesHiddenByRollback(history, rollback)).toEqual([{ id: "msg_1" }, { id: "msg_2" }])
+    expect(messagesHiddenByRollback(history, rollback).map((message) => message.id)).toEqual(["msg_1", "msg_2"])
   })
 
   test("filters only the dropped set once redo is unavailable", () => {
-    const replacement = [...history, { id: "msg_5" }]
-    expect(messagesHiddenByRollback(replacement, { ...rollback, canUnrollback: false })).toEqual([
-      { id: "msg_1" },
-      { id: "msg_2" },
-      { id: "msg_5" },
+    const replacement = [...history, { id: "msg_5", role: "user" as const, isRoot: true, time: { created: 6 } }]
+    expect(
+      messagesHiddenByRollback(replacement, { ...rollback, canUnrollback: false }).map((message) => message.id),
+    ).toEqual(["msg_1", "msg_2", "msg_5"])
+  })
+
+  test("keeps a loaded replacement root visible while the summary still allows redo", () => {
+    const replacement = [...history, { id: "msg_5", role: "user" as const, isRoot: true, time: { created: 6 } }]
+    expect(messagesHiddenByRollback(replacement, rollback).map((message) => message.id)).toEqual([
+      "msg_1",
+      "msg_2",
+      "msg_5",
     ])
   })
 
-  test("keeps a loaded post-cut branch visible while the summary still allows redo", () => {
-    // The rollback summary can lag the message window: message.updated for the
-    // resent input arrives before session.updated flips canUnrollback. A strict
-    // prefix-cut would hide the new branch until a forced refresh.
-    const replacement = [...history, { id: "msg_5" }]
-    expect(messagesHiddenByRollback(replacement, rollback)).toEqual([{ id: "msg_1" }, { id: "msg_2" }, { id: "msg_5" }])
+  test("keeps a post-cut non-root injection hidden while redo is possible", () => {
+    const injection = [...history, { id: "msg_5", role: "user" as const, isRoot: false, time: { created: 6 } }]
+    expect(messagesHiddenByRollback(injection, rollback).map((message) => message.id)).toEqual(["msg_1", "msg_2"])
   })
 
   test("leaves the window unchanged when the cut message is not loaded", () => {
@@ -68,6 +78,7 @@ describe("rollback message filtering", () => {
 
   test("returns a copy when there is nothing to hide", () => {
     const result = messagesHiddenByRollback(history, {
+      created: 0,
       canUnrollback: false,
       droppedMessageIDs: [],
     })

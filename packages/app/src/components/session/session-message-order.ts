@@ -1,5 +1,12 @@
 type MessageWithID = { id: string }
 
+type RollbackMessage = {
+  id: string
+  role: "user" | "assistant"
+  isRoot?: boolean
+  time: { created: number }
+}
+
 function messageIndex(messages: readonly MessageWithID[], messageID: string) {
   return messages.findIndex((message) => message.id === messageID)
 }
@@ -9,14 +16,17 @@ export function messagesBefore<T extends MessageWithID>(messages: readonly T[], 
   return index < 0 ? [...messages] : messages.slice(0, index)
 }
 
-// A rollback summary arriving via message.updated can lag the message window:
-// the new branch is already loaded while the summary still claims redo is
-// possible. A strict prefix-cut would hide that branch until a forced refresh,
-// so once any message after the cut survives the dropped set the cut degrades
-// to filtering just the dropped ids.
-export function messagesHiddenByRollback<T extends MessageWithID>(
+// message.updated for a resent root can reach the window before session.updated
+// invalidates redo. Keep that root visible without revealing non-root injections,
+// which canonical rollback history continues to prefix-hide while redo is valid.
+export function messagesHiddenByRollback<T extends RollbackMessage>(
   messages: readonly T[],
-  rollback: { cutMessageID?: string; canUnrollback: boolean; droppedMessageIDs?: readonly string[] },
+  rollback: {
+    created: number
+    cutMessageID?: string
+    canUnrollback: boolean
+    droppedMessageIDs?: readonly string[]
+  },
 ): T[] {
   const dropped = new Set(rollback.droppedMessageIDs ?? [])
   const filterDropped = () =>
@@ -24,7 +34,11 @@ export function messagesHiddenByRollback<T extends MessageWithID>(
   if (!rollback.cutMessageID || !rollback.canUnrollback) return filterDropped()
   const cutIndex = messageIndex(messages, rollback.cutMessageID)
   if (cutIndex < 0) return [...messages]
-  const newBranchLoaded = messages.slice(cutIndex).some((message) => !dropped.has(message.id))
+  const newBranchLoaded = messages.slice(cutIndex).some((message) => {
+    if (dropped.has(message.id) || message.role !== "user") return false
+    if (message.isRoot === false) return false
+    return message.time.created > rollback.created
+  })
   if (newBranchLoaded) return filterDropped()
   return messages.slice(0, cutIndex)
 }

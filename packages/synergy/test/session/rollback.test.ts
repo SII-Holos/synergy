@@ -116,6 +116,22 @@ describe("session rollback history", () => {
     })
   })
 
+  test("root message without rollback does not derive history", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        using storedInfo = spyOn(SessionHistory, "storedInfo")
+
+        await writeUser(session.id, "first")
+
+        expect(storedInfo).not.toHaveBeenCalled()
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("new root message publishes rollback invalidation via session.updated", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -127,6 +143,7 @@ describe("session rollback history", () => {
 
         await Session.rollback({ sessionID: session.id, numTurns: 1 })
         expect((await Session.get(session.id)).history?.rollback?.canUnrollback).toBe(true)
+        using storedInfo = spyOn(SessionHistory, "storedInfo")
 
         const updates: Array<{ rollback?: boolean; archived: boolean }> = []
         const unsub = Bus.subscribe(SessionEvent.Updated, (event) => {
@@ -148,8 +165,30 @@ describe("session rollback history", () => {
         // The flip is published exactly once even though two roots were written.
         const flips = updates.filter((update) => !update.archived && update.rollback === false)
         expect(flips).toHaveLength(1)
+        expect(storedInfo).not.toHaveBeenCalled()
         expect((await Session.get(session.id)).history?.rollback?.canUnrollback).toBe(false)
 
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("later roots do not rederive an invalidated rollback", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+        await Session.rollback({ sessionID: session.id, numTurns: 1 })
+        await sleep(2)
+        await writeUser(session.id, "replacement")
+        using storedInfo = spyOn(SessionHistory, "storedInfo")
+
+        await writeUser(session.id, "second replacement")
+
+        expect(storedInfo).not.toHaveBeenCalled()
         await Session.remove(session.id)
       },
     })

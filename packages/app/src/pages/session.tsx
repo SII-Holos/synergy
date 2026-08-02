@@ -399,11 +399,9 @@ function SessionPageContent() {
   })
   const messages = createMemo(() => {
     const raw = messageSnapshot() ?? []
-    // Rollback filtering degrades from prefix-cut to the dropped-id set as soon
-    // as a message past the cut is loaded: the rollback summary can lag the
-    // message window (message.updated arrives before the session.updated that
-    // flips canUnrollback), and a strict prefix-cut would hide the new branch
-    // until a forced refresh.
+    // A resent root can arrive through message.updated before session.updated
+    // invalidates redo. Keep that replacement visible while continuing to
+    // prefix-hide post-rollback non-root injections.
     const rb = rollback()
     if (!rb) return raw
     return messagesHiddenByRollback(raw, rb)
