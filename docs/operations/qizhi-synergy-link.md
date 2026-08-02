@@ -62,7 +62,7 @@ Rules:
 
 - Prefer a Qizhi workload/container supervisor that runs `synergy-link server` in the foreground with the complete per-instance environment. The platform owns restart policy and process lifetime; Link owns only its own state and control socket.
 - `synergy-link start` is the supported fallback when the Qizhi workload cannot supervise a foreground command. Invoke it only from the platform terminal on the intended instance, never through a remote Link Bash call or merely because the shared binary is visible.
-- Remote Bash is not a Link service manager. The host applies a best-effort pre-spawn guard to obvious direct detached launches (`tmux … -d`, `screen -dm`, `nohup`, `setsid`, `disown`, and shell `&`), but shell indirection cannot be exhaustively classified. Never use remote Link execution to recover or supervise the host.
+- Remote Bash is not a Link service manager. The host applies a best-effort pre-spawn guard to obvious direct detached launches (`tmux … -d`, `screen -dm`, `nohup`, `setsid`, `disown`, and shell `&`), but shell indirection cannot be exhaustively classified. On POSIX hosts, every launched process inherits a session-owned marker so cleanup can rediscover and terminate marked descendant process groups even after a wrapper exits; if process enumeration is unavailable, cleanup degrades to the tracked process group. Never use remote Link execution to recover or supervise the host.
 - The Qizhi platform terminal is the required independent recovery channel. If operators cannot reach the intended instance without Link, do not deploy Link as that instance's only control path.
 
 ## Deploy and Start
@@ -107,8 +107,8 @@ From the controlling Synergy runtime:
 
 - Remote Bash clamps `yieldSeconds` to five seconds so the auto-background result and process ID can return before the 30-second transport deadline.
 - Remote blocking `process poll` waits are clamped to at most 30 seconds.
-- For genuinely long work use the tracked background flow (`bash` with `background`/`yieldSeconds`, then `process` for poll/write/kill). Direct detached-daemon patterns are rejected on a best-effort basis before spawn; this guard is not a shell security boundary. Platform-supervised service lifetime and session-owned process-tree cleanup remain the enforcement boundaries.
-- Every remote process belongs to the authenticated collaboration session that created it. Closing, kicking, disabling, or expiring that session terminates its process trees and removes retained output; a later session cannot list or control those process IDs.
+- For genuinely long work use the tracked background flow (`bash` with `background`/`yieldSeconds`, then `process` for poll/write/kill). Direct detached-daemon patterns are rejected on a best-effort basis before spawn; this guard is not a shell security boundary. Platform-supervised service lifetime and session-owned cleanup remain the enforcement boundaries.
+- Every remote process belongs to the authenticated collaboration session that created it. Closing, kicking, disabling, or expiring that session terminates the tracked process tree; on POSIX, cleanup also reaps descendant process groups carrying the session-owned marker after an intermediate shell exits. Cleanup removes retained output, and a later session cannot list or control those process IDs.
 - Duplicate delivery retries with the same request ID are idempotent inside one session. A transport timeout still does not prove a remote command failed, so reconnect and verify session state rather than changing the request and blindly retrying.
 - Never copy agent secrets, tunnel URLs, bind tokens, or callback state into prompts, logs, target names, or chat.
 

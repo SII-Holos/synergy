@@ -37,40 +37,68 @@ export namespace SynergyLinkTargetService {
         const parsed = SynergyLinkTarget.PatchInput.parse(input)
         const nextLinkID = parsed.linkID
         const nextTargetAgentID = parsed.targetAgentID
-        const relink = nextLinkID !== undefined && nextTargetAgentID !== undefined
-        if (!relink) {
-          const target = await SynergyLinkTargetStore.update(id, input)
+        if (nextLinkID === undefined || nextTargetAgentID === undefined) {
+          const target = await SynergyLinkTargetStore.update(id, parsed)
           await Bus.publish(Event.Updated, { target })
           return target
         }
 
         const current = await SynergyLinkTargetStore.require(id)
+        if (current.linkID === nextLinkID && current.targetAgentID === nextTargetAgentID) {
+          const target = await SynergyLinkTargetStore.update(id, parsed)
+          await Bus.publish(Event.Updated, { target })
+          return target
+        }
+
+        await SynergyLinkTargetStore.assertLocatorAvailable(id, nextLinkID, nextTargetAgentID)
         const client = SynergyLinkExecution.requireClient(nextLinkID, "connect")
+        const existingNewSession = SynergyLinkExecution.getSession(nextLinkID, { targetAgentID: nextTargetAgentID })
         let temporarySessionID: string | undefined
         try {
           const probe = await withTimeout(
-            client.executeSession(
-              nextLinkID,
-              { action: "open", label: `Relink verification: ${current.name}` },
-              { targetAgentID: nextTargetAgentID },
-            ),
+            existingNewSession
+              ? client.executeSession(
+                  nextLinkID,
+                  { action: "heartbeat", sessionID: existingNewSession.sessionID },
+                  { targetAgentID: nextTargetAgentID },
+                )
+              : client.executeSession(
+                  nextLinkID,
+                  { action: "open", label: `Relink verification: ${current.name}` },
+                  { targetAgentID: nextTargetAgentID },
+                ),
             ToolTimeout.DEFAULTS.connectMs,
             { message: `Verifying the new locator for target "${current.name}" timed out.` },
           )
-          if (probe.metadata.status !== "opened" || !probe.metadata.sessionID) {
+          const verified = probe.metadata.status === "opened" || probe.metadata.status === "alive"
+          if (!verified || !probe.metadata.sessionID) {
             throw new Error(
               `The new Synergy Link locator for target "${current.name}" could not be verified (status: ${probe.metadata.status}).`,
             )
           }
-          temporarySessionID = probe.metadata.sessionID
+          if (!existingNewSession && probe.metadata.status === "opened") temporarySessionID = probe.metadata.sessionID
           if (probe.metadata.host && probe.metadata.host.linkID !== nextLinkID) {
             throw new Error(`Synergy Link host identity mismatch for target ${id}`)
           }
 
-          const updated = await SynergyLinkTargetStore.update(id, {
-            targetAgentID: nextTargetAgentID,
-            linkID: nextLinkID,
+          await SynergyLinkTargetStore.update(id, parsed)
+          const oldSession = SynergyLinkExecution.getSession(current.linkID, {
+            targetID: current.id,
+            targetAgentID: current.targetAgentID,
           })
+          if (oldSession?.status === "opened") {
+            await withTimeout(
+              client.executeSession(
+                current.linkID,
+                { action: "close", sessionID: oldSession.sessionID },
+                { targetAgentID: current.targetAgentID },
+              ),
+              Math.min(ToolTimeout.DEFAULTS.connectMs, 5_000),
+              { message: `Closing the previous session for target "${current.name}" timed out.` },
+            ).catch((error) => {
+              log.warn("failed to close previous remote session after target relink", { targetID: id, error })
+            })
+          }
           SynergyLinkExecution.clearSession(current.linkID, {
             targetID: current.id,
             targetAgentID: current.targetAgentID,

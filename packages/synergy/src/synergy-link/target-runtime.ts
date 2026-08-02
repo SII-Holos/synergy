@@ -7,6 +7,8 @@ import { SynergyLinkTargetStore } from "./target-store"
 import { SynergyLinkTarget } from "./types"
 
 export namespace SynergyLinkTargetRuntime {
+  const PROBE_MAX_AGE_MS = 5 * 60 * 1000
+
   export function view(target: SynergyLinkTarget.Info): SynergyLinkTarget.View {
     const session = SynergyLinkExecution.getSession(target.linkID, {
       targetID: target.id,
@@ -15,11 +17,11 @@ export namespace SynergyLinkTargetRuntime {
     const availability: SynergyLinkTarget.Availability =
       session?.status === "opened"
         ? "connected"
-        : target.lastProbe?.status === "reachable"
-          ? "reachable"
-          : SynergyLinkExecution.getClient()
-            ? "unreachable"
-            : "unknown"
+        : SynergyLinkExecution.getClient()
+          ? target.lastProbe?.status === "reachable" && Date.now() - target.lastProbe.checkedAt <= PROBE_MAX_AGE_MS
+            ? "reachable"
+            : "unreachable"
+          : "unknown"
     return SynergyLinkTarget.View.parse({
       ...target,
       availability,

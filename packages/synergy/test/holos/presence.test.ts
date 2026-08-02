@@ -50,4 +50,18 @@ describe("Holos presence cache", () => {
     Presence.clear()
     expect(Presence.all().size).toBe(0)
   })
+  test("bulk reads enforce the five-minute freshness bound", () => {
+    let now = 1_000_000
+    Presence.setClock(() => now)
+    Presence.markOnline("agent_g")
+    Presence.markOffline("agent_h")
+
+    now += 4 * 60 * 1000
+    expect(Presence.all().size).toBe(2)
+    expect(Presence.all().get("agent_g")).toBe("online")
+
+    now += 2 * 60 * 1000
+    expect(Presence.all().size).toBe(0)
+    expect(Presence.get("agent_g")).toBe("unknown")
+  })
 })

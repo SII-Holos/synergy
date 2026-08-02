@@ -48,6 +48,17 @@ export namespace SynergyLinkTargetStore {
     )
   }
 
+  export async function assertLocatorAvailable(id: string, linkID: string, targetAgentID: string): Promise<void> {
+    const duplicate = (await list()).find(
+      (target) => target.id !== id && target.linkID === linkID && target.targetAgentID === targetAgentID,
+    )
+    if (duplicate) {
+      throw new Error(
+        `Synergy Link locator already in use: link "${linkID}" for agent "${targetAgentID}" is used by target ${duplicate.id}.`,
+      )
+    }
+  }
+
   export async function require(id: string): Promise<SynergyLinkTarget.Info> {
     const target = await get(id)
     if (!target) throw new Storage.NotFoundError({ message: `Synergy Link target not found: ${id}` })
@@ -74,19 +85,12 @@ export namespace SynergyLinkTargetStore {
 
   export async function update(id: string, input: SynergyLinkTarget.PatchInput): Promise<SynergyLinkTarget.Info> {
     const patch = SynergyLinkTarget.PatchInput.parse(input)
-    using _ = await Lock.write(`${collectionLock}:${id}`)
+    const relink = patch.targetAgentID !== undefined && patch.linkID !== undefined
+    using _ = await Lock.write(relink ? collectionLock : `${collectionLock}:${id}`)
     const current = await require(id)
 
-    const relink = patch.targetAgentID !== undefined && patch.linkID !== undefined
-    if (relink) {
-      const duplicate = (await list()).find(
-        (target) => target.id !== id && target.linkID === patch.linkID && target.targetAgentID === patch.targetAgentID,
-      )
-      if (duplicate) {
-        throw new Error(
-          `Synergy Link locator already in use: link "${patch.linkID}" for agent "${patch.targetAgentID}" is used by target ${duplicate.id}.`,
-        )
-      }
+    if (patch.targetAgentID !== undefined && patch.linkID !== undefined) {
+      await assertLocatorAvailable(id, patch.linkID, patch.targetAgentID)
     }
 
     const target = SynergyLinkTarget.Info.parse({ ...current, ...patch, updatedAt: Date.now() })

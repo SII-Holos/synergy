@@ -176,6 +176,7 @@ The mailbox is not a Synergy session transcript. It is network correspondence th
 Synergy Link uses the same authenticated Holos tunnel as a transport for explicit remote-execution sessions. In the one-way A-controls-B model, A persists each remote host as a Link target with a stable local target ID, display name, target Holos agent ID, Link ID, enablement state, and optional local-agent allowlist. A does not copy or store B's Holos credentials; B remains responsible for approving, denying, or revoking access.
 
 The Synergy Link Settings page creates and manages these targets. A successful connection or connection test records B's observed host session and capabilities, including platform, architecture, runtime, and shell support. These observations are metadata, not a guarantee of current reachability.
+The projected `availability` value is `connected` while a Link session is open, `unknown` when no Holos execution transport is connected, `reachable` only when a successful probe is at most five minutes old, and otherwise `unreachable`. The Settings page and `connect list_targets` use this live projection; persisted probe metadata remains available for diagnosis but does not override transport state or freshness.
 
 Agents use `connect list_targets` to discover only the enabled targets allowed for their agent name, then use the stable `targetID` for `connect`, `bash`, and `process` calls. Raw target agent and Link IDs remain available for legacy calls and manual diagnosis, but agents do not need them in the normal flow.
 

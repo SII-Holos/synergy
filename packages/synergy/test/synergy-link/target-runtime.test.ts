@@ -208,3 +208,65 @@ describe("Synergy Link target runtime", () => {
     expect(observed.authorization).toBe("approved")
   })
 })
+
+describe("Synergy Link target availability", () => {
+  function connectedClient(): SynergyLinkClient.ExecutionClient {
+    return {
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        throw new Error("unexpected bash execution")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("unexpected session execution")
+      },
+    }
+  }
+
+  test("reports a persisted reachable probe as unknown after the transport disconnects", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Disconnected host",
+      targetAgentID: "agent_disconnected",
+      linkID: "link_disconnected",
+    })
+    SynergyLinkExecution.setClient(connectedClient())
+    await SynergyLinkTargetStore.recordProbe(target.id, { status: "reachable" })
+    SynergyLinkExecution.setClient(null)
+
+    const observed = SynergyLinkTargetRuntime.view(await SynergyLinkTargetStore.require(target.id))
+    expect(observed.lastProbe?.status).toBe("reachable")
+    expect(observed.availability).toBe("unknown")
+  })
+
+  test("reports a fresh persisted reachable probe as reachable while the transport is connected", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Connected host",
+      targetAgentID: "agent_connected",
+      linkID: "link_connected",
+    })
+    SynergyLinkExecution.setClient(connectedClient())
+    await SynergyLinkTargetStore.recordProbe(target.id, { status: "reachable" })
+
+    const observed = SynergyLinkTargetRuntime.view(await SynergyLinkTargetStore.require(target.id))
+    expect(observed.availability).toBe("reachable")
+  })
+
+  test("reports a stale persisted reachable probe as unreachable even while connected", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Stale host",
+      targetAgentID: "agent_stale",
+      linkID: "link_stale",
+    })
+    const current = await SynergyLinkTargetStore.require(target.id)
+    await Storage.write(StoragePath.synergyLinkTarget(target.id), {
+      ...current,
+      lastProbe: { status: "reachable", checkedAt: Date.now() - 6 * 60 * 1000 },
+    })
+    SynergyLinkExecution.setClient(connectedClient())
+
+    const observed = SynergyLinkTargetRuntime.view(await SynergyLinkTargetStore.require(target.id))
+    expect(observed.lastProbe?.status).toBe("reachable")
+    expect(observed.availability).toBe("unreachable")
+  })
+})

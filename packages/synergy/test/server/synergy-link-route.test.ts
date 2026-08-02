@@ -138,11 +138,23 @@ test("relinks a target only when both locator fields are supplied", async () => 
     const relinkResponse = await Server.App().request(`/synergy-link/targets/${created.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ targetAgentID: "agent_new", linkID: "link_new" }),
+      body: JSON.stringify({
+        name: "Relinked host",
+        enabled: false,
+        allowedAgents: ["ops"],
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+      }),
     })
     expect(relinkResponse.status).toBe(200)
     expect(await relinkResponse.json()).toEqual(
-      expect.objectContaining({ targetAgentID: "agent_new", linkID: "link_new", name: "Relink host" }),
+      expect.objectContaining({
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+        name: "Relinked host",
+        enabled: false,
+        allowedAgents: ["ops"],
+      }),
     )
   } finally {
     SynergyLinkExecution.setClient(null)
@@ -162,5 +174,5 @@ test("exposes the last probe on the target view", async () => {
   const listResponse = await Server.App().request("/synergy-link/targets")
   const listed = await listResponse.json()
   expect(listed[0].lastProbe).toEqual(expect.objectContaining({ status: "reachable" }))
-  expect(listed[0].availability).toBe("reachable")
+  expect(listed[0].availability).toBe("unknown")
 })

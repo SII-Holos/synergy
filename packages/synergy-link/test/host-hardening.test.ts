@@ -223,6 +223,62 @@ describe("synergy-link host hardening", () => {
     }
   })
 
+  test.skipIf(process.platform === "win32")(
+    "session close reaps a detached descendant after its nested shell exits",
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-detached-cleanup-"))
+      const pidPath = path.join(root, "worker.pid")
+      const readyPath = path.join(root, "ready")
+      const stoppedPath = path.join(root, "stopped")
+      const workerPath = path.join(root, "worker.ts")
+      const launcherPath = path.join(root, "launcher.ts")
+      const host = createHost()
+      let workerPid: number | undefined
+      try {
+        await Bun.write(
+          workerPath,
+          `process.on("SIGTERM", async () => {\n  await Bun.write(${JSON.stringify(stoppedPath)}, "stopped")\n  process.exit(0)\n})\nawait Bun.write(${JSON.stringify(readyPath)}, "ready")\nsetInterval(() => {}, 1_000)\n`,
+        )
+        await Bun.write(
+          launcherPath,
+          `const child = Bun.spawn([process.execPath, ${JSON.stringify(workerPath)}], {\n  env: process.env,\n  stdin: "ignore",\n  stdout: "ignore",\n  stderr: "ignore",\n  detached: true,\n})\nchild.unref()\nawait Bun.write(${JSON.stringify(pidPath)}, String(child.pid))\nawait Bun.sleep(100)\n`,
+        )
+        const sessionID = await openSession(host)
+        const nestedCommand = `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(launcherPath)}`
+        const started = await execute(host, sessionID, "req_detached_cleanup", `sh -c ${JSON.stringify(nestedCommand)}`)
+        const id = processID(started)
+        await waitForCondition(async () => Bun.file(pidPath).exists())
+        await waitForCondition(async () => Bun.file(readyPath).exists())
+        workerPid = Number(await Bun.file(pidPath).text())
+        expect(Number.isSafeInteger(workerPid)).toBe(true)
+        expect(processIsAlive(workerPid)).toBe(true)
+
+        await waitForCondition(async () => {
+          const response = await processRequest(host, leaseA(sessionID), "poll", id)
+          return !response.ok || response.tool !== "process" || response.result.metadata.status !== "running"
+        })
+        await host.sessions.close(callerA, sessionID)
+
+        await waitForCondition(() => !processIsAlive(workerPid))
+        expect(await Bun.file(stoppedPath).exists()).toBe(true)
+        expect(host.rpc.processRegistry.has(id)).toBe(false)
+      } finally {
+        await host.rpc.processRegistry.reset()
+        if (workerPid && processIsAlive(workerPid)) {
+          try {
+            process.kill(-workerPid, "SIGKILL")
+          } catch {
+            try {
+              process.kill(workerPid, "SIGKILL")
+            } catch {}
+          }
+        }
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    10_000,
+  )
+
   test("session kick and idle expiry reap their background processes", async () => {
     for (const reason of ["kick", "expire"] as const) {
       const host = createHost()
@@ -476,4 +532,21 @@ describe("synergy-link host hardening", () => {
       await host.rpc.processRegistry.reset()
     }
   }, 30_000)
+  function processIsAlive(pid: number | undefined): boolean {
+    if (!pid) return false
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function waitForCondition(check: () => boolean | Promise<boolean>, timeoutMs = 3_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    while (!(await check())) {
+      if (Date.now() >= deadline) throw new Error("Timed out waiting for host process state")
+      await Bun.sleep(20)
+    }
+  }
 })

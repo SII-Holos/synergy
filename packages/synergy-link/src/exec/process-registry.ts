@@ -2,7 +2,7 @@ import process from "node:process"
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { SynergyLinkBash, SynergyLinkIdentity, SynergyLinkProcess } from "@ericsanchezok/synergy-link-protocol"
 import { SynergyLinkHost } from "../host"
-import { Platform } from "../platform"
+import { Platform, SYNERGY_LINK_PROCESS_OWNER_ENV } from "../platform"
 import { SynergyLinkLog } from "../log"
 import { detectDetachedDaemonRisk, detachedDaemonBlockMessage } from "./detached-daemon"
 import type { ExecutionLease } from "../types"
@@ -15,6 +15,7 @@ const MAX_REMOTE_YIELD_SECONDS = 5
 
 interface ProcessRecord {
   processId: SynergyLinkIdentity.ProcessID
+  ownerMarker: string
   command: string
   description?: string
   cwd?: string
@@ -33,6 +34,7 @@ interface ProcessRecord {
 
 interface FinishedRecord {
   processId: SynergyLinkIdentity.ProcessID
+  ownerMarker: string
   command: string
   description?: string
   cwd?: string
@@ -64,6 +66,7 @@ export class ProcessRegistry {
   readonly #running = new Map<SynergyLinkIdentity.ProcessID, ProcessRecord>()
   readonly #finished = new Map<SynergyLinkIdentity.ProcessID, FinishedRecord>()
   readonly #waiters = new Map<SynergyLinkIdentity.ProcessID, Set<() => void>>()
+  readonly #sessionOwnerMarkers = new Map<string, Set<string>>()
   readonly #ttlMs: number
   readonly #host: SynergyLinkHost
   #sweeper?: ReturnType<typeof setInterval>
@@ -200,7 +203,16 @@ export class ProcessRegistry {
 
   async releaseSession(session: SessionRecord) {
     const running = [...this.#running.values()].filter((record) => leaseMatchesSession(record.lease, session))
-    await Promise.all(running.map((record) => Platform.killTree(record.child, () => record.exited)))
+    const sessionKey = sessionLeaseKey(session)
+    const ownerMarkers = new Set([
+      ...(this.#sessionOwnerMarkers.get(sessionKey) ?? []),
+      ...running.map((record) => record.ownerMarker),
+    ])
+    await Promise.all([
+      Platform.killOwnedByMarkers(ownerMarkers),
+      ...running.map((record) => Platform.killTree(record.child, () => record.exited)),
+    ])
+    this.#sessionOwnerMarkers.delete(sessionKey)
     for (const record of running) this.#running.delete(record.processId)
     for (const [processId, record] of this.#finished) {
       if (leaseMatchesSession(record.lease, session)) this.#finished.delete(processId)
@@ -213,10 +225,19 @@ export class ProcessRegistry {
   }
 
   async reset() {
-    await Promise.all([...this.#running.values()].map((record) => Platform.killTree(record.child, () => record.exited)))
+    const running = [...this.#running.values()]
+    const ownerMarkers = new Set([
+      ...[...this.#sessionOwnerMarkers.values()].flatMap((markers) => [...markers]),
+      ...running.map((record) => record.ownerMarker),
+    ])
+    await Promise.all([
+      Platform.killOwnedByMarkers(ownerMarkers),
+      ...running.map((record) => Platform.killTree(record.child, () => record.exited)),
+    ])
     this.#running.clear()
     this.#finished.clear()
     this.#waiters.clear()
+    this.#sessionOwnerMarkers.clear()
     if (this.#sweeper) {
       clearInterval(this.#sweeper)
       this.#sweeper = undefined
@@ -225,17 +246,22 @@ export class ProcessRegistry {
 
   #launchShellProcess(input: { command: string; description?: string; workdir: string; lease: ExecutionLease }) {
     const launch = Platform.resolveShellLaunch(input.command)
+    const processId = crypto.randomUUID()
+    const ownerMarker = processId
     const options: SpawnOptions = {
       cwd: input.workdir,
-      env: Platform.normalizeEnv({ ...process.env }),
+      env: Platform.normalizeEnv({
+        ...process.env,
+        [SYNERGY_LINK_PROCESS_OWNER_ENV]: ownerMarker,
+      }),
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
       windowsHide: true,
     }
     const child = spawn(launch.file, launch.args, options)
-    const processId = crypto.randomUUID()
     const record: ProcessRecord = {
       processId,
+      ownerMarker,
       command: input.command,
       description: input.description,
       cwd: input.workdir,
@@ -276,6 +302,10 @@ export class ProcessRegistry {
     })
 
     this.#running.set(processId, record)
+    const sessionKey = leaseKey(input.lease)
+    const ownerMarkers = this.#sessionOwnerMarkers.get(sessionKey) ?? new Set<string>()
+    ownerMarkers.add(ownerMarker)
+    this.#sessionOwnerMarkers.set(sessionKey, ownerMarkers)
     this.#startSweeper()
     return { record }
   }
@@ -471,7 +501,7 @@ export class ProcessRegistry {
       })
     }
 
-    await Platform.killTree(record.child, () => record.exited)
+    await Platform.killTree(record.child, () => record.exited, { ownerMarker: record.ownerMarker })
     return this.#result({
       action: "kill",
       title: `Killed ${processId}`,
@@ -524,9 +554,12 @@ export class ProcessRegistry {
     const running = this.#running.get(processId)
     const finished = this.#finished.get(processId)
     if (running) {
-      await Platform.killTree(running.child, () => running.exited)
+      await Platform.killTree(running.child, () => running.exited, { ownerMarker: running.ownerMarker })
       this.#running.delete(processId)
     }
+    if (!running && finished) await Platform.killOwnedByMarker(finished.ownerMarker)
+    const ownerMarker = running?.ownerMarker ?? finished?.ownerMarker
+    if (ownerMarker) this.#forgetOwnerMarker((running ?? finished)!.lease, ownerMarker)
     this.#finished.delete(processId)
 
     return this.#result({
@@ -621,6 +654,7 @@ export class ProcessRegistry {
 
     if (record.backgrounded) {
       this.#finished.set(record.processId, {
+        ownerMarker: record.ownerMarker,
         processId: record.processId,
         command: record.command,
         description: record.description,
@@ -728,6 +762,14 @@ export class ProcessRegistry {
     return (record.endedAt ?? Date.now()) - record.startedAt
   }
 
+  #forgetOwnerMarker(lease: ExecutionLease, ownerMarker: string) {
+    const sessionKey = leaseKey(lease)
+    const ownerMarkers = this.#sessionOwnerMarkers.get(sessionKey)
+    if (!ownerMarkers) return
+    ownerMarkers.delete(ownerMarker)
+    if (ownerMarkers.size === 0) this.#sessionOwnerMarkers.delete(sessionKey)
+  }
+
   #startSweeper() {
     if (this.#sweeper) return
     this.#sweeper = setInterval(
@@ -748,6 +790,14 @@ function sameLease(left: ExecutionLease, right: ExecutionLease) {
     left.callerAgentID === right.callerAgentID &&
     left.callerOwnerUserID === right.callerOwnerUserID
   )
+}
+
+function leaseKey(lease: ExecutionLease): string {
+  return JSON.stringify([lease.sessionID, lease.callerAgentID, lease.callerOwnerUserID])
+}
+
+function sessionLeaseKey(session: SessionRecord): string {
+  return JSON.stringify([session.sessionID, session.remoteAgentID, session.remoteOwnerUserID])
 }
 
 function leaseMatchesSession(lease: ExecutionLease, session: SessionRecord) {

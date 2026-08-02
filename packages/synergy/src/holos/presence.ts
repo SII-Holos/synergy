@@ -57,7 +57,12 @@ export namespace Presence {
 
   export function all(): Map<string, Status> {
     const result = new Map<string, Status>()
+    const current = now()
     for (const [id, entry] of cache) {
+      if (current - entry.lastChecked > MAX_AGE_MS) {
+        cache.delete(id)
+        continue
+      }
       result.set(id, entry.status)
     }
     return result

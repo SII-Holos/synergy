@@ -1,16 +1,22 @@
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { SynergyLinkHost } from "@ericsanchezok/synergy-link-protocol"
 
 const SIGTERM_GRACE_MS = 1_000
 const SIGKILL_TIMEOUT_MS = 1_000
-const PROCESS_EXIT_POLL_MS = 10
+const PROCESS_GROUP_EXIT_POLL_MS = 25
+const PROCESS_LIST_MAX_BUFFER = 8 * 1024 * 1024
+const PROCESS_LIST_TIMEOUT_MS = 5_000
 const ESC = "\u001b"
 
 export type ProcessEnv = Record<string, string | undefined>
 export type ChildLike = { pid?: number; kill(signal?: number | NodeJS.Signals): boolean }
+export const SYNERGY_LINK_PROCESS_OWNER_ENV = "SYNERGY_LINK_PROCESS_OWNER"
+export interface KillTreeOptions {
+  ownerMarker?: string
+}
 
 export namespace Platform {
   export function runtime(): SynergyLinkHost.Runtime {
@@ -83,11 +89,10 @@ export namespace Platform {
     }
   }
 
-  export async function killTree(child: ChildLike, exited?: () => boolean): Promise<void> {
+  export async function killTree(child: ChildLike, exited?: () => boolean, options?: KillTreeOptions): Promise<void> {
     const pid = child.pid
-    if (!pid || exited?.()) return
-
     if (process.platform === "win32") {
+      if (!pid || exited?.()) return
       await new Promise<void>((resolve) => {
         const killer = spawn("taskkill", ["/pid", String(pid), "/f", "/t"], {
           stdio: "ignore",
@@ -99,25 +104,48 @@ export namespace Platform {
       return
     }
 
-    let processGroupSignaled = false
-    try {
-      process.kill(-pid, "SIGTERM")
-      processGroupSignaled = true
-    } catch {}
-
-    if (processGroupSignaled) {
-      if (await waitForExit(exited, SIGTERM_GRACE_MS)) return
-      try {
-        process.kill(-pid, "SIGKILL")
-      } catch {}
-      await waitForExit(exited, SIGKILL_TIMEOUT_MS)
-      return
+    const trackedProcessAlive = Boolean(pid && !exited?.())
+    const processGroups = new Set<number>()
+    if (trackedProcessAlive && pid) processGroups.add(pid)
+    if (options?.ownerMarker) {
+      for (const processGroupId of ownedProcessGroups([options.ownerMarker])) processGroups.add(processGroupId)
     }
+    if (processGroups.size === 0) return
 
-    child.kill("SIGTERM")
-    if (await waitForExit(exited, SIGTERM_GRACE_MS)) return
-    child.kill("SIGKILL")
-    await waitForExit(exited, SIGKILL_TIMEOUT_MS)
+    const trackedGroupSignaled = pid ? signalProcessGroups(processGroups, "SIGTERM").has(pid) : true
+    if (trackedProcessAlive && !trackedGroupSignaled) child.kill("SIGTERM")
+    const trackedProcessExited = trackedGroupSignaled
+      ? waitForProcessGroupsExit(processGroups, SIGTERM_GRACE_MS)
+      : waitForChildExit(exited, SIGTERM_GRACE_MS)
+    await trackedProcessExited
+
+    if (options?.ownerMarker) {
+      for (const processGroupId of ownedProcessGroups([options.ownerMarker])) processGroups.add(processGroupId)
+    }
+    signalExistingProcessGroups(processGroups, "SIGKILL")
+    if (trackedProcessAlive && !exited?.() && !trackedGroupSignaled) child.kill("SIGKILL")
+    await Promise.all([
+      waitForProcessGroupsExit(processGroups, SIGKILL_TIMEOUT_MS),
+      trackedGroupSignaled ? Promise.resolve(true) : waitForChildExit(exited, SIGKILL_TIMEOUT_MS),
+    ])
+  }
+
+  export async function killOwnedByMarker(ownerMarker: string): Promise<void> {
+    return killOwnedByMarkers([ownerMarker])
+  }
+
+  export async function killOwnedByMarkers(ownerMarkers: Iterable<string>): Promise<void> {
+    if (process.platform === "win32") return
+    const markers = [...new Set(ownerMarkers)].filter(Boolean)
+    if (markers.length === 0) return
+    const processGroups = new Set(ownedProcessGroups(markers))
+    if (processGroups.size === 0) return
+
+    signalProcessGroups(processGroups, "SIGTERM")
+    await waitForProcessGroupsExit(processGroups, SIGTERM_GRACE_MS)
+    for (const processGroupId of ownedProcessGroups(markers)) processGroups.add(processGroupId)
+    signalExistingProcessGroups(processGroups, "SIGKILL")
+    await waitForProcessGroupsExit(processGroups, SIGKILL_TIMEOUT_MS)
   }
 
   export function encodeKeySequence(keys: string[]): { data: string; warnings: string[] } {
@@ -167,7 +195,104 @@ function encodeKeyToken(raw: string, warnings: string[]): string {
   return parsed.base
 }
 
-async function waitForExit(exited: (() => boolean) | undefined, timeoutMs: number): Promise<boolean> {
+interface ProcessTableEntry {
+  parentPid: number
+  processGroupId: number
+}
+
+function ownedProcessGroups(ownerMarkers: Iterable<string>): number[] {
+  const markers = [...new Set(ownerMarkers)]
+    .filter(Boolean)
+    .map((ownerMarker) => `${SYNERGY_LINK_PROCESS_OWNER_ENV}=${ownerMarker}`)
+  if (markers.length === 0) return []
+  const includeNoTty = process.platform === "darwin" ? "-x" : "x"
+  const result = spawnSync("ps", ["eww", includeNoTty, "-o", "pid=,ppid=,pgid=,command="], {
+    stdio: ["ignore", "pipe", "ignore"],
+    encoding: "utf8",
+    maxBuffer: PROCESS_LIST_MAX_BUFFER,
+    timeout: PROCESS_LIST_TIMEOUT_MS,
+  })
+  if (result.error || result.status !== 0 || typeof result.stdout !== "string") return []
+
+  const processes = new Map<number, ProcessTableEntry>()
+  const descendants = new Set<number>()
+  const processGroups = new Set<number>()
+  for (const line of result.stdout.split("\n")) {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/)
+    if (!match) continue
+    const pid = Number(match[1])
+    const parentPid = Number(match[2])
+    const processGroupId = Number(match[3])
+    if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(parentPid) || !Number.isSafeInteger(processGroupId)) {
+      continue
+    }
+    processes.set(pid, { parentPid, processGroupId })
+    if (!markers.some((marker) => hasExactOwnerMarker(match[4] ?? "", marker))) continue
+    descendants.add(pid)
+    if (processGroupId > 0) processGroups.add(processGroupId)
+  }
+
+  function hasExactOwnerMarker(command: string, marker: string): boolean {
+    const start = command.indexOf(marker)
+    if (start < 0) return false
+    const next = command[start + marker.length]
+    return next === undefined || /\s/.test(next)
+  }
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [pid, entry] of processes) {
+      if (descendants.has(pid) || !descendants.has(entry.parentPid)) continue
+      descendants.add(pid)
+      if (entry.processGroupId > 0) processGroups.add(entry.processGroupId)
+      changed = true
+    }
+  }
+  return [...processGroups]
+}
+
+function signalProcessGroups(processGroups: Iterable<number>, signal: NodeJS.Signals): Set<number> {
+  const signaled = new Set<number>()
+  for (const processGroupId of processGroups) {
+    try {
+      process.kill(-processGroupId, signal)
+      signaled.add(processGroupId)
+    } catch {}
+  }
+  return signaled
+}
+
+function signalExistingProcessGroups(processGroups: Iterable<number>, signal: NodeJS.Signals): void {
+  for (const processGroupId of processGroups) {
+    if (!processGroupExists(processGroupId)) continue
+    try {
+      process.kill(-processGroupId, signal)
+    } catch {}
+  }
+}
+
+function processGroupExists(processGroupId: number): boolean {
+  try {
+    process.kill(-processGroupId, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function waitForProcessGroupsExit(processGroups: Iterable<number>, timeoutMs: number): Promise<boolean> {
+  const groups = [...processGroups]
+  const deadline = Date.now() + timeoutMs
+  while (groups.some(processGroupExists)) {
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) return groups.every((processGroupId) => !processGroupExists(processGroupId))
+    await Platform.sleep(Math.min(PROCESS_GROUP_EXIT_POLL_MS, remainingMs))
+  }
+  return true
+}
+
+async function waitForChildExit(exited: (() => boolean) | undefined, timeoutMs: number): Promise<boolean> {
   if (!exited) {
     await Platform.sleep(timeoutMs)
     return false
@@ -177,7 +302,7 @@ async function waitForExit(exited: (() => boolean) | undefined, timeoutMs: numbe
   while (!exited()) {
     const remainingMs = deadline - Date.now()
     if (remainingMs <= 0) return exited()
-    await Platform.sleep(Math.min(PROCESS_EXIT_POLL_MS, remainingMs))
+    await Platform.sleep(Math.min(PROCESS_GROUP_EXIT_POLL_MS, remainingMs))
   }
   return true
 }
