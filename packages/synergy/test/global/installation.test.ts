@@ -68,6 +68,13 @@ describe("Installation desktop detection", () => {
   })
 })
 
+describe("Installation update channels", () => {
+  test("maps the stable runtime channel to the promoted npm dist-tag", () => {
+    expect(Installation.npmDistTagForChannel("stable")).toBe("latest")
+    expect(Installation.npmDistTagForChannel("next")).toBe("next")
+  })
+})
+
 describe("standalone installation", () => {
   test("detects curl-installed runtime paths", () => {
     expect(
@@ -164,7 +171,7 @@ describe("standalone installation", () => {
       },
     )
 
-    expect(fetched).toEqual(["https://raw.githubusercontent.com/SII-Holos/synergy/main/install"])
+    expect(fetched).toEqual(["https://raw.githubusercontent.com/SII-Holos/synergy/v3.0.9/install"])
     expect(invocations).toEqual([
       {
         command: ["bash", "-s", "--", "--version", "3.0.9", "--no-modify-path"],

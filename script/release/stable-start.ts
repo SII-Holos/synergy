@@ -58,7 +58,7 @@ try {
   await buildPluginKit()
   await buildApp()
   await buildDesktop()
-  const platformNames = await buildSynergyBinaries(version, state.channel)
+  const platformNames = await buildSynergyBinaries(version, "stable")
   const synergyLinkPlatformNames = await buildSynergyLinkBinaries(version)
   const platformPackages = await prepareSynergyPackages(version, platformNames)
   await validateLocalArtifacts(platformNames)

@@ -15,6 +15,7 @@ interface ElectronBuilderConfig {
   }
   win?: {
     executableName?: string
+    verifyUpdateCodeSignature?: boolean
   }
   nsis?: {
     include?: string
@@ -147,6 +148,14 @@ describe("desktop packaging", () => {
     expect(config.nsis?.shortcutName).toBe("Synergy")
     expect(config.linux?.desktop?.entry?.Name).toBe("Synergy")
     expect(config.linux?.desktop?.entry?.StartupWMClass).toBe("synergy")
+  })
+
+  test("requires signature verification for Windows updates", async () => {
+    const config = (await Bun.file(
+      new URL("../electron-builder.json", import.meta.url),
+    ).json()) as ElectronBuilderConfig
+
+    expect(config.win?.verifyUpdateCodeSignature).toBe(true)
   })
 
   test("pins Browser Host executable names to the signed manifest contract", async () => {

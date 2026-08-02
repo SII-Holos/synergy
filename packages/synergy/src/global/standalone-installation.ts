@@ -128,7 +128,7 @@ export namespace StandaloneInstallation {
       throw new Error(`Synergy executable is not a standalone installation: ${options.context.realExecPath}`)
     }
 
-    const url = "https://raw.githubusercontent.com/SII-Holos/synergy/main/install"
+    const url = `https://raw.githubusercontent.com/SII-Holos/synergy/v${options.target}/install`
     const response = await dependencies.fetch(url)
     if (!response.ok) {
       throw new Error(

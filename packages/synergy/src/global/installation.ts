@@ -60,6 +60,10 @@ export namespace Installation {
     return CHANNEL === "local"
   }
 
+  export function npmDistTagForChannel(channel: string) {
+    return channel === "stable" ? "latest" : channel
+  }
+
   export const detectDesktopInstall = DesktopInstallation.detectDesktopInstall
   export const detectStandaloneInstall = StandaloneInstallation.detectStandaloneInstall
 
@@ -231,7 +235,7 @@ export namespace Installation {
       detectedMethod === "bun" ||
       detectedMethod === "pnpm"
     ) {
-      const channel = CHANNEL
+      const channel = npmDistTagForChannel(CHANNEL)
       return fetch(`${NPM_REGISTRY}/@ericsanchezok/synergy/${channel}`)
         .then((res) => {
           if (!res.ok) throw new Error(res.statusText)
