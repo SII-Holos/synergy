@@ -272,6 +272,7 @@ describe("CLI bundle installer", () => {
       fs.mkdir(path.join(bundle, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
       fs.mkdir(path.join(bundle, "lib", "onnxruntime-web"), { recursive: true }),
       fs.mkdir(path.join(bundle, "lib", "holos-cli"), { recursive: true }),
+      fs.mkdir(path.join(bundle, "sandbox"), { recursive: true }),
     ])
     await fs.copyFile("/bin/sleep", installed)
     await fs.chmod(installed, 0o755)
@@ -286,6 +287,7 @@ describe("CLI bundle installer", () => {
       fs.writeFile(path.join(bundle, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.mjs"), "runtime"),
       fs.writeFile(path.join(bundle, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"), "runtime"),
       fs.writeFile(path.join(bundle, "lib", "holos-cli", "index.js"), "runtime"),
+      fs.writeFile(path.join(bundle, "sandbox", "synergy-sandbox-linux"), "helper"),
     ])
 
     const running = Bun.spawn([installed, "30"], { stdout: "ignore", stderr: "ignore" })
@@ -293,7 +295,7 @@ describe("CLI bundle installer", () => {
     try {
       const result = runInstallFunction('install_bundle_contents "$1"', [bundle], {
         HOME: home,
-        SYNERGY_INSTALL_PLATFORM: process.platform === "linux" ? "Linux" : "Darwin",
+        SYNERGY_INSTALL_PLATFORM: "Linux",
       })
 
       expect(result.exitCode).toBe(0)
