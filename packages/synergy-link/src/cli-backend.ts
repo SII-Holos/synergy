@@ -45,8 +45,10 @@ export namespace SynergyLinkCLIBackend {
           stale: false,
           verifiedAt: Date.now(),
         }
-      } catch (error) {
-        return await loadSnapshot(`Control socket request failed: ${errorMessage(error)}`)
+      } catch {
+        return await loadSnapshot(
+          "The control socket accepted a ping but the live status request failed; the runtime may be restarting or shutting down.",
+        )
       }
     }
     return await loadSnapshot("Control socket is unavailable or did not respond.")
@@ -569,8 +571,4 @@ function supported<T>(value: T): SupportedResult<T> {
     available: true,
     value,
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

@@ -378,4 +378,34 @@ describe("synergy-link CLI hardening", () => {
     expect(output).toContain("Snapshot age")
     expect(output).toContain("Control error")
   })
+
+  test("keeps the absolute control socket path out of degraded status output", async () => {
+    const state = await SynergyLinkStore.loadState()
+    state.service.pid = process.pid
+    state.service.runtimeStatus = "running"
+    state.connectionStatus = "connected"
+    await SynergyLinkStore.saveState(state)
+
+    const socketPath = SynergyLinkStore.controlSocketPath()
+    const server = new SynergyLinkControlServer(async (request) => {
+      if (request.action === "runtime.status") {
+        throw new Error(`Timed out connecting to control socket at ${socketPath}`)
+      }
+      return { ok: true }
+    })
+    await server.start()
+    try {
+      const snapshot = await SynergyLinkCLIBackend.status()
+      expect(snapshot).toMatchObject({
+        source: "snapshot",
+        stale: true,
+        controlError:
+          "The control socket accepted a ping but the live status request failed; the runtime may be restarting or shutting down.",
+      })
+      expect(JSON.stringify(snapshot)).not.toContain(socketPath)
+      expect(SynergyLinkCLIFormat.human(snapshot)).not.toContain(socketPath)
+    } finally {
+      await server.stop()
+    }
+  })
 })
