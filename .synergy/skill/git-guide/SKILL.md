@@ -137,8 +137,12 @@ Behavior:
 - Injection applies to any invocation that contains at least one `gh` command,
   including mixed, chained, and piped commands (`echo ok; gh api user`,
   `gh repo view owner/repo | head`).
-- An explicit `GH_TOKEN=...` prefix assignment or `export GH_TOKEN=...` earlier
-  in the command takes precedence over the injected value.
+- The injected `GH_TOKEN` is inherited by every process in the invocation —
+  any command can read it via `$GH_TOKEN`. An explicit `GH_TOKEN=...` prefix
+  assignment or `export GH_TOKEN=...` earlier in the command takes precedence;
+  use `env -u GH_TOKEN <cmd>` to clear it for a single command. An explicit
+  `GITHUB_TOKEN=...` does not override the injected `GH_TOKEN`, because gh
+  prefers `GH_TOKEN`.
 - When no Synergy GitHub credential is connected, the invocation runs without
   injection and the bash tool appends a `[GitHub CLI token skipped: ...]`
   notice to the output.
