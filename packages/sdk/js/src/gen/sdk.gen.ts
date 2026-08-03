@@ -373,6 +373,14 @@ import type {
   ProviderAuthGithubLogoutResponses,
   ProviderAuthGithubStatusResponses,
   ProviderAuthResponses,
+  ProviderConnectionCreateErrors,
+  ProviderConnectionCreateInput,
+  ProviderConnectionCreateResponses,
+  ProviderConnectionRemoveErrors,
+  ProviderConnectionRemoveResponses,
+  ProviderConnectionUpdateErrors,
+  ProviderConnectionUpdateInput,
+  ProviderConnectionUpdateResponses,
   ProviderCredentialsImportCredentialsErrors,
   ProviderCredentialsImportCredentialsResponses,
   ProviderDisconnectErrors,
@@ -6732,6 +6740,128 @@ export class Command extends HeyApiClient {
   }
 }
 
+export class Connection extends HeyApiClient {
+  /**
+   * Create provider account connection
+   *
+   * Create a named account connection that reuses a canonical provider profile and model catalog. Credentials are connected separately.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      providerConnectionCreateInput?: ProviderConnectionCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "providerConnectionCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderConnectionCreateResponses,
+      ProviderConnectionCreateErrors,
+      ThrowOnError
+    >({
+      url: "/provider/connections",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove provider account connection
+   *
+   * Remove a managed provider account connection and its Synergy-managed credentials without changing its canonical provider profile or sibling accounts.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      ProviderConnectionRemoveResponses,
+      ProviderConnectionRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/provider/connections/{providerID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update provider account connection
+   *
+   * Update the name, endpoint, or enabled state of a managed provider account connection.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+      providerConnectionUpdateInput?: ProviderConnectionUpdateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "providerConnectionUpdateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      ProviderConnectionUpdateResponses,
+      ProviderConnectionUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/provider/connections/{providerID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Models extends HeyApiClient {
   /**
    * Refresh provider models
@@ -7260,6 +7390,8 @@ export class Provider extends HeyApiClient {
       },
     )
   }
+
+  connection = new Connection({ client: this.client })
 
   models = new Models({ client: this.client })
 

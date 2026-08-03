@@ -1,3 +1,6 @@
+import type { SynergyLinkBash, SynergyLinkProcess, SynergyLinkSession } from "@ericsanchezok/synergy-link-protocol"
+import { SynergyLinkRemoteError } from "../../src/remote/client"
+import { SynergyLinkExecution } from "../../src/tool/synergy-link-execution"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
 import { BashTool } from "../../src/tool/bash"
@@ -966,6 +969,152 @@ describe("tool.bash workspace boundary enforcement", () => {
           ctx,
         )
         expect(result.output).toContain("test")
+      },
+    })
+  })
+})
+
+describe("tool.bash remote execution", () => {
+  test("uses a verified remote session and never falls back locally", async () => {
+    const actions: Array<{ action: string; sessionID?: string }> = []
+    SynergyLinkExecution.setClient({
+      executeBash: async (_linkID, payload, options): Promise<SynergyLinkBash.Result> => {
+        expect(options?.sessionID).toBe("session_remote_bash")
+        return {
+          title: "Executed",
+          metadata: { exit: 0, backend: "remote", output: "remote-output" },
+          output: "remote-output",
+        }
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push({ action: payload.action, sessionID: "sessionID" in payload ? payload.sessionID : undefined })
+        return {
+          title: "Session alive",
+          metadata: { action: "heartbeat", status: "alive", sessionID: "session_remote_bash", backend: "remote" },
+          output: "alive",
+        }
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_remote_bash",
+      targetAgentID: "agent_remote_bash",
+      sourceAgent: "build",
+      sessionID: "session_remote_bash",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: "echo remote",
+          description: "Echo remote",
+          linkID: "link_remote_bash",
+          yieldSeconds: 30,
+        },
+        ctx,
+      )
+
+      expect(result.output).toBe("remote-output")
+      expect(actions).toEqual([{ action: "heartbeat", sessionID: "session_remote_bash" }])
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("clears a cached session after definitive invalid remote execution", async () => {
+    SynergyLinkExecution.setClient({
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        throw new SynergyLinkRemoteError("session_invalid", "Session is not active.")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("unexpected session verification")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_invalid_bash",
+      targetAgentID: "agent_invalid_bash",
+      sourceAgent: "build",
+      sessionID: "session_invalid_bash",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+      lastVerifiedAt: Date.now(),
+    })
+    try {
+      const bash = await BashTool.init()
+      await expect(
+        bash.execute(
+          {
+            command: "echo remote",
+            description: "Echo remote",
+            linkID: "link_invalid_bash",
+          },
+          ctx,
+        ),
+      ).rejects.toMatchObject({ code: "session_invalid" })
+      expect(SynergyLinkExecution.getSession("link_invalid_bash")).toBeUndefined()
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("retains a cached session after ambiguous remote execution failure", async () => {
+    SynergyLinkExecution.setClient({
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        throw new SynergyLinkRemoteError("transport_error", "The remote result is unknown.")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("unexpected session verification")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_ambiguous_bash",
+      targetAgentID: "agent_ambiguous_bash",
+      sourceAgent: "build",
+      sessionID: "session_ambiguous_bash",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+      lastVerifiedAt: Date.now(),
+    })
+    try {
+      const bash = await BashTool.init()
+      await expect(
+        bash.execute(
+          {
+            command: "echo remote",
+            description: "Echo remote",
+            linkID: "link_ambiguous_bash",
+          },
+          ctx,
+        ),
+      ).rejects.toMatchObject({ code: "transport_error" })
+      expect(SynergyLinkExecution.getSession("link_ambiguous_bash")?.sessionID).toBe("session_ambiguous_bash")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("yieldSeconds guidance is bounded for remote execution in the description", async () => {
+    await ScopeContext.provide({
+      scope: (await Scope.fromDirectory(projectRoot)).scope,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const description = bash.description
+        expect(description).toContain("at most 5 seconds")
+        expect(description).not.toContain("20s")
+        expect(description).toContain("does not prove the remote command was cancelled")
       },
     })
   })

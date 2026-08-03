@@ -76,6 +76,10 @@ export class SynergyLinkRuntime {
         runtime.state.blockedAgentIDs = blockedAgentIDs
         await SynergyLinkStore.saveState(runtime.state)
       },
+      onEnd: async (session) => {
+        await rpc.processRegistry.releaseSession(session)
+        rpc.clearSessionRequests(session.sessionID)
+      },
     })
     const inbound = new SynergyLinkInboundHandler(rpc, sessions, (input) => runtime.decideSessionOpen(input))
     const control = new SynergyLinkControlServer((request) => runtime.handleControlRequest(request))
@@ -120,7 +124,7 @@ export class SynergyLinkRuntime {
     state.service.runtimeStatus = "starting"
     state.service.pid = process.pid
     state.service.printLogs = input?.printLogs ?? state.service.printLogs
-    state.service.startedAt = state.service.startedAt ?? Date.now()
+    state.service.startedAt = Date.now()
     state.service.stoppedAt = undefined
     state.logs.filePath = SynergyLinkStore.logsPath()
     state.ownerRegistry = SynergyLinkOwnerRegistry.hydrate(state.ownerRegistry)
@@ -222,18 +226,20 @@ export class SynergyLinkRuntime {
   }
 
   async setCollaborationEnabled(enabled: boolean) {
-    const state = requireState(this)
-    state.collaborationEnabled = enabled
-    if (!enabled && this.sessions.current()) {
-      await this.sessions.kickCurrent(false)
-    }
-    await SynergyLinkStore.saveState(state)
-    return {
-      enabled,
-      session: state.currentSession ?? null,
-      approvalMode: state.approvalMode,
-      pendingRequestCount: state.pendingRequests.filter((request) => request.status === "pending").length,
-    }
+    return await this.inbound.withSessionPolicyLock(async () => {
+      const state = requireState(this)
+      state.collaborationEnabled = enabled
+      if (!enabled && this.sessions.current()) {
+        await this.sessions.kickCurrent(false)
+      }
+      await SynergyLinkStore.saveState(state)
+      return {
+        enabled,
+        session: state.currentSession ?? null,
+        approvalMode: state.approvalMode,
+        pendingRequestCount: state.pendingRequests.filter((request) => request.status === "pending").length,
+      }
+    })
   }
 
   async getCollaborationStatus() {
@@ -247,24 +253,26 @@ export class SynergyLinkRuntime {
   }
 
   async kickCurrentSession(block = false) {
-    const kicked = await this.sessions.kickCurrent(block)
-    const state = requireState(this)
-    state.blockedAgentIDs = this.sessions.blockedAgentIDs()
-    await SynergyLinkStore.saveState(state)
-    return {
-      requested: Boolean(kicked),
-      block,
-      session: kicked
-        ? {
-            sessionID: kicked.sessionID,
-            remoteAgentID: kicked.remoteAgentID,
-            remoteOwnerUserID: kicked.remoteOwnerUserID,
-            createdAt: kicked.createdAt,
-            lastSeenAt: kicked.lastSeenAt,
-            label: kicked.label,
-          }
-        : null,
-    }
+    return await this.inbound.withSessionPolicyLock(async () => {
+      const kicked = await this.sessions.kickCurrent(block)
+      const state = requireState(this)
+      state.blockedAgentIDs = this.sessions.blockedAgentIDs()
+      await SynergyLinkStore.saveState(state)
+      return {
+        requested: Boolean(kicked),
+        block,
+        session: kicked
+          ? {
+              sessionID: kicked.sessionID,
+              remoteAgentID: kicked.remoteAgentID,
+              remoteOwnerUserID: kicked.remoteOwnerUserID,
+              createdAt: kicked.createdAt,
+              lastSeenAt: kicked.lastSeenAt,
+              label: kicked.label,
+            }
+          : null,
+      }
+    })
   }
 
   async reconnect() {
@@ -386,10 +394,13 @@ export class SynergyLinkRuntime {
   }
 
   async setApproval(mode: SynergyLinkApprovalMode) {
-    const state = requireState(this)
-    state.approvalMode = mode
-    await SynergyLinkStore.saveState(state)
-    return { mode }
+    return await this.inbound.withSessionPolicyLock(async () => {
+      const state = requireState(this)
+      state.approvalMode = mode
+      await SynergyLinkStore.saveState(state)
+      await this.#enforceCurrentSessionPolicy()
+      return { mode }
+    })
   }
 
   async listTrust() {
@@ -424,21 +435,24 @@ export class SynergyLinkRuntime {
   }
 
   async removeTrust(subject: "agent" | "user", value: string) {
-    const state = requireState(this)
-    if (subject === "agent") {
-      state.trusted.agentIDs = state.trusted.agentIDs.filter((item) => item !== value)
-    } else {
-      const userID = Number(value)
-      if (!Number.isFinite(userID)) {
-        throw new Error(`Invalid user id: ${value}`)
+    return await this.inbound.withSessionPolicyLock(async () => {
+      const state = requireState(this)
+      if (subject === "agent") {
+        state.trusted.agentIDs = state.trusted.agentIDs.filter((item) => item !== value)
+      } else {
+        const userID = Number(value)
+        if (!Number.isFinite(userID)) {
+          throw new Error(`Invalid user id: ${value}`)
+        }
+        state.trusted.ownerUserIDs = state.trusted.ownerUserIDs.filter((item) => item !== userID)
       }
-      state.trusted.ownerUserIDs = state.trusted.ownerUserIDs.filter((item) => item !== userID)
-    }
-    await SynergyLinkStore.saveState(state)
-    return {
-      agents: state.trusted.agentIDs,
-      users: state.trusted.ownerUserIDs,
-    }
+      await SynergyLinkStore.saveState(state)
+      await this.#enforceCurrentSessionPolicy()
+      return {
+        agents: state.trusted.agentIDs,
+        users: state.trusted.ownerUserIDs,
+      }
+    })
   }
 
   async listRequests() {
@@ -611,6 +625,16 @@ export class SynergyLinkRuntime {
         throw new Error(`Unsupported control action: ${String(unsupported)}`)
       }
     }
+  }
+
+  async #enforceCurrentSessionPolicy() {
+    const state = requireState(this)
+    const current = this.sessions.current()
+    if (!current || state.approvalMode !== "trusted-only") return
+    const trusted =
+      state.trusted.agentIDs.includes(current.remoteAgentID) ||
+      state.trusted.ownerUserIDs.includes(current.remoteOwnerUserID)
+    if (!trusted) await this.sessions.kickCurrent(false)
   }
 
   async decideSessionOpen(input: {
@@ -834,20 +858,20 @@ export class SynergyLinkRuntime {
     }
     let client!: SynergyLinkHolosClient
     client = new SynergyLinkHolosClient(auth, this.inbound, {
-      onClose: ({ intentional }) => {
+      onClose: ({ intentional, reason }) => {
         if (this.#client !== client) return
-        void this.#handleClientClosed({ intentional })
+        void this.#handleClientClosed({ intentional, reason })
       },
     })
     this.#client = client
   }
 
-  async #handleClientClosed(input: { intentional: boolean }) {
+  async #handleClientClosed(input: { intentional: boolean; reason: string }) {
     await this.#setConnectionStatus("disconnected")
     if (input.intentional || this.#stopping || this.#manualReconnectInFlight || this.state?.runtimeMode === "managed") {
       return
     }
-    this.#scheduleReconnect("socket_closed")
+    this.#scheduleReconnect(input.reason)
   }
 
   #scheduleReconnect(reason: string) {

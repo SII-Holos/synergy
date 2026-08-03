@@ -12,12 +12,15 @@ const PROVIDERS = [
   "test-backup",
   "test-api-confirm",
   "test-wrapped-api",
+  "test-inline-api",
   "test-status",
   "test-exhausted",
   "test-env",
+  "test-env-mapped",
   "test-missing",
   "test-plugin-with-hooks",
   "test-plugin-without-classifier",
+  "test-thrown-backup",
 ]
 
 async function reset() {
@@ -76,6 +79,32 @@ test("a rejected primary API key switches to a backup within the single retry bu
   expect(keys).toEqual(["primary", "backup"])
   expect((await Auth.select("test-backup"))?.credentialID).toBe("backup")
   expect(ProviderAuthHealth.fromEntry("test-backup", (await Auth.entries())["test-backup"]).status).toBe("connected")
+})
+
+test("a request-local rejection cannot mark the newly selected backup dead", async () => {
+  await Auth.set("test-thrown-backup", { type: "api", key: "primary" })
+  await Auth.addToPool("test-thrown-backup", "backup", { type: "api", key: "backup" })
+  const seen: string[] = []
+
+  const response = await ProviderAuthRecovery.execute({
+    providerID: "test-thrown-backup",
+    request: async () => {
+      const selected = await Auth.select("test-thrown-backup")
+      const key = selected?.auth.type === "api" ? selected.auth.key : ""
+      seen.push(key)
+      if (selected?.credentialID === "test-thrown-backup") {
+        await Auth.markDead("test-thrown-backup", "refresh_rejected", {
+          credentialID: selected.credentialID,
+        })
+        throw { data: { code: "refresh_rejected", reloginRequired: true } }
+      }
+      return new Response(null, { status: 200 })
+    },
+  })
+
+  expect(response.status).toBe(200)
+  expect(seen).toEqual(["primary", "backup"])
+  expect((await Auth.select("test-thrown-backup"))?.credentialID).toBe("backup")
 })
 
 test("a lone API key is invalidated only after a confirmed rejection", async () => {
@@ -153,6 +182,28 @@ test("generic SDK transport rewrites common API-key headers when selecting a bac
   })
   expect(response.status).toBe(200)
   expect(seen).toEqual(["Bearer primary", "Bearer backup"])
+})
+
+test("generic SDK transport preserves an effective inline API key", async () => {
+  await Auth.set("test-inline-api", { type: "api", key: "stored" })
+  const seen: string[] = []
+  const transport = ProviderAuthRecovery.wrapFetch(
+    "test-inline-api",
+    async (_input, init) => {
+      seen.push(new Headers(init?.headers).get("authorization") ?? "")
+      return new Response(null, { status: 401 })
+    },
+    undefined,
+    { effectiveAPIKey: "inline" },
+  )
+
+  const response = await transport("https://provider.test/v1/messages", {
+    headers: { Authorization: "Bearer inline" },
+  })
+
+  expect(response.status).toBe(401)
+  expect(seen).toEqual(["Bearer inline"])
+  expect(await Auth.get("test-inline-api")).toMatchObject({ type: "api", key: "stored" })
 })
 
 test("403, server failures, and network exceptions do not invalidate credentials without classification", async () => {
@@ -240,6 +291,43 @@ test("environment credential rejection is process-local and requests an environm
     expect((await Auth.entries())["test-env"]).toBeUndefined()
   } finally {
     delete process.env.SYNERGY_TEST_ENV_TOKEN
+  }
+})
+
+test("mapped multi-name environment credentials retain environment recovery", async () => {
+  ProviderProfile.register({
+    id: "test-env",
+    name: "Test environment provider",
+    origin: "plugin",
+    env: ["SYNERGY_TEST_ENV_TOKEN"],
+    classifyError: ({ status }) =>
+      status === 401 ? { code: "test_env_rejected", retryable: false, reloginRequired: true } : undefined,
+  })
+  process.env.SYNERGY_TEST_MAPPED_ENV_TOKEN = "invalid"
+  try {
+    const transport = ProviderAuthRecovery.wrapFetch(
+      "test-env-mapped",
+      async () => new Response(null, { status: 401 }),
+      "test-env",
+      {
+        effectiveAPIKey: "invalid",
+        environment: ["SYNERGY_TEST_MISSING_ENV_TOKEN", "SYNERGY_TEST_MAPPED_ENV_TOKEN"],
+      },
+    )
+
+    await expect(
+      transport("https://provider.test/v1/messages", {
+        headers: { Authorization: "Bearer invalid" },
+      }),
+    ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
+
+    expect(ProviderAuthHealth.fromEntry("test-env-mapped", undefined)).toMatchObject({
+      status: "action_required",
+      recovery: "update_environment",
+      source: "env",
+    })
+  } finally {
+    delete process.env.SYNERGY_TEST_MAPPED_ENV_TOKEN
   }
 })
 
@@ -344,6 +432,46 @@ test("plugin classifier and refresh hooks run, while an unclassified plugin 401 
   })
   expect(untouched.status).toBe(401)
   expect(await Auth.get("test-plugin-without-classifier")).toMatchObject({ type: "api", key: "plugin-key" })
+})
+
+test("canonical profile recovery hooks operate on the concrete account connection", async () => {
+  const profileID = `test-profile-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  let refreshedProviderID: string | undefined
+  ProviderProfile.register({
+    id: profileID,
+    name: "Test account profile",
+    origin: "plugin",
+    classifyError: ({ status }) =>
+      status === 401 ? { code: "profile_token_rejected", retryable: false, reloginRequired: true } : undefined,
+    refreshAuth: async ({ providerID, auth }) => {
+      refreshedProviderID = providerID
+      return auth?.type === "oauth" ? { ...auth, access: "secondary-new" } : undefined
+    },
+  })
+  await Auth.set(connectionID, {
+    type: "oauth",
+    access: "secondary-old",
+    refresh: "secondary-refresh",
+    expires: 9999999999,
+  })
+
+  try {
+    const recovered = await ProviderAuthRecovery.execute({
+      providerID: connectionID,
+      profileID,
+      request: async () => {
+        const auth = await Auth.get(connectionID)
+        return new Response(null, { status: auth?.type === "oauth" && auth.access === "secondary-new" ? 200 : 401 })
+      },
+    })
+    expect(recovered.status).toBe(200)
+    expect(refreshedProviderID).toBe(connectionID)
+    expect(await Auth.get(profileID)).toBeUndefined()
+    expect(await Auth.get(connectionID)).toMatchObject({ type: "oauth", access: "secondary-new" })
+  } finally {
+    await Auth.remove(connectionID)
+  }
 })
 
 test("health events contain only public state and ignore connected token rotation", async () => {

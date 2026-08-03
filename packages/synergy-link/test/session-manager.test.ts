@@ -28,14 +28,17 @@ describe("synergy-link session manager", () => {
     await expect(opening).resolves.toMatchObject({ metadata: { status: "opened" } })
   })
 
-  test("reuses the active session when the same Holos caller reconnects", async () => {
+  test("marks only a same-caller open as a reused session", async () => {
     const manager = new SessionManager()
     const caller = { type: "agent" as const, agentID: "agent_a", ownerUserID: 1 }
     const opened = await manager.open(caller, "build")
     const reopened = await manager.open(caller, "build again")
 
+    expect(opened.metadata.status).toBe("opened")
+    expect((opened.metadata as { reused?: boolean }).reused).toBeUndefined()
     expect(reopened.metadata.status).toBe("opened")
     expect(reopened.metadata.sessionID).toBe(opened.metadata.sessionID)
+    expect((reopened.metadata as { reused?: boolean }).reused).toBe(true)
     expect(manager.current()?.label).toBe("build")
   })
 
@@ -61,6 +64,29 @@ describe("synergy-link session manager", () => {
     expect(kicked?.remoteAgentID).toBe("agent_a")
     const retry = await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
     expect(retry.metadata.status).toBe("opened")
+  })
+
+  test("refuses an opening session when the caller is blocked during persistence", async () => {
+    const openPersistStarted = Promise.withResolvers<void>()
+    const continueOpenPersist = Promise.withResolvers<void>()
+    let changeCount = 0
+    const manager = new SessionManager({
+      onChange: async ({ current }) => {
+        changeCount += 1
+        if (changeCount !== 1 || !current) return
+        openPersistStarted.resolve()
+        await continueOpenPersist.promise
+      },
+    })
+
+    const opening = manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
+    await openPersistStarted.promise
+    await manager.setBlockedAgentIDs(["agent_a"])
+    continueOpenPersist.resolve()
+
+    await expect(opening).resolves.toMatchObject({ metadata: { status: "refused" } })
+    expect(manager.current()).toBeNull()
+    expect(manager.isBlocked("agent_a")).toBe(true)
   })
 
   test("idle sessions expire after timeout", async () => {

@@ -1,4 +1,5 @@
 const fs = require("node:fs")
+const crypto = require("node:crypto")
 const path = require("node:path")
 
 exports.default = async function afterPack(context) {
@@ -21,9 +22,89 @@ exports.default = async function afterPack(context) {
 }
 
 function assertRuntimeAssets(runtimeDir, platform) {
+  const manifestPath = path.join(runtimeDir, "runtime-manifest.sha256")
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`Synergy runtime manifest is missing: ${manifestPath}`)
+  }
+
+  assertNoRuntimeSymlinks(runtimeDir)
+
+  const entries = new Map()
+  for (const line of fs.readFileSync(manifestPath, "utf8").trim().split("\n")) {
+    const match = /^([a-f0-9]{64})  ([^/\\\s]+(?:\/[^/\\\s]+)*)$/.exec(line)
+    const checksum = match?.[1]
+    const relative = match?.[2]
+    const components = relative?.split("/")
+    if (
+      !checksum ||
+      !relative ||
+      /^[A-Za-z]:/.test(relative) ||
+      components?.some((component) => component === "." || component === "..")
+    ) {
+      throw new Error(`Synergy runtime manifest contains an invalid entry: ${manifestPath}`)
+    }
+    if (entries.has(relative)) {
+      throw new Error(`Synergy runtime manifest contains a duplicate entry ${relative}`)
+    }
+    entries.set(relative, checksum)
+  }
+
+  for (const relative of requiredRuntimeAssets(platform)) {
+    if (!entries.has(relative)) {
+      throw new Error(`Synergy runtime manifest is missing required entry ${relative}: ${runtimeDir}`)
+    }
+  }
+
+  for (const [relative, expected] of entries) {
+    const absolute = path.join(runtimeDir, relative)
+    if (!fs.existsSync(absolute)) {
+      throw new Error(`Synergy runtime manifest file is missing: ${relative}`)
+    }
+    if (!runtimeFileIsSafe(runtimeDir, relative)) {
+      throw new Error(`Synergy runtime manifest file is unsafe: ${relative}`)
+    }
+    const actual = crypto.createHash("sha256").update(fs.readFileSync(absolute)).digest("hex")
+    if (actual !== expected) {
+      throw new Error(`Synergy runtime manifest checksum mismatch: ${relative}`)
+    }
+  }
+}
+
+function runtimeFileIsSafe(runtimeDir, relative) {
+  const components = relative.split("/")
+  let current = runtimeDir
+  for (const [index, component] of components.entries()) {
+    current = path.join(current, component)
+    const info = fs.lstatSync(current, { throwIfNoEntry: false })
+    if (!info || info.isSymbolicLink()) return false
+    if (index < components.length - 1 && !info.isDirectory()) return false
+    if (index === components.length - 1 && !info.isFile()) return false
+  }
+  return true
+}
+
+function assertNoRuntimeSymlinks(runtimeDir) {
+  const pending = [runtimeDir]
+  while (pending.length > 0) {
+    const directory = pending.pop()
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name)
+      if (entry.isSymbolicLink()) {
+        throw new Error(`Synergy runtime contains a symbolic link: ${path.relative(runtimeDir, absolute)}`)
+      }
+      if (entry.isDirectory()) pending.push(absolute)
+    }
+  }
+}
+
+function requiredRuntimeAssets(platform) {
   const binary = platform === "win32" ? "bin/synergy.exe" : "bin/synergy"
-  const required = [
+  const astGrep = platform === "win32" ? "bin/ast-grep.exe" : "bin/ast-grep"
+  const sqliteVec = platform === "win32" ? "vec0.dll" : platform === "darwin" ? "vec0.dylib" : "vec0.so"
+  return [
     binary,
+    astGrep,
+    sqliteVec,
     "app/index.html",
     "schema/config.schema.json",
     "browser-runtime/playwright-core/package.json",
@@ -31,15 +112,19 @@ function assertRuntimeAssets(runtimeDir, platform) {
     "browser-runtime/playwright-core/lib/coreBundle.js",
     "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
     "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
+    "lib/resvg-wasm/index_bg.wasm",
+    "lib/resvg-wasm/LICENSE-MPL-2.0.txt",
+    "lib/resvg-wasm/THIRD_PARTY_NOTICES.txt",
+    "lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt",
+    "lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
+    "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2",
+    "lib/holos-cli/index.js",
+    "lib/holos-cli/vendor/clarus-shared/index.js",
+    "lib/holos-cli/node_modules/ws/package.json",
+    "lib/holos-cli/node_modules/zod/package.json",
+    ...(platform === "linux" ? ["sandbox/synergy-sandbox-linux"] : []),
+    ...(platform === "win32" ? ["sandbox/synergy-sandbox-windows.exe"] : []),
   ]
-  if (platform === "linux") required.push("sandbox/synergy-sandbox-linux")
-  if (platform === "win32") required.push("sandbox/synergy-sandbox-windows.exe")
-
-  for (const relative of required) {
-    if (!fs.existsSync(path.join(runtimeDir, relative))) {
-      throw new Error(`Synergy runtime is incomplete; missing ${relative}: ${runtimeDir}`)
-    }
-  }
 }
 
 exports.assertRuntimeAssets = assertRuntimeAssets

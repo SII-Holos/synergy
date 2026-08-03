@@ -32,11 +32,18 @@ export interface DesktopUpdateStatus {
 
 export type DesktopUpdateEvent = { type: "status"; status: DesktopUpdateStatus }
 
-type BackendEvent = "update-available" | "update-not-available" | "download-progress" | "update-downloaded" | "error"
+type BackendEvent =
+  | "update-available"
+  | "update-not-available"
+  | "download-progress"
+  | "update-downloaded"
+  | "update-cancelled"
+  | "error"
 
 export interface DesktopUpdateBackend {
   checkForUpdates(): Promise<{ version: string | null }>
   downloadUpdate(): Promise<void>
+  cancelDownload?(): void | Promise<void>
   quitAndInstall(): void | Promise<void>
   on(event: BackendEvent, listener: (...args: any[]) => void): () => void
 }
@@ -78,6 +85,7 @@ export interface DesktopUpdaterOptions {
   currentVersion: string
   userDataDir: string
   stopServer: () => Promise<void>
+  restartServer?: () => Promise<void>
   backend?: DesktopUpdateBackend
 }
 
@@ -86,6 +94,7 @@ export class DesktopUpdater {
   private readonly store: DesktopUpdateStore
   private readonly backend: DesktopUpdateBackend
   private readonly stopServer: () => Promise<void>
+  private readonly restartServer: () => Promise<void>
   private initialized = false
   private checking: Promise<DesktopUpdateStatus> | null = null
   private downloading: Promise<DesktopUpdateStatus> | null = null
@@ -95,6 +104,7 @@ export class DesktopUpdater {
     this.store = DesktopUpdateStore.atUserData(options.userDataDir)
     this.backend = options.backend ?? new ElectronUpdateBackend()
     this.stopServer = options.stopServer
+    this.restartServer = options.restartServer ?? (() => Promise.resolve())
     this.status = {
       channel: options.channel,
       mode: "auto",
@@ -129,6 +139,9 @@ export class DesktopUpdater {
   }
 
   async setMode(mode: DesktopUpdateMode): Promise<DesktopUpdateStatus> {
+    if (mode === "none" && this.status.phase === "downloading") {
+      await this.backend.cancelDownload?.()
+    }
     await this.store.write({ mode })
     const enabled = this.enabledFor(mode)
     const phase = enabled ? (this.status.phase === "disabled" ? "idle" : this.status.phase) : "disabled"
@@ -168,9 +181,15 @@ export class DesktopUpdater {
 
   async installAndRestart(): Promise<DesktopUpdateStatus> {
     if (!this.enabled()) return this.disabledStatus()
+    if (this.status.phase !== "ready") return this.getStatus()
     this.updateStatus({ phase: "installing", error: null, percent: null })
-    await this.stopServer()
-    await this.backend.quitAndInstall()
+    try {
+      await this.stopServer()
+      await this.backend.quitAndInstall()
+    } catch (error) {
+      await this.restartServer().catch(() => {})
+      this.updateStatus({ phase: "error", error: errorMessage(error), percent: null })
+    }
     return this.getStatus()
   }
 
@@ -201,30 +220,60 @@ export class DesktopUpdater {
       }
       return this.getStatus()
     } catch (error) {
-      this.updateStatus({ phase: "error", error: errorMessage(error), percent: null })
+      if (!this.enabled()) return this.getStatus()
+      if (error instanceof DesktopUpdateCancelledError) {
+        this.updateStatus({ phase: "available", error: null, percent: null })
+      } else {
+        this.updateStatus({ phase: "error", error: errorMessage(error), percent: null })
+      }
       return this.getStatus()
     }
   }
 
   private bindBackendEvents(): void {
-    this.backend.on("update-available", (info: { version?: string }) => {
-      const version = typeof info?.version === "string" ? info.version : this.status.availableVersion
-      this.updateStatus({ phase: "available", availableVersion: version, error: null })
-      if (this.status.mode === "auto") void this.download()
-    })
-    this.backend.on("update-not-available", () => {
-      this.updateStatus({ phase: this.enabled() ? "idle" : "disabled", availableVersion: null, percent: null })
-    })
-    this.backend.on("download-progress", (progress: { percent?: number }) => {
-      const percent = typeof progress?.percent === "number" ? Math.max(0, Math.min(100, progress.percent)) : null
-      this.updateStatus({ phase: "downloading", percent })
-    })
-    this.backend.on("update-downloaded", (info: { version?: string }) => {
-      const version = typeof info?.version === "string" ? info.version : this.status.availableVersion
-      this.updateStatus({ phase: "ready", availableVersion: version, percent: null, error: null })
-    })
+    const whenEnabled =
+      (listener: (...args: any[]) => void) =>
+      (...args: any[]) => {
+        if (this.enabled()) listener(...args)
+      }
+    this.backend.on(
+      "update-available",
+      whenEnabled((info: { version?: string }) => {
+        const version = typeof info?.version === "string" ? info.version : this.status.availableVersion
+        this.updateStatus({ phase: "available", availableVersion: version, error: null })
+        if (this.status.mode === "auto") void this.download()
+      }),
+    )
+    this.backend.on(
+      "update-not-available",
+      whenEnabled(() => {
+        this.updateStatus({ phase: "idle", availableVersion: null, percent: null })
+      }),
+    )
+    this.backend.on(
+      "download-progress",
+      whenEnabled((progress: { percent?: number }) => {
+        const percent = typeof progress?.percent === "number" ? Math.max(0, Math.min(100, progress.percent)) : null
+        this.updateStatus({ phase: "downloading", percent })
+      }),
+    )
+    this.backend.on(
+      "update-downloaded",
+      whenEnabled((info: { version?: string }) => {
+        const version = typeof info?.version === "string" ? info.version : this.status.availableVersion
+        this.updateStatus({ phase: "ready", availableVersion: version, percent: null, error: null })
+      }),
+    )
+    this.backend.on(
+      "update-cancelled",
+      whenEnabled(() => {
+        this.updateStatus({ phase: "available", percent: null, error: null })
+      }),
+    )
     this.backend.on("error", (error: unknown) => {
+      const wasInstalling = this.status.phase === "installing"
       this.updateStatus({ phase: "error", error: errorMessage(error), percent: null })
+      if (wasInstalling) void this.restartServer().catch(() => {})
     })
   }
 
@@ -247,16 +296,33 @@ export class DesktopUpdater {
   }
 }
 
+export class DesktopUpdateCancelledError extends Error {
+  constructor() {
+    super("Desktop update download was cancelled")
+    this.name = "DesktopUpdateCancelledError"
+  }
+}
+
+export function desktopUpdateInstallActive(previous: boolean, status: DesktopUpdateStatus): boolean {
+  if (status.phase === "installing") return true
+  if (status.phase === "error") return false
+  return previous
+}
+
+type ElectronCancellationToken = { cancel(): void }
+
 type ElectronUpdateCheckResult = {
   isUpdateAvailable: boolean
   updateInfo: { version: string }
+  cancellationToken?: ElectronCancellationToken
 }
 
 type ElectronAutoUpdater = {
   autoDownload: boolean
+  autoInstallOnAppQuit: boolean
   allowPrerelease: boolean
   checkForUpdates(): Promise<ElectronUpdateCheckResult | null>
-  downloadUpdate(): Promise<unknown>
+  downloadUpdate(cancellationToken?: ElectronCancellationToken): Promise<unknown>
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void
   on(event: BackendEvent, listener: (...args: any[]) => void): unknown
   off(event: BackendEvent, listener: (...args: any[]) => void): unknown
@@ -272,18 +338,32 @@ const loadElectronAutoUpdater: ElectronAutoUpdaterLoader = async () => {
 export class ElectronUpdateBackend implements DesktopUpdateBackend {
   private autoUpdater: ElectronAutoUpdater | null = null
   private loading: Promise<ElectronAutoUpdater> | null = null
+  private cancellationToken: ElectronCancellationToken | undefined
+  private cancellationRequested = false
 
   constructor(private readonly loader: ElectronAutoUpdaterLoader = loadElectronAutoUpdater) {}
 
   async checkForUpdates(): Promise<{ version: string | null }> {
     const autoUpdater = await this.load()
     const result = await autoUpdater.checkForUpdates()
+    this.cancellationToken = result?.cancellationToken
     return { version: result?.isUpdateAvailable ? result.updateInfo.version : null }
   }
 
   async downloadUpdate(): Promise<void> {
     const autoUpdater = await this.load()
-    await autoUpdater.downloadUpdate()
+    this.cancellationRequested = false
+    try {
+      await autoUpdater.downloadUpdate(this.cancellationToken)
+    } catch (error) {
+      if (this.cancellationRequested) throw new DesktopUpdateCancelledError()
+      throw error
+    }
+  }
+
+  cancelDownload(): void {
+    this.cancellationRequested = true
+    this.cancellationToken?.cancel()
   }
 
   async quitAndInstall(): Promise<void> {
@@ -300,6 +380,7 @@ export class ElectronUpdateBackend implements DesktopUpdateBackend {
     if (this.autoUpdater) return this.autoUpdater
     this.loading ??= this.loader().then((autoUpdater) => {
       autoUpdater.autoDownload = false
+      autoUpdater.autoInstallOnAppQuit = false
       autoUpdater.allowPrerelease = false
       return autoUpdater
     })

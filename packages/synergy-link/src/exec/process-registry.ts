@@ -2,17 +2,24 @@ import process from "node:process"
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { SynergyLinkBash, SynergyLinkIdentity, SynergyLinkProcess } from "@ericsanchezok/synergy-link-protocol"
 import { SynergyLinkHost } from "../host"
-import { Platform } from "../platform"
+import { Platform, SYNERGY_LINK_PROCESS_OWNER_ENV } from "../platform"
+import { SynergyLinkLog } from "../log"
+import { detectDetachedDaemonRisk, detachedDaemonBlockMessage } from "./detached-daemon"
+import type { ExecutionLease } from "../types"
+import type { SessionRecord } from "../session/manager"
 
 const MAX_OUTPUT_CHARS = 200_000
 const TAIL_CHARS = 2_000
 const DEFAULT_TTL_MS = 30 * 60 * 1000
+const MAX_REMOTE_YIELD_SECONDS = 5
 
 interface ProcessRecord {
   processId: SynergyLinkIdentity.ProcessID
+  ownerMarker: string
   command: string
   description?: string
   cwd?: string
+  lease: ExecutionLease
   child: ChildProcess
   stdin?: NodeJS.WritableStream
   startedAt: number
@@ -27,9 +34,11 @@ interface ProcessRecord {
 
 interface FinishedRecord {
   processId: SynergyLinkIdentity.ProcessID
+  ownerMarker: string
   command: string
   description?: string
   cwd?: string
+  lease: ExecutionLease
   status: SynergyLinkProcess.ProcessState
   startedAt: number
   endedAt: number
@@ -57,6 +66,8 @@ export class ProcessRegistry {
   readonly #running = new Map<SynergyLinkIdentity.ProcessID, ProcessRecord>()
   readonly #finished = new Map<SynergyLinkIdentity.ProcessID, FinishedRecord>()
   readonly #waiters = new Map<SynergyLinkIdentity.ProcessID, Set<() => void>>()
+  // Markers outlive finished process history so session cleanup can still reap escaped descendants.
+  readonly #sessionOwnerMarkers = new Map<string, Set<string>>()
   readonly #ttlMs: number
   readonly #host: SynergyLinkHost
   #sweeper?: ReturnType<typeof setInterval>
@@ -66,12 +77,35 @@ export class ProcessRegistry {
     this.#ttlMs = Math.max(60_000, options?.ttlMs ?? DEFAULT_TTL_MS)
   }
 
-  async executeBash(request: SynergyLinkBash.ExecutePayload, linkID: string): Promise<SynergyLinkBash.Result> {
+  async executeBash(
+    request: SynergyLinkBash.ExecutePayload,
+    linkID: string,
+    lease: ExecutionLease,
+  ): Promise<SynergyLinkBash.Result> {
     this.#host.assertLink(linkID)
+    const workdir = Platform.resolveWorkdir(request.workdir)
+    const detachedRisk = detectDetachedDaemonRisk(request.command, process.platform, {
+      windowsResolution: {
+        workdir,
+        env: process.env,
+      },
+    })
+    if (detachedRisk) {
+      SynergyLinkLog.warn("bash.detached_daemon.blocked", {
+        risk: detachedRisk,
+        sessionID: lease.sessionID,
+        callerAgentID: lease.callerAgentID,
+      })
+      throw {
+        code: "invalid_request" as const,
+        message: detachedDaemonBlockMessage(detachedRisk),
+      }
+    }
     const launched = this.#launchShellProcess({
       command: request.command,
       description: request.description,
-      workdir: Platform.resolveWorkdir(request.workdir),
+      workdir,
+      lease,
     })
 
     if (request.background) {
@@ -79,22 +113,22 @@ export class ProcessRegistry {
       return this.#backgroundResult(launched.record, linkID, request.description, "Background")
     }
 
-    if (request.yieldSeconds && request.yieldSeconds > 0) {
-      const yieldMs = request.yieldSeconds * 1000
-      const autoBackground = await Promise.race([
-        this.#waitForExit(launched.record.processId).then(() => false),
-        Platform.sleep(yieldMs).then(() => !launched.record.exited),
-      ])
-      if (autoBackground) {
-        launched.record.backgrounded = true
-        return this.#backgroundResult(
-          launched.record,
-          linkID,
-          request.description,
-          "Auto-Background",
-          request.yieldSeconds,
-        )
-      }
+    const requestedYieldSeconds = request.yieldSeconds && request.yieldSeconds > 0 ? request.yieldSeconds : undefined
+    const yieldSeconds = Math.min(requestedYieldSeconds ?? MAX_REMOTE_YIELD_SECONDS, MAX_REMOTE_YIELD_SECONDS)
+    const autoBackground = await Promise.race([
+      this.#waitForExit(launched.record.processId).then(() => false),
+      Platform.sleep(yieldSeconds * 1000).then(() => !launched.record.exited),
+    ])
+    if (autoBackground) {
+      launched.record.backgrounded = true
+      return this.#backgroundResult(
+        launched.record,
+        linkID,
+        request.description,
+        "Auto-Background",
+        yieldSeconds,
+        requestedYieldSeconds && requestedYieldSeconds > yieldSeconds ? requestedYieldSeconds : undefined,
+      )
     }
 
     await this.#waitForExit(launched.record.processId)
@@ -118,11 +152,15 @@ export class ProcessRegistry {
     }
   }
 
-  async execute(request: SynergyLinkProcess.ExecutePayload, linkID: string): Promise<SynergyLinkProcess.Result> {
+  async execute(
+    request: SynergyLinkProcess.ExecutePayload,
+    linkID: string,
+    lease: ExecutionLease,
+  ): Promise<SynergyLinkProcess.Result> {
     this.#host.assertLink(linkID)
 
     if (request.action === "list") {
-      const processes = this.#listAll()
+      const processes = this.#listAll(lease)
       return {
         title: "Process list",
         metadata: {
@@ -146,6 +184,7 @@ export class ProcessRegistry {
         linkID,
       })
     }
+    this.#assertOwned(processId, lease)
 
     switch (request.action) {
       case "poll":
@@ -165,33 +204,75 @@ export class ProcessRegistry {
     }
   }
 
+  has(processId: string) {
+    return this.#running.has(processId) || this.#finished.has(processId)
+  }
+
+  async releaseSession(session: SessionRecord) {
+    const running = [...this.#running.values()].filter((record) => leaseMatchesSession(record.lease, session))
+    const sessionKey = sessionLeaseKey(session)
+    const ownerMarkers = new Set([
+      ...(this.#sessionOwnerMarkers.get(sessionKey) ?? []),
+      ...running.map((record) => record.ownerMarker),
+    ])
+    await Promise.all([
+      Platform.killOwnedByMarkers(ownerMarkers),
+      ...running.map((record) => Platform.killTree(record.child, () => record.exited)),
+    ])
+    this.#sessionOwnerMarkers.delete(sessionKey)
+    for (const record of running) this.#running.delete(record.processId)
+    for (const [processId, record] of this.#finished) {
+      if (leaseMatchesSession(record.lease, session)) this.#finished.delete(processId)
+    }
+    SynergyLinkLog.info("process.session.released", {
+      sessionID: session.sessionID,
+      callerAgentID: session.remoteAgentID,
+      runningProcessCount: running.length,
+    })
+  }
+
   async reset() {
-    await Promise.all([...this.#running.values()].map((record) => Platform.killTree(record.child, () => record.exited)))
+    const running = [...this.#running.values()]
+    const ownerMarkers = new Set([
+      ...[...this.#sessionOwnerMarkers.values()].flatMap((markers) => [...markers]),
+      ...running.map((record) => record.ownerMarker),
+    ])
+    await Promise.all([
+      Platform.killOwnedByMarkers(ownerMarkers),
+      ...running.map((record) => Platform.killTree(record.child, () => record.exited)),
+    ])
     this.#running.clear()
     this.#finished.clear()
     this.#waiters.clear()
+    this.#sessionOwnerMarkers.clear()
     if (this.#sweeper) {
       clearInterval(this.#sweeper)
       this.#sweeper = undefined
     }
   }
 
-  #launchShellProcess(input: { command: string; description?: string; workdir: string }) {
+  #launchShellProcess(input: { command: string; description?: string; workdir: string; lease: ExecutionLease }) {
     const launch = Platform.resolveShellLaunch(input.command)
+    const processId = crypto.randomUUID()
+    const ownerMarker = processId
     const options: SpawnOptions = {
       cwd: input.workdir,
-      env: Platform.normalizeEnv({ ...process.env }),
+      env: Platform.normalizeEnv({
+        ...process.env,
+        [SYNERGY_LINK_PROCESS_OWNER_ENV]: ownerMarker,
+      }),
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
       windowsHide: true,
     }
     const child = spawn(launch.file, launch.args, options)
-    const processId = crypto.randomUUID()
     const record: ProcessRecord = {
       processId,
+      ownerMarker,
       command: input.command,
       description: input.description,
       cwd: input.workdir,
+      lease: input.lease,
       child,
       stdin: child.stdin || undefined,
       startedAt: Date.now(),
@@ -228,6 +309,10 @@ export class ProcessRegistry {
     })
 
     this.#running.set(processId, record)
+    const sessionKey = leaseKey(input.lease)
+    const ownerMarkers = this.#sessionOwnerMarkers.get(sessionKey) ?? new Set<string>()
+    ownerMarkers.add(ownerMarker)
+    this.#sessionOwnerMarkers.set(sessionKey, ownerMarkers)
     this.#startSweeper()
     return { record }
   }
@@ -252,7 +337,8 @@ export class ProcessRegistry {
     }
 
     if (running && block) {
-      await this.#waitForExit(processId, (timeoutSeconds ?? 30) * 1000)
+      const timeout = Math.min(Math.max(timeoutSeconds ?? 30, 1), 30)
+      await this.#waitForExit(processId, timeout * 1000)
     }
 
     const currentRunning = this.#running.get(processId)
@@ -422,7 +508,7 @@ export class ProcessRegistry {
       })
     }
 
-    await Platform.killTree(record.child, () => record.exited)
+    await Platform.killTree(record.child, () => record.exited, { ownerMarker: record.ownerMarker })
     return this.#result({
       action: "kill",
       title: `Killed ${processId}`,
@@ -458,7 +544,9 @@ export class ProcessRegistry {
       })
     }
 
+    await Platform.killOwnedByMarker(finished.ownerMarker)
     this.#finished.delete(processId)
+    this.#forgetOwnerMarker(finished.lease, finished.ownerMarker)
     return this.#result({
       action: "clear",
       title: `Cleared ${processId}`,
@@ -474,10 +562,13 @@ export class ProcessRegistry {
   async #remove(processId: string, linkID: string): Promise<SynergyLinkProcess.Result> {
     const running = this.#running.get(processId)
     const finished = this.#finished.get(processId)
+    const record = running ?? finished
     if (running) {
-      await Platform.killTree(running.child, () => running.exited)
+      await Platform.killTree(running.child, () => running.exited, { ownerMarker: running.ownerMarker })
       this.#running.delete(processId)
     }
+    if (!running && finished) await Platform.killOwnedByMarker(finished.ownerMarker)
+    if (record) this.#forgetOwnerMarker(record.lease, record.ownerMarker)
     this.#finished.delete(processId)
 
     return this.#result({
@@ -530,10 +621,13 @@ export class ProcessRegistry {
     description: string,
     mode: "Background" | "Auto-Background",
     yieldSeconds?: number,
+    requestedYieldSeconds?: number,
   ): SynergyLinkBash.Result {
     const prefix =
       mode === "Auto-Background"
-        ? `Command auto-backgrounded after ${yieldSeconds}s.`
+        ? requestedYieldSeconds
+          ? `Command auto-backgrounded after ${yieldSeconds}s; yield was clamped from ${requestedYieldSeconds}s to stay within the remote transport deadline.`
+          : `Command auto-backgrounded after ${yieldSeconds}s.`
         : "Command started in background."
     return {
       title: `[${mode}] ${description}`,
@@ -569,9 +663,11 @@ export class ProcessRegistry {
 
     if (record.backgrounded) {
       this.#finished.set(record.processId, {
+        ownerMarker: record.ownerMarker,
         processId: record.processId,
         command: record.command,
         description: record.description,
+        lease: record.lease,
         cwd: record.cwd,
         status: classifyExit(exitCode, exitSignal),
         startedAt: record.startedAt,
@@ -632,9 +728,9 @@ export class ProcessRegistry {
     return finished
   }
 
-  #listAll(): SynergyLinkProcess.ProcessInfo[] {
+  #listAll(lease: ExecutionLease): SynergyLinkProcess.ProcessInfo[] {
     const running = [...this.#running.values()]
-      .filter((record) => record.backgrounded)
+      .filter((record) => record.backgrounded && sameLease(record.lease, lease))
       .map((record) => ({
         processId: record.processId,
         status: "running" as const,
@@ -643,19 +739,44 @@ export class ProcessRegistry {
         runtimeMs: this.#runtimeMs(record),
       }))
 
-    const finished = [...this.#finished.values()].map((record) => ({
-      processId: record.processId,
-      status: record.status,
-      command: trimCommand(record.command),
-      description: record.description,
-      runtimeMs: record.endedAt - record.startedAt,
-    }))
+    const finished = [...this.#finished.values()]
+      .filter((record) => sameLease(record.lease, lease))
+      .map((record) => ({
+        processId: record.processId,
+        status: record.status,
+        command: trimCommand(record.command),
+        description: record.description,
+        runtimeMs: record.endedAt - record.startedAt,
+      }))
 
     return [...running, ...finished].sort((left, right) => right.runtimeMs - left.runtimeMs)
   }
 
+  #assertOwned(processId: string, lease: ExecutionLease) {
+    const record = this.#running.get(processId) ?? this.#finished.get(processId)
+    if (record && sameLease(record.lease, lease)) return
+    SynergyLinkLog.warn("process.access.denied", {
+      processId,
+      sessionID: lease.sessionID,
+      callerAgentID: lease.callerAgentID,
+      callerOwnerUserID: lease.callerOwnerUserID,
+    })
+    throw {
+      code: "process_not_found" as const,
+      message: `No process found for ${processId} in the active Synergy Link session.`,
+    }
+  }
+
   #runtimeMs(record: { startedAt: number; endedAt?: number }): number {
     return (record.endedAt ?? Date.now()) - record.startedAt
+  }
+
+  #forgetOwnerMarker(lease: ExecutionLease, ownerMarker: string) {
+    const sessionKey = leaseKey(lease)
+    const ownerMarkers = this.#sessionOwnerMarkers.get(sessionKey)
+    if (!ownerMarkers) return
+    ownerMarkers.delete(ownerMarker)
+    if (ownerMarkers.size === 0) this.#sessionOwnerMarkers.delete(sessionKey)
   }
 
   #startSweeper() {
@@ -672,6 +793,30 @@ export class ProcessRegistry {
     unrefTimer(this.#sweeper)
   }
 }
+function sameLease(left: ExecutionLease, right: ExecutionLease) {
+  return (
+    left.sessionID === right.sessionID &&
+    left.callerAgentID === right.callerAgentID &&
+    left.callerOwnerUserID === right.callerOwnerUserID
+  )
+}
+
+function leaseKey(lease: ExecutionLease): string {
+  return JSON.stringify([lease.sessionID, lease.callerAgentID, lease.callerOwnerUserID])
+}
+
+function sessionLeaseKey(session: SessionRecord): string {
+  return JSON.stringify([session.sessionID, session.remoteAgentID, session.remoteOwnerUserID])
+}
+
+function leaseMatchesSession(lease: ExecutionLease, session: SessionRecord) {
+  return (
+    lease.sessionID === session.sessionID &&
+    lease.callerAgentID === session.remoteAgentID &&
+    lease.callerOwnerUserID === session.remoteOwnerUserID
+  )
+}
+
 function classifyExit(
   exitCode: number | null | undefined,
   exitSignal: NodeJS.Signals | number | null | undefined,

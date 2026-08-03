@@ -10,6 +10,8 @@ import { tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { Global } from "../../src/global"
+import { Config } from "../../src/config/config"
+import { ChannelFeishu } from "../../src/config/schema"
 
 const originalCodexHome = process.env.CODEX_HOME
 const originalOpenAIAPIKey = process.env.OPENAI_API_KEY
@@ -117,6 +119,282 @@ test("/provider returns catalog, auth health, and runtime availability", async (
       },
     },
   })
+  expect(body.connections[CodexProvider.PROVIDER_ID]).toMatchObject({
+    id: CodexProvider.PROVIDER_ID,
+    profileID: CodexProvider.PROVIDER_ID,
+    catalogProviderID: CodexProvider.PROVIDER_ID,
+    removable: false,
+  })
+})
+
+test("provider connection routes manage a second account without changing its canonical provider", async () => {
+  const before = await Config.domainGet("providers")
+  const providerID = `deepseek-team-${Math.random().toString(36).slice(2)}`
+  const standaloneID = `standalone-${Math.random().toString(36).slice(2)}`
+  const app = Server.App()
+
+  try {
+    const createdResponse = await app.request("/provider/connections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: providerID,
+        profileID: "deepseek",
+        name: "DeepSeek Team",
+        endpoint: "https://deepseek-team.invalid/v1",
+        enabled: false,
+      }),
+    })
+    const createdBody = await createdResponse.json()
+    expect({ status: createdResponse.status, body: createdBody }).toEqual({
+      status: 200,
+      body: {
+        id: providerID,
+        name: "DeepSeek Team",
+        profileID: "deepseek",
+        catalogProviderID: "deepseek",
+        endpoint: "https://deepseek-team.invalid/v1",
+        enabled: false,
+        configured: true,
+        removable: true,
+        canCreateSibling: true,
+      },
+    })
+
+    const configured = await Config.domainGet("providers")
+    await Config.domainUpdate(
+      "providers",
+      {
+        ...configured,
+        provider: {
+          ...configured.provider,
+          [providerID]: {
+            ...configured.provider?.[providerID],
+            whitelist: ["deepseek-chat"],
+            options: {
+              baseURL: "https://stale-deepseek-team.invalid/v1",
+            },
+          },
+          [standaloneID]: {
+            name: "Standalone Custom",
+            npm: "@ai-sdk/openai-compatible",
+            env: [],
+            models: {},
+          },
+        },
+      },
+      { mode: "replace-domain" },
+    )
+
+    const listedResponse = await app.request("/provider")
+    const listed = await listedResponse.json()
+    expect(listed.connections[providerID]).toMatchObject({
+      profileID: "deepseek",
+      enabled: false,
+      removable: true,
+    })
+    expect(listed.connections[standaloneID]).toMatchObject({
+      id: standaloneID,
+      configured: true,
+      removable: false,
+      canCreateSibling: false,
+    })
+    expect(listed.runtimeAvailability[providerID]).toMatchObject({
+      available: false,
+      reason: "disabled",
+      modelCount: 1,
+    })
+    expect(listed.all.some((provider: Provider.Info) => provider.id === providerID)).toBe(true)
+
+    const updatedResponse = await app.request(`/provider/connections/${providerID}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "DeepSeek Production",
+        endpoint: null,
+        enabled: true,
+      }),
+    })
+    expect(updatedResponse.status).toBe(200)
+    expect(await updatedResponse.json()).toMatchObject({
+      id: providerID,
+      name: "DeepSeek Production",
+      enabled: true,
+    })
+    expect((await Config.domainGet("providers")).provider?.[providerID]).toMatchObject({
+      modelsDevProviderID: "deepseek",
+      name: "DeepSeek Production",
+    })
+    expect((await Config.domainGet("providers")).provider?.[providerID]?.api).toBeUndefined()
+    expect((await Config.domainGet("providers")).provider?.[providerID]?.options?.baseURL).toBeUndefined()
+
+    const enabledDomain = await Config.domainGet("providers")
+    await Config.domainUpdate(
+      "providers",
+      {
+        ...enabledDomain,
+        enabled_providers: [providerID],
+        disabled_providers: (enabledDomain.disabled_providers ?? []).filter((id) => id !== providerID),
+      },
+      { mode: "replace-domain" },
+    )
+    const disabledResponse = await app.request(`/provider/connections/${providerID}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    })
+    expect(disabledResponse.status).toBe(200)
+    expect(await Config.domainGet("providers")).toMatchObject({
+      enabled_providers: [providerID],
+      disabled_providers: expect.arrayContaining([providerID]),
+    })
+
+    await Auth.set("deepseek", { type: "api", key: "canonical-connection-test-key" })
+    await Auth.set(providerID, { type: "api", key: "connection-test-key" })
+    const removedResponse = await app.request(`/provider/connections/${providerID}`, { method: "DELETE" })
+    expect(removedResponse.status).toBe(200)
+    expect(await removedResponse.json()).toEqual({ providerID, removed: true })
+    expect((await Config.domainGet("providers")).provider?.[providerID]).toBeUndefined()
+    expect(await Auth.get(providerID)).toBeUndefined()
+    expect(await Auth.get("deepseek")).toMatchObject({ type: "api", key: "canonical-connection-test-key" })
+
+    const collisionResponse = await app.request("/provider/connections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "deepseek",
+        profileID: "deepseek",
+        name: "Canonical collision",
+      }),
+    })
+    expect(collisionResponse.status).toBe(400)
+    expect(await collisionResponse.json()).toMatchObject({
+      name: "ProviderConnectionAlreadyExistsError",
+      data: { providerID: "deepseek" },
+    })
+  } finally {
+    await Auth.remove(providerID)
+    await Auth.remove("deepseek")
+    await Config.domainUpdate("providers", before, { mode: "replace-domain" })
+    await Provider.reload()
+  }
+})
+
+test("provider connection removal rejects model and Channel references", async () => {
+  const providerID = `deepseek-referenced-${Math.random().toString(36).slice(2)}`
+  const [providersBefore, modelsBefore, agentsBefore, commandsBefore, channelsBefore] = await Promise.all([
+    Config.domainGet("providers"),
+    Config.domainGet("models"),
+    Config.domainGet("agents"),
+    Config.domainGet("commands"),
+    Config.domainGet("channels"),
+  ])
+
+  try {
+    await Config.domainUpdate(
+      "providers",
+      {
+        ...providersBefore,
+        provider: {
+          ...providersBefore.provider,
+          [providerID]: {
+            profile: "deepseek",
+            modelsDevProviderID: "deepseek",
+            name: "Referenced DeepSeek",
+          },
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Config.domainUpdate(
+      "models",
+      {
+        ...modelsBefore,
+        model: `${providerID}/deepseek-chat`,
+        nano_model: `${providerID}/deepseek-chat`,
+        quick_switcher: {
+          models: [{ providerID, modelID: "deepseek-chat", state: "add" }],
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Config.domainUpdate(
+      "agents",
+      {
+        ...agentsBefore,
+        agent: {
+          ...agentsBefore.agent,
+          "referenced-provider-test": { model: `${providerID}/deepseek-chat` },
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Config.domainUpdate(
+      "commands",
+      {
+        ...commandsBefore,
+        command: {
+          ...commandsBefore.command,
+          "referenced-provider-test": {
+            template: "test",
+            model: `${providerID}/deepseek-chat`,
+          },
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Config.domainUpdate(
+      "channels",
+      {
+        ...channelsBefore,
+        channel: {
+          ...channelsBefore.channel,
+          "referenced-provider-test": ChannelFeishu.parse({
+            type: "feishu",
+            accounts: {
+              test: {
+                appId: "test-app",
+                appSecret: "test-secret",
+                model: `${providerID}/deepseek-chat`,
+              },
+            },
+          }),
+        },
+      },
+      { mode: "replace-domain" },
+    )
+    await Auth.set(providerID, { type: "api", key: "referenced-provider-key" })
+
+    const response = await Server.App().request(`/provider/connections/${providerID}`, { method: "DELETE" })
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({
+      name: "ProviderConnectionInUseError",
+      data: {
+        providerID,
+        references: [
+          "model",
+          "nano_model",
+          "agent.referenced-provider-test.model",
+          "command.referenced-provider-test.model",
+          "quick_switcher.models[0]",
+          "channel.referenced-provider-test.accounts.test.model",
+        ],
+      },
+    })
+    expect((await Config.domainGet("providers")).provider?.[providerID]).toBeDefined()
+    expect(await Auth.get(providerID)).toMatchObject({ type: "api", key: "referenced-provider-key" })
+  } finally {
+    await Auth.remove(providerID)
+    await Promise.all([
+      Config.domainUpdate("providers", providersBefore, { mode: "replace-domain" }),
+      Config.domainUpdate("models", modelsBefore, { mode: "replace-domain" }),
+      Config.domainUpdate("agents", agentsBefore, { mode: "replace-domain" }),
+      Config.domainUpdate("commands", commandsBefore, { mode: "replace-domain" }),
+      Config.domainUpdate("channels", channelsBefore, { mode: "replace-domain" }),
+    ])
+    await Provider.reload()
+  }
 })
 
 test("/provider keeps catalog providers visible when a runtime whitelist excludes them", async () => {
@@ -124,6 +402,12 @@ test("/provider keeps catalog providers visible when a runtime whitelist exclude
     config: {
       enabled_providers: ["openai"],
       provider: {
+        "project-deepseek": {
+          profile: "deepseek",
+          modelsDevProviderID: "deepseek",
+          name: "Project DeepSeek",
+          api: "https://project-deepseek.invalid/v1",
+        },
         "existing-custom": {
           name: "Existing Custom",
           npm: "@ai-sdk/openai-compatible",
@@ -161,6 +445,16 @@ test("/provider keeps catalog providers visible when a runtime whitelist exclude
   expect(existingCustom.models.model.variants).toEqual({})
   expect(JSON.stringify(existingCustom)).not.toContain("test-key")
   expect(body.configProviders).toContain("existing-custom")
+  expect(body.connections["existing-custom"]).toBeUndefined()
+  expect(body.connections["project-deepseek"]).toMatchObject({
+    id: "project-deepseek",
+    name: "Project DeepSeek",
+    profileID: "deepseek",
+    endpoint: "https://project-deepseek.invalid/v1",
+    enabled: false,
+    configured: true,
+    removable: false,
+  })
   expect(body.runtimeAvailability["existing-custom"]).toMatchObject({
     providerID: "existing-custom",
     available: false,

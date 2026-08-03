@@ -234,7 +234,11 @@ A local provider connection can reuse a canonical Models.dev catalog while keepi
 
 Inherited models are projected onto the connection ID, so model references such as `deepseek-team/deepseek-chat` select that account. Connection-level `api`, `npm`, `options`, allowlist/blacklist, and explicit model entries override inherited catalog metadata without mutating the canonical provider.
 
-`modelsDevProviderID` shares model metadata only. Provider-specific runtime behavior, authentication strategy, usage reporting, and credential-aware live discovery are not inherited by this field.
+`modelsDevProviderID` shares model metadata only. Set `profile` separately when the connection should also use the canonical provider's runtime hooks, model factory, auth recovery, usage reporting, and credential-aware live discovery. Credentials, health, live catalog snapshots, and model references remain keyed by the connection ID.
+
+Removing a named connection is rejected with `ProviderConnectionInUseError` while any model role, agent, command, category, Quick Switcher entry, or Feishu/Lark account still names that connection. The error includes the referencing configuration paths; clear or replace those selections before retrying removal.
+
+Keeping these fields separate is intentional: an OpenAI-compatible gateway can inherit a catalog without inheriting the canonical provider's OAuth or request behavior.
 
 ### Model variants and role variants
 

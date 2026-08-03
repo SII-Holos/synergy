@@ -33,6 +33,8 @@ describe("synergy-link managed mode", () => {
     state.ownerRegistry.local.activeOwnerID = "synergy:test"
     state.ownerRegistry.local.ownerIDs = ["synergy:test"]
     state.ownerRegistry.local.leaseExpiresAt = Date.now() + 60_000
+    const staleStartedAt = Date.now() - 60_000
+    state.service.startedAt = staleStartedAt
     await SynergyLinkStore.saveState(state)
     await writeFile(
       SynergyLinkStore.ownerRegistryPath(),
@@ -65,6 +67,7 @@ describe("synergy-link managed mode", () => {
     expect(runtime.state?.connectionStatus).toBe("disconnected")
     expect(runtime.state?.service.runtimeStatus).toBe("running")
     expect(runtime.state?.ownerRegistry.local.activeOwnerID).toBe("synergy:test")
+    expect(runtime.state?.service.startedAt).toBeGreaterThan(staleStartedAt + 50_000)
 
     const status = await runtime.getStatusPayload()
     expect(status.mode).toBe("managed")

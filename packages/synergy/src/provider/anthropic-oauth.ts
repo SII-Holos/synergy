@@ -23,7 +23,7 @@ export namespace AnthropicOAuthProvider {
   export const AuthError = NamedError.create(
     "AnthropicOAuthError",
     z.object({
-      providerID: z.literal(PROVIDER_ID),
+      providerID: z.string(),
       code: z.string(),
       message: z.string(),
       reloginRequired: z.boolean(),
@@ -68,7 +68,7 @@ export namespace AnthropicOAuthProvider {
     }
   }
 
-  async function postToken(body: Record<string, string>, fetchFn: FetchLike) {
+  async function postToken(body: Record<string, string>, fetchFn: FetchLike, providerID = PROVIDER_ID) {
     let lastPayload: Record<string, any> = {}
     let lastStatus = 0
     for (const endpoint of OAUTH_TOKEN_URLS) {
@@ -89,7 +89,7 @@ export namespace AnthropicOAuthProvider {
     }
     const code = String(lastPayload.error ?? lastPayload.type ?? "anthropic_oauth_failed")
     throw new AuthError({
-      providerID: PROVIDER_ID,
+      providerID,
       code,
       message: String(
         lastPayload.error_description ?? lastPayload.message ?? `Anthropic OAuth failed with status ${lastStatus}.`,
@@ -147,7 +147,11 @@ export namespace AnthropicOAuthProvider {
     }
   }
 
-  export async function refreshOAuth(auth: z.infer<typeof Auth.Oauth>, fetchFn: FetchLike = fetch) {
+  export async function refreshOAuth(
+    auth: z.infer<typeof Auth.Oauth>,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ) {
     const payload = await postToken(
       {
         grant_type: "refresh_token",
@@ -155,10 +159,11 @@ export namespace AnthropicOAuthProvider {
         refresh_token: auth.refresh,
       },
       fetchFn,
+      providerID,
     )
     if (typeof payload.access_token !== "string") {
       throw new AuthError({
-        providerID: PROVIDER_ID,
+        providerID,
         code: "missing_access_token",
         message: "Anthropic OAuth refresh response was missing access_token.",
         reloginRequired: true,
@@ -171,27 +176,30 @@ export namespace AnthropicOAuthProvider {
     }
   }
 
-  export async function resolveToken(options?: { allowMissing?: boolean; fetch?: FetchLike }) {
-    const selected = await Auth.select(PROVIDER_ID)
+  export async function resolveToken(options?: { providerID?: string; allowMissing?: boolean; fetch?: FetchLike }) {
+    const providerID = options?.providerID ?? PROVIDER_ID
+    const selected = await Auth.select(providerID)
     const auth = selected?.auth
     if (!selected || !auth || auth.type !== "oauth") {
       if (options?.allowMissing) return undefined
       throw new AuthError({
-        providerID: PROVIDER_ID,
+        providerID,
         code: "anthropic_oauth_missing",
         message: "No Anthropic OAuth credentials stored.",
         reloginRequired: true,
       })
     }
     if (auth.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return auth.access
+    let refreshCredentialID = selected.credentialID
     try {
-      return await Auth.withLock(`${PROVIDER_ID}:oauth-refresh`, async () => {
-        const latestSelected = await Auth.select(PROVIDER_ID)
+      return await Auth.withLock(`${providerID}:oauth-refresh`, async () => {
+        const latestSelected = await Auth.select(providerID)
         const latest = latestSelected?.auth
+        refreshCredentialID = latestSelected?.credentialID ?? refreshCredentialID
         if (latest?.type === "oauth" && latest.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return latest.access
-        const refreshed = await refreshOAuth(latest?.type === "oauth" ? latest : auth, options?.fetch)
+        const refreshed = await refreshOAuth(latest?.type === "oauth" ? latest : auth, options?.fetch, providerID)
         await Auth.replaceSelectedCredential(
-          PROVIDER_ID,
+          providerID,
           {
             type: "oauth",
             access: refreshed.access,
@@ -204,7 +212,7 @@ export namespace AnthropicOAuthProvider {
       })
     } catch (error) {
       if (AuthError.isInstance(error) && error.data.reloginRequired) {
-        await Auth.markDead(PROVIDER_ID, error.data.code).catch(() => {})
+        await Auth.markDead(providerID, error.data.code, { credentialID: refreshCredentialID }).catch(() => {})
         if (options?.allowMissing) return undefined
       }
       throw error
@@ -221,55 +229,61 @@ export namespace AnthropicOAuthProvider {
     }
   }
 
-  export async function anthropicFetch(input: RequestInfo | URL, init?: RequestInit) {
-    return ProviderAuthRecovery.execute({
-      providerID: PROVIDER_ID,
-      request: async () => {
-        const token = await resolveToken()
-        const headers = new Headers(init?.headers)
-        headers.delete("x-api-key")
-        headers.delete("X-Api-Key")
-        for (const [key, value] of Object.entries(requestHeaders(token!))) headers.set(key, value)
-        return fetch(input, { ...init, headers })
-      },
-      refresh: refreshAuth,
-      classify: classifyError,
-    })
+  export function anthropicFetchFor(providerID = PROVIDER_ID) {
+    return async (input: RequestInfo | URL, init?: RequestInit) =>
+      ProviderAuthRecovery.execute({
+        providerID,
+        request: async () => {
+          const token = await resolveToken({ providerID })
+          const headers = new Headers(init?.headers)
+          headers.delete("x-api-key")
+          headers.delete("X-Api-Key")
+          for (const [key, value] of Object.entries(requestHeaders(token!))) headers.set(key, value)
+          return fetch(input, { ...init, headers })
+        },
+        refresh: (auth) => refreshAuth(auth, fetch, providerID),
+        classify: classifyError,
+      })
   }
 
-  export async function fetchUsage(fetchFn: FetchLike = fetch): Promise<AccountUsage.Snapshot> {
-    const token = await resolveToken({ allowMissing: true, fetch: fetchFn })
+  export const anthropicFetch = anthropicFetchFor(PROVIDER_ID)
+
+  export async function fetchUsage(
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ): Promise<AccountUsage.Snapshot> {
+    const token = await resolveToken({ providerID, allowMissing: true, fetch: fetchFn })
     if (!token) {
       return AccountUsage.unavailable(
-        PROVIDER_ID,
+        providerID,
         "Anthropic account limits are only available for OAuth-backed Claude accounts.",
       )
     }
     const response = await ProviderAuthRecovery.execute({
-      providerID: PROVIDER_ID,
+      providerID,
       request: async () => {
-        const current = await resolveToken({ allowMissing: true, fetch: fetchFn })
+        const current = await resolveToken({ providerID, allowMissing: true, fetch: fetchFn })
         if (!current) return new Response(null, { status: 401 })
         return fetchFn("https://api.anthropic.com/api/oauth/usage", {
           headers: requestHeaders(current),
           signal: AbortSignal.timeout(15_000),
         })
       },
-      refresh: (auth) => refreshAuth(auth, fetchFn),
+      refresh: (auth) => refreshAuth(auth, fetchFn, providerID),
       classify: classifyError,
       throwOnActionRequired: false,
     })
     if (!response.ok) {
       const failure = classifyError({ status: response.status, body: await safeJson(response.clone()) })
       if (failure?.reloginRequired) {
-        return AccountUsage.error(PROVIDER_ID, "Anthropic rejected these credentials. Reconnect to restore usage.", {
+        return AccountUsage.error(providerID, "Anthropic rejected these credentials. Reconnect to restore usage.", {
           reloginRequired: true,
         })
       }
       if (failure?.exhausted) {
-        return AccountUsage.unavailable(PROVIDER_ID, "Anthropic usage is temporarily rate limited.")
+        return AccountUsage.unavailable(providerID, "Anthropic usage is temporarily rate limited.")
       }
-      return AccountUsage.error(PROVIDER_ID, "Anthropic usage is temporarily unavailable.")
+      return AccountUsage.error(providerID, "Anthropic usage is temporarily unavailable.")
     }
     const payload = await safeJson(response)
     const windows = [
@@ -292,7 +306,7 @@ export namespace AnthropicOAuthProvider {
       )
     }
     return {
-      providerID: PROVIDER_ID,
+      providerID,
       status: "available",
       source: "oauth_usage_api",
       fetchedAt: new Date().toISOString(),
@@ -301,9 +315,13 @@ export namespace AnthropicOAuthProvider {
     }
   }
 
-  export async function refreshAuth(auth: Auth.Info, fetchFn: FetchLike = fetch): Promise<Auth.Info | undefined> {
+  export async function refreshAuth(
+    auth: Auth.Info,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ): Promise<Auth.Info | undefined> {
     if (auth.type !== "oauth") return undefined
-    const refreshed = await refreshOAuth(auth, fetchFn)
+    const refreshed = await refreshOAuth(auth, fetchFn, providerID)
     return {
       type: "oauth",
       access: refreshed.access,

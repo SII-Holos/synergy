@@ -326,7 +326,7 @@ export namespace SessionManager {
   export async function run<T>(
     sessionID: string,
     fn: (lease: LoopLease) => Promise<T>,
-    options?: { lease?: LoopLease; requestNextWorkOnFailure?: boolean },
+    options?: { lease?: LoopLease; releaseLease?: boolean; requestNextWorkOnFailure?: boolean },
   ): Promise<T> {
     const lease = options?.lease ?? acquire(sessionID)
     const runtime = getRuntime(sessionID)
@@ -374,9 +374,9 @@ export namespace SessionManager {
       completed = true
       return result
     } finally {
-      await release(lease, { requestNextWork: completed || options?.requestNextWorkOnFailure !== false })
-      const runtime = getRuntime(sessionID)
-      if (runtime && !occupied(runtime)) unregisterRuntime(sessionID)
+      if (options?.releaseLease !== false) {
+        await finish(lease, { requestNextWork: completed || options?.requestNextWorkOnFailure !== false })
+      }
     }
   }
 
@@ -471,6 +471,13 @@ export namespace SessionManager {
       await SessionDrive.request(lease.sessionID, "release")
     }
     return true
+  }
+
+  export async function finish(lease: LoopLease, options: { requestNextWork?: boolean } = {}): Promise<boolean> {
+    const released = await release(lease, options)
+    const runtime = getRuntime(lease.sessionID)
+    if (runtime && !occupied(runtime)) unregisterRuntime(lease.sessionID)
+    return released
   }
 
   export async function wake(sessionID: string): Promise<void> {

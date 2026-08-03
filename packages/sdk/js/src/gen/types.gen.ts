@@ -1103,7 +1103,7 @@ export type SynergyLinkTargetView = {
   lastProbe?: SynergyLinkProbe
   createdAt: number
   updatedAt: number
-  availability: "holos_offline" | "idle" | "connected"
+  availability: "unknown" | "unreachable" | "reachable" | "connected"
   /**
    * Synergy Link session identifier
    */
@@ -1145,11 +1145,54 @@ export type NotFoundError = {
   }
 }
 
-export type SynergyLinkTargetPatchInput = {
+export type SynergyLinkTargetPatchMetadata =
+  | {
+      kind: "metadata"
+      name: string
+    }
+  | {
+      kind: "metadata"
+      enabled: boolean
+    }
+  | {
+      kind: "metadata"
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      name: string
+      enabled: boolean
+    }
+  | {
+      kind: "metadata"
+      name: string
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      enabled: boolean
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      name: string
+      enabled: boolean
+      allowedAgents: Array<string>
+    }
+
+export type SynergyLinkTargetPatchRelink = {
+  kind: "relink"
   name?: string
   enabled?: boolean
   allowedAgents?: Array<string>
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
 }
+
+export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | SynergyLinkTargetPatchRelink
 
 export type SynergyLinkTargetRemoveResult = {
   success: true
@@ -1593,6 +1636,7 @@ export type Model = {
 
 export type Provider = {
   id: string
+  profileID?: string
   name: string
   source: "env" | "config" | "custom" | "api"
   env: Array<string>
@@ -1627,6 +1671,18 @@ export type ProviderProfileMetadata = {
   authKind?: string
   environment?: Array<string>
   recommendation?: ProviderRecommendation
+}
+
+export type ProviderConnection = {
+  id: string
+  name: string
+  profileID: string
+  catalogProviderID: string
+  endpoint?: string
+  enabled: boolean
+  configured: boolean
+  removable: boolean
+  canCreateSibling: boolean
 }
 
 export type ProviderAuthHealth = {
@@ -1668,6 +1724,9 @@ export type ProviderListResponse = {
   catalogProviders: Array<string>
   profiles: {
     [key: string]: ProviderProfileMetadata
+  }
+  connections: {
+    [key: string]: ProviderConnection
   }
   authHealth: {
     [key: string]: ProviderAuthHealth
@@ -2503,6 +2562,10 @@ export type ProviderConfig = {
       }
     }
   }
+  /**
+   * Canonical provider profile whose runtime behavior this account connection uses
+   */
+  profile?: string
   /**
    * Models.dev provider id to use as this provider connection's model catalog source
    */
@@ -5845,6 +5908,25 @@ export type CortexConcurrencyStatus = {
    * Cortex tasks waiting for an admission slot
    */
   queued: number
+}
+
+export type ProviderConnectionCreateInput = {
+  profileID: string
+  name: string
+  id?: string
+  endpoint?: string
+  enabled?: boolean
+}
+
+export type ProviderConnectionUpdateInput = {
+  name?: string
+  endpoint?: string | null
+  enabled?: boolean
+}
+
+export type ProviderConnectionRemoveResponse = {
+  providerID: string
+  removed: true
 }
 
 export type AccountUsageWindow = {
@@ -12720,6 +12802,97 @@ export type ProviderListResponses = {
 }
 
 export type ProviderListResponse2 = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderConnectionCreateData = {
+  body?: ProviderConnectionCreateInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections"
+}
+
+export type ProviderConnectionCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderConnectionCreateError = ProviderConnectionCreateErrors[keyof ProviderConnectionCreateErrors]
+
+export type ProviderConnectionCreateResponses = {
+  /**
+   * Provider account connection created
+   */
+  200: ProviderConnection
+}
+
+export type ProviderConnectionCreateResponse =
+  ProviderConnectionCreateResponses[keyof ProviderConnectionCreateResponses]
+
+export type ProviderConnectionRemoveData = {
+  body?: never
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections/{providerID}"
+}
+
+export type ProviderConnectionRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderConnectionRemoveError = ProviderConnectionRemoveErrors[keyof ProviderConnectionRemoveErrors]
+
+export type ProviderConnectionRemoveResponses = {
+  /**
+   * Provider account connection removed
+   */
+  200: ProviderConnectionRemoveResponse
+}
+
+export type ProviderConnectionRemoveResponse2 =
+  ProviderConnectionRemoveResponses[keyof ProviderConnectionRemoveResponses]
+
+export type ProviderConnectionUpdateData = {
+  body?: ProviderConnectionUpdateInput
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections/{providerID}"
+}
+
+export type ProviderConnectionUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderConnectionUpdateError = ProviderConnectionUpdateErrors[keyof ProviderConnectionUpdateErrors]
+
+export type ProviderConnectionUpdateResponses = {
+  /**
+   * Provider account connection updated
+   */
+  200: ProviderConnection
+}
+
+export type ProviderConnectionUpdateResponse =
+  ProviderConnectionUpdateResponses[keyof ProviderConnectionUpdateResponses]
 
 export type ProviderModelsRefreshData = {
   body?: never

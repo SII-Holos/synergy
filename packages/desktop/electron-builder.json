@@ -113,7 +113,8 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "signExts": [".exe", ".dll", ".node"]
+    "signExts": [".exe", ".dll", ".node"],
+    "verifyUpdateCodeSignature": true
   },
   "nsis": {
     "allowToChangeInstallationDirectory": true,
