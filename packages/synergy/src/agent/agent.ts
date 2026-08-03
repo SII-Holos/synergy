@@ -1,9 +1,6 @@
 import { Config } from "../config/config"
 import z from "zod"
 import { Provider } from "../provider/provider"
-import { Identifier } from "../id/id"
-import { AgentTurn } from "../session/agent-turn"
-import type { MessageV2 } from "../session/message-v2"
 import { ScopedState } from "../scope/scoped-state"
 import { Truncate } from "../tool/truncation"
 
@@ -11,6 +8,7 @@ import { createBuiltinInternalAgents } from "./builtin-internal"
 import { createBuiltinLegacySubagents } from "./builtin-legacy-subagents"
 import { createBuiltinPrimaryAgents } from "./builtin-primary"
 import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
+import { AgentCall } from "./call"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
 import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
 import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
@@ -539,36 +537,31 @@ export namespace Agent {
     const agent = await get("agent-generator")
     if (!agent) throw new Error("agent-generator agent is unavailable")
 
-    const agentModel = input.model ?? (await getAvailableModel(agent)) ?? (await Provider.defaultModel())
-    const model = await Provider.getModel(agentModel.providerID, agentModel.modelID)
-    const sessionID = Identifier.ascending("session")
-    const user: MessageV2.User = {
-      id: Identifier.ascending("message"),
-      sessionID,
-      role: "user",
-      time: { created: Date.now() },
-      agent: agent.name,
-      model: { providerID: model.providerID, modelID: model.id },
-    }
+    const model = input.model ? await Provider.getModel(input.model.providerID, input.model.modelID) : undefined
+    const fallbackModel = input.model
+      ? undefined
+      : await Provider.defaultModel().then((ref) => Provider.getModel(ref.providerID, ref.modelID))
     const existing = await list()
-    const result = await AgentTurn.stream({
-      agent,
-      user,
-      toolDefinitions: [],
-      model,
-      small: true,
-      messages: [
-        {
-          role: "user",
-          content: `Create an agent configuration based on this request: \"${input.description}\".\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existing.map((i) => i.name).join(", ")}\n  Return ONLY the JSON object, no other text, do not wrap in backticks`,
-        },
-      ],
-      abort: AbortSignal.timeout(30_000),
-      sessionID,
-      system: [],
-      retries: 1,
-    })
-    const text = (await AgentTurn.collectText(result).catch(() => "")) ?? ""
+    let text = ""
+    try {
+      const result = await AgentCall.text({
+        agent: "agent-generator",
+        model,
+        fallbackModel,
+        timeoutMs: 30_000,
+        retries: 1,
+        maxOutputChars: 4_000,
+        messages: [
+          {
+            role: "user",
+            content: `Create an agent configuration based on this request: \"${input.description}\".\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existing.map((i) => i.name).join(", ")}\n  Return ONLY the JSON object, no other text, do not wrap in backticks`,
+          },
+        ],
+      })
+      text = result.text
+    } catch {
+      text = ""
+    }
     const match = text.match(/\{[\s\S]*\}/)
     if (!match) throw new Error("agent generator did not return JSON")
     return z

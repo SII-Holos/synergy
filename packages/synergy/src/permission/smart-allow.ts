@@ -1,8 +1,4 @@
-import { Agent } from "@/agent/agent"
-import { Identifier } from "@/id/id"
-import { Provider } from "@/provider/provider"
-import { AgentTurn } from "@/session/agent-turn"
-import type { MessageV2 } from "@/session/message-v2"
+import { AgentCall } from "@/agent/call"
 import type { Capability } from "@/enforcement/gate"
 import { Log } from "@/util/log"
 
@@ -218,37 +214,19 @@ export namespace SmartAllow {
   }
 
   async function callClassifier(input: ClassifyInput): Promise<Classification | undefined> {
-    const agent = await Agent.get("smart-allow")
-    if (!agent) return undefined
-
-    const ref = await Agent.getAvailableModel(agent)
-    if (!ref) return undefined
-
-    const model = await Provider.getModel(ref.providerID, ref.modelID)
-    const sessionID = input.sessionID ?? Identifier.ascending("session")
-    const user: MessageV2.User = {
-      id: Identifier.ascending("message"),
-      sessionID,
-      role: "user",
-      time: { created: Date.now() },
-      agent: agent.name,
-      model: { providerID: model.providerID, modelID: model.id },
+    try {
+      const { text } = await AgentCall.text({
+        agent: "smart-allow",
+        messages: [{ role: "user", content: buildPrompt(input) }],
+        timeoutMs: 10_000,
+        retries: 0,
+        maxOutputChars: 1_000,
+        small: false,
+      })
+      return parseClassification(text)
+    } catch {
+      return undefined
     }
-
-    const stream = await AgentTurn.stream({
-      agent,
-      user,
-      toolDefinitions: [],
-      model,
-      messages: [{ role: "user", content: buildPrompt(input) }],
-      abort: AbortSignal.timeout(10_000),
-      sessionID,
-      system: [],
-      retries: 0,
-    })
-
-    const text = (await AgentTurn.collectText(stream).catch(() => "")) ?? ""
-    return parseClassification(text)
   }
 
   function parseClassification(text: string): Classification | undefined {

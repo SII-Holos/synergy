@@ -52,7 +52,7 @@ describe("AgentCall", () => {
       }
     })
 
-    await expect(call()).resolves.toEqual({ text: "answer" })
+    await expect(call()).resolves.toMatchObject({ text: "answer" })
     expect(streamInput?.tools).toEqual({})
     expect(streamInput?.sessionID).toBeString()
   })
@@ -65,7 +65,7 @@ describe("AgentCall", () => {
       expect(input.model).toBe(fallback)
       return { textStream: (async function* () {})() }
     })
-    await expect(call({ fallbackModel: fallback })).resolves.toEqual({ text: "" })
+    await expect(call({ fallbackModel: fallback })).resolves.toMatchObject({ text: "" })
 
     installAgent()
     ;(Provider.getModel as any) = mock(async () => {
@@ -75,7 +75,7 @@ describe("AgentCall", () => {
       expect(input.model).toBe(fallback)
       return { textStream: (async function* () {})() }
     })
-    await expect(call({ fallbackModel: fallback })).resolves.toEqual({ text: "" })
+    await expect(call({ fallbackModel: fallback })).resolves.toMatchObject({ text: "" })
   })
 
   test("uses a requested model role instead of the Agent default", async () => {
@@ -97,7 +97,7 @@ describe("AgentCall", () => {
       })(),
     }))
 
-    await expect(call({ modelRole: "thinking" })).resolves.toEqual({ text: "role answer" })
+    await expect(call({ modelRole: "thinking" })).resolves.toMatchObject({ text: "role answer" })
   })
 
   test("rejects missing agents and models with stable codes", async () => {
@@ -192,5 +192,72 @@ describe("AgentCall", () => {
     }))
     await expect(call()).rejects.toThrow("stream failed")
     expect(disposed).toBe(2)
+  })
+
+  test("prefers an explicit model override over agent and role resolution", async () => {
+    installAgent()
+    let resolveCalls = 0
+    ;(Provider.resolveRoleModel as any) = mock(async () => {
+      resolveCalls++
+      return { providerID: "role-provider", modelID: "role-model" }
+    })
+    const explicit = { providerID: "explicit", id: "explicit-model" } as Provider.Model
+    let streamModel: Provider.Model | undefined
+    ;(LLM.stream as any) = mock(async (input: { model: Provider.Model }) => {
+      streamModel = input.model
+      return {
+        textStream: (async function* () {
+          yield "override"
+        })(),
+      }
+    })
+    await expect(call({ model: explicit, modelRole: "thinking" })).resolves.toMatchObject({ text: "override" })
+    expect(streamModel).toBe(explicit)
+    expect(resolveCalls).toBe(0)
+  })
+
+  test("forwards maxOutputTokens to the stream", async () => {
+    installAgent()
+    let streamInput: Record<string, unknown> | undefined
+    ;(LLM.stream as any) = mock(async (input: Record<string, unknown>) => {
+      streamInput = input
+      return { textStream: (async function* () {})() }
+    })
+    await call({ maxOutputTokens: 123 })
+    expect(streamInput?.maxOutputTokens).toBe(123)
+  })
+
+  test("defaults to small options and forwards an explicit override", async () => {
+    installAgent()
+    let smallDefault: unknown
+    ;(LLM.stream as any) = mock(async (input: Record<string, unknown>) => {
+      smallDefault = input.small
+      return { textStream: (async function* () {})() }
+    })
+    await call()
+    expect(smallDefault).toBe(true)
+
+    let smallOverride: unknown
+    ;(LLM.stream as any) = mock(async (input: Record<string, unknown>) => {
+      smallOverride = input.small
+      return { textStream: (async function* () {})() }
+    })
+    await call({ small: false })
+    expect(smallOverride).toBe(false)
+  })
+
+  test("returns usage and the resolved model", async () => {
+    installAgent()
+    const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
+    ;(LLM.stream as any) = mock(async () => ({
+      textStream: (async function* () {
+        yield "answer"
+      })(),
+      usage: Promise.resolve(usage),
+    }))
+    const result = await call()
+    expect(result.text).toBe("answer")
+    expect(result.model).toMatchObject({ providerID: "test", id: "model" })
+    expect(result.usage).toEqual(usage)
   })
 })
