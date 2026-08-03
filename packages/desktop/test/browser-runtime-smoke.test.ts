@@ -22,7 +22,7 @@ afterEach(async () => {
 
 describe("Electron Browser Host broker contract", () => {
   runtimeTest(
-    "preserves native presentation origin across viewport resize and recreates an owner after close",
+    "recovers a crashed native renderer across both page and workspace creation orders",
     async () => {
       const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-browser-native-smoke-"))
       temporaryDirectories.push(directory)

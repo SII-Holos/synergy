@@ -42,6 +42,59 @@ mock.module("../src/browser-webrtc-host.js", () => ({ BrowserWebRTCHost: MockWeb
 
 const { BrowserHostBrokerClient } = await import("../src/browser-host-broker.js")
 
+test("reports connecting, registered, and reconnecting broker states", async () => {
+  const OriginalWebSocket = globalThis.WebSocket
+  const sockets: FakeWebSocket[] = []
+  class FakeWebSocket extends EventTarget {
+    static OPEN = 1
+    readyState = 0
+    sent: string[] = []
+
+    constructor(_url: string | URL) {
+      super()
+      sockets.push(this)
+    }
+
+    send(data: string) {
+      this.sent.push(data)
+    }
+
+    close() {
+      this.dispatchEvent(new Event("close"))
+    }
+
+    open() {
+      this.readyState = FakeWebSocket.OPEN
+      this.dispatchEvent(new Event("open"))
+    }
+
+    message(data: unknown) {
+      this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(data) }))
+    }
+  }
+  globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+  const states: string[] = []
+  const broker = new BrowserHostBrokerClient({
+    serverUrl: "http://127.0.0.1:3000",
+    token: "a".repeat(64),
+    theme: desktopThemeSnapshot(defaultDesktopSkinState(), false),
+    onStatus: (status) => states.push(status),
+  })
+  try {
+    broker.connect()
+    sockets[0].open()
+    sockets[0].message({ type: "host.registered", protocolVersion: 2, hostId: "host-test" })
+    await Promise.resolve()
+    sockets[0].close()
+    await Promise.resolve()
+
+    expect(states).toEqual(["connecting", "ready", "restarting"])
+  } finally {
+    await broker.close()
+    globalThis.WebSocket = OriginalWebSocket
+  }
+})
+
 class TestBroker extends BrowserHostBrokerClient {
   async createPage(message: Extract<BrowserHostMessage, { type: "page.create" }>) {
     await (this as unknown as { dispatch(message: BrowserHostMessage, epoch: number): Promise<void> }).dispatch(

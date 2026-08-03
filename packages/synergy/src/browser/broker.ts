@@ -187,6 +187,16 @@ export namespace BrowserBroker {
         connection.socket.close(1008, "Browser Host event page does not match its envelope")
         return
       }
+      if (message.event.type === "host.status") {
+        const preference = preferences.get(message.ownerKey)
+        if (preference) {
+          BrowserEvent.publish(preference.owner, {
+            type: "host.status",
+            pageId: message.pageId,
+            status: message.event.status,
+          })
+        }
+      }
       for (const listener of eventListeners.get(key) ?? []) listener(message.event)
       return
     }

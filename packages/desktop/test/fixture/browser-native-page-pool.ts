@@ -29,7 +29,15 @@ async function run() {
     }
     const first = await pool.create(input)
     const window = new BrowserWindow({ show: false })
-    const view = pool.attach(window, input.ownerKey, input.page.id)
+    let view = pool.attach(window, input.ownerKey, input.page.id)
+    let recovered = false
+    const unsubscribe = pool.onGeneration(input.ownerKey, input.page.id, (next, previous) => {
+      window.contentView.removeChildView(previous)
+      window.contentView.addChildView(next)
+      next.setBounds(previous.getBounds())
+      view = next
+      recovered = true
+    })
     view.setBounds({ x: 320, y: 48, width: 640, height: 480 })
     await first.execute({ type: "setViewport", width: 600, height: 400 })
     const resizedBounds = view.getBounds()
@@ -94,15 +102,49 @@ async function run() {
     }
     const viewport = checkpoint.data.viewport as { width?: number; height?: number }
     if (!viewport.width || !viewport.height) throw new Error("Native page started with a zero-sized viewport.")
+
+    view.webContents.forcefullyCrashRenderer()
+    await waitFor(() => recovered, 10_000, "native renderer recovery")
+    const recoveredPage = first.state()
+    if (recoveredPage.id !== input.page.id) throw new Error("Native renderer recovery changed the stable page ID.")
+    const recoveredEvaluation = await first.execute({
+      type: "evaluate",
+      mode: "readonly",
+      expression: "document.readyState",
+    })
+    if (recoveredEvaluation.type !== "evaluation") {
+      throw new Error("Recovered native renderer did not accept a CDP command.")
+    }
+    unsubscribe()
     pool.detach(window, input.ownerKey, input.page.id)
-    window.destroy()
     await first.destroy()
 
-    const second = await pool.create({ ...input, page: { ...input.page, id: "native-page-2" } })
+    const secondInput = {
+      ...input,
+      ownerKey: "scope:native-smoke:session:workspace-first",
+      page: { ...input.page, id: "native-page-2" },
+    }
+    const second = await pool.create(secondInput)
+    const secondView = pool.attach(window, secondInput.ownerKey, secondInput.page.id)
+    await second.execute({ type: "navigate", url: "about:blank", source: "user" })
+    if (second.state().id !== secondInput.page.id || secondView.webContents.isDestroyed()) {
+      throw new Error("Workspace-first native page creation did not produce a usable stable page.")
+    }
+    pool.detach(window, secondInput.ownerKey, secondInput.page.id)
     await second.destroy()
+    window.destroy()
     await pool.destroy()
   } finally {
     await fs.rm(directory, { recursive: true, force: true })
     app.quit()
   }
+}
+
+async function waitFor(read: () => boolean, timeoutMs: number, label: string): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() <= deadline) {
+    if (read()) return
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  throw new Error(`${label} timed out after ${timeoutMs}ms`)
 }

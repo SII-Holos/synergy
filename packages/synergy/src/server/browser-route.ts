@@ -107,6 +107,23 @@ function routeState(c: {
     remote: !nativePresentation,
     requested: requestedPresentation,
   })
+  if (requestedPresentation === "native" && !presentation) {
+    throw new BrowserProtocolError({
+      code: nativePresentation ? "browser_native_host_unavailable" : "browser_native_ticket_required",
+      message: nativePresentation
+        ? "The Desktop Browser Host is not ready for native presentation."
+        : "A valid native Browser presentation ticket is required.",
+      retryable: true,
+      suggestedAction: "Retry native Browser recovery.",
+    })
+  }
+  if (requestedPresentation === "webrtc" && !presentation) {
+    throw new BrowserProtocolError({
+      code: "browser_webrtc_host_unavailable",
+      message: "The WebRTC Browser Host is not ready.",
+      retryable: true,
+    })
+  }
   return { directory, owner, presentation, requestedPresentation, nativePresentation }
 }
 

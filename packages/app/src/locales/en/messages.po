@@ -1058,6 +1058,18 @@ msgstr "Panels"
 msgid "app.browser.menu.viewport"
 msgstr "Viewport"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr "Recovering the native browser…"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr "Native browser recovery failed"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr "Synergy will keep retrying the local browser. You can retry now without switching to a remote stream."
+
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "Back"

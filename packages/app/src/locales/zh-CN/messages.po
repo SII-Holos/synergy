@@ -1058,6 +1058,18 @@ msgstr "面板"
 msgid "app.browser.menu.viewport"
 msgstr "视口"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr "正在恢复原生浏览器…"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr "原生浏览器恢复失败"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr "Synergy 将继续重试本地浏览器。你可以立即重试，系统不会切换到远程画面。"
+
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "后退"
