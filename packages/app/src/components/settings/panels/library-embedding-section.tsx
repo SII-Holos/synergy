@@ -10,7 +10,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 import { SettingRow } from "../components/SettingRow"
-import { SettingsMenuField } from "../components/SettingsMenuField"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsSection } from "../components/SettingsPrimitives"
 import type { LibrarySettingsStore, LocalEmbeddingSource } from "../types"
 import { describeEmbeddingModel, isEmbeddingDownloadActive, pollEmbeddingStatus } from "./library-embedding-model"
@@ -64,16 +64,6 @@ const downloadSourceDesc = {
 const downloadSourceAria = {
   id: "settings.library.embedding.downloadSource.aria",
   message: "Local embedding download source",
-}
-
-const huggingFaceSourceOption = {
-  id: "settings.library.embedding.source.option.huggingface",
-  message: "Hugging Face",
-}
-
-const hfMirrorSourceOption = {
-  id: "settings.library.embedding.source.option.hfMirror",
-  message: "HF Mirror",
 }
 
 const customOriginOption = {
@@ -406,13 +396,13 @@ export function LibraryEmbeddingSection(props: {
             title={_(downloadSourceTitle)}
             description={_(downloadSourceDesc)}
             trailing={
-              <SettingsMenuField
+              <MenuField
                 value={props.library.embeddingSource}
                 ariaLabel={_(downloadSourceAria)}
                 popoverLayer={props.popoverLayer}
                 options={[
-                  { value: "huggingface", label: _(huggingFaceSourceOption) },
-                  { value: "hf-mirror", label: _(hfMirrorSourceOption) },
+                  { value: "huggingface", label: "Hugging Face" },
+                  { value: "hf-mirror", label: "HF Mirror" },
                   { value: "custom", label: _(customOriginOption) },
                 ]}
                 onChange={(value) => props.onLibraryChange("embeddingSource", value as LocalEmbeddingSource)}

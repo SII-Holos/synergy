@@ -3301,6 +3301,10 @@ msgid "app.library.experience.filter.all"
 msgstr "全部经验"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr "筛选体验"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr "当前作用域"
 
@@ -3360,6 +3364,10 @@ msgstr "正在显示全部 {total} 条经验"
 msgid "app.library.experience.showingOf"
 msgstr "正在显示 {shown}/{total} 条经验"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr "排序体验"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr "C"
@@ -3413,8 +3421,16 @@ msgid "app.library.memory.empty.none"
 msgstr "暂无记忆"
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr "按类别筛选记忆"
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
 msgstr "{pct}%"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
+msgstr "排序记忆"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.updated"
@@ -3647,6 +3663,10 @@ msgstr "已将 \"{name}\" 下载为 ZIP 归档"
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
 msgstr "所有技能"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
+msgstr "筛选技能"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.builtin"
@@ -14780,14 +14800,6 @@ msgstr "嵌入模型"
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.source.option.custom"
 msgstr "自定义下载源"
-
-#. js-lingui-explicit-id
-msgid "settings.library.embedding.source.option.hfMirror"
-msgstr "HF Mirror"
-
-#. js-lingui-explicit-id
-msgid "settings.library.embedding.source.option.huggingface"
-msgstr "Hugging Face"
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.state.downloading"

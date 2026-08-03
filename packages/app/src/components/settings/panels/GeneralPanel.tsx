@@ -12,7 +12,7 @@ import { translateDescriptor } from "@/locales/translate"
 import type { DesktopUpdateMode } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
-import { SettingsMenuField } from "../components/SettingsMenuField"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   desktopUpdateStatusCopy,
@@ -214,7 +214,7 @@ export function GeneralPanel(props: {
           title={_(copy.themeTitle)}
           description={_(copy.themeDescription)}
           trailing={
-            <SettingsMenuField
+            <MenuField
               value={selectedThemeId()}
               ariaLabel={_(copy.themeTitle)}
               popoverLayer={props.popoverLayer}
@@ -247,7 +247,7 @@ export function GeneralPanel(props: {
           title={_(copy.languageTitle)}
           description={_(copy.languageDescription)}
           trailing={
-            <SettingsMenuField
+            <MenuField
               value={props.general.locale}
               ariaLabel={_(copy.languageTitle)}
               popoverLayer={props.popoverLayer}

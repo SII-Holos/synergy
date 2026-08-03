@@ -17,7 +17,7 @@ import { overwriteImportConfirm } from "@/components/dialog/confirm-copy"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { getScopeLabel } from "@/utils/scope"
-import { SettingsMenuField } from "../components/SettingsMenuField"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   buildImportApplyParameters,
@@ -285,7 +285,7 @@ export function ImportPanel(props: {
         <div class="ds-import-target-row">
           <label class="ds-import-field">
             <span>{_(scopeLabel)}</span>
-            <SettingsMenuField
+            <MenuField
               value={scope()}
               ariaLabel={_(scopeLabel)}
               popoverLayer={props.popoverLayer}
@@ -302,7 +302,7 @@ export function ImportPanel(props: {
           <Show when={scope() === "project"}>
             <label class="ds-import-field">
               <span>{_(projectLabel)}</span>
-              <SettingsMenuField
+              <MenuField
                 value={project()?.id ?? ""}
                 ariaLabel={_(projectLabel)}
                 disabled={projects().length === 0}

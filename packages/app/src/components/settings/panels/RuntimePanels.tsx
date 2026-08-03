@@ -6,7 +6,7 @@ import { For, Show } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingRow } from "../components/SettingRow"
-import { SettingsMenuField } from "../components/SettingsMenuField"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsFieldGrid, SettingsPage, SettingsPathRow, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
@@ -332,7 +332,7 @@ export function TimeoutsPanel(props: {
           title={_(defaultAgentRowTitle)}
           description={_(defaultAgentRowDesc)}
           trailing={
-            <SettingsMenuField
+            <MenuField
               value={props.defaultAgent}
               ariaLabel={_(defaultAgentRowTitle)}
               popoverLayer={props.popoverLayer}

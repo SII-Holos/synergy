@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/solid"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingRow } from "../components/SettingRow"
-import { SettingsMenuField } from "../components/SettingsMenuField"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
 import { codeChecksControlsDisabled } from "./code-checks-model"
@@ -60,7 +60,7 @@ export function CodeChecksPanel(props: {
           title={_(severityRowTitle)}
           description={_(severityRowDesc)}
           trailing={
-            <SettingsMenuField
+            <MenuField
               value={props.runtime.lspDiagnosticsSeverity}
               ariaLabel={_(severityAria)}
               disabled={!diagnosticsEnabled()}
@@ -77,7 +77,7 @@ export function CodeChecksPanel(props: {
           title={_(scopeRowTitle)}
           description={_(scopeRowDesc)}
           trailing={
-            <SettingsMenuField
+            <MenuField
               value={props.runtime.lspDiagnosticsScope}
               ariaLabel={_(scopeAria)}
               disabled={!diagnosticsEnabled()}

@@ -12,7 +12,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 import { relativeTime } from "@/utils/time"
 import { getScopeLabel } from "@/utils/scope"
-import { SettingsMenuField } from "../components/SettingsMenuField"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
 
@@ -331,7 +331,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
               </Show>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <SettingsMenuField
+              <MenuField
                 value={`${sortBy()}:${sortDir()}`}
                 ariaLabel={_({ id: "settings.archivedSessions.sort.aria", message: "Sort archived sessions" })}
                 popoverLayer={props.popoverLayer}
