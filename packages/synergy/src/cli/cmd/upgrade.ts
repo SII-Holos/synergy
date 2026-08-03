@@ -24,19 +24,42 @@ export const UpgradeCommand = {
     UI.println(UI.logo("  "))
     UI.empty()
     prompts.intro("Upgrade")
-    const detectedMethod = await Installation.method()
-    const method = (args.method as Installation.Method) ?? detectedMethod
-    if (method === "unknown") {
-      prompts.log.error(`Unable to determine how ${process.execPath} was installed.`)
-      prompts.log.info("Reinstall with the official installer or pass a supported --method option.")
+
+    const inspection = await Installation.inspect()
+    let method: Installation.InstalledMethod
+    try {
+      method = Installation.resolveUpgradeMethod(inspection, args.method as Installation.InstalledMethod | undefined)
+    } catch (error) {
+      process.exitCode = 1
+      if (error instanceof Installation.MultipleInstallationsError) {
+        prompts.log.error("Multiple Synergy installations were found. Upgrade was not started.")
+        printInstallations(error.data.installations)
+        prompts.log.info("Remove an extra installation or rerun with --method <method>.")
+      } else if (error instanceof Installation.InstallationMethodNotFoundError) {
+        prompts.log.error(`Installation method '${error.data.method}' was not found.`)
+        printInstallations(error.data.installations)
+      } else if (error instanceof Installation.InstallationProbeFailedError) {
+        prompts.log.error(`Unable to verify the installed ${error.data.method} version. Upgrade was not started.`)
+      } else if (error instanceof Error) {
+        prompts.log.error(error.message)
+      }
       prompts.outro("Done")
       return
     }
+
     prompts.log.info("Using method: " + method)
+    const selected = inspection.installations.find((installation) => installation.method === method)
+    if (selected && !selected.pathFirst && inspection.path[0]) {
+      prompts.log.warn(`PATH currently resolves synergy to ${inspection.path[0].path}.`)
+      prompts.log.info("Open a new shell and run `command -v synergy` after upgrading.")
+    }
+
     if (method === "desktop") {
       const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest("desktop")
       if (Installation.VERSION === target) {
         prompts.log.warn(`synergy upgrade skipped: ${target} is already installed`)
+        prompts.outro("Done")
+        return
       }
       prompts.log.info("Synergy is installed with the Desktop app.")
       prompts.log.info("Desktop updates are managed from the Synergy app. Open Synergy and use Settings → Updates.")
@@ -56,6 +79,7 @@ export const UpgradeCommand = {
     spinner.start("Upgrading...")
     const err = await Installation.upgrade(method, target).catch((err) => err)
     if (err) {
+      process.exitCode = 1
       spinner.stop("Upgrade failed", 1)
       if (err instanceof Installation.UpgradeFailedError) prompts.log.error(err.data.stderr)
       else if (err instanceof Error) prompts.log.error(err.message)
@@ -66,4 +90,12 @@ export const UpgradeCommand = {
 
     prompts.outro("Done")
   },
+}
+
+function printInstallations(installations: Installation.InstalledChannel[]) {
+  for (const installation of installations) {
+    const version = installation.version ?? "version unavailable"
+    const executable = installation.executable ? ` at ${installation.executable}` : ""
+    prompts.log.info(`  ${installation.method}: ${version}${executable}`)
+  }
 }

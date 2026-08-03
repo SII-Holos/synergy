@@ -141,6 +141,39 @@ async function installSandboxHelper(binaryPath) {
   }
 }
 
+function pathSynergyCandidate(env = process.env, platform = os.platform()) {
+  const executable = platform === "win32" ? "synergy.exe" : "synergy"
+  for (const entry of (env.PATH ?? "").split(path.delimiter)) {
+    if (!entry) continue
+    const candidate = path.join(entry, executable)
+    if (fs.existsSync(candidate)) return candidate
+  }
+}
+
+export function warnAboutStandaloneInstallation(options = {}) {
+  const platform = options.platform ?? os.platform()
+  const homedir = options.homedir ?? os.homedir()
+  const executable = platform === "win32" ? "synergy.exe" : "synergy"
+  const standalonePath = path.join(homedir, ".synergy", "bin", executable)
+  if (!fs.existsSync(standalonePath)) return false
+
+  console.warn("Warning: another Synergy installation channel is already present.")
+  console.warn(`  - standalone: ${standalonePath}`)
+  const activePath = pathSynergyCandidate(options.env, platform)
+  if (activePath) console.warn(`  - PATH currently resolves synergy to: ${activePath}`)
+  console.warn("The package-manager installation will continue and will not remove the standalone installation.")
+  console.warn(
+    "After installation, run 'synergy doctor' and remove extra channels with 'synergy uninstall --installation-only --method standalone'.",
+  )
+  return true
+}
+
+function warnAboutOtherInstallations() {
+  try {
+    warnAboutStandaloneInstallation()
+  } catch {}
+}
+
 async function main() {
   try {
     if (os.platform() === "win32") {
@@ -149,21 +182,23 @@ async function main() {
       console.log("Windows detected: binary setup not needed (using packaged .exe)")
       const { binaryPath } = findBinary()
       await installSandboxHelper(binaryPath)
-      return
+    } else {
+      const { binaryPath, binaryName } = findBinary()
+      symlinkBinary(binaryPath, binaryName)
+      await installSandboxHelper(binaryPath)
     }
-
-    const { binaryPath, binaryName } = findBinary()
-    symlinkBinary(binaryPath, binaryName)
-    await installSandboxHelper(binaryPath)
+    warnAboutOtherInstallations()
   } catch (error) {
     console.error("Failed to setup synergy binary:", error.message)
     process.exit(1)
   }
 }
 
-try {
-  main()
-} catch (error) {
-  console.error("Postinstall script error:", error.message)
-  process.exit(1)
+if (process.env.SYNERGY_POSTINSTALL_LIBRARY_MODE !== "1") {
+  try {
+    main()
+  } catch (error) {
+    console.error("Postinstall script error:", error.message)
+    process.exit(1)
+  }
 }

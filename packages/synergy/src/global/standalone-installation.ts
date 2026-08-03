@@ -34,6 +34,17 @@ export namespace StandaloneInstallation {
     context: Context
   }
 
+  export interface RemoveOptions {
+    home: string
+    platform: NodeJS.Platform
+  }
+
+  export interface ShellConfigOptions {
+    home: string
+    shell?: string
+    xdgConfigHome?: string
+  }
+
   export interface LibcDetectionDependencies {
     alpineReleaseExists(): Promise<boolean>
     lddVersion(): Promise<string>
@@ -56,6 +67,136 @@ export namespace StandaloneInstallation {
 
   export function detectStandaloneInstall(context: Context) {
     return installationHome(context) !== null
+  }
+
+  export function runtimePaths(options: RemoveOptions) {
+    const root = path.join(options.home, ".synergy")
+    const executable = options.platform === "win32" ? "synergy.exe" : "synergy"
+    const astGrep = options.platform === "win32" ? "ast-grep.exe" : "ast-grep"
+    const vec0 = options.platform === "win32" ? "vec0.dll" : options.platform === "darwin" ? "vec0.dylib" : "vec0.so"
+    return [
+      path.join(root, "bin", executable),
+      path.join(root, "bin", astGrep),
+      path.join(root, "bin", ".runtime-metadata"),
+      path.join(root, "app"),
+      path.join(root, "browser-runtime"),
+      path.join(root, "lib"),
+      path.join(root, "sandbox"),
+      path.join(root, "sandbox-helper"),
+      path.join(root, "schema"),
+      path.join(root, vec0),
+      path.join(root, "runtime-manifest.sha256"),
+    ]
+  }
+
+  export async function remove(options: RemoveOptions) {
+    const root = path.join(options.home, ".synergy")
+    const rootInfo = await fs.lstat(root).catch(() => null)
+    if (rootInfo?.isSymbolicLink()) throw new Error(`Standalone installation root is a symbolic link: ${root}`)
+
+    const removed: string[] = []
+    for (const target of runtimePaths(options)) {
+      await assertManagedTargetParents(root, target)
+      const info = await fs.lstat(target).catch(() => null)
+      if (!info) continue
+      await fs.rm(target, { recursive: info.isDirectory() && !info.isSymbolicLink(), force: true })
+      removed.push(target)
+    }
+    const bin = path.join(root, "bin")
+    const entries = await fs.readdir(bin).catch(() => null)
+    if (entries?.length === 0) {
+      await fs.rmdir(bin)
+      removed.push(bin)
+    }
+    return removed
+  }
+
+  async function assertManagedTargetParents(root: string, target: string) {
+    let current = path.dirname(target)
+    while (current !== root) {
+      const info = await fs.lstat(current).catch(() => null)
+      if (info?.isSymbolicLink()) throw new Error(`Standalone runtime parent is a symbolic link: ${current}`)
+      current = path.dirname(current)
+    }
+  }
+
+  export function shellConfigFiles(options: ShellConfigOptions) {
+    const shell = path.basename(options.shell || "bash")
+    const xdgConfig = options.xdgConfigHome || path.join(options.home, ".config")
+    const configFiles: Record<string, string[]> = {
+      fish: [path.join(xdgConfig, "fish", "config.fish")],
+      zsh: [
+        path.join(options.home, ".zshrc"),
+        path.join(options.home, ".zshenv"),
+        path.join(xdgConfig, "zsh", ".zshrc"),
+        path.join(xdgConfig, "zsh", ".zshenv"),
+      ],
+      bash: [
+        path.join(options.home, ".bashrc"),
+        path.join(options.home, ".bash_profile"),
+        path.join(options.home, ".profile"),
+        path.join(xdgConfig, "bash", ".bashrc"),
+        path.join(xdgConfig, "bash", ".bash_profile"),
+      ],
+      ash: [path.join(options.home, ".ashrc"), path.join(options.home, ".profile")],
+      sh: [path.join(options.home, ".profile")],
+    }
+    return configFiles[shell] || configFiles.bash
+  }
+
+  export async function findShellConfigs(options: ShellConfigOptions) {
+    const matches: string[] = []
+    for (const file of shellConfigFiles(options)) {
+      const content = await fs.readFile(file, "utf8").catch(() => null)
+      if (content && hasStandalonePathLine(content, options.home)) matches.push(file)
+    }
+    return matches
+  }
+
+  export function cleanShellConfigContent(content: string, home?: string) {
+    const lines = content.split("\n")
+    const filtered: string[] = []
+    let removeNextStandaloneLine = false
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed === "# synergy") {
+        removeNextStandaloneLine = true
+        continue
+      }
+      if (removeNextStandaloneLine) {
+        removeNextStandaloneLine = false
+        if (isStandalonePathLine(trimmed, home)) continue
+        filtered.push("# synergy")
+      }
+      if (isStandalonePathLine(trimmed, home)) continue
+      filtered.push(line)
+    }
+    return filtered.join("\n")
+  }
+
+  export async function cleanShellConfig(file: string, home = path.dirname(file)) {
+    const content = await fs.readFile(file, "utf8")
+    const cleaned = cleanShellConfigContent(content, home)
+    if (cleaned === content) return false
+    await fs.writeFile(file, cleaned)
+    return true
+  }
+
+  function hasStandalonePathLine(content: string, home: string) {
+    return content.split("\n").some((line) => isStandalonePathLine(line.trim(), home))
+  }
+
+  function isStandalonePathLine(line: string, home?: string) {
+    const directories = ["$HOME/.synergy/bin", ...(home ? [path.join(home, ".synergy", "bin")] : [])]
+    return directories.some(
+      (directory) =>
+        line === `export PATH=${directory}:$PATH` ||
+        line === `export PATH="${directory}:$PATH"` ||
+        line === `export PATH='${directory}:$PATH'` ||
+        line === `fish_add_path ${directory}` ||
+        line === `fish_add_path "${directory}"` ||
+        line === `fish_add_path '${directory}'`,
+    )
   }
 
   export async function verify(home: string, context: Context): Promise<boolean> {
