@@ -36,6 +36,8 @@ import { Server } from "../../server/server"
 import { isServerReachable } from "../network"
 import { resolvePluginSpec } from "../../plugin/spec-resolver"
 import { doctor as runPluginDoctor } from "../../plugin/doctor"
+import * as Lockfile from "../../plugin/lockfile"
+import { resolvePluginUpdateTargets } from "./plugin-update-target"
 
 function readPkgVersion(pluginDir: string): string | undefined {
   try {
@@ -216,20 +218,18 @@ export const PluginUpdateCommand = cmd({
         const autoApprove = args["auto-approve"] as boolean
         const isInteractive = interactive()
 
-        // Determine which specs to update
-        let specsToUpdate: ConfiguredPluginPackage[] = []
-        const configuredPlugins = await Promise.all(configSpecs.map(readConfiguredPluginPackage))
+        const targetId = args.id as string | undefined
+        const specsToUpdate = await resolvePluginUpdateTargets({
+          specs: configSpecs,
+          target: targetId,
+          lockfile: await Lockfile.read(),
+          read: readConfiguredPluginPackage,
+          matches: pluginMatches,
+        })
 
-        if (args.id) {
-          const targetId = args.id as string
-          const targetPlugin = configuredPlugins.find((plugin) => pluginMatches(plugin, targetId))
-          if (!targetPlugin) {
-            UI.error(`Plugin not found: ${targetId}`)
-            return
-          }
-          specsToUpdate.push(targetPlugin)
-        } else {
-          specsToUpdate = configuredPlugins
+        if (targetId && specsToUpdate.length === 0) {
+          UI.error(`Plugin not found: ${targetId}`)
+          return
         }
 
         if (specsToUpdate.length === 0) {

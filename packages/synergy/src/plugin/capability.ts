@@ -3,6 +3,8 @@ import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 const CONTROL_PROFILE_CAPABILITY_BY_HOST_CAPABILITY: Record<string, string> = {
   "task.delegate": "task",
   "asset.write": "file_write",
+  "settings.read": "config:read",
+  "agent.call": "task",
 }
 
 export function controlProfileCapability(capability: string): string {
