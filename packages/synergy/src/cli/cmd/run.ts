@@ -13,6 +13,7 @@ import { Server } from "../../server/server"
 import { runMigrations } from "../../migration"
 import { Provider } from "../../provider/provider"
 import { readPipedStdin } from "../stdin"
+import { waitForLightLoopFinish } from "../lightloop"
 
 const TOOL: Record<string, [string, string]> = {
   todowrite: ["Todo", UI.Style.TEXT_WARNING_BOLD],
@@ -158,6 +159,12 @@ export const SendCommand = cmd({
         type: "string",
         describe: "model variant (provider-specific reasoning effort, e.g., high, max, minimal)",
       })
+      .option("workflow", {
+        type: "string",
+        choices: ["lightloop"],
+        describe:
+          "run the message as a Light Loop workflow task: the session enables loop_stop and a reviewer loop, and send exits when the workflow reaches a terminal state",
+      })
   },
   handler: async (args) => {
     const directory = Flag.SYNERGY_CWD || process.cwd()
@@ -204,6 +211,11 @@ export const SendCommand = cmd({
 
     if (message.trim().length === 0 && !args.command) {
       UI.error("You must provide a message or a command")
+      process.exit(1)
+    }
+
+    if (args.workflow === "lightloop" && args.command) {
+      UI.error("--workflow lightloop cannot be combined with --command")
       process.exit(1)
     }
 
@@ -275,6 +287,10 @@ export const SendCommand = cmd({
           }
 
           if (event.type === "session.idle" && event.properties.sessionID === sessionID) {
+            // Light Loop reviews run as Cortex children; the parent session goes
+            // idle while the reviewer runs, and a rejected review resumes the
+            // executor. The end of the attempt is decided from the workflow.
+            if (args.workflow === "lightloop") continue
             break
           }
 
@@ -323,6 +339,19 @@ export const SendCommand = cmd({
         return args.agent
       })()
 
+      // Enable the Light Loop workflow before the first prompt so the user
+      // message is projected with the Light Loop contract and the agent can
+      // call loop_stop.
+      if (args.workflow === "lightloop") {
+        const setResult = await sdk.workflow.session.set({
+          id: sessionID,
+          workflowSetInput: { kind: "lightloop", instructions: message },
+        })
+        if (setResult.error) {
+          throw new Error(errorMessage(setResult.error) ?? "Failed to enable Light Loop workflow")
+        }
+      }
+
       if (args.command) {
         await sdk.session.command({
           sessionID,
@@ -341,6 +370,32 @@ export const SendCommand = cmd({
           variant: args.variant,
           parts: [...fileParts, { type: "text", text: message }],
         })
+      }
+
+      if (args.workflow === "lightloop") {
+        // The parent session goes idle while the reviewer runs and again after
+        // a rejected review resumes the executor, so session.idle cannot end
+        // the attempt. Poll the workflow until it reaches a terminal state or
+        // is cleared by approval.
+        const outcome = await waitForLightLoopFinish(sdk, sessionID)
+        if (args.format === "json") {
+          process.stdout.write(
+            JSON.stringify({
+              type: "lightloop_finish",
+              timestamp: Date.now(),
+              sessionID,
+              status: outcome.status,
+              elapsedMs: outcome.elapsedMs,
+              timedOut: outcome.timedOut,
+            }) + EOL,
+          )
+        }
+        if (outcome.timedOut) {
+          UI.error("Light Loop workflow timed out")
+          process.exit(1)
+        }
+        if (errorMsg) process.exit(1)
+        return
       }
 
       await eventProcessor
