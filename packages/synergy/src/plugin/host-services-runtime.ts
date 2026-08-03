@@ -616,6 +616,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
     protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
     dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+    stripDefaultHomeDenyRoot: true,
     backend: sandbox.backend,
   })
   const executed = await SandboxBackend.executeAsync(wrapper, {

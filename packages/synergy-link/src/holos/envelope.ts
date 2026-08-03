@@ -5,10 +5,11 @@ import { SynergyLinkHolosProtocol } from "./protocol"
 export namespace SynergyLinkHolosEnvelope {
   export type Parsed =
     | { kind: "request"; event: string; payload: unknown; caller: HolosCaller }
+    | { kind: "pong" }
     | { kind: "ignored"; type: string }
     | { kind: "unknown"; type?: string }
 
-  const IGNORED_TYPES = new Set(["connected", "pong"])
+  const IGNORED_TYPES = new Set(["connected"])
 
   export function parse(raw: string): Parsed {
     let data: unknown
@@ -27,6 +28,8 @@ export namespace SynergyLinkHolosEnvelope {
     if (!parsed.success) {
       return type ? { kind: "unknown", type } : { kind: "unknown" }
     }
+
+    if (parsed.data.type === "pong") return { kind: "pong" }
 
     if (parsed.data.type === "ws_send" && parsed.data.caller) {
       return {

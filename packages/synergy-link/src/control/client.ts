@@ -23,15 +23,28 @@ export class SynergyLinkControlClient {
 
   static async request<T = unknown>(input: SynergyLinkControlRequest, options?: { timeoutMs?: number }): Promise<T> {
     const request = ControlRequestSchema.parse(input)
-    const response = await requestViaSocket(request, options)
-    const parsed = ControlResponseSchema.parse(response)
-    if (!parsed.ok) {
-      const error = new Error(parsed.error.message)
-      ;(error as Error & { code?: string }).code = parsed.error.code
-      throw error
+    let response: SynergyLinkControlResponse
+    try {
+      response = await requestViaSocket(request, options)
+    } catch {
+      throw publicControlError("control_socket_unavailable")
     }
+    const parsed = ControlResponseSchema.parse(response)
+    if (!parsed.ok) throw publicControlError(parsed.error.code, parsed.error.message)
     return parsed.payload as T
   }
+}
+
+function publicControlError(code: string, message = "Control socket request failed."): Error {
+  const socketPath = normalizePrivatePath(SynergyLinkControlClient.socketPath())
+  const publicMessage = normalizePrivatePath(message).includes(socketPath) ? "Control socket request failed." : message
+  const error = new Error(publicMessage)
+  ;(error as Error & { code?: string }).code = code
+  return error
+}
+
+function normalizePrivatePath(value: string): string {
+  return value.replaceAll("\\", "/").toLowerCase()
 }
 
 async function requestViaSocket(

@@ -39,13 +39,14 @@ Usage notes:
 
   - Use `background` (boolean) to run a command in the background immediately; it returns a processId for use with the process tool.
   - Use `yieldSeconds` to delay before auto-backgrounding a command that runs longer than the given number of seconds. Default is 10. If the command completes before yieldSeconds, it returns normally.
+  - For remote Synergy Link execution, the host clamps `yieldSeconds` to at most 5 seconds so it can return a tracked process handle before the transport deadline. The controlling tunnel sends heartbeats every 30 seconds with a 90-second missed-pong deadline; the standalone host uses 60 seconds and 180 seconds. A timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote command was cancelled. Reconnect and inspect session/process state; never auto-retry a mutating or ambiguous remote command.
   - After backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
   - Example: bash(command: "npm run dev", background: true, yieldSeconds: 30) → { processId: "proc_xxx" }
 
   **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
   - Use the bash tool's tracked `background` / `yieldSeconds` flow so Synergy can show a processId and later poll, log, or kill the process.
-  - Do not launch detached shell daemons with `tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, or shell `&`. These processes stay charged to the Synergy service cgroup and are blocked by default, unless the session runs under a `full_access` control profile.
-  - Operator-managed runtimes that intentionally allow detached daemons can set `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`.
+  - Do not launch detached shell daemons with `tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, or shell `&`. Windows Synergy Link hosts additionally reject `cmd start`, PowerShell `Start-Process`/`start`/`saps`, dynamic or opaque script entry points, and commands beyond the 16 KiB per-command, 64 nested-shell, or 128 KiB cumulative inspection budgets. Split oversized work into tracked `bash`/`process` operations.
+  - Operator-managed local runtimes can allow detached daemons through a `full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`. These bypasses do not apply to Synergy Link hosts, which reject known detached-launch patterns unconditionally.
 
   - Avoid using Bash with the `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use Glob (NOT find or ls)
