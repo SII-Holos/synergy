@@ -193,3 +193,34 @@ describe("SmartAllow circuit breaker", () => {
     expect(SmartAllow.shouldAutoAllow({ risk: "safe", reason: "read", confidence: 0.99 }, "ses_a")).toBe(false)
   })
 })
+
+describe("SmartAllow classifier session attribution", () => {
+  test("forwards the session id to AgentCall.text for telemetry", async () => {
+    const original = (SmartAllow as any).classify
+    try {
+      let received: unknown
+      const { AgentCall } = await import("@/agent/call")
+      const originalText = AgentCall.text
+      ;(AgentCall.text as any) = async (input: unknown) => {
+        received = input
+        return { text: '{"risk":"safe","reason":"read-only","confidence":0.9}' }
+      }
+      try {
+        const classification = await SmartAllow.classify({
+          sessionID: "ses_target",
+          tool: "bash",
+          args: { command: "echo hi" },
+          capabilities: ["shell_exec"],
+          workspace: "/repo",
+          policyAction: "ask",
+        })
+        expect(classification?.risk).toBe("safe")
+        expect(received).toMatchObject({ sessionId: "ses_target" })
+      } finally {
+        ;(AgentCall.text as any) = originalText
+      }
+    } finally {
+      ;(SmartAllow as any).classify = original
+    }
+  })
+})

@@ -29,6 +29,8 @@ export namespace AgentCall {
     messages: ModelMessage[]
     user?: MessageV2.User
     sessionId?: string
+    userMetadata?: Record<string, string>
+    model?: Provider.Model
     fallbackModel?: Provider.Model
     modelRole?: Provider.ModelRole
     signal?: AbortSignal
@@ -36,6 +38,14 @@ export namespace AgentCall {
     retries: number
     maxInputChars?: number
     maxOutputChars: number
+    small?: boolean
+    maxOutputTokens?: number
+  }
+
+  export type TextOutput = {
+    text: string
+    model: Provider.Model
+    usage?: Awaited<AgentTurn.Stream["usage"]>
   }
 
   function inputCharacters(messages: ModelMessage[]) {
@@ -69,7 +79,7 @@ export namespace AgentCall {
     }
   }
 
-  export async function text(input: TextInput): Promise<{ text: string }> {
+  export async function text(input: TextInput): Promise<TextOutput> {
     if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
     if (input.maxInputChars !== undefined && inputCharacters(input.messages) > input.maxInputChars) {
       throw new Error("input_too_large", `Agent ${input.agent} input exceeded ${input.maxInputChars} characters`)
@@ -77,12 +87,15 @@ export namespace AgentCall {
 
     const agent = await Agent.get(input.agent)
     if (!agent) throw new Error("agent_not_found", `Agent is unavailable: ${input.agent}`)
-    const configured = input.modelRole
-      ? await Provider.resolveRoleModel(input.modelRole)
-      : await Agent.getAvailableModel(agent)
-    const model = configured
-      ? await Provider.getModel(configured.providerID, configured.modelID).catch(() => input.fallbackModel)
-      : input.fallbackModel
+    const model =
+      input.model ??
+      (await (async () => {
+        const configured = input.modelRole
+          ? await Provider.resolveRoleModel(input.modelRole)
+          : await Agent.getAvailableModel(agent)
+        if (!configured) return input.fallbackModel
+        return await Provider.getModel(configured.providerID, configured.modelID).catch(() => input.fallbackModel)
+      })())
     if (!model) throw new Error("model_unavailable", `Agent ${input.agent} has no available model`)
     if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
 
@@ -96,6 +109,7 @@ export namespace AgentCall {
         time: { created: Date.now() },
         agent: agent.name,
         model: { providerID: model.providerID, modelID: model.id },
+        metadata: input.userMetadata,
       } satisfies MessageV2.User)
     const timeout = new AbortController()
     const output = new AbortController()
@@ -117,12 +131,13 @@ export namespace AgentCall {
           user,
           toolDefinitions: [],
           model,
-          small: true,
+          small: input.small ?? true,
           messages: input.messages,
           abort,
           sessionID,
           system: [],
           retries: input.retries,
+          maxOutputTokens: input.maxOutputTokens,
         }),
       )
       try {
@@ -143,7 +158,7 @@ export namespace AgentCall {
             }
           })(),
         )
-        return { text: value }
+        return { text: value, model, usage: await stream.usage }
       } finally {
         await stream.dispose()
       }
