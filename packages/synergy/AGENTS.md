@@ -42,7 +42,7 @@ Do not move centralized checks into individual tools or treat an unavailable san
 ## Providers, Config, and Plugins
 
 - Resolve provider existence and model roles through profiles/catalog/config. Keep remote catalog data declarative and verified.
-- Keep `openai-codex` device-code OAuth and Codex transport separate from the `openai` Platform API-key provider.
+- Keep `openai-codex` device-code OAuth and Codex transport separate from the `openai` Platform API-key provider. Keep `grok` device-code OAuth and xAI transport separate from both.
 - Let real model, usage, and discovery requests drive provider auth recovery and health transitions; do not add startup or periodic third-party credential probes.
 - Canonical config lives in domain files; add migrations rather than a monolithic runtime loader.
 - Plugins declare Host Service capability ceilings before import. Preserve ID consistency, approval hashes, process/inProcess selection, generation checks, scoped Host Service enforcement, and contribution-level failure isolation. See [Plugin runtime and capabilities](../../docs/plugins/runtime-and-permissions.md).

@@ -205,6 +205,7 @@ Model names use `provider/model`. Provider definitions and model defaults live i
 
 - `openai` is the OpenAI Platform API-key provider.
 - `openai-codex` uses ChatGPT/Codex OAuth device-code credentials and the Codex backend.
+- `grok` uses xAI subscription OAuth device-code credentials (SuperGrok / X Premium+) and the OpenAI-compatible `https://api.x.ai/v1` API.
 
 Do not copy credentials or billing assumptions between them. Use `synergy auth` or the Settings UI to manage auth.
 
