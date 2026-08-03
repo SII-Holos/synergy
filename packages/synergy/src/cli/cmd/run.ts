@@ -239,7 +239,9 @@ export const SendCommand = cmd({
 
       const events = await sdk.event.subscribe()
       let errorMsg: string | undefined
-
+      // Created when a Light Loop is enabled; aborted when a session error
+      // ends the attempt so the wait loop stops before the workflow resolves.
+      let lightLoopSignal: AbortController | undefined
       const eventProcessor = (async () => {
         for await (const event of events.stream) {
           if (event.type === "message.part.updated") {
@@ -282,6 +284,10 @@ export const SendCommand = cmd({
             const error = props.error as Record<string, unknown>
             const err = errorMessage(error) ?? String(error.name)
             errorMsg = errorMsg ? errorMsg + EOL + err : err
+            // An errored assistant is ineligible for workflow continuation and
+            // the Light Loop stays active; stop waiting so the CLI can cancel
+            // and exit as soon as the failure is observed.
+            lightLoopSignal?.abort()
             if (outputJsonEvent("error", { error: props.error })) continue
             UI.error(err)
           }
@@ -341,7 +347,11 @@ export const SendCommand = cmd({
 
       // Enable the Light Loop workflow before the first prompt so the user
       // message is projected with the Light Loop contract and the agent can
-      // call loop_stop.
+      // call loop_stop. The hard timeout covers the whole attempt, including
+      // the first executor turn, so it starts before the workflow enable and
+      // the prompt is submitted asynchronously (a blocking prompt would put
+      // the timeout out of reach during the first turn).
+      const lightLoopStartedAt = Date.now()
       if (args.workflow === "lightloop") {
         const setResult = await sdk.workflow.session.set({
           id: sessionID,
@@ -350,6 +360,7 @@ export const SendCommand = cmd({
         if (setResult.error) {
           throw new Error(errorMessage(setResult.error) ?? "Failed to enable Light Loop workflow")
         }
+        lightLoopSignal = new AbortController()
       }
 
       if (args.command) {
@@ -363,21 +374,49 @@ export const SendCommand = cmd({
         })
       } else {
         const modelParam = args.model ? Provider.parseModel(args.model) : undefined
-        await sdk.session.prompt({
-          sessionID,
-          agent: resolvedAgent,
-          model: modelParam,
-          variant: args.variant,
-          parts: [...fileParts, { type: "text", text: message }],
-        })
+        const promptParts = [...fileParts, { type: "text", text: message }]
+        if (args.workflow === "lightloop") {
+          // Submit asynchronously so the hard timeout (started above, before
+          // the workflow enable) also bounds the first executor turn. The
+          // blocking prompt route would otherwise hold this call open for the
+          // whole first turn, making the timeout unreachable.
+          await sdk.session.promptAsync({
+            sessionID,
+            agent: resolvedAgent,
+            model: modelParam,
+            variant: args.variant,
+            parts: promptParts,
+          })
+        } else {
+          await sdk.session.prompt({
+            sessionID,
+            agent: resolvedAgent,
+            model: modelParam,
+            variant: args.variant,
+            parts: promptParts,
+          })
+        }
       }
 
       if (args.workflow === "lightloop") {
         // The parent session goes idle while the reviewer runs and again after
         // a rejected review resumes the executor, so session.idle cannot end
-        // the attempt. Poll the workflow until it reaches a terminal state or
-        // is cleared by approval.
-        const outcome = await waitForLightLoopFinish(sdk, sessionID)
+        // the attempt. Poll the workflow until it reaches a terminal state, is
+        // cleared by approval, or is replaced by another workflow.
+        const outcome = await waitForLightLoopFinish(sdk, sessionID, {
+          startedAt: lightLoopStartedAt,
+          signal: lightLoopSignal?.signal,
+        })
+
+        const terminalFailure = outcome.status !== undefined && outcome.status !== "completed"
+        const cancelledByError = outcome.aborted && errorMsg !== undefined
+        if (terminalFailure || outcome.timedOut || cancelledByError || outcome.replaced) {
+          // Stop the host-owned workflow before exiting so a later benchmark
+          // attempt is not contaminated by a still-running loop (with
+          // --attach) or a durable active workflow resumed on next startup.
+          await sdk.workflow.session.cancelLightloop({ id: sessionID }).catch(() => undefined)
+        }
+
         if (args.format === "json") {
           process.stdout.write(
             JSON.stringify({
@@ -387,14 +426,28 @@ export const SendCommand = cmd({
               status: outcome.status,
               elapsedMs: outcome.elapsedMs,
               timedOut: outcome.timedOut,
+              aborted: outcome.aborted,
+              replaced: outcome.replaced,
             }) + EOL,
           )
         }
+
         if (outcome.timedOut) {
           UI.error("Light Loop workflow timed out")
           process.exit(1)
         }
-        if (errorMsg) process.exit(1)
+        if (outcome.aborted && errorMsg) {
+          UI.error(errorMsg)
+          process.exit(1)
+        }
+        if (outcome.replaced) {
+          UI.error("Light Loop workflow was replaced by another workflow")
+          process.exit(1)
+        }
+        if (terminalFailure) {
+          UI.error(`Light Loop ended with status: ${outcome.status}`)
+          process.exit(1)
+        }
         return
       }
 

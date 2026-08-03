@@ -21,19 +21,19 @@ describe("isTerminalLightLoopStatus", () => {
 
 describe("isLightLoopFinished", () => {
   test("returns not finished while the workflow is still running", () => {
-    const result = isLightLoopFinished({ workflow: { kind: "lightloop", instructions: "x", status: "running" } })
+    const result = isLightLoopFinished({ workflow: { kind: "lightloop", status: "running" } })
 
     expect(result.finished).toBe(false)
     expect(result.status).toBeUndefined()
+    expect(result.replaced).toBe(false)
   })
 
   test("returns finished when the workflow enters a terminal status", () => {
-    const result = isLightLoopFinished({
-      workflow: { kind: "lightloop", instructions: "x", status: "iteration_exhausted" },
-    })
+    const result = isLightLoopFinished({ workflow: { kind: "lightloop", status: "iteration_exhausted" } })
 
     expect(result.finished).toBe(true)
     expect(result.status).toBe("iteration_exhausted")
+    expect(result.replaced).toBe(false)
   })
 
   test("returns finished when the workflow is cleared after approval", () => {
@@ -41,11 +41,22 @@ describe("isLightLoopFinished", () => {
 
     expect(result.finished).toBe(true)
     expect(result.status).toBeUndefined()
+    expect(result.replaced).toBe(false)
   })
 
-  test("returns not finished when the session carries an unrelated workflow", () => {
+  test("uses the durable terminal record as the authoritative status after clearance", () => {
+    const result = isLightLoopFinished({ workflow: undefined }, { status: "timed_out" })
+
+    expect(result.finished).toBe(true)
+    expect(result.status).toBe("timed_out")
+    expect(result.replaced).toBe(false)
+  })
+
+  test("returns finished with replaced when another workflow replaces the Light Loop", () => {
     const result = isLightLoopFinished({ workflow: { kind: "plan" } })
 
-    expect(result.finished).toBe(false)
+    expect(result.finished).toBe(true)
+    expect(result.status).toBeUndefined()
+    expect(result.replaced).toBe(true)
   })
 })

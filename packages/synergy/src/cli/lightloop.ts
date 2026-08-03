@@ -2,7 +2,7 @@ import type { SynergyClient } from "@ericsanchezok/synergy-sdk"
 
 /**
  * Terminal statuses for a Light Loop workflow. The CLI treats any of these as
- * the end of a benchmark attempt; approval clears the workflow entirely.
+ * the end of a benchmark attempt.
  */
 export const LIGHT_LOOP_TERMINAL_STATUSES = [
   "completed",
@@ -21,23 +21,43 @@ export function isTerminalLightLoopStatus(status: unknown): status is LightLoopT
 export interface LightLoopFinished {
   finished: boolean
   status: LightLoopTerminalStatus | undefined
+  /**
+   * True when the session no longer carries the Light Loop workflow because a
+   * different workflow (plan/lattice) replaced it. The attempt no longer owns
+   * the workflow and must terminate instead of waiting for a six-hour timeout.
+   */
+  replaced: boolean
 }
 
 /**
- * Decide whether a Light Loop attempt has ended. The benchmark adapter runs
- * Synergy as one attempt per task container, so an attempt is over when the
- * workflow reaches a terminal status or is cleared (approval clears it).
+ * Decide whether a Light Loop attempt has ended.
+ *
+ * Terminal Light Loops clear the interactive workflow on every terminal path
+ * (approval, exhaustion, timeout, cancellation, failure), so the absence of a
+ * workflow means the attempt ended; the authoritative status then comes from
+ * the durable terminal record. A different workflow replacing the Light Loop
+ * also ends the attempt (mutually exclusive workflows mean this command no
+ * longer owns it).
  */
-export function isLightLoopFinished(session: {
-  workflow?: { kind?: string; status?: unknown; instructions?: string }
-}): LightLoopFinished {
+export function isLightLoopFinished(
+  session: { workflow?: { kind?: string; status?: unknown } },
+  terminal?: { status?: LightLoopTerminalStatus } | undefined,
+): LightLoopFinished {
   const workflow = session.workflow
-  if (!workflow) return { finished: true, status: undefined }
-  if (workflow.kind !== "lightloop") return { finished: false, status: undefined }
-  if (isTerminalLightLoopStatus(workflow.status)) {
-    return { finished: true, status: workflow.status }
+  if (workflow?.kind === "lightloop") {
+    if (isTerminalLightLoopStatus(workflow.status)) {
+      return { finished: true, status: workflow.status, replaced: false }
+    }
+    return { finished: false, status: undefined, replaced: false }
   }
-  return { finished: false, status: undefined }
+  if (!workflow) {
+    return {
+      finished: true,
+      status: terminal?.status,
+      replaced: false,
+    }
+  }
+  return { finished: true, status: undefined, replaced: true }
 }
 
 export interface LightLoopWaitOptions {
@@ -45,7 +65,9 @@ export interface LightLoopWaitOptions {
   pollIntervalMs?: number
   /** Hard timeout in milliseconds. Defaults to 6 hours. */
   timeoutMs?: number
-  /** Abort signal to stop waiting early. */
+  /** Wall-clock start for the hard timeout. Defaults to now. */
+  startedAt?: number
+  /** Abort signal to stop waiting early (e.g. a session error was observed). */
   signal?: AbortSignal
 }
 
@@ -53,15 +75,22 @@ export interface LightLoopWaitResult {
   status: LightLoopTerminalStatus | undefined
   elapsedMs: number
   timedOut: boolean
+  /** True when waiting stopped because the abort signal fired. */
+  aborted: boolean
+  /** True when the Light Loop was replaced by another workflow. */
+  replaced: boolean
 }
 
 /**
- * Wait for a Light Loop attempt to finish by polling the session workflow.
+ * Wait for a Light Loop attempt to finish.
  *
  * The CLI cannot rely on `session.idle` alone: the parent session goes idle
  * while the reviewer runs, and a rejected review resumes the executor. The
- * authoritative end-of-attempt signal is the workflow status (terminal status,
- * or cleared after approval).
+ * end-of-attempt signal is the workflow state (terminal status, cleared after
+ * approval, or replaced by another workflow). When the workflow is cleared,
+ * the authoritative status is read from the durable terminal record so failed,
+ * exhausted, timed-out, and cancelled attempts are distinguishable from
+ * approval.
  */
 export async function waitForLightLoopFinish(
   sdk: SynergyClient,
@@ -70,15 +99,16 @@ export async function waitForLightLoopFinish(
 ): Promise<LightLoopWaitResult> {
   const pollIntervalMs = options.pollIntervalMs ?? 1000
   const timeoutMs = options.timeoutMs ?? 6 * 60 * 60 * 1000
-  const startedAt = Date.now()
+  const startedAt = options.startedAt ?? Date.now()
+  const deadline = startedAt + timeoutMs
 
   for (;;) {
     if (options.signal?.aborted) {
-      return { status: undefined, elapsedMs: Date.now() - startedAt, timedOut: false }
+      return { status: undefined, elapsedMs: Date.now() - startedAt, timedOut: false, aborted: true, replaced: false }
     }
     const elapsedMs = Date.now() - startedAt
-    if (elapsedMs >= timeoutMs) {
-      return { status: undefined, elapsedMs, timedOut: true }
+    if (Date.now() >= deadline) {
+      return { status: undefined, elapsedMs, timedOut: true, aborted: false, replaced: false }
     }
 
     const result = await sdk.session.get({ sessionID })
@@ -87,7 +117,21 @@ export async function waitForLightLoopFinish(
     }
     const finished = isLightLoopFinished(result.data ?? {})
     if (finished.finished) {
-      return { status: finished.status, elapsedMs: Date.now() - startedAt, timedOut: false }
+      let status = finished.status
+      if (status === undefined && !finished.replaced) {
+        // The workflow was cleared; read the authoritative terminal record.
+        const terminal = await sdk.workflow.session.getLightloopTerminal({ id: sessionID }).catch(() => undefined)
+        if (terminal && !terminal.error && terminal.data?.status) {
+          status = terminal.data.status
+        }
+      }
+      return {
+        status,
+        elapsedMs: Date.now() - startedAt,
+        timedOut: false,
+        aborted: false,
+        replaced: finished.replaced,
+      }
     }
 
     await sleep(pollIntervalMs)

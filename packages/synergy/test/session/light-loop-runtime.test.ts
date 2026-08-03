@@ -34,7 +34,7 @@ async function createPluginLightLoop(input?: { status?: "completed"; deliveredAt
 }
 
 describe("LightLoop terminal hook delivery", () => {
-  test("clears ordinary LightLoop state instead of persisting a terminal workflow", async () => {
+  test("clears ordinary LightLoop state and persists the authoritative terminal record", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -53,7 +53,14 @@ describe("LightLoop terminal hook delivery", () => {
         await LightLoopRuntime.setTerminalStatus(session.id, "completed")
 
         expect((await Session.get(session.id)).workflow).toBeUndefined()
-        expect(await LightLoopTerminalStore.get(session)).toBeUndefined()
+        // Ordinary loops now persist a terminal record so headless drivers can
+        // distinguish approval from exhaustion, timeout, cancellation, and
+        // failure after the workflow is cleared.
+        expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+          status: "completed",
+          instructions: "Finish the ordinary task",
+          hookDeliveredAt: expect.any(Number),
+        })
         expect(delivery).not.toHaveBeenCalled()
       },
     })
