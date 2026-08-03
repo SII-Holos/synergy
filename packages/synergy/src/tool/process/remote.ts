@@ -1,5 +1,5 @@
 import { SynergyLinkProcess } from "@ericsanchezok/synergy-link-protocol"
-import type { SynergyLinkExecution } from "../synergy-link-execution"
+import { SynergyLinkExecution } from "../synergy-link-execution"
 import type { ProcessParams, ProcessResult } from "./shared"
 
 function toPayload(params: ProcessParams): SynergyLinkProcess.ExecutePayload {
@@ -35,9 +35,23 @@ export namespace RemoteProcessBackend {
     params: ProcessParams,
     target: Extract<SynergyLinkExecution.ExecutionTarget, { kind: "remote" }>,
   ): Promise<ProcessResult> {
-    return target.client.executeProcess(target.linkID, toPayload(params), {
-      sessionID: target.session.sessionID,
-      targetAgentID: target.session.targetAgentID,
-    })
+    try {
+      return await target.client.executeProcess(target.linkID, toPayload(params), {
+        sessionID: target.session.sessionID,
+        targetAgentID: target.session.targetAgentID,
+      })
+    } catch (error) {
+      SynergyLinkExecution.clearSessionOnInvalidError(
+        target.linkID,
+        target.session.sessionID,
+        {
+          targetID: target.session.targetID,
+          targetAgentID: target.session.targetAgentID,
+          sourceAgent: target.session.sourceAgent,
+        },
+        error,
+      )
+      throw error
+    }
   }
 }

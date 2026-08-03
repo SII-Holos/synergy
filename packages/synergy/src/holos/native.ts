@@ -39,7 +39,13 @@ export type NativeRequestFailure =
   | {
       disposition: "ambiguous"
       requestID: RequestID
-      reason: "timeout" | "aborted_after_dispatch" | "disconnected" | "invalid_response" | "unexpected_response"
+      reason:
+        | "timeout"
+        | "aborted_after_dispatch"
+        | "disconnected"
+        | "transport_liveness_lost"
+        | "invalid_response"
+        | "unexpected_response"
       message: string
     }
 

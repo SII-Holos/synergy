@@ -18,9 +18,11 @@ export type SynergyLinkResponse =
   | SynergyLinkSession.ExecuteResult
   | SynergyLinkEnvelope.ErrorResult
 
+export type SynergyLinkTransportFailureReason = "disconnected" | "transport_liveness_lost"
+
 export interface SynergyLinkTransport {
   request(targetAgentID: string | undefined, input: SynergyLinkRequest): Promise<unknown>
-  dispose?(): void
+  dispose?(reason?: SynergyLinkTransportFailureReason): void
 }
 
 export class SynergyLinkRemoteError extends Error {
@@ -105,8 +107,8 @@ export class HolosSynergyLinkClient implements SynergyLinkClient.ExecutionClient
     return response.result
   }
 
-  dispose() {
-    this.transport.dispose?.()
+  dispose(reason?: SynergyLinkTransportFailureReason) {
+    this.transport.dispose?.(reason)
   }
 
   async #request<TRequest extends SynergyLinkRequest>(
