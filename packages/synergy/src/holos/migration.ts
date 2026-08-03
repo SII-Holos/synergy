@@ -101,7 +101,11 @@ export const migrations: Migration[] = [
     dependsOn: ["20260620-migrate-holos-legacy-credentials"],
     async up(progress) {
       progress(0, 1)
-      const account = await HolosAccounts.getActiveAccount()
+      const account = await HolosAccounts.getActiveAccount().catch((error) => {
+        if (!(error instanceof HolosAccounts.MalformedStoreError)) throw error
+        log.warn("skipping clarus channel account provisioning because the Holos account store is malformed")
+        return undefined
+      })
       if (account) {
         const { HolosAuth } = await import("./auth")
         const provisioned = await HolosAuth.ensureClarusChannelAccount(account.agentId)

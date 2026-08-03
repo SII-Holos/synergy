@@ -11,6 +11,12 @@ import fs from "fs/promises"
 import { Auth } from "@/provider/api-key"
 
 export namespace HolosAccounts {
+  export class MalformedStoreError extends Error {
+    constructor(cause: unknown) {
+      super("Failed to parse the shared Holos account store.", { cause })
+      this.name = "HolosAccountsMalformedStoreError"
+    }
+  }
   export const AccountInfo = z.object({
     agentId: z.string(),
     agentSecret: z.string(),
@@ -43,7 +49,7 @@ export namespace HolosAccounts {
     try {
       return Store.parse(JSON.parse(raw))
     } catch (error) {
-      throw new Error("Failed to parse the shared Holos account store.", { cause: error })
+      throw new MalformedStoreError(error)
     }
   }
 
