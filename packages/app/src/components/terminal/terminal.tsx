@@ -19,6 +19,15 @@ export interface TerminalProps extends ComponentProps<"div"> {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 5
+const FONT_CHANGE_EVENT = "synergy:font-change"
+
+function getTerminalFontFamily(): string {
+  if (typeof document === "undefined") return '"IBM Plex Mono", monospace'
+  return (
+    getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono").trim() ||
+    '"IBM Plex Mono", monospace'
+  )
+}
 
 export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
@@ -31,6 +40,7 @@ export const Terminal = (props: TerminalProps) => {
   let serializeAddon: SerializeAddon
   let fitAddon: FitAddon
   let handleResize: () => void
+  let handleFontChange: ((event: Event) => void) | undefined
   let handleTextareaFocus: () => void
   let handleTextareaBlur: () => void
   let reconnect: number | undefined
@@ -87,13 +97,21 @@ export const Terminal = (props: TerminalProps) => {
       cursorBlink: true,
       cursorStyle: "bar",
       fontSize: 14,
-      fontFamily: "IBM Plex Mono, monospace",
+      fontFamily: getTerminalFontFamily(),
       allowTransparency: true,
       theme: terminalColors(),
       scrollback: 2_000,
       ghostty,
     })
     term = t
+
+    handleFontChange = (event: Event) => {
+      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+      if (kind !== "mono") return
+      t.options.fontFamily = getTerminalFontFamily()
+      fitAddon?.fit()
+    }
+    document.addEventListener(FONT_CHANGE_EVENT, handleFontChange)
 
     const copy = () => {
       const selection = t.getSelection()
@@ -269,6 +287,7 @@ export const Terminal = (props: TerminalProps) => {
     if (handleResize) {
       window.removeEventListener("resize", handleResize)
     }
+    if (handleFontChange) document.removeEventListener(FONT_CHANGE_EVENT, handleFontChange)
     container.removeEventListener("pointerdown", handlePointerDown)
     term?.textarea?.removeEventListener("focus", handleTextareaFocus)
     term?.textarea?.removeEventListener("blur", handleTextareaBlur)

@@ -179,7 +179,6 @@ const FALLBACK_FONT_FAMILY =
   'Inter, "SF Pro Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
 
 let measureContext: CanvasRenderingContext2D | undefined
-let resolvedSansFontFamily: string | undefined
 const textMeasureCache = new Map<string, number>()
 
 function getMeasureContext() {
@@ -191,11 +190,9 @@ function getMeasureContext() {
 }
 
 function getSansFontFamily() {
-  if (resolvedSansFontFamily) return resolvedSansFontFamily
   if (typeof document === "undefined") return FALLBACK_FONT_FAMILY
   const computed = getComputedStyle(document.documentElement).getPropertyValue("--font-family-sans").trim()
-  resolvedSansFontFamily = computed || FALLBACK_FONT_FAMILY
-  return resolvedSansFontFamily
+  return computed || FALLBACK_FONT_FAMILY
 }
 
 function getMeasureFont(size: number, weight: number) {

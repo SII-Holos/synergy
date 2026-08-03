@@ -14226,6 +14226,50 @@ msgid "settings.general.colorScheme.system.description"
 msgstr "跟随此设备"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr "已应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr "检查并应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr "检查中……"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr "字体访问被拒绝；使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr "输入本机已安装的字体。找不到时，Synergy 会使用默认字体。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.missing"
+msgstr "未找到；使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.placeholder"
+msgstr "例如：Segoe UI 或 Microsoft YaHei"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr "界面字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr "此浏览器无法扫描本地字体；使用默认字体"
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "选择 Synergy 控件和无障碍标签使用的语言"
 
@@ -14244,6 +14288,18 @@ msgstr "跟随系统"
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
 msgstr "界面语言"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr "用于代码、终端、差异视图和其他等宽内容。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.placeholder"
+msgstr "例如：Consolas 或 Cascadia Mono"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
+msgstr "等宽字体"
 
 #. js-lingui-explicit-id
 msgid "settings.general.notifications.description"

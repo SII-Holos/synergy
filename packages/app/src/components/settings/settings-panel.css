@@ -107,6 +107,40 @@
   box-shadow: var(--settings-focus-ring);
 }
 
+.settings-font-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(560px, 52vw);
+}
+
+.settings-font-input {
+  width: 220px;
+  min-width: 0;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: var(--settings-input-bg);
+  color: var(--text-strong);
+  padding: 8px 10px;
+  font-family: var(--font-family-sans);
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
+  outline: none;
+}
+
+.settings-font-input::placeholder {
+  color: var(--text-weaker);
+}
+
+.settings-font-input:focus {
+  box-shadow: var(--settings-focus-ring);
+}
+
+.settings-font-input:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .settings-panel-close {
   position: absolute;
   top: 12px;
@@ -3660,6 +3694,18 @@
 .settings-row-control-text {
   width: 180px;
   min-width: 0;
+}
+
+@media (max-width: 840px) {
+  .settings-font-controls {
+    width: 100%;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+
+  .settings-font-input {
+    flex: 1 1 220px;
+  }
 }
 
 @media (max-width: 840px) {

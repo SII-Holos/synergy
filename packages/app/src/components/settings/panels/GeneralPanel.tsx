@@ -31,6 +31,7 @@ import {
 import { nextMutedToasts, toastConfigFromPreferences } from "../toast-preferences"
 import { applyLocalePreference } from "./locale-preference-change"
 import { LANGUAGE_SELF_NAMES } from "./language-self-names"
+import { useFontPreference, type FontDetectionStatus, type FontKind } from "@/context/font-preference"
 
 const copy = {
   pageTitle: { id: "settings.general.page.title", message: "General" },
@@ -64,6 +65,35 @@ const copy = {
   languageFailedDescription: {
     id: "settings.general.language.failed.description",
     message: "The selected language catalog could not be loaded. The previous language is still active.",
+  },
+  fontTitle: { id: "settings.general.font.title", message: "Interface font" },
+  fontDescription: {
+    id: "settings.general.font.description",
+    message: "Enter a font installed on this device. Synergy uses the default font when it cannot be found.",
+  },
+  fontPlaceholder: { id: "settings.general.font.placeholder", message: "e.g. Segoe UI or Microsoft YaHei" },
+  fontCheck: { id: "settings.general.font.check", message: "Check and apply" },
+  fontChecking: { id: "settings.general.font.checking", message: "Checking..." },
+  fontReset: { id: "settings.general.font.reset", message: "Use default" },
+  fontApplied: { id: "settings.general.font.applied", message: "Applied" },
+  fontMissing: { id: "settings.general.font.missing", message: "Not found; using default" },
+  fontUnsupported: {
+    id: "settings.general.font.unsupported",
+    message: "This browser cannot scan local fonts; using default",
+  },
+  fontDenied: {
+    id: "settings.general.font.denied",
+    message: "Font access was denied; using default",
+  },
+  fontDefault: { id: "settings.general.font.default", message: "Using default" },
+  monoFontTitle: { id: "settings.general.monoFont.title", message: "Monospace font" },
+  monoFontDescription: {
+    id: "settings.general.monoFont.description",
+    message: "Used for code, terminals, diffs, and other monospaced content.",
+  },
+  monoFontPlaceholder: {
+    id: "settings.general.monoFont.placeholder",
+    message: "e.g. Consolas or Cascadia Mono",
   },
   behaviorTitle: { id: "settings.general.behavior.title", message: "Behavior" },
   snapshotsTitle: { id: "settings.general.snapshots.title", message: "File snapshots" },
@@ -257,6 +287,18 @@ export function GeneralPanel(props: {
             </select>
           }
         />
+        <FontPreferenceRow
+          kind="sans"
+          title={_(copy.fontTitle)}
+          description={_(copy.fontDescription)}
+          placeholder={_(copy.fontPlaceholder)}
+        />
+        <FontPreferenceRow
+          kind="mono"
+          title={_(copy.monoFontTitle)}
+          description={_(copy.monoFontDescription)}
+          placeholder={_(copy.monoFontPlaceholder)}
+        />
       </SettingsSection>
 
       <SettingsSection title={_(copy.behaviorTitle)}>
@@ -286,6 +328,61 @@ export function GeneralPanel(props: {
         </div>
       </SettingsSection>
     </SettingsPage>
+  )
+}
+
+function FontPreferenceRow(props: { kind: FontKind; title: string; description: string; placeholder: string }) {
+  const { _ } = useLingui()
+  const font = useFontPreference()
+
+  function statusLabel(status: FontDetectionStatus) {
+    if (status === "applied") return _(copy.fontApplied)
+    if (status === "missing") return _(copy.fontMissing)
+    if (status === "unsupported") return _(copy.fontUnsupported)
+    if (status === "denied") return _(copy.fontDenied)
+    return _(copy.fontDefault)
+  }
+
+  return (
+    <SettingRow
+      title={props.title}
+      description={props.description}
+      stateLabel={statusLabel(font.status(props.kind))}
+      trailing={
+        <div class="settings-font-controls">
+          <input
+            class="settings-font-input"
+            type="text"
+            value={font.family(props.kind)}
+            placeholder={props.placeholder}
+            aria-label={props.title}
+            disabled={font.checking(props.kind)}
+            onInput={(event) => font.setFamily(props.kind, event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void font.checkAndApply(props.kind)
+            }}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            disabled={font.checking(props.kind) || !font.family(props.kind).trim()}
+            onClick={() => void font.checkAndApply(props.kind)}
+          >
+            {font.checking(props.kind) ? _(copy.fontChecking) : _(copy.fontCheck)}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="small"
+            disabled={!font.family(props.kind)}
+            onClick={() => font.reset(props.kind)}
+          >
+            {_(copy.fontReset)}
+          </Button>
+        </div>
+      }
+    />
   )
 }
 
