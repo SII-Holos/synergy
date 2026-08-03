@@ -9,6 +9,7 @@ import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-u
 import { terminal as T } from "@/locales/messages"
 import { applyTerminalTheme, type TerminalTheme } from "./terminal-theme"
 import { textSelectionController } from "@/context/text-selection"
+import { ReconnectController } from "./reconnect"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
@@ -33,10 +34,8 @@ export const Terminal = (props: TerminalProps) => {
   let handleResize: () => void
   let handleTextareaFocus: () => void
   let handleTextareaBlur: () => void
-  let reconnect: number | undefined
+  let reconnectController: ReconnectController | undefined
   let disposed = false
-  let reconnectDelay = 1000
-  let reconnectAttempts = 0
   const [connected, setConnected] = createSignal(false)
   const [gone, setGone] = createSignal(false)
   const lingui = useLingui()
@@ -81,7 +80,9 @@ export const Terminal = (props: TerminalProps) => {
 
   onMount(async () => {
     const mod = await import("ghostty-web")
+    if (disposed) return
     ghostty = await mod.Ghostty.load()
+    if (disposed) return
 
     const t = new mod.Terminal({
       cursorBlink: true,
@@ -209,9 +210,7 @@ export const Terminal = (props: TerminalProps) => {
       ws = socket
 
       socket.addEventListener("open", () => {
-        setConnected(true)
-        reconnectDelay = 1000
-        reconnectAttempts = 0
+        reconnectController?.onOpen()
         sdk.client.pty
           .update({
             ptyID: local.pty.id,
@@ -231,41 +230,43 @@ export const Terminal = (props: TerminalProps) => {
       })
       socket.addEventListener("close", () => {
         setConnected(false)
-        if (disposed) return
-        reconnectAttempts++
-        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-          setGone(true)
-          local.onGone?.(local.pty.id)
-          return
-        }
-        reconnect = window.setTimeout(async () => {
-          if (disposed) return
-          try {
-            const res = await sdk.client.pty.get({ ptyID: local.pty.id })
-            if (!res.data?.id) {
-              setGone(true)
-              local.onGone?.(local.pty.id)
-              return
-            }
-          } catch {
-            setGone(true)
-            local.onGone?.(local.pty.id)
-            return
-          }
-          reconnectDelay = Math.min(reconnectDelay * 2, 10_000)
-          connect()
-        }, reconnectDelay)
+        reconnectController?.onClose()
       })
     }
+
+    reconnectController = new ReconnectController({
+      maxAttempts: MAX_RECONNECT_ATTEMPTS,
+      quickCycleMs: 5_000,
+      initialDelayMs: 1_000,
+      maxDelayMs: 10_000,
+      timer: {
+        setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+        clearTimeout: (id) => window.clearTimeout(id),
+        now: () => Date.now(),
+      },
+      validate: async () => {
+        try {
+          const res = await sdk.client.pty.get({ ptyID: local.pty.id })
+          return !!res.data?.id
+        } catch {
+          return false
+        }
+      },
+      connect,
+      onConnected: () => setConnected(true),
+      onGiveUp: () => {
+        setGone(true)
+        local.onGone?.(local.pty.id)
+      },
+      isDisposed: () => disposed,
+    })
 
     connect()
   })
 
   onCleanup(() => {
     disposed = true
-    if (reconnect) {
-      clearTimeout(reconnect)
-    }
+    reconnectController?.dispose()
     if (handleResize) {
       window.removeEventListener("resize", handleResize)
     }
@@ -274,20 +275,28 @@ export const Terminal = (props: TerminalProps) => {
     term?.textarea?.removeEventListener("blur", handleTextareaBlur)
 
     const t = term
-    if (serializeAddon && props.onCleanup && t) {
-      const buffer = serializeAddon.serialize()
-      props.onCleanup({
-        ...local.pty,
-        buffer,
-        rows: t.rows,
-        cols: t.cols,
-        scrollY: t.getViewportY(),
-      })
+    try {
+      if (serializeAddon && props.onCleanup && t) {
+        const buffer = serializeAddon.serialize()
+        props.onCleanup({
+          ...local.pty,
+          buffer,
+          rows: t.rows,
+          cols: t.cols,
+          scrollY: t.getViewportY(),
+        })
+      }
+    } catch (error) {
+      console.error("Failed to persist terminal buffer on close", error)
     }
 
-    ws?.close()
+    try {
+      ws?.close()
+    } catch {}
     textSelectionController.update(undefined)
-    t?.dispose()
+    try {
+      t?.dispose()
+    } catch {}
   })
 
   return (
