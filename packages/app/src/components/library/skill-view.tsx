@@ -1,6 +1,7 @@
 import { createMemo, createResource, createSignal, For, Show, type JSXElement } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Popover } from "@kobalte/core/popover"
+import { MenuField } from "../menu-field/MenuField"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -119,7 +120,6 @@ export function SkillView(props: {
     })
   })
   const [filter, setFilter] = createSignal<SkillScope>("all")
-  const [filterOpen, setFilterOpen] = createSignal(false)
   const [reloading, setReloading] = createSignal(false)
   const [diagnosticsExpanded, setDiagnosticsExpanded] = createSignal(false)
 
@@ -325,78 +325,48 @@ export function SkillView(props: {
     <div class="library-list-pane">
       <div class="library-list-toolbar">
         <div class="library-toolbar-left">
-          <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
-            <Popover.Trigger as="button" class="library-control-pill">
-              <span>{filterLabel()}</span>
-              <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
-            </Popover.Trigger>
-            <Popover.Portal>
-              <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
-                <button
-                  type="button"
-                  classList={{
-                    "library-menu-item": true,
-                    "is-active": filter() === "all",
-                  }}
-                  onClick={() => {
-                    setFilter("all")
-                    setFilterOpen(false)
-                  }}
-                >
-                  <span>{_({ id: "app.library.skills.filter.all", message: "All skills" })}</span>
-                  <span class="library-menu-count">{(skills()?.items ?? []).length}</span>
-                </button>
-                <Show when={scopeCounts().project > 0}>
-                  <button
-                    type="button"
-                    classList={{
-                      "library-menu-item": true,
-                      "is-active": filter() === "project",
-                    }}
-                    onClick={() => {
-                      setFilter("project")
-                      setFilterOpen(false)
-                    }}
-                  >
-                    <span>{_({ id: "app.library.skills.filterOption.project", message: "Project" })}</span>
-                    <span class="library-menu-count">{scopeCounts().project}</span>
-                  </button>
-                </Show>
-                <Show when={scopeCounts().global > 0}>
-                  <button
-                    type="button"
-                    classList={{
-                      "library-menu-item": true,
-                      "is-active": filter() === "global",
-                    }}
-                    onClick={() => {
-                      setFilter("global")
-                      setFilterOpen(false)
-                    }}
-                  >
-                    <span>{_({ id: "app.library.skills.filterOption.global", message: "Global" })}</span>
-                    <span class="library-menu-count">{scopeCounts().global}</span>
-                  </button>
-                </Show>
-                <Show when={scopeCounts().builtin > 0}>
-                  <button
-                    type="button"
-                    classList={{
-                      "library-menu-item": true,
-                      "is-active": filter() === "builtin",
-                    }}
-                    onClick={() => {
-                      setFilter("builtin")
-                      setFilterOpen(false)
-                    }}
-                  >
-                    <span>{_({ id: "app.library.skills.filterOption.builtin", message: "Built-in" })}</span>
-                    <span class="library-menu-count">{scopeCounts().builtin}</span>
-                  </button>
-                </Show>
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover>
+          <MenuField
+            value={filter()}
+            ariaLabel={_({ id: "app.library.skills.filter.aria", message: "Filter skills" })}
+            triggerLabel={filterLabel()}
+            placement="bottom-start"
+            surfaceClass="library-filter-menu"
+            options={[
+              {
+                value: "all",
+                label: _({ id: "app.library.skills.filter.all", message: "All skills" }),
+                count: (skills()?.items ?? []).length,
+              },
+              ...(scopeCounts().project > 0
+                ? [
+                    {
+                      value: "project",
+                      label: _({ id: "app.library.skills.filterOption.project", message: "Project" }),
+                      count: scopeCounts().project,
+                    },
+                  ]
+                : []),
+              ...(scopeCounts().global > 0
+                ? [
+                    {
+                      value: "global",
+                      label: _({ id: "app.library.skills.filterOption.global", message: "Global" }),
+                      count: scopeCounts().global,
+                    },
+                  ]
+                : []),
+              ...(scopeCounts().builtin > 0
+                ? [
+                    {
+                      value: "builtin",
+                      label: _({ id: "app.library.skills.filterOption.builtin", message: "Built-in" }),
+                      count: scopeCounts().builtin,
+                    },
+                  ]
+                : []),
+            ]}
+            onChange={(value) => setFilter(value as SkillScope)}
+          />
           <span class="library-toolbar-summary">
             {_({
               id: "app.library.skills.count",
