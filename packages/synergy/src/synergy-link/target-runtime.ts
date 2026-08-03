@@ -36,6 +36,7 @@ export namespace SynergyLinkTargetRuntime {
 
   export async function probe(id: string): Promise<SynergyLinkTarget.View> {
     const target = await SynergyLinkTargetStore.require(id)
+    const probedLocator = { linkID: target.linkID, targetAgentID: target.targetAgentID }
     if (!target.enabled) throw new Error(`Synergy Link target is disabled: ${target.id}`)
     const client = SynergyLinkExecution.requireClient(target.linkID, "connect")
     const existing = SynergyLinkExecution.getSession(target.linkID, {
@@ -75,14 +76,18 @@ export namespace SynergyLinkTargetRuntime {
           : result.metadata.status === "busy" || result.metadata.status === "refused"
             ? result.metadata.status
             : "failed"
-      const updated = await SynergyLinkTargetService.recordProbe(target.id, {
-        status: probeStatus,
-        host: result.metadata.host ? { ...result.metadata.host, observedAt: Date.now() } : undefined,
-      })
+      const updated = await SynergyLinkTargetService.recordProbe(
+        target.id,
+        {
+          status: probeStatus,
+          host: result.metadata.host ? { ...result.metadata.host, observedAt: Date.now() } : undefined,
+        },
+        probedLocator,
+      )
       return view(updated)
     } catch (error) {
       primaryError = error
-      await SynergyLinkTargetService.recordProbe(target.id, { status: "failed" }).catch(() => undefined)
+      await SynergyLinkTargetService.recordProbe(target.id, { status: "failed" }, probedLocator).catch(() => undefined)
       throw error
     } finally {
       if (temporarySessionID) {

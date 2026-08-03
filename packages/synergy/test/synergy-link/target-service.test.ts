@@ -100,6 +100,49 @@ describe("Synergy Link target service", () => {
     expect(await SynergyLinkTargetStore.get(target.id)).toBeUndefined()
     expect(SynergyLinkExecution.getSession(target.linkID)).toBeUndefined()
   })
+
+  test("ignores a host observation from a replaced locator", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Replaced probe host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    const relinked = await SynergyLinkTargetStore.update(
+      target.id,
+      { kind: "relink", targetAgentID: "agent_new", linkID: "link_new" },
+      {},
+    )
+
+    const observed = await SynergyLinkTargetService.recordProbe(
+      target.id,
+      {
+        status: "reachable",
+        host: {
+          type: "synergy_link.host.hello",
+          linkID: "link_old",
+          hostSessionID: "host_old",
+          capabilities: {
+            platform: "linux",
+            arch: "x64",
+            runtime: "bun",
+            defaultShell: "sh",
+            supportedShells: ["sh"],
+            supportsPty: false,
+            supportsSendKeys: true,
+            supportsSoftKill: true,
+            supportsProcessGroups: true,
+            envCaseInsensitive: false,
+            lineEndings: "lf",
+          },
+          observedAt: Date.now(),
+        },
+      },
+      { linkID: target.linkID, targetAgentID: target.targetAgentID },
+    )
+
+    expect(observed).toEqual(relinked)
+    expect(await SynergyLinkTargetStore.require(target.id)).toEqual(relinked)
+  })
 })
 
 describe("Synergy Link target service relink", () => {

@@ -207,6 +207,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
           `connect open requires targetAgentID. Provide it together with a Synergy Link ID such as "link_...".`,
         )
       }
+      const probedLocator = { linkID, targetAgentID }
       if (!registeredTarget && candidateSession && candidateSession.sourceAgent !== ctx.agent) {
         throw new Error(`The active Synergy Link session for link "${linkID}" belongs to another local agent.`)
       }
@@ -261,10 +262,14 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
 
       if (opened.metadata.status !== "opened") {
         if (registeredTarget) {
-          await SynergyLinkTargetService.recordProbe(registeredTarget.id, {
-            status: opened.metadata.status === "busy" ? "busy" : "refused",
-            host: opened.metadata.host ? { ...opened.metadata.host, observedAt: Date.now() } : undefined,
-          })
+          await SynergyLinkTargetService.recordProbe(
+            registeredTarget.id,
+            {
+              status: opened.metadata.status === "busy" ? "busy" : "refused",
+              host: opened.metadata.host ? { ...opened.metadata.host, observedAt: Date.now() } : undefined,
+            },
+            probedLocator,
+          )
         }
         return {
           title: opened.title,
@@ -300,10 +305,14 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
       })
 
       if (registeredTarget && opened.metadata.host) {
-        await SynergyLinkTargetService.recordProbe(registeredTarget.id, {
-          status: "reachable",
-          host: { ...opened.metadata.host, observedAt: Date.now() },
-        })
+        await SynergyLinkTargetService.recordProbe(
+          registeredTarget.id,
+          {
+            status: "reachable",
+            host: { ...opened.metadata.host, observedAt: Date.now() },
+          },
+          probedLocator,
+        )
       }
 
       return {

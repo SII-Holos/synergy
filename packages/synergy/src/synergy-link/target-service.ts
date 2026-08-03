@@ -15,6 +15,8 @@ const log = Log.create({ service: "synergy-link.target-service" })
 
 const targetLock = (id: string) => `synergy-link:target:${id}`
 
+type TargetLocator = Pick<SynergyLinkTarget.Info, "linkID" | "targetAgentID">
+
 export namespace SynergyLinkTargetService {
   export const Event = {
     Created: BusEvent.define("synergy_link.target.created", z.object({ target: SynergyLinkTarget.Info })),
@@ -162,11 +164,19 @@ export namespace SynergyLinkTargetService {
     })
   }
 
-  export async function recordProbe(id: string, input: Parameters<typeof SynergyLinkTargetStore.recordProbe>[1]) {
+  export async function recordProbe(
+    id: string,
+    input: Parameters<typeof SynergyLinkTargetStore.recordProbe>[1],
+    expectedLocator: TargetLocator,
+  ) {
     return ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
         using _ = await Lock.write(targetLock(id))
+        const current = await SynergyLinkTargetStore.require(id)
+        if (current.linkID !== expectedLocator.linkID || current.targetAgentID !== expectedLocator.targetAgentID) {
+          return current
+        }
         const target = await SynergyLinkTargetStore.recordProbe(id, input)
         await Bus.publish(Event.Updated, { target })
         return target

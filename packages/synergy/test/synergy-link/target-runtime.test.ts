@@ -6,6 +6,7 @@ import type {
   SynergyLinkSession,
 } from "@ericsanchezok/synergy-link-protocol"
 import { SynergyLinkTargetRuntime } from "../../src/synergy-link/target-runtime"
+import { SynergyLinkTargetService } from "../../src/synergy-link/target-service"
 import { SynergyLinkTargetStore } from "../../src/synergy-link/target-store"
 import { StoragePath } from "../../src/storage/path"
 import { Storage } from "../../src/storage/storage"
@@ -247,6 +248,83 @@ describe("Synergy Link target runtime", () => {
 
     expect(observed.lastProbe?.status).toBe("reachable")
     expect(observed.authorization).toBe("approved")
+  })
+
+  test("does not apply an old locator probe failure after relink", async () => {
+    const oldProbeStarted = Promise.withResolvers<void>()
+    const oldProbe = Promise.withResolvers<SynergyLinkSession.Result>()
+    SynergyLinkExecution.setClient({
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        throw new Error("unexpected bash execution")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (linkID, payload): Promise<SynergyLinkSession.Result> => {
+        if (linkID === "link_old" && payload.action === "open") {
+          oldProbeStarted.resolve()
+          return await oldProbe.promise
+        }
+        if (linkID === "link_new" && payload.action === "open") {
+          return {
+            title: "Opened",
+            metadata: {
+              action: "open",
+              status: "opened",
+              sessionID: "session_new",
+              backend: "remote",
+            },
+            output: "opened",
+          }
+        }
+        if (payload.action === "close") {
+          return {
+            title: "Closed",
+            metadata: {
+              action: "close",
+              status: "closed",
+              sessionID: payload.sessionID,
+              backend: "remote",
+            },
+            output: "closed",
+          }
+        }
+        throw new Error(`unexpected ${payload.action} request for ${linkID}`)
+      },
+    })
+    const target = await SynergyLinkTargetStore.create({
+      name: "Concurrent probe host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    const probe = SynergyLinkTargetRuntime.probe(target.id)
+
+    try {
+      await oldProbeStarted.promise
+      const relinked = await SynergyLinkTargetService.update(target.id, {
+        kind: "relink",
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+      })
+      expect(relinked).toMatchObject({
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+        authorization: "approved",
+        lastProbe: { status: "reachable" },
+      })
+
+      oldProbe.reject(new Error("old locator offline"))
+      await expect(probe).rejects.toThrow("old locator offline")
+      expect(await SynergyLinkTargetStore.require(target.id)).toMatchObject({
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+        authorization: "approved",
+        lastProbe: { status: "reachable" },
+      })
+    } finally {
+      oldProbe.reject(new Error("test cleanup"))
+      await probe.catch(() => undefined)
+    }
   })
 })
 
