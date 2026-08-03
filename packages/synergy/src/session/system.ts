@@ -3,6 +3,7 @@ import { Ripgrep } from "../file/ripgrep"
 import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
 import { ScopeContext } from "../scope/context"
+import { Scope } from "@/scope"
 import { SessionEndpoint } from "./endpoint"
 
 import PROMPT_FALLBACK from "./prompt/fallback.txt"
@@ -45,6 +46,13 @@ export namespace SystemPrompt {
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
+    const projectRoots = Scope.Root.projectRoots(scope)
+    if (projectRoots.length > 1) {
+      envLines.push(`  Project folders: ${projectRoots.join(", ")}`)
+    } else if (scope.type === "project") {
+      envLines.push(`  Project folder: ${projectRoots[0] ?? scope.directory}`)
+    }
+
     const workspace = ScopeContext.current.workspace
     if (workspace) {
       envLines.push(`  Workspace type: ${workspace.type}`)
@@ -61,6 +69,12 @@ export namespace SystemPrompt {
         envLines.push(`  Workspace boundary: enforced by tools and permission checks`)
         if (workspace.originalCheckout) {
           envLines.push(`  Original checkout: ${workspace.originalCheckout}`)
+        }
+        const trustedProjectFolders = projectRoots.filter((root) => root !== workspace.originalCheckout)
+        if (trustedProjectFolders.length > 0) {
+          envLines.push(
+            `  Project folders: ${trustedProjectFolders.join(", ")} — these declared project folders are inside the trust boundary; only the original checkout above requires explicit permission.`,
+          )
         }
         envLines.push(
           `  Leaving: use worktree_leave when isolated work is complete or you need to return to the main checkout.`,

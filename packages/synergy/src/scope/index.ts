@@ -13,6 +13,7 @@ import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
 import { BusEvent } from "@/bus/bus-event"
 import { type Home as HomeType, type Project as ProjectType, Info as InfoSchema, type Info as InfoType } from "./types"
+import { ScopeRoots } from "./roots"
 
 export type Scope = Scope.Home | Scope.Project
 
@@ -23,7 +24,7 @@ export namespace Scope {
   export type Project = ProjectType
   export const Info = InfoSchema
   export type Info = InfoType
-
+  export const Root = ScopeRoots
   export const Event = {
     Updated: BusEvent.define("scope.updated", Info),
     Removed: BusEvent.define("scope.removed", z.object({ id: z.string(), directory: z.string().optional() })),
@@ -38,7 +39,7 @@ export namespace Scope {
   }
 
   export function contains(scope: Scope, targetPath: string): boolean {
-    return Filesystem.contains(scope.directory, targetPath)
+    return ScopeRoots.projectRoots(scope).some((root) => Filesystem.contains(root, targetPath))
   }
 
   export function home(): Scope.Home {
@@ -414,6 +415,7 @@ export namespace Scope {
     icon?: { url?: string; color?: string }
     pinned?: number | null
     archived?: number | null
+    sandboxes?: string[]
   }) {
     if (input.scopeID === "home") return undefined
     if (input.archived !== undefined && input.archived !== null) {
@@ -431,6 +433,19 @@ export namespace Scope {
       }
       if (input.archived !== undefined) {
         draft.time.archived = input.archived ?? undefined
+      }
+      if (input.sandboxes !== undefined) {
+        const worktree = path.resolve(draft.worktree)
+        const seen = new Set<string>()
+        draft.sandboxes = input.sandboxes
+          .filter((s) => path.isAbsolute(s))
+          .filter((s) => {
+            const resolved = path.resolve(s)
+            if (resolved === worktree) return false
+            if (seen.has(resolved)) return false
+            seen.add(resolved)
+            return true
+          })
       }
       draft.time.updated = Date.now()
     })

@@ -1057,6 +1057,15 @@ export const dialog = {
   scopeUpdated: { id: "app.dialog.scope.toast.updated", message: "Project updated" },
   scopeUpdateFailed: { id: "app.dialog.scope.toast.updateFailed", message: "Failed to update project" },
   scopeUpdateUnknownError: { id: "app.dialog.scope.toast.unknownError", message: "Unknown error" },
+  projectFolders: { id: "app.dialog.scope.foldersLabel", message: "Project folders" },
+  projectFoldersHint: {
+    id: "app.dialog.scope.foldersHint",
+    message: "Additional folders trusted automatically by the control profile, sandbox, and file tools.",
+  },
+  projectFoldersAdd: { id: "app.dialog.scope.foldersAdd", message: "Add folder" },
+  projectFoldersMain: { id: "app.dialog.scope.foldersMain", message: "Main folder" },
+  projectFoldersRemove: { id: "app.dialog.scope.foldersRemove", message: "Remove folder" },
+  projectFoldersAddTitle: { id: "app.dialog.scope.foldersAddTitle", message: "Add project folder" },
   // Browser model status copy
   directoryBrowserLoadingTitle: { id: "app.dialog.directory.browser.loading", message: "Searching folders" },
   directoryBrowserLoadingDesc: {
