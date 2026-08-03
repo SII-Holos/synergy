@@ -315,6 +315,15 @@ export interface ShellHostService {
   run(input: PluginShellRunInput): Promise<PluginShellRunResult>
 }
 
+export type PluginRuntimeEndpoint = {
+  url: string
+  generation: string
+}
+
+export interface RuntimeEndpointHostService {
+  get(): Promise<PluginRuntimeEndpoint>
+}
+
 export interface PluginInvocationContext {
   requestId: string
   scopeId: string
@@ -335,6 +344,7 @@ export interface PluginInvocationContext {
   agent?: PluginAgentHostService
   asset?: AssetHostService
   shell?: ShellHostService
+  runtimeEndpoint?: RuntimeEndpointHostService
 }
 
 export interface PluginActivationContext {

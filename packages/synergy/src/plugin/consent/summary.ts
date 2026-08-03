@@ -26,6 +26,11 @@ const labels: Record<string, { title: string; description: string; category: Per
     description: "Run argv-based commands only from contributions that explicitly require this access.",
     category: "runtime",
   },
+  "runtime.endpoint.read": {
+    title: "Read local runtime endpoint",
+    description: "Read the loopback address of the current Synergy runtime.",
+    category: "runtime",
+  },
   "blueprint.delegate": {
     title: "Run Blueprint workflows",
     description: "Create and control BlueprintLoop executions in the active Scope.",
