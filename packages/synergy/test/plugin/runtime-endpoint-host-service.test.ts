@@ -70,11 +70,24 @@ describe("runtime endpoint Host Service", () => {
     await expect(invoke({ params: { token: "no" } })).rejects.toThrow("does not accept parameters")
   })
 
+  test("treats wildcard binds as loopback-reachable and normalizes the URL", async () => {
+    configureRuntimeEndpoint({ hostname: "0.0.0.0", port: 43123, generation: "listener-wildcard-v4" })
+    await expect(invoke({})).resolves.toEqual({
+      url: "http://127.0.0.1:43123",
+      generation: "listener-wildcard-v4",
+    })
+    configureRuntimeEndpoint({ hostname: "::", port: 43123, generation: "listener-wildcard-v6" })
+    await expect(invoke({})).resolves.toEqual({
+      url: "http://127.0.0.1:43123",
+      generation: "listener-wildcard-v6",
+    })
+  })
+
   test("rejects unavailable and non-loopback listeners", async () => {
     configureRuntimeEndpoint(undefined)
     await expect(invoke({})).rejects.toMatchObject({ code: "PLUGIN_RUNTIME_ENDPOINT_UNAVAILABLE" })
-    configureRuntimeEndpoint({ hostname: "0.0.0.0", port: 43123, generation: "listener-three" })
-    expect(peekRuntimeEndpointGeneration()).toBe("listener-three")
+    configureRuntimeEndpoint({ hostname: "192.168.1.5", port: 43123, generation: "listener-three" })
+    expect(peekRuntimeEndpointGeneration()).toBeUndefined()
     await expect(invoke({})).rejects.toMatchObject({ code: "PLUGIN_RUNTIME_ENDPOINT_UNSAFE" })
   })
 })

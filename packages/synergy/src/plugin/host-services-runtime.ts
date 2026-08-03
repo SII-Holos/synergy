@@ -642,7 +642,13 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
   return inScope(input, async () => {
     const value = params(input)
     if (input.method === "runtime.endpoint.get") {
-      if (Object.keys(value).length > 0) throw new Error("runtime.endpoint.get does not accept parameters")
+      if (
+        input.params !== undefined &&
+        input.params !== null &&
+        !(typeof input.params === "object" && Object.keys(input.params).length === 0)
+      ) {
+        throw new Error("runtime.endpoint.get does not accept parameters")
+      }
       return getRuntimeEndpoint()
     }
     if (input.method === "event.publish") return publishEvent(input)
