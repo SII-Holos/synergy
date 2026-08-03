@@ -14274,6 +14274,10 @@ msgid "settings.general.font.description"
 msgstr "Enter a font installed on this device. Synergy uses the default font when it cannot be found."
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.editing"
+msgstr "Press Check to apply"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.missing"
 msgstr "Not found; using default"
 

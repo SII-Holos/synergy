@@ -14274,6 +14274,10 @@ msgid "settings.general.font.description"
 msgstr "输入本机已安装的字体。找不到时，Synergy 会使用默认字体。"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.editing"
+msgstr "按“检查并应用”以应用"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.missing"
 msgstr "未找到；使用默认字体"
 

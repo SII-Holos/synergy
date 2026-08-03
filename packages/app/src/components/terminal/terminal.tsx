@@ -19,8 +19,10 @@ export interface TerminalProps extends ComponentProps<"div"> {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 5
-const FONT_CHANGE_EVENT = "synergy:font-change"
 
+// ghostty-web 0.3.0 only applies fontFamily at construction time;
+// runtime option changes are logged as unsupported and never re-render.
+// New terminal instances pick up the configured font via this helper.
 function getTerminalFontFamily(): string {
   if (typeof document === "undefined") return '"IBM Plex Mono", monospace'
   return (
@@ -40,7 +42,6 @@ export const Terminal = (props: TerminalProps) => {
   let serializeAddon: SerializeAddon
   let fitAddon: FitAddon
   let handleResize: () => void
-  let handleFontChange: ((event: Event) => void) | undefined
   let handleTextareaFocus: () => void
   let handleTextareaBlur: () => void
   let reconnect: number | undefined
@@ -105,13 +106,8 @@ export const Terminal = (props: TerminalProps) => {
     })
     term = t
 
-    handleFontChange = (event: Event) => {
-      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
-      if (kind !== "mono") return
-      t.options.fontFamily = getTerminalFontFamily()
-      fitAddon?.fit()
-    }
-    document.addEventListener(FONT_CHANGE_EVENT, handleFontChange)
+    // No font-change listener: ghostty-web cannot re-render with a new
+    // fontFamily at runtime, so updating options would be a silent no-op.
 
     const copy = () => {
       const selection = t.getSelection()
@@ -287,7 +283,6 @@ export const Terminal = (props: TerminalProps) => {
     if (handleResize) {
       window.removeEventListener("resize", handleResize)
     }
-    if (handleFontChange) document.removeEventListener(FONT_CHANGE_EVENT, handleFontChange)
     container.removeEventListener("pointerdown", handlePointerDown)
     term?.textarea?.removeEventListener("focus", handleTextareaFocus)
     term?.textarea?.removeEventListener("blur", handleTextareaBlur)

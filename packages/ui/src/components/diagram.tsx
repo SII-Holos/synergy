@@ -199,6 +199,28 @@ function getMeasureFont(size: number, weight: number) {
   return `${weight} ${size}px ${getSansFontFamily()}`
 }
 
+const FONT_CHANGE_EVENT = "synergy:font-change"
+
+/**
+ * Tracks interface-font changes so measurement-based diagram layouts
+ * recompute. The text-measure cache is keyed by font string; it is cleared
+ * whenever the configured sans font changes.
+ */
+function useSansFontVersion(): () => number {
+  const [fontVersion, setFontVersion] = createSignal(0)
+  onMount(() => {
+    const handleFontChange = (event: Event) => {
+      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+      if (kind !== "sans") return
+      textMeasureCache.clear()
+      setFontVersion((version) => version + 1)
+    }
+    document.addEventListener(FONT_CHANGE_EVENT, handleFontChange)
+    onCleanup(() => document.removeEventListener(FONT_CHANGE_EVENT, handleFontChange))
+  })
+  return fontVersion
+}
+
 function estimateTextWidth(text: string, font: string): number {
   const key = `${font}::${text}`
   const cached = textMeasureCache.get(key)
@@ -787,6 +809,7 @@ export function DiagramGraph(props: { document: GraphDocument }) {
   const [containerWidth, setContainerWidth] = createSignal(0)
   const [overflowX, setOverflowX] = createSignal(false)
   const [overflowY, setOverflowY] = createSignal(false)
+  const fontVersion = useSansFontVersion()
   let ref: HTMLDivElement | undefined
   let scrollRef: HTMLDivElement | undefined
 
@@ -816,6 +839,7 @@ export function DiagramGraph(props: { document: GraphDocument }) {
   }
 
   const layout = createMemo(() => {
+    fontVersion()
     const l = computeGraphLayout(props.document, containerWidth())
     queueMicrotask(checkOverflow)
     return l
@@ -1005,6 +1029,7 @@ function computeSequenceLayout(doc: SequenceDocument, containerWidth: number) {
 
 export function DiagramSequence(props: { document: SequenceDocument }) {
   const [containerWidth, setContainerWidth] = createSignal(0)
+  const fontVersion = useSansFontVersion()
   let ref: HTMLDivElement | undefined
 
   onMount(() => {
@@ -1015,7 +1040,10 @@ export function DiagramSequence(props: { document: SequenceDocument }) {
     onCleanup(() => observer.disconnect())
   })
 
-  const layout = createMemo(() => computeSequenceLayout(props.document, containerWidth()))
+  const layout = createMemo(() => {
+    fontVersion()
+    return computeSequenceLayout(props.document, containerWidth())
+  })
 
   return (
     <div data-component="diagram-sequence" ref={ref}>

@@ -14274,6 +14274,10 @@ msgid "settings.general.font.description"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.editing"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.missing"
 msgstr ""
 

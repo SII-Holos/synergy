@@ -87,6 +87,7 @@ const copy = {
     message: "Font access was denied; using default",
   },
   fontDefault: { id: "settings.general.font.default", message: "Using default" },
+  fontEditing: { id: "settings.general.font.editing", message: "Press Check to apply" },
   monoFontTitle: { id: "settings.general.monoFont.title", message: "Monospace font" },
   monoFontDescription: {
     id: "settings.general.monoFont.description",
@@ -339,7 +340,9 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
   const font = useFontPreference()
 
   function statusLabel(status: FontDetectionStatus) {
+    if (status === "checking") return _(copy.fontChecking)
     if (status === "applied") return _(copy.fontApplied)
+    if (status === "editing") return _(copy.fontEditing)
     if (status === "missing") return _(copy.fontMissing)
     if (status === "unsupported") return _(copy.fontUnsupported)
     if (status === "denied") return _(copy.fontDenied)
@@ -378,7 +381,7 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
             type="button"
             variant="ghost"
             size="small"
-            disabled={!font.family(props.kind)}
+            disabled={!font.family(props.kind) && !font.appliedFamily(props.kind)}
             onClick={() => font.reset(props.kind)}
           >
             {_(copy.fontReset)}
