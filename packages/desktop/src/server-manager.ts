@@ -686,10 +686,8 @@ function waitForDeadline<T>(promise: Promise<T>, deadline: number): Promise<T | 
   })
 }
 
-function serverCommandArgs(port: number): string[] {
-  const args = ["server", "--port", String(port)]
-  if (process.platform === "win32" && port === 0) args.push("--hostname", "127.0.0.1")
-  return args
+export function serverCommandArgs(port: number): string[] {
+  return ["server", "--port", String(port), "--hostname", "127.0.0.1"]
 }
 
 function packagedServerBinary(resourcesPath: string): string | null {

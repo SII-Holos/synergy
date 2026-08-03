@@ -17,6 +17,7 @@ import {
   type PluginSelectionSurfaceContext,
   type PluginTextActionSurfaceContext,
   type PluginMessageSurfaceContext,
+  type PluginSettingsSurfaceContext,
   type PluginSurfaceContext,
 } from "@ericsanchezok/synergy-plugin"
 import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
@@ -498,6 +499,16 @@ function registerPluginSurfaces(input: {
       },
       "ui.settings": (item: Extract<PluginManifestContribution, { kind: "ui.settings" }>) => {
         const loader = componentLoader<Record<string, never>>(item)
+        const context = surfaceContext({
+          contribution: plugin,
+          contributionId: item.id,
+          kind: item.kind,
+          serverUrl: input.serverUrl,
+          client: input.client,
+          events: input.events,
+          scopeKey: input.scopeKey,
+          showConfirm: input.showConfirm,
+        }) satisfies PluginSettingsSurfaceContext
         disposers.push(
           registerSettingsSection({
             id: pluginSurfaceId(plugin.pluginId, item.id),
@@ -509,6 +520,7 @@ function registerPluginSurfaces(input: {
             visibility: item.visibility,
             pluginId: plugin.pluginId,
             scopeId: plugin.scopeId,
+            context,
             loader: loader as never,
           }),
         )

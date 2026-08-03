@@ -150,7 +150,7 @@ async function invoke(message: Extract<HostToPlugin, { type: "invoke" }>) {
   aborts.set(message.requestId, controller)
   try {
     const contribution = handler(message.handlerId)
-    if (contribution.kind === "lifecycle.uninstall") {
+    if (contribution.kind === "lifecycle.install" || contribution.kind === "lifecycle.uninstall") {
       return await contribution.handler(contextFor(message.requestId, message.context, controller.signal, contribution))
     }
     return await contribution.handler(
