@@ -103,7 +103,11 @@ async function run() {
     const viewport = checkpoint.data.viewport as { width?: number; height?: number }
     if (!viewport.width || !viewport.height) throw new Error("Native page started with a zero-sized viewport.")
 
-    view.webContents.forcefullyCrashRenderer()
+    const rendererProcessId = view.webContents.getOSProcessId()
+    if (rendererProcessId <= 0 || rendererProcessId === window.webContents.getOSProcessId()) {
+      throw new Error("Native page did not receive an isolated renderer process.")
+    }
+    process.kill(rendererProcessId, "SIGKILL")
     await waitFor(() => recovered, 10_000, "native renderer recovery")
     const recoveredPage = first.state()
     if (recoveredPage.id !== input.page.id) throw new Error("Native renderer recovery changed the stable page ID.")
