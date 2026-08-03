@@ -1,5 +1,5 @@
 import { SynergyLinkIdentity, SynergyLinkError, SynergyLinkSession } from "@ericsanchezok/synergy-link-protocol"
-import type { HolosCaller } from "../types"
+import type { ExecutionLease, HolosCaller } from "../types"
 import { SynergyLinkLog } from "../log"
 
 export interface SessionRecord {
@@ -11,20 +11,25 @@ export interface SessionRecord {
   label?: string
 }
 
+export type SessionEndReason = "closed" | "kicked" | "expired"
+
 export class SessionManager {
   #current: SessionRecord | null = null
   #blocked = new Set<string>()
   #timeoutMs: number
   readonly #onChange?: (input: { current: SessionRecord | null; blockedAgentIDs: string[] }) => void | Promise<void>
+  readonly #onEnd?: (session: SessionRecord, reason: SessionEndReason) => void | Promise<void>
 
   constructor(input?: {
     blockedAgentIDs?: string[]
     timeoutMs?: number
     onChange?: (input: { current: SessionRecord | null; blockedAgentIDs: string[] }) => void | Promise<void>
+    onEnd?: (session: SessionRecord, reason: SessionEndReason) => void | Promise<void>
   }) {
     for (const agentID of input?.blockedAgentIDs ?? []) this.#blocked.add(agentID)
     this.#timeoutMs = Math.max(60_000, input?.timeoutMs ?? 10 * 60 * 1000)
     this.#onChange = input?.onChange
+    this.#onEnd = input?.onEnd
   }
 
   current() {
@@ -58,15 +63,7 @@ export class SessionManager {
       currentRemoteAgentID: this.#current?.remoteAgentID,
     })
     if (this.#blocked.has(caller.agentID)) {
-      SynergyLinkLog.warn("session.open.blocked", {
-        callerAgentID: caller.agentID,
-      })
-      return this.#sessionResult({
-        action: "open",
-        status: "refused",
-        title: "Session refused",
-        output: `Remote agent ${caller.agentID} is blocked.`,
-      })
+      return this.#blockedResult(caller.agentID)
     }
 
     if (
@@ -84,6 +81,7 @@ export class SessionManager {
       return this.#sessionResult({
         action: "open",
         status: "opened",
+        reused: true,
         sessionID: this.#current.sessionID,
         remoteAgentID: this.#current.remoteAgentID,
         remoteOwnerUserID: this.#current.remoteOwnerUserID,
@@ -110,7 +108,7 @@ export class SessionManager {
     }
 
     const now = Date.now()
-    this.#current = {
+    const opened: SessionRecord = {
       sessionID: crypto.randomUUID(),
       remoteAgentID: caller.agentID,
       remoteOwnerUserID: caller.ownerUserID,
@@ -118,24 +116,32 @@ export class SessionManager {
       lastSeenAt: now,
       label,
     }
+    this.#current = opened
 
     SynergyLinkLog.info("session.open.created", {
       callerAgentID: caller.agentID,
       callerOwnerUserID: caller.ownerUserID,
-      sessionID: this.#current.sessionID,
+      sessionID: opened.sessionID,
       label,
     })
     await this.#emitChange()
 
+    if (this.#blocked.has(caller.agentID)) {
+      if (this.#current?.sessionID === opened.sessionID) {
+        await this.#endCurrent(opened, "kicked")
+      }
+      return this.#blockedResult(caller.agentID)
+    }
+
     return this.#sessionResult({
       action: "open",
       status: "opened",
-      sessionID: this.#current.sessionID,
-      remoteAgentID: this.#current.remoteAgentID,
-      remoteOwnerUserID: this.#current.remoteOwnerUserID,
-      label: this.#current.label,
+      sessionID: opened.sessionID,
+      remoteAgentID: opened.remoteAgentID,
+      remoteOwnerUserID: opened.remoteOwnerUserID,
+      label: opened.label,
       title: "Session opened",
-      output: `Opened session ${this.#current.sessionID} for ${caller.agentID}.`,
+      output: `Opened session ${opened.sessionID} for ${caller.agentID}.`,
     })
   }
 
@@ -147,8 +153,8 @@ export class SessionManager {
     })
     this.assertCaller(caller, sessionID)
     const current = this.#current
-    this.#current = null
-    await this.#emitChange()
+    if (!current) throw envelopeError("session_invalid", "No active collaboration session.")
+    await this.#endCurrent(current, "closed")
     SynergyLinkLog.info("session.close.completed", {
       callerAgentID: caller.agentID,
       sessionID,
@@ -171,21 +177,21 @@ export class SessionManager {
       sessionID,
     })
     this.assertCaller(caller, sessionID)
-    if (!this.#current) throw envelopeError("session_invalid", "No active session.")
-    this.#current.lastSeenAt = Date.now()
+    const current = this.#current!
+    current.lastSeenAt = Date.now()
     await this.#emitChange()
     return this.#sessionResult({
       action: "heartbeat",
       status: "alive",
       sessionID,
-      remoteAgentID: this.#current.remoteAgentID,
-      remoteOwnerUserID: this.#current.remoteOwnerUserID,
+      remoteAgentID: current.remoteAgentID,
+      remoteOwnerUserID: current.remoteOwnerUserID,
       title: "Session alive",
       output: `Session ${sessionID} is active.`,
     })
   }
 
-  async validateCaller(caller: HolosCaller, sessionID: string) {
+  async validateCaller(caller: HolosCaller, sessionID: string): Promise<ExecutionLease> {
     await this.expireIdle()
     SynergyLinkLog.info("session.validate", {
       callerAgentID: caller.agentID,
@@ -196,18 +202,33 @@ export class SessionManager {
     })
     if (!sessionID) throw envelopeError("session_required", "sessionID is required.")
     this.assertCaller(caller, sessionID)
-    if (this.#current) {
-      this.#current.lastSeenAt = Date.now()
-      await this.#emitChange()
+    this.#current!.lastSeenAt = Date.now()
+    await this.#emitChange()
+    this.assertCaller(caller, sessionID)
+    return {
+      sessionID: this.#current!.sessionID,
+      callerAgentID: this.#current!.remoteAgentID,
+      callerOwnerUserID: this.#current!.remoteOwnerUserID,
+    }
+  }
+
+  assertLeaseActive(lease: ExecutionLease) {
+    const current = this.#current
+    if (
+      !current ||
+      current.sessionID !== lease.sessionID ||
+      current.remoteAgentID !== lease.callerAgentID ||
+      current.remoteOwnerUserID !== lease.callerOwnerUserID
+    ) {
+      throw envelopeError("session_invalid", "The validated Synergy Link session is no longer active.")
     }
   }
 
   async kickCurrent(block = false) {
     if (!this.#current) return undefined
     const current = this.#current
-    this.#current = null
     if (block) this.#blocked.add(current.remoteAgentID)
-    await this.#emitChange()
+    await this.#endCurrent(current, "kicked")
     SynergyLinkLog.warn("session.kicked", {
       sessionID: current.sessionID,
       remoteAgentID: current.remoteAgentID,
@@ -221,8 +242,7 @@ export class SessionManager {
     if (!this.#current) return undefined
     if (now - this.#current.lastSeenAt < this.#timeoutMs) return undefined
     const expired = this.#current
-    this.#current = null
-    await this.#emitChange()
+    await this.#endCurrent(expired, "expired")
     SynergyLinkLog.warn("session.expired.idle_timeout", {
       sessionID: expired.sessionID,
       remoteAgentID: expired.remoteAgentID,
@@ -244,6 +264,18 @@ export class SessionManager {
     }
   }
 
+  #blockedResult(agentID: string): SynergyLinkSession.Result {
+    SynergyLinkLog.warn("session.open.blocked", {
+      callerAgentID: agentID,
+    })
+    return this.#sessionResult({
+      action: "open",
+      status: "refused",
+      title: "Session refused",
+      output: `Remote agent ${agentID} is blocked.`,
+    })
+  }
+
   #sessionResult(input: {
     action: SynergyLinkSession.Action
     status: SynergyLinkSession.Status
@@ -253,6 +285,7 @@ export class SessionManager {
     remoteAgentID?: string
     remoteOwnerUserID?: number
     label?: string
+    reused?: boolean
   }): SynergyLinkSession.Result {
     return {
       title: input.title,
@@ -260,6 +293,7 @@ export class SessionManager {
         action: input.action,
         status: input.status,
         sessionID: input.sessionID,
+        reused: input.reused,
         remoteAgentID: input.remoteAgentID,
         remoteOwnerUserID: input.remoteOwnerUserID,
         label: input.label,
@@ -267,6 +301,13 @@ export class SessionManager {
       },
       output: input.output,
     }
+  }
+
+  async #endCurrent(session: SessionRecord, reason: SessionEndReason) {
+    if (this.#current?.sessionID === session.sessionID) this.#current = null
+    const [cleanup, change] = await Promise.allSettled([this.#onEnd?.(session, reason), this.#emitChange()])
+    if (cleanup.status === "rejected") throw cleanup.reason
+    if (change.status === "rejected") throw change.reason
   }
 
   async #emitChange() {

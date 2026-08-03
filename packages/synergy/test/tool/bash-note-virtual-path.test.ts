@@ -395,6 +395,7 @@ describe("bash note virtual paths", () => {
       status: "opened",
       openedAt: Date.now(),
       lastUsedAt: Date.now(),
+      lastVerifiedAt: Date.now(),
     })
 
     try {

@@ -4,14 +4,18 @@ import { SynergyLinkHolosEnvelope } from "./envelope"
 import { SynergyLinkHolosProtocol } from "./protocol"
 import type { SynergyLinkInboundHandler } from "../inbound/handler"
 import { SynergyLinkLog } from "../log"
+import { holosEndpointURL, SynergyLinkHolosAuth, type SynergyLinkHolosEndpoints } from "./auth"
 
-const HOLOS_HOST = "www.holosai.io"
-const HOLOS_URL = `https://${HOLOS_HOST}`
-const HOLOS_WS_URL = `wss://${HOLOS_HOST}`
+export const SYNERGY_LINK_HEARTBEAT_INTERVAL_MS = 60_000
+export const SYNERGY_LINK_HEARTBEAT_PONG_DEADLINE_MS = 180_000
+
+export type SynergyLinkHolosCloseReason = "ws_closed" | "transport_liveness_lost"
 
 export class SynergyLinkHolosClient {
   #ws: WebSocket | null = null
   #heartbeat: ReturnType<typeof setInterval> | null = null
+  #lastPongAt: number | null = null
+  #livenessLost = false
   #disconnecting = false
 
   constructor(
@@ -19,17 +23,35 @@ export class SynergyLinkHolosClient {
     readonly inbound: SynergyLinkInboundHandler,
     readonly hooks?: {
       onOpen?: () => void | Promise<void>
-      onClose?: (input: { opened: boolean; intentional: boolean }) => void | Promise<void>
+      onClose?: (input: {
+        opened: boolean
+        intentional: boolean
+        reason: SynergyLinkHolosCloseReason
+      }) => void | Promise<void>
     },
+    readonly heartbeat: { intervalMs?: number; pongDeadlineMs?: number } = {},
   ) {}
+
+  static websocketEndpoint(token: string, endpoints: SynergyLinkHolosEndpoints): string {
+    const endpoint = new URL(holosEndpointURL("/api/v1/holos/agent_tunnel/ws", endpoints.wsUrl))
+    endpoint.searchParams.set("token", token)
+    return endpoint.toString()
+  }
+
+  static sanitizedWebsocketEndpoint(endpoints: SynergyLinkHolosEndpoints): string {
+    return holosEndpointURL("/api/v1/holos/agent_tunnel/ws", endpoints.wsUrl)
+  }
 
   async connect() {
     this.#disconnecting = false
-    const token = await fetchWsToken(this.auth.agentSecret)
-    const endpoint = `${HOLOS_WS_URL}/api/v1/holos/agent_tunnel/ws?token=${token}`
+    this.#lastPongAt = null
+    this.#livenessLost = false
+    const endpoints = await SynergyLinkHolosAuth.resolveEndpoints()
+    const token = await fetchWsToken(this.auth.agentSecret, endpoints)
+    const endpoint = SynergyLinkHolosClient.websocketEndpoint(token, endpoints)
     SynergyLinkLog.info("holos.connect.begin", {
       agentID: this.auth.agentID,
-      endpoint: `${HOLOS_WS_URL}/api/v1/holos/agent_tunnel/ws`,
+      endpoint: SynergyLinkHolosClient.sanitizedWebsocketEndpoint(endpoints),
     })
     const ws = new WebSocket(endpoint)
     this.#ws = ws
@@ -38,6 +60,7 @@ export class SynergyLinkHolosClient {
       let opened = false
       ws.addEventListener("open", () => {
         opened = true
+        this.#lastPongAt = Date.now()
         SynergyLinkLog.info("holos.connect.open", {
           agentID: this.auth.agentID,
         })
@@ -52,10 +75,11 @@ export class SynergyLinkHolosClient {
         if (!opened) reject(new Error("Failed to connect to Holos websocket."))
       })
       ws.addEventListener("close", () => {
+        if (opened) return
         SynergyLinkLog.warn("holos.connect.closed_before_open", {
           agentID: this.auth.agentID,
         })
-        if (!opened) reject(new Error("Holos websocket closed before opening."))
+        reject(new Error("Holos websocket closed before opening."))
       })
     })
 
@@ -63,23 +87,33 @@ export class SynergyLinkHolosClient {
       void this.#handleMessage(String(event.data))
     })
     ws.addEventListener("close", () => {
+      const intentional = this.#disconnecting
+      const reason = this.#livenessLost ? "transport_liveness_lost" : "ws_closed"
       SynergyLinkLog.warn("holos.socket.closed", {
         agentID: this.auth.agentID,
-        intentional: this.#disconnecting,
+        intentional,
+        reason,
       })
       if (this.#heartbeat) clearInterval(this.#heartbeat)
       this.#heartbeat = null
+      this.#lastPongAt = null
       this.#ws = null
-      const intentional = this.#disconnecting
       this.#disconnecting = false
-      void this.hooks?.onClose?.({ opened: true, intentional })
+      void this.hooks?.onClose?.({ opened: true, intentional, reason })
     })
 
+    const intervalMs = this.heartbeat.intervalMs ?? SYNERGY_LINK_HEARTBEAT_INTERVAL_MS
+    const pongDeadlineMs = this.heartbeat.pongDeadlineMs ?? SYNERGY_LINK_HEARTBEAT_PONG_DEADLINE_MS
     this.#heartbeat = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(SynergyLinkHolosEnvelope.ping())
+      if (ws.readyState !== WebSocket.OPEN) return
+      const lastPongAt = this.#lastPongAt ?? Date.now()
+      if (Date.now() - lastPongAt >= pongDeadlineMs) {
+        this.#livenessLost = true
+        ws.close(4000, "heartbeat_timeout")
+        return
       }
-    }, 60_000)
+      ws.send(SynergyLinkHolosEnvelope.ping())
+    }, intervalMs)
     this.#heartbeat.unref?.()
   }
 
@@ -100,9 +134,11 @@ export class SynergyLinkHolosClient {
 
   async #handleMessage(raw: string) {
     const parsed = SynergyLinkHolosEnvelope.parse(raw)
-    if (parsed.kind === "ignored") {
+    if (parsed.kind === "pong") {
+      this.#lastPongAt = Date.now()
       return
     }
+    if (parsed.kind === "ignored") return
     if (parsed.kind === "unknown") {
       SynergyLinkLog.warn("holos.message.ignored.unparsed", {
         type: parsed.type,
@@ -144,8 +180,8 @@ export class SynergyLinkHolosClient {
   }
 }
 
-async function fetchWsToken(agentSecret: string): Promise<string> {
-  const response = await fetch(`${HOLOS_URL}/api/v1/holos/agent_tunnel/ws_token`, {
+async function fetchWsToken(agentSecret: string, endpoints: SynergyLinkHolosEndpoints): Promise<string> {
+  const response = await fetch(holosEndpointURL("/api/v1/holos/agent_tunnel/ws_token", endpoints.apiUrl), {
     headers: { Authorization: `Bearer ${agentSecret}` },
   })
   if (!response.ok) {

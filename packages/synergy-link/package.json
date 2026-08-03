@@ -27,6 +27,7 @@
   "dependencies": {
     "@clack/prompts": "1.0.0-alpha.1",
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "jsonc-parser": "3.3.1",
     "picocolors": "1.1.1",
     "zod": "catalog:"

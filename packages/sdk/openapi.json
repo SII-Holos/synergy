@@ -24605,7 +24605,7 @@
           },
           "availability": {
             "type": "string",
-            "enum": ["holos_offline", "idle", "connected"]
+            "enum": ["unknown", "unreachable", "reachable", "connected"]
           },
           "sessionID": {
             "description": "Synergy Link session identifier",
@@ -24738,9 +24738,154 @@
         },
         "required": ["name", "data"]
       },
-      "SynergyLinkTargetPatchInput": {
+      "SynergyLinkTargetPatchMetadata": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              }
+            },
+            "required": ["kind", "name"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": ["kind", "enabled"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": ["kind", "name", "enabled"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "name", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "enabled", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "name", "enabled", "allowedAgents"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "SynergyLinkTargetPatchRelink": {
         "type": "object",
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "relink"
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -24755,9 +24900,29 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
           }
         },
+        "required": ["kind", "targetAgentID", "linkID"],
         "additionalProperties": false
+      },
+      "SynergyLinkTargetPatchInput": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SynergyLinkTargetPatchMetadata"
+          },
+          {
+            "$ref": "#/components/schemas/SynergyLinkTargetPatchRelink"
+          }
+        ]
       },
       "SynergyLinkTargetRemoveResult": {
         "type": "object",

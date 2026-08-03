@@ -384,6 +384,7 @@ export const TOOL_MISC_DESC = {
   liveApplied: d("tool.misc.live-applied", "Live Applied"),
   restartRequired: d("tool.misc.restart-required", "Restart Required"),
   warnings: d("tool.misc.warnings", "Warnings"),
+  executedViaSynergyLink: d("tool.misc.executed-via-synergy-link", "Executed via Synergy Link"),
 } as const
 
 // ── Markdown ────────────────────────────────────────────────────────
