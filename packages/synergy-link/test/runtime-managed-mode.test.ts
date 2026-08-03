@@ -8,12 +8,16 @@ import { SynergyLinkStore } from "../src/state/store"
 import { SynergyLinkLog } from "../src/log"
 
 const originalHome = process.env.SYNERGY_LINK_HOME
+const originalSynergyHome = process.env.SYNERGY_TEST_HOME
 const tempRoots: string[] = []
+let synergyHome: string
 
 beforeEach(async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-managed-test-"))
-  tempRoots.push(root)
+  synergyHome = await mkdtemp(path.join(os.tmpdir(), "synergy-link-managed-auth-test-"))
+  tempRoots.push(root, synergyHome)
   process.env.SYNERGY_LINK_HOME = root
+  process.env.SYNERGY_TEST_HOME = synergyHome
 })
 
 afterAll(async () => {
@@ -22,6 +26,11 @@ afterAll(async () => {
     delete process.env.SYNERGY_LINK_HOME
   } else {
     process.env.SYNERGY_LINK_HOME = originalHome
+  }
+  if (originalSynergyHome === undefined) {
+    delete process.env.SYNERGY_TEST_HOME
+  } else {
+    process.env.SYNERGY_TEST_HOME = originalSynergyHome
   }
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })))
 })
@@ -69,6 +78,7 @@ describe("synergy-link managed mode", () => {
     expect(runtime.state?.ownerRegistry.local.activeOwnerID).toBe("synergy:test")
     expect(runtime.state?.service.startedAt).toBeGreaterThan(staleStartedAt + 50_000)
 
+    process.env.SYNERGY_TEST_HOME = synergyHome
     const status = await runtime.getStatusPayload()
     expect(status.mode).toBe("managed")
     expect(status.auth.loggedIn).toBe(false)
