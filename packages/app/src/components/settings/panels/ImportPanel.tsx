@@ -17,6 +17,7 @@ import { overwriteImportConfirm } from "@/components/dialog/confirm-copy"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { getScopeLabel } from "@/utils/scope"
+import { SettingsMenuField } from "../components/SettingsMenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   buildImportApplyParameters,
@@ -101,6 +102,7 @@ export function ImportPanel(props: {
   domains: ConfigDomainSummary[]
   scopes: Scope[]
   onImported: () => Promise<void>
+  popoverLayer?: HTMLElement
 }) {
   const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
@@ -283,37 +285,38 @@ export function ImportPanel(props: {
         <div class="ds-import-target-row">
           <label class="ds-import-field">
             <span>{_(scopeLabel)}</span>
-            <select
-              class="settings-select"
+            <SettingsMenuField
               value={scope()}
-              onChange={(event) => {
-                setScope(event.currentTarget.value as ConfigImportScope)
+              ariaLabel={_(scopeLabel)}
+              popoverLayer={props.popoverLayer}
+              options={[
+                { value: "global", label: _(globalLabel) },
+                { value: "project", label: _(projectLabel) },
+              ]}
+              onChange={(value) => {
+                setScope(value as ConfigImportScope)
                 clearReview()
               }}
-            >
-              <option value="global">{_(globalLabel)}</option>
-              <option value="project">{_(projectLabel)}</option>
-            </select>
+            />
           </label>
           <Show when={scope() === "project"}>
             <label class="ds-import-field">
               <span>{_(projectLabel)}</span>
-              <select
-                class="settings-select"
+              <SettingsMenuField
                 value={project()?.id ?? ""}
+                ariaLabel={_(projectLabel)}
                 disabled={projects().length === 0}
-                onChange={(event) => {
-                  setProjectID(event.currentTarget.value)
+                popoverLayer={props.popoverLayer}
+                options={
+                  projects().length === 0
+                    ? [{ value: "", label: _(noProjectLabel) }]
+                    : projects().map((item) => ({ value: item.id, label: getScopeLabel(item, item.directory) }))
+                }
+                onChange={(value) => {
+                  setProjectID(value)
                   clearReview()
                 }}
-              >
-                <Show when={projects().length === 0}>
-                  <option value="">{_(noProjectLabel)}</option>
-                </Show>
-                <For each={projects()}>
-                  {(item) => <option value={item.id}>{getScopeLabel(item, item.directory)}</option>}
-                </For>
-              </select>
+              />
             </label>
           </Show>
           <Show when={config() && !plan()}>

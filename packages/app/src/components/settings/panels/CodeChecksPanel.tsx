@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/solid"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingRow } from "../components/SettingRow"
+import { SettingsMenuField } from "../components/SettingsMenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
 import { codeChecksControlsDisabled } from "./code-checks-model"
@@ -37,6 +38,7 @@ const projectScope = { id: "settings.codeChecks.scope.project", message: "Projec
 export function CodeChecksPanel(props: {
   runtime: RuntimeStore
   onRuntimeChange: (key: keyof RuntimeStore, value: string) => void
+  popoverLayer?: HTMLElement
 }) {
   const { _ } = useLingui()
   const diagnosticsEnabled = () => !codeChecksControlsDisabled(props.runtime.lspWriteDiagnostics)
@@ -58,33 +60,35 @@ export function CodeChecksPanel(props: {
           title={_(severityRowTitle)}
           description={_(severityRowDesc)}
           trailing={
-            <select
-              class="settings-select"
-              aria-label={_(severityAria)}
+            <SettingsMenuField
               value={props.runtime.lspDiagnosticsSeverity}
+              ariaLabel={_(severityAria)}
               disabled={!diagnosticsEnabled()}
-              onChange={(event) => props.onRuntimeChange("lspDiagnosticsSeverity", event.currentTarget.value)}
-            >
-              <option value="error">{_(errorsOnly)}</option>
-              <option value="warning">{_(errorsWarnings)}</option>
-            </select>
+              popoverLayer={props.popoverLayer}
+              options={[
+                { value: "error", label: _(errorsOnly) },
+                { value: "warning", label: _(errorsWarnings) },
+              ]}
+              onChange={(value) => props.onRuntimeChange("lspDiagnosticsSeverity", value)}
+            />
           }
         />
         <SettingRow
           title={_(scopeRowTitle)}
           description={_(scopeRowDesc)}
           trailing={
-            <select
-              class="settings-select"
-              aria-label={_(scopeAria)}
+            <SettingsMenuField
               value={props.runtime.lspDiagnosticsScope}
+              ariaLabel={_(scopeAria)}
               disabled={!diagnosticsEnabled()}
-              onChange={(event) => props.onRuntimeChange("lspDiagnosticsScope", event.currentTarget.value)}
-            >
-              <option value="delta">{_(deltaScope)}</option>
-              <option value="file">{_(fileScope)}</option>
-              <option value="project">{_(projectScope)}</option>
-            </select>
+              popoverLayer={props.popoverLayer}
+              options={[
+                { value: "delta", label: _(deltaScope) },
+                { value: "file", label: _(fileScope) },
+                { value: "project", label: _(projectScope) },
+              ]}
+              onChange={(value) => props.onRuntimeChange("lspDiagnosticsScope", value)}
+            />
           }
         />
       </SettingsSection>

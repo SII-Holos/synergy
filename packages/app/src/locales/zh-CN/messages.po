@@ -13214,6 +13214,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr "选择可见项"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr "排序归档会话"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr "归档时间：最新"
 
@@ -14776,6 +14780,14 @@ msgstr "嵌入模型"
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.source.option.custom"
 msgstr "自定义下载源"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.hfMirror"
+msgstr "HF Mirror"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.huggingface"
+msgstr "Hugging Face"
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.state.downloading"

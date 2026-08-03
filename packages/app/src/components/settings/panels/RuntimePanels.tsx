@@ -6,6 +6,7 @@ import { For, Show } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { SettingRow } from "../components/SettingRow"
+import { SettingsMenuField } from "../components/SettingsMenuField"
 import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsFieldGrid, SettingsPage, SettingsPathRow, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
@@ -270,6 +271,7 @@ export function TimeoutsPanel(props: {
   onDefaultAgentChange: (agent: string) => void
   concurrencyStatus?: CortexConcurrencyStatus
   configuredAgentWorkers?: number
+  popoverLayer?: HTMLElement
 }) {
   const { _ } = useLingui()
   const environmentConcurrency = () => props.concurrencyStatus?.environment
@@ -330,13 +332,13 @@ export function TimeoutsPanel(props: {
           title={_(defaultAgentRowTitle)}
           description={_(defaultAgentRowDesc)}
           trailing={
-            <select
-              class="settings-select"
+            <SettingsMenuField
               value={props.defaultAgent}
-              onChange={(event) => props.onDefaultAgentChange(event.currentTarget.value)}
-            >
-              <For each={props.availableAgents}>{(agent) => <option value={agent.name}>{agent.name}</option>}</For>
-            </select>
+              ariaLabel={_(defaultAgentRowTitle)}
+              popoverLayer={props.popoverLayer}
+              options={props.availableAgents.map((agent) => ({ value: agent.name, label: agent.name }))}
+              onChange={(value) => props.onDefaultAgentChange(value)}
+            />
           }
         />
         <SettingRow

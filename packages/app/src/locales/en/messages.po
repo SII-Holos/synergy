@@ -13214,6 +13214,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr "Select visible"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr "Sort archived sessions"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr "Archive time: newest"
 
@@ -14776,6 +14780,14 @@ msgstr "Embedding model"
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.source.option.custom"
 msgstr "Custom origin"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.hfMirror"
+msgstr "HF Mirror"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.huggingface"
+msgstr "Hugging Face"
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.state.downloading"

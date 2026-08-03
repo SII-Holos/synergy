@@ -570,7 +570,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
     account: AccountPanel,
     personalize: () => <PersonalizePanel controller={personalizeController} />,
     general: () => (
-      <GeneralPanel general={settings.general} onGeneralChange={(key, value) => setSettings("general", key, value)} />
+      <GeneralPanel
+        general={settings.general}
+        onGeneralChange={(key, value) => setSettings("general", key, value)}
+        popoverLayer={settingsPopoverLayer()}
+      />
     ),
     models: () => (
       <ModelsPanel
@@ -696,12 +700,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
         concurrencyStatus={cortexConcurrencyStatus()}
         configuredAgentWorkers={config()?.execution?.agentWorkers}
+        popoverLayer={settingsPopoverLayer()}
       />
     ),
     "code-checks": () => (
       <CodeChecksPanel
         runtime={settings.runtime}
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+        popoverLayer={settingsPopoverLayer()}
       />
     ),
     formatter: () => referencePanel(_(copy.formatterTitle), _(copy.formatterDescription), ["runtime"]),
@@ -718,6 +724,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         domains={domainSummaries() ?? []}
         scopes={globalSync.data.scope}
         onImported={refreshAfterConfigChange}
+        popoverLayer={settingsPopoverLayer()}
       />
     ),
     "config-files": () => (
@@ -727,7 +734,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
       />
     ),
-    "archived-sessions": ArchivedSessionsPanel,
+    "archived-sessions": () => <ArchivedSessionsPanel popoverLayer={settingsPopoverLayer()} />,
     worktrees: WorktreesPanel,
   })
 

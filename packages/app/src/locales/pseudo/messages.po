@@ -13214,6 +13214,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr ""
 
@@ -14775,6 +14779,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.source.option.custom"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.hfMirror"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.huggingface"
 msgstr ""
 
 #. js-lingui-explicit-id

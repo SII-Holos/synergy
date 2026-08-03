@@ -107,6 +107,118 @@
   box-shadow: var(--settings-focus-ring);
 }
 
+.settings-menu-field-trigger {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+  background: var(--settings-control-bg);
+  padding: 0 10px 0 12px;
+  color: var(--text-weak);
+  font-size: var(--settings-type-control-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border-base) 24%, transparent);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+  cursor: pointer;
+}
+
+.settings-menu-field-trigger:hover:not(:disabled) {
+  background: var(--settings-control-bg-hover);
+  color: var(--text-base);
+}
+
+.settings-menu-field-trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--settings-focus-ring);
+}
+
+.settings-menu-field-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-menu-field-trigger[data-expanded] {
+  background: var(--settings-control-bg-hover);
+  color: var(--text-base);
+}
+
+.settings-menu-field-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-menu-field-chevron {
+  flex-shrink: 0;
+  color: var(--icon-weak);
+  transition: transform 160ms ease;
+}
+
+.settings-menu-field-trigger[data-expanded] .settings-menu-field-chevron {
+  transform: rotate(180deg);
+}
+
+.settings-menu-field-surface {
+  z-index: 70;
+  min-width: 10rem;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--settings-border);
+  background: var(--settings-popover-bg);
+  box-shadow: var(--shadow-xs-border);
+}
+
+.settings-menu-field-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 9px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-base);
+  font-size: var(--settings-type-body-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.settings-menu-field-item:hover {
+  background: var(--settings-control-bg-hover);
+}
+
+.settings-menu-field-item.is-active {
+  background: var(--settings-selected-bg);
+  color: var(--text-strong);
+}
+
+.settings-menu-field-item:focus-visible {
+  outline: none;
+  box-shadow: var(--settings-focus-ring);
+}
+
+.settings-menu-field-count {
+  color: var(--text-weaker);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+  font-weight: var(--font-weight-medium);
+}
+
+.settings-menu-field-check {
+  flex-shrink: 0;
+  color: var(--icon-base);
+}
+
 .settings-panel-close {
   position: absolute;
   top: 12px;
@@ -149,7 +261,8 @@
 }
 
 .settings-popover-layer .settings-model-picker-popover,
-.settings-popover-layer .settings-model-detail-surface {
+.settings-popover-layer .settings-model-detail-surface,
+.settings-popover-layer .settings-menu-field-surface {
   pointer-events: auto;
 }
 
