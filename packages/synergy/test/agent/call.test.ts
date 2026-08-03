@@ -246,6 +246,20 @@ describe("AgentCall", () => {
     expect(smallOverride).toBe(false)
   })
 
+  test("forwards sessionId and userMetadata to the synthesized user", async () => {
+    installAgent()
+    let streamInput: Record<string, unknown> | undefined
+    ;(LLM.stream as any) = mock(async (input: Record<string, unknown>) => {
+      streamInput = input
+      return { textStream: (async function* () {})() }
+    })
+    await call({ sessionId: "ses_test", userMetadata: { source: "integration:github" } })
+    expect(streamInput?.sessionID).toBe("ses_test")
+    expect((streamInput?.user as { metadata?: unknown } | undefined)?.metadata).toEqual({
+      source: "integration:github",
+    })
+  })
+
   test("returns usage and the resolved model", async () => {
     installAgent()
     const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 }

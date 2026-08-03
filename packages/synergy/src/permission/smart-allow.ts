@@ -218,6 +218,7 @@ export namespace SmartAllow {
       const { text } = await AgentCall.text({
         agent: "smart-allow",
         messages: [{ role: "user", content: buildPrompt(input) }],
+        sessionId: input.sessionID,
         timeoutMs: 10_000,
         retries: 0,
         maxOutputChars: 1_000,

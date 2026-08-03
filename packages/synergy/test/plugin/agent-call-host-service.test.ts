@@ -58,7 +58,11 @@ describe("plugin agent.call Host Service", () => {
     let received: AgentCall.TextInput | undefined
     ;(AgentCall.text as any) = mock(async (input: AgentCall.TextInput) => {
       received = input
-      return { text: "answer" }
+      return {
+        text: "answer",
+        model: { providerID: "provider", id: "model", headers: { "x-internal": "secret" } },
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      }
     })
 
     const invoke = (agent: string, params: Record<string, unknown> = {}, handlerId = "operation:call") =>

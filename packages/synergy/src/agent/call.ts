@@ -29,6 +29,7 @@ export namespace AgentCall {
     messages: ModelMessage[]
     user?: MessageV2.User
     sessionId?: string
+    userMetadata?: Record<string, string>
     model?: Provider.Model
     fallbackModel?: Provider.Model
     modelRole?: Provider.ModelRole
@@ -108,6 +109,7 @@ export namespace AgentCall {
         time: { created: Date.now() },
         agent: agent.name,
         model: { providerID: model.providerID, modelID: model.id },
+        metadata: input.userMetadata,
       } satisfies MessageV2.User)
     const timeout = new AbortController()
     const output = new AbortController()

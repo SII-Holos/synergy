@@ -538,9 +538,13 @@ export namespace Agent {
     if (!agent) throw new Error("agent-generator agent is unavailable")
 
     const model = input.model ? await Provider.getModel(input.model.providerID, input.model.modelID) : undefined
-    const fallbackModel = input.model
-      ? undefined
-      : await Provider.defaultModel().then((ref) => Provider.getModel(ref.providerID, ref.modelID))
+    let fallbackModel: Provider.Model | undefined
+    if (!input.model) {
+      const agentModel = await getAvailableModel(agent)
+      if (!agentModel) {
+        fallbackModel = await Provider.defaultModel().then((ref) => Provider.getModel(ref.providerID, ref.modelID))
+      }
+    }
     const existing = await list()
     let text = ""
     try {

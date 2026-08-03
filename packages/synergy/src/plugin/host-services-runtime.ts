@@ -209,7 +209,7 @@ function mapPluginAgentCallError(error: unknown): Error & { code?: string } {
 
 async function runPluginAgent(resolved: Awaited<ReturnType<typeof resolvePluginAgentCall>>, signal: AbortSignal) {
   try {
-    return await AgentCall.text({
+    const result = await AgentCall.text({
       agent: resolved.name,
       modelRole: resolved.modelRole,
       messages: [{ role: "user", content: resolved.text }],
@@ -219,6 +219,7 @@ async function runPluginAgent(resolved: Awaited<ReturnType<typeof resolvePluginA
       maxInputChars: resolved.maxInputChars,
       maxOutputChars: resolved.maxOutputChars,
     })
+    return { text: result.text }
   } catch (error) {
     throw mapPluginAgentCallError(error)
   }

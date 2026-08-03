@@ -38,6 +38,7 @@ export async function classifyGitHubObservation(
           ].join("\n"),
         },
       ],
+      userMetadata: { source: "integration:github" },
       timeoutMs: 10_000,
       retries: 0,
       maxOutputChars: 1_000,
