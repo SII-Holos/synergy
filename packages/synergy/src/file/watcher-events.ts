@@ -1,4 +1,5 @@
 import path from "path"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { FileIgnore } from "./ignore"
 import { RuntimeReloadPath } from "../runtime/reload-path"
 
@@ -6,6 +7,7 @@ export namespace FileWatcherEvents {
   export type WorkspaceEvent = "added" | "changed" | "deleted" | "renamed"
   export type WorkspaceChange = { path: string; event: WorkspaceEvent; oldPath?: string }
   export type RawEvent = { type: "create" | "update" | "delete"; path: string }
+  export type PathPlatform = "win32" | "posix"
 
   const PROJECT_RUNTIME_IGNORES = ["node_modules", "worktrees", "cache", "data", "log", "logs", "state", "tmp", "temp"]
 
@@ -24,11 +26,21 @@ export namespace FileWatcherEvents {
     )
   }
 
-  function parentOf(input: string) {
-    return path.dirname(input)
+  function platformKind(): PathPlatform {
+    return process.platform === "win32" ? "win32" : "posix"
   }
 
-  export function normalize(events: RawEvent[]): WorkspaceChange[] {
+  export function normalizePath(input: string, platform: PathPlatform = platformKind()) {
+    if (platform === "win32") return path.win32.normalize(input.replaceAll("/", "\\")).toLowerCase()
+    return path.posix.normalize(input)
+  }
+
+  function parentOf(input: string, platform: PathPlatform) {
+    const normalized = normalizePath(input, platform)
+    return platform === "win32" ? path.win32.dirname(normalized) : path.posix.dirname(normalized)
+  }
+
+  export function normalize(events: RawEvent[], platform: PathPlatform = platformKind()): WorkspaceChange[] {
     const deletes = events.filter((event) => event.type === "delete")
     const creates = events.filter((event) => event.type === "create")
     const updates = events.filter((event) => event.type === "update")
@@ -38,15 +50,24 @@ export namespace FileWatcherEvents {
     for (const create of creates) {
       const deleteIndex = deletes.findIndex((item, index) => {
         if (usedDeletes.has(index)) return false
-        if (parentOf(item.path) === parentOf(create.path)) return true
-        return deletes.length === 1 && creates.length === 1
+        return normalizePath(item.path, platform) === normalizePath(create.path, platform)
       })
-      if (deleteIndex === -1) {
+      if (deleteIndex !== -1) {
+        usedDeletes.add(deleteIndex)
+        result.push({ path: create.path, event: "changed" })
+        continue
+      }
+
+      const renameIndex = deletes.findIndex((item, index) => {
+        if (usedDeletes.has(index)) return false
+        return parentOf(item.path, platform) === parentOf(create.path, platform)
+      })
+      if (renameIndex === -1) {
         result.push({ path: create.path, event: "added" })
         continue
       }
-      usedDeletes.add(deleteIndex)
-      result.push({ path: create.path, event: "renamed", oldPath: deletes[deleteIndex]!.path })
+      usedDeletes.add(renameIndex)
+      result.push({ path: create.path, event: "renamed", oldPath: deletes[renameIndex]!.path })
     }
 
     for (const update of updates) result.push({ path: update.path, event: "changed" })
@@ -61,12 +82,14 @@ export namespace FileWatcherEvents {
     if (previous.event === "added" && next.event === "changed") return previous
     if (previous.event === "added" && next.event === "deleted") return undefined
     if (previous.event === "deleted" && next.event === "added") return { ...next, event: "changed" }
+    if (previous.event === "renamed") return { ...next, event: "renamed", oldPath: previous.oldPath }
     return next
   }
 
   export function createDrain(input: {
     debounceMs: number
     maxPending: number
+    platform?: PathPlatform
     process: (batch: WorkspaceChange[]) => Promise<void>
     overflow: () => Promise<void>
   }) {
@@ -119,14 +142,27 @@ export namespace FileWatcherEvents {
       enqueue(events: WorkspaceChange[]) {
         if (disposed || overflowed) return
         for (const event of events) {
-          const next = merge(pending.get(event.path), event)
-          if (next) pending.set(event.path, next)
-          else pending.delete(event.path)
+          const key = normalizePath(event.path, input.platform)
+          const previous = pending.get(key)
+          if (previous?.event === "renamed" && event.event === "deleted") {
+            pending.clear()
+            overflowed = true
+            break
+          }
+          const next = merge(previous, event)
+          if (next) pending.set(key, next)
+          else pending.delete(key)
           if (pending.size <= input.maxPending) continue
           pending.clear()
           overflowed = true
           break
         }
+        schedule()
+      },
+      resync() {
+        if (disposed) return
+        pending.clear()
+        overflowed = true
         schedule()
       },
       pending() {
@@ -144,6 +180,147 @@ export namespace FileWatcherEvents {
         overflowed = false
         await draining
         resolveIdle()
+      },
+    }
+  }
+
+  export function createSubscriptionRecovery<T>(input: {
+    connect: (context: {
+      generation: number
+      isCurrent: () => boolean
+      fail: (error: unknown) => Promise<void>
+    }) => Promise<T>
+    disconnect: (subscription: T) => Promise<void>
+    onError: (error: unknown) => void | Promise<void>
+    retryMs?: number
+  }) {
+    const retryMs = input.retryMs ?? 1_000
+    let current: T | undefined
+    let connecting: Promise<void> | undefined
+    let handlingFailure: Promise<void> | undefined
+    let disconnecting: Promise<void> | undefined
+    let disposing: Promise<void> | undefined
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let generation = 0
+    let started = false
+    let disposed = false
+    const reportContext = new AsyncLocalStorage<symbol>()
+
+    const report = async (error: unknown) => {
+      const context = Symbol()
+      await reportContext.run(context, async () => {
+        try {
+          await input.onError(error)
+        } catch {
+          // Error reporting must not prevent a failed watcher from being retried.
+        }
+      })
+    }
+
+    const scheduleRetry = () => {
+      if (disposed || retryTimer || current || connecting) return
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined
+        void connect()
+      }, retryMs)
+    }
+
+    const disconnect = async (subscription: T) => {
+      const task = (async () => {
+        try {
+          await input.disconnect(subscription)
+        } catch (error) {
+          await report(error)
+        }
+      })()
+      disconnecting = task
+      try {
+        await task
+      } finally {
+        if (disconnecting === task) disconnecting = undefined
+      }
+    }
+
+    const fail = (error: unknown, expectedGeneration?: number) => {
+      if (disposed || (expectedGeneration !== undefined && expectedGeneration !== generation)) return Promise.resolve()
+      generation += 1
+      if (handlingFailure) return handlingFailure
+
+      const task = (async () => {
+        const subscription = current
+        current = undefined
+        if (subscription) await disconnect(subscription)
+        await report(error)
+        scheduleRetry()
+      })()
+      let settled: Promise<void>
+      settled = task.finally(() => {
+        if (handlingFailure === settled) handlingFailure = undefined
+      })
+      handlingFailure = settled
+      return settled
+    }
+
+    async function connect() {
+      if (disposed || current || connecting) return
+      const attempt = ++generation
+      const task = (async () => {
+        try {
+          const subscription = await input.connect({
+            generation: attempt,
+            isCurrent: () => !disposed && attempt === generation,
+            fail: (error) => fail(error, attempt),
+          })
+          if (disposed || attempt !== generation) {
+            await disconnect(subscription)
+            return
+          }
+          current = subscription
+        } catch (error) {
+          await fail(error, attempt)
+        }
+      })()
+      connecting = task
+      try {
+        await task
+      } finally {
+        if (connecting === task) connecting = undefined
+        if (!disposed && !current && !handlingFailure) scheduleRetry()
+      }
+    }
+
+    return {
+      async start() {
+        if (started || disposed) return
+        started = true
+        await connect()
+      },
+      fail,
+      async dispose() {
+        const reentrant = reportContext.getStore() !== undefined
+        if (disposed) {
+          if (reentrant) return
+          await disposing
+          return
+        }
+        disposed = true
+        generation += 1
+        if (retryTimer) clearTimeout(retryTimer)
+        retryTimer = undefined
+        const task = (async () => {
+          const subscription = current
+          current = undefined
+          if (subscription) await disconnect(subscription)
+          if (!reentrant) {
+            await disconnecting
+            await handlingFailure
+          }
+        })()
+        disposing = task
+        await task
+      },
+      active() {
+        return current !== undefined
       },
     }
   }
