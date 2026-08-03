@@ -307,6 +307,57 @@ describe("ServerProcessLock", () => {
     }
   })
 
+  test("fails conservatively when the existing lock path stays unreadable", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-server-lock-unreadable-"))
+    const readyPath = path.join(home, "ready.log")
+    const startPath = path.join(home, "start")
+    const resultPath = path.join(home, "result.log")
+    const releasePath = path.join(home, "release")
+    const workerPath = path.join(import.meta.dirname, "server-process-lock-worker.ts")
+
+    try {
+      const child = Bun.spawn([process.execPath, "run", workerPath], {
+        env: {
+          ...process.env,
+          SYNERGY_HOME: home,
+          LOCK_WORKER_ID: "unreadable",
+          LOCK_READY_PATH: readyPath,
+          LOCK_START_PATH: startPath,
+          LOCK_RESULT_PATH: resultPath,
+          LOCK_RELEASE_PATH: releasePath,
+          LOCK_PREPARE_UNREADABLE: "1",
+        },
+        stdout: "ignore",
+        stderr: "inherit",
+      })
+      children.push(child)
+
+      const readyDeadline = Date.now() + 10_000
+      while (!(await fs.readFile(readyPath, "utf8").catch(() => "")).includes("unreadable")) {
+        if (Date.now() >= readyDeadline) throw new Error("Unreadable-lock worker did not become ready")
+        await Bun.sleep(10)
+      }
+      await Bun.write(startPath, "go\n")
+
+      const resultDeadline = Date.now() + 10_000
+      let results: WorkerResult[] = []
+      while (results.length === 0) {
+        if (Date.now() >= resultDeadline) throw new Error("Unreadable-lock acquisition did not terminate")
+        results = (await fs.readFile(resultPath, "utf8").catch(() => ""))
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as WorkerResult)
+        await Bun.sleep(10)
+      }
+
+      expect(results[0]?.error).toContain("LockFileUncertainError")
+      expect(await child.exited).toBe(1)
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+
   test("allows only one process to replace a stale lock", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-server-lock-stale-race-"))
     const readyPath = path.join(home, "ready.log")

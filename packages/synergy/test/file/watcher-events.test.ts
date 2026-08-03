@@ -301,8 +301,8 @@ describe("FileWatcherEvents drain", () => {
     await drain.dispose()
   })
 
-  test("preserves the rename source through every later destination event", async () => {
-    for (const event of ["changed", "deleted", "added"] as const) {
+  test("preserves the rename source through later destination changes", async () => {
+    for (const event of ["changed", "added"] as const) {
       const batches: FileWatcherEvents.WorkspaceChange[][] = []
       const drain = FileWatcherEvents.createDrain({
         debounceMs: 10,
@@ -320,6 +320,29 @@ describe("FileWatcherEvents drain", () => {
       expect(batches).toEqual([[{ path: "/repo/src/new.ts", event: "renamed", oldPath: "/repo/src/old.ts" }]])
       await drain.dispose()
     }
+  })
+
+  test("resyncs when a renamed destination is deleted before the batch is published", async () => {
+    const batches: FileWatcherEvents.WorkspaceChange[][] = []
+    let resyncs = 0
+    const drain = FileWatcherEvents.createDrain({
+      debounceMs: 10,
+      maxPending: 10,
+      process: async (batch) => {
+        batches.push(batch)
+      },
+      overflow: async () => {
+        resyncs += 1
+      },
+    })
+
+    drain.enqueue([{ path: "/repo/src/new.ts", event: "renamed", oldPath: "/repo/src/old.ts" }])
+    drain.enqueue([{ path: "/repo/src/new.ts", event: "deleted" }])
+    await drain.idle()
+
+    expect(batches).toEqual([])
+    expect(resyncs).toBe(1)
+    await drain.dispose()
   })
 })
 

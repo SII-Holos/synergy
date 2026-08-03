@@ -28,7 +28,7 @@ export namespace ServerProcessLock {
   export class LockFileUncertainError extends Error {
     constructor(readonly lockPath: string) {
       super(
-        `Cannot safely acquire the Synergy server lock because ${lockPath} is malformed or incomplete; verify that no Synergy server is running and remove the lock file before retrying`,
+        `Cannot safely acquire the Synergy server lock because ${lockPath} is malformed, incomplete, or unreadable; verify that no Synergy server is running and remove the lock file before retrying`,
       )
       this.name = "LockFileUncertainError"
     }
@@ -125,7 +125,7 @@ export namespace ServerProcessLock {
   }
 
   interface LockSnapshot {
-    contents: string
+    contents?: string
     lock?: LockInfo
     uncertain?: boolean
   }
@@ -158,17 +158,18 @@ export namespace ServerProcessLock {
         if (parsed.lock) return { contents, lock: parsed.lock }
         lastUncertain = parsed.uncertain
         await Bun.sleep(10)
-      } catch {
-        if (
-          !(await Bun.file(DaemonPaths.runtimeLock())
-            .exists()
-            .catch(() => false))
-        )
-          return undefined
+      } catch (error) {
+        if (errorCode(error) === "ENOENT") return undefined
+        try {
+          await fs.stat(DaemonPaths.runtimeLock())
+        } catch (statError) {
+          if (errorCode(statError) === "ENOENT") return undefined
+        }
         await Bun.sleep(10)
       }
     }
-    return lastContents === undefined ? undefined : { contents: lastContents, uncertain: lastUncertain }
+    // An existing lock that never yielded contents cannot be quarantined safely.
+    return lastContents === undefined ? { uncertain: true } : { contents: lastContents, uncertain: lastUncertain }
   }
 
   function parseLockInfo(contents: string): LockInfo | undefined {

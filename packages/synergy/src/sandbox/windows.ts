@@ -302,6 +302,12 @@ export namespace WindowsBackend {
     }
 
     const homedir = os.homedir()
+    const dataDenyRoots = [...(opts.dataDenyRoots ?? [])]
+    // The shared home deny root would also deny a workspace below it on Windows; strip only that default.
+    if (opts.stripDefaultHomeDenyRoot) {
+      const defaultRootIndex = dataDenyRoots.indexOf(homedir)
+      if (defaultRootIndex >= 0) dataDenyRoots.splice(defaultRootIndex, 1)
+    }
 
     const profile = buildPermissionProfile({
       workspace,
@@ -319,11 +325,7 @@ export namespace WindowsBackend {
       approvedNetwork: false,
       approvedUnixSockets: [],
       protectedPaths: opts.protectedPaths,
-      // The Windows helper cannot safely apply an ancestor deny-read ACL
-      // without also denying the workspace. Keep the default profile honest:
-      // credential paths remain protected, while an explicitly supplied
-      // deny root is still validated and enforced by the helper.
-      dataDenyRoots: opts.dataDenyRoots ?? [],
+      dataDenyRoots,
     })
 
     const tempDir = os.tmpdir()
