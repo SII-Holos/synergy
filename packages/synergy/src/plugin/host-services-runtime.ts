@@ -77,7 +77,6 @@ const capabilityByMethod = {
 
 const AGENT_CALL_MAX_INPUT_CHARS = 32_000
 const AGENT_CALL_MAX_OUTPUT_CHARS = 16_000
-const AGENT_CALL_MAX_RUNTIME_MS = 120_000
 
 function pluginHostServiceError(code: string, message: string) {
   return Object.assign(new Error(message), { name: "PluginHostServiceError", code })
