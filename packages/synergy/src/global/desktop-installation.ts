@@ -68,6 +68,42 @@ export namespace DesktopInstallation {
     return null
   }
 
+  export async function findWindowsRuntimePath(
+    context: Context,
+    exists: (candidate: string) => Promise<boolean> = async (candidate) =>
+      fs.access(candidate).then(
+        () => true,
+        () => false,
+      ),
+  ) {
+    if (context.platform !== "win32") return null
+    const env = context.env ?? process.env
+    const home = env.USERPROFILE ?? env.HOME
+    const localAppData = env.LOCALAPPDATA ?? (home ? path.win32.join(home, "AppData", "Local") : null)
+    if (localAppData) {
+      const standard = path.win32.join(
+        localAppData,
+        "Programs",
+        "Synergy",
+        "resources",
+        "synergy",
+        "bin",
+        "synergy.exe",
+      )
+      if (await exists(standard)) return standard
+    }
+
+    for (const entry of userPathEntries(env, "win32")) {
+      const launcher = path.win32.join(entry, "synergy.cmd")
+      const launcherRuntime = path.win32.resolve(entry, "..", "resources", "synergy", "bin", "synergy.exe")
+      if ((await exists(launcher)) && (await exists(launcherRuntime))) return launcherRuntime
+
+      const runtime = path.win32.join(entry, "synergy.exe")
+      if (isRuntimePath("win32", runtime) && (await exists(runtime))) return runtime
+    }
+    return null
+  }
+
   export function launcherDirectory(context: Context) {
     if (context.platform !== "win32") return null
     const normalized = context.realExecPath.replace(/\\/g, path.win32.sep)

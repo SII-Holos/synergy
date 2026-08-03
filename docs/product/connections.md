@@ -175,7 +175,7 @@ The mailbox is not a Synergy session transcript. It is network correspondence th
 
 ## Synergy Link
 
-Synergy Link uses the same authenticated Holos tunnel as a transport for explicit remote-execution sessions. In the one-way A-controls-B model, A persists each remote host as a Link target with a stable local target ID, display name, target Holos agent ID, Link ID, enablement state, and optional local-agent allowlist. A does not copy or store B's Holos credentials; B remains responsible for approving, denying, or revoking access.
+Synergy Link uses the same authenticated Holos tunnel as a transport for explicit remote-execution sessions. The standalone Link host reads and updates the canonical active Holos account, so switching or removing that identity applies consistently to both runtimes. In the one-way A-controls-B model, A persists each remote host as a Link target with a stable local target ID, display name, target Holos agent ID, Link ID, enablement state, and optional local-agent allowlist. A does not copy or store B's Holos credentials; B remains responsible for approving, denying, or revoking access.
 
 The Synergy Link Settings page creates and manages these targets. A successful connection or connection test records B's observed host session and capabilities, including platform, architecture, runtime, and shell support. These observations are metadata, not a guarantee of current reachability.
 

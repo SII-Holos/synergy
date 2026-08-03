@@ -107,6 +107,10 @@ Credential files live under `data/auth/`, including:
 - `mcp.json`
 - integration-specific auth stores
 
+`holos-accounts.json` is the canonical multi-account Holos credential store. Its active account supplies the identity used by both the Holos runtime and the standalone Synergy Link transport. `api-key.json` is legacy migration input for Holos credentials and is not the steady-state source after migration.
+
+Synergy and Synergy Link serialize updates to `holos-accounts.json` with the shared `data/auth/.locks/` protocol. Writers use the `holos-accounts:write` lock key and atomic rename so lock-free readers never observe a partial account store.
+
 Holos account storage is permissioned to the local user. Treat the entire auth directory as sensitive. Diagnostics and SmartAllow use redaction/metadata paths rather than exposing raw secrets.
 
 Plugin-scoped credentials live separately at `data/plugin/<plugin-id>/auth.json`. Plugin approvals, audit history, runtime health, and the local registry use `data/plugin-approvals.json`, `data/plugin-audit.json`, `data/plugin-runtime-state.json`, and `data/registry/plugins.json`; `plugin.lock` at the installation root binds installed specs to resolved artifacts and integrity. Treat plugin auth and signing material under `keys/` as sensitive even when the plugin itself is trusted.

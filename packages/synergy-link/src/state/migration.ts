@@ -174,15 +174,10 @@ async function importLegacyAuthIfNeeded(oldAuthPath: string, files: string[]) {
   if (!raw) return
   const parsed = JSON.parse(raw) as Partial<SynergyLinkAuthState>
   if (typeof parsed.agentID !== "string" || typeof parsed.agentSecret !== "string") return
-  const sharedPath = SynergyLinkHolosAuth.sharedAuthPath()
-  const oldShared = await readFile(sharedPath, "utf8").catch(() => undefined)
-  if (oldShared !== undefined) {
-    await writeFile(`${sharedPath}.bak-${Date.now()}`, oldShared)
-  }
   await SynergyLinkHolosAuth.save({ agentID: parsed.agentID, agentSecret: parsed.agentSecret })
   // Remove legacy credential file to avoid leaving a duplicate copy of secrets on disk
   await rm(oldAuthPath, { force: true }).catch(() => undefined)
-  files.push("shared-holos-auth")
+  files.push("holos-account-auth")
 }
 
 async function archiveLogs(sourceRoot: string, destinationRoot: string, files: string[]) {
