@@ -469,6 +469,7 @@ mod tests {
         assert_ne!(super::SUBLAYER_KEY, nil);
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn install_wfp_filters_returns_zero_on_non_windows() {
         let result = super::install_wfp_filters();
@@ -496,6 +497,7 @@ mod tests {
         assert_eq!(key.chars().nth(23), Some('-'));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn install_wfp_filters_for_account_stub_returns_ok_zero() {
         let result = super::install_wfp_filters_for_account("testuser");
