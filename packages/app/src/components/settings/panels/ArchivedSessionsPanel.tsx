@@ -427,9 +427,6 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
                         >
                           <SelectionCheckbox selected={selected()} />
                         </button>
-                        <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-raised-base text-icon-weak-base">
-                          <Icon name={getSemanticIcon("session.archive")} size="small" />
-                        </div>
                         <div class="min-w-0">
                           <div class="settings-row-title truncate">{item.title || _(untitledSessionLabel)}</div>
                           <div class="settings-archive-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-text-weak">

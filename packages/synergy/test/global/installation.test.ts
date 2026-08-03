@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import os from "node:os"
@@ -103,6 +103,27 @@ describe("standalone installation", () => {
       expect(await Installation.method()).toBe("standalone")
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath })
+    }
+  })
+
+  test("upgrades the selected standalone executable instead of the current CLI", async () => {
+    const selectedExecutable =
+      process.platform === "win32"
+        ? "C:\\srv\\synergy-user\\.synergy\\bin\\synergy.exe"
+        : "/srv/synergy-user/.synergy/bin/synergy"
+    const originalFetch = globalThis.fetch
+    const fetchMock = mock(async () => new Response("", { status: 404, statusText: "Not Found" }))
+    Object.defineProperty(globalThis, "fetch", { value: fetchMock, configurable: true })
+
+    try {
+      const error = await Installation.upgrade("standalone", "3.0.9", selectedExecutable).catch((cause) => cause)
+
+      expect(fetchMock).toHaveBeenCalledWith("https://raw.githubusercontent.com/SII-Holos/synergy/v3.0.9/install")
+      expect(error).toBeInstanceOf(Error)
+      expect(error.message).toContain("Failed to download")
+      expect(error.message).not.toContain("not a standalone installation")
+    } finally {
+      globalThis.fetch = originalFetch
     }
   })
 

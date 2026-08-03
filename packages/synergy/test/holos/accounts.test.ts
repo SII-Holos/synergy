@@ -93,6 +93,23 @@ describe("HolosAccounts multi-account store", () => {
     const ids = accounts.map((a) => a.agentId).sort()
     expect(ids).toEqual(["agent_a", "agent_b"])
   })
+  test("concurrent saves preserve every account", async () => {
+    const agents = Array.from({ length: 32 }, (_, index) => `agent_${index}`)
+
+    await Promise.all(agents.map((agentId) => HolosAccounts.saveAndActivateAccount(agentId, `secret_${agentId}`)))
+
+    const stored = await HolosAccounts.listAccounts()
+    expect(stored.map((account) => account.agentId).sort()).toEqual(agents.sort())
+  })
+
+  test("save refuses to replace a malformed canonical account store", async () => {
+    await fs.writeFile(accountsPath, "not-json")
+
+    await expect(HolosAccounts.saveAndActivateAccount("agent_new", "secret_new")).rejects.toThrow(
+      "Failed to parse the shared Holos account store",
+    )
+    await expect(fs.readFile(accountsPath, "utf8")).resolves.toBe("not-json")
+  })
 
   test("saving same agentId again overwrites secret and makes it active", async () => {
     await HolosAccounts.saveAndActivateAccount("agent_x", "old_secret")
@@ -155,6 +172,21 @@ describe("HolosAccounts multi-account store", () => {
 
     const accounts = await HolosAccounts.listAccounts()
     expect(accounts).toEqual([])
+  })
+
+  test("deleteAccount removes legacy Holos credentials while preserving other entries", async () => {
+    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+    await fs.writeFile(
+      apiKeyPath,
+      JSON.stringify({
+        anthropic: { type: "api", key: "keep-me" },
+        holos: { type: "holos", agentId: "legacy_agent", agentSecret: "legacy_secret" },
+      }),
+    )
+
+    await HolosAccounts.deleteAccount("agent_a")
+
+    await expect(apiKeyFile()).resolves.toEqual({ anthropic: { type: "api", key: "keep-me" } })
   })
 
   test("deleteAccount with non-active account keeps active unchanged", async () => {
