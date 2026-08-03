@@ -1,7 +1,11 @@
 import process from "node:process"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 import { readFile, stat, unlink } from "node:fs/promises"
 import { watch } from "node:fs"
 import { Platform } from "../platform.js"
+
+const execFileAsync = promisify(execFile)
 
 export namespace SynergyLinkLocalService {
   export function isPidRunning(pid: number) {
@@ -12,6 +16,14 @@ export namespace SynergyLinkLocalService {
     } catch {
       return false
     }
+  }
+
+  export async function isPidRunningSince(pid: number, expectedStartedAt?: number) {
+    if (!isPidRunning(pid)) return false
+    if (expectedStartedAt === undefined) return true
+    const observedStartedAt = await readPidStartedAt(pid)
+    if (observedStartedAt === undefined) return true
+    return Math.abs(observedStartedAt - expectedStartedAt) <= 5_000
   }
 
   export async function terminatePid(pid: number, input?: { waitMs?: number; retries?: number; killRetries?: number }) {
@@ -127,6 +139,20 @@ export namespace SynergyLinkLocalService {
         resolve()
       })
     })
+  }
+}
+
+async function readPidStartedAt(pid: number): Promise<number | undefined> {
+  if (process.platform === "win32") return undefined
+  try {
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="], {
+      timeout: 1_000,
+      maxBuffer: 4_096,
+    })
+    const startedAt = Date.parse(stdout.trim())
+    return Number.isNaN(startedAt) ? undefined : startedAt
+  } catch {
+    return undefined
   }
 }
 

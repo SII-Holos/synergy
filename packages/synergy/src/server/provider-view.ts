@@ -7,6 +7,7 @@ import { Auth } from "../provider/api-key"
 import { ProviderProfile } from "../provider/profile"
 import { GitHubProvider } from "../provider/github"
 import { ProviderAuthHealth } from "../provider/auth-health"
+import { ProviderConnection } from "../provider/connection"
 
 export const ProviderRuntimeAvailability = z
   .object({
@@ -28,6 +29,7 @@ export const ProviderListResponse = z
     configProviders: z.array(z.string()),
     catalogProviders: z.array(z.string()),
     profiles: z.record(z.string(), ProviderProfile.Metadata),
+    connections: z.record(z.string(), ProviderConnection.Info),
     authHealth: z.record(z.string(), ProviderAuthHealth.Info),
     runtimeAvailability: z.record(z.string(), ProviderRuntimeAvailability),
     modelCatalog: z.record(z.string(), ProviderCatalog.ModelCatalogState),
@@ -40,34 +42,65 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
   const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 
   const allProviders = await ProviderCatalog.resolve({ config, includeLive: false })
-
-  const [connected, configured] = await Promise.all([Provider.list(), Provider.listConfiguredForClient()])
+  const [connected, configured, globalConnections] = await Promise.all([
+    Provider.list(),
+    Provider.listConfiguredForClient(),
+    ProviderConnection.list(),
+  ])
+  const scopedConnections = ProviderConnection.listFrom(config, allProviders)
+  const connections = Object.fromEntries(
+    Object.entries(scopedConnections).flatMap(([providerID, connection]) => {
+      const globalConnection = globalConnections[providerID]
+      if (!globalConnection && !connection.removable) return []
+      return [
+        [
+          providerID,
+          {
+            ...connection,
+            removable: globalConnection?.removable ?? false,
+          },
+        ] as const,
+      ]
+    }),
+  )
   const configProviders = Object.keys(configured).filter((id) => !allProviders[id])
   const providers = Object.assign(
     mapValues(allProviders, (provider) => Provider.fromModelsDevProvider(provider)),
-    configured,
+    Object.fromEntries(configProviders.map((providerID) => [providerID, configured[providerID]])),
     connected,
   )
   const profiles = Object.fromEntries(
-    Object.entries(providers).map(([providerID, provider]) => [
-      providerID,
-      ProviderCatalog.providerMetadata(allProviders[providerID] ?? provider),
-    ]),
+    Object.entries(providers).map(([providerID, provider]) => {
+      const connection = connections[providerID]
+      const source = connection ? allProviders[connection.catalogProviderID] : undefined
+      return [
+        providerID,
+        ProviderCatalog.providerMetadata(source ?? provider, connection?.profileID ?? provider.profileID),
+      ]
+    }),
   )
   const entries = await Auth.entries()
-  const healthProviderIDs = new Set([...Object.keys(providers), ...Object.keys(entries), GitHubProvider.PROVIDER_ID])
+  const healthProviderIDs = new Set([
+    ...Object.keys(connections),
+    ...Object.keys(providers),
+    ...Object.keys(entries),
+    GitHubProvider.PROVIDER_ID,
+  ])
   const authHealth = Object.fromEntries(
     [...healthProviderIDs].map((providerID) => {
       const health = ProviderAuthHealth.fromEntry(providerID, entries[providerID])
       if (health.status !== "not_configured") return [providerID, health]
       const provider = providers[providerID]
-      const profile = ProviderProfile.get(providerID)
+      const connection = connections[providerID]
+      const profile = ProviderProfile.resolve(providerID, connection?.profileID ?? provider?.profileID)
       const githubEnvironment =
         providerID === GitHubProvider.PROVIDER_ID &&
         !!(process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim())
       const runtimeConnected = Object.prototype.hasOwnProperty.call(connected, providerID)
       if (!runtimeConnected && !githubEnvironment) return [providerID, health]
-      const environment = provider?.env?.some((name) => !!process.env[name]?.trim()) || githubEnvironment
+      const environment =
+        (provider?.env ?? config.provider?.[providerID]?.env)?.some((name) => !!process.env[name]?.trim()) ||
+        githubEnvironment
       return [
         providerID,
         {
@@ -94,7 +127,8 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
       !credentialExhausted &&
       Object.prototype.hasOwnProperty.call(connected, provider.id) &&
       modelCount > 0
-    const profile = ProviderProfile.get(provider.id)
+    const connection = connections[provider.id]
+    const profile = ProviderProfile.resolve(provider.id, connection?.profileID ?? provider.profileID)
     return {
       providerID: provider.id,
       available,
@@ -131,11 +165,12 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
     configProviders,
     catalogProviders: Object.keys(allProviders),
     profiles,
+    connections,
     authHealth,
     runtimeAvailability,
     modelCatalog: Object.fromEntries(
       Object.entries(providers).flatMap(([providerID, provider]) => {
-        const profile = ProviderProfile.get(providerID)
+        const profile = ProviderProfile.resolve(providerID, provider.profileID)
         if (!profile?.fetchModelCatalog && !profile?.fetchModels) return []
         return [
           [

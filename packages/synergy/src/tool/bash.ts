@@ -33,7 +33,7 @@ const parameters = z
       .positive()
       .optional()
       .describe(
-        "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds).",
+        "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds). For remote Synergy Link execution, the host clamps this value to at most 5 seconds so it can return a tracked process handle before the transport deadline. A timeout does not prove the remote command was cancelled, so never auto-retry mutating commands after an ambiguous timeout.",
       ),
     linkID: z
       .string()

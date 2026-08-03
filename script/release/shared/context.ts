@@ -17,6 +17,7 @@ export function createReleaseState(context: ReleaseContext): ReleaseState {
     createdAt: new Date().toISOString(),
     registryPackages: [...FIXED_REGISTRY_PACKAGES],
     binaryAssets: [],
+    binaryChecksums: null,
     desktopAssets: [],
     desktopChecksums: null,
     desktopUpdateMetadata: [],

@@ -41,7 +41,13 @@ export type ClarusRequestFailure =
   | {
       disposition: "ambiguous"
       requestID: string
-      reason: "timeout" | "aborted_after_dispatch" | "disconnected" | "invalid_response" | "unexpected_response"
+      reason:
+        | "timeout"
+        | "aborted_after_dispatch"
+        | "disconnected"
+        | "transport_liveness_lost"
+        | "invalid_response"
+        | "unexpected_response"
       message: string
     }
 
@@ -65,6 +71,7 @@ export function parseClarusRequestFailure(error: unknown): ClarusRequestFailure 
     (error.reason === "timeout" ||
       error.reason === "aborted_after_dispatch" ||
       error.reason === "disconnected" ||
+      error.reason === "transport_liveness_lost" ||
       error.reason === "invalid_response" ||
       error.reason === "unexpected_response")
   ) {

@@ -1,0 +1,7 @@
+@resvg/resvg-wasm 2.6.2
+License: Mozilla Public License Version 2.0 (see LICENSE-MPL-2.0.txt)
+Source Code Form: https://github.com/yisibl/resvg-js/tree/v2.6.2
+
+@fontsource/noto-sans-sc 5.3.0 (Noto Sans SC v40)
+License: SIL Open Font License Version 1.1 (see fonts/LICENSE-OFL-1.1.txt)
+Source: https://github.com/fontsource/font-files/tree/main/fonts/google/noto-sans-sc

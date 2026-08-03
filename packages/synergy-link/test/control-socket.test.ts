@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import process from "node:process"
 import { SynergyLinkControlClient } from "../src/control/client"
+import { SynergyLinkControlServer } from "../src/control/server"
 import { SynergyLinkRuntime } from "../src/runtime"
 import { SynergyLinkLog } from "../src/log"
 import { ControlRequestSchema } from "../src/control/schema"
@@ -99,6 +100,42 @@ describe("synergy-link control socket", () => {
       expect(trust.agents).toContain("agent_test")
     } finally {
       await runtime.stopServerProcess()
+    }
+  })
+
+  test("keeps control socket paths out of client errors", async () => {
+    const socketPath = SynergyLinkControlClient.socketPath()
+    let transportError: unknown
+    try {
+      await SynergyLinkControlClient.request({ action: "runtime.mode" }, { timeoutMs: 25 })
+    } catch (error) {
+      transportError = error
+    }
+    expect(transportError).toBeInstanceOf(Error)
+    if (!(transportError instanceof Error)) throw new Error("Expected a control transport error")
+    expect(transportError.message).toBe("Control socket request failed.")
+    expect(transportError.message).not.toContain(socketPath)
+    expect((transportError as Error & { code?: string }).code).toBe("control_socket_unavailable")
+
+    const server = new SynergyLinkControlServer(async () => {
+      const alternateSocketPath = socketPath.toUpperCase().replaceAll("/", "\\")
+      throw new Error(`Timed out connecting to control socket at ${alternateSocketPath}`)
+    })
+    await server.start()
+    try {
+      let responseError: unknown
+      try {
+        await SynergyLinkControlClient.request({ action: "runtime.mode" })
+      } catch (error) {
+        responseError = error
+      }
+      expect(responseError).toBeInstanceOf(Error)
+      if (!(responseError instanceof Error)) throw new Error("Expected a control response error")
+      expect(responseError.message).toBe("Control socket request failed.")
+      expect(responseError.message).not.toContain(socketPath)
+      expect((responseError as Error & { code?: string }).code).toBe("control_request_failed")
+    } finally {
+      await server.stop()
     }
   })
 

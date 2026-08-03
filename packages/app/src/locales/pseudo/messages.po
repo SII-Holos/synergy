@@ -16234,6 +16234,110 @@ msgid "settings.providers.account"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.add"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.connection"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.connection.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.created"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.creating"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.dialog.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.name.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.requestFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.saving"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.providers.accountConnected"
 msgstr ""
 
@@ -16774,11 +16878,15 @@ msgid "settings.synergyLink.availability.connected"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.idle"
+msgid "settings.synergyLink.availability.reachable"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.offline"
+msgid "settings.synergyLink.availability.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.unreachable"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17287,6 +17395,10 @@ msgstr ""
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.executed"
+msgstr ""
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.executed-via-synergy-link"
 msgstr ""
 
 #. ── Tool misc labels ────────────────────────────────────────────────

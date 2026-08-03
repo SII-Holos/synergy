@@ -3,6 +3,7 @@ import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
 import { Installation } from "../../global/installation"
 import { DesktopInstallation } from "../../global/desktop-installation"
+import { StandaloneInstallation } from "../../global/standalone-installation"
 import { Global } from "../../global"
 import { $ } from "bun"
 import fs from "fs/promises"
@@ -12,14 +13,16 @@ import os from "os"
 interface UninstallArgs {
   keepConfig: boolean
   keepData: boolean
+  installationOnly: boolean
+  method?: string
   dryRun: boolean
   force: boolean
 }
 
 interface RemovalTargets {
   directories: Array<{ path: string; label: string; keep: boolean }>
-  shellConfig: string | null
-  binary: string | null
+  shellConfigs: string[]
+  standaloneHome: string | null
   desktopCliLink: string | null
   desktopPathEntry: string | null
 }
@@ -41,6 +44,17 @@ export const UninstallCommand = {
         describe: "keep session data and snapshots",
         default: false,
       })
+      .option("installation-only", {
+        type: "boolean",
+        describe: "remove only the selected installation channel and preserve user data",
+        default: false,
+      })
+      .option("method", {
+        alias: "m",
+        describe: "installed channel to remove when multiple channels coexist",
+        type: "string",
+        choices: ["npm", "yarn", "pnpm", "bun", "desktop", "standalone"],
+      })
       .option("dry-run", {
         type: "boolean",
         describe: "show what would be removed without removing",
@@ -59,10 +73,26 @@ export const UninstallCommand = {
     UI.empty()
     prompts.intro("Uninstall Synergy")
 
-    const method = await Installation.method()
+    const inspection = await Installation.inspect()
+    let method: Installation.InstalledMethod
+    try {
+      method = Installation.resolveRemovalMethod(inspection, args.method as Installation.InstalledMethod | undefined)
+    } catch (error) {
+      process.exitCode = 1
+      if (error instanceof Installation.MultipleInstallationsError) {
+        prompts.log.error("Multiple Synergy installations were found. Select one with --method <method>.")
+      } else if (error instanceof Installation.InstallationMethodNotFoundError) {
+        prompts.log.error(`Installation method '${error.data.method}' was not found.`)
+      } else if (error instanceof Error) {
+        prompts.log.error(error.message)
+      }
+      prompts.outro("Done")
+      return
+    }
     prompts.log.info(`Installation method: ${method}`)
 
-    const targets = await collectRemovalTargets(args, method)
+    const selected = inspection.installations.find((installation) => installation.method === method)
+    const targets = await collectRemovalTargets(args, method, selected)
 
     await showRemovalSummary(targets, method)
 
@@ -83,28 +113,53 @@ export const UninstallCommand = {
       return
     }
 
-    await executeUninstall(method, targets)
+    const errors = await executeUninstall(method, targets)
+    if (errors.length > 0) process.exitCode = 1
 
     prompts.outro("Done")
   },
 }
 
-async function collectRemovalTargets(args: UninstallArgs, method: Installation.Method): Promise<RemovalTargets> {
+async function collectRemovalTargets(
+  args: UninstallArgs,
+  method: Installation.InstalledMethod,
+  selected?: Installation.InstalledChannel,
+): Promise<RemovalTargets> {
   const directories: RemovalTargets["directories"] = [
-    { path: Global.Path.data, label: "Data", keep: args.keepData },
-    { path: Global.Path.cache, label: "Cache", keep: false },
-    { path: Global.Path.config, label: "Config", keep: args.keepConfig },
-    { path: Global.Path.state, label: "State", keep: false },
+    { path: Global.Path.data, label: "Data", keep: args.installationOnly || args.keepData },
+    { path: Global.Path.cache, label: "Cache", keep: args.installationOnly },
+    { path: Global.Path.config, label: "Config", keep: args.installationOnly || args.keepConfig },
+    { path: Global.Path.state, label: "State", keep: args.installationOnly },
   ]
 
-  const shellConfig = null
-  const binary = null
+  let shellConfigs: string[] = []
+  let standaloneHome: string | null = null
   let desktopCliLink: string | null = null
   let desktopPathEntry: string | null = null
 
+  if (method === "standalone") {
+    const executable = selected?.executable ?? process.execPath
+    const realExecPath = await fs.realpath(executable).catch(() => executable)
+    standaloneHome =
+      StandaloneInstallation.installationHome({
+        platform: process.platform,
+        execPath: executable,
+        realExecPath,
+        env: process.env,
+      }) ?? os.homedir()
+    if (process.platform !== "win32") {
+      shellConfigs = await StandaloneInstallation.findShellConfigs({
+        home: standaloneHome,
+        shell: process.env.SHELL,
+        xdgConfigHome: process.env.XDG_CONFIG_HOME,
+      })
+    }
+  }
+
   if (method === "desktop") {
-    const realExecPath = await fs.realpath(process.execPath).catch(() => process.execPath)
-    const context = { platform: process.platform, execPath: process.execPath, realExecPath, env: process.env }
+    const executable = selected?.executable ?? process.execPath
+    const realExecPath = await fs.realpath(executable).catch(() => executable)
+    const context = { platform: process.platform, execPath: executable, realExecPath, env: process.env }
     const cliLink = await DesktopInstallation.inspectCliLink(context)
     if (cliLink.path && (cliLink.status === "healthy" || cliLink.status === "broken")) {
       desktopCliLink = cliLink.path
@@ -112,10 +167,10 @@ async function collectRemovalTargets(args: UninstallArgs, method: Installation.M
     desktopPathEntry = DesktopInstallation.launcherDirectory(context)
   }
 
-  return { directories, shellConfig, binary, desktopCliLink, desktopPathEntry }
+  return { directories, shellConfigs, standaloneHome, desktopCliLink, desktopPathEntry }
 }
 
-async function showRemovalSummary(targets: RemovalTargets, method: Installation.Method) {
+async function showRemovalSummary(targets: RemovalTargets, method: Installation.InstalledMethod) {
   prompts.log.message("The following will be removed:")
 
   for (const dir of targets.directories) {
@@ -133,12 +188,12 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
     prompts.log.info(`  ${prefix} ${dir.label}: ${shortenPath(dir.path)} ${UI.Style.TEXT_DIM}(${sizeStr})${status}`)
   }
 
-  if (targets.binary) {
-    prompts.log.info(`  ✓ Binary: ${shortenPath(targets.binary)}`)
+  if (targets.standaloneHome) {
+    prompts.log.info(`  ✓ Standalone runtime files: ${shortenPath(path.join(targets.standaloneHome, ".synergy"))}`)
   }
 
-  if (targets.shellConfig) {
-    prompts.log.info(`  ✓ Shell PATH in ${shortenPath(targets.shellConfig)}`)
+  for (const shellConfig of targets.shellConfigs) {
+    prompts.log.info(`  ✓ Shell PATH in ${shortenPath(shellConfig)}`)
   }
 
   if (targets.desktopCliLink) {
@@ -154,25 +209,24 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
     return
   }
 
-  if (method !== "unknown" && method !== "standalone") {
+  if (method !== "standalone") {
     const cmds: Record<string, string> = {
       npm: "npm uninstall -g @ericsanchezok/synergy",
       pnpm: "pnpm uninstall -g @ericsanchezok/synergy",
       bun: "bun remove -g @ericsanchezok/synergy",
       yarn: "yarn global remove @ericsanchezok/synergy",
-      brew: "brew uninstall synergy",
     }
     prompts.log.info(`  ✓ Package: ${cmds[method] || method}`)
   }
 }
 
-async function executeUninstall(method: Installation.Method, targets: RemovalTargets) {
+async function executeUninstall(method: Installation.InstalledMethod, targets: RemovalTargets) {
   const spinner = prompts.spinner()
   const errors: string[] = []
 
   for (const dir of targets.directories) {
     if (dir.keep) {
-      prompts.log.step(`Skipping ${dir.label} (--keep-${dir.label.toLowerCase()})`)
+      prompts.log.step(`Skipping ${dir.label} (preserved)`)
       continue
     }
 
@@ -192,14 +246,32 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     spinner.stop(`Removed ${dir.label}`)
   }
 
-  if (targets.shellConfig) {
-    spinner.start("Cleaning shell config...")
-    const err = await cleanShellConfig(targets.shellConfig).catch((e) => e)
-    if (err) {
-      spinner.stop("Failed to clean shell config", 1)
-      errors.push(`Shell config: ${err.message}`)
+  if (targets.standaloneHome) {
+    spinner.start("Removing standalone runtime...")
+    const currentExecutable = await fs.realpath(process.execPath).catch(() => process.execPath)
+    const result = await StandaloneInstallation.remove({
+      home: targets.standaloneHome,
+      platform: process.platform,
+      currentExecutable,
+    }).catch((error) => error)
+    if (result instanceof Error) {
+      spinner.stop("Failed to remove standalone runtime", 1)
+      errors.push(`Standalone runtime: ${result.message}`)
+    } else if (result.deferred.length > 0) {
+      spinner.stop("Standalone runtime removal will finish after Synergy exits")
     } else {
-      spinner.stop("Cleaned shell config")
+      spinner.stop("Removed standalone runtime")
+    }
+  }
+
+  for (const shellConfig of targets.shellConfigs) {
+    spinner.start(`Cleaning shell config ${shortenPath(shellConfig)}...`)
+    const err = await StandaloneInstallation.cleanShellConfig(shellConfig, targets.standaloneHome!).catch((e) => e)
+    if (err) {
+      spinner.stop(`Failed to clean shell config ${shortenPath(shellConfig)}`, 1)
+      errors.push(`Shell config ${shortenPath(shellConfig)}: ${err.message}`)
+    } else {
+      spinner.stop(`Cleaned shell config ${shortenPath(shellConfig)}`)
     }
   }
 
@@ -227,13 +299,12 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     }
   }
 
-  if (method !== "unknown" && method !== "desktop" && method !== "standalone") {
+  if (method !== "desktop" && method !== "standalone") {
     const cmds: Record<string, string[]> = {
       npm: ["npm", "uninstall", "-g", "@ericsanchezok/synergy"],
       pnpm: ["pnpm", "uninstall", "-g", "@ericsanchezok/synergy"],
       bun: ["bun", "remove", "-g", "@ericsanchezok/synergy"],
       yarn: ["yarn", "global", "remove", "@ericsanchezok/synergy"],
-      brew: ["brew", "uninstall", "synergy"],
     }
 
     const cmd = cmds[method]
@@ -260,90 +331,7 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
 
   UI.empty()
   prompts.log.success("Thank you for using Synergy!")
-}
-
-async function getShellConfigFile(): Promise<string | null> {
-  const shell = path.basename(process.env.SHELL || "bash")
-  const home = os.homedir()
-  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config")
-
-  const configFiles: Record<string, string[]> = {
-    fish: [path.join(xdgConfig, "fish", "config.fish")],
-    zsh: [
-      path.join(home, ".zshrc"),
-      path.join(home, ".zshenv"),
-      path.join(xdgConfig, "zsh", ".zshrc"),
-      path.join(xdgConfig, "zsh", ".zshenv"),
-    ],
-    bash: [
-      path.join(home, ".bashrc"),
-      path.join(home, ".bash_profile"),
-      path.join(home, ".profile"),
-      path.join(xdgConfig, "bash", ".bashrc"),
-      path.join(xdgConfig, "bash", ".bash_profile"),
-    ],
-    ash: [path.join(home, ".ashrc"), path.join(home, ".profile")],
-    sh: [path.join(home, ".profile")],
-  }
-
-  const candidates = configFiles[shell] || configFiles.bash
-
-  for (const file of candidates) {
-    const exists = await fs
-      .access(file)
-      .then(() => true)
-      .catch(() => false)
-    if (!exists) continue
-
-    const content = await Bun.file(file)
-      .text()
-      .catch(() => "")
-    if (content.includes("# synergy") || content.includes(".synergy/bin")) {
-      return file
-    }
-  }
-
-  return null
-}
-
-async function cleanShellConfig(file: string) {
-  const content = await Bun.file(file).text()
-  const lines = content.split("\n")
-
-  const filtered: string[] = []
-  let skip = false
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    if (trimmed === "# synergy") {
-      skip = true
-      continue
-    }
-
-    if (skip) {
-      skip = false
-      if (trimmed.includes(".synergy/bin") || trimmed.includes("fish_add_path")) {
-        continue
-      }
-    }
-
-    if (
-      (trimmed.startsWith("export PATH=") && trimmed.includes(".synergy/bin")) ||
-      (trimmed.startsWith("fish_add_path") && trimmed.includes(".synergy"))
-    ) {
-      continue
-    }
-
-    filtered.push(line)
-  }
-
-  while (filtered.length > 0 && filtered[filtered.length - 1].trim() === "") {
-    filtered.pop()
-  }
-
-  const output = filtered.join("\n") + "\n"
-  await Bun.write(file, output)
+  return errors
 }
 
 async function getDirectorySize(dir: string): Promise<number> {

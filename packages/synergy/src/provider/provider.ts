@@ -182,6 +182,12 @@ export namespace Provider {
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
+  type RuntimeProfileState = {
+    profile: ProviderProfile.Profile
+    provider?: ModelsDev.Provider
+    baseOptions: Record<string, any>
+    explicitOptions: Record<string, any>
+  }
   export const Model = z
     .object({
       id: z.string(),
@@ -309,6 +315,7 @@ export namespace Provider {
   export const Info = z
     .object({
       id: z.string(),
+      profileID: z.string().optional(),
       name: z.string(),
       source: z.enum(["env", "config", "custom", "api"]),
       env: z.string().array(),
@@ -322,8 +329,12 @@ export namespace Provider {
   export type Info = z.infer<typeof Info>
 
   export interface WorkerPlan {
+    profileID?: string
     key?: string
+    env?: string[]
     options: Record<string, unknown>
+    baseOptions?: Record<string, unknown>
+    explicitOptions?: Record<string, unknown>
     timeouts: {
       ttfbMs: number
       idleMs: number | false
@@ -331,10 +342,19 @@ export namespace Provider {
     }
   }
 
-  export function workerPlan(provider: Info | undefined, timeouts: WorkerPlan["timeouts"]): WorkerPlan {
+  export async function workerPlan(provider: Info | undefined, timeouts: WorkerPlan["timeouts"]): Promise<WorkerPlan> {
+    const runtimeProfile = provider?.id ? (await state()).runtimeProfileStates[provider.id] : undefined
     return {
+      ...(provider?.profileID ? { profileID: provider.profileID } : {}),
       key: provider?.key,
+      ...(provider?.env ? { env: provider.env } : {}),
       options: serializableProviderOptions(provider?.options ?? {}),
+      ...(runtimeProfile
+        ? {
+            baseOptions: serializableProviderOptions(runtimeProfile.baseOptions),
+            explicitOptions: serializableProviderOptions(runtimeProfile.explicitOptions),
+          }
+        : {}),
       timeouts,
     }
   }
@@ -445,6 +465,7 @@ export namespace Provider {
     configuredForClient: {} as Record<string, Info>,
     sdk: new Map<number, { instance: SDK; createdAt: number }>(),
     modelLoaders: {} as Record<string, CustomModelLoader>,
+    runtimeProfileStates: {} as Record<string, RuntimeProfileState>,
     timeouts: {} as Record<string, WorkerPlan["timeouts"]>,
   }
 
@@ -459,22 +480,45 @@ export namespace Provider {
     }
     const { registerBuiltinProviderProfiles } = await import("./builtin")
     registerBuiltinProviderProfiles()
-    const profile = ProviderProfile.get(model.providerID)
+    const profile = ProviderProfile.resolve(model.providerID, plan.profileID)
     const storedAuth = await Auth.get(model.providerID)
+    const inlineModelKey =
+      typeof model.options?.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
+    const inlineProviderKey =
+      typeof plan.options.apiKey === "string" && plan.options.apiKey ? plan.options.apiKey : undefined
+    const connectionKey = plan.key ?? inlineProviderKey
+    const auth =
+      (inlineModelKey ? ({ type: "api", key: inlineModelKey } satisfies Auth.Info) : undefined) ??
+      (connectionKey ? ({ type: "api", key: connectionKey } satisfies Auth.Info) : undefined) ??
+      storedAuth
     const profileInput = {
       providerID: model.providerID,
-      auth: storedAuth,
+      auth,
       provider: undefined,
     }
-    const auth = (await profile?.resolveAuth?.(profileInput)) ?? storedAuth
-    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth })) ?? {}
-    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth })) ?? {}
-    const options = mergeDeep(mergeDeep(plan.options, modelOptions), runtimeOptions)
+    const resolvedAuth = (await profile?.resolveAuth?.(profileInput)) ?? auth
+    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
+    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth: resolvedAuth })) ?? {}
+    const dynamicOptions = mergeDeep(modelOptions, runtimeOptions)
+    const options =
+      profile && plan.baseOptions && plan.explicitOptions
+        ? mergeDeep(mergeDeep(plan.baseOptions, dynamicOptions), plan.explicitOptions)
+        : mergeDeep(dynamicOptions, plan.options)
+    if (profile) {
+      workerState.runtimeProfileStates[model.providerID] = {
+        profile,
+        baseOptions: plan.baseOptions ?? {},
+        explicitOptions: plan.explicitOptions ?? plan.options,
+      }
+    } else {
+      delete workerState.runtimeProfileStates[model.providerID]
+    }
     workerState.providers[model.providerID] = {
       id: model.providerID,
+      profileID: plan.profileID,
       name: model.providerID,
       source: plan.key ? "api" : "custom",
-      env: [],
+      env: plan.env ?? [],
       key: plan.key,
       options,
       models: { [model.id]: model },
@@ -522,6 +566,7 @@ export namespace Provider {
     const modelLoaders: {
       [providerID: string]: CustomModelLoader
     } = {}
+    const runtimeProfileStates: Record<string, RuntimeProfileState> = {}
     const sdk = new Map<number, { instance: SDK; createdAt: number }>()
 
     log.info("init")
@@ -542,9 +587,11 @@ export namespace Provider {
     // extend database from config
     for (const [providerID, provider] of configProviders) {
       const sourceProviderID = provider.modelsDevProviderID ?? providerID
-      const sourceCatalog = provider.modelsDevProviderID
-        ? inheritedModelsDev?.[sourceProviderID]
-        : modelsDev[sourceProviderID]
+      const sourceCatalog = provider.profile
+        ? modelsDev[providerID]
+        : provider.modelsDevProviderID
+          ? inheritedModelsDev?.[sourceProviderID]
+          : modelsDev[sourceProviderID]
       if (provider.modelsDevProviderID && !sourceCatalog) {
         log.warn("configured provider model catalog source not found", {
           providerID,
@@ -573,6 +620,7 @@ export namespace Provider {
       }
       const parsed: Info = {
         id: providerID,
+        profileID: provider.profile,
         name: provider.name ?? existing?.name ?? providerID,
         env: provider.env ?? existing?.env ?? [],
         options: mergeDeep(existing?.options ?? {}, provider.options ?? {}),
@@ -665,9 +713,11 @@ export namespace Provider {
       import("@/plugin/loader"),
       import("@/plugin/auth-provider"),
     ])
+    const authProviderPlugins = new Map<string, ReturnType<typeof authHook>>()
     for (const entry of await getAuthProviderEntries()) {
       const plugin = authHook(entry.plugin, entry.contribution)
       const providerID = plugin.provider
+      authProviderPlugins.set(providerID, plugin)
       if (disabled.has(providerID)) continue
 
       // For github-copilot plugin, check if auth exists for either github-copilot or github-copilot-enterprise
@@ -712,21 +762,66 @@ export namespace Provider {
       }
     }
 
-    for (const profile of ProviderProfile.all()) {
-      const providerID = profile.id
+    const runtimeProfiles = new Map(ProviderProfile.all().map((profile) => [profile.id, profile]))
+    for (const [providerID, provider] of configProviders) {
+      if (!provider.profile) continue
+      const profile = ProviderProfile.get(provider.profile)
+      if (!profile) {
+        log.warn("configured provider profile not found", { providerID, profileID: provider.profile })
+        continue
+      }
+      runtimeProfiles.set(providerID, profile)
+    }
+
+    for (const [providerID, profile] of runtimeProfiles) {
       if (disabled.has(providerID)) continue
       const base = database[providerID]
       if (!base) continue
       const storedAuth = await Auth.get(providerID)
+      const sourcePlugin = providerID === profile.id ? undefined : authProviderPlugins.get(profile.id)
+      if (storedAuth && sourcePlugin?.loader) {
+        const options = await sourcePlugin.loader(() => Auth.get(providerID) as any, base)
+        mergeProvider(providerID, {
+          source: "custom",
+          options,
+        })
+      }
+      const providerKey = providers[providerID]?.key
+      const configProvider = config.provider?.[providerID]
+      const environmentProviderKey = providers[providerID]?.env
+        .map((name) => env[name]?.trim())
+        .find((value): value is string => !!value)
+      const inlineProviderKey =
+        typeof configProvider?.options?.apiKey === "string" && configProvider.options.apiKey
+          ? configProvider.options.apiKey
+          : undefined
+      const hasInlineModelKey = Object.values(configProvider?.models ?? {}).some(
+        (model) => typeof model.options?.apiKey === "string" && model.options.apiKey.length > 0,
+      )
+      const connectionAuth =
+        (inlineProviderKey ? ({ type: "api", key: inlineProviderKey } satisfies Auth.Info) : undefined) ??
+        storedAuth ??
+        (environmentProviderKey ? ({ type: "api", key: environmentProviderKey } satisfies Auth.Info) : undefined) ??
+        (providerKey ? ({ type: "api", key: providerKey } satisfies Auth.Info) : undefined)
+      const sourceProviderID = configProvider?.modelsDevProviderID ?? profile.modelsDevProviderID ?? profile.id
       const profileInput = {
         providerID,
-        auth: storedAuth,
-        provider: modelsDev[providerID],
+        auth: connectionAuth,
+        provider: modelsDev[providerID] ?? inheritedModelsDev?.[sourceProviderID],
       }
-      const auth = (await profile.resolveAuth?.(profileInput)) ?? storedAuth
+      const auth = (await profile.resolveAuth?.(profileInput)) ?? connectionAuth
       const autoload = (await profile.autoload?.({ ...profileInput, auth })) ?? false
-      const shouldMerge = !!auth || !!providers[providerID] || autoload
+      const shouldMerge = !!auth || !!providers[providerID] || hasInlineModelKey || autoload
       if (!shouldMerge) continue
+      runtimeProfileStates[providerID] = {
+        profile,
+        provider: profileInput.provider,
+        baseOptions: base.options,
+        explicitOptions: mergeDeep(
+          configProvider?.api ? { baseURL: configProvider.api } : {},
+          configProvider?.options ?? {},
+        ),
+      }
       const modelOptions = (await profile.modelOptions?.({ ...profileInput, auth })) ?? {}
       const runtimeOptions = (await profile.runtimeOptions?.({ ...profileInput, auth })) ?? {}
       const options = mergeDeep(modelOptions, runtimeOptions)
@@ -737,7 +832,9 @@ export namespace Provider {
         }
       }
       mergeProvider(providerID, {
+        profileID: profile.id,
         source: "custom",
+        key: auth?.type === "api" ? auth.key : undefined,
         options,
       })
     }
@@ -747,7 +844,12 @@ export namespace Provider {
       const partial: Partial<Info> = { source: "config" }
       if (provider.env) partial.env = provider.env
       if (provider.name) partial.name = provider.name
-      if (provider.options) partial.options = provider.options
+      if (typeof provider.options?.apiKey === "string" && provider.options.apiKey) {
+        partial.key = provider.options.apiKey
+      }
+      if (provider.api || provider.options) {
+        partial.options = mergeDeep(provider.api ? { baseURL: provider.api } : {}, provider.options ?? {})
+      }
       mergeProvider(providerID, partial)
     }
 
@@ -794,8 +896,32 @@ export namespace Provider {
       configuredForClient,
       sdk,
       modelLoaders,
+      runtimeProfileStates,
     }
   })
+
+  async function resolveModelOptions(
+    model: Model,
+    provider: Info,
+    runtimeProfile: RuntimeProfileState | undefined,
+  ): Promise<Record<string, any>> {
+    const inlineModelKey =
+      typeof model.options?.apiKey === "string" && model.options.apiKey ? model.options.apiKey : undefined
+    if (!inlineModelKey || !runtimeProfile) return { ...provider.options, ...(model.options ?? {}) }
+
+    const profileInput = {
+      providerID: model.providerID,
+      auth: { type: "api", key: inlineModelKey } satisfies Auth.Info,
+      provider: runtimeProfile.provider,
+    }
+    const auth = (await runtimeProfile.profile.resolveAuth?.(profileInput)) ?? profileInput.auth
+    const modelOptions = (await runtimeProfile.profile.modelOptions?.({ ...profileInput, auth })) ?? {}
+    const runtimeOptions = (await runtimeProfile.profile.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+    const dynamicOptions = mergeDeep(modelOptions, runtimeOptions)
+    const withRuntime = mergeDeep(runtimeProfile.baseOptions, dynamicOptions)
+    const withExplicitConnection = mergeDeep(withRuntime, runtimeProfile.explicitOptions)
+    return { ...withExplicitConnection, ...(model.options ?? {}) }
+  }
 
   export async function reload() {
     log.info("reloading provider state")
@@ -817,7 +943,10 @@ export namespace Provider {
    * Used by both the normal `getSDK` (which wraps this with caching) and
    * the import probe path (which has no scope context).
    */
-  export function createSDKFromSpec(model: Model, provider: { options?: Record<string, unknown>; key?: string }): SDK {
+  export function createSDKFromSpec(
+    model: Model,
+    provider: { profileID?: string; options?: Record<string, unknown>; key?: string; env?: string[] },
+  ): SDK {
     const options: Record<string, any> = { ...provider.options, ...model.options }
 
     if (model.api.npm.includes("@ai-sdk/openai-compatible") && options["includeUsage"] !== false) {
@@ -845,7 +974,10 @@ export namespace Provider {
     delete options["proxy"]
     delete options["noProxy"]
 
-    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
+    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID, {
+      effectiveAPIKey: typeof options["apiKey"] === "string" ? options["apiKey"] : undefined,
+      environment: provider.env,
+    })
     const proxyFetch =
       proxyUrl || noProxy
         ? (input: any, init?: any) => fetchWithProxyOptions(authFetch, input, init, proxyUrl, noProxy)
@@ -870,14 +1002,65 @@ export namespace Provider {
     return builtSDK
   }
 
-  export async function getSDK(model: Model) {
+  /**
+   * Create a language model from an explicit provider spec without using scoped
+   * provider state. Import probes use this path before a config is installed.
+   */
+  export async function createLanguageFromSpec(
+    model: Model,
+    provider: {
+      profileID?: string
+      options?: Record<string, unknown>
+      key?: string
+      auth?: Auth.Info
+      catalogProvider?: ModelsDev.Provider
+    },
+  ): Promise<LanguageModelV2> {
+    const { registerBuiltinProviderProfiles } = await import("./builtin")
+    registerBuiltinProviderProfiles()
+
+    const profile = ProviderProfile.resolve(model.providerID, provider.profileID)
+    const connectionAuth =
+      provider.auth ?? (provider.key ? ({ type: "api", key: provider.key } satisfies Auth.Info) : undefined)
+    const profileInput = {
+      providerID: model.providerID,
+      auth: connectionAuth,
+      provider: provider.catalogProvider,
+    }
+    const auth = (await profile?.resolveAuth?.(profileInput)) ?? connectionAuth
+    const modelOptions = (await profile?.modelOptions?.({ ...profileInput, auth })) ?? {}
+    const runtimeOptions = (await profile?.runtimeOptions?.({ ...profileInput, auth })) ?? {}
+    const dynamicOptions = mergeDeep(modelOptions, runtimeOptions)
+    const options = mergeDeep(dynamicOptions, provider.options ?? {})
+    const key = auth?.type === "api" ? auth.key : provider.key
+    const sdk = createSDKFromSpec(model, {
+      profileID: profile?.id ?? provider.profileID,
+      options,
+      key,
+    })
+
+    if (profile?.getModel) return profile.getModel({ sdk, modelID: model.api.id, options })
+    if (profile?.modelFactory) {
+      return ProviderProfile.defaultModelFactory(profile.modelFactory, {
+        sdk,
+        modelID: model.api.id,
+        options,
+      }) as LanguageModelV2
+    }
+    if (model.api.npm === "@ai-sdk/openai") return (sdk as any).responses(model.api.id)
+    return sdk.languageModel(model.api.id) as LanguageModelV2
+  }
+
+  export async function getSDK(model: Model, resolvedOptions?: Record<string, any>) {
     try {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
       })
       const s = await state()
       const provider = s.providers[model.providerID]
-      const options: Record<string, any> = { ...provider.options, ...model.options }
+      const options: Record<string, any> = {
+        ...(resolvedOptions ?? (await resolveModelOptions(model, provider, s.runtimeProfileStates[model.providerID]))),
+      }
 
       if (model.api.npm.includes("@ai-sdk/openai-compatible") && options["includeUsage"] !== false) {
         options["includeUsage"] = true
@@ -891,7 +1074,13 @@ export namespace Provider {
           ...model.headers,
         }
 
-      const key = Bun.hash.xxHash32(JSON.stringify({ npm: model.api.npm, options }))
+      const key = Bun.hash.xxHash32(
+        JSON.stringify({
+          providerID: model.providerID,
+          npm: model.api.npm,
+          options,
+        }),
+      )
       const SDK_CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours — prevent stale HTTP client state in long-running processes
       const existing = s.sdk.get(key)
       if (existing) {
@@ -901,7 +1090,10 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
-      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
+      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch, provider.profileID, {
+        effectiveAPIKey: typeof options["apiKey"] === "string" ? options["apiKey"] : undefined,
+        environment: provider.env,
+      })
       const proxyUrl = options["proxy"] as string | undefined
       const noProxy = options["noProxy"] === true
       delete options["proxy"]
@@ -1115,7 +1307,7 @@ export namespace Provider {
   export async function getLanguage(model: Model): Promise<LanguageModelV2> {
     const s = await state()
     const provider = s.providers[model.providerID]
-    const options = { ...provider.options, ...model.options }
+    const options = await resolveModelOptions(model, provider, s.runtimeProfileStates[model.providerID])
     const key = Bun.hash
       .xxHash32(
         JSON.stringify({
@@ -1135,11 +1327,11 @@ export namespace Provider {
       log.info("model cache entry expired, recreating", { key })
     }
 
-    const sdk = await getSDK(model)
+    const sdk = await getSDK(model, options)
 
     try {
       const language = s.modelLoaders[model.providerID]
-        ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
+        ? await s.modelLoaders[model.providerID](sdk, model.api.id, options)
         : model.api.npm === "@ai-sdk/openai"
           ? (sdk as any).responses(model.api.id)
           : sdk.languageModel(model.api.id)

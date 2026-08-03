@@ -24,6 +24,7 @@ import { stagePlaywrightCoreRuntime } from "./playwright-runtime-assets"
 import { copyHolosCliAsset } from "./holos-cli-assets"
 import { prepareBuildModelsCatalog } from "./models-catalog"
 import { stageEmbeddingRuntimeAssets, standaloneEmbeddingBuildPlugin } from "./embedding-runtime-assets"
+import { stageSvgRasterRuntimeAssets } from "./svg-raster-runtime-assets"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -155,6 +156,7 @@ for (const item of targets) {
     await extractPublishedRuntimePackage(name, Script.version)
     await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
     await stageEmbeddingRuntimeAssets({ runtimeDir: path.join("dist", name) })
+    await stageSvgRasterRuntimeAssets({ runtimeDir: path.join("dist", name) })
     copyHolosCliAsset(path.join("dist", name))
     if (requireSandboxAssets) assertPackagedSandboxAsset(item, path.join("dist", name))
     binaries[name] = Script.version
@@ -183,7 +185,7 @@ for (const item of targets) {
         execArgv: [`--user-agent=synergy/${Script.version}`, "--use-system-ca", "--"],
         windows: {},
       },
-      entrypoints: ["./src/index.ts"],
+      entrypoints: ["./src/index.ts", "./src/channel/provider/feishu/svg-raster-worker.ts"],
       define: {
         SYNERGY_VERSION: `'${Script.version}'`,
         SYNERGY_CHANNEL: `'${Script.channel}'`,
@@ -211,6 +213,7 @@ for (const item of targets) {
   binaries[name] = Script.version
   await stagePlaywrightCoreRuntime({ runtimeDir: path.join("dist", name) })
   await stageEmbeddingRuntimeAssets({ runtimeDir: path.join("dist", name) })
+  await stageSvgRasterRuntimeAssets({ runtimeDir: path.join("dist", name) })
 
   if (sandboxAsset) {
     copySandboxAsset(sandboxAsset, path.join("dist", name))
