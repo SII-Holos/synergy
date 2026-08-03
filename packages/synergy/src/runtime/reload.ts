@@ -349,6 +349,10 @@ export namespace RuntimeReload {
           const { TimeoutConfig } = await import("@/util/timeout-config")
           TimeoutConfig.invalidate()
         }
+        if (changedFields.includes("provider")) {
+          const { ProviderAuth } = await import("../provider/auth")
+          await ProviderAuth.reload()
+        }
         const { Plugin } = await import("../plugin")
         await Plugin.notifyConfigHooks({ source: "reload", config: result.config, changedFields })
         return inferConfigCascades(changedFields)

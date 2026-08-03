@@ -26,7 +26,7 @@ import { Session } from "../session"
 import { SessionInvoke } from "../session/invoke"
 import { Agent } from "../agent/agent"
 import { AgentCall } from "../agent/call"
-import { PluginAgentCallRuntimeError, pluginAgentCallRuntime } from "./agent-call-runtime"
+import { PluginAgentCallRuntimeError, pluginAgentCallRuntime, warnPluginAgentCallDelivery } from "./agent-call-runtime"
 import { isPathContained } from "../util/path-contain"
 import { getPluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
@@ -271,9 +271,26 @@ async function startPluginAgent(input: PluginHostServiceInvocationInput, value: 
           scope,
           fn: async () => {
             const { deliverHookForPlugin } = await import("./lifecycle")
-            await deliverHookForPlugin(input.pluginId, input.manifest.artifacts.generation, "agent.call.after", {
-              call,
-            })
+            const delivery = await deliverHookForPlugin(
+              input.pluginId,
+              input.manifest.artifacts.generation,
+              "agent.call.after",
+              { call },
+            )
+            if (delivery.status !== "delivered") {
+              warnPluginAgentCallDelivery({
+                pluginId: input.pluginId,
+                generation: input.manifest.artifacts.generation,
+                scopeId: input.invocation.scopeId,
+                callId: call.callId,
+                terminalStatus: call.status,
+                deliveryStatus: delivery.status,
+                handlerCount: delivery.handlerCount,
+                ...("succeededHandlerCount" in delivery
+                  ? { succeededHandlerCount: delivery.succeededHandlerCount }
+                  : {}),
+              })
+            }
           },
         }),
     })
@@ -600,6 +617,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
     protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
     dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+    stripDefaultHomeDenyRoot: true,
     backend: sandbox.backend,
   })
   const executed = await SandboxBackend.executeAsync(wrapper, {

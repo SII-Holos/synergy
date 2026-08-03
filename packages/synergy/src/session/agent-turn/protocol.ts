@@ -5,7 +5,7 @@ import { Runtime as ScopeRuntime } from "@/scope/types"
 import { Workspace } from "../workspace-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 5
+  export const VERSION = 6
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -127,8 +127,12 @@ export namespace AgentTurnProtocol {
           baseSystemLength: z.number().int().nonnegative(),
           provider: z
             .object({
+              profileID: z.string().optional(),
               key: z.string().optional(),
+              env: z.array(z.string()).optional(),
               options: z.record(z.string(), z.unknown()),
+              baseOptions: z.record(z.string(), z.unknown()).optional(),
+              explicitOptions: z.record(z.string(), z.unknown()).optional(),
               timeouts: z
                 .object({
                   ttfbMs: z.number().nonnegative(),

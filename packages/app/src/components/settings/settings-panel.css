@@ -91,22 +91,6 @@
   letter-spacing: var(--letter-spacing-normal);
 }
 
-.settings-select {
-  min-width: 180px;
-  border: 1px solid var(--settings-border);
-  border-radius: 6px;
-  background: var(--settings-input-bg);
-  color: var(--text-strong);
-  padding: 8px 10px;
-  font-size: var(--settings-type-control-size);
-  line-height: var(--settings-type-control-line-height);
-  outline: none;
-}
-
-.settings-select:focus {
-  box-shadow: var(--settings-focus-ring);
-}
-
 .settings-panel-close {
   position: absolute;
   top: 12px;
@@ -133,14 +117,6 @@
   border-color: color-mix(in oklch, var(--border-base) 56%, transparent);
 }
 
-.settings-panel-root {
-  --shadow-xs-border-select: var(--settings-focus-ring);
-
-  height: 100%;
-  min-height: 0;
-  background: var(--settings-canvas-bg);
-}
-
 .settings-popover-layer {
   position: absolute;
   inset: 0;
@@ -149,8 +125,17 @@
 }
 
 .settings-popover-layer .settings-model-picker-popover,
-.settings-popover-layer .settings-model-detail-surface {
+.settings-popover-layer .settings-model-detail-surface,
+.settings-popover-layer .menu-field-surface {
   pointer-events: auto;
+}
+
+.settings-panel-root {
+  --shadow-xs-border-select: var(--settings-focus-ring);
+
+  height: 100%;
+  min-height: 0;
+  background: var(--settings-canvas-bg);
 }
 
 .settings-panel-loading {
@@ -2671,6 +2656,44 @@
   line-height: var(--settings-type-caption-line-height);
 }
 
+.providers-account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.providers-account-actions-copy {
+  min-width: 0;
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
+.provider-account-dialog {
+  --dialog-body-padding: 0;
+}
+
+.provider-account-dialog [data-slot="dialog-form"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.provider-account-dialog-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.provider-account-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--dialog-border-weak);
+}
+
 .providers-auth-warning,
 .settings-request-error {
   display: flex;
@@ -3158,6 +3181,17 @@
   .account-agent-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .providers-account-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .providers-connect-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .usage-window-reading {

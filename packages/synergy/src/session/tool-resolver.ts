@@ -1611,6 +1611,7 @@ export namespace ToolResolver {
                         extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
                         protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                         dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+                        stripDefaultHomeDenyRoot: true,
                         backend: sandbox.backend,
                       })
                       if (wrapper.skipReason && sandbox.fallback !== "deny") {

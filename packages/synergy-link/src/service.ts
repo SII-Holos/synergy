@@ -219,7 +219,9 @@ function snapshotFromState(state: SynergyLinkState, running: boolean): SynergyLi
 
 async function loadReconciledState(): Promise<{ state: SynergyLinkState; running: boolean }> {
   const state = await SynergyLinkStore.loadState()
-  const running = Boolean(state.service.pid && SynergyLinkLocalService.isPidRunning(state.service.pid))
+  const running = Boolean(
+    state.service.pid && (await SynergyLinkLocalService.isPidRunningSince(state.service.pid, state.service.startedAt)),
+  )
   if (reconcileObservedRuntimeState(state, running)) {
     await SynergyLinkStore.saveState(state)
   }

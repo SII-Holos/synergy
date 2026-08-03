@@ -3301,6 +3301,10 @@ msgid "app.library.experience.filter.all"
 msgstr "All experiences"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr "Filter experiences"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr "Current scope"
 
@@ -3360,6 +3364,10 @@ msgstr "Showing all {total} experiences"
 msgid "app.library.experience.showingOf"
 msgstr "Showing {shown} of {total} experiences"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr "Sort experiences"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr "C"
@@ -3413,8 +3421,16 @@ msgid "app.library.memory.empty.none"
 msgstr "No memories yet"
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr "Filter memories by category"
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
 msgstr "{pct}%"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
+msgstr "Sort memories"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.updated"
@@ -3647,6 +3663,10 @@ msgstr "Downloaded \"{name}\" as a ZIP archive"
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
 msgstr "All skills"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
+msgstr "Filter skills"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.builtin"
@@ -13214,6 +13234,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr "Select visible"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr "Sort archived sessions"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr "Archive time: newest"
 
@@ -16234,6 +16258,110 @@ msgid "settings.providers.account"
 msgstr "Account"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.add"
+msgstr "Add account"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add.description"
+msgstr "Create a named account connection for {providerName}. Connect its credentials separately after creation."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add.title"
+msgstr "Add provider account"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.connection"
+msgstr "Account connection"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.connection.description"
+msgstr "This account has independent credentials. It is not a credential failover entry."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.create"
+msgstr "Create account"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.created"
+msgstr "Provider account created"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.creating"
+msgstr "Creating..."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.dialog.close"
+msgstr "Close account dialog"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit"
+msgstr "Edit account"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit.description"
+msgstr "Update this account connection without changing sibling accounts."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit.title"
+msgstr "Edit provider account"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.enabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint"
+msgstr "API endpoint"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint.description"
+msgstr "Optional. Leave empty to use the provider default."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint.placeholder"
+msgstr "https://api.example.com/v1"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.name"
+msgstr "Account name"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.name.placeholder"
+msgstr "Work account"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove"
+msgstr "Remove account"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove.description"
+msgstr "This removes the account connection and its Synergy-managed credentials. Sibling accounts are unchanged."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove.title"
+msgstr "Remove provider account?"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.requestFailed"
+msgstr "Account update failed"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.save"
+msgstr "Save changes"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.saved"
+msgstr "Provider account updated"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.saving"
+msgstr "Saving..."
+
+#. js-lingui-explicit-id
 msgid "settings.providers.accountConnected"
 msgstr "Credentials are connected. Use Usage for quota and billing details."
 
@@ -16774,12 +16902,16 @@ msgid "settings.synergyLink.availability.connected"
 msgstr "Connected"
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.idle"
-msgstr "Ready"
+msgid "settings.synergyLink.availability.reachable"
+msgstr "Reachable"
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.offline"
-msgstr "Holos offline"
+msgid "settings.synergyLink.availability.unknown"
+msgstr "Unknown"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.unreachable"
+msgstr "Unreachable"
 
 #. js-lingui-explicit-id
 msgid "settings.synergyLink.empty.description"
@@ -17288,6 +17420,10 @@ msgstr "Changed Fields"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.executed"
 msgstr "Executed"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.executed-via-synergy-link"
+msgstr "Executed via Synergy Link"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.files"

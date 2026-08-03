@@ -160,14 +160,21 @@ const MEMORY_USAGE_HINT = [
 ].join("\n")
 
 // ---------------------------------------------------------------------------
-// Always-only memory context — lightweight injection for child sessions
+// Always-only memory context — reliable non-embedding injection
 // ---------------------------------------------------------------------------
 
-export function buildAlwaysOnlyMemoryContext(): string | undefined {
+export function buildAlwaysOnlyMemoryResult(): { context: string; injection: InjectionInfo } | undefined {
   const grouped = groupAlwaysRows()
   const block = renderMemoryBlock(grouped)
   if (!block) return undefined
-  return [block, MEMORY_USAGE_HINT].join("\n\n")
+  return {
+    context: [block, MEMORY_USAGE_HINT].join("\n\n"),
+    injection: { memory: block },
+  }
+}
+
+export function buildAlwaysOnlyMemoryContext(): string | undefined {
+  return buildAlwaysOnlyMemoryResult()?.context
 }
 
 async function buildActiveMemoryContext(

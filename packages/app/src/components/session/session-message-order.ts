@@ -1,5 +1,12 @@
 type MessageWithID = { id: string }
 
+type RollbackMessage = {
+  id: string
+  role: "user" | "assistant"
+  isRoot?: boolean
+  time: { created: number }
+}
+
 function messageIndex(messages: readonly MessageWithID[], messageID: string) {
   return messages.findIndex((message) => message.id === messageID)
 }
@@ -7,6 +14,33 @@ function messageIndex(messages: readonly MessageWithID[], messageID: string) {
 export function messagesBefore<T extends MessageWithID>(messages: readonly T[], messageID: string): T[] {
   const index = messageIndex(messages, messageID)
   return index < 0 ? [...messages] : messages.slice(0, index)
+}
+
+// message.updated for a resent root can reach the window before session.updated
+// invalidates redo. Keep that root visible without revealing non-root injections,
+// which canonical rollback history continues to prefix-hide while redo is valid.
+export function messagesHiddenByRollback<T extends RollbackMessage>(
+  messages: readonly T[],
+  rollback: {
+    created: number
+    cutMessageID?: string
+    canUnrollback: boolean
+    droppedMessageIDs?: readonly string[]
+  },
+): T[] {
+  const dropped = new Set(rollback.droppedMessageIDs ?? [])
+  const filterDropped = () =>
+    dropped.size === 0 ? [...messages] : messages.filter((message) => !dropped.has(message.id))
+  if (!rollback.cutMessageID || !rollback.canUnrollback) return filterDropped()
+  const cutIndex = messageIndex(messages, rollback.cutMessageID)
+  if (cutIndex < 0) return [...messages]
+  const newBranchLoaded = messages.slice(cutIndex).some((message) => {
+    if (dropped.has(message.id) || message.role !== "user") return false
+    if (message.isRoot === false) return false
+    return message.time.created > rollback.created
+  })
+  if (newBranchLoaded) return filterDropped()
+  return messages.slice(0, cutIndex)
 }
 
 export function messagesFrom<T extends MessageWithID>(messages: readonly T[], messageID: string): T[] {

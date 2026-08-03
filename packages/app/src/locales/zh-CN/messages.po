@@ -3301,6 +3301,10 @@ msgid "app.library.experience.filter.all"
 msgstr "全部经验"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr "筛选体验"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr "当前作用域"
 
@@ -3360,6 +3364,10 @@ msgstr "正在显示全部 {total} 条经验"
 msgid "app.library.experience.showingOf"
 msgstr "正在显示 {shown}/{total} 条经验"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr "排序体验"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr "C"
@@ -3413,8 +3421,16 @@ msgid "app.library.memory.empty.none"
 msgstr "暂无记忆"
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr "按类别筛选记忆"
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
 msgstr "{pct}%"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
+msgstr "排序记忆"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.updated"
@@ -3647,6 +3663,10 @@ msgstr "已将 \"{name}\" 下载为 ZIP 归档"
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
 msgstr "所有技能"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
+msgstr "筛选技能"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.builtin"
@@ -13214,6 +13234,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr "选择可见项"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr "排序归档会话"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr "归档时间：最新"
 
@@ -16234,6 +16258,110 @@ msgid "settings.providers.account"
 msgstr "账号"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.add"
+msgstr "添加账号"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add.description"
+msgstr "为 {providerName} 创建一个具名账号连接。创建后请单独连接其凭据。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.add.title"
+msgstr "添加提供商账号"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.connection"
+msgstr "账号连接"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.connection.description"
+msgstr "此账号使用独立凭据，不属于凭据故障转移条目。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.create"
+msgstr "创建账号"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.created"
+msgstr "提供商账号已创建"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.creating"
+msgstr "正在创建..."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.dialog.close"
+msgstr "关闭账号对话框"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit"
+msgstr "编辑账号"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit.description"
+msgstr "更新此账号连接，不会更改同一提供商的其他账号。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.edit.title"
+msgstr "编辑提供商账号"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.enabled"
+msgstr "启用"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint"
+msgstr "API 端点"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint.description"
+msgstr "可选。留空则使用提供商默认地址。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.endpoint.placeholder"
+msgstr "https://api.example.com/v1"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.name"
+msgstr "账号名称"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.name.placeholder"
+msgstr "工作账号"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove"
+msgstr "移除账号"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove.description"
+msgstr "这会移除该账号连接及其由 Synergy 管理的凭据，不影响同一提供商的其他账号。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.remove.title"
+msgstr "移除提供商账号？"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.requestFailed"
+msgstr "账号更新失败"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.save"
+msgstr "保存更改"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.saved"
+msgstr "提供商账号已更新"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.saving"
+msgstr "正在保存..."
+
+#. js-lingui-explicit-id
 msgid "settings.providers.accountConnected"
 msgstr "凭据已连接。请在用量中查看配额和账单详情。"
 
@@ -16774,12 +16902,16 @@ msgid "settings.synergyLink.availability.connected"
 msgstr "已连接"
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.idle"
-msgstr "就绪"
+msgid "settings.synergyLink.availability.reachable"
+msgstr "可达"
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.offline"
-msgstr "Holos 离线"
+msgid "settings.synergyLink.availability.unknown"
+msgstr "未知"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.unreachable"
+msgstr "不可达"
 
 #. js-lingui-explicit-id
 msgid "settings.synergyLink.empty.description"
@@ -17288,6 +17420,10 @@ msgstr "变更字段"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.executed"
 msgstr "已执行"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.executed-via-synergy-link"
+msgstr "通过 Synergy Link 执行"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.files"

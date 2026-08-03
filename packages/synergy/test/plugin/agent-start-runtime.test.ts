@@ -3,7 +3,9 @@ import {
   PluginAgentCallRuntime,
   PluginAgentCallRuntimeError,
   type PluginAgentCallTerminal,
+  warnPluginAgentCallDelivery,
 } from "@/plugin/agent-call-runtime"
+import { ObservabilityStore } from "@/observability/store"
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -74,6 +76,76 @@ describe("PluginAgentCallRuntime", () => {
         completedAt: expect.any(Number),
       }),
     ])
+  })
+
+  test("logs bounded diagnostics when terminal delivery rejects", async () => {
+    const runtime = new PluginAgentCallRuntime()
+    const privateOutput = `private-output-${crypto.randomUUID()}`
+    const privateFailure = `private-delivery-${crypto.randomUUID()}`
+    const result = runtime.start(
+      baseInput(
+        async () => ({ text: privateOutput }),
+        async () => {
+          throw new Error(privateFailure)
+        },
+      ),
+    )
+
+    await settle()
+    const event = ObservabilityStore.queryEvents({ type: "log.record" }).find((item) => {
+      const data = JSON.parse(item.data_json)
+      return data.callId === result.callId && data.message === "plugin Agent call terminal delivery rejected"
+    })
+    expect(event).toBeDefined()
+    const data = JSON.parse(event!.data_json)
+    expect(data).toMatchObject({
+      service: "plugin.agent-call",
+      pluginId: "vibe-lingo",
+      generation: "generation-one",
+      scopeId: "scope-one",
+      callId: result.callId,
+      terminalStatus: "completed",
+      deliveryStatus: "rejected",
+      errorSummary: "delivery_rejected",
+    })
+    expect(data).not.toHaveProperty("correlationId")
+    expect(data).not.toHaveProperty("text")
+    expect(JSON.stringify(data)).not.toContain(privateOutput)
+    expect(JSON.stringify(data)).not.toContain(privateFailure)
+  })
+
+  test("uses stable redacted warnings for every unacknowledged delivery status", () => {
+    const callIds = ["plugin_mismatch", "no_handler", "failed"].map((deliveryStatus) => {
+      const callId = crypto.randomUUID()
+      warnPluginAgentCallDelivery({
+        pluginId: "vibe-lingo",
+        generation: "generation-one",
+        scopeId: "scope-one",
+        callId,
+        terminalStatus: "completed",
+        deliveryStatus: deliveryStatus as "plugin_mismatch" | "no_handler" | "failed",
+        handlerCount: deliveryStatus === "failed" ? 1 : 0,
+        ...(deliveryStatus === "failed" ? { succeededHandlerCount: 0 } : {}),
+      })
+      return { callId, deliveryStatus }
+    })
+
+    const records = ObservabilityStore.queryEvents({ type: "log.record" }).map((event) => JSON.parse(event.data_json))
+    for (const { callId, deliveryStatus } of callIds) {
+      const record = records.find((item) => item.callId === callId)
+      expect(record).toMatchObject({
+        service: "plugin.agent-call",
+        deliveryStatus,
+        errorSummary:
+          deliveryStatus === "plugin_mismatch"
+            ? "plugin_generation_inactive"
+            : deliveryStatus === "no_handler"
+              ? "hook_handler_missing"
+              : "hook_handler_failed",
+      })
+      expect(record).not.toHaveProperty("error")
+      expect(record).not.toHaveProperty("text")
+    }
   })
 
   test("deduplicates identical active correlations and rejects changed content", () => {

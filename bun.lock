@@ -137,7 +137,7 @@
     },
     "packages/plugin": {
       "name": "@ericsanchezok/synergy-plugin",
-      "version": "4.0.0",
+      "version": "1.1.26",
       "dependencies": {
         "@ericsanchezok/synergy-sdk": "workspace:*",
       },
@@ -154,7 +154,7 @@
     },
     "packages/plugin-kit": {
       "name": "@ericsanchezok/synergy-plugin-kit",
-      "version": "4.0.0",
+      "version": "1.1.26",
       "bin": {
         "synergy-plugin": "./dist/cli.js",
         "synergy-plugin-kit": "./dist/cli.js",
@@ -240,6 +240,7 @@
         "@modelcontextprotocol/sdk": "1.29.0",
         "@openrouter/ai-sdk-provider": "1.5.2",
         "@parcel/watcher": "2.5.6",
+        "@resvg/resvg-wasm": "2.6.2",
         "@sii-holos/holos-cli": "0.1.1",
         "@zip.js/zip.js": "2.8.26",
         "ai": "catalog:",
@@ -1097,6 +1098,8 @@
     "@protobufjs/utf8": ["@protobufjs/utf8@1.1.0", "", {}, "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="],
 
     "@publint/pack": ["@publint/pack@0.1.5", "", { "dependencies": { "tinyexec": "^1.2.4" } }, "sha512-edgyN2pP07uXiP4tJs0s8KVmU8M8i60YPbbI0/WDeok1mIJHRXz+CgD8I0nelwDkoCh3EWL/G5kGfbuHjsdbvw=="],
+
+    "@resvg/resvg-wasm": ["@resvg/resvg-wasm@2.6.2", "", {}, "sha512-FqALmHI8D4o6lk/LRWDnhw95z5eO+eAa6ORjVg09YRR7BkcM6oPHU9uyC0gtQG5vpFLvgpeU4+zEAz2H8APHNw=="],
 
     "@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.60.0", "", { "os": "android", "cpu": "arm" }, "sha512-WOhNW9K8bR3kf4zLxbfg6Pxu2ybOUbB2AjMDHSQx86LIF4rH4Ft7vmMwNt0loO0eonglSNy4cpD3MKXXKQu0/A=="],
 

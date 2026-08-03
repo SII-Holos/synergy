@@ -10,6 +10,7 @@ const agendaCalendar = await Bun.file(new URL("../src/components/agenda/calendar
 const agendaPanel = await Bun.file(new URL("../src/components/agenda/panel.tsx", import.meta.url)).text()
 const marketplaceCss = await Bun.file(new URL("../src/plugin/marketplace/marketplace.css", import.meta.url)).text()
 const libraryCss = await Bun.file(new URL("../src/components/library/library-panel.css", import.meta.url)).text()
+const menuFieldCss = await Bun.file(new URL("../src/components/menu-field/menu-field.css", import.meta.url)).text()
 const libraryPanel = await Bun.file(new URL("../src/components/library/library-panel.tsx", import.meta.url)).text()
 const libraryShared = await Bun.file(new URL("../src/components/library/shared.tsx", import.meta.url)).text()
 const questionPromptCss = await Bun.file(
@@ -214,6 +215,18 @@ describe("workbench surface polarity", () => {
     expect(libraryCss).toContain("--library-panel-bg")
     expect(libraryShared).toMatch(/export const libraryCardBaseClass\s*=\s*"library-card-surface/)
     expect(libraryShared).not.toContain("uppercase tracking-[0.16em]")
+  })
+
+  test("ported library filter surfaces retain grounded styling outside the workbench scope", () => {
+    // The Library surfaces still own the popover/border fallback chain for
+    // menus that keep rendering through the library menu surface.
+    expect(libraryCss).toContain("background: var(--library-popover-bg, var(--surface-raised-stronger-non-alpha));")
+    expect(libraryCss).toContain("border: 1px solid var(--library-line-strong, var(--border-weak-base));")
+    // The shared menu field now renders the filter/sort items; it must keep
+    // the same grounded fallback chain so portaled menus stay styled outside
+    // the workbench scope.
+    expect(menuFieldCss).toContain("var(--workbench-control-bg-hover, var(--surface-raised-stronger-hover))")
+    expect(menuFieldCss).toContain("var(--workbench-selected-bg, var(--surface-raised-stronger-hover))")
   })
 
   test("question prompts use a dedicated decision surface instead of a generic tool card", () => {

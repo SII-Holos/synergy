@@ -9,6 +9,10 @@ import { ModelsDev } from "../../src/provider/models"
 import { Provider as ProviderConfig } from "../../src/config/schema"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { ProviderProfile } from "../../src/provider/profile"
+import { ProviderUsage } from "../../src/provider/usage-service"
+import { Auth } from "../../src/provider/api-key"
+import { registerBuiltinProviderProfiles } from "../../src/provider/builtin"
+import { ProviderAuthHealth } from "../../src/provider/auth-health"
 
 async function provideTestScope(input: {
   scope: Awaited<ReturnType<Awaited<ReturnType<typeof tmpdir>>["scope"]>>
@@ -397,6 +401,463 @@ test("provider config accepts a non-empty models.dev catalog source", () => {
   expect(ProviderConfig.safeParse({ modelsDevProviderID: "" }).success).toBe(false)
 })
 
+test("provider config accepts a non-empty canonical runtime profile", () => {
+  expect(ProviderConfig.parse({ profile: "anthropic" }).profile).toBe("anthropic")
+  expect(ProviderConfig.safeParse({ profile: "" }).success).toBe(false)
+})
+
+test("mapped Bedrock and SAP profiles consume connection auth and options", async () => {
+  registerBuiltinProviderProfiles()
+  const bedrockConnectionID = `bedrock-account-${Math.random().toString(36).slice(2)}`
+  const sapConnectionID = `sap-account-${Math.random().toString(36).slice(2)}`
+  const envNames = [
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_PROFILE",
+    "AICORE_SERVICE_KEY",
+    "AICORE_DEPLOYMENT_ID",
+    "AICORE_RESOURCE_GROUP",
+  ] as const
+  const previous = Object.fromEntries(envNames.map((name) => [name, process.env[name]]))
+  for (const name of envNames) delete process.env[name]
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          provider: {
+            [bedrockConnectionID]: {
+              profile: "amazon-bedrock",
+              modelsDevProviderID: "amazon-bedrock",
+              options: {
+                region: "eu-west-1",
+                baseURL: "https://bedrock.account.invalid",
+              },
+            },
+            [sapConnectionID]: {
+              profile: "sap-ai-core",
+              modelsDevProviderID: "sap-ai-core",
+              options: {
+                deploymentId: "mapped-deployment",
+                resourceGroup: "mapped-resource-group",
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  try {
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const bedrock = ProviderProfile.get("amazon-bedrock")!
+        const bedrockInput = {
+          providerID: bedrockConnectionID,
+          auth: { type: "api" as const, key: "mapped-bedrock-token" },
+        }
+        expect(await bedrock.autoload!(bedrockInput)).toBe(true)
+        expect(await bedrock.runtimeOptions!(bedrockInput)).toMatchObject({
+          apiKey: "mapped-bedrock-token",
+          region: "eu-west-1",
+          baseURL: "https://bedrock.account.invalid",
+        })
+
+        const sap = ProviderProfile.get("sap-ai-core")!
+        const sapInput = {
+          providerID: sapConnectionID,
+          auth: { type: "api" as const, key: "mapped-sap-service-key" },
+        }
+        expect(await sap.autoload!(sapInput)).toBe(true)
+        expect(await sap.runtimeOptions!(sapInput)).toMatchObject({
+          apiKey: "mapped-sap-service-key",
+          deploymentId: "mapped-deployment",
+          resourceGroup: "mapped-resource-group",
+        })
+        expect(Env.get("AICORE_SERVICE_KEY")).toBeUndefined()
+      },
+    })
+  } finally {
+    for (const name of envNames) {
+      const value = previous[name]
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+})
+
+test("mapped Cloudflare profile prefers the connection credential over the canonical environment", async () => {
+  registerBuiltinProviderProfiles()
+  const envNames = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID", "CLOUDFLARE_API_TOKEN"] as const
+  const previous = Object.fromEntries(envNames.map((name) => [name, process.env[name]]))
+
+  try {
+    await using tmp = await tmpdir()
+    await provideTestScope({
+      scope: await tmp.scope(),
+      init: async () => {
+        Env.set("CLOUDFLARE_ACCOUNT_ID", "account-id")
+        Env.set("CLOUDFLARE_GATEWAY_ID", "gateway-id")
+        Env.set("CLOUDFLARE_API_TOKEN", "canonical-token")
+      },
+      fn: async () => {
+        const profile = ProviderProfile.get("cloudflare-ai-gateway")!
+        const mapped = await profile.runtimeOptions!({
+          providerID: "cloudflare-secondary",
+          auth: { type: "api", key: "connection-token" },
+        })
+        expect(mapped.headers).toMatchObject({
+          "cf-aig-authorization": "Bearer connection-token",
+        })
+
+        const canonical = await profile.runtimeOptions!({
+          providerID: "cloudflare-ai-gateway",
+          auth: undefined,
+        })
+        expect(canonical.headers).toMatchObject({
+          "cf-aig-authorization": "Bearer canonical-token",
+        })
+      },
+    })
+  } finally {
+    for (const name of envNames) {
+      const value = previous[name]
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+})
+
+test("Copilot Claude factories honor the merged connection endpoint", async () => {
+  registerBuiltinProviderProfiles()
+  for (const profileID of ["github-copilot", "github-copilot-enterprise"]) {
+    const profile = ProviderProfile.get(profileID)!
+    const model = await profile.getModel!({
+      sdk: {},
+      modelID: "claude-sonnet-4.6",
+      options: {
+        baseURL: "https://copilot-account.invalid",
+        fetch,
+      },
+    })
+    expect((model as any).config.baseURL).toBe("https://copilot-account.invalid")
+  }
+})
+
+test("inline model credentials initialize mapped profiles and reach model loaders", async () => {
+  const profileID = `inline-runtime-profile-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  let loaderOptions: Record<string, any> | undefined
+  const runtimeAuthKeys: string[] = []
+  const oauthFetch = async () => new Response(null, { status: 200 })
+  ProviderProfile.register({
+    id: profileID,
+    name: "Inline runtime profile",
+    authKind: "api_key",
+    modelsDevProviderID: "openai",
+    aiSdkPackage: "@ai-sdk/openai",
+    runtimeOptions: async ({ auth }) => {
+      if (auth?.type === "api") runtimeAuthKeys.push(auth.key)
+      return auth?.type === "oauth" ? { fetch: oauthFetch, authMode: "oauth" } : { authMode: "api" }
+    },
+    getModel: async ({ options }) => {
+      loaderOptions = options
+      return { specificationVersion: "v2", provider: profileID, modelId: "test" }
+    },
+  })
+
+  await Auth.set(connectionID, {
+    type: "oauth",
+    access: "stored-oauth-access",
+    refresh: "stored-oauth-refresh",
+    expires: Math.floor(Date.now() / 1000) + 3600,
+  })
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "synergy.json"),
+          JSON.stringify({
+            providerCatalog: { enabled: false, offlineCache: false },
+            provider: {
+              [connectionID]: {
+                profile: profileID,
+                modelsDevProviderID: "openai",
+                models: {
+                  "gpt-5.5": {
+                    options: {
+                      apiKey: "inline-model-key",
+                      baseURL: "https://inline-model.invalid/v1",
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        )
+      },
+    })
+
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const provider = (await Provider.list())[connectionID]
+        expect(provider.profileID).toBe(profileID)
+        const model = await Provider.getModel(connectionID, "gpt-5.5")
+        await Provider.getLanguage(model)
+        expect(loaderOptions).toMatchObject({
+          apiKey: "inline-model-key",
+          baseURL: "https://inline-model.invalid/v1",
+          authMode: "api",
+        })
+        expect(loaderOptions?.fetch).toBeUndefined()
+        expect(runtimeAuthKeys).toContain("inline-model-key")
+      },
+    })
+  } finally {
+    await Auth.remove(connectionID)
+  }
+})
+
+test("inline provider credentials initialize mapped profile auth", async () => {
+  const profileID = `inline-provider-profile-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  let resolvedKey: string | undefined
+  ProviderProfile.register({
+    id: profileID,
+    name: "Inline provider profile",
+    authKind: "api_key",
+    modelsDevProviderID: "openai",
+    aiSdkPackage: "@ai-sdk/openai",
+    runtimeOptions: async ({ auth }) => {
+      resolvedKey = auth?.type === "api" ? auth.key : undefined
+      return {}
+    },
+  })
+
+  await Auth.set(connectionID, { type: "api", key: "stored-provider-key" })
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "synergy.json"),
+          JSON.stringify({
+            providerCatalog: { enabled: false, offlineCache: false },
+            provider: {
+              [connectionID]: {
+                profile: profileID,
+                modelsDevProviderID: "openai",
+                options: {
+                  apiKey: "inline-provider-key",
+                },
+              },
+            },
+          }),
+        )
+      },
+    })
+
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const provider = (await Provider.list())[connectionID]
+        expect(provider.profileID).toBe(profileID)
+        expect(provider.key).toBe("inline-provider-key")
+        expect(resolvedKey).toBe("inline-provider-key")
+        const plan = await Provider.workerPlan(provider, {
+          ttfbMs: 10,
+          idleMs: 20,
+          wallMs: false,
+        })
+        expect(plan.baseOptions).toBeDefined()
+        expect(plan.explicitOptions).toMatchObject({
+          apiKey: "inline-provider-key",
+        })
+      },
+    })
+  } finally {
+    await Auth.remove(connectionID)
+  }
+})
+
+test("custom provider resolves runtime behavior through its canonical profile", async () => {
+  const profileID = `runtime-profile-${Math.random().toString(36).slice(2)}`
+  const connectionID = `${profileID}-secondary`
+  ProviderProfile.register({
+    id: profileID,
+    name: "Runtime profile",
+    authKind: "api_key",
+    modelsDevProviderID: "openai",
+    modelFactory: "openaiResponses",
+    runtimeOptions: async ({ providerID, auth }) => ({
+      baseURL: "https://canonical-profile.invalid/v1",
+      resolvedProviderID: providerID,
+      resolvedCredential: auth?.type === "api" ? auth.key : undefined,
+    }),
+    fetchUsage: async ({ providerID }) => ({
+      providerID,
+      status: "available",
+      source: "test",
+      fetchedAt: new Date().toISOString(),
+      windows: [],
+      details: [providerID],
+    }),
+  })
+  ProviderCatalog.reset()
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          providerCatalog: { enabled: false, offlineCache: false },
+          provider: {
+            [connectionID]: {
+              profile: profileID,
+              modelsDevProviderID: "openai",
+              api: "https://secondary-profile.invalid/v1",
+            },
+          },
+        }),
+      )
+    },
+  })
+  await Auth.set(connectionID, { type: "api", key: "secondary-profile-key" })
+  try {
+    await provideTestScope({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const provider = (await Provider.list())[connectionID]
+        expect(provider.profileID).toBe(profileID)
+        expect(provider.key).toBe("secondary-profile-key")
+        expect(provider.options.resolvedProviderID).toBe(connectionID)
+        expect(provider.options.resolvedCredential).toBe("secondary-profile-key")
+        expect(provider.options.baseURL).toBe("https://secondary-profile.invalid/v1")
+        expect(provider.models["gpt-5.5"].providerID).toBe(connectionID)
+        expect(await ProviderUsage.get(connectionID)).toMatchObject({
+          providerID: connectionID,
+          status: "available",
+          details: [connectionID],
+        })
+      },
+    })
+  } finally {
+    await Auth.remove(connectionID)
+  }
+})
+
+test("mapped OpenRouter usage uses inline and environment connection credentials", async () => {
+  const originalFetch = globalThis.fetch
+  const seen: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    seen.push(new Headers(init?.headers).get("authorization") ?? "")
+    const credits = String(input).endsWith("/credits")
+    return new Response(
+      JSON.stringify({
+        data: credits ? { total_credits: 10, total_usage: 2 } : { limit: 10, limit_remaining: 8 },
+      }),
+      { headers: { "content-type": "application/json" } },
+    )
+  }) as typeof fetch
+
+  try {
+    for (const account of [
+      {
+        id: `openrouter-inline-${Math.random().toString(36).slice(2)}`,
+        provider: { profile: "openrouter", options: { apiKey: "inline-openrouter-key" } },
+        expected: "inline-openrouter-key",
+      },
+      {
+        id: `openrouter-environment-${Math.random().toString(36).slice(2)}`,
+        provider: { profile: "openrouter", env: ["MISSING_MAPPED_OPENROUTER_KEY", "MAPPED_OPENROUTER_KEY"] },
+        expected: "environment-openrouter-key",
+      },
+    ]) {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(
+            path.join(dir, "synergy.json"),
+            JSON.stringify({
+              providerCatalog: { enabled: false, offlineCache: false },
+              provider: {
+                [account.id]: account.provider,
+              },
+            }),
+          )
+        },
+      })
+
+      await provideTestScope({
+        scope: await tmp.scope(),
+        init: async () => {
+          if (account.provider.env) Env.set("MAPPED_OPENROUTER_KEY", account.expected)
+        },
+        fn: async () => {
+          expect((await Provider.list())[account.id].key).toBe(account.expected)
+          expect(await ProviderUsage.get(account.id)).toMatchObject({
+            providerID: account.id,
+            status: "available",
+            source: "credits_api",
+          })
+        },
+      })
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  expect(seen).toEqual([
+    "Bearer inline-openrouter-key",
+    "Bearer inline-openrouter-key",
+    "Bearer environment-openrouter-key",
+    "Bearer environment-openrouter-key",
+  ])
+})
+
+test("environment-backed OpenRouter usage rejection requests an environment update", async () => {
+  const providerID = `openrouter-environment-rejected-${Math.random().toString(36).slice(2)}`
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => new Response(null, { status: 401 })) as unknown as typeof fetch
+
+  try {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "synergy.json"),
+          JSON.stringify({
+            providerCatalog: { enabled: false, offlineCache: false },
+            provider: {
+              [providerID]: {
+                profile: "openrouter",
+                env: ["MISSING_MAPPED_OPENROUTER_KEY", "MAPPED_OPENROUTER_KEY"],
+              },
+            },
+          }),
+        )
+      },
+    })
+
+    await provideTestScope({
+      scope: await tmp.scope(),
+      init: async () => Env.set("MAPPED_OPENROUTER_KEY", "rejected-environment-openrouter-key"),
+      fn: async () => {
+        expect(await ProviderUsage.get(providerID)).toMatchObject({ status: "error" })
+        expect(ProviderAuthHealth.fromEntry(providerID, undefined)).toMatchObject({
+          status: "action_required",
+          recovery: "update_environment",
+          source: "env",
+        })
+      },
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+    await ProviderAuthHealth.clearObservation(providerID)
+  }
+})
+
 test("custom provider inherits a models.dev catalog without sharing account identity", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -455,6 +916,71 @@ test("custom provider inherits a models.dev catalog without sharing account iden
   })
 })
 
+test("catalog-only connections are visible before credentials are connected", async () => {
+  const connectionID = `catalog-only-${Math.random().toString(36).slice(2)}`
+  const config = {
+    providerCatalog: { enabled: false, offlineCache: false },
+    provider: {
+      [connectionID]: {
+        modelsDevProviderID: "openai",
+        name: "OpenAI Secondary",
+      },
+    },
+  }
+
+  const catalog = await ProviderCatalog.resolve({ config })
+
+  expect(catalog[connectionID]).toBeDefined()
+  expect(catalog[connectionID].id).toBe(connectionID)
+  expect(catalog[connectionID].name).toBe("OpenAI Secondary")
+  expect(catalog[connectionID].models["gpt-5.5"]).toBeDefined()
+})
+
+test("SDK cache identity includes the concrete account connection", async () => {
+  const firstID = `sdk-account-a-${Math.random().toString(36).slice(2)}`
+  const secondID = `sdk-account-b-${Math.random().toString(36).slice(2)}`
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          provider: {
+            [firstID]: {
+              modelsDevProviderID: "openai",
+              npm: "@ai-sdk/openai-compatible",
+              api: "https://shared.example.test/v1",
+              env: ["SDK_ACCOUNT_A_KEY"],
+            },
+            [secondID]: {
+              modelsDevProviderID: "openai",
+              npm: "@ai-sdk/openai-compatible",
+              api: "https://shared.example.test/v1",
+              env: ["SDK_ACCOUNT_B_KEY"],
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("SDK_ACCOUNT_A_KEY", "shared-test-key")
+      Env.set("SDK_ACCOUNT_B_KEY", "shared-test-key")
+    },
+    fn: async () => {
+      const firstModel = await Provider.getModel(firstID, "gpt-5.5")
+      const secondModel = await Provider.getModel(secondID, "gpt-5.5")
+      const firstSDK = await Provider.getSDK(firstModel)
+      const secondSDK = await Provider.getSDK(secondModel)
+
+      expect(secondSDK).not.toBe(firstSDK)
+    },
+  })
+})
+
 test("custom provider inheritance excludes credential-aware live catalog snapshots", async () => {
   const profileID = `live-catalog-source-${Math.random().toString(36).slice(2)}`
   const connectionID = `${profileID}-secondary`
@@ -500,6 +1026,55 @@ test("custom provider inheritance excludes credential-aware live catalog snapsho
       const providers = await Provider.list()
       expect(providers[connectionID].models["primary-account-only-model"]).toBeUndefined()
       expect(providers[connectionID].models["gpt-5.5"]).toBeDefined()
+    },
+  })
+})
+
+test("custom provider live catalogs are discovered and cached per account connection", async () => {
+  const profileID = `live-runtime-profile-${Math.random().toString(36).slice(2)}`
+  const firstConnectionID = `${profileID}-first`
+  const secondConnectionID = `${profileID}-second`
+  ProviderProfile.register({
+    id: profileID,
+    name: "Live runtime profile",
+    authKind: "none",
+    modelsDevProviderID: "openai",
+    fallbackModels: ["gpt-5.5"],
+    fetchModelCatalog: async ({ providerID }) => [{ id: `${providerID}-model` }],
+  })
+  ProviderCatalog.reset()
+  const config = {
+    $schema: "file:///test/config.schema.json",
+    providerCatalog: { enabled: false, offlineCache: false },
+    provider: {
+      [firstConnectionID]: {
+        profile: profileID,
+        modelsDevProviderID: "openai",
+      },
+      [secondConnectionID]: {
+        profile: profileID,
+        modelsDevProviderID: "openai",
+      },
+    },
+  }
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "synergy.json"), JSON.stringify(config))
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await ProviderCatalog.refresh(firstConnectionID)
+      await ProviderCatalog.refresh(secondConnectionID)
+      ProviderCatalog.reset()
+
+      const catalog = await ProviderCatalog.resolve({ config, includeLive: true })
+      expect(catalog[firstConnectionID].models[`${firstConnectionID}-model`]).toBeDefined()
+      expect(catalog[firstConnectionID].models[`${secondConnectionID}-model`]).toBeUndefined()
+      expect(catalog[secondConnectionID].models[`${secondConnectionID}-model`]).toBeDefined()
+      expect(catalog[secondConnectionID].models[`${firstConnectionID}-model`]).toBeUndefined()
     },
   })
 })

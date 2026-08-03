@@ -4,7 +4,7 @@ Plugin API 4 is Synergy's long-term stable plugin baseline. Plugin API 3 is not 
 
 ## Author Migration
 
-Upgrade to `@ericsanchezok/synergy-plugin@4` and `@ericsanchezok/synergy-plugin-kit@4`, rebuild the artifact, and set the minimum compatible host when it is newer than the API4 baseline:
+Upgrade to `@ericsanchezok/synergy-plugin@^3.0.11` and `@ericsanchezok/synergy-plugin-kit@^3.0.11`, rebuild the artifact, and set the minimum compatible host when it is newer than the API4 baseline. These package versions follow the Synergy product release; the generated artifact selects Plugin API 4 independently:
 
 ```ts
 export default definePlugin({
@@ -17,7 +17,7 @@ export default definePlugin({
 })
 ```
 
-`apiVersion` remains `"4.0"` across additive SDK 4.x releases. Published stable plugins must not depend on `experimental.*`. The pre-GA system-context hook is now stable as `chat.system.transform`; the host still accepts the experimental spelling in already-built early API4 artifacts.
+`apiVersion` remains `"4.0"` across later additive package releases. Published stable plugins must not depend on `experimental.*`. The pre-GA system-context hook is now stable as `chat.system.transform`; the host still accepts the experimental spelling in already-built early API4 artifacts.
 
 Build and inspect the new artifact:
 

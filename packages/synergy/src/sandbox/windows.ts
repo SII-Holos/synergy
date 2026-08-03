@@ -118,33 +118,100 @@ export const TRUSTED_WINDOWS_HELPER_HASHES: Record<string, string> = {
     : {}),
 }
 
+export type WindowsHelperArchitecture = "x64" | "arm64" | "x86" | "unknown"
+export type WindowsHelperHashStatus = "verified" | "mismatch" | "missing"
+
+export interface WindowsHelperInfo {
+  path: string
+  verified: boolean
+  architecture: WindowsHelperArchitecture
+  expectedArchitecture: WindowsHelperArchitecture
+  architectureMatches: boolean
+  hashStatus: WindowsHelperHashStatus
+}
+
+function expectedHelperArchitecture(): WindowsHelperArchitecture {
+  if (process.arch === "arm64") return "arm64"
+  if (process.arch === "ia32") return "x86"
+  return "x64"
+}
+
+function helperArchitecture(binaryPath: string): WindowsHelperArchitecture {
+  try {
+    const contents = fs.readFileSync(binaryPath)
+    if (contents.length < 0x86 || contents.subarray(0, 2).toString("ascii") !== "MZ") return "unknown"
+    const peOffset = contents.readUInt32LE(0x3c)
+    if (
+      peOffset < 0 ||
+      peOffset + 6 > contents.length ||
+      contents.subarray(peOffset, peOffset + 4).toString("ascii") !== "PE\0\0"
+    ) {
+      return "unknown"
+    }
+    const machine = contents.readUInt16LE(peOffset + 4)
+    if (machine === 0x8664) return "x64"
+    if (machine === 0xaa64) return "arm64"
+    if (machine === 0x14c) return "x86"
+    return "unknown"
+  } catch {
+    return "unknown"
+  }
+}
+
+export function inspectWindowsHelper(
+  binaryPath: string,
+  trustedHashes: Record<string, string> = TRUSTED_WINDOWS_HELPER_HASHES,
+): WindowsHelperInfo {
+  const architecture = helperArchitecture(binaryPath)
+  const expectedArchitecture = expectedHelperArchitecture()
+  const architectureMatches = architecture === expectedArchitecture
+  const hasTrustedHash = Object.values(trustedHashes).some((hash) => hash.length > 0)
+  const hashStatus: WindowsHelperHashStatus = !hasTrustedHash
+    ? "missing"
+    : verifyHelperHash(binaryPath, trustedHashes)
+      ? "verified"
+      : "mismatch"
+
+  return {
+    path: binaryPath,
+    verified: architectureMatches && hashStatus === "verified",
+    architecture,
+    expectedArchitecture,
+    architectureMatches,
+    hashStatus,
+  }
+}
+
 /**
- * Resolve the path to the sandbox helper binary on Windows.
- * Returns the absolute path if found and hash-verified, or null if not installed.
+ * Resolve the Windows helper and retain the first invalid candidate for diagnostics.
+ * Returns null only when no helper binary exists at any search path.
  */
-function findHelperBinary(): { path: string; verified: boolean } | null {
+function findHelperBinary(): WindowsHelperInfo | null {
   // Try tarball-relative installation before searching standard paths
   installTarballHelper()
 
   const homedir = os.homedir()
+  let firstInvalid: WindowsHelperInfo | null = null
   for (const getPath of WINDOWS_HELPER_SEARCH_PATHS) {
     const p = getPath(homedir)
     try {
       if (fs.existsSync(p)) {
-        const verified = verifyHelperHash(p, TRUSTED_WINDOWS_HELPER_HASHES)
-        if (verified) {
-          return { path: p, verified: true }
-        }
-        // Hash mismatch — log warning and continue searching
-        log.warn("Windows sandbox helper hash verification failed", { path: p })
-        continue
+        const info = inspectWindowsHelper(p)
+        if (info.verified) return info
+        firstInvalid ??= info
+        log.warn("Windows sandbox helper validation failed", {
+          path: p,
+          architecture: info.architecture,
+          expectedArchitecture: info.expectedArchitecture,
+          hashStatus: info.hashStatus,
+        })
       }
     } catch {
       // Permission denied or filesystem error — skip this path
       continue
     }
   }
-  return null
+  return firstInvalid
 }
 
 // ------------------------------------------------------------------
@@ -189,7 +256,14 @@ export namespace WindowsBackend {
     }
 
     const helper = opts.forceHelperPath
-      ? { path: opts.forceHelperPath, verified: opts.forceHelperVerified === true }
+      ? {
+          path: opts.forceHelperPath,
+          verified: opts.forceHelperVerified === true,
+          architecture: expectedHelperArchitecture(),
+          expectedArchitecture: expectedHelperArchitecture(),
+          architectureMatches: true,
+          hashStatus: opts.forceHelperVerified === true ? ("verified" as const) : ("mismatch" as const),
+        }
       : findHelperBinary()
     if (!helper) {
       return {
@@ -201,6 +275,23 @@ export namespace WindowsBackend {
     }
 
     if (!helper.verified) {
+      if (!helper.architectureMatches) {
+        return {
+          command,
+          args,
+          sandboxed: false,
+          skipReason: `Windows sandbox helper architecture mismatch: found ${helper.architecture}, expected ${helper.expectedArchitecture}. Install the matching ${helper.expectedArchitecture} helper.`,
+        }
+      }
+      if (helper.hashStatus === "missing") {
+        return {
+          command,
+          args,
+          sandboxed: false,
+          skipReason:
+            "Windows sandbox helper hash verification is unavailable because no trusted SHA-256 digest is embedded. Reinstall a packaged Synergy runtime.",
+        }
+      }
       return {
         command,
         args,
@@ -211,6 +302,12 @@ export namespace WindowsBackend {
     }
 
     const homedir = os.homedir()
+    const dataDenyRoots = [...(opts.dataDenyRoots ?? [])]
+    // The shared home deny root would also deny a workspace below it on Windows; strip only that default.
+    if (opts.stripDefaultHomeDenyRoot) {
+      const defaultRootIndex = dataDenyRoots.indexOf(homedir)
+      if (defaultRootIndex >= 0) dataDenyRoots.splice(defaultRootIndex, 1)
+    }
 
     const profile = buildPermissionProfile({
       workspace,
@@ -227,6 +324,8 @@ export namespace WindowsBackend {
           : [],
       approvedNetwork: false,
       approvedUnixSockets: [],
+      protectedPaths: opts.protectedPaths,
+      dataDenyRoots,
     })
 
     const tempDir = os.tmpdir()
@@ -255,6 +354,6 @@ export function isWindowsHelperAvailable(): boolean {
  * Detailed diagnostic info about the Windows sandbox helper.
  * Returns null if no helper binary found at any search path.
  */
-export function getWindowsHelperInfo(): { path: string; verified: boolean } | null {
+export function getWindowsHelperInfo(): WindowsHelperInfo | null {
   return findHelperBinary()
 }

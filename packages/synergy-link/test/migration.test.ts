@@ -19,6 +19,7 @@ async function fileExists(filePath: string) {
 describe("synergy-link migration runner", () => {
   let originalSynergyLinkHome: string | undefined
   let originalMetaSynergyHome: string | undefined
+  let originalSynergyHome: string | undefined
 
   afterEach(() => {
     if (originalSynergyLinkHome === undefined) delete process.env.SYNERGY_LINK_HOME
@@ -26,6 +27,9 @@ describe("synergy-link migration runner", () => {
 
     if (originalMetaSynergyHome === undefined) delete process.env.META_SYNERGY_HOME
     else process.env.META_SYNERGY_HOME = originalMetaSynergyHome
+
+    if (originalSynergyHome === undefined) delete process.env.SYNERGY_TEST_HOME
+    else process.env.SYNERGY_TEST_HOME = originalSynergyHome
   })
 
   test("normalizes persisted state and records migration", async () => {
@@ -131,5 +135,39 @@ describe("synergy-link migration runner", () => {
 
     await expect(SynergyLinkMigrationRunner.run()).rejects.toThrow("Stop old MetaSynergy")
     expect(await fileExists(SynergyLinkStore.statePath())).toBe(false)
+  })
+
+  test("imports legacy credentials into the canonical holos account store", async () => {
+    originalSynergyLinkHome = process.env.SYNERGY_LINK_HOME
+    originalMetaSynergyHome = process.env.META_SYNERGY_HOME
+    originalSynergyHome = process.env.SYNERGY_TEST_HOME
+    const root = await createTempRoot()
+    const legacyRoot = await createTempRoot()
+    const synergyHome = await createTempRoot()
+    process.env.SYNERGY_LINK_HOME = root
+    process.env.META_SYNERGY_HOME = legacyRoot
+    process.env.SYNERGY_TEST_HOME = synergyHome
+
+    const legacyAuthPath = path.join(legacyRoot, "auth.json")
+    await writeFile(legacyAuthPath, JSON.stringify({ agentID: "agent_imported", agentSecret: "secret_imported" }))
+
+    await SynergyLinkMigrationRunner.run()
+
+    const accountsPath = path.join(synergyHome, ".synergy", "data", "auth", "holos-accounts.json")
+    const accounts = JSON.parse(await readFile(accountsPath, "utf8")) as {
+      activeAccountId: string | null
+      accounts: Record<string, { agentId: string; agentSecret: string }>
+    }
+    expect(accounts.activeAccountId).toBe("agent_imported")
+    expect(accounts.accounts.agent_imported).toMatchObject({
+      agentId: "agent_imported",
+      agentSecret: "secret_imported",
+    })
+    expect(await fileExists(legacyAuthPath)).toBe(false)
+
+    const manifest = JSON.parse(await readFile(path.join(root, "migration-manifest.json"), "utf8")) as {
+      files: string[]
+    }
+    expect(manifest.files).toContain("holos-account-auth")
   })
 })

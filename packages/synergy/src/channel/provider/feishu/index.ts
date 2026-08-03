@@ -193,6 +193,7 @@ type AccountRuntime = {
   acceptingInbound: boolean
   inboundTasks: Set<Promise<void>>
   perChatQueue: Map<string, Promise<void>>
+  backgroundExecutions: Set<Promise<void>>
   debouncer?: InboundDebouncer<FeishuInboundEvent>
   wsClient?: Lark.WSClient
   tokenRefreshTimer?: ReturnType<typeof setTimeout>
@@ -241,6 +242,31 @@ export function resolveFeishuQueueKey(input: {
   scope: Config.FeishuGroupSessionScope
 }): string {
   return input.scope === "group_thread" ? (input.scopeKey ?? input.chatId) : input.chatId
+}
+
+export function enqueueFeishuConversationTask(input: {
+  key: string
+  perChatQueue: Map<string, Promise<void>>
+  backgroundExecutions: Set<Promise<void>>
+  task: () => Promise<ChannelHost.ReceiveResult>
+  onAcceptanceError?: (error: unknown) => void
+  onExecutionError?: (error: unknown) => void
+}): Promise<void> {
+  const previous = input.perChatQueue.get(input.key) ?? Promise.resolve()
+  const next = previous
+    .then(input.task, input.task)
+    .then((result) => {
+      if (!result.accepted) return
+      const background = result.execution.catch((error) => input.onExecutionError?.(error))
+      input.backgroundExecutions.add(background)
+      void background.finally(() => input.backgroundExecutions.delete(background))
+    })
+    .catch((error) => input.onAcceptanceError?.(error))
+  input.perChatQueue.set(input.key, next)
+  void next.finally(() => {
+    if (input.perChatQueue.get(input.key) === next) input.perChatQueue.delete(input.key)
+  })
+  return next
 }
 
 export function resolveFeishuDebounceKey(input: {
@@ -495,11 +521,11 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       error: (...args: unknown[]) => log.error(args.join(" ")),
       trace: (...args: unknown[]) => log.debug(args.join(" ")),
     }
-
     const runtime: AccountRuntime = {
       acceptingInbound: true,
       inboundTasks: new Set(),
       perChatQueue: new Map(),
+      backgroundExecutions: new Set(),
     }
     const account: AccountState = {
       config: accountConfig,
@@ -533,17 +559,15 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
     }).catch((error) => log.warn("streaming card recovery failed", { accountId, error }))
     if (signal.aborted || this.accounts.get(accountId) !== account) return
 
-    const enqueueConversationTask = (key: string, task: () => Promise<void>) => {
-      const prev = runtime.perChatQueue.get(key) ?? Promise.resolve()
-      const next = prev.then(task, task).catch((err) => {
-        log.error("conversation task failed", { key, error: err })
+    const enqueueConversationTask = (key: string, task: () => Promise<ChannelHost.ReceiveResult>) =>
+      enqueueFeishuConversationTask({
+        key,
+        perChatQueue: runtime.perChatQueue,
+        backgroundExecutions: runtime.backgroundExecutions,
+        task,
+        onAcceptanceError: (error) => log.error("conversation task failed", { key, error }),
+        onExecutionError: (error) => log.error("conversation execution failed", { key, error }),
       })
-      runtime.perChatQueue.set(key, next)
-      void next.finally(() => {
-        if (runtime.perChatQueue.get(key) === next) runtime.perChatQueue.delete(key)
-      })
-      return next
-    }
 
     const queueKey = (ctx: ChannelTypes.MessageContext) =>
       resolveFeishuQueueKey({ chatId: ctx.chatId, scopeKey: ctx.scopeKey, scope: accountConfig.groupSessionScope })
@@ -687,6 +711,7 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
           await Promise.allSettled(pending)
           await Promise.resolve()
         }
+        await drainTasks(runtime.backgroundExecutions)
       }
 
       let timeout: ReturnType<typeof setTimeout> | undefined
@@ -1204,8 +1229,14 @@ async function sendParts(input: {
       continue
     }
 
-    const prepared = await FeishuOutboundMedia.prepare(part, input.mediaContext)
-    lastResult = await input.sendMessage(prepared)
+    for await (const prepared of FeishuOutboundMedia.prepare(part, input.mediaContext)) {
+      try {
+        lastResult = await input.sendMessage(prepared)
+      } catch (error) {
+        if (!prepared.bestEffort) throw error
+        log.warn("SVG preview delivery failed; sending the original file", { error })
+      }
+    }
   }
 
   if (lastResult) return lastResult

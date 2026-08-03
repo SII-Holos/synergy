@@ -7,6 +7,7 @@ import { executePluginHostService } from "@/plugin/host-services-runtime"
 import { pluginAgentCallRuntime } from "@/plugin/agent-call-runtime"
 import { Plugin } from "@/plugin"
 import { ScopeContext } from "@/scope/context"
+import { ObservabilityStore } from "@/observability/store"
 import { tmpdir } from "../fixture/fixture"
 
 const originalAgentGet = Agent.get
@@ -258,7 +259,7 @@ describe("plugin agent.call Host Service", () => {
         signal: invocationController.signal,
       })
 
-    const first = await invoke()
+    const first = (await invoke()) as { callId: string }
     expect(first).toEqual({ callId: expect.any(String) })
     expect(pluginAgentCallRuntime.activeCount(manifest.id)).toBe(1)
     expect(await invoke()).toEqual(first)
@@ -292,5 +293,35 @@ describe("plugin agent.call Host Service", () => {
       await Bun.sleep(1)
     }
     expect(pluginAgentCallRuntime.activeCount(manifest.id)).toBe(0)
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const event = ObservabilityStore.queryEvents({ type: "log.record" }).find((item) => {
+        const data = JSON.parse(item.data_json)
+        return (
+          data.callId === first.callId && data.message === "plugin Agent call terminal delivery was not acknowledged"
+        )
+      })
+      if (event) break
+      await Bun.sleep(1)
+    }
+    const event = ObservabilityStore.queryEvents({ type: "log.record" }).find((item) => {
+      const data = JSON.parse(item.data_json)
+      return data.callId === first.callId && data.message === "plugin Agent call terminal delivery was not acknowledged"
+    })
+    expect(event).toBeDefined()
+    const data = JSON.parse(event!.data_json)
+    expect(data).toMatchObject({
+      service: "plugin.agent-call",
+      pluginId: manifest.id,
+      generation: manifest.artifacts.generation,
+      scopeId: scope.id,
+      callId: first.callId,
+      terminalStatus: "completed",
+      deliveryStatus: "plugin_mismatch",
+      handlerCount: 0,
+      errorSummary: "plugin_generation_inactive",
+    })
+    expect(data).not.toHaveProperty("correlationId")
+    expect(data).not.toHaveProperty("text")
+    expect(JSON.stringify(data)).not.toContain("metadata")
   })
 })
