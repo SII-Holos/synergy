@@ -43,6 +43,8 @@ External plugins use `process`. Trusted built-ins may use `inProcess`. The proce
 
 External runtime generations are sampled by the host memory monitor. `pluginRuntimePolicy.limits.maxMemoryMb` sets the per-generation RSS limit and `memorySampleIntervalMs` sets the polling interval. A limit breach stops and restarts only the exact active registry generation, preserving its manifest and runtime limits, and records the measured recycle effect. A stale callback from a draining generation cannot stop or replace the current generation. Trusted `inProcess` plugins remain part of Control Plane memory and are not double-counted as external plugin processes.
 
+Runtime timeouts are host-configurable through `pluginRuntimePolicy.limits`: `agentCallMaxRuntimeMs`, `hookTimeoutMs`, `contributionInvokeTimeoutMs`, `shellRunTimeoutMs`, and `taskRunWaitTimeoutMs` default to `120000` ms and cap, respectively, a plugin `agent.call`/`agent.start` model invocation, one hook handler invocation, a contribution invocation without a declared `timeoutMs`, a plugin `shell.run` command that omits `timeoutMs`, and how long a plugin `task.run` waits for a delegated task to reach a terminal state.
+
 ## Runtime Logs
 
 Every `PluginLogger` method accepts a message and optional `details: Record<string, unknown>`. Synergy preserves those structured details for both process and trusted `inProcess` runtimes, including error fields such as `code` and `reason`. The complete log entry, including `details`, counts toward the log rate limit's byte budget.

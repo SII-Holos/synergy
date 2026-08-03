@@ -13,6 +13,7 @@ import { PluginInstallationTransaction } from "./installation-transaction"
 import { pluginRuntimeManager } from "./runtime"
 import { resolvePluginSpec } from "./spec-resolver"
 import type { PluginSource } from "./trust"
+import { resolvePluginRuntimeLimits } from "./runtime-limits"
 
 const log = Log.create({ service: "plugin.install" })
 
@@ -52,6 +53,7 @@ async function prepareUpgrade(input: {
     pluginDir: input.resolved.pluginDir,
     entryPath: input.resolved.entryPath,
     activate: false,
+    limits: await resolvePluginRuntimeLimits(),
   })
   try {
     await pluginRuntimeManager.invoke({

@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url"
 import { Installation } from "../global/installation.js"
 import { startMemoryMonitor, type MemoryMonitorInput, type MemoryMonitor } from "./resource-limits.js"
 import { pluginAgentCallRuntime } from "../plugin/agent-call-runtime.js"
+import { resolvePluginRuntimeLimits } from "../plugin/runtime-limits.js"
 
 export type PluginRuntimeErrorCode =
   | "PLUGIN_UNAVAILABLE"
@@ -358,7 +359,7 @@ export class PluginRuntimeManager {
     const abort = () => controller.abort(input.signal?.reason)
     if (input.signal?.aborted) abort()
     else input.signal?.addEventListener("abort", abort, { once: true })
-    const timeoutMs = input.timeoutMs ?? DEFAULT_LIMITS.toolInvocationTimeoutMs
+    const timeoutMs = input.timeoutMs ?? (await resolvePluginRuntimeLimits()).contributionInvokeTimeoutMs
     const timeout = setTimeout(
       () => controller.abort(new DOMException("Plugin invocation timed out", "TimeoutError")),
       timeoutMs,

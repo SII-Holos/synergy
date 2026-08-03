@@ -25,7 +25,7 @@ import { SessionProcessor } from "@/session/processor"
 import { readPluginManifest } from "./spec-resolver"
 import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
-import { resolveRuntimeLimits } from "../plugin-runtime/health"
+import { resolvePluginRuntimeLimits } from "./runtime-limits"
 import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../cortex/plugin-task"
 import { startBlueprint, getBlueprint, cancelBlueprint } from "../blueprint/plugin-adapter"
 import { SessionWorkflowService } from "../session/workflow"
@@ -677,6 +677,5 @@ async function defaultPluginToolInvocationTimeoutMs(pluginDir?: string): Promise
 }
 
 async function defaultPluginRuntimeLimits(pluginDir?: string) {
-  const config = await Config.current().catch(() => undefined)
-  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits)
+  return resolvePluginRuntimeLimits()
 }

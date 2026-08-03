@@ -44,6 +44,7 @@ import {
   startPluginBlueprint,
   startPluginTask,
 } from "./host-services"
+import { resolvePluginRuntimeLimits } from "./runtime-limits"
 
 const capabilityByMethod = {
   "session.get": "session.read",
@@ -125,10 +126,11 @@ async function resolvePluginAgentCall(input: PluginHostServiceInvocationInput, v
     AGENT_CALL_MAX_OUTPUT_CHARS,
   )
   const requestedOutput = positiveConstraint(value.maxOutputChars, maxOutputChars, maxOutputChars)
+  const limits = await resolvePluginRuntimeLimits()
   const maxRuntimeMs = positiveConstraint(
     constraints.maxRuntimeMs,
-    AGENT_CALL_MAX_RUNTIME_MS,
-    AGENT_CALL_MAX_RUNTIME_MS,
+    limits.agentCallMaxRuntimeMs,
+    limits.agentCallMaxRuntimeMs,
   )
   const timeoutMs = positiveConstraint(value.timeoutMs, maxRuntimeMs, maxRuntimeMs)
   const requestedRole = value.modelRole
@@ -453,7 +455,10 @@ async function runPluginTask(input: PluginHostServiceInvocationInput, value: Rec
     request,
   })
   const active = Cortex.get(handle.taskId)
-  const timeoutSeconds = Math.ceil(((active?.timeoutMs ?? request.timeoutMs ?? 120_000) + 5_000) / 1_000)
+  const timeoutSeconds = Math.ceil(
+    ((active?.timeoutMs ?? request.timeoutMs ?? (await resolvePluginRuntimeLimits()).taskRunWaitTimeoutMs) + 5_000) /
+      1_000,
+  )
   const completed = Cortex.waitFor(handle.taskId, timeoutSeconds)
   const onAbort = () => {
     void cancelPluginTask({
@@ -570,7 +575,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   }
   const command = value.command as [string, ...string[]]
   if (!command[0]) throw new Error("shell.run requires a non-empty executable")
-  const timeoutMs = value.timeoutMs ?? 120_000
+  const timeoutMs = value.timeoutMs ?? (await resolvePluginRuntimeLimits()).shellRunTimeoutMs
   if (!Number.isSafeInteger(timeoutMs) || Number(timeoutMs) <= 0) {
     throw new Error("shell.run timeoutMs must be a positive integer")
   }
