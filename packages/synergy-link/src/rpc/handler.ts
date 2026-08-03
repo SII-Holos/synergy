@@ -239,5 +239,12 @@ function isEnvelopeError(error: unknown): error is {
   message: string
   details?: unknown
 } {
-  return typeof error === "object" && error !== null && "code" in error && "message" in error
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    SynergyLinkError.Code.safeParse(error.code).success &&
+    "message" in error &&
+    typeof error.message === "string"
+  )
 }

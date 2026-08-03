@@ -47,7 +47,7 @@ export class SynergyLinkInboundHandler {
       })
 
       if (request.tool === "session") {
-        return this.#handleSession(caller, request)
+        return await this.#handleSession(caller, request)
       }
 
       const lease = await this.sessions.validateCaller(caller, request.sessionID)
@@ -76,9 +76,9 @@ export class SynergyLinkInboundHandler {
         })
         return errorResult(
           {
-            requestID: error.requestID,
-            tool: error.tool,
-            action: error.action,
+            requestID: error.requestID ?? correlation.requestID,
+            tool: error.tool ?? correlation.tool,
+            action: error.action ?? correlation.action,
           },
           error.code,
           error.message,
@@ -95,7 +95,7 @@ export class SynergyLinkInboundHandler {
 
         error: error instanceof Error ? error.message : String(error),
       })
-      return errorResult(correlation, "host_internal_error", error instanceof Error ? error.message : String(error))
+      return errorResult(correlation, "host_internal_error", "The Synergy Link host encountered an internal error.")
     }
   }
 
@@ -244,7 +244,7 @@ function extractRequestCorrelation(input: unknown): {
       candidate.tool === "bash" || candidate.tool === "process" || candidate.tool === "session"
         ? candidate.tool
         : undefined,
-    action: typeof candidate.action === "string" ? candidate.action : undefined,
+    action: typeof candidate.action === "string" && candidate.action.length > 0 ? candidate.action : undefined,
   }
 }
 
@@ -278,5 +278,12 @@ function isEnvelopeError(error: unknown): error is {
   message: string
   details?: unknown
 } {
-  return typeof error === "object" && error !== null && "code" in error && "message" in error
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    SynergyLinkError.Code.safeParse(error.code).success &&
+    "message" in error &&
+    typeof error.message === "string"
+  )
 }

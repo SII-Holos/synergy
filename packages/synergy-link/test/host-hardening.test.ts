@@ -348,6 +348,36 @@ describe("synergy-link host hardening", () => {
     }
   })
 
+  test("returns a session_invalid envelope after the active session is kicked", async () => {
+    const host = createHost()
+    try {
+      const sessionID = await openSession(host)
+      await host.sessions.kickCurrent()
+
+      const response = await host.inbound.handle({
+        caller: callerA,
+        body: {
+          version: 2,
+          requestID: "req_heartbeat_after_kick",
+          linkID: "link_test",
+          tool: "session",
+          action: "heartbeat",
+          payload: { action: "heartbeat", sessionID },
+        },
+      })
+
+      expect(response.ok).toBe(false)
+      if (!response.ok) {
+        expect(response.requestID).toBe("req_heartbeat_after_kick")
+        expect(response.tool).toBe("session")
+        expect(response.action).toBe("heartbeat")
+        expect(response.error.code).toBe("session_invalid")
+      }
+    } finally {
+      await host.rpc.processRegistry.reset()
+    }
+  })
+
   test("does not launch a process after its session is revoked during validation", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-revoked-launch-"))
     const markerPath = path.join(root, "spawned")
@@ -549,6 +579,49 @@ describe("synergy-link host hardening", () => {
 
       await expect(sessions.close(callerA, sessionID)).rejects.toThrow("state save failed")
       expect(rpc.processRegistry.has(id)).toBe(false)
+    } finally {
+      await rpc.processRegistry.reset()
+    }
+  })
+
+  test("does not expose host persistence errors in session responses", async () => {
+    let failSessionEndSave = false
+    const rpc = new RPCHandler({ linkID: "link_test" })
+    const sessions = new SessionManager({
+      onChange: async ({ current }) => {
+        if (failSessionEndSave && !current) {
+          throw Object.assign(new Error("ENOENT: open '/private/host/.synergy-link/state.json'"), { code: "ENOENT" })
+        }
+      },
+      onEnd: async (session) => {
+        await rpc.processRegistry.releaseSession(session)
+      },
+    })
+    const inbound = new SynergyLinkInboundHandler(rpc, sessions, async () => "approve")
+    const host = { rpc, sessions, inbound }
+    try {
+      const sessionID = await openSession(host)
+      failSessionEndSave = true
+
+      const response = await inbound.handle({
+        caller: callerA,
+        body: {
+          version: 2,
+          requestID: "req_close_persistence_failure",
+          linkID: "link_test",
+          tool: "session",
+          action: "close",
+          payload: { action: "close", sessionID },
+        },
+      })
+
+      expect(response.ok).toBe(false)
+      if (!response.ok) {
+        expect(response.requestID).toBe("req_close_persistence_failure")
+        expect(response.error.code).toBe("host_internal_error")
+        expect(response.error.message).not.toContain("/private/host")
+        expect(response.error.message).not.toContain("ENOENT")
+      }
     } finally {
       await rpc.processRegistry.reset()
     }
