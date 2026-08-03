@@ -1,3 +1,4 @@
+import { SynergyLinkRemoteError } from "../../src/remote/client"
 import { describe, expect, test } from "bun:test"
 import type {
   SynergyLinkClient,
@@ -40,7 +41,7 @@ describe("tool.connect", () => {
       const tool = await ConnectTool.init()
       const result = await tool.execute({ action: "list_targets" }, ctx)
       expect(result.metadata.targets).toContainEqual(
-        expect.objectContaining({ id: target.id, name: "Build Mac", availability: "holos_offline" }),
+        expect.objectContaining({ id: target.id, name: "Build Mac", availability: "unknown" }),
       )
       expect(result.output).toContain(target.id)
       expect(result.output).not.toContain("agent_build_mac")
@@ -246,7 +247,7 @@ describe("tool.connect", () => {
     }
   })
 
-  test("does not list unregistered sessions to other agents", async () => {
+  test("lists raw sessions only for their source agent and marks them unregistered", async () => {
     SynergyLinkExecution.upsertSession({
       linkID: "link_unregistered",
       targetAgentID: "agent_unregistered",
@@ -256,14 +257,33 @@ describe("tool.connect", () => {
       openedAt: Date.now(),
       lastUsedAt: Date.now(),
     })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_foreign",
+      targetAgentID: "agent_foreign",
+      sourceAgent: "review",
+      sessionID: "session_foreign",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
     try {
       const tool = await ConnectTool.init()
       const result = await tool.execute({ action: "list" }, ctx)
 
-      expect(result.metadata.sessions).toEqual([])
-      expect(result.output).toBe("No active Synergy Link sessions.")
+      const sessions = result.metadata.sessions ?? []
+      expect(sessions).toHaveLength(1)
+      expect(sessions[0]).toEqual(
+        expect.objectContaining({
+          linkID: "link_unregistered",
+          sessionID: "session_unregistered",
+          registered: false,
+        }),
+      )
+      expect(result.output).toContain("unregistered")
+      expect(result.output).not.toContain("link_foreign")
     } finally {
       SynergyLinkExecution.clearSession("link_unregistered")
+      SynergyLinkExecution.clearSession("link_foreign")
     }
   })
 
@@ -324,7 +344,7 @@ describe("tool.connect", () => {
       openedAt: Date.now(),
       lastUsedAt: Date.now(),
     })
-    await SynergyLinkTargetStore.update(target.id, { enabled: false })
+    await SynergyLinkTargetStore.update(target.id, { kind: "metadata", enabled: false })
     try {
       const tool = await ConnectTool.init()
       const result = await tool.execute({ action: "close", targetID: target.id }, ctx)
@@ -386,6 +406,7 @@ describe("tool.connect", () => {
       status: "opened",
       openedAt,
       lastUsedAt: openedAt,
+      lastVerifiedAt: openedAt,
     })
     try {
       const tool = await ConnectTool.init()
@@ -467,6 +488,372 @@ describe("tool.connect", () => {
       ).rejects.toThrow("No active Synergy Link session")
       expect(sessionCalls).toBe(0)
       expect(SynergyLinkExecution.getSession("link_owned")?.sessionID).toBe("session_owned")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+})
+
+describe("tool.connect verification", () => {
+  test("status heartbeats a stale cached session before reporting it open", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "heartbeat", status: "alive", sessionID: "session_status", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        return {
+          title: "Session alive",
+          metadata: { action: "heartbeat", status: "alive", sessionID: "session_status", backend: "remote" },
+          output: "alive",
+        }
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_status",
+      targetAgentID: "agent_status",
+      sourceAgent: "build",
+      sessionID: "session_status",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute({ action: "status", linkID: "link_status", targetAgentID: "agent_status" }, ctx)
+
+      expect(actions).toEqual(["heartbeat"])
+      expect(result.metadata.status).toBe("opened")
+      expect(result.metadata.sessionID).toBe("session_status")
+      expect(SynergyLinkExecution.getSession("link_status")?.lastVerifiedAt).toBeGreaterThan(0)
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("status clears a session the host reports invalid and reports missing", async () => {
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "heartbeat", status: "alive", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new SynergyLinkRemoteError("session_invalid", "Session is not active.")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_status_invalid",
+      targetAgentID: "agent_status_invalid",
+      sourceAgent: "build",
+      sessionID: "session_status_invalid",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "status", linkID: "link_status_invalid", targetAgentID: "agent_status_invalid" },
+        ctx,
+      )
+
+      expect(result.metadata.status).toBe("missing")
+      expect(SynergyLinkExecution.getSession("link_status_invalid")).toBeUndefined()
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("status reports unknown when the cached session heartbeat times out", async () => {
+    const lastVerifiedAt = 1_000
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "heartbeat", status: "alive", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new SynergyLinkRemoteError("transport_error", "Timed out waiting for Synergy Link response.")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_status_timeout",
+      targetAgentID: "agent_status_timeout",
+      sourceAgent: "build",
+      sessionID: "session_status_timeout",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+      lastVerifiedAt,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "status", linkID: "link_status_timeout", targetAgentID: "agent_status_timeout" },
+        ctx,
+      )
+
+      expect(result.metadata.status).toBe("unknown")
+      expect(result.output).toContain("could not be verified")
+      expect(SynergyLinkExecution.getSession("link_status_timeout")?.lastVerifiedAt).toBe(lastVerifiedAt)
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("open verifies a stale cached session before claiming already open", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "open", status: "opened", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        return {
+          title: "Session alive",
+          metadata: { action: payload.action, status: "alive", sessionID: "session_open_verify", backend: "remote" },
+          output: "alive",
+        }
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_open_verify",
+      targetAgentID: "agent_open_verify",
+      sourceAgent: "build",
+      sessionID: "session_open_verify",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "open", linkID: "link_open_verify", targetAgentID: "agent_open_verify" },
+        ctx,
+      )
+
+      expect(actions).toEqual(["heartbeat"])
+      expect(result.metadata.status).toBe("opened")
+      expect(result.output).toContain("already open")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("open clears an invalid cached session and opens a fresh one with a new ID", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    let sessionCalls = 0
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "open", status: "opened", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        sessionCalls++
+        actions.push(payload.action)
+        if (payload.action === "heartbeat") {
+          throw new SynergyLinkRemoteError("session_invalid", "Session is not active.")
+        }
+        return {
+          title: "Session opened",
+          metadata: {
+            action: "open",
+            status: "opened",
+            sessionID: "session_fresh",
+            backend: "remote",
+            host: {
+              type: "synergy_link.host.hello",
+              linkID: "link_open_fresh",
+              hostSessionID: "host_fresh",
+              capabilities: {
+                platform: "linux",
+                arch: "x64",
+                runtime: "bun",
+                defaultShell: "sh",
+                supportedShells: ["sh"],
+                supportsPty: false,
+                supportsSendKeys: true,
+                supportsSoftKill: true,
+                supportsProcessGroups: true,
+                envCaseInsensitive: false,
+                lineEndings: "lf",
+              },
+            },
+          },
+          output: "opened",
+        }
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_open_fresh",
+      targetAgentID: "agent_open_fresh",
+      sourceAgent: "build",
+      sessionID: "session_stale",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "open", linkID: "link_open_fresh", targetAgentID: "agent_open_fresh" },
+        ctx,
+      )
+
+      expect(sessionCalls).toBe(2)
+      expect(actions).toEqual(["heartbeat", "open"])
+      expect(result.metadata.status).toBe("opened")
+      expect(result.metadata.sessionID).toBe("session_fresh")
+      expect(SynergyLinkExecution.getSession("link_open_fresh")?.sessionID).toBe("session_fresh")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("open reports unknown when a stale cached session heartbeat times out and does not open", async () => {
+    let sessionCalls = 0
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "open", status: "opened", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        sessionCalls++
+        throw new SynergyLinkRemoteError("transport_error", "Timed out waiting for Synergy Link response.")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_open_timeout",
+      targetAgentID: "agent_open_timeout",
+      sourceAgent: "build",
+      sessionID: "session_open_timeout",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "open", linkID: "link_open_timeout", targetAgentID: "agent_open_timeout" },
+        ctx,
+      )
+
+      expect(sessionCalls).toBe(1)
+      expect(result.metadata.status).toBe("unknown")
+      expect(result.output).toContain("could not be verified")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("close clears a stale session when the host reports it invalid", async () => {
+    let sessionCalls = 0
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "close", status: "closed", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        sessionCalls++
+        throw new SynergyLinkRemoteError("session_not_found", "Session is not active.")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_close_stale",
+      targetAgentID: "agent_close_stale",
+      sourceAgent: "build",
+      sessionID: "session_close_stale",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "close", linkID: "link_close_stale", targetAgentID: "agent_close_stale" },
+        ctx,
+      )
+
+      expect(sessionCalls).toBe(1)
+      expect(result.metadata.status).toBe("closed")
+      expect(SynergyLinkExecution.getSession("link_close_stale")).toBeUndefined()
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("clear force-removes a stale cached session locally without a remote call", async () => {
+    let sessionCalls = 0
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "close", status: "closed", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        sessionCalls++
+        throw new Error("unexpected session execution")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_force_clear",
+      targetAgentID: "agent_force_clear",
+      sourceAgent: "build",
+      sessionID: "session_force_clear",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "clear", linkID: "link_force_clear", targetAgentID: "agent_force_clear" },
+        ctx,
+      )
+
+      expect(sessionCalls).toBe(0)
+      expect(result.metadata.status).toBe("cleared")
+      expect(SynergyLinkExecution.getSession("link_force_clear")).toBeUndefined()
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("does not let another local agent clear a raw session", async () => {
+    SynergyLinkExecution.setClient(
+      fakeClient({
+        title: "unused",
+        metadata: { action: "close", status: "closed", backend: "remote" },
+        output: "unused",
+      }),
+    )
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_clear_owned",
+      targetAgentID: "agent_clear_owned",
+      sourceAgent: "build",
+      sessionID: "session_clear_owned",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    try {
+      const tool = await ConnectTool.init()
+      await expect(
+        tool.execute(
+          { action: "clear", linkID: "link_clear_owned", targetAgentID: "agent_clear_owned" },
+          { ...ctx, agent: "review" },
+        ),
+      ).rejects.toThrow("No active Synergy Link session")
+      expect(SynergyLinkExecution.getSession("link_clear_owned")?.sessionID).toBe("session_clear_owned")
     } finally {
       SynergyLinkExecution.setClient(null)
     }

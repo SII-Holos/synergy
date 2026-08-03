@@ -12,6 +12,7 @@ import { translateDescriptor } from "@/locales/translate"
 import type { DesktopUpdateMode } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   desktopUpdateStatusCopy,
@@ -174,6 +175,7 @@ function secondsLabel(value: number) {
 export function GeneralPanel(props: {
   general: GeneralStore
   onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
+  popoverLayer?: HTMLElement
 }) {
   const theme = useTheme()
   const selectedThemeId = () => props.general.theme || "synergy"
@@ -242,13 +244,13 @@ export function GeneralPanel(props: {
           title={_(copy.themeTitle)}
           description={_(copy.themeDescription)}
           trailing={
-            <select
-              class="settings-select"
+            <MenuField
               value={selectedThemeId()}
-              onChange={(event) => setThemeId(event.currentTarget.value)}
-            >
-              <For each={theme.themes()}>{(option) => <option value={option.id}>{option.label}</option>}</For>
-            </select>
+              ariaLabel={_(copy.themeTitle)}
+              popoverLayer={props.popoverLayer}
+              options={theme.themes().map((option) => ({ value: option.id, label: option.label }))}
+              onChange={(value) => setThemeId(value)}
+            />
           }
         />
         <div class="settings-color-grid" role="radiogroup" aria-label={_(copy.colorSchemeLabel)}>
@@ -275,16 +277,17 @@ export function GeneralPanel(props: {
           title={_(copy.languageTitle)}
           description={_(copy.languageDescription)}
           trailing={
-            <select
-              class="settings-select"
+            <MenuField
               value={props.general.locale}
-              aria-label={_(copy.languageTitle)}
-              onChange={(event) => void setLocalePreference(event.currentTarget.value as LocalePreference)}
-            >
-              <option value="system">{_(copy.languageSystem)}</option>
-              <option value="en">{LANGUAGE_SELF_NAMES.en}</option>
-              <option value="zh-CN">{LANGUAGE_SELF_NAMES["zh-CN"]}</option>
-            </select>
+              ariaLabel={_(copy.languageTitle)}
+              popoverLayer={props.popoverLayer}
+              options={[
+                { value: "system", label: _(copy.languageSystem) },
+                { value: "en", label: LANGUAGE_SELF_NAMES.en },
+                { value: "zh-CN", label: LANGUAGE_SELF_NAMES["zh-CN"] },
+              ]}
+              onChange={(value) => void setLocalePreference(value as LocalePreference)}
+            />
           }
         />
         <FontPreferenceRow

@@ -48,7 +48,7 @@ Clarus borrows the one authenticated Holos Agent Tunnel WebSocket through `Holos
 - `rejected` is an authoritative terminal rejection, including a correlated gateway error.
 - `ambiguous` means dispatch may have occurred; automatic retry is forbidden.
 
-Disconnect settles in-flight native requests as ambiguous and notifies borrowed consumers. Clarus removes its observers and returns to passive transport waiting; Channel does not create another WebSocket, timer, polling loop, or transport reconnect loop.
+Disconnect or a missed-pong deadline settles in-flight native requests as ambiguous and notifies borrowed consumers. The Holos owner checks the deadline inside its existing heartbeat interval rather than adding another timer. Clarus removes its observers and returns to passive transport waiting; Channel does not create another WebSocket, timer, polling loop, or transport reconnect loop.
 
 ## Managed Project Ownership
 

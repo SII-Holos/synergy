@@ -15,11 +15,11 @@ describe("synergy-link holos envelope", () => {
     expect(parsed).toEqual({ kind: "ignored", type: "connected" })
   })
 
-  test("classifies pong frames as ignored", () => {
+  test("classifies pong frames as liveness acknowledgements", () => {
     const parsed = SynergyLinkHolosEnvelope.parse(
       JSON.stringify({ type: "pong", request_id: null, meta: { timestamp: 1 }, payload: null, caller: null }),
     )
-    expect(parsed).toEqual({ kind: "ignored", type: "pong" })
+    expect(parsed).toEqual({ kind: "pong" })
   })
 
   test("classifies ws_send frames without a caller as ignored", () => {

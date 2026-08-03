@@ -3301,6 +3301,10 @@ msgid "app.library.experience.filter.all"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr ""
 
@@ -3360,6 +3364,10 @@ msgstr ""
 msgid "app.library.experience.showingOf"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr ""
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr ""
@@ -3413,7 +3421,15 @@ msgid "app.library.memory.empty.none"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -3646,6 +3662,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13214,6 +13234,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr ""
 
@@ -16934,11 +16958,15 @@ msgid "settings.synergyLink.availability.connected"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.idle"
+msgid "settings.synergyLink.availability.reachable"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.offline"
+msgid "settings.synergyLink.availability.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.unreachable"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17447,6 +17475,10 @@ msgstr ""
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.executed"
+msgstr ""
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.executed-via-synergy-link"
 msgstr ""
 
 #. ── Tool misc labels ────────────────────────────────────────────────

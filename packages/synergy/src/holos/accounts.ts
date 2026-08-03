@@ -1,3 +1,9 @@
+import {
+  authLockDirectory,
+  HOLOS_ACCOUNTS_WRITE_LOCK_KEY,
+  LEGACY_API_KEY_WRITE_LOCK_KEY,
+  withFileLock,
+} from "@ericsanchezok/synergy-util/fs-lock"
 import z from "zod"
 import { Global } from "@/global"
 import path from "path"
@@ -5,6 +11,12 @@ import fs from "fs/promises"
 import { Auth } from "@/provider/api-key"
 
 export namespace HolosAccounts {
+  export class MalformedStoreError extends Error {
+    constructor(cause: unknown) {
+      super("Failed to parse the shared Holos account store.", { cause })
+      this.name = "HolosAccountsMalformedStoreError"
+    }
+  }
   export const AccountInfo = z.object({
     agentId: z.string(),
     agentSecret: z.string(),
@@ -24,12 +36,20 @@ export namespace HolosAccounts {
   }
 
   async function readStore(): Promise<Store> {
+    let raw: string
     try {
-      const file = Bun.file(filepath())
-      const data = await file.json()
-      return Store.parse(data)
-    } catch {
-      return { activeAccountId: null, accounts: {} }
+      raw = await fs.readFile(filepath(), "utf8")
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { activeAccountId: null, accounts: {} }
+      }
+      throw error
+    }
+
+    try {
+      return Store.parse(JSON.parse(raw))
+    } catch (error) {
+      throw new MalformedStoreError(error)
     }
   }
 
@@ -44,21 +64,45 @@ export namespace HolosAccounts {
       }
       throw err
     }
-    await Bun.write(file, JSON.stringify(store, null, 2))
-    await fs.chmod(file, 0o600)
+
+    const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`
+    try {
+      await fs.writeFile(temporary, JSON.stringify(store, null, 2) + "\n", { flag: "wx", mode: 0o600 })
+      await fs.rename(temporary, file)
+      await fs.chmod(file, 0o600)
+    } catch (error) {
+      await fs.rm(temporary, { force: true }).catch(() => {})
+      throw error
+    }
   }
 
   async function removeLegacyHolosEntry(): Promise<void> {
-    const file = Auth.legacyFilepath()
-    const data = await Bun.file(file)
-      .json()
-      .catch(() => undefined)
-    if (!data || typeof data !== "object" || Array.isArray(data) || !("holos" in data)) return
+    await withFileLock(
+      {
+        directory: authLockDirectory(Global.Path.root),
+        key: LEGACY_API_KEY_WRITE_LOCK_KEY,
+        timeoutMessage: "Timed out acquiring legacy credential lock",
+      },
+      async () => {
+        const file = Auth.legacyFilepath()
+        const data = await Bun.file(file)
+          .json()
+          .catch(() => undefined)
+        if (!data || typeof data !== "object" || Array.isArray(data) || !("holos" in data)) return
 
-    delete (data as Record<string, unknown>)["holos"]
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    await Bun.write(file, JSON.stringify(data, null, 2))
-    await fs.chmod(file, 0o600).catch(() => {})
+        delete (data as Record<string, unknown>)["holos"]
+        const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`
+        await fs.mkdir(path.dirname(file), { recursive: true })
+        try {
+          await fs.writeFile(temporary, JSON.stringify(data, null, 2) + "\n", { flag: "wx", mode: 0o600 })
+          await fs.rename(temporary, file)
+          await fs.chmod(file, 0o600)
+        } catch (error) {
+          await fs.rm(temporary, { force: true }).catch(() => {})
+          throw error
+        }
+      },
+    )
   }
 
   export async function getActiveAccount(): Promise<AccountInfo | undefined> {
@@ -77,64 +121,92 @@ export namespace HolosAccounts {
     return store.accounts[agentId]
   }
 
-  export async function saveAndActivateAccount(agentId: string, agentSecret: string): Promise<void> {
-    const store = await readStore()
-    const now = Date.now()
-    const existing = store.accounts[agentId]
-
-    store.accounts[agentId] = {
-      agentId,
-      agentSecret,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
+  export async function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    const directory = authLockDirectory(Global.Path.root)
+    try {
+      return await withFileLock(
+        {
+          directory,
+          key: HOLOS_ACCOUNTS_WRITE_LOCK_KEY,
+          timeoutMessage: "Timed out acquiring Holos accounts lock",
+        },
+        fn,
+      )
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`Unable to create data directory at ${directory}: ENOENT: no such file or directory`)
+      }
+      throw error
     }
-    store.activeAccountId = agentId
+  }
 
-    await writeStore(store)
+  export async function saveAndActivateAccount(agentId: string, agentSecret: string): Promise<void> {
+    await withWriteLock(async () => {
+      const store = await readStore()
+      const now = Date.now()
+      const existing = store.accounts[agentId]
+
+      store.accounts[agentId] = {
+        agentId,
+        agentSecret,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      }
+      store.activeAccountId = agentId
+
+      await writeStore(store)
+    })
   }
 
   export async function setActiveAccount(agentId: string): Promise<void> {
-    const store = await readStore()
-    if (!store.accounts[agentId]) {
-      throw new Error(`Account not found: ${agentId}`)
-    }
-    store.activeAccountId = agentId
-    await writeStore(store)
+    await withWriteLock(async () => {
+      const store = await readStore()
+      if (!store.accounts[agentId]) {
+        throw new Error(`Account not found: ${agentId}`)
+      }
+      store.activeAccountId = agentId
+      await writeStore(store)
+    })
   }
 
   export async function deleteAccount(agentId: string): Promise<void> {
-    const store = await readStore()
-    delete store.accounts[agentId]
-    if (store.activeAccountId === agentId) {
-      store.activeAccountId = null
-    }
-    await writeStore(store)
+    await withWriteLock(async () => {
+      const store = await readStore()
+      delete store.accounts[agentId]
+      if (store.activeAccountId === agentId) {
+        store.activeAccountId = null
+      }
+      await writeStore(store)
+    })
+    await removeLegacyHolosEntry()
   }
 
   export async function migrateFromLegacy(): Promise<{ migrated: boolean }> {
-    await Auth.migrateLegacy({ backup: false })
-    const authData = await Auth.all()
-    const holos = authData["holos"]
-    if (!holos || holos.type !== "holos") {
-      return { migrated: false }
-    }
+    return await withWriteLock(async () => {
+      await Auth.migrateLegacy({ backup: false })
+      const authData = await Auth.all()
+      const holos = authData["holos"]
+      if (!holos || holos.type !== "holos") {
+        return { migrated: false }
+      }
 
-    const store = await readStore()
-    const now = Date.now()
-    const existing = store.accounts[holos.agentId]
+      const store = await readStore()
+      const now = Date.now()
+      const existing = store.accounts[holos.agentId]
 
-    store.accounts[holos.agentId] = {
-      agentId: holos.agentId,
-      agentSecret: holos.agentSecret,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    }
-    store.activeAccountId = holos.agentId
-    await writeStore(store)
+      store.accounts[holos.agentId] = {
+        agentId: holos.agentId,
+        agentSecret: holos.agentSecret,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      }
+      store.activeAccountId = holos.agentId
+      await writeStore(store)
 
-    await Auth.remove("holos")
-    await removeLegacyHolosEntry()
+      await Auth.remove("holos")
+      await removeLegacyHolosEntry()
 
-    return { migrated: true }
+      return { migrated: true }
+    })
   }
 }

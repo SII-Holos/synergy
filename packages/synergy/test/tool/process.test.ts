@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import type { SynergyLinkBash, SynergyLinkProcess, SynergyLinkSession } from "@ericsanchezok/synergy-link-protocol"
+import { SynergyLinkRemoteError } from "../../src/remote/client"
+import { SynergyLinkExecution } from "../../src/tool/synergy-link-execution"
 import path from "path"
 import { ProcessTool } from "../../src/tool/process"
 import { ProcessRegistry } from "../../src/process/registry"
@@ -54,5 +57,38 @@ describe("tool.process", () => {
         ProcessRegistry.remove(proc.id)
       },
     })
+  })
+
+  test("clears a cached session after definitive invalid remote process execution", async () => {
+    SynergyLinkExecution.setClient({
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        throw new Error("unexpected bash execution")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new SynergyLinkRemoteError("session_not_found", "Session is not active.")
+      },
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("unexpected session verification")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_invalid_process",
+      targetAgentID: "agent_invalid_process",
+      sourceAgent: "build",
+      sessionID: "session_invalid_process",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+      lastVerifiedAt: Date.now(),
+    })
+    try {
+      const process = await ProcessTool.init()
+      await expect(process.execute({ action: "list", linkID: "link_invalid_process" }, ctx)).rejects.toMatchObject({
+        code: "session_not_found",
+      })
+      expect(SynergyLinkExecution.getSession("link_invalid_process")).toBeUndefined()
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
   })
 })

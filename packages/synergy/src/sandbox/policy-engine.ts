@@ -43,6 +43,8 @@ export interface SandboxPolicyInput {
   approvedWritePaths: string[]
   approvedNetwork: boolean
   approvedUnixSockets: string[]
+  protectedPaths?: string[]
+  dataDenyRoots?: string[]
 }
 
 /**
@@ -64,8 +66,8 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
   const readableRoots: string[] = []
   const writableRoots: string[] = []
   const readOnlySubpaths: string[] = []
-  const protectedPaths: string[] = DEFAULT_PROTECTED_PATHS(homedir, input.workspace)
-  const dataDenyRoots: string[] = [homedir]
+  const protectedPaths: string[] = input.protectedPaths ?? DEFAULT_PROTECTED_PATHS(homedir, input.workspace)
+  const dataDenyRoots: string[] = input.dataDenyRoots ?? [homedir]
 
   // Always include platform default read roots
   const platformRoots = defaultRuntimeReadRoots(homedir)

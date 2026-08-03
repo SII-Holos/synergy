@@ -29,6 +29,7 @@ interface GlobalFlags {
 interface SynergyLinkLoginOptions {
   agentID?: string
   agentSecret?: string
+  agentSecretFile?: string
 }
 
 interface CommandSuccess {
@@ -229,6 +230,14 @@ async function showStatus(args: string[]): Promise<CommandResult> {
     return invalidUsage("Usage: synergy-link status")
   }
   const status = await SynergyLinkCLIBackend.status()
+  if (status.source === "snapshot") {
+    return {
+      ok: false,
+      message: `Live Synergy Link status is unavailable. Showing a last-known snapshot. ${status.controlError}`,
+      data: status,
+      exitCode: 1,
+    }
+  }
   return {
     ok: true,
     data: status,
@@ -275,18 +284,48 @@ async function login(args: string[]): Promise<CommandResult> {
     return invalidUsage(parsed.usage)
   }
 
-  if (parsed.options.agentID || parsed.options.agentSecret) {
-    if (!parsed.options.agentID || !parsed.options.agentSecret) {
-      return {
-        ok: false,
-        message: "`--agent-id` and `--agent-secret` must be provided together.",
-        usage: loginUsage(),
-      }
+  if (parsed.options.agentSecret && parsed.options.agentSecretFile) {
+    return {
+      ok: false,
+      message: "`--agent-secret` and `--agent-secret-file` cannot be combined.",
+      usage: loginUsage(),
     }
+  }
 
+  if (parsed.options.agentSecretFile && !parsed.options.agentID) {
+    return {
+      ok: false,
+      message: "`--agent-id` and `--agent-secret-file` must be provided together.",
+      usage: loginUsage(),
+    }
+  }
+  if (parsed.options.agentSecret && !parsed.options.agentID) {
+    return {
+      ok: false,
+      message: "`--agent-id` and `--agent-secret` must be provided together.",
+      usage: loginUsage(),
+    }
+  }
+  if (parsed.options.agentID && !parsed.options.agentSecret && !parsed.options.agentSecretFile) {
+    return {
+      ok: false,
+      message: "`--agent-id` requires `--agent-secret-file` or the deprecated `--agent-secret` option.",
+      usage: loginUsage(),
+    }
+  }
+
+  if (parsed.options.agentID) {
+    const agentSecret = parsed.options.agentSecretFile
+      ? await SynergyLinkHolosLogin.readAgentSecretInput(parsed.options.agentSecretFile)
+      : parsed.options.agentSecret!
+    if (parsed.options.agentSecret) {
+      console.error(
+        "warning: `--agent-secret` is deprecated because secrets are visible in process listings and shell history; prefer `--agent-secret-file`.",
+      )
+    }
     const result = await SynergyLinkCLIBackend.login({
       agentID: parsed.options.agentID,
-      agentSecret: parsed.options.agentSecret,
+      agentSecret,
     })
     return {
       ok: true,
@@ -718,7 +757,7 @@ function rootUsage() {
     "  logs [-f] [--tail N] [--since DURATION]",
     "",
     "Identity:",
-    "  login [--agent-id ID --agent-secret SECRET]",
+    "  login [--agent-id ID --agent-secret-file PATH]",
     "  logout | whoami | reconnect | doctor",
     "",
     "Collaboration:",
@@ -773,9 +812,11 @@ function isTrustSubject(value: string | undefined): value is SynergyLinkTrustSub
 
 function loginUsage() {
   return [
-    "Usage: synergy-link login [--agent-id ID --agent-secret SECRET]",
+    "Usage: synergy-link login [--agent-id ID --agent-secret-file PATH]",
+    "       synergy-link login --agent-id ID --agent-secret-file -",
     "",
     "Without flags, interactive TTY sessions let you choose browser login or importing existing credentials.",
+    "`--agent-secret-file -` reads one secret line from stdin. The `--agent-secret` option is deprecated.",
   ].join("\n")
 }
 
@@ -799,6 +840,15 @@ function parseLoginArgs(args: string[]): { ok: true; options: SynergyLinkLoginOp
         return { ok: false, usage: loginUsage() }
       }
       options.agentSecret = next
+      index += 1
+      continue
+    }
+    if (token === "--agent-secret-file") {
+      const next = args[index + 1]
+      if (!next || (next.startsWith("-") && next !== "-")) {
+        return { ok: false, usage: loginUsage() }
+      }
+      options.agentSecretFile = next
       index += 1
       continue
     }

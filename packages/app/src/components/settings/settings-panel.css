@@ -91,22 +91,6 @@
   letter-spacing: var(--letter-spacing-normal);
 }
 
-.settings-select {
-  min-width: 180px;
-  border: 1px solid var(--settings-border);
-  border-radius: 6px;
-  background: var(--settings-input-bg);
-  color: var(--text-strong);
-  padding: 8px 10px;
-  font-size: var(--settings-type-control-size);
-  line-height: var(--settings-type-control-line-height);
-  outline: none;
-}
-
-.settings-select:focus {
-  box-shadow: var(--settings-focus-ring);
-}
-
 .settings-font-controls {
   display: flex;
   align-items: center;
@@ -167,14 +151,6 @@
   border-color: color-mix(in oklch, var(--border-base) 56%, transparent);
 }
 
-.settings-panel-root {
-  --shadow-xs-border-select: var(--settings-focus-ring);
-
-  height: 100%;
-  min-height: 0;
-  background: var(--settings-canvas-bg);
-}
-
 .settings-popover-layer {
   position: absolute;
   inset: 0;
@@ -183,8 +159,17 @@
 }
 
 .settings-popover-layer .settings-model-picker-popover,
-.settings-popover-layer .settings-model-detail-surface {
+.settings-popover-layer .settings-model-detail-surface,
+.settings-popover-layer .menu-field-surface {
   pointer-events: auto;
+}
+
+.settings-panel-root {
+  --shadow-xs-border-select: var(--settings-focus-ring);
+
+  height: 100%;
+  min-height: 0;
+  background: var(--settings-canvas-bg);
 }
 
 .settings-panel-loading {
@@ -3694,18 +3679,6 @@
 .settings-row-control-text {
   width: 180px;
   min-width: 0;
-}
-
-@media (max-width: 840px) {
-  .settings-font-controls {
-    width: 100%;
-    max-width: none;
-    flex-wrap: wrap;
-  }
-
-  .settings-font-input {
-    flex: 1 1 220px;
-  }
 }
 
 @media (max-width: 840px) {

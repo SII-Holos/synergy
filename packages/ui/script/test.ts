@@ -7,6 +7,7 @@ const root = path.resolve(import.meta.dir, "..")
 const isolated = new Set([
   "test/components/session-turn-timeline.test.ts",
   "test/components/tool/renders/task.test.tsx",
+  "test/components/tool/renders/standard.test.tsx",
 ])
 const browserOnly = new Set(["test/hooks/use-filtered-list.test.tsx"])
 
