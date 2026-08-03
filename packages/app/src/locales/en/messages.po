@@ -3301,6 +3301,10 @@ msgid "app.library.experience.filter.all"
 msgstr "All experiences"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr "Filter experiences"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr "Current scope"
 
@@ -3360,6 +3364,10 @@ msgstr "Showing all {total} experiences"
 msgid "app.library.experience.showingOf"
 msgstr "Showing {shown} of {total} experiences"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr "Sort experiences"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr "C"
@@ -3413,8 +3421,16 @@ msgid "app.library.memory.empty.none"
 msgstr "No memories yet"
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr "Filter memories by category"
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
 msgstr "{pct}%"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
+msgstr "Sort memories"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.updated"
@@ -3647,6 +3663,10 @@ msgstr "Downloaded \"{name}\" as a ZIP archive"
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
 msgstr "All skills"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
+msgstr "Filter skills"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.builtin"
@@ -13212,6 +13232,10 @@ msgstr "Select"
 #. js-lingui-explicit-id
 msgid "settings.archivedSessions.select.visible"
 msgstr "Select visible"
+
+#. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr "Sort archived sessions"
 
 #. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"

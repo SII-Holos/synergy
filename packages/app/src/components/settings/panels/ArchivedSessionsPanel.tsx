@@ -12,6 +12,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 import { relativeTime } from "@/utils/time"
 import { getScopeLabel } from "@/utils/scope"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
 
@@ -131,7 +132,7 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
-export function ArchivedSessionsPanel() {
+export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
   const { _ } = useLingui()
   const { fmt } = useLocale()
   const globalSDK = useGlobalSDK()
@@ -330,19 +331,21 @@ export function ArchivedSessionsPanel() {
               </Show>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <select
-                class="settings-select rounded-lg border border-border-weaker-base bg-surface-raised-base px-2.5 py-2 text-text-base outline-none"
+              <MenuField
                 value={`${sortBy()}:${sortDir()}`}
-                onChange={(event) => {
-                  const [nextSortBy, nextSortDir] = event.currentTarget.value.split(":") as [SortBy, SortDir]
+                ariaLabel={_({ id: "settings.archivedSessions.sort.aria", message: "Sort archived sessions" })}
+                popoverLayer={props.popoverLayer}
+                options={[
+                  { value: "archived:desc", label: _(sortNewestLabel) },
+                  { value: "archived:asc", label: _(sortOldestLabel) },
+                  { value: "scope:asc", label: _(sortProjectAZ) },
+                  { value: "scope:desc", label: _(sortProjectZA) },
+                ]}
+                onChange={(value) => {
+                  const [nextSortBy, nextSortDir] = value.split(":") as [SortBy, SortDir]
                   updateSort(nextSortBy, nextSortDir)
                 }}
-              >
-                <option value="archived:desc">{_(sortNewestLabel)}</option>
-                <option value="archived:asc">{_(sortOldestLabel)}</option>
-                <option value="scope:asc">{_(sortProjectAZ)}</option>
-                <option value="scope:desc">{_(sortProjectZA)}</option>
-              </select>
+              />
               <Button
                 type="button"
                 variant="ghost"
