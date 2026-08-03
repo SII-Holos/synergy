@@ -1313,6 +1313,7 @@ function SessionPageContent() {
                           lastUserMessage={lastRenderableUserMessage}
                           activeMessage={activeMessage}
                           isWorking={isWorking}
+                          compactReasoning={() => sync.data.config.compactReasoning === true}
                           turnStart={store.turnStart}
                           turnBatch={turnBatch}
                           onSetTurnStart={(start) => setStore("turnStart", start)}

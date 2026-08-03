@@ -14226,6 +14226,14 @@ msgid "settings.general.colorScheme.system.description"
 msgstr "跟随此设备"
 
 #. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.description"
+msgstr "以单行视图显示实时推理"
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.title"
+msgstr "紧凑推理"
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "选择 Synergy 控件和无障碍标签使用的语言"
 

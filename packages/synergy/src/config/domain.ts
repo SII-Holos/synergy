@@ -47,6 +47,7 @@ export namespace ConfigDomain {
       "toast",
       "logLevel",
       "snapshot",
+      "compactReasoning",
       "username",
       "locale",
       "layout",

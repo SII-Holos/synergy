@@ -39,6 +39,7 @@ export const UI_DEFAULTS = {
   theme: "" as string,
   username: "" as string,
   snapshot: true,
+  compactReasoning: false,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
   sandboxEnabled: "true" as string,
   sandboxFallbackPolicy: "warn" as string,
@@ -255,6 +256,7 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
 
 export type GeneralStore = {
   snapshot: boolean
+  compactReasoning: boolean
   username: string
   theme: string
   locale: LocalePreference
@@ -361,6 +363,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
   return {
     general: {
       snapshot: UI_DEFAULTS.snapshot,
+      compactReasoning: UI_DEFAULTS.compactReasoning,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       locale: UI_DEFAULTS.locale,

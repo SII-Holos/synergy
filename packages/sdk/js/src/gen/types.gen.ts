@@ -3679,6 +3679,10 @@ export type Config = {
   pluginMarketplace?: PluginMarketplaceConfig
   snapshot?: boolean
   /**
+   * Show live reasoning in a compact single-line viewport
+   */
+  compactReasoning?: boolean
+  /**
    * Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */
   disabled_providers?: Array<string>

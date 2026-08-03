@@ -33,6 +33,7 @@ export function SessionConversation(props: {
   activeMessage: Accessor<UserMessage | undefined>
   workspaceOpen?: Accessor<boolean>
   isWorking: Accessor<boolean>
+  compactReasoning: Accessor<boolean>
   turnStart: number
   turnBatch: number
   onSetTurnStart: (start: number) => void
@@ -194,6 +195,7 @@ export function SessionConversation(props: {
                 sessionID={props.sessionID}
                 messageID={msg.id}
                 lastUserMessageID={props.lastUserMessage()?.id}
+                compactReasoning={props.compactReasoning()}
                 onRewind={messageAllowsCanonicalActions(msg) ? () => props.onRewind?.(msg as UserMessage) : undefined}
                 rollbackActive={props.rollbackActive}
                 onReviewChanges={props.onReviewChanges}

@@ -309,6 +309,23 @@
     margin-top: 0;
   }
 
+  [data-slot="session-turn-timeline-item"][data-compact-reasoning="true"] {
+    overflow: hidden;
+    overflow-anchor: none;
+  }
+
+  [data-component="compact-reasoning"] {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
+    font-style: italic;
+    line-height: 1.55;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* ── Assistant message footer (Copy Markdown + timestamp) ────── */
   [data-slot="assistant-message-meta"] {
     max-width: min(54rem, 100%);

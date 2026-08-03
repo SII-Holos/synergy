@@ -1579,6 +1579,7 @@ export const Info = z
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
+    compactReasoning: z.boolean().optional().describe("Show live reasoning in a compact single-line viewport"),
     disabled_providers: z
       .array(z.string())
       .optional()

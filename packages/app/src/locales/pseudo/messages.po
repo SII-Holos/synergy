@@ -14226,6 +14226,14 @@ msgid "settings.general.colorScheme.system.description"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr ""
 

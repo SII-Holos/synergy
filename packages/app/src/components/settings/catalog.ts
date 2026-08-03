@@ -537,6 +537,7 @@ export function getBuiltinSettingsSection(id: string): SettingsCatalogSection | 
 
 export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {
   snapshot: "auto",
+  compactReasoning: "auto",
   theme: "background",
   locale: "background",
   username: "background",

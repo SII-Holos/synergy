@@ -29541,6 +29541,10 @@
           "snapshot": {
             "type": "boolean"
           },
+          "compactReasoning": {
+            "description": "Show live reasoning in a compact single-line viewport",
+            "type": "boolean"
+          },
           "disabled_providers": {
             "description": "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
             "type": "array",
