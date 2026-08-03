@@ -114,4 +114,52 @@ describe("plugin UI asset loading", () => {
     expect(result.themes.size).toBe(0)
     expect(result.errors[0]?.message).toContain('does not match contribution id "theme"')
   })
+
+  test("collects the sibling stylesheet of the UI artifact when present", async () => {
+    const input = contribution("styled")
+    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    const requested: string[] = []
+    const result = await loadPluginUIAssets([input], {
+      serverUrl,
+      fetcher: async (url) => {
+        requested.push(url)
+        if (url.endsWith(".css")) return new Response("body { color: red }", { status: 200 })
+        return Response.json({ ...synergyTheme, id: "theme" })
+      },
+    })
+    expect(result.stylesheets.get("styled")).toBe("ui/index.css")
+    expect(requested).toContain(`${serverUrl}/plugin/assets/styled/generation-one/ui/index.css`)
+    expect(result.errors).toEqual([])
+  })
+
+  test("skips the stylesheet when the UI bundle has no sibling CSS", async () => {
+    const input = contribution("plain")
+    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    const result = await loadPluginUIAssets([input], {
+      serverUrl,
+      fetcher: async (url) =>
+        url.endsWith(".css")
+          ? new Response("not found", { status: 404 })
+          : Response.json({ ...synergyTheme, id: "theme" }),
+    })
+    expect(result.stylesheets.size).toBe(0)
+    expect(result.errors).toEqual([])
+  })
+
+  test("reports stylesheet load failures without dropping theme or icon assets", async () => {
+    const input = contribution("broken-css")
+    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    input.contributions.push({ kind: "ui.icon", id: "mark", path: "./mark.svg" })
+    const result = await loadPluginUIAssets([input], {
+      serverUrl,
+      fetcher: async (url) => {
+        if (url.endsWith(".svg")) return new Response("<svg></svg>")
+        if (url.endsWith(".css")) return new Response("error", { status: 500 })
+        return Response.json({ ...synergyTheme, id: "theme" })
+      },
+    })
+    expect(result.stylesheets.size).toBe(0)
+    expect(result.icons.has("broken-css:mark")).toBe(true)
+    expect(result.errors[0]?.message).toContain("UI stylesheet failed to load")
+  })
 })

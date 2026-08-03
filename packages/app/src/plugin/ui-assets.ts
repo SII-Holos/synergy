@@ -14,6 +14,7 @@ export interface PluginUIAssetError {
 export interface PluginUIAssets {
   themes: Map<string, PluginThemeDefinition>
   icons: Map<string, LoadedPluginIcon>
+  stylesheets: Map<string, string>
   errors: PluginUIAssetError[]
 }
 
@@ -32,7 +33,11 @@ interface PluginUIAssetLoadOptions {
 type LoadedAssetSuccess =
   | { status: "loaded"; kind: "theme"; key: string; value: PluginThemeDefinition }
   | { status: "loaded"; kind: "icon"; key: string; value: LoadedPluginIcon }
-type LoadedAsset = LoadedAssetSuccess | { status: "error"; error: PluginUIAssetError }
+  | { status: "loaded"; kind: "stylesheet"; key: string; value: string }
+type LoadedAsset =
+  | LoadedAssetSuccess
+  | { status: "skipped"; key: string }
+  | { status: "error"; error: PluginUIAssetError }
 
 export async function loadPluginUIAssets(
   contributions: PluginContribution[],
@@ -102,24 +107,52 @@ export async function loadPluginUIAssets(
         )
       }
     }
+
+    const entry = contribution.uiArtifact?.entry
+    if (entry?.endsWith(".js")) {
+      const stylesheet = `${entry.slice(0, -3)}.css`
+      requests.push(
+        loadAsset(contribution.pluginId, "UI stylesheet", options.signal, async () => {
+          const url = resolvePluginAssetUrl(
+            options.serverUrl,
+            contribution.pluginId,
+            contribution.generation,
+            stylesheet,
+          )
+          const response = await fetcher(url, { signal: options.signal })
+          if (response.status === 404) return { status: "skipped" as const, key: contribution.pluginId }
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          return {
+            status: "loaded" as const,
+            kind: "stylesheet" as const,
+            key: contribution.pluginId,
+            value: stylesheet,
+          }
+        }),
+      )
+    }
   }
 
   const themes = new Map<string, PluginThemeDefinition>()
   const icons = new Map<string, LoadedPluginIcon>()
+  const stylesheets = new Map<string, string>()
   const errors: PluginUIAssetError[] = []
   for (const result of await Promise.all(requests)) {
     if (result.status === "error") errors.push(result.error)
-    else if (result.kind === "theme") themes.set(result.key, result.value)
-    else icons.set(result.key, result.value)
+    else if (result.status === "loaded") {
+      if (result.kind === "theme") themes.set(result.key, result.value)
+      else if (result.kind === "icon") icons.set(result.key, result.value)
+      else stylesheets.set(result.key, result.value)
+    }
   }
-  return { themes, icons, errors }
+  return { themes, icons, stylesheets, errors }
 }
 
 async function loadAsset(
   pluginId: string,
   label: string,
   signal: AbortSignal | undefined,
-  load: () => Promise<LoadedAssetSuccess>,
+  load: () => Promise<LoadedAssetSuccess | { status: "skipped"; key: string }>,
 ): Promise<LoadedAsset> {
   try {
     return await load()

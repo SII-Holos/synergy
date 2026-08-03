@@ -203,6 +203,15 @@ function registerPluginSurfaces(input: {
 
   for (const plugin of input.contributions) {
     const asset = (file: string) => resolvePluginAssetUrl(input.serverUrl, plugin.pluginId, plugin.generation, file)
+    const stylesheet = input.assets.stylesheets.get(plugin.pluginId)
+    if (stylesheet) {
+      const link = document.createElement("link")
+      link.rel = "stylesheet"
+      link.href = asset(stylesheet)
+      link.dataset.pluginStylesheet = plugin.pluginId
+      document.head.appendChild(link)
+      disposers.push(() => link.remove())
+    }
     const componentLoader = <Props extends object>(
       item: PluginManifestContribution,
       session: (props: Props) => string | undefined = () => currentSessionId(),
