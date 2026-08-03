@@ -76,6 +76,7 @@
     "sips",
     "iconutil",
     "taskkill",
+    "taskkill.exe",
     "which",
     "gh",
     "dev",
