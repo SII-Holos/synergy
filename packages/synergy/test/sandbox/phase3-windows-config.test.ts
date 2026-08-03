@@ -20,10 +20,14 @@
 // ---------------------------------------------------------------------------
 
 import { describe, test, expect } from "bun:test"
+import * as crypto from "crypto"
 import * as fs from "fs"
+import * as os from "os"
+import * as path from "path"
 import { SandboxBackend } from "../../src/sandbox/backend"
 import { buildPermissionProfile } from "../../src/sandbox/policy-engine"
 import type { SynergySandboxPermissionProfile } from "../../src/sandbox/policy-engine"
+import { inspectWindowsHelper } from "../../src/sandbox/windows"
 
 // ==================================================================
 // 1. Helper binary name: synergy-sandbox-windows.exe
@@ -385,5 +389,98 @@ describe("Phase 3 Slice 2: Windows helper CLI argument shape", () => {
     expect(parsed).toHaveProperty("fileSystem")
     expect(parsed).toHaveProperty("network")
     fs.rmSync(wrapper.tempPath!, { force: true })
+  })
+})
+
+describe("Windows sandbox preserves caller protection roots", () => {
+  test("passes protectedPaths and dataDenyRoots into the helper profile", () => {
+    const protectedPaths = ["C:\\secrets\\credentials.json"]
+    const dataDenyRoots = ["C:\\Users\\other-user"]
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "cmd.exe",
+      args: ["/c", "echo test"],
+      workspace: "C:\\Users\\test\\project",
+      sandboxMode: "workspace_write",
+      protectedPaths,
+      dataDenyRoots,
+      forcePlatform: "windows",
+      forceHelperPath: "C:\\Synergy\\synergy-sandbox-windows.exe",
+      forceHelperVerified: true,
+    })
+
+    const tempJson = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
+    expect(tempJson.fileSystem.protectedPaths).toEqual(protectedPaths)
+    expect(tempJson.fileSystem.dataDenyRoots).toEqual(dataDenyRoots)
+    fs.rmSync(wrapper.tempPath!, { force: true })
+  })
+
+  test("does not emit an unsupported home ancestor deny root by default", () => {
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "cmd.exe",
+      args: ["/c", "echo test"],
+      workspace: path.join(os.homedir(), "project"),
+      sandboxMode: "workspace_write",
+      forcePlatform: "windows",
+      forceHelperPath: "C:\\Synergy\\synergy-sandbox-windows.exe",
+      forceHelperVerified: true,
+    })
+
+    const tempJson = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
+    expect(tempJson.fileSystem.dataDenyRoots).toEqual([])
+    expect(tempJson.fileSystem.protectedPaths.length).toBeGreaterThan(0)
+    fs.rmSync(wrapper.tempPath!, { force: true })
+  })
+})
+
+describe("Windows helper diagnostics", () => {
+  function helperFixture(machine: number) {
+    const helperPath = path.join(os.tmpdir(), `synergy-windows-helper-${crypto.randomUUID()}.exe`)
+    const contents = Buffer.alloc(256)
+    contents.write("MZ", 0, "ascii")
+    contents.writeUInt32LE(0x80, 0x3c)
+    contents.write("PE\0\0", 0x80, "ascii")
+    contents.writeUInt16LE(machine, 0x84)
+    fs.writeFileSync(helperPath, contents)
+    return { helperPath, contents }
+  }
+
+  test("reports verified hash and matching PE architecture separately", () => {
+    const fixture = helperFixture(0x8664)
+    try {
+      const hash = crypto.createHash("sha256").update(fixture.contents).digest("hex")
+      const info = inspectWindowsHelper(fixture.helperPath, { [fixture.helperPath]: hash })
+      expect(info.architecture).toBe("x64")
+      expect(info.hashStatus).toBe("verified")
+      expect(info.architectureMatches).toBe(process.arch === "x64")
+      expect(info.verified).toBe(process.arch === "x64")
+    } finally {
+      fs.rmSync(fixture.helperPath, { force: true })
+    }
+  })
+
+  test("reports architecture mismatch without mislabeling a valid hash", () => {
+    const fixture = helperFixture(0xaa64)
+    try {
+      const hash = crypto.createHash("sha256").update(fixture.contents).digest("hex")
+      const info = inspectWindowsHelper(fixture.helperPath, { [fixture.helperPath]: hash })
+      expect(info.architecture).toBe("arm64")
+      expect(info.hashStatus).toBe("verified")
+      expect(info.architectureMatches).toBe(process.arch === "arm64")
+      expect(info.verified).toBe(process.arch === "arm64")
+    } finally {
+      fs.rmSync(fixture.helperPath, { force: true })
+    }
+  })
+
+  test("reports a missing trusted hash distinctly from a hash mismatch", () => {
+    const fixture = helperFixture(0x8664)
+    try {
+      expect(inspectWindowsHelper(fixture.helperPath, {}).hashStatus).toBe("missing")
+      expect(inspectWindowsHelper(fixture.helperPath, { [fixture.helperPath]: "0".repeat(64) }).hashStatus).toBe(
+        "mismatch",
+      )
+    } finally {
+      fs.rmSync(fixture.helperPath, { force: true })
+    }
   })
 })
