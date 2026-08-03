@@ -13,6 +13,15 @@ import { SessionDrive } from "@/session/drive"
 export namespace ChannelHost {
   export type ProviderStatus = { kind: string }
   export type ConversationMessage = Omit<MessageContext, "channelType" | "accountId">
+  /**
+   * Conversation acceptance result: the provider lane awaits only durable
+   * acceptance. When accepted, `execution` is a separately tracked promise
+   * that carries the streaming/generation work; the caller may start it in
+   * the background (with rejection handling) and include it in account drain.
+   */
+  export type ReceiveResult =
+    | { accepted: true; execution: Promise<void> }
+    | { accepted: false; reason: "no-handler" | "command" | "rejected"; execution?: never }
 
   export const DiagnosticRecordInput = z.object({
     level: z.string(),
@@ -105,7 +114,7 @@ export namespace ChannelHost {
     accountId: string
     onStatus?: (status: ProviderStatus) => void
     onDiagnostic?: (record: DiagnosticRecordInput) => void | Promise<void>
-    onConversationMessage?: (message: MessageContext) => Promise<void>
+    onConversationMessage?: (message: MessageContext) => Promise<ReceiveResult>
     activateTasks?: boolean
   }) {
     const { channelType, accountId, onStatus, onDiagnostic, onConversationMessage, activateTasks = false } = options
@@ -128,14 +137,14 @@ export namespace ChannelHost {
       },
 
       conversations: {
-        async receive(input: ConversationMessage) {
-          if (!onConversationMessage) throw new Error("Channel host does not accept conversation messages")
+        async receive(input: ConversationMessage): Promise<ReceiveResult> {
+          if (!onConversationMessage) return { accepted: false, reason: "no-handler" }
           const message = MessageContext.parse({
             ...input,
             channelType,
             accountId,
           })
-          await onConversationMessage(message)
+          return onConversationMessage(message)
         },
       },
 

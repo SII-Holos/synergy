@@ -439,6 +439,7 @@ export const THEME_CONTRAST_REQUIREMENTS: readonly ThemeContrastRequirement[] = 
     minimum: 4.5 as const,
   })),
   { foreground: "text-weak", background: "surface-base", minimum: 4.5 },
+  { foreground: "text-strong", background: "surface-inset-strong-hover", minimum: 4.5 },
   { foreground: "text-interactive-base", background: "background-base", minimum: 4.5 },
   { foreground: "text-on-brand-base", background: "surface-brand-base", minimum: 4.5 },
   { foreground: "text-on-brand-base", background: "surface-brand-hover", minimum: 4.5 },

@@ -1,7 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
+import type {
+  SynergyLinkBash,
+  SynergyLinkClient,
+  SynergyLinkProcess,
+  SynergyLinkSession,
+} from "@ericsanchezok/synergy-link-protocol"
+import { SynergyLinkTarget } from "../../src/synergy-link/types"
+import { SynergyLinkTargetRuntime } from "../../src/synergy-link/target-runtime"
+import { SynergyLinkTargetStore } from "../../src/synergy-link/target-store"
 import { StoragePath } from "../../src/storage/path"
 import { Storage } from "../../src/storage/storage"
-import { SynergyLinkTargetStore } from "../../src/synergy-link/target-store"
+import { SynergyLinkExecution } from "../../src/tool/synergy-link-execution"
 
 afterEach(async () => {
   await Storage.removeTree(StoragePath.synergyLinkTargetsRoot())
@@ -42,7 +51,11 @@ describe("Synergy Link target store", () => {
       linkID: "link_second",
     })
 
-    const updated = await SynergyLinkTargetStore.update(first.id, { name: "Primary", enabled: false })
+    const updated = await SynergyLinkTargetStore.update(first.id, {
+      kind: "metadata",
+      name: "Primary",
+      enabled: false,
+    })
     expect(updated.name).toBe("Primary")
     expect(updated.enabled).toBe(false)
     expect(await SynergyLinkTargetStore.get(second.id)).toEqual(second)
@@ -80,5 +93,293 @@ describe("Synergy Link target store", () => {
 
     const revoked = await SynergyLinkTargetStore.recordProbe(target.id, { status: "refused" })
     expect(revoked.authorization).toBe("revoked")
+  })
+})
+
+describe("Synergy Link target relink", () => {
+  test("accepts a relink only when both locator fields are supplied together", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Relink host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+
+    await expect(
+      SynergyLinkTargetStore.update(target.id, {
+        kind: "relink",
+        targetAgentID: "agent_new",
+      } as SynergyLinkTarget.PatchInput),
+    ).rejects.toThrow("targetAgentID and linkID must be updated together")
+    await expect(
+      SynergyLinkTargetStore.update(target.id, {
+        kind: "relink",
+        linkID: "link_new",
+      } as SynergyLinkTarget.PatchInput),
+    ).rejects.toThrow("targetAgentID and linkID must be updated together")
+
+    const relinked = await SynergyLinkTargetStore.update(target.id, {
+      kind: "relink",
+      targetAgentID: "agent_new",
+      linkID: "link_new",
+    })
+    expect(relinked.targetAgentID).toBe("agent_new")
+    expect(relinked.linkID).toBe("link_new")
+    expect(relinked.name).toBe("Relink host")
+  })
+
+  test("clears observations when a locator changes without a verified observation", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Observed host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    await SynergyLinkTargetStore.recordProbe(target.id, {
+      status: "reachable",
+      host: {
+        type: "synergy_link.host.hello",
+        linkID: "link_old",
+        hostSessionID: "host_old",
+        capabilities: {
+          platform: "linux",
+          arch: "x64",
+          runtime: "bun",
+          defaultShell: "sh",
+          supportedShells: ["sh"],
+          supportsPty: false,
+          supportsSendKeys: true,
+          supportsSoftKill: true,
+          supportsProcessGroups: true,
+          envCaseInsensitive: false,
+          lineEndings: "lf",
+        },
+        observedAt: 1,
+      },
+    })
+
+    const relinked = await SynergyLinkTargetStore.update(target.id, {
+      kind: "relink",
+      targetAgentID: "agent_new",
+      linkID: "link_new",
+    })
+
+    expect(relinked.authorization).toBe("unverified")
+    expect(relinked.host).toBeUndefined()
+    expect(relinked.lastProbe).toBeUndefined()
+  })
+
+  test("persists a verified relink and its observations in one write", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Verified host",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    const writeSpy = spyOn(Storage, "write")
+    try {
+      const relinked = await SynergyLinkTargetStore.update(
+        target.id,
+        { kind: "relink", targetAgentID: "agent_new", linkID: "link_new" },
+        {
+          host: {
+            type: "synergy_link.host.hello",
+            linkID: "link_new",
+            hostSessionID: "host_new",
+            capabilities: {
+              platform: "linux",
+              arch: "x64",
+              runtime: "bun",
+              defaultShell: "sh",
+              supportedShells: ["sh"],
+              supportsPty: false,
+              supportsSendKeys: true,
+              supportsSoftKill: true,
+              supportsProcessGroups: true,
+              envCaseInsensitive: false,
+              lineEndings: "lf",
+            },
+            observedAt: 2,
+          },
+        },
+      )
+
+      expect(writeSpy).toHaveBeenCalledTimes(1)
+      expect(relinked).toMatchObject({
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+        authorization: "approved",
+        host: { linkID: "link_new", hostSessionID: "host_new" },
+        lastProbe: { status: "reachable" },
+      })
+    } finally {
+      writeSpy.mockRestore()
+    }
+  })
+
+  test("rejects a relink whose new locator collides with another target", async () => {
+    const first = await SynergyLinkTargetStore.create({
+      name: "First",
+      targetAgentID: "agent_first",
+      linkID: "link_first",
+    })
+    const second = await SynergyLinkTargetStore.create({
+      name: "Second",
+      targetAgentID: "agent_second",
+      linkID: "link_second",
+    })
+
+    await expect(
+      SynergyLinkTargetStore.update(second.id, {
+        kind: "relink",
+        targetAgentID: "agent_first",
+        linkID: "link_first",
+      }),
+    ).rejects.toThrow("already in use")
+    const unchanged = await SynergyLinkTargetStore.require(second.id)
+    expect(unchanged.targetAgentID).toBe("agent_second")
+    expect(unchanged.linkID).toBe("link_second")
+    expect(await SynergyLinkTargetStore.require(first.id)).toEqual(first)
+  })
+
+  test("rejects a relink that reuses another target's linkID with a different agent", async () => {
+    const first = await SynergyLinkTargetStore.create({
+      name: "First",
+      targetAgentID: "agent_first",
+      linkID: "link_first",
+    })
+    const second = await SynergyLinkTargetStore.create({
+      name: "Second",
+      targetAgentID: "agent_second",
+      linkID: "link_second",
+    })
+
+    await expect(
+      SynergyLinkTargetStore.update(second.id, {
+        kind: "relink",
+        targetAgentID: "agent_third",
+        linkID: first.linkID,
+      }),
+    ).rejects.toThrow("already in use")
+    expect(await SynergyLinkTargetStore.require(second.id)).toEqual(second)
+    expect(await SynergyLinkTargetStore.require(first.id)).toEqual(first)
+  })
+
+  test("serializes relinks with probes so neither update is lost", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Concurrent probe",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    const writeStarted = Promise.withResolvers<void>()
+    const continueWrite = Promise.withResolvers<void>()
+    const write = Storage.write
+    let paused = false
+    const writeSpy = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+      const candidate = content as { id?: string; linkID?: string }
+      if (!paused && candidate.id === target.id && candidate.linkID === "link_new") {
+        paused = true
+        writeStarted.resolve()
+        await continueWrite.promise
+      }
+      return await write(key, content, options)
+    })
+
+    try {
+      const relink = SynergyLinkTargetStore.update(target.id, {
+        kind: "relink",
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+      })
+      await writeStarted.promise
+      const probe = SynergyLinkTargetStore.recordProbe(target.id, { status: "reachable" })
+
+      continueWrite.resolve()
+      await Promise.all([relink, probe])
+
+      expect(await SynergyLinkTargetStore.require(target.id)).toMatchObject({
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+        authorization: "approved",
+        lastProbe: { status: "reachable" },
+      })
+    } finally {
+      continueWrite.resolve()
+      writeSpy.mockRestore()
+    }
+  })
+
+  test("serializes relinks with removal so deleted targets are not resurrected", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Concurrent removal",
+      targetAgentID: "agent_old",
+      linkID: "link_old",
+    })
+    const writeStarted = Promise.withResolvers<void>()
+    const continueWrite = Promise.withResolvers<void>()
+    const write = Storage.write
+    let paused = false
+    const writeSpy = spyOn(Storage, "write").mockImplementation(async (key, content, options) => {
+      const candidate = content as { id?: string; linkID?: string }
+      if (!paused && candidate.id === target.id && candidate.linkID === "link_new") {
+        paused = true
+        writeStarted.resolve()
+        await continueWrite.promise
+      }
+      return await write(key, content, options)
+    })
+
+    try {
+      const relink = SynergyLinkTargetStore.update(target.id, {
+        kind: "relink",
+        targetAgentID: "agent_new",
+        linkID: "link_new",
+      })
+      await writeStarted.promise
+      const remove = SynergyLinkTargetStore.remove(target.id)
+
+      continueWrite.resolve()
+      await Promise.all([relink, remove])
+
+      expect(await SynergyLinkTargetStore.get(target.id)).toBeUndefined()
+    } finally {
+      continueWrite.resolve()
+      writeSpy.mockRestore()
+    }
+  })
+})
+
+describe("Synergy Link target availability", () => {
+  test("reports unknown availability when the Holos transport is not connected", async () => {
+    SynergyLinkExecution.setClient(null)
+    const target = await SynergyLinkTargetStore.create({
+      name: "Offline host",
+      targetAgentID: "agent_offline",
+      linkID: "link_offline",
+    })
+
+    const observed = SynergyLinkTargetRuntime.view(target)
+    expect(observed.availability).toBe("unknown")
+    expect(observed.lastProbe).toBeUndefined()
+  })
+
+  test("reports unreachable when a client exists but no session is open and no probe succeeded", async () => {
+    SynergyLinkExecution.setClient({
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        throw new Error("unexpected bash execution")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("unexpected session execution")
+      },
+    })
+    const target = await SynergyLinkTargetStore.create({
+      name: "Client host",
+      targetAgentID: "agent_client",
+      linkID: "link_client",
+    })
+
+    const observed = SynergyLinkTargetRuntime.view(target)
+    expect(observed.availability).toBe("unreachable")
+    expect(SynergyLinkTarget.Availability.safeParse(observed.availability).success).toBe(true)
   })
 })

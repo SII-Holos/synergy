@@ -16878,12 +16878,16 @@ msgid "settings.synergyLink.availability.connected"
 msgstr "Connected"
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.idle"
-msgstr "Ready"
+msgid "settings.synergyLink.availability.reachable"
+msgstr "Reachable"
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.offline"
-msgstr "Holos offline"
+msgid "settings.synergyLink.availability.unknown"
+msgstr "Unknown"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.unreachable"
+msgstr "Unreachable"
 
 #. js-lingui-explicit-id
 msgid "settings.synergyLink.empty.description"
@@ -17392,6 +17396,10 @@ msgstr "Changed Fields"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.executed"
 msgstr "Executed"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.executed-via-synergy-link"
+msgstr "Executed via Synergy Link"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.files"

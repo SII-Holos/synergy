@@ -13,6 +13,22 @@ export class SynergyLinkInboundHandler {
     readonly sessions: SessionManager,
     readonly decideOpen: (input: { caller: HolosCaller; label?: string }) => Promise<SessionOpenDecision>,
   ) {}
+  #sessionPolicyTail: Promise<void> = Promise.resolve()
+
+  // This lock is not reentrant; operations that hold it must call SessionManager methods directly.
+  async withSessionPolicyLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.#sessionPolicyTail
+    let release!: () => void
+    this.#sessionPolicyTail = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await previous
+    try {
+      return await operation()
+    } finally {
+      release()
+    }
+  }
 
   async handle(input: { caller: HolosCaller | unknown; body: unknown }): Promise<RPCResult> {
     const correlation = extractRequestCorrelation(input.body)
@@ -31,11 +47,12 @@ export class SynergyLinkInboundHandler {
       })
 
       if (request.tool === "session") {
-        return this.#handleSession(caller, request)
+        return await this.#handleSession(caller, request)
       }
 
-      await this.sessions.validateCaller(caller, request.sessionID)
-      const result = await this.rpc.handle(request)
+      const lease = await this.sessions.validateCaller(caller, request.sessionID)
+      this.sessions.assertLeaseActive(lease)
+      const result = await this.rpc.handle(request, lease)
       SynergyLinkLog.info("inbound.request.completed", {
         callerAgentID: caller.agentID,
         tool: request.tool,
@@ -59,9 +76,9 @@ export class SynergyLinkInboundHandler {
         })
         return errorResult(
           {
-            requestID: error.requestID,
-            tool: error.tool,
-            action: error.action,
+            requestID: error.requestID ?? correlation.requestID,
+            tool: error.tool ?? correlation.tool,
+            action: error.action ?? correlation.action,
           },
           error.code,
           error.message,
@@ -78,8 +95,12 @@ export class SynergyLinkInboundHandler {
 
         error: error instanceof Error ? error.message : String(error),
       })
-      return errorResult(correlation, "host_internal_error", error instanceof Error ? error.message : String(error))
+      return errorResult(correlation, "host_internal_error", "The Synergy Link host encountered an internal error.")
     }
+  }
+
+  clearSessionRequests(sessionID: string) {
+    this.rpc.clearSessionRequests(sessionID)
   }
 
   async #handleSession(
@@ -95,6 +116,16 @@ export class SynergyLinkInboundHandler {
     })
     this.rpc.host.assertLink(request.linkID)
 
+    if (request.payload.action === "open") {
+      return await this.withSessionPolicyLock(() => this.#executeSessionRequest(caller, request))
+    }
+    return await this.#executeSessionRequest(caller, request)
+  }
+
+  async #executeSessionRequest(
+    caller: HolosCaller,
+    request: SynergyLinkSession.ExecuteRequest,
+  ): Promise<SynergyLinkSession.ExecuteResult | SynergyLinkEnvelope.ErrorResult> {
     if (request.payload.action === "open" && !this.sessions.current()) {
       const decision = await this.decideOpen({
         caller,
@@ -213,7 +244,7 @@ function extractRequestCorrelation(input: unknown): {
       candidate.tool === "bash" || candidate.tool === "process" || candidate.tool === "session"
         ? candidate.tool
         : undefined,
-    action: typeof candidate.action === "string" ? candidate.action : undefined,
+    action: typeof candidate.action === "string" && candidate.action.length > 0 ? candidate.action : undefined,
   }
 }
 
@@ -247,5 +278,12 @@ function isEnvelopeError(error: unknown): error is {
   message: string
   details?: unknown
 } {
-  return typeof error === "object" && error !== null && "code" in error && "message" in error
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    SynergyLinkError.Code.safeParse(error.code).success &&
+    "message" in error &&
+    typeof error.message === "string"
+  )
 }

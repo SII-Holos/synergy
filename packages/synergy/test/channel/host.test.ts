@@ -17,6 +17,7 @@ function createHost(label = crypto.randomUUID()) {
     },
     onConversationMessage: async (message) => {
       messages.push(message)
+      return { accepted: true, execution: Promise.resolve() }
     },
   })
   return { host, statuses, diagnostics, messages }

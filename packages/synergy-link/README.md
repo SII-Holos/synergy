@@ -26,9 +26,11 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/packages/syn
 
 ### What the installer does
 
-1. Downloads the appropriate binary for your platform (darwin/linux/windows + x64/arm64)
-2. Places it under `~/.synergy-link/bin/`
-3. Adds that directory to your `PATH` (unless `--no-modify-path` is passed)
+1. Downloads the appropriate binary for your platform (darwin/linux/windows + x64/arm64) into a private temporary directory
+2. Verifies the archive against `Synergy-<version>-cli-checksums.txt` when that release asset exists; historical releases without the checksum remain installable with an explicit warning
+3. Rejects archives containing absolute paths, parent traversal, backslash paths, drive-letter paths, symbolic links, or hard links before extraction
+4. Places the verified binary under `~/.synergy-link/bin/`
+5. Adds that directory to your `PATH` (unless `--no-modify-path` is passed)
 
 ## Usage
 

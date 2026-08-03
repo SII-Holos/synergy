@@ -12,18 +12,22 @@ async function createTempRoot() {
 describe("synergy-link holos auth", () => {
   let originalLinkHome: string | undefined
   let originalSynergyHome: string | undefined
+  let originalSynergyTestHome: string | undefined
 
   afterEach(() => {
     if (originalLinkHome === undefined) delete process.env.SYNERGY_LINK_HOME
     else process.env.SYNERGY_LINK_HOME = originalLinkHome
 
-    if (originalSynergyHome === undefined) delete process.env.SYNERGY_TEST_HOME
-    else process.env.SYNERGY_TEST_HOME = originalSynergyHome
+    if (originalSynergyHome === undefined) delete process.env.SYNERGY_HOME
+    else process.env.SYNERGY_HOME = originalSynergyHome
+
+    if (originalSynergyTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
+    else process.env.SYNERGY_TEST_HOME = originalSynergyTestHome
   })
 
   test("loads shared synergy holos credentials", async () => {
     originalLinkHome = process.env.SYNERGY_LINK_HOME
-    originalSynergyHome = process.env.SYNERGY_TEST_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
 
     const linkRoot = await createTempRoot()
     const synergyHome = await createTempRoot()
@@ -48,7 +52,7 @@ describe("synergy-link holos auth", () => {
 
   test("loads the active account after synergy migrates legacy holos credentials", async () => {
     originalLinkHome = process.env.SYNERGY_LINK_HOME
-    originalSynergyHome = process.env.SYNERGY_TEST_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
 
     const linkRoot = await createTempRoot()
     const synergyHome = await createTempRoot()
@@ -93,9 +97,71 @@ describe("synergy-link holos auth", () => {
     })
   })
 
+  test("uses SYNERGY_HOME for the canonical account store", async () => {
+    originalLinkHome = process.env.SYNERGY_LINK_HOME
+    originalSynergyHome = process.env.SYNERGY_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
+
+    const linkRoot = await createTempRoot()
+    const synergyHome = await createTempRoot()
+    const fallbackHome = await createTempRoot()
+    process.env.SYNERGY_LINK_HOME = linkRoot
+    process.env.SYNERGY_HOME = synergyHome
+    process.env.SYNERGY_TEST_HOME = fallbackHome
+
+    const accountsPath = path.join(synergyHome, ".synergy", "data", "auth", "holos-accounts.json")
+    await mkdir(path.dirname(accountsPath), { recursive: true })
+    await writeFile(
+      accountsPath,
+      JSON.stringify({
+        activeAccountId: "agent_canonical",
+        accounts: {
+          agent_canonical: {
+            agentId: "agent_canonical",
+            agentSecret: "secret_canonical",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      }),
+    )
+
+    expect(SynergyLinkHolosAuth.accountsAuthPath()).toBe(accountsPath)
+    await expect(SynergyLinkHolosAuth.inspect()).resolves.toEqual({
+      auth: {
+        agentID: "agent_canonical",
+        agentSecret: "secret_canonical",
+      },
+      source: "shared",
+    })
+  })
+
+  test("does not resurrect legacy credentials when the canonical store is malformed", async () => {
+    originalLinkHome = process.env.SYNERGY_LINK_HOME
+    originalSynergyHome = process.env.SYNERGY_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
+
+    const linkRoot = await createTempRoot()
+    const synergyHome = await createTempRoot()
+    process.env.SYNERGY_LINK_HOME = linkRoot
+    delete process.env.SYNERGY_HOME
+    process.env.SYNERGY_TEST_HOME = synergyHome
+
+    const sharedPath = SynergyLinkHolosAuth.sharedAuthPath()
+    const accountsPath = SynergyLinkHolosAuth.accountsAuthPath()
+    await mkdir(path.dirname(accountsPath), { recursive: true })
+    await writeFile(accountsPath, "not-json")
+    await writeFile(
+      sharedPath,
+      JSON.stringify({ holos: { type: "holos", agentId: "agent_legacy", agentSecret: "secret_legacy" } }),
+    )
+
+    await expect(SynergyLinkHolosAuth.inspect()).rejects.toThrow("Failed to parse the shared Holos account store")
+  })
+
   test("does not read old root auth during steady-state inspection", async () => {
     originalLinkHome = process.env.SYNERGY_LINK_HOME
-    originalSynergyHome = process.env.SYNERGY_TEST_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
 
     const linkRoot = await createTempRoot()
     const synergyHome = await createTempRoot()
@@ -115,7 +181,7 @@ describe("synergy-link holos auth", () => {
 
   test("does not resurrect legacy credentials after the canonical store logs out", async () => {
     originalLinkHome = process.env.SYNERGY_LINK_HOME
-    originalSynergyHome = process.env.SYNERGY_TEST_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
 
     const linkRoot = await createTempRoot()
     const synergyHome = await createTempRoot()
@@ -139,7 +205,7 @@ describe("synergy-link holos auth", () => {
 
   test("save activates the account in the canonical store and preserves other accounts", async () => {
     originalLinkHome = process.env.SYNERGY_LINK_HOME
-    originalSynergyHome = process.env.SYNERGY_TEST_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
 
     const linkRoot = await createTempRoot()
     const synergyHome = await createTempRoot()
@@ -192,10 +258,27 @@ describe("synergy-link holos auth", () => {
     expect(legacy).toHaveProperty("another")
     expect(legacy).not.toHaveProperty("holos")
   })
+  test("concurrent saves preserve every canonical account", async () => {
+    originalLinkHome = process.env.SYNERGY_LINK_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
+
+    const linkRoot = await createTempRoot()
+    const synergyHome = await createTempRoot()
+    process.env.SYNERGY_LINK_HOME = linkRoot
+    process.env.SYNERGY_TEST_HOME = synergyHome
+
+    const agents = Array.from({ length: 16 }, (_, index) => `agent_${index}`)
+    await Promise.all(agents.map((agentID) => SynergyLinkHolosAuth.save({ agentID, agentSecret: `secret_${agentID}` })))
+
+    const stored = JSON.parse(await readFile(SynergyLinkHolosAuth.accountsAuthPath(), "utf8")) as {
+      accounts: Record<string, unknown>
+    }
+    expect(Object.keys(stored.accounts).sort()).toEqual(agents.sort())
+  })
 
   test("save refuses to replace a malformed canonical account store", async () => {
     originalLinkHome = process.env.SYNERGY_LINK_HOME
-    originalSynergyHome = process.env.SYNERGY_TEST_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
 
     const linkRoot = await createTempRoot()
     const synergyHome = await createTempRoot()
@@ -214,7 +297,7 @@ describe("synergy-link holos auth", () => {
 
   test("clear removes the active canonical account and legacy fallback while preserving other accounts", async () => {
     originalLinkHome = process.env.SYNERGY_LINK_HOME
-    originalSynergyHome = process.env.SYNERGY_TEST_HOME
+    originalSynergyTestHome = process.env.SYNERGY_TEST_HOME
 
     const linkRoot = await createTempRoot()
     const synergyHome = await createTempRoot()

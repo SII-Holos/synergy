@@ -16,10 +16,13 @@ function contribution(pluginId: string, themeId = "theme"): PluginContribution {
 }
 
 describe("plugin UI asset loading", () => {
+  const serverUrl = "https://example.test/proxy/4096"
+
   test("starts every asset request before waiting for individual responses", async () => {
     const requests: string[] = []
     const resolvers: Array<(response: Response) => void> = []
     const loading = loadPluginUIAssets([contribution("one"), contribution("two")], {
+      serverUrl,
       fetcher: (url) => {
         requests.push(url)
         return new Promise((resolve) => resolvers.push(resolve))
@@ -28,6 +31,10 @@ describe("plugin UI asset loading", () => {
 
     await Promise.resolve()
     expect(requests).toHaveLength(2)
+    expect(requests).toEqual([
+      `${serverUrl}/plugin/assets/one/generation-one/theme.json`,
+      `${serverUrl}/plugin/assets/two/generation-one/theme.json`,
+    ])
     for (const resolve of resolvers) resolve(Response.json({ ...synergyTheme, id: "theme" }))
     const result = await loading
     expect(result.errors).toEqual([])
@@ -38,6 +45,7 @@ describe("plugin UI asset loading", () => {
     const input = contribution("assets")
     input.contributions.push({ kind: "ui.icon", id: "mark", path: "./mark.svg" })
     const result = await loadPluginUIAssets([input], {
+      serverUrl,
       fetcher: async (url) =>
         url.endsWith(".svg") ? new Response("<svg></svg>") : Response.json({ ...synergyTheme, id: "theme" }),
     })
@@ -60,6 +68,7 @@ describe("plugin UI asset loading", () => {
     two.contributions = [{ kind: "ui.icon", id: "logo", path: "./logo.svg" }]
 
     const result = await loadPluginUIAssets([one, two], {
+      serverUrl,
       fetcher: async () => new Response("<svg></svg>"),
     })
 
@@ -78,6 +87,7 @@ describe("plugin UI asset loading", () => {
       },
     }
     const result = await loadPluginUIAssets([contribution("invalid")], {
+      serverUrl,
       fetcher: async () => Response.json(invalid),
     })
     expect(result.themes.size).toBe(0)
@@ -88,6 +98,7 @@ describe("plugin UI asset loading", () => {
     const input = contribution("empty-icon")
     input.contributions = [{ kind: "ui.icon", id: "mark", path: "./mark.svg" }]
     const result = await loadPluginUIAssets([input], {
+      serverUrl,
       fetcher: async () => new Response(""),
     })
 
@@ -97,6 +108,7 @@ describe("plugin UI asset loading", () => {
 
   test("requires the asset and manifest theme ids to match", async () => {
     const result = await loadPluginUIAssets([contribution("mismatch")], {
+      serverUrl,
       fetcher: async () => Response.json({ ...synergyTheme, id: "different" }),
     })
     expect(result.themes.size).toBe(0)

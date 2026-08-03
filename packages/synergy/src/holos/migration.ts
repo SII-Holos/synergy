@@ -38,28 +38,37 @@ function hasLegacyFields(contact: Record<string, unknown>): boolean {
 }
 
 async function removePersistedAccountLabels(): Promise<number> {
-  const filepath = Global.Path.authHolosAccounts
-  const data = await Bun.file(filepath)
-    .json()
-    .catch(() => undefined)
-  if (!data || typeof data !== "object" || Array.isArray(data)) return 0
+  return await HolosAccounts.withWriteLock(async () => {
+    const filepath = Global.Path.authHolosAccounts
+    const data = await Bun.file(filepath)
+      .json()
+      .catch(() => undefined)
+    if (!data || typeof data !== "object" || Array.isArray(data)) return 0
 
-  const accounts = (data as { accounts?: unknown }).accounts
-  if (!accounts || typeof accounts !== "object" || Array.isArray(accounts)) return 0
+    const accounts = (data as { accounts?: unknown }).accounts
+    if (!accounts || typeof accounts !== "object" || Array.isArray(accounts)) return 0
 
-  let count = 0
-  for (const account of Object.values(accounts)) {
-    if (!account || typeof account !== "object" || Array.isArray(account)) continue
-    if (!("label" in account)) continue
-    delete (account as Record<string, unknown>).label
-    count++
-  }
-  if (count === 0) return 0
+    let count = 0
+    for (const account of Object.values(accounts)) {
+      if (!account || typeof account !== "object" || Array.isArray(account)) continue
+      if (!("label" in account)) continue
+      delete (account as Record<string, unknown>).label
+      count++
+    }
+    if (count === 0) return 0
 
-  await fs.mkdir(path.dirname(filepath), { recursive: true })
-  await Bun.write(filepath, JSON.stringify(data, null, 2))
-  await fs.chmod(filepath, 0o600).catch(() => {})
-  return count
+    await fs.mkdir(path.dirname(filepath), { recursive: true })
+    const temporary = `${filepath}.${process.pid}.${crypto.randomUUID()}.tmp`
+    try {
+      await fs.writeFile(temporary, JSON.stringify(data, null, 2) + "\n", { flag: "wx", mode: 0o600 })
+      await fs.rename(temporary, filepath)
+      await fs.chmod(filepath, 0o600).catch(() => {})
+    } catch (error) {
+      await fs.rm(temporary, { force: true }).catch(() => {})
+      throw error
+    }
+    return count
+  })
 }
 
 export const migrations: Migration[] = [

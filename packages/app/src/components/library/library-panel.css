@@ -204,11 +204,11 @@
 }
 
 .library-menu-item:hover {
-  background: var(--library-control-bg);
+  background: var(--library-control-bg-hover, var(--surface-raised-stronger-hover));
 }
 
 .library-menu-item.is-active {
-  background: var(--library-selected-bg);
+  background: var(--library-selected-bg, var(--surface-raised-stronger-hover));
   color: var(--text-strong);
 }
 
@@ -278,8 +278,8 @@
   min-width: 9rem;
   overflow: hidden;
   border-radius: 0.875rem;
-  border: 1px solid var(--library-line-strong);
-  background: var(--library-popover-bg);
+  border: 1px solid var(--library-line-strong, var(--border-weak-base));
+  background: var(--library-popover-bg, var(--surface-raised-stronger-non-alpha));
   padding: 0.375rem;
   outline: none;
 }

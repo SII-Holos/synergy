@@ -80,6 +80,8 @@ Feishu/Lark thread bindings live under `data/channel/feishu/thread_bindings/`, k
 
 Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
 
+The standalone Synergy Link host keeps its own per-instance state root at `SYNERGY_LINK_HOME` (default `~/.synergy-link/`), containing `state.json`, `migrations.json`, `owner.json`, `control.sock`, and `logs/`. It is a separate root from the Synergy installation and must never be shared between Link instances; the control socket, state writes, and Holos credential handling all assume one live service per root. See [Qizhi Synergy Link operations](../operations/qizhi-synergy-link.md) for the per-instance namespace boundary.
+
 Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `lightloop_terminal.json`, `inbox/`, `messages/`, and `history/` are separate records. `lightloop_terminal.json` preserves a plugin-owned Light Loop result and its `lightloop.after` delivery acknowledgement after the interactive workflow is cleared. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 
 The session index, paged-session index, child-session index, navigation index, and message-order index are derived but operationally important. `session_message_order_v1` contains sortable per-message markers and a readiness/count record for bounded newest-first reads; missing or interrupted state rebuilds from canonical message info. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
@@ -106,6 +108,8 @@ Credential files live under `data/auth/`, including:
 - integration-specific auth stores
 
 `holos-accounts.json` is the canonical multi-account Holos credential store. Its active account supplies the identity used by both the Holos runtime and the standalone Synergy Link transport. `api-key.json` is legacy migration input for Holos credentials and is not the steady-state source after migration.
+
+Synergy and Synergy Link serialize updates to `holos-accounts.json` with the shared `data/auth/.locks/` protocol. Writers use the `holos-accounts:write` lock key and atomic rename so lock-free readers never observe a partial account store.
 
 Holos account storage is permissioned to the local user. Treat the entire auth directory as sensitive. Diagnostics and SmartAllow use redaction/metadata paths rather than exposing raw secrets.
 

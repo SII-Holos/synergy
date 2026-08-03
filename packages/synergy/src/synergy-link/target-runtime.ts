@@ -7,15 +7,24 @@ import { SynergyLinkTargetStore } from "./target-store"
 import { SynergyLinkTarget } from "./types"
 
 export namespace SynergyLinkTargetRuntime {
+  const PROBE_MAX_AGE_MS = 5 * 60 * 1000
+
   export function view(target: SynergyLinkTarget.Info): SynergyLinkTarget.View {
     const session = SynergyLinkExecution.getSession(target.linkID, {
       targetID: target.id,
       targetAgentID: target.targetAgentID,
     })
+    const availability: SynergyLinkTarget.Availability =
+      session?.status === "opened"
+        ? "connected"
+        : SynergyLinkExecution.getClient()
+          ? target.lastProbe?.status === "reachable" && Date.now() - target.lastProbe.checkedAt <= PROBE_MAX_AGE_MS
+            ? "reachable"
+            : "unreachable"
+          : "unknown"
     return SynergyLinkTarget.View.parse({
       ...target,
-      availability:
-        session?.status === "opened" ? "connected" : SynergyLinkExecution.getClient() ? "idle" : "holos_offline",
+      availability,
       sessionID: session?.sessionID,
     })
   }
@@ -27,6 +36,7 @@ export namespace SynergyLinkTargetRuntime {
 
   export async function probe(id: string): Promise<SynergyLinkTarget.View> {
     const target = await SynergyLinkTargetStore.require(id)
+    const probedLocator = { linkID: target.linkID, targetAgentID: target.targetAgentID }
     if (!target.enabled) throw new Error(`Synergy Link target is disabled: ${target.id}`)
     const client = SynergyLinkExecution.requireClient(target.linkID, "connect")
     const existing = SynergyLinkExecution.getSession(target.linkID, {
@@ -57,7 +67,7 @@ export namespace SynergyLinkTargetRuntime {
             { message: `Connection test for target "${target.name}" timed out.` },
           )
 
-      if (!existing && result.metadata.status === "opened" && result.metadata.sessionID) {
+      if (!existing && result.metadata.status === "opened" && !result.metadata.reused && result.metadata.sessionID) {
         temporarySessionID = result.metadata.sessionID
       }
       const probeStatus =
@@ -66,14 +76,18 @@ export namespace SynergyLinkTargetRuntime {
           : result.metadata.status === "busy" || result.metadata.status === "refused"
             ? result.metadata.status
             : "failed"
-      const updated = await SynergyLinkTargetService.recordProbe(target.id, {
-        status: probeStatus,
-        host: result.metadata.host ? { ...result.metadata.host, observedAt: Date.now() } : undefined,
-      })
+      const updated = await SynergyLinkTargetService.recordProbe(
+        target.id,
+        {
+          status: probeStatus,
+          host: result.metadata.host ? { ...result.metadata.host, observedAt: Date.now() } : undefined,
+        },
+        probedLocator,
+      )
       return view(updated)
     } catch (error) {
       primaryError = error
-      await SynergyLinkTargetService.recordProbe(target.id, { status: "failed" }).catch(() => undefined)
+      await SynergyLinkTargetService.recordProbe(target.id, { status: "failed" }, probedLocator).catch(() => undefined)
       throw error
     } finally {
       if (temporarySessionID) {
