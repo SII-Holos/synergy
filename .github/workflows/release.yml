@@ -197,6 +197,9 @@ jobs:
         shell: bash
         run: |
           BUILDER_ARGS=(${{ matrix.builder_args }})
+          if [ "${{ matrix.platform }}" = "win32" ]; then
+            BUILDER_ARGS+=(--config.forceCodeSigning=true)
+          fi
           if [ -z "${CSC_LINK:-}" ]; then
             unset CSC_LINK
             unset CSC_KEY_PASSWORD
@@ -220,8 +223,21 @@ jobs:
           CSC_INSTALLER_LINK: ${{ matrix.platform == 'darwin' && secrets.CSC_INSTALLER_LINK || '' }}
           CSC_INSTALLER_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.CSC_INSTALLER_KEY_PASSWORD || '' }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'darwin' && 'true' || 'false' }}
+          WIN_CSC_LINK: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE_PASSWORD || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Windows Authenticode signature
+        if: ${{ matrix.platform == 'win32' }}
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem packages/desktop/release/Synergy-win32-x64-*.exe | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced" }
+          $signature = Get-AuthenticodeSignature $installer.FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "Windows installer Authenticode signature is not valid: $($signature.Status)"
+          }
 
       - name: Package signed Browser Host artifacts
         shell: bash

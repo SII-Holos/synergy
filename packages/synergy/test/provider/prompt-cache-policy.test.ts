@@ -40,6 +40,9 @@ describe("PromptCachePolicy", () => {
     expect(PromptCachePolicy.layout(model({ providerID: "deepseek", npm: "@ai-sdk/openai-compatible" }))).toBe(
       "late-user-context",
     )
+    expect(
+      PromptCachePolicy.layout(model({ providerID: "deepseek-team", npm: "@ai-sdk/openai-compatible" }), "deepseek"),
+    ).toBe("late-user-context")
   })
 
   test("keeps unknown and Anthropic-style providers on system-message layout", () => {

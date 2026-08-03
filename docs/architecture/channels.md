@@ -81,6 +81,8 @@ Managed Project Scopes are projected in navigation under their Channel account a
 
 Providers receive an account-bound `ChannelHost` rather than direct Scope or Session constructors.
 
+Conversation ingress separates durable acceptance from execution. `host.conversations.receive()` returns an acceptance result whose `execution` Promise owns streaming and generation. A provider lane waits only until Channel core has resolved the endpoint Session and either reserved its loop lease or durably written the request to `SessionInbox`; it tracks accepted execution separately for bounded account drain. Feishu serializes this acceptance by its existing conversation key, preserving same-topic order and different-topic parallelism without creating a provider-owned durable queue.
+
 `host.projects` owns:
 
 - idempotent ensure of active or paused managed Projects;
@@ -154,6 +156,8 @@ The Sidebar groups managed Projects under Channel account rows. Feishu conversat
 
 Settings refetches canonical Channel status on `channel.connected` and `channel.disconnected`, so an open account panel converges without requiring the user to reopen it or trigger Project refresh.
 
+Feishu keeps unsupported image-format adaptation inside the provider boundary. Outbound SVG attachments remain canonical file parts in Channel core; the provider renders a bounded PNG preview in an isolated Worker with a five-second hard timeout, bundled Noto Sans SC fallback fonts for Latin and Simplified Chinese text, and no dependency on host system fonts. It sends the preview before the byte-identical SVG file. Preview conversion, upload, or delivery failure is non-fatal and preserves file delivery.
+
 ## Invariants
 
 - Channel core owns Scope and Session integration; providers own remote protocol state.
@@ -161,6 +165,7 @@ Settings refetches canonical Channel status on `channel.connected` and `channel.
 - A remote Task maps to one ordinary unattended Session inside its managed Project Scope, and that Session appears beneath the managed Project even though its navigation category is `channel`.
 - New endpoint identities use typed Channel targets; existing Feishu chat keys remain byte-for-byte compatible.
 - Borrowed providers never create or reconnect their borrowed transport; provider initialization failures may use Channel's bounded retry backoff.
+- Conversation providers release their ingress lane only after durable acceptance, track background execution through account drain, and use `SessionInbox` as the sole durable busy-session queue.
 - Durable outbound state is written before send, and ambiguous dispatch is never retried automatically.
 - Remote archive preserves local Scope data but blocks new Task delivery.
 - An expired assignment creates no Session or assignment binding; an archived owning Session blocks replay without replacement.

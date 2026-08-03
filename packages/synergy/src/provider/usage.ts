@@ -96,16 +96,27 @@ export namespace AccountUsage {
     }
   }
 
-  export async function openrouter(providerID = "openrouter", fetchFn: typeof fetch = fetch): Promise<Snapshot> {
-    const auth = await Auth.get(providerID)
+  export async function openrouter(
+    providerID = "openrouter",
+    fetchFn: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> = fetch,
+    options?: {
+      auth?: Auth.Info
+      manageStoredCredential?: boolean
+      environment?: string[]
+    },
+  ): Promise<Snapshot> {
+    const auth = options?.auth ?? (await Auth.get(providerID))
     if (!auth || auth.type !== "api") {
       return unavailable(providerID, "OpenRouter credits are only available for API-key credentials.")
     }
+    const manageStoredCredential = options?.manageStoredCredential !== false
     const request = (url: string) =>
       ProviderAuthRecovery.execute({
         providerID,
+        manageStoredCredential,
+        environment: options?.environment,
         request: async () => {
-          const current = await Auth.get(providerID)
+          const current = manageStoredCredential ? ((await Auth.get(providerID)) ?? auth) : auth
           if (current?.type !== "api") return new Response(null, { status: 401 })
           return fetchFn(url, {
             headers: {

@@ -22,6 +22,7 @@ import { MiniMaxProvider } from "@/provider/minimax"
 import { GitHubProvider } from "@/provider/github"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { ProviderUsage } from "@/provider/usage-service"
+import { ProviderAuth } from "@/provider/auth"
 
 type PluginAuth = AuthHook
 
@@ -605,6 +606,15 @@ export const AuthLoginCommand = cmd({
         })
 
         if (prompts.isCancel(provider)) throw new UI.CancelledError()
+
+        const configuredProfile = config.provider?.[provider]?.profile
+        if (configuredProfile) {
+          const auth = await ProviderAuth.hook(provider)
+          if (auth) {
+            const handled = await handlePluginAuth({ auth }, provider)
+            if (handled) return
+          }
+        }
 
         if (provider === CodexProvider.PROVIDER_ID) {
           const handled = await handleCodexAuth()

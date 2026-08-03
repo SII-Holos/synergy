@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import { Asset } from "../../src/asset/asset"
 import {
   FeishuProvider,
+  enqueueFeishuConversationTask,
   filterInboundMessage,
   isSelfSender,
   isOwnBotMessage,
@@ -693,13 +694,18 @@ describe("Feishu replies", () => {
     })
   })
 
-  test("uploads SVG attachments as files instead of unsupported Feishu images", async () => {
+  test("sends an inline PNG preview before the original SVG attachment", async () => {
     const originalFetch = globalThis.fetch
     const requests: Array<{ url: string; body: unknown; signal?: AbortSignal | null }> = []
     let assetPath: string | undefined
     globalThis.fetch = (async (input, init) => {
       const url = String(input)
       requests.push({ url, body: init?.body, signal: init?.signal })
+      if (url.endsWith("/im/v1/images")) {
+        return new Response(JSON.stringify({ code: 0, data: { image_key: "image_svg_preview" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
       if (url.endsWith("/im/v1/files")) {
         return new Response(JSON.stringify({ code: 0, data: { file_key: "file_svg" } }), {
           headers: { "Content-Type": "application/json" },
@@ -711,18 +717,11 @@ describe("Feishu replies", () => {
     }) as typeof fetch
 
     try {
-      const assetID = await Asset.write(
-        Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"></svg>'),
-        "image/svg+xml",
-        "meme.svg",
-      )
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"></svg>')
+      const assetID = await Asset.write(svg, "image/svg+xml", "meme.svg")
       assetPath = Asset.resolvePath(assetID)
       const provider = new FeishuProvider()
-      const accounts = (
-        provider as unknown as {
-          accounts: Map<string, unknown>
-        }
-      ).accounts
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
       accounts.set("acct_test", {
         config: accountConfig(),
         channelConfig: {},
@@ -733,26 +732,216 @@ describe("Feishu replies", () => {
       await provider.replyMessage({
         accountId: "acct_test",
         messageId: "msg_topic_root",
-        parts: [
-          {
-            type: "file",
-            path: assetPath,
-            filename: "meme.svg",
-            contentType: "image/svg+xml",
-          },
-        ],
+        parts: [{ type: "file", path: assetPath, filename: "meme.svg", contentType: "image/svg+xml" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/images",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_topic_root/reply",
+        "https://open.feishu.test/open-apis/im/v1/files",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_topic_root/reply",
+      ])
+      expect(requests.every((request) => request.signal instanceof AbortSignal)).toBe(true)
+
+      const imageUpload = requests[0]?.body
+      expect(imageUpload).toBeInstanceOf(FormData)
+      const preview = (imageUpload as FormData).get("image")
+      expect(preview).toBeInstanceOf(File)
+      expect((preview as File).type).toBe("image/png")
+      expect(Buffer.from(await (preview as File).arrayBuffer()).subarray(0, 8)).toEqual(
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      )
+
+      const imageReply = JSON.parse(String(requests[1]?.body)) as Record<string, unknown>
+      expect(imageReply).toMatchObject({
+        msg_type: "image",
+        content: JSON.stringify({ image_key: "image_svg_preview" }),
+      })
+
+      const fileUpload = requests[2]?.body
+      expect(fileUpload).toBeInstanceOf(FormData)
+      expect((fileUpload as FormData).get("file_type")).toBe("stream")
+      expect((fileUpload as FormData).get("file_name")).toBe("meme.svg")
+      const original = (fileUpload as FormData).get("file")
+      expect(original).toBeInstanceOf(File)
+      expect(Buffer.from(await (original as File).arrayBuffer())).toEqual(svg)
+
+      const fileReply = JSON.parse(String(requests[3]?.body)) as Record<string, unknown>
+      expect(fileReply).toMatchObject({
+        msg_type: "file",
+        content: JSON.stringify({ file_key: "file_svg" }),
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+      if (assetPath) await fs.rm(assetPath, { force: true })
+    }
+  })
+
+  test("falls back to the original SVG file when preview upload fails", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; body: unknown }> = []
+    let assetPath: string | undefined
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: init?.body })
+      if (url.endsWith("/im/v1/images")) {
+        return new Response(JSON.stringify({ code: 234011, msg: "unsupported image format" }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      if (url.endsWith("/im/v1/files")) {
+        return new Response(JSON.stringify({ code: 0, data: { file_key: "file_svg" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"></svg>')
+      const assetID = await Asset.write(svg, "image/svg+xml", "meme.svg")
+      assetPath = Asset.resolvePath(assetID)
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_test", {
+        config: accountConfig(),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_test",
+        messageId: "msg_topic_root",
+        parts: [{ type: "file", path: assetPath, filename: "meme.svg", contentType: "image/svg+xml" }],
+      })
+
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/images",
+        "https://open.feishu.test/open-apis/im/v1/files",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_topic_root/reply",
+      ])
+      const fileUpload = requests[1]?.body
+      expect(fileUpload).toBeInstanceOf(FormData)
+      const original = (fileUpload as FormData).get("file")
+      expect(original).toBeInstanceOf(File)
+      expect(Buffer.from(await (original as File).arrayBuffer())).toEqual(svg)
+      expect(JSON.parse(String(requests[2]?.body))).toMatchObject({
+        msg_type: "file",
+        content: JSON.stringify({ file_key: "file_svg" }),
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+      if (assetPath) await fs.rm(assetPath, { force: true })
+    }
+  })
+
+  test("falls back to the original SVG file when preview delivery fails", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; body: unknown }> = []
+    let assetPath: string | undefined
+    let replyCount = 0
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: init?.body })
+      if (url.endsWith("/im/v1/images")) {
+        return new Response(JSON.stringify({ code: 0, data: { image_key: "image_svg_preview" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      if (url.endsWith("/im/v1/files")) {
+        return new Response(JSON.stringify({ code: 0, data: { file_key: "file_svg" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      replyCount += 1
+      return new Response(
+        JSON.stringify(
+          replyCount === 1
+            ? { code: 230099, msg: "preview delivery failed" }
+            : { code: 0, data: { message_id: "msg_file" } },
+        ),
+        { headers: { "Content-Type": "application/json" } },
+      )
+    }) as typeof fetch
+
+    try {
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"></svg>')
+      const assetID = await Asset.write(svg, "image/svg+xml", "meme.svg")
+      assetPath = Asset.resolvePath(assetID)
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_test", {
+        config: accountConfig(),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      const result = await provider.replyMessage({
+        accountId: "acct_test",
+        messageId: "msg_topic_root",
+        parts: [{ type: "file", path: assetPath, filename: "meme.svg", contentType: "image/svg+xml" }],
+      })
+
+      expect(result.messageId).toBe("msg_file")
+      expect(requests.map((request) => request.url)).toEqual([
+        "https://open.feishu.test/open-apis/im/v1/images",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_topic_root/reply",
+        "https://open.feishu.test/open-apis/im/v1/files",
+        "https://open.feishu.test/open-apis/im/v1/messages/msg_topic_root/reply",
+      ])
+      expect(JSON.parse(String(requests[3]?.body))).toMatchObject({
+        msg_type: "file",
+        content: JSON.stringify({ file_key: "file_svg" }),
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+      if (assetPath) await fs.rm(assetPath, { force: true })
+    }
+  })
+
+  test("falls back to the original SVG file when preview rasterization fails", async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; body: unknown }> = []
+    let assetPath: string | undefined
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input)
+      requests.push({ url, body: init?.body })
+      if (url.endsWith("/im/v1/files")) {
+        return new Response(JSON.stringify({ code: 0, data: { file_key: "file_svg" } }), {
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return new Response(JSON.stringify({ code: 0, data: { message_id: "msg_reply" } }), {
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const assetID = await Asset.write(Buffer.from("not an svg"), "image/svg+xml", "broken.svg")
+      assetPath = Asset.resolvePath(assetID)
+      const provider = new FeishuProvider()
+      const accounts = (provider as unknown as { accounts: Map<string, unknown> }).accounts
+      accounts.set("acct_test", {
+        config: accountConfig(),
+        channelConfig: {},
+        apiBase: "https://open.feishu.test/open-apis",
+        tokenCache: { token: "token_test", expiresAt: Date.now() + 120_000 },
+      })
+
+      await provider.replyMessage({
+        accountId: "acct_test",
+        messageId: "msg_topic_root",
+        parts: [{ type: "file", path: assetPath, filename: "broken.svg", contentType: "image/svg+xml" }],
       })
 
       expect(requests.map((request) => request.url)).toEqual([
         "https://open.feishu.test/open-apis/im/v1/files",
         "https://open.feishu.test/open-apis/im/v1/messages/msg_topic_root/reply",
       ])
-      expect(requests.every((request) => request.signal instanceof AbortSignal)).toBe(true)
-      expect(requests.some((request) => request.url.endsWith("/im/v1/images"))).toBe(false)
-      const upload = requests[0]?.body
-      expect(upload).toBeInstanceOf(FormData)
-      expect((upload as FormData).get("file_type")).toBe("stream")
-      expect((upload as FormData).get("file_name")).toBe("meme.svg")
       const reply = JSON.parse(String(requests[1]?.body)) as Record<string, unknown>
       expect(reply).toMatchObject({
         msg_type: "file",
@@ -975,6 +1164,111 @@ describe("Feishu markdown replies", () => {
   })
 })
 
+describe("Feishu conversation acceptance queue", () => {
+  test("serializes acceptance for the same key without waiting for background execution", async () => {
+    const perChatQueue = new Map<string, Promise<void>>()
+    const backgroundExecutions = new Set<Promise<void>>()
+    const firstAcceptance = Promise.withResolvers<void>()
+    const firstExecution = Promise.withResolvers<void>()
+    const calls: string[] = []
+
+    const first = enqueueFeishuConversationTask({
+      key: "thread_a",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        calls.push("first:start")
+        await firstAcceptance.promise
+        calls.push("first:accepted")
+        return { accepted: true, execution: firstExecution.promise }
+      },
+    })
+    const second = enqueueFeishuConversationTask({
+      key: "thread_a",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        calls.push("second:accepted")
+        return { accepted: true, execution: Promise.resolve() }
+      },
+    })
+
+    await Bun.sleep(0)
+    expect(calls).toEqual(["first:start"])
+    firstAcceptance.resolve()
+    await Promise.all([first, second])
+    expect(calls).toEqual(["first:start", "first:accepted", "second:accepted"])
+    expect(backgroundExecutions.size).toBe(1)
+
+    firstExecution.resolve()
+    await Promise.allSettled(Array.from(backgroundExecutions))
+    await Bun.sleep(0)
+    expect(backgroundExecutions.size).toBe(0)
+  })
+
+  test("accepts different keys independently", async () => {
+    const perChatQueue = new Map<string, Promise<void>>()
+    const backgroundExecutions = new Set<Promise<void>>()
+    const firstAcceptance = Promise.withResolvers<void>()
+    let secondAccepted = false
+
+    const first = enqueueFeishuConversationTask({
+      key: "thread_a",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        await firstAcceptance.promise
+        return { accepted: true, execution: Promise.resolve() }
+      },
+    })
+    const second = enqueueFeishuConversationTask({
+      key: "thread_b",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        secondAccepted = true
+        return { accepted: true, execution: Promise.resolve() }
+      },
+    })
+
+    await second
+    expect(secondAccepted).toBe(true)
+    expect(perChatQueue.has("thread_a")).toBe(true)
+    firstAcceptance.resolve()
+    await first
+  })
+
+  test("observes acceptance and execution failures through their owning callbacks", async () => {
+    const perChatQueue = new Map<string, Promise<void>>()
+    const backgroundExecutions = new Set<Promise<void>>()
+    const acceptanceFailure = new Error("acceptance failed")
+    const executionFailure = new Error("execution failed")
+    const acceptanceErrors: unknown[] = []
+    const executionErrors: unknown[] = []
+
+    await enqueueFeishuConversationTask({
+      key: "thread_acceptance_failure",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => {
+        throw acceptanceFailure
+      },
+      onAcceptanceError: (error) => acceptanceErrors.push(error),
+    })
+    await enqueueFeishuConversationTask({
+      key: "thread_execution_failure",
+      perChatQueue,
+      backgroundExecutions,
+      task: async () => ({ accepted: true, execution: Promise.reject(executionFailure) }),
+      onExecutionError: (error) => executionErrors.push(error),
+    })
+    await Promise.allSettled(Array.from(backgroundExecutions))
+
+    expect(acceptanceErrors).toEqual([acceptanceFailure])
+    expect(executionErrors).toEqual([executionFailure])
+  })
+})
+
 describe("Feishu account drain", () => {
   test("closes transport, flushes debounce work, and drains chat tasks to a fixed point", async () => {
     const provider = new FeishuProvider()
@@ -1006,6 +1300,7 @@ describe("Feishu account drain", () => {
               acceptingInbound: boolean
               inboundTasks: Set<Promise<void>>
               perChatQueue: Map<string, Promise<void>>
+              backgroundExecutions: Set<Promise<void>>
               debouncer: { flush(): Promise<void> }
               wsClient: { close(): void }
               drain?: Promise<void>
@@ -1019,6 +1314,7 @@ describe("Feishu account drain", () => {
         acceptingInbound: true,
         inboundTasks: new Set(),
         perChatQueue,
+        backgroundExecutions: new Set(),
         debouncer: {
           async flush() {
             calls.push("flush")

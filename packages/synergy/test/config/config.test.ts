@@ -24,6 +24,62 @@ test("loads config with defaults when no files exist", async () => {
   })
 })
 
+test("serializes domain mutations with ordinary domain updates", async () => {
+  const before = await Config.domainGet("providers")
+  let releaseMutation!: () => void
+  const release = new Promise<void>((resolve) => {
+    releaseMutation = resolve
+  })
+  let mutationStarted!: () => void
+  const started = new Promise<void>((resolve) => {
+    mutationStarted = resolve
+  })
+
+  try {
+    const mutation = Config.domainMutateWithChange(
+      "providers",
+      async (current) => {
+        mutationStarted()
+        await release
+        return {
+          ...current,
+          provider: {
+            ...(current.provider ?? {}),
+            "atomic-first": {
+              name: "Atomic First",
+              npm: "@ai-sdk/openai-compatible",
+              env: [],
+              models: {},
+            },
+          },
+        }
+      },
+      { mode: "replace-domain" },
+    )
+    await started
+    const update = Config.domainUpdate("providers", {
+      provider: {
+        "atomic-second": {
+          name: "Atomic Second",
+          npm: "@ai-sdk/openai-compatible",
+          env: [],
+          models: {},
+        },
+      },
+    })
+    releaseMutation()
+    await Promise.all([mutation, update])
+
+    expect((await Config.domainGet("providers")).provider).toMatchObject({
+      "atomic-first": { name: "Atomic First" },
+      "atomic-second": { name: "Atomic Second" },
+    })
+  } finally {
+    releaseMutation?.()
+    await Config.domainUpdate("providers", before, { mode: "replace-domain" })
+  }
+})
+
 test("loads JSON config file", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
