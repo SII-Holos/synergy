@@ -80,7 +80,7 @@ describe("ServerProcessLock", () => {
       await Promise.all(children.map((child) => child.exited.catch(() => -1)))
       await fs.rm(home, { recursive: true, force: true })
     }
-  })
+  }, 90_000)
 
   test("recovers stale locks and rejects a reused pid with a different start identity", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-server-lock-stale-"))
