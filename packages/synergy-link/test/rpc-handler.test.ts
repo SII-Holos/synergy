@@ -155,6 +155,36 @@ setInterval(() => {}, 1_000)
     if (result.ok) return
     expect(result.error.code).toBe("link_not_found")
   })
+  test("redacts unexpected execution errors", async () => {
+    const handler = new RPCHandler({ linkID: "link_test" })
+    const executeSpy = spyOn(handler.processRegistry, "execute").mockImplementation(async () => {
+      throw Object.assign(new Error("ENOENT: open '/private/host/.synergy-link/state.json'"), { code: "ENOENT" })
+    })
+
+    try {
+      const result = await handler.handle(
+        {
+          version: 2,
+          requestID: "req_unexpected_execution_error",
+          linkID: "link_test",
+          tool: "process",
+          action: "list",
+          sessionID: "session_test",
+          payload: { action: "list" },
+        },
+        executionLease,
+      )
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.requestID).toBe("req_unexpected_execution_error")
+      expect(result.error.code).toBe("execution_failed")
+      expect(result.error.message).not.toContain("/private/host")
+      expect(result.error.message).not.toContain("ENOENT")
+    } finally {
+      executeSpy.mockRestore()
+    }
+  })
   test("in-flight request survives capacity eviction and retry dedupes", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-rpc-dedupe-"))
     const gatePath = path.join(root, "gate")

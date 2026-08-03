@@ -181,7 +181,7 @@ export class RPCHandler {
           }
         : undefined,
       "execution_failed",
-      error instanceof Error ? error.message : String(error),
+      "The Synergy Link host encountered an internal error.",
     )
   }
 
