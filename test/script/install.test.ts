@@ -947,6 +947,8 @@ describe("CLI bundle installer", () => {
         "esac",
       ].join("\n"),
     )
+    const packageProbe = path.join(root, "package-probe")
+    await writeExecutable(path.join(fakeBin, "npm"), `printf "called" > "${packageProbe}"`)
 
     const result = Bun.spawnSync({
       cmd: ["bash", installScript, "--version", "1.2.3", "--no-modify-path"],
@@ -964,6 +966,7 @@ describe("CLI bundle installer", () => {
     expect(result.exitCode).not.toBe(0)
     expect(outputText(result)).toContain("Published CLI checksum is unavailable")
     expect(outputText(result)).not.toContain("unexpected-extraction")
+    expect(await fs.stat(packageProbe).catch(() => null)).toBeNull()
   })
 
   test("propagates a download failure without continuing post-install setup", () => {

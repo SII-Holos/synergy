@@ -142,11 +142,39 @@ async function installSandboxHelper(binaryPath) {
 }
 
 function pathSynergyCandidate(env = process.env, platform = os.platform()) {
+  const pathModule = platform === "win32" ? path.win32 : path
+  const delimiter = platform === "win32" ? ";" : path.delimiter
   const executable = platform === "win32" ? "synergy.exe" : "synergy"
-  for (const entry of (env.PATH ?? "").split(path.delimiter)) {
+  for (const entry of (env.Path ?? env.PATH ?? "").split(delimiter)) {
     if (!entry) continue
-    const candidate = path.join(entry, executable)
+    const candidate = pathModule.join(entry, executable)
     if (fs.existsSync(candidate)) return candidate
+  }
+}
+
+export function desktopRuntimeCandidate(options = {}) {
+  const platform = options.platform ?? os.platform()
+  const homedir = options.homedir ?? os.homedir()
+  const env = options.env ?? process.env
+  const existsSync = options.existsSync ?? fs.existsSync
+  if (platform === "darwin") return "/Applications/Synergy.app/Contents/Resources/synergy/bin/synergy"
+  if (platform === "linux") return "/opt/Synergy/resources/synergy/bin/synergy"
+  if (platform !== "win32") return
+
+  const localAppData = env.LOCALAPPDATA ?? path.win32.join(homedir, "AppData", "Local")
+  const standard = path.win32.join(localAppData, "Programs", "Synergy", "resources", "synergy", "bin", "synergy.exe")
+  if (existsSync(standard)) return standard
+
+  for (const entry of (env.Path ?? env.PATH ?? "").split(";")) {
+    if (!entry) continue
+    const launcher = path.win32.join(entry, "synergy.cmd")
+    const runtime = path.win32.resolve(entry, "..", "resources", "synergy", "bin", "synergy.exe")
+    if (existsSync(launcher) && existsSync(runtime)) return runtime
+
+    const directRuntime = path.win32.join(entry, "synergy.exe")
+    if (directRuntime.toLowerCase().endsWith("\\resources\\synergy\\bin\\synergy.exe") && existsSync(directRuntime)) {
+      return directRuntime
+    }
   }
 }
 
@@ -168,9 +196,24 @@ export function warnAboutStandaloneInstallation(options = {}) {
   return true
 }
 
+export function warnAboutDesktopInstallation(options = {}) {
+  const desktopPath = desktopRuntimeCandidate(options)
+  const existsSync = options.existsSync ?? fs.existsSync
+  if (!desktopPath || !existsSync(desktopPath)) return false
+
+  console.warn("Warning: another Synergy installation channel is already present.")
+  console.warn(`  - desktop: ${desktopPath}`)
+  const activePath = pathSynergyCandidate(options.env, options.platform)
+  if (activePath) console.warn(`  - PATH currently resolves synergy to: ${activePath}`)
+  console.warn("The package-manager installation will continue and will not remove the Desktop installation.")
+  console.warn("After installation, run 'synergy doctor' and manage Desktop updates or removal from the Synergy app.")
+  return true
+}
+
 function warnAboutOtherInstallations() {
   try {
     warnAboutStandaloneInstallation()
+    warnAboutDesktopInstallation()
   } catch {}
 }
 

@@ -99,9 +99,9 @@ synergy stop
 
 The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`; setting `SYNERGY_HOME=/path` changes that root to `/path/.synergy/`. It does not install the Electron Desktop app.
 
-You can keep one Synergy installation per channel — the standalone CLI, a package-manager install (`npm`, `yarn`, `pnpm`, `bun`, or `brew`), and the Desktop app — but only one should be the `synergy` command your shell runs. `synergy doctor` lists every detected installation channel and exits nonzero when channels conflict or an installed version cannot be verified. The curl installer and the npm package postinstall warn about other channels they detect and never auto-uninstall them.
+You can keep one Synergy installation per channel — the standalone CLI, a supported package-manager install (`npm`, `yarn`, `pnpm`, or `bun`), and the Desktop app — but only one should be the `synergy` command your shell runs. `synergy doctor` lists every detected installation channel and exits nonzero when channels conflict or an installed version cannot be verified. The curl installer and the npm package postinstall warn about other channels they detect and never auto-uninstall them. Homebrew's `synergy` formula is unrelated to this project and is not detected or managed.
 
-Upgrade with `synergy upgrade`, or install a specific version by passing `--version <version>` to the installer. When multiple channels are installed, `synergy upgrade` stops instead of guessing: rerun with `--method <npm|yarn|pnpm|bun|brew|desktop|standalone>` to select an installed, healthy channel.
+Upgrade with `synergy upgrade`, or install a specific version by passing `--version <version>` to the installer. When multiple channels are installed, `synergy upgrade` stops instead of guessing: rerun with `--method <npm|yarn|pnpm|bun|desktop|standalone>` to select an installed, healthy channel.
 
 `synergy uninstall` keeps its existing defaults and removes data, cache, config, and state unless you pass `--keep-data` or `--keep-config`. To remove only one installation channel while preserving shared data, cache, config, and state, run `synergy uninstall --installation-only --method <channel>`; standalone removal deletes only installer-owned files under `~/.synergy/` and the exact shell PATH entries the installer wrote.
 

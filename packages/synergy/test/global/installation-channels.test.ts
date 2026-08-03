@@ -92,6 +92,99 @@ describe("installation channel discovery", () => {
     expect(Installation.resolveRemovalMethod(inspection)).toBe("pnpm")
   })
 
+  test("ignores sibling packages and unrelated Homebrew software", async () => {
+    const commands: string[][] = []
+    const inspection = await Installation.inspect({
+      context: { ...context, execPath: "/usr/local/bin/synergy", realExecPath: "/usr/local/bin/synergy" },
+      dependencies: {
+        exists: async () => false,
+        run: async (command) => {
+          commands.push(command)
+          if (command[0] === "npm") {
+            return { exitCode: 0, stdout: "└── @ericsanchezok/synergy-plugin-kit@3.0.9\n", stderr: "" }
+          }
+          return { exitCode: 1, stdout: "synergy 1.8.8", stderr: "" }
+        },
+        pathCandidates: async () => [],
+      },
+    })
+
+    expect(inspection.installations).toEqual([])
+    expect(inspection.conflict).toBe(false)
+    expect(commands.some((command) => command[0] === "brew")).toBe(false)
+  })
+
+  test("discovers a current standalone installation outside the default home", async () => {
+    const customExecutable = "/srv/synergy-user/.synergy/bin/synergy"
+    const inspection = await Installation.inspect({
+      context: { ...context, execPath: customExecutable, realExecPath: customExecutable },
+      dependencies: {
+        exists: async (candidate) => candidate === customExecutable,
+        run: async (command) =>
+          command[0] === customExecutable
+            ? { exitCode: 0, stdout: "3.0.10\n", stderr: "" }
+            : { exitCode: 1, stdout: "", stderr: "not installed" },
+        pathCandidates: async () => [{ path: customExecutable, realPath: customExecutable, isCurrent: true }],
+      },
+    })
+
+    expect(inspection.current).toBe("standalone")
+    expect(inspection.installations[0]?.executable).toBe(customExecutable)
+    expect(Installation.resolveUpgradeMethod(inspection)).toBe("standalone")
+  })
+
+  test("discovers a PATH standalone installation outside the default home", async () => {
+    const packageExecutable = "/usr/local/lib/node_modules/@ericsanchezok/synergy/bin/synergy"
+    const customExecutable = "/srv/synergy-user/.synergy/bin/synergy"
+    const inspection = await Installation.inspect({
+      context: { ...context, execPath: packageExecutable, realExecPath: packageExecutable },
+      dependencies: {
+        exists: async (candidate) => candidate === customExecutable,
+        run: async (command) => {
+          if (command[0] === customExecutable) return { exitCode: 0, stdout: "3.0.10\n", stderr: "" }
+          if (command[0] === "npm") {
+            return { exitCode: 0, stdout: "└── @ericsanchezok/synergy@3.0.9\n", stderr: "" }
+          }
+          return { exitCode: 1, stdout: "", stderr: "not installed" }
+        },
+        pathCandidates: async () => [{ path: customExecutable, realPath: customExecutable, isCurrent: false }],
+      },
+    })
+
+    expect(inspection.current).toBe("npm")
+    expect(inspection.conflict).toBe(true)
+    expect(inspection.installations.map((installation) => installation.method)).toEqual(["standalone", "npm"])
+    expect(inspection.installations[0]?.executable).toBe(customExecutable)
+  })
+
+  test("discovers Windows Desktop beside a current standalone installation", async () => {
+    const standalone = "C:\\Users\\Eric\\.synergy\\bin\\synergy.exe"
+    const desktop = "C:\\Users\\Eric\\AppData\\Local\\Programs\\Synergy\\resources\\synergy\\bin\\synergy.exe"
+    const windowsContext = {
+      platform: "win32" as const,
+      execPath: standalone,
+      realExecPath: standalone,
+      home: "C:\\Users\\Eric",
+      env: { USERPROFILE: "C:\\Users\\Eric", LOCALAPPDATA: "C:\\Users\\Eric\\AppData\\Local", Path: "" },
+    }
+    const inspection = await Installation.inspect({
+      context: windowsContext,
+      dependencies: {
+        exists: async (candidate) => candidate === standalone || candidate === desktop,
+        run: async (command) =>
+          command[0] === standalone || command[0] === desktop
+            ? { exitCode: 0, stdout: command[0] === standalone ? "3.0.10\n" : "3.0.9\n", stderr: "" }
+            : { exitCode: 1, stdout: "", stderr: "not installed" },
+        pathCandidates: async () => [{ path: standalone, realPath: standalone, isCurrent: true }],
+      },
+    })
+
+    expect(inspection.current).toBe("standalone")
+    expect(inspection.conflict).toBe(true)
+    expect(inspection.installations.map((installation) => installation.method)).toEqual(["desktop", "standalone"])
+    expect(Installation.resolveRemovalMethod(inspection, "desktop")).toBe("desktop")
+  })
+
   test("requires an explicit installed method when multiple channels coexist", async () => {
     const inspection: Installation.Inspection = {
       current: "standalone",

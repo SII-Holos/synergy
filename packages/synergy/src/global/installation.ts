@@ -20,7 +20,7 @@ export namespace Installation {
   const log = Log.create({ service: "installation" })
   const NPM_REGISTRY = "https://registry.npmjs.org"
 
-  export type Method = "npm" | "yarn" | "pnpm" | "bun" | "brew" | "desktop" | "standalone" | "unknown"
+  export type Method = "npm" | "yarn" | "pnpm" | "bun" | "desktop" | "standalone" | "unknown"
   export type InstalledMethod = Exclude<Method, "unknown">
 
   export interface InspectionContext extends DesktopInstallation.Context {
@@ -112,7 +112,7 @@ export namespace Installation {
   export const detectStandaloneInstall = StandaloneInstallation.detectStandaloneInstall
 
   const installedChannelSchema = z.object({
-    method: z.enum(["npm", "yarn", "pnpm", "bun", "brew", "desktop", "standalone"]),
+    method: z.enum(["npm", "yarn", "pnpm", "bun", "desktop", "standalone"]),
     executable: z.string().nullable(),
     version: z.string().nullable(),
     status: z.enum(["ok", "failed"]),
@@ -122,12 +122,12 @@ export namespace Installation {
 
   type PackageMethod = Exclude<InstalledMethod, "desktop" | "standalone">
 
+  const packageMarker = /(?:^|[\s"'])@ericsanchezok\/synergy(?=@|\s|["']|$)/m
   const packageChecks: Array<{ method: PackageMethod; command: string[]; marker: RegExp }> = [
-    { method: "npm", command: ["npm", "list", "-g", "--depth=0"], marker: /@ericsanchezok\/synergy/ },
-    { method: "yarn", command: ["yarn", "global", "list"], marker: /@ericsanchezok\/synergy/ },
-    { method: "pnpm", command: ["pnpm", "list", "-g", "--depth=0"], marker: /@ericsanchezok\/synergy/ },
-    { method: "bun", command: ["bun", "pm", "ls", "-g"], marker: /@ericsanchezok\/synergy/ },
-    { method: "brew", command: ["brew", "list", "--versions", "synergy"], marker: /(?:^|\s)synergy(?:\s|$)/m },
+    { method: "npm", command: ["npm", "list", "-g", "--depth=0"], marker: packageMarker },
+    { method: "yarn", command: ["yarn", "global", "list"], marker: packageMarker },
+    { method: "pnpm", command: ["pnpm", "list", "-g", "--depth=0"], marker: packageMarker },
+    { method: "bun", command: ["bun", "pm", "ls", "-g"], marker: packageMarker },
   ]
 
   export const MultipleInstallationsError = NamedError.create(
@@ -176,16 +176,26 @@ export namespace Installation {
 
     const desktopExecutable = DesktopInstallation.isRuntimePath(context.platform, realExecPath)
       ? realExecPath
-      : DesktopInstallation.expectedRuntimePath(context.platform)
+      : context.platform === "win32"
+        ? await DesktopInstallation.findWindowsRuntimePath(context, dependencies.exists)
+        : DesktopInstallation.expectedRuntimePath(context.platform)
     if (desktopExecutable) await addExecutable("desktop", desktopExecutable)
 
     const pathModule = context.platform === "win32" ? path.win32 : path
-    const standaloneExecutable = pathModule.join(
-      context.home,
-      ".synergy",
-      "bin",
-      context.platform === "win32" ? "synergy.exe" : "synergy",
-    )
+    const currentStandaloneHome = StandaloneInstallation.installationHome(context)
+    const pathStandaloneExecutable = pathCandidates
+      .map((candidate) => candidate.realPath ?? candidate.path)
+      .find((candidate) =>
+        StandaloneInstallation.installationHome({ ...context, execPath: candidate, realExecPath: candidate }),
+      )
+    const standaloneExecutable =
+      pathStandaloneExecutable ??
+      pathModule.join(
+        currentStandaloneHome ?? context.home,
+        ".synergy",
+        "bin",
+        context.platform === "win32" ? "synergy.exe" : "synergy",
+      )
     if (!desktopExecutable || !sameExecutable(desktopExecutable, standaloneExecutable)) {
       await addExecutable("standalone", standaloneExecutable)
     }
@@ -195,7 +205,7 @@ export namespace Installation {
     )
     for (const { check, result } of packageResults) {
       if (!check.marker.test(result.stdout)) continue
-      const version = parsePackageVersion(check.method, result.stdout)
+      const version = parsePackageVersion(result.stdout)
       installations.push({
         method: check.method,
         executable: null,
@@ -261,7 +271,7 @@ export namespace Installation {
     if (DesktopInstallation.isRuntimePath(context.platform, context.realExecPath)) return "desktop"
     if (StandaloneInstallation.detectStandaloneInstall(context)) return "standalone"
     const executable = context.execPath.toLowerCase()
-    const packageMethods: InstalledMethod[] = ["npm", "yarn", "pnpm", "bun", "brew"]
+    const packageMethods: InstalledMethod[] = ["npm", "yarn", "pnpm", "bun"]
     return (
       packageMethods.find(
         (method) => executable.includes(method) && installations.some((item) => item.method === method),
@@ -275,11 +285,10 @@ export namespace Installation {
     return output.trim().match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/)?.[0] ?? null
   }
 
-  function parsePackageVersion(method: InstalledMethod, output: string) {
-    if (method === "brew") return output.match(/(?:^|\s)synergy\s+([^\s]+)/m)?.[1] ?? null
+  function parsePackageVersion(output: string) {
     return (
       output.match(
-        /@ericsanchezok\/synergy(?:@(?:npm:)?|\s+)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)/,
+        /(?:^|[\s"'])@ericsanchezok\/synergy(?:@(?:npm:)?|\s+)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)/m,
       )?.[1] ?? null
     )
   }
@@ -354,15 +363,10 @@ export namespace Installation {
     }),
   )
 
-  async function getBrewFormula() {
-    // Homebrew not supported for private repo
-    return "synergy"
-  }
-
-  export async function upgrade(method: Method, target: string) {
+  export async function upgrade(method: Method, target: string, executable = process.execPath) {
     if (method === "standalone") {
       const [realExecPath, libc] = await Promise.all([
-        fs.realpath(process.execPath).catch(() => process.execPath),
+        fs.realpath(executable).catch(() => executable),
         StandaloneInstallation.detectLibc(process.platform),
       ])
       const result = await StandaloneInstallation.upgrade({
@@ -370,13 +374,13 @@ export namespace Installation {
         context: {
           platform: process.platform,
           libc,
-          execPath: process.execPath,
+          execPath: executable,
           realExecPath,
           env: process.env,
         },
       })
       log.info("upgraded", { method, target, stdout: result.stdout, stderr: result.stderr })
-      await $`${process.execPath} --version`.nothrow().quiet().text()
+      await $`${executable} --version`.nothrow().quiet().text()
       return
     }
 
@@ -394,14 +398,6 @@ export namespace Installation {
       case "bun":
         cmd = $`bun install -g @ericsanchezok/synergy@${target} --registry=${NPM_REGISTRY}`
         break
-      case "brew": {
-        const formula = await getBrewFormula()
-        cmd = $`brew install ${formula}`.env({
-          HOMEBREW_NO_AUTO_UPDATE: "1",
-          ...process.env,
-        })
-        break
-      }
       case "desktop":
         throw new DesktopManagedUpdateError({
           message:
@@ -430,18 +426,6 @@ export namespace Installation {
 
   export async function latest(installMethod?: Method) {
     const detectedMethod = installMethod || (await method())
-
-    if (detectedMethod === "brew") {
-      const formula = await getBrewFormula()
-      if (formula === "synergy") {
-        return fetch("https://formulae.brew.sh/api/formula/synergy.json")
-          .then((res) => {
-            if (!res.ok) throw new Error(res.statusText)
-            return res.json()
-          })
-          .then((data: any) => data.versions.stable)
-      }
-    }
 
     if (
       detectedMethod === "npm" ||

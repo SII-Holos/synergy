@@ -53,7 +53,7 @@ export const UninstallCommand = {
         alias: "m",
         describe: "installed channel to remove when multiple channels coexist",
         type: "string",
-        choices: ["npm", "yarn", "pnpm", "bun", "brew", "desktop", "standalone"],
+        choices: ["npm", "yarn", "pnpm", "bun", "desktop", "standalone"],
       })
       .option("dry-run", {
         type: "boolean",
@@ -91,7 +91,8 @@ export const UninstallCommand = {
     }
     prompts.log.info(`Installation method: ${method}`)
 
-    const targets = await collectRemovalTargets(args, method)
+    const selected = inspection.installations.find((installation) => installation.method === method)
+    const targets = await collectRemovalTargets(args, method, selected)
 
     await showRemovalSummary(targets, method)
 
@@ -122,6 +123,7 @@ export const UninstallCommand = {
 async function collectRemovalTargets(
   args: UninstallArgs,
   method: Installation.InstalledMethod,
+  selected?: Installation.InstalledChannel,
 ): Promise<RemovalTargets> {
   const directories: RemovalTargets["directories"] = [
     { path: Global.Path.data, label: "Data", keep: args.installationOnly || args.keepData },
@@ -136,7 +138,15 @@ async function collectRemovalTargets(
   let desktopPathEntry: string | null = null
 
   if (method === "standalone") {
-    standaloneHome = os.homedir()
+    const executable = selected?.executable ?? process.execPath
+    const realExecPath = await fs.realpath(executable).catch(() => executable)
+    standaloneHome =
+      StandaloneInstallation.installationHome({
+        platform: process.platform,
+        execPath: executable,
+        realExecPath,
+        env: process.env,
+      }) ?? os.homedir()
     if (process.platform !== "win32") {
       shellConfigs = await StandaloneInstallation.findShellConfigs({
         home: standaloneHome,
@@ -147,8 +157,9 @@ async function collectRemovalTargets(
   }
 
   if (method === "desktop") {
-    const realExecPath = await fs.realpath(process.execPath).catch(() => process.execPath)
-    const context = { platform: process.platform, execPath: process.execPath, realExecPath, env: process.env }
+    const executable = selected?.executable ?? process.execPath
+    const realExecPath = await fs.realpath(executable).catch(() => executable)
+    const context = { platform: process.platform, execPath: executable, realExecPath, env: process.env }
     const cliLink = await DesktopInstallation.inspectCliLink(context)
     if (cliLink.path && (cliLink.status === "healthy" || cliLink.status === "broken")) {
       desktopCliLink = cliLink.path
@@ -204,7 +215,6 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
       pnpm: "pnpm uninstall -g @ericsanchezok/synergy",
       bun: "bun remove -g @ericsanchezok/synergy",
       yarn: "yarn global remove @ericsanchezok/synergy",
-      brew: "brew uninstall synergy",
     }
     prompts.log.info(`  ✓ Package: ${cmds[method] || method}`)
   }
@@ -238,12 +248,17 @@ async function executeUninstall(method: Installation.InstalledMethod, targets: R
 
   if (targets.standaloneHome) {
     spinner.start("Removing standalone runtime...")
-    const err = await StandaloneInstallation.remove({ home: targets.standaloneHome, platform: process.platform }).catch(
-      (error) => error,
-    )
-    if (err instanceof Error) {
+    const currentExecutable = await fs.realpath(process.execPath).catch(() => process.execPath)
+    const result = await StandaloneInstallation.remove({
+      home: targets.standaloneHome,
+      platform: process.platform,
+      currentExecutable,
+    }).catch((error) => error)
+    if (result instanceof Error) {
       spinner.stop("Failed to remove standalone runtime", 1)
-      errors.push(`Standalone runtime: ${err.message}`)
+      errors.push(`Standalone runtime: ${result.message}`)
+    } else if (result.deferred.length > 0) {
+      spinner.stop("Standalone runtime removal will finish after Synergy exits")
     } else {
       spinner.stop("Removed standalone runtime")
     }
@@ -290,7 +305,6 @@ async function executeUninstall(method: Installation.InstalledMethod, targets: R
       pnpm: ["pnpm", "uninstall", "-g", "@ericsanchezok/synergy"],
       bun: ["bun", "remove", "-g", "@ericsanchezok/synergy"],
       yarn: ["yarn", "global", "remove", "@ericsanchezok/synergy"],
-      brew: ["brew", "uninstall", "synergy"],
     }
 
     const cmd = cmds[method]

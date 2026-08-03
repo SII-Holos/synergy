@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "path"
 
@@ -37,6 +37,18 @@ export namespace StandaloneInstallation {
   export interface RemoveOptions {
     home: string
     platform: NodeJS.Platform
+    currentExecutable?: string
+    dependencies?: RemoveDependencies
+  }
+
+  export interface RemoveResult {
+    removed: string[]
+    deferred: string[]
+  }
+
+  export interface RemoveDependencies {
+    remove(target: string, options: { recursive: boolean; force: boolean }): Promise<void>
+    deferExecutableDeletion(target: string): Promise<boolean>
   }
 
   export interface ShellConfigOptions {
@@ -74,7 +86,9 @@ export namespace StandaloneInstallation {
     const executable = options.platform === "win32" ? "synergy.exe" : "synergy"
     const astGrep = options.platform === "win32" ? "ast-grep.exe" : "ast-grep"
     const vec0 = options.platform === "win32" ? "vec0.dll" : options.platform === "darwin" ? "vec0.dylib" : "vec0.so"
+    const pendingExecutable = `${path.join(root, "bin", executable)}.deleting`
     return [
+      ...(options.platform === "win32" ? [pendingExecutable] : []),
       path.join(root, "bin", executable),
       path.join(root, "bin", astGrep),
       path.join(root, "bin", ".runtime-metadata"),
@@ -82,7 +96,6 @@ export namespace StandaloneInstallation {
       path.join(root, "browser-runtime"),
       path.join(root, "lib"),
       path.join(root, "sandbox"),
-      path.join(root, "sandbox-helper"),
       path.join(root, "schema"),
       path.join(root, vec0),
       path.join(root, "runtime-manifest.sha256"),
@@ -94,13 +107,36 @@ export namespace StandaloneInstallation {
     const rootInfo = await fs.lstat(root).catch(() => null)
     if (rootInfo?.isSymbolicLink()) throw new Error(`Standalone installation root is a symbolic link: ${root}`)
 
+    const dependencies = options.dependencies ?? defaultRemoveDependencies
     const removed: string[] = []
+    const deferred: string[] = []
+    const errors: string[] = []
     for (const target of runtimePaths(options)) {
       await assertManagedTargetParents(root, target)
       const info = await fs.lstat(target).catch(() => null)
       if (!info) continue
-      await fs.rm(target, { recursive: info.isDirectory() && !info.isSymbolicLink(), force: true })
-      removed.push(target)
+      const recursive = info.isDirectory() && !info.isSymbolicLink()
+      const error = await dependencies.remove(target, { recursive, force: true }).catch((cause) => cause)
+      if (!error) {
+        removed.push(target)
+        continue
+      }
+      const isCurrentWindowsExecutable =
+        options.platform === "win32" &&
+        options.currentExecutable &&
+        normalizePath(target) === normalizePath(options.currentExecutable)
+      if (isCurrentWindowsExecutable) {
+        const deletionDeferred = await dependencies.deferExecutableDeletion(target).catch((cause) => {
+          errors.push(`${target}: ${cause instanceof Error ? cause.message : String(cause)}`)
+          return null
+        })
+        if (deletionDeferred) {
+          deferred.push(target)
+          continue
+        }
+        if (deletionDeferred === null) continue
+      }
+      errors.push(`${target}: ${error instanceof Error ? error.message : String(error)}`)
     }
     const bin = path.join(root, "bin")
     const entries = await fs.readdir(bin).catch(() => null)
@@ -108,7 +144,44 @@ export namespace StandaloneInstallation {
       await fs.rmdir(bin)
       removed.push(bin)
     }
-    return removed
+    if (errors.length > 0) throw new Error(errors.join("\n"))
+    return { removed, deferred } satisfies RemoveResult
+  }
+
+  const defaultRemoveDependencies: RemoveDependencies = {
+    remove: (target, options) => fs.rm(target, options),
+    deferExecutableDeletion: deferWindowsExecutableDeletion,
+  }
+
+  export async function deferWindowsExecutableDeletion(executable: string) {
+    const pending = `${executable}.deleting`
+    const escaped = pending.replace(/'/g, "''")
+    const script = `$target = '${escaped}'; for ($i = 0; $i -lt 20; $i++) { Start-Sleep -Milliseconds 500; try { Remove-Item -LiteralPath $target -Force -ErrorAction Stop; exit 0 } catch {} }`
+    const child = Bun.spawn(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    })
+
+    await fs.rm(pending, { force: true }).catch(() => undefined)
+    const renamed = await fs.rename(executable, pending).then(
+      () => true,
+      () => false,
+    )
+    if (!renamed) {
+      child.kill()
+      return false
+    }
+
+    child.unref()
+    return true
+  }
+
+  function normalizePath(value: string) {
+    const normalized = value.replace(/\\/g, "/").toLowerCase()
+    if (normalized.startsWith("//?/unc/")) return `//${normalized.slice(8)}`
+    if (normalized.startsWith("//?/")) return normalized.slice(4)
+    return normalized
   }
 
   async function assertManagedTargetParents(root: string, target: string) {
@@ -138,8 +211,8 @@ export namespace StandaloneInstallation {
         path.join(xdgConfig, "bash", ".bashrc"),
         path.join(xdgConfig, "bash", ".bash_profile"),
       ],
-      ash: [path.join(options.home, ".ashrc"), path.join(options.home, ".profile")],
-      sh: [path.join(options.home, ".profile")],
+      ash: [path.join(options.home, ".ashrc"), path.join(options.home, ".profile"), "/etc/profile"],
+      sh: [path.join(options.home, ".ashrc"), path.join(options.home, ".profile"), "/etc/profile"],
     }
     return configFiles[shell] || configFiles.bash
   }
@@ -178,7 +251,16 @@ export namespace StandaloneInstallation {
     const content = await fs.readFile(file, "utf8")
     const cleaned = cleanShellConfigContent(content, home)
     if (cleaned === content) return false
-    await fs.writeFile(file, cleaned)
+
+    const stat = await fs.stat(file)
+    const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`)
+    try {
+      await fs.writeFile(temporary, cleaned, { mode: stat.mode })
+      await fs.rename(temporary, file)
+    } catch (error) {
+      await fs.rm(temporary, { force: true }).catch(() => undefined)
+      throw error
+    }
     return true
   }
 

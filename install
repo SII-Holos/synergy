@@ -1103,9 +1103,9 @@ install_from_binary() {
     fi
 }
 
-warn_about_package_manager_installations || true
 
 install_synergy
+warn_about_package_manager_installations || true
 
 
 add_to_path() {
