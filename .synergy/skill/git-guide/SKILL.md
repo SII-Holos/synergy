@@ -123,6 +123,28 @@ The permission system classifies `gh` commands before applying the active contro
 
 Checkout type does not change ordinary `shell_remote_publish` into `shell_remote_write`. Unknown write-capable `gh` subcommands default to `shell_remote_write`. Full Access silently allows permission-system capabilities but does not override task authorization, protected-branch rules, GitHub permissions, validation failures, or network/runtime errors.
 
+## Bash tool GitHub CLI credential injection
+
+When a bash tool invocation contains a `gh` command and no `GH_TOKEN` or
+`GITHUB_TOKEN` is already present in the child environment, the local backend
+injects the managed GitHub credential (from `GH_TOKEN`/`GITHUB_TOKEN` env or
+the Synergy auth store) as `GH_TOKEN` in the child process environment.
+
+Behavior:
+
+- The token is passed through the environment only — it never appears in the
+  command string, argv, or process listings.
+- Injection applies to any invocation that contains at least one `gh` command,
+  including mixed, chained, and piped commands (`echo ok; gh api user`,
+  `gh repo view owner/repo | head`).
+- An explicit `GH_TOKEN=...` prefix assignment or `export GH_TOKEN=...` earlier
+  in the command takes precedence over the injected value.
+- When no Synergy GitHub credential is connected, the invocation runs without
+  injection and the bash tool appends a `[GitHub CLI token skipped: ...]`
+  notice to the output.
+- If a credential is injected, telemetry emits `bash.github.token.injected`;
+  if injection is skipped, `bash.github.token.skipped` records the reason.
+
 ## Rebase or Recover
 
 Do not rebase a shared or pre-existing checkout unless the user explicitly requests it. Before any rebase, confirm the branch and dirty state; stop on conflicts, preserve both owners' intent, and rerun affected tests. Do not use `reset --hard`, checkout-based file destruction, force push, or hook bypass without explicit user authority and a reviewed recovery plan.

@@ -80,19 +80,11 @@ function isGitHubCliCommand(pattern: string) {
   return normalized === "gh" || normalized.endsWith("/gh") || normalized.endsWith("\\gh.exe")
 }
 
-interface GitHubCliCommandRef {
-  startIndex: number
-}
-
-function collectGitHubCliCommandRefs(root: Node): GitHubCliCommandRef[] {
-  const refs: GitHubCliCommandRef[] = []
+function countGitHubCliCommands(root: Node): number {
+  let count = 0
   for (const node of root.descendantsOfType("command")) {
     if (!node) continue
     const command: string[] = []
-    // A command that already sets GH_TOKEN/GITHUB_TOKEN itself (e.g. an explicit
-    // prefix assignment) must not be double-injected; the later assignment wins
-    // in bash anyway, so skipping is only about avoiding a confusing double write.
-    const hasExplicitTokenPrefix = /^(?:GH_TOKEN|GITHUB_TOKEN)=/.test(node.text)
     for (let i = 0; i < node.childCount; i++) {
       const child = node.child(i)
       if (!child) continue
@@ -107,40 +99,11 @@ function collectGitHubCliCommandRefs(root: Node): GitHubCliCommandRef[] {
       }
       command.push(child.text)
     }
-    if (command.length > 0 && command[0] !== "cd" && !hasExplicitTokenPrefix && isGitHubCliCommand(command.join(" "))) {
-      refs.push({ startIndex: node.startIndex })
+    if (command.length > 0 && command[0] !== "cd" && isGitHubCliCommand(command.join(" "))) {
+      count++
     }
   }
-  return refs
-}
-
-async function collectGitHubCliCommandRefsFromText(text: string): Promise<GitHubCliCommandRef[]> {
-  const tree = await parser().then((p) => p.parse(text))
-  if (!tree) return []
-  try {
-    return collectGitHubCliCommandRefs(tree.rootNode)
-  } finally {
-    tree.delete()
-  }
-}
-
-function quoteToken(value: string) {
-  return `'${value.replaceAll("'", `'"'"'`)}'`
-}
-
-/**
- * Prefix each GitHub CLI command with a command-scoped GH_TOKEN assignment.
- * The assignment is visible only to the gh process itself, not to pipeline
- * peers or later commands in the same shell invocation.
- */
-export function injectGitHubTokenPrefixes(command: string, token: string, refs: GitHubCliCommandRef[]): string {
-  if (refs.length === 0) return command
-  const prefix = `GH_TOKEN=${quoteToken(token)} `
-  let result = command
-  for (const ref of refs.toSorted((left, right) => right.startIndex - left.startIndex)) {
-    result = result.slice(0, ref.startIndex) + prefix + result.slice(ref.startIndex)
-  }
-  return result
+  return count
 }
 
 const ALLOW_DETACHED_DAEMONS_ENV = "SYNERGY_BASH_ALLOW_DETACHED_DAEMONS"
@@ -261,7 +224,7 @@ export const LocalBashBackend = {
     }
     const patterns = new Set<string>()
     let virtualFileReferences: BashVirtualFile.Reference[] = []
-    let ghRefs: GitHubCliCommandRef[] = []
+    let ghCommandCount = 0
 
     try {
       virtualFileReferences = BashVirtualFile.references(tree.rootNode)
@@ -287,7 +250,7 @@ export const LocalBashBackend = {
           patterns.add(command.join(" "))
         }
       }
-      ghRefs = collectGitHubCliCommandRefs(tree.rootNode)
+      ghCommandCount = countGitHubCliCommands(tree.rootNode)
     } finally {
       tree.delete()
     }
@@ -388,39 +351,25 @@ export const LocalBashBackend = {
         sandboxEnv[key] = val
       }
     }
-    const posixShell = process.platform !== "win32" || /(?:^|[\\/])bash(?:\.exe)?$/i.test(shell)
-    let githubTokenToInject: { token: string; source: string; authKind: string } | undefined
-    if (ghRefs.length > 0 && !sandboxEnv.GH_TOKEN && !sandboxEnv.GITHUB_TOKEN) {
+    if (ghCommandCount > 0 && !sandboxEnv.GH_TOKEN && !sandboxEnv.GITHUB_TOKEN) {
       const github = await GitHubProvider.resolveToken()
       if (github?.token) {
-        if (posixShell) {
-          // Command-scoped prefix assignment keeps the token visible only to gh,
-          // never to pipeline peers or later commands in the same invocation.
-          githubTokenToInject = { token: github.token, source: github.source, authKind: github.authKind }
-        } else if (Array.from(patterns).every(isGitHubCliCommand)) {
-          sandboxEnv.GH_TOKEN = github.token
-          await trace("bash.github.token.injected", {
-            source: github.source,
-            authKind: github.authKind,
-          })
-        } else {
-          githubNotice = "[GitHub CLI token skipped: mixed commands are unsupported in the Windows cmd shell]"
-          await trace(
-            "bash.github.token.skipped",
-            {
-              reason: "mixed_commands_windows_cmd",
-              commandCount: ghRefs.length,
-            },
-            "warn",
-          )
-        }
+        // Inject via the child environment only: the token never appears in the
+        // command string, argv, or process listings, and any explicit
+        // GH_TOKEN/GITHUB_TOKEN assignment inside the command (export or prefix)
+        // takes precedence over this value when the command runs.
+        sandboxEnv.GH_TOKEN = github.token
+        await trace("bash.github.token.injected", {
+          source: github.source,
+          authKind: github.authKind,
+        })
       } else {
         githubNotice = "[GitHub CLI token skipped: no Synergy GitHub credential is connected]"
         await trace(
           "bash.github.token.skipped",
           {
             reason: "no_credential",
-            commandCount: ghRefs.length,
+            commandCount: ghCommandCount,
           },
           "warn",
         )
@@ -433,19 +382,6 @@ export const LocalBashBackend = {
       scopeID: ScopeContext.current.scope.id,
     })
     let executionCommand = materialized.command
-    if (githubTokenToInject) {
-      const refs =
-        executionCommand === params.command ? ghRefs : await collectGitHubCliCommandRefsFromText(executionCommand)
-      const injected = injectGitHubTokenPrefixes(executionCommand, githubTokenToInject.token, refs)
-      if (injected !== executionCommand) {
-        executionCommand = injected
-        await trace("bash.github.token.injected", {
-          source: githubTokenToInject.source,
-          authKind: githubTokenToInject.authKind,
-          commandCount: refs.length,
-        })
-      }
-    }
     executionCommand = withLinuxChildOomPreference(executionCommand)
     const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
