@@ -24,12 +24,17 @@ async function collectTests(directory: string): Promise<string[]> {
 }
 
 async function run(tests: string[], options: { browser?: boolean } = {}) {
-  const child = Bun.spawn([process.execPath, "test", ...(options.browser ? ["--conditions=browser"] : []), ...tests], {
-    cwd: root,
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  })
+  // Playwright/Vite suites cold-start Chromium and Vite beyond the default
+  // 5s hook timeout, so raise the per-test timeout (same as packages/ui).
+  const child = Bun.spawn(
+    [process.execPath, "test", "--timeout", "30000", ...(options.browser ? ["--conditions=browser"] : []), ...tests],
+    {
+      cwd: root,
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  )
   const exitCode = await child.exited
   if (exitCode !== 0) globalThis.process.exit(exitCode)
 }
