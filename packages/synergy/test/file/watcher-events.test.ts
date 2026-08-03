@@ -297,9 +297,7 @@ describe("FileWatcherEvents drain", () => {
     drain.enqueue([{ path: "/repo/src/new.ts", event: "changed" }])
     await drain.idle()
 
-    expect(batches).toEqual([
-      [{ path: "/repo/src/new.ts", event: "renamed", oldPath: "/repo/src/old.ts" }],
-    ])
+    expect(batches).toEqual([[{ path: "/repo/src/new.ts", event: "renamed", oldPath: "/repo/src/old.ts" }]])
     await drain.dispose()
   })
 
