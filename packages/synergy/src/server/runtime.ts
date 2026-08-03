@@ -6,6 +6,7 @@ import { ScopedState } from "../scope/scoped-state"
 import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
 import { ProcessRegistry } from "../process/registry"
+import { Config } from "../config/config"
 import { Log } from "../util/log"
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
@@ -102,6 +103,11 @@ export async function run(options: RuntimeOptions) {
       })
     ) {
       reporter?.warning("No AI model configured — run synergy config before sending messages.")
+    }
+    const issues = Config.diagnostics()
+    for (const issue of issues) {
+      const location = issue.quarantinedPath ?? issue.path
+      reporter?.warning(`Configuration issue (${issue.code}): ${issue.error}${location ? ` — ${location}` : ""}`)
     }
     renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
   }

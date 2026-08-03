@@ -568,6 +568,19 @@ The Settings Import surface accepts file upload, URL fetch, or pasted JSON/JSONC
 
 The Web Settings surface, domain APIs, and CLI all use the same domain ownership registry. Manual edits should preserve that ownership so reload targets and conflict previews remain meaningful.
 
+## Damaged Config Isolation and Recovery
+
+Configuration files are validated as they are loaded. A file with a JSON(C) syntax error, a root-level type error, or a top-level key that belongs to another domain is moved aside instead of blocking startup or interrupting a running server:
+
+- The offending file is renamed to `<filename>.invalid-<timestamp>-<random>` next to the original.
+- The affected domain is skipped; the rest of the configuration loads normally, and the server keeps running.
+- The event is recorded in the diagnostics registry and surfaced in the startup banner, the Web Settings panel banner, and `GET /config/diagnostics` (SDK: `client.config.diagnostics()`).
+- Section-level schema errors keep the existing behavior: the invalid section is stripped and defaults are used; the file is not moved.
+
+To recover a quarantined file, fix the content and rename it back to its original name (for example `110-email.jsonc.invalid-…` → `110-email.jsonc`). The file watcher picks the change up and reloads the domain. Quarantined files are never deleted automatically.
+
+The legacy global config file (`synergy.jsonc`/`synergy.json`) is handled the same way: a broken legacy file is quarantined and the domain fragment migration is skipped. A malformed remote well-known config is skipped with a warning. Explicit CLI inputs (`SYNERGY_CONFIG_CONTENT`) still fail loudly because they are intentional process-level overrides.
+
 ## Process Environment
 
 Domain files are the durable configuration contract. Environment variables are process-local overrides for embedding Synergy, source development, CI, experiments, or diagnosis; a managed service receives only the environment captured by its service definition.
