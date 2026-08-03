@@ -22,8 +22,8 @@ describe("SettingsMenuField primitive", () => {
     expect(primitives).toContain('classList={{ "is-active":')
   })
 
-  test("keeps the active option marked with a success icon", () => {
-    expect(primitives).toContain('getSemanticIcon("state.success")')
+  test("uses the Library-style collapse chevron on the trigger", () => {
+    expect(primitives).toContain('getSemanticIcon("navigation.collapse")')
   })
 
   test("supports an optional count badge per option", () => {
@@ -46,10 +46,13 @@ describe("SettingsMenuField styles", () => {
     expect(css).toContain(".settings-menu-field-count")
   })
 
-  test("uses semantic type tokens instead of naked pixel font sizes", () => {
-    expect(css).toContain("font-size: var(--settings-type-control-size)")
-    expect(css).toContain("font-size: var(--settings-type-body-size)")
-    expect(css).toContain("font-size: var(--settings-type-caption-size)")
+  test("aligns menu items with the Library filter-menu caption typography", () => {
+    const itemBlock = css.slice(
+      css.indexOf(".settings-menu-field-item {"),
+      css.indexOf(".settings-menu-field-item:hover"),
+    )
+    expect(itemBlock).toContain("font-size: var(--settings-type-caption-size)")
+    expect(itemBlock).not.toContain("font-size: var(--settings-type-body-size)")
   })
 
   test("keeps the menu surface clickable inside the pointer-events-none layer", () => {

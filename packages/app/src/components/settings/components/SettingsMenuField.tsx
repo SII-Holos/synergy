@@ -28,7 +28,7 @@ export function SettingsMenuField<T extends string>(props: {
   }
 
   const content = () => (
-    <KobaltePopover.Content class="settings-menu-field-surface flex flex-col gap-0.5 p-1.5 outline-none">
+    <KobaltePopover.Content class="settings-menu-field-surface flex flex-col outline-none">
       <For each={props.options}>
         {(option) => (
           <button
@@ -38,14 +38,7 @@ export function SettingsMenuField<T extends string>(props: {
             onClick={() => select(option)}
           >
             <span>{props.children ? props.children(option) : option.label}</span>
-            <Show
-              when={option.count !== undefined}
-              fallback={
-                <Show when={option.value === props.value}>
-                  <Icon name={getSemanticIcon("state.success")} size="small" class="settings-menu-field-check" />
-                </Show>
-              }
-            >
+            <Show when={option.count !== undefined}>
               <span class="settings-menu-field-count">{option.count}</span>
             </Show>
           </button>
@@ -63,7 +56,11 @@ export function SettingsMenuField<T extends string>(props: {
         disabled={props.disabled}
       >
         <span class="settings-menu-field-value">{current()?.label ?? ""}</span>
-        <Icon name="chevron-down" size="small" class="settings-menu-field-chevron" />
+        <Icon
+          name={getSemanticIcon("navigation.collapse")}
+          size="small"
+          class="settings-menu-field-chevron opacity-60"
+        />
       </KobaltePopover.Trigger>
       <Show when={props.popoverLayer} fallback={content()}>
         {(layer) => <Portal mount={layer()}>{content()}</Portal>}

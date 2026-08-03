@@ -169,7 +169,7 @@
   border-radius: 14px;
   border: 1px solid var(--settings-border);
   background: var(--settings-popover-bg);
-  box-shadow: var(--shadow-xs-border);
+  padding: 0.375rem;
 }
 
 .settings-menu-field-item {
@@ -179,11 +179,11 @@
   justify-content: space-between;
   gap: 12px;
   border-radius: 10px;
-  padding: 9px 10px;
+  padding: 8px 10px;
   border: 0;
   background: transparent;
   color: var(--text-base);
-  font-size: var(--settings-type-body-size);
+  font-size: var(--settings-type-caption-size);
   font-weight: var(--font-weight-medium);
   line-height: 1.2;
   text-align: left;
@@ -209,14 +209,9 @@
 
 .settings-menu-field-count {
   color: var(--text-weaker);
-  font-size: var(--settings-type-caption-size);
-  line-height: var(--settings-type-caption-line-height);
+  font-size: 0.6875rem;
+  line-height: 1.2;
   font-weight: var(--font-weight-medium);
-}
-
-.settings-menu-field-check {
-  flex-shrink: 0;
-  color: var(--icon-base);
 }
 
 .settings-panel-close {
