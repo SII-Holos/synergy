@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { synergyTheme } from "@ericsanchezok/synergy-ui/theme"
 import type { PluginContribution } from "../../src/plugin/api"
-import { loadPluginUIAssets, resolvePluginIconReference } from "../../src/plugin/ui-assets"
+import { injectPluginStylesheet, loadPluginUIAssets, resolvePluginIconReference } from "../../src/plugin/ui-assets"
 
 function contribution(pluginId: string, themeId = "theme"): PluginContribution {
   return {
@@ -161,5 +161,28 @@ describe("plugin UI asset loading", () => {
     expect(result.stylesheets.size).toBe(0)
     expect(result.icons.has("broken-css:mark")).toBe(true)
     expect(result.errors[0]?.message).toContain("UI stylesheet failed to load")
+  })
+
+  test("injects the stylesheet link into the document head and removes it on dispose", () => {
+    const dispose = injectPluginStylesheet("https://example.test/proxy/4096/plugin/assets/demo/gen/ui/index.css")
+    const links = [...document.head.querySelectorAll("link[rel='stylesheet']")]
+    const injected = links.find((link) => link.getAttribute("href")?.endsWith("ui/index.css"))
+    expect(injected).toBeDefined()
+    expect(injected!.getAttribute("rel")).toBe("stylesheet")
+
+    dispose()
+    expect([...document.head.querySelectorAll("link[rel='stylesheet']")].some((link) => link === injected)).toBe(false)
+  })
+
+  test("dispose is idempotent and does not remove unrelated stylesheets", () => {
+    const unrelated = document.createElement("link")
+    unrelated.rel = "stylesheet"
+    unrelated.href = "https://example.test/app.css"
+    document.head.appendChild(unrelated)
+    const dispose = injectPluginStylesheet("https://example.test/proxy/4096/plugin/assets/demo/gen/ui/index.css")
+    dispose()
+    dispose()
+    expect(document.head.contains(unrelated)).toBe(true)
+    unrelated.remove()
   })
 })

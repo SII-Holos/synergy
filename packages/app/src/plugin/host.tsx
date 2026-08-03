@@ -28,7 +28,12 @@ import { fetchUIContributions, type PluginContribution } from "./api"
 import { resolvePluginAssetUrl } from "./asset-url"
 import type { PluginLifecycleState } from "./lifecycle"
 import { loadPluginExport } from "./loaders"
-import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
+import {
+  injectPluginStylesheet,
+  loadPluginUIAssets,
+  resolvePluginIconReference,
+  type PluginUIAssets,
+} from "./ui-assets"
 import { pluginSurfaceId } from "./surface-id"
 import { registerComposerSlot, type ComposerSlotProps } from "./registries/composer-slot-registry"
 import { registerComposerExtension, type ComposerExtensionProps } from "./registries/composer-extension-registry"
@@ -205,12 +210,7 @@ function registerPluginSurfaces(input: {
     const asset = (file: string) => resolvePluginAssetUrl(input.serverUrl, plugin.pluginId, plugin.generation, file)
     const stylesheet = input.assets.stylesheets.get(plugin.pluginId)
     if (stylesheet) {
-      const link = document.createElement("link")
-      link.rel = "stylesheet"
-      link.href = asset(stylesheet)
-      link.dataset.pluginStylesheet = plugin.pluginId
-      document.head.appendChild(link)
-      disposers.push(() => link.remove())
+      disposers.push(injectPluginStylesheet(asset(stylesheet)))
     }
     const componentLoader = <Props extends object>(
       item: PluginManifestContribution,

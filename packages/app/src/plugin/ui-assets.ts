@@ -34,10 +34,15 @@ type LoadedAssetSuccess =
   | { status: "loaded"; kind: "theme"; key: string; value: PluginThemeDefinition }
   | { status: "loaded"; kind: "icon"; key: string; value: LoadedPluginIcon }
   | { status: "loaded"; kind: "stylesheet"; key: string; value: string }
-type LoadedAsset =
-  | LoadedAssetSuccess
-  | { status: "skipped"; key: string }
-  | { status: "error"; error: PluginUIAssetError }
+type LoadedAsset = LoadedAssetSuccess | { status: "skipped" } | { status: "error"; error: PluginUIAssetError }
+
+export function injectPluginStylesheet(href: string): () => void {
+  const link = document.createElement("link")
+  link.rel = "stylesheet"
+  link.href = href
+  document.head.appendChild(link)
+  return () => link.remove()
+}
 
 export async function loadPluginUIAssets(
   contributions: PluginContribution[],
@@ -109,7 +114,7 @@ export async function loadPluginUIAssets(
     }
 
     const entry = contribution.uiArtifact?.entry
-    if (entry?.endsWith(".js")) {
+    if (entry?.endsWith(".js") && !entry.endsWith(".mjs") && !entry.endsWith(".cjs")) {
       const stylesheet = `${entry.slice(0, -3)}.css`
       requests.push(
         loadAsset(contribution.pluginId, "UI stylesheet", options.signal, async () => {
@@ -120,7 +125,7 @@ export async function loadPluginUIAssets(
             stylesheet,
           )
           const response = await fetcher(url, { signal: options.signal })
-          if (response.status === 404) return { status: "skipped" as const, key: contribution.pluginId }
+          if (response.status === 404) return { status: "skipped" as const }
           if (!response.ok) throw new Error(`HTTP ${response.status}`)
           return {
             status: "loaded" as const,
@@ -152,7 +157,7 @@ async function loadAsset(
   pluginId: string,
   label: string,
   signal: AbortSignal | undefined,
-  load: () => Promise<LoadedAssetSuccess | { status: "skipped"; key: string }>,
+  load: () => Promise<LoadedAssetSuccess | { status: "skipped" }>,
 ): Promise<LoadedAsset> {
   try {
     return await load()
