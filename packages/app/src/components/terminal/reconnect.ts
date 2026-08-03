@@ -40,11 +40,19 @@ export interface ReconnectControllerOptions {
   connect: () => void
   /** Connection opened. */
   onConnected: () => void
-  /** Called exactly once when the controller gives up. */
-  onGiveUp: () => void
+  /**
+   * Called exactly once when the controller gives up.
+   * - "missing": the PTY was confirmed gone (validate returned false/threw).
+   *   The owning panel may close the tab and release the server session.
+   * - "exhausted": retries ran out while the PTY still validated. The process
+   *   may still be running; only the presentation should be marked lost.
+   */
+  onGiveUp: (reason: GiveUpReason) => void
   /** True once the owning component is disposed. */
   isDisposed: () => boolean
 }
+
+export type GiveUpReason = "missing" | "exhausted"
 
 export class ReconnectController {
   readonly #opts: ReconnectControllerOptions
@@ -84,7 +92,7 @@ export class ReconnectController {
       this.#attempts++
     }
     if (this.#attempts > this.#opts.maxAttempts) {
-      this.#giveUp()
+      this.#giveUp("exhausted")
       return
     }
     if (this.#running) {
@@ -119,7 +127,7 @@ export class ReconnectController {
     try {
       const ok = await this.#opts.validate()
       if (!ok || this.#disposed || this.#givenUp || this.#opts.isDisposed()) {
-        if (!ok) this.#giveUp()
+        if (!ok) this.#giveUp("missing")
         return
       }
       if (this.#connectedAt !== undefined) {
@@ -130,7 +138,7 @@ export class ReconnectController {
       }
       this.#opts.connect()
     } catch {
-      this.#giveUp()
+      this.#giveUp("exhausted")
     } finally {
       this.#running = false
       if (this.#closeWhileRunning) {
@@ -142,13 +150,13 @@ export class ReconnectController {
     }
   }
 
-  #giveUp(): void {
+  #giveUp(reason: GiveUpReason): void {
     if (this.#givenUp) return
     this.#givenUp = true
     if (this.#timerId !== undefined) {
       this.#opts.timer.clearTimeout(this.#timerId)
       this.#timerId = undefined
     }
-    this.#opts.onGiveUp()
+    this.#opts.onGiveUp(reason)
   }
 }

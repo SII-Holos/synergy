@@ -5,9 +5,11 @@ function createFakeTimer() {
   let nextId = 1
   let now = 0
   const queue = new Map<number, { fn: () => void; at: number }>()
+  const scheduledDelays: number[] = []
   const timer: ReconnectTimer = {
     setTimeout(fn, ms) {
       const id = nextId++
+      scheduledDelays.push(ms)
       queue.set(id, { fn, at: now + ms })
       return id
     },
@@ -22,6 +24,7 @@ function createFakeTimer() {
     timer,
     now: () => now,
     pending: () => queue.size,
+    delays: () => [...scheduledDelays],
     /** Run all timers whose deadline is <= now + ms, in deadline order. */
     advance(ms: number) {
       const target = now + ms
@@ -64,7 +67,7 @@ function setup(
     validate: overrides.validate ?? (() => Promise.resolve(true)),
     connect: () => events.push("connect"),
     onConnected: () => events.push("connected"),
-    onGiveUp: () => events.push("give-up"),
+    onGiveUp: (reason) => events.push(`give-up:${reason}`),
     isDisposed: overrides.isDisposed ?? (() => false),
   })
   const tick = async () => {
@@ -87,7 +90,8 @@ describe("ReconnectController", () => {
     const connects = events.filter((e) => e === "connect").length
     expect(connects).toBeLessThanOrEqual(3)
     expect(connects).toBeGreaterThan(0)
-    expect(events.filter((e) => e === "give-up")).toHaveLength(1)
+    expect(events.filter((e) => e.startsWith("give-up"))).toHaveLength(1)
+    expect(events).toContain("give-up:exhausted")
   })
   test("连接保持超过 quickCycleMs 后断开会重置失败计数,继续重连", async () => {
     const { controller, fake, events, tick } = setup()
@@ -107,7 +111,8 @@ describe("ReconnectController", () => {
     controller.onClose()
     fake.advance(1_000)
     await tick() // connect #3 (attempts were reset to 0)
-    expect(events).not.toContain("give-up")
+    expect(events).not.toContain("give-up:missing")
+    expect(events).not.toContain("give-up:exhausted")
     expect(events.filter((e) => e === "connect")).toHaveLength(3)
   })
 
@@ -119,8 +124,8 @@ describe("ReconnectController", () => {
     controller.onClose()
     fake.advance(100)
     await tick()
-    expect(events).toContain("give-up")
-    expect(events.filter((e) => e === "give-up")).toHaveLength(1)
+    expect(events).toContain("give-up:missing")
+    expect(events.filter((e) => e.startsWith("give-up"))).toHaveLength(1)
   })
 
   test("PTY 校验抛错(网络错误)时立即 give up 且只触发一次", async () => {
@@ -133,8 +138,8 @@ describe("ReconnectController", () => {
     await tick()
     fake.advance(10_000)
     await tick()
-    expect(events).toContain("give-up")
-    expect(events.filter((e) => e === "give-up")).toHaveLength(1)
+    expect(events).toContain("give-up:exhausted")
+    expect(events.filter((e) => e.startsWith("give-up"))).toHaveLength(1)
     expect(events.filter((e) => e === "connect").length).toBeLessThanOrEqual(1)
   })
 
@@ -172,12 +177,10 @@ describe("ReconnectController", () => {
       initialDelayMs: 100,
       maxDelayMs: 400,
     })
-    const delays: number[] = []
     // First failure schedules at initialDelay (timer fires on first advance).
     controller.onOpen()
     controller.onClose()
     expect(fake.pending()).toBe(1)
-    delays.push(100)
     // Each cycle: advance fires the scheduled reconnect (connect), then
     // open + immediate close schedule the next retry with doubled delay,
     // capped at maxDelayMs.
@@ -186,9 +189,32 @@ describe("ReconnectController", () => {
       await tick()
       controller.onOpen()
       controller.onClose()
-      delays.push(Math.min(100 * 2 ** (i + 1), 400))
     }
     expect(events.filter((e) => e === "connect")).toHaveLength(5)
-    expect(delays[delays.length - 1]).toBe(400)
+    // P2: assert the actual delays passed to the timer, not a recomputed
+    // formula — a constant 100 ms delay must fail this assertion.
+    expect(fake.delays()).toEqual([100, 200, 400, 400, 400, 400])
+  })
+
+  test("PTY 仍存在但连接耗尽时标记 exhausted,不当作 missing", async () => {
+    const { controller, fake, events, tick } = setup({ validate: () => Promise.resolve(true) })
+    for (let i = 0; i < 10; i++) {
+      controller.onOpen()
+      controller.onClose()
+      fake.advance(1_000)
+      await tick()
+    }
+    expect(events).toContain("give-up:exhausted")
+    expect(events).not.toContain("give-up:missing")
+  })
+
+  test("PTY 确认消失时标记 missing", async () => {
+    const { controller, fake, events, tick } = setup({ validate: () => Promise.resolve(false) })
+    controller.onOpen()
+    controller.onClose()
+    fake.advance(1_000)
+    await tick()
+    expect(events).toContain("give-up:missing")
+    expect(events).not.toContain("give-up:exhausted")
   })
 })

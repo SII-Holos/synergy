@@ -21,6 +21,14 @@ export interface TerminalProps extends ComponentProps<"div"> {
 
 const MAX_RECONNECT_ATTEMPTS = 5
 
+function isPtyNotFoundError(error: unknown) {
+  if (typeof error !== "object" || error === null) return false
+  return (
+    (error as { name?: string }).name === "APIError" &&
+    (error as { data?: { statusCode?: number } }).data?.statusCode === 404
+  )
+}
+
 export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
   const theme = useTheme()
@@ -248,15 +256,23 @@ export const Terminal = (props: TerminalProps) => {
         try {
           const res = await sdk.client.pty.get({ ptyID: local.pty.id })
           return !!res.data?.id
-        } catch {
-          return false
+        } catch (error) {
+          if (isPtyNotFoundError(error)) return false
+          // Network/unknown errors leave the PTY's existence unconfirmed:
+          // surface them as exhaustion instead of claiming the session is gone,
+          // so a flaky connection cannot trigger the destructive close path.
+          throw error
         }
       },
       connect,
       onConnected: () => setConnected(true),
-      onGiveUp: () => {
+      onGiveUp: (reason) => {
         setGone(true)
-        local.onGone?.(local.pty.id)
+        // Only a confirmed-missing PTY may close the tab (which removes the
+        // server session). Exhaustion with a live PTY must keep the process.
+        if (reason === "missing") {
+          local.onGone?.(local.pty.id)
+        }
       },
       isDisposed: () => disposed,
     })
