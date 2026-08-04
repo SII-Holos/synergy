@@ -44,6 +44,7 @@ import {
   startPluginBlueprint,
   startPluginTask,
 } from "./host-services"
+import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { resolvePluginRuntimeLimits } from "./runtime-limits"
 
 const capabilityByMethod = {
@@ -125,11 +126,10 @@ async function resolvePluginAgentCall(input: PluginHostServiceInvocationInput, v
     AGENT_CALL_MAX_OUTPUT_CHARS,
   )
   const requestedOutput = positiveConstraint(value.maxOutputChars, maxOutputChars, maxOutputChars)
-  const limits = await resolvePluginRuntimeLimits()
   const maxRuntimeMs = positiveConstraint(
     constraints.maxRuntimeMs,
-    limits.agentCallMaxRuntimeMs,
-    limits.agentCallMaxRuntimeMs,
+    input.limits?.agentCallMaxRuntimeMs ?? DEFAULT_LIMITS.agentCallMaxRuntimeMs,
+    input.limits?.agentCallMaxRuntimeMs ?? DEFAULT_LIMITS.agentCallMaxRuntimeMs,
   )
   const timeoutMs = positiveConstraint(value.timeoutMs, maxRuntimeMs, maxRuntimeMs)
   const requestedRole = value.modelRole
@@ -452,10 +452,15 @@ async function runPluginTask(input: PluginHostServiceInvocationInput, value: Rec
     pluginDir: input.pluginDir,
     context: await resolveStartParent(input, "task.run", value),
     request,
+    limits: input.limits,
   })
   const active = Cortex.get(handle.taskId)
   const timeoutSeconds = Math.ceil(
-    ((active?.timeoutMs ?? request.timeoutMs ?? (await resolvePluginRuntimeLimits()).taskRunWaitTimeoutMs) + 5_000) /
+    ((active?.timeoutMs ??
+      request.timeoutMs ??
+      input.limits?.taskRunWaitTimeoutMs ??
+      DEFAULT_LIMITS.taskRunWaitTimeoutMs) +
+      5_000) /
       1_000,
   )
   const completed = Cortex.waitFor(handle.taskId, timeoutSeconds)
@@ -574,7 +579,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   }
   const command = value.command as [string, ...string[]]
   if (!command[0]) throw new Error("shell.run requires a non-empty executable")
-  const timeoutMs = value.timeoutMs ?? (await resolvePluginRuntimeLimits()).shellRunTimeoutMs
+  const timeoutMs = value.timeoutMs ?? input.limits?.shellRunTimeoutMs ?? DEFAULT_LIMITS.shellRunTimeoutMs
   if (!Number.isSafeInteger(timeoutMs) || Number(timeoutMs) <= 0) {
     throw new Error("shell.run timeoutMs must be a positive integer")
   }
@@ -635,6 +640,9 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
 
 export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
   assertCapability(input)
+  // Production invocations carry the runtime's captured limits; direct
+  // callers (tests, standalone dispatch) fall back to the live config.
+  if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
   return inScope(input, async () => {
     const value = params(input)
     if (input.method === "event.publish") return publishEvent(input)
@@ -736,6 +744,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         pluginDir: input.pluginDir,
         context: await resolveStartParent(input, "lightloop.start", value),
         request: value as never,
+        limits: input.limits,
       })
     }
     if (input.method === "blueprint.start") {
@@ -756,6 +765,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         pluginDir: input.pluginDir,
         context: await resolveStartParent(input, "task.start", value),
         request: value as never,
+        limits: input.limits,
       })
     }
 
@@ -803,6 +813,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         context: runtimeContext,
         pluginDir: input.pluginDir,
         request: { tool: toolId, args: value.input },
+        limits: input.limits,
       })
     }
   })

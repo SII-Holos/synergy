@@ -49,6 +49,7 @@ export interface PluginHostServiceInvocationInput {
   method: PluginHostServiceMethod
   params: unknown
   signal: AbortSignal
+  limits?: RuntimeLimits
 }
 
 export type PluginHostServiceDispatcher = (input: PluginHostServiceInvocationInput) => Promise<unknown>
@@ -134,7 +135,7 @@ export class PluginRuntimeManager {
       )
       .map((item) => `${item.kind}:${item.id}`)
       .sort()
-    const limits = input.limits ?? DEFAULT_LIMITS
+    const limits = input.limits ?? (await resolvePluginRuntimeLimits())
     const mode = input.mode ?? "process"
     if (mode === "inProcess" && !input.trustedBuiltin) {
       throw new Error("inProcess runtime is reserved for trusted built-in plugins")
@@ -149,6 +150,7 @@ export class PluginRuntimeManager {
       handlerIds: [],
       inFlight: 0,
       startedAt: Date.now(),
+      limits,
     }
     this.registry.set(entry)
     this.#startInputs.set(key, { ...input, limits })
@@ -250,6 +252,7 @@ export class PluginRuntimeManager {
           method: request.method,
           params: request.params,
           signal: invocation.controller.signal,
+          limits: entry.limits,
         })
       },
       onHeartbeat(message) {
@@ -359,7 +362,7 @@ export class PluginRuntimeManager {
     const abort = () => controller.abort(input.signal?.reason)
     if (input.signal?.aborted) abort()
     else input.signal?.addEventListener("abort", abort, { once: true })
-    const timeoutMs = input.timeoutMs ?? (await resolvePluginRuntimeLimits()).contributionInvokeTimeoutMs
+    const timeoutMs = input.timeoutMs ?? entry.limits.contributionInvokeTimeoutMs
     const timeout = setTimeout(
       () => controller.abort(new DOMException("Plugin invocation timed out", "TimeoutError")),
       timeoutMs,
@@ -566,6 +569,7 @@ export class PluginRuntimeManager {
           method,
           params,
           signal: controller.signal,
+          limits: entry.limits,
         }),
     })
     if (contribution.kind === "lifecycle.uninstall") return contribution.handler(context)
