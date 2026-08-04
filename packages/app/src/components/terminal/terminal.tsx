@@ -2,7 +2,6 @@ import type { Ghostty, Terminal as Term, FitAddon } from "ghostty-web"
 import { ComponentProps, Show, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useSDK } from "@/context/sdk"
-import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-ui/theme"
@@ -14,7 +13,6 @@ import { ReconnectController } from "./reconnect"
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
   onSubmit?: () => void
-  onCleanup?: (pty: LocalPTY) => void
   onConnectError?: (error: unknown) => void
   onGone?: (ptyID: string) => void
 }
@@ -37,13 +35,13 @@ export const Terminal = (props: TerminalProps) => {
   let ws: WebSocket | undefined
   let term: Term | undefined
   let ghostty: Ghostty
-  let serializeAddon: SerializeAddon
   let fitAddon: FitAddon
   let handleResize: () => void
   let handleTextareaFocus: () => void
   let handleTextareaBlur: () => void
   let reconnectController: ReconnectController | undefined
   let disposed = false
+  let cleanupRan = false
   const [connected, setConnected] = createSignal(false)
   const [gone, setGone] = createSignal(false)
   const lingui = useLingui()
@@ -137,6 +135,7 @@ export const Terminal = (props: TerminalProps) => {
       return false
     })
     t.onSelectionChange(() => {
+      if (disposed) return
       const rect = container.getBoundingClientRect()
       textSelectionController.update(t.getSelection() || undefined, {
         source: "terminal",
@@ -149,8 +148,6 @@ export const Terminal = (props: TerminalProps) => {
     })
 
     fitAddon = new mod.FitAddon()
-    serializeAddon = new SerializeAddon()
-    t.loadAddon(serializeAddon)
     t.loadAddon(fitAddon)
 
     t.open(container)
@@ -184,6 +181,7 @@ export const Terminal = (props: TerminalProps) => {
     handleResize = () => fitAddon.fit()
     window.addEventListener("resize", handleResize)
     t.onResize(async (size) => {
+      if (disposed) return
       if (ws?.readyState === WebSocket.OPEN) {
         await sdk.client.pty
           .update({
@@ -197,11 +195,13 @@ export const Terminal = (props: TerminalProps) => {
       }
     })
     t.onData((data) => {
+      if (disposed) return
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(data)
       }
     })
     t.onKey((key) => {
+      if (disposed) return
       if (key.key == "Enter") {
         props.onSubmit?.()
       }
@@ -218,6 +218,7 @@ export const Terminal = (props: TerminalProps) => {
       ws = socket
 
       socket.addEventListener("open", () => {
+        if (disposed) return
         reconnectController?.onOpen()
         sdk.client.pty
           .update({
@@ -230,15 +231,28 @@ export const Terminal = (props: TerminalProps) => {
           .catch(() => {})
       })
       socket.addEventListener("message", (event) => {
+        if (disposed) return
         t.write(event.data)
       })
       socket.addEventListener("error", (error) => {
+        if (disposed) return
         console.error("WebSocket error:", error)
         props.onConnectError?.(error)
       })
       socket.addEventListener("close", () => {
-        setConnected(false)
-        reconnectController?.onClose()
+        // The server closes the socket while closeTab is still awaiting
+        // pty.remove, i.e. before this panel subtree is unmounted. A
+        // synchronous setConnected(false) enqueues computations that the same
+        // flush is about to clean, double-cleaning them (cleanNode on a
+        // nulled owned array -> "Cannot read properties of null (reading
+        // '1')"). Defer past the dispose flush (macrotask, not microtask:
+        // the fetch resolve that continues closeTab is also a microtask), so
+        // the subtree is disposed first and the guard drops the write.
+        setTimeout(() => {
+          if (disposed) return
+          setConnected(false)
+          reconnectController?.onClose()
+        }, 0)
       })
     }
 
@@ -281,6 +295,8 @@ export const Terminal = (props: TerminalProps) => {
   })
 
   onCleanup(() => {
+    if (cleanupRan) return
+    cleanupRan = true
     disposed = true
     reconnectController?.dispose()
     if (handleResize) {
@@ -289,42 +305,13 @@ export const Terminal = (props: TerminalProps) => {
     container.removeEventListener("pointerdown", handlePointerDown)
     term?.textarea?.removeEventListener("focus", handleTextareaFocus)
     term?.textarea?.removeEventListener("blur", handleTextareaBlur)
-
-    const t = term
-    let snapshot: LocalPTY | undefined
-    try {
-      if (serializeAddon && props.onCleanup && t) {
-        const buffer = serializeAddon.serialize()
-        snapshot = {
-          ...local.pty,
-          buffer,
-          rows: t.rows,
-          cols: t.cols,
-          scrollY: t.getViewportY(),
-        }
-      }
-    } catch (error) {
-      console.error("Failed to persist terminal buffer on close", error)
-    }
-
     try {
       ws?.close()
     } catch {}
     textSelectionController.update(undefined)
     try {
-      t?.dispose()
+      term?.dispose()
     } catch {}
-
-    // Capture the snapshot synchronously but defer the store write out of
-    // Solid's dispose flush: onCleanup runs inside cleanNode recursion, and a
-    // synchronous setStore here re-enters the flush while the pty memo (in the
-    // same subtree being cleaned) is still tracked, corrupting the reactive
-    // graph (null.owned crash). Same convention as terminal.close().
-    const persist = props.onCleanup
-    if (snapshot && persist) {
-      const toPersist = snapshot
-      setTimeout(() => persist(toPersist), 0)
-    }
   })
 
   return (

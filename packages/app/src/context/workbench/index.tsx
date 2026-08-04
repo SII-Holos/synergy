@@ -36,6 +36,14 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const hasSession = createMemo(() => !!params.id)
     const [registryVersion, setRegistryVersion] = createSignal(0)
     let nextTabIndex = 0
+    // Guard against re-entrant closeTab: closing awaits the panel's async
+    // onCloseTab (e.g. terminal pty.remove network round-trip), and during
+    // that window the panel itself may report the session gone (ws close ->
+    // reconnect -> validate 404 -> onGone -> onRequestClose -> closeTab again).
+    // Two interleaved closeTab calls flush the same <Show keyed> panel tree
+    // twice, double-cleaning Solid computations (cleanNode on null.owned) and
+    // leaving the panel stuck on "Reconnecting".
+    const closingTabs = new Set<string>()
 
     const unsubscribe = subscribeWorkbenchPanels(() => setRegistryVersion((value) => value + 1))
     onCleanup(unsubscribe)
@@ -118,19 +126,25 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     }
 
     async function closeTab(tabId: string) {
-      for (const surfaceName of ["side", "bottom"] as const) {
-        const target = surface(surfaceName)
-        const tab = target.tabs().find((item) => item.id === tabId)
-        if (!tab) continue
+      if (closingTabs.has(tabId)) return
+      closingTabs.add(tabId)
+      try {
+        for (const surfaceName of ["side", "bottom"] as const) {
+          const target = surface(surfaceName)
+          const tab = target.tabs().find((item) => item.id === tabId)
+          if (!tab) continue
 
-        const entry = getWorkbenchPanel(tab.panelId)
-        await entry?.onCloseTab?.(tab)
+          const entry = getWorkbenchPanel(tab.panelId)
+          await entry?.onCloseTab?.(tab)
 
-        const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
-        target.setTabs(next.tabs)
-        target.setActive(next.active)
-        if (next.tabs.length === 0) target.close()
-        return
+          const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
+          target.setTabs(next.tabs)
+          target.setActive(next.active)
+          if (next.tabs.length === 0) target.close()
+          return
+        }
+      } finally {
+        closingTabs.delete(tabId)
       }
     }
 
