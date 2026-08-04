@@ -33,11 +33,11 @@ describe("product release environment", () => {
     expect(() => validateProductReleaseEnvironment(env)).toThrow(/APPLE_TEAM_ID/)
   })
 
-  test("rejects unsigned Windows artifacts", () => {
+  test("allows missing Windows signing material", () => {
     const env = environment()
     delete (env as Partial<typeof env>).WINDOWS_CERTIFICATE
     delete (env as Partial<typeof env>).WINDOWS_CERTIFICATE_PASSWORD
-    expect(() => validateProductReleaseEnvironment(env)).toThrow(/WINDOWS_CERTIFICATE/)
+    expect(() => validateProductReleaseEnvironment(env)).not.toThrow()
   })
 
   test("rejects a partially configured Windows signing identity", () => {

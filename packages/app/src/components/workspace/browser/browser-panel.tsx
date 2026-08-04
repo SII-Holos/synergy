@@ -13,9 +13,11 @@ import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
 import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
+import { usePlatform } from "@/context/platform"
 import { createBrowserCommandId, shouldResumeBrowserSession } from "./browser-command"
 import { normalizeBrowserError } from "./browser-error"
 import { browser as B } from "@/locales/messages"
+import { resolveBrowserClientPresentation, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
 
 const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
 const NetworkPanel = lazy(() => import("./network-panel").then((module) => ({ default: module.NetworkPanel })))
@@ -26,6 +28,7 @@ const AssetsPanel = lazy(() => import("./assets-panel").then((module) => ({ defa
 export function BrowserPanel() {
   const params = useParams()
   const sdk = useSDK()
+  const platform = usePlatform()
   const lingui = useLingui()
   const route = createMemo(() => {
     const sessionID = params.id
@@ -33,17 +36,21 @@ export function BrowserPanel() {
     return sessionID && pathDirectory ? { sessionID, pathDirectory, routeDirectory: params.dir } : null
   })
   const [initial, { refetch }] = createResource(route, async (input) => {
+    const clientPresentation = await resolveBrowserClientPresentation({
+      bridge: platform.browserNative,
+      serverUrl: sdk.url,
+    })
     const response = await sdk.client.browser.session({
       path_directory: input.pathDirectory,
       query_directory: sdk.directory,
       scopeID: sdk.scopeID,
       mode: "session",
       sessionID: input.sessionID,
-      presentation: "auto",
+      presentation: clientPresentation === "native" ? "auto" : "webrtc",
       protocolVersion: BROWSER_PROTOCOL_VERSION,
     })
     if (!response.data) throw response.error ?? new Error("Browser session bootstrap failed")
-    return response.data
+    return { session: response.data, clientPresentation }
   })
 
   return (
@@ -73,7 +80,8 @@ export function BrowserPanel() {
         return (
           <BrowserPanelInner
             browser={browser}
-            initial={state}
+            initial={state.session}
+            clientPresentation={state.clientPresentation}
             routeDirectory={route()?.routeDirectory}
             sessionID={route()!.sessionID}
           />
@@ -86,16 +94,18 @@ export function BrowserPanel() {
 function BrowserPanelInner(props: {
   browser: ReturnType<typeof createBrowserStore>
   initial: BrowserAPISessionState
+  clientPresentation: BrowserClientPresentationMode
   routeDirectory?: string
   sessionID: string
 }) {
   const browser = props.browser
   const sdk = useSDK()
+  const platform = usePlatform()
   const ownerKey = props.initial.ownerKey
   browser.setSession("page", props.initial.page)
   browser.setSession("seq", props.initial.seq)
   browser.setSession("epoch", props.initial.epoch)
-  browser.setPresentation(props.initial.presentation)
+  browser.setPresentation(props.clientPresentation === "native" ? null : props.initial.presentation)
   if (props.initial.page) browser.setHostStatus(props.initial.page.id, props.initial.hostStatus)
   if (props.initial.error) {
     browser.setBrowserError({
@@ -110,9 +120,24 @@ function BrowserPanelInner(props: {
     sessionID: props.sessionID,
     ownerKey,
     routeDirectory: props.routeDirectory,
+    presentation: props.clientPresentation,
   })
   if (shouldResumeBrowserSession(props.initial)) {
     queueMicrotask(() => browser.send({ type: "resume" }))
+  }
+
+  const retryNative = () => {
+    ws.retryNative()
+    const pageId = browser.pageId()
+    if (!pageId || props.clientPresentation !== "native") return
+    browser.setHostStatus(pageId, "restarting")
+    void platform.browserNative
+      ?.retryPage({ protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey, pageId })
+      .catch((error) => {
+        const normalized = normalizeBrowserError(error, "Native Browser recovery failed")
+        browser.setHostStatus(pageId, "failed")
+        browser.setBrowserError({ severity: "error", code: normalized.code, message: normalized.message })
+      })
   }
 
   const page = createMemo(() => browser.page())
@@ -262,6 +287,7 @@ function BrowserPanelInner(props: {
                     sessionID={props.sessionID}
                     routeDirectory={props.routeDirectory}
                     ownerKey={ownerKey}
+                    onRetryNative={retryNative}
                   />
                 </Show>
               }

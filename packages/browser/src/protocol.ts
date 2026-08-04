@@ -216,6 +216,48 @@ export const BrowserNativePresentationTicketRequestSchema = z
   .strict()
 export type BrowserNativePresentationTicketRequest = z.infer<typeof BrowserNativePresentationTicketRequestSchema>
 
+export const BrowserNativePresentationCapabilityRequestSchema = z
+  .object({ protocolVersion, serverUrl: z.string().url().max(20_000) })
+  .strict()
+export type BrowserNativePresentationCapabilityRequest = z.infer<
+  typeof BrowserNativePresentationCapabilityRequestSchema
+>
+
+export const BrowserNativeBrokerStatusSchema = z.enum(["connecting", "ready", "restarting", "failed"])
+export type BrowserNativeBrokerStatus = z.infer<typeof BrowserNativeBrokerStatusSchema>
+
+const BrowserNativePresentationIPCErrorSchema = z
+  .object({
+    code: z.enum([
+      "browser_native_bridge_missing",
+      "browser_native_host_connecting",
+      "browser_native_sender_rejected",
+      "browser_native_origin_mismatch",
+      "browser_native_signing_failed",
+      "browser_native_ticket_rejected",
+    ]),
+    message: browserMessage,
+    retryable: z.boolean(),
+  })
+  .strict()
+export type BrowserNativePresentationIPCError = z.infer<typeof BrowserNativePresentationIPCErrorSchema>
+
+export const BrowserNativePresentationCapabilityResultSchema = z
+  .object({
+    protocolVersion,
+    managedLocal: z.boolean(),
+    status: BrowserNativeBrokerStatusSchema,
+    error: BrowserNativePresentationIPCErrorSchema.optional(),
+  })
+  .strict()
+export type BrowserNativePresentationCapabilityResult = z.infer<typeof BrowserNativePresentationCapabilityResultSchema>
+
+export const BrowserNativePresentationTicketResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), protocolVersion, ticket: nonEmpty }).strict(),
+  z.object({ ok: z.literal(false), protocolVersion, error: BrowserNativePresentationIPCErrorSchema }).strict(),
+])
+export type BrowserNativePresentationTicketResult = z.infer<typeof BrowserNativePresentationTicketResultSchema>
+
 export const BrowserNativeViewEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("native.loading"), protocolVersion, pageId, url: browserURL.optional() }).strict(),
   z
@@ -244,18 +286,15 @@ export type BrowserNativeViewEvent = z.infer<typeof BrowserNativeViewEventSchema
 
 export function selectBrowserPresentation(input: BrowserPresentationEnvironment): BrowserPresentationSelection {
   const requested = input.requested ?? "auto"
-  if (requested === "native" && input.capabilities.native && input.desktopLocalHost && !input.remote) {
+  if (requested !== "auto") {
+    const available =
+      requested === "native"
+        ? input.capabilities.native && input.desktopLocalHost && !input.remote
+        : input.capabilities.webrtc
+    if (!available) return null
     return {
       protocolVersion: BROWSER_PROTOCOL_VERSION,
-      kind: "native",
-      capabilities: input.capabilities,
-      reason: "requested",
-    }
-  }
-  if (requested === "webrtc" && input.capabilities.webrtc) {
-    return {
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      kind: "webrtc",
+      kind: requested,
       capabilities: input.capabilities,
       reason: "requested",
     }
@@ -967,6 +1006,7 @@ export const BrowserHostDownloadEntrySchema = BrowserDownloadEntrySchema.extend(
 export type BrowserHostDownloadEntry = z.infer<typeof BrowserHostDownloadEntrySchema>
 
 export const BrowserHostPageEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("host.status"), pageId, status: BrowserHostStatusSchema }).strict(),
   z.object({ type: z.literal("page.updated"), page: BrowserPageSchema }).strict(),
   z.object({ type: z.literal("page.loading"), pageId, url: browserURL }).strict(),
   z.object({ type: z.literal("page.loaded"), page: BrowserPageSchema }).strict(),

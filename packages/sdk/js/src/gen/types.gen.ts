@@ -2250,6 +2250,26 @@ export type PluginRuntimeLimitsConfig = {
    * External plugin runtime RSS sampling interval in milliseconds
    */
   memorySampleIntervalMs?: number
+  /**
+   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
+   */
+  agentCallMaxRuntimeMs?: number
+  /**
+   * Maximum milliseconds for one plugin hook handler invocation
+   */
+  hookTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
+   */
+  contributionInvokeTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin shell.run commands
+   */
+  shellRunTimeoutMs?: number
+  /**
+   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
+   */
+  taskRunWaitTimeoutMs?: number
 }
 
 /**
@@ -9936,6 +9956,7 @@ export type ScopeUpdateData = {
     }
     pinned?: number | null
     archived?: number | null
+    sandboxes?: Array<string>
   }
   path: {
     scopeID: string
@@ -15919,6 +15940,48 @@ export type WorkflowSessionCancelLightloopResponses = {
 
 export type WorkflowSessionCancelLightloopResponse =
   WorkflowSessionCancelLightloopResponses[keyof WorkflowSessionCancelLightloopResponses]
+
+export type WorkflowSessionGetLightloopTerminalData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow/session/{id}/lightloop/terminal"
+}
+
+export type WorkflowSessionGetLightloopTerminalErrors = {
+  /**
+   * No terminal record for this session
+   */
+  404: {
+    message: string
+  }
+}
+
+export type WorkflowSessionGetLightloopTerminalError =
+  WorkflowSessionGetLightloopTerminalErrors[keyof WorkflowSessionGetLightloopTerminalErrors]
+
+export type WorkflowSessionGetLightloopTerminalResponses = {
+  /**
+   * Light Loop terminal record
+   */
+  200: {
+    status: "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+    instructions: string
+    error?: string
+    createdAt: number
+  }
+}
+
+export type WorkflowSessionGetLightloopTerminalResponse =
+  WorkflowSessionGetLightloopTerminalResponses[keyof WorkflowSessionGetLightloopTerminalResponses]
 
 export type AssetUploadData = {
   body?: {

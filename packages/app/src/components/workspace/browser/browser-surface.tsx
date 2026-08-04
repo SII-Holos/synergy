@@ -26,7 +26,12 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export function BrowserSurface(props: { sessionID: string; routeDirectory?: string; ownerKey: string }) {
+export function BrowserSurface(props: {
+  sessionID: string
+  routeDirectory?: string
+  ownerKey: string
+  onRetryNative?: () => void
+}) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined
   let pendingFitFrame: number | undefined
@@ -152,10 +157,25 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
               <Icon name={getSemanticIcon("browser.main")} class="size-4" />
             </div>
             <div class="browser-empty-title">
-              <Trans id={B.ready.id} message={B.ready.message} />
+              <Show
+                when={browser.hostStatus() === "restarting" || browser.hostStatus() === "failed"}
+                fallback={<Trans id={B.ready.id} message={B.ready.message} />}
+              >
+                <Show
+                  when={browser.hostStatus() === "failed"}
+                  fallback={<Trans id={B.nativeRecovering.id} message={B.nativeRecovering.message} />}
+                >
+                  <Trans id={B.nativeRecoveryFailed.id} message={B.nativeRecoveryFailed.message} />
+                </Show>
+              </Show>
             </div>
             <div class="browser-empty-text">
-              <Trans id={B.waitingForSurface.id} message={B.waitingForSurface.message} />
+              <Show
+                when={browser.hostStatus() === "restarting" || browser.hostStatus() === "failed"}
+                fallback={<Trans id={B.waitingForSurface.id} message={B.waitingForSurface.message} />}
+              >
+                <Trans id={B.nativeRecoveryHint.id} message={B.nativeRecoveryHint.message} />
+              </Show>
             </div>
             <div class="browser-status-pill">{browser.session.connectionStatus}</div>
           </div>
@@ -181,6 +201,11 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
                 {error().severity === "critical" ? lingui._(B.unavailable.id) : lingui._(B.issue.id)}
               </span>
               <span class="min-w-0 flex-1 truncate text-text-weak">{error().message}</span>
+              <Show when={error().code?.startsWith("browser_native_") && props.onRetryNative}>
+                <Button size="small" variant="primary" onClick={() => props.onRetryNative?.()}>
+                  <Trans id={B.retry.id} message={B.retry.message} />
+                </Button>
+              </Show>
               <button
                 type="button"
                 class="text-text-weaker hover:text-text-base"

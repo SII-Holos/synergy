@@ -1,11 +1,40 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { EventEmitter } from "node:events"
 import net from "node:net"
-import { BrowserNetworkGateway, type BrowserProxyDescriptor } from "../../src/browser/network-gateway"
+import {
+  BROWSER_CONNECT_ESTABLISHMENT_TIMEOUT_MS,
+  BROWSER_TUNNEL_IDLE_TIMEOUT_MS,
+  BrowserNetworkGateway,
+  configureBrowserTunnelTimeouts,
+  type BrowserProxyDescriptor,
+} from "../../src/browser/network-gateway"
 import type { BrowserOwner } from "../../src/browser/owner"
 
 afterEach(() => BrowserNetworkGateway.stop())
 
 describe("BrowserNetworkGateway", () => {
+  test("uses a short CONNECT establishment timeout before the long tunnel idle timeout", () => {
+    class SocketFixture extends EventEmitter {
+      timeouts: number[] = []
+      destroyed = false
+      setTimeout(milliseconds: number) {
+        this.timeouts.push(milliseconds)
+        return this
+      }
+      destroy() {
+        this.destroyed = true
+        return this
+      }
+    }
+    const socket = new SocketFixture()
+    configureBrowserTunnelTimeouts(socket as unknown as net.Socket, true)
+    socket.emit("connect")
+
+    expect(socket.timeouts).toEqual([BROWSER_CONNECT_ESTABLISHMENT_TIMEOUT_MS, BROWSER_TUNNEL_IDLE_TIMEOUT_MS])
+    socket.emit("timeout")
+    expect(socket.destroyed).toBe(true)
+  })
+
   test("forwards arbitrary loopback ports without classifying destination addresses", async () => {
     const target = net.createServer()
     const port = await listen(target)

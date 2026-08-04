@@ -119,6 +119,18 @@ Agent request and event-frame protocol bounds are fixed safety invariants rather
 
 Global and per-executor tool concurrency are capped at 512. Tool executor limits are additional ceilings below `toolConcurrency`; omitted executor limits retain their defaults. Runtime shutdown stops new Agent turns, Policy classifications, and ToolTasks first, aborts active work, and bounds ToolTask drain time with `toolCancelGraceMs`. Except for the live-applied `agentWorkers` capacity, execution settings are read at global-runtime startup and require a runtime restart.
 
+### Plugin runtime limits
+
+`pluginRuntimePolicy.limits` in `50-plugins.jsonc` configures the plugin process runtime. Five timeout keys are host-configurable and default to `120000` ms:
+
+- `agentCallMaxRuntimeMs` — maximum duration of a plugin `agent.call`/`agent.start` model invocation
+- `hookTimeoutMs` — per-handler timeout for plugin hook points
+- `contributionInvokeTimeoutMs` — fallback timeout for contribution invocations that declare no `timeoutMs`
+- `shellRunTimeoutMs` — default timeout for plugin `shell.run` commands when the plugin omits `timeoutMs`
+- `taskRunWaitTimeoutMs` — maximum time a plugin `task.run` waits for a delegated task to reach a terminal state
+
+Process-owned `pluginRuntimePolicy.limits` values — startup timeout, heartbeat interval, host-service request timeout, memory monitor limits, and shutdown grace — are applied to the plugin process runtime when it starts and require a runtime restart or reload to change. The five timeout keys above are invocation-level: they resolve in the invoking Scope on each plugin call (or hook trigger), so a `50-plugins.jsonc` change takes effect on the next call.
+
 ## Precedence
 
 From lowest to highest precedence, a scoped config is assembled from:

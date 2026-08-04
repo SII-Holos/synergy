@@ -16,7 +16,7 @@ export const LightLoopTerminalRecord = z.object({
   sessionID: Identifier.schema("session"),
   status: LightLoopTerminalStatus,
   instructions: z.string(),
-  pluginOwner: PluginOwner,
+  pluginOwner: PluginOwner.optional(),
   error: z.string().optional(),
   hookDeliveredAt: z.number().optional(),
   hookError: z.string().optional(),
