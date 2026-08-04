@@ -7,6 +7,7 @@ const root = path.resolve(import.meta.dir, "..")
 const isolated = "test/app-build-css-contract.test.ts"
 const browserOnly = [
   "test/components/note/document-editor-core.test.ts",
+  "test/components/terminal/dispose-reentrancy.test.ts",
   "test/context/font-preference-provider.test.ts",
   "test/pages/fatal-error.test.tsx",
   "test/plugin/builtin-navigation.test.ts",
