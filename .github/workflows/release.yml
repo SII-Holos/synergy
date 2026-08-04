@@ -197,7 +197,7 @@ jobs:
         shell: bash
         run: |
           BUILDER_ARGS=(${{ matrix.builder_args }})
-          if [ "${{ matrix.platform }}" = "win32" ]; then
+          if [ "${{ matrix.platform }}" = "win32" ] && [ -n "${WIN_CSC_LINK:-}" ]; then
             BUILDER_ARGS+=(--config.forceCodeSigning=true)
           fi
           if [ -z "${CSC_LINK:-}" ]; then
@@ -231,7 +231,13 @@ jobs:
       - name: Verify Windows Authenticode signature
         if: ${{ matrix.platform == 'win32' }}
         shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
         run: |
+          if (-not $env:WIN_CSC_LINK) {
+            Write-Host "Windows signing not configured; skipping Authenticode signature verification"
+            exit 0
+          }
           $installer = Get-ChildItem packages/desktop/release/Synergy-win32-x64-*.exe | Select-Object -First 1
           if (-not $installer) { throw "Windows installer was not produced" }
           $signature = Get-AuthenticodeSignature $installer.FullName
