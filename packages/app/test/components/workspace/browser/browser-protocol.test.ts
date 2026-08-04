@@ -50,6 +50,14 @@ describe("browser presentation negotiation", () => {
         remote: false,
         requested: "webrtc",
         capabilities: { native: true, webrtc: false },
+      }),
+    ).toBeNull()
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: false,
+        requested: "webrtc",
+        capabilities: { native: true, webrtc: true },
       })?.kind,
     ).toBe("webrtc")
     expect(

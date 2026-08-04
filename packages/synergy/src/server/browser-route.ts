@@ -117,13 +117,10 @@ function routeState(c: {
       suggestedAction: "Retry native Browser recovery.",
     })
   }
-  if (requestedPresentation === "webrtc" && !presentation) {
-    throw new BrowserProtocolError({
-      code: "browser_webrtc_host_unavailable",
-      message: "The WebRTC Browser Host is not ready.",
-      retryable: true,
-    })
-  }
+  // WebRTC is on-demand: the Host process is started by the control path when
+  // the first interactive command arrives, so an explicit WebRTC request must
+  // not fail here while the capability is still coming up. Only managed-local
+  // native presentation is strict at route time.
   return { directory, owner, presentation, requestedPresentation, nativePresentation }
 }
 

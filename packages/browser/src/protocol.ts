@@ -266,7 +266,9 @@ export function selectBrowserPresentation(input: BrowserPresentationEnvironment)
   const requested = input.requested ?? "auto"
   if (requested !== "auto") {
     const available =
-      requested === "native" ? input.capabilities.native && input.desktopLocalHost && !input.remote : true
+      requested === "native"
+        ? input.capabilities.native && input.desktopLocalHost && !input.remote
+        : input.capabilities.webrtc
     if (!available) return null
     return {
       protocolVersion: BROWSER_PROTOCOL_VERSION,

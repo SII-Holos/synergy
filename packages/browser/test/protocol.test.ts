@@ -77,12 +77,23 @@ describe("browser protocol v2", () => {
         capabilities: { native: true, webrtc: true },
       }),
     ).toBeNull()
+    // An explicit WebRTC request still requires the WebRTC capability: the
+    // route relies on a null selection to surface the retryable
+    // "host unavailable" error instead of a non-retryable command failure.
     expect(
       selectBrowserPresentation({
         desktopLocalHost: true,
         remote: false,
         requested: "webrtc",
         capabilities: { native: true, webrtc: false },
+      }),
+    ).toBeNull()
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: false,
+        requested: "webrtc",
+        capabilities: { native: true, webrtc: true },
       })?.kind,
     ).toBe("webrtc")
   })
