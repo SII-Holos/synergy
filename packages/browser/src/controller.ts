@@ -270,19 +270,27 @@ export class CdpPageController {
         await this.options.transport.send("Page.navigateToHistoryEntry", {
           entryId: await this.historyEntry(command.direction),
         })
-        const settle = await this.settle({ mode: command.settleMode, timeoutMs: command.settleTimeoutMs })
-        const page = await this.pageState()
+        const settle = await this.settle({
+          mode: this.settleModeFor(command.source, command.settleMode),
+          timeoutMs: command.settleTimeoutMs,
+        })
+        const page = await this.safePageState()
         let snapshot: unknown
-        if (command.includeSnapshot !== false) snapshot = await this.snapshot(undefined, 500)
+        if (this.includeSnapshotFor(command.source, command.includeSnapshot) && settle.settled)
+          snapshot = await this.safeSnapshot()
         return { type: "navigation", page, ...(snapshot ? { snapshot } : {}), ...settle }
       }
       case "reload": {
         this.beginLoading()
         await this.options.transport.send("Page.reload", { ignoreCache: command.ignoreCache ?? false })
-        const settle = await this.settle({ mode: command.settleMode, timeoutMs: command.settleTimeoutMs })
-        const page = await this.pageState()
+        const settle = await this.settle({
+          mode: this.settleModeFor(command.source, command.settleMode),
+          timeoutMs: command.settleTimeoutMs,
+        })
+        const page = await this.safePageState()
         let snapshot: unknown
-        if (command.includeSnapshot !== false) snapshot = await this.snapshot(undefined, 500)
+        if (this.includeSnapshotFor(command.source, command.includeSnapshot) && settle.settled)
+          snapshot = await this.safeSnapshot()
         return { type: "navigation", page, ...(snapshot ? { snapshot } : {}), ...settle }
       }
       case "stop":
@@ -705,10 +713,14 @@ export class CdpPageController {
         url: command.url,
       })
     }
-    const settle = await this.settle({ mode: command.settleMode, timeoutMs: command.settleTimeoutMs })
-    const page = await this.pageState()
+    const settle = await this.settle({
+      mode: this.settleModeFor(command.source, command.settleMode),
+      timeoutMs: command.settleTimeoutMs,
+    })
+    const page = await this.safePageState()
     let snapshot: unknown
-    if (command.includeSnapshot !== false) snapshot = await this.snapshot(undefined, 500)
+    if (this.includeSnapshotFor(command.source, command.includeSnapshot) && settle.settled)
+      snapshot = await this.safeSnapshot()
     return {
       type: "navigation",
       page,
@@ -720,6 +732,45 @@ export class CdpPageController {
   private beginLoading(): void {
     this.loading = true
     this.lifecycle.clear()
+  }
+
+  private settleModeFor(
+    source: "user" | "agent" | undefined,
+    explicit: "networkquiet" | "load" | "none" | undefined,
+  ): "networkquiet" | "load" | "none" {
+    if (explicit !== undefined) return explicit
+    // User-initiated navigation (address bar, back/forward, reload from the panel,
+    // session restore) must stay immediate: settling is an agent-tool concern.
+    return source === "user" ? "none" : "networkquiet"
+  }
+
+  private includeSnapshotFor(source: "user" | "agent" | undefined, explicit: boolean | undefined): boolean {
+    if (explicit !== undefined) return explicit
+    return source !== "user"
+  }
+
+  private async safePageState(): Promise<BrowserPage> {
+    try {
+      return await this.pageState()
+    } catch {
+      // Navigation may still be tearing down the execution context; report the
+      // last known loading state instead of failing the whole command.
+      return {
+        id: this.options.pageId,
+        url: "",
+        title: "",
+        isLoading: this.loading,
+        lastActiveAt: this.now(),
+      }
+    }
+  }
+
+  private async safeSnapshot(): Promise<unknown> {
+    try {
+      return await this.snapshot(undefined, 500)
+    } catch {
+      return undefined
+    }
   }
 
   private async settle(options: { mode?: "networkquiet" | "load" | "none"; timeoutMs?: number }): Promise<{
@@ -736,12 +787,20 @@ export class CdpPageController {
     const startedAt = this.now()
     const deadline = startedAt + timeoutMs
     let quietSince = this.now()
+    // Requests that were already in flight when settling began (long-polling,
+    // keep-alive beacons, requests orphaned by a navigation) must not block a
+    // quiet verdict forever; only NEW requests count against quietness.
+    const baselineInflight = new Set(this.inflightRequests)
 
     const isSettled = (): boolean => {
       if (mode === "load") {
         return this.lifecycle.has("load") || (!this.loading && this.lifecycle.size === 0)
       }
-      return !this.loading && this.inflightRequests.size === 0
+      if (this.loading) return false
+      for (const requestId of this.inflightRequests) {
+        if (!baselineInflight.has(requestId)) return false
+      }
+      return true
     }
 
     while (this.now() < deadline) {
@@ -1098,11 +1157,12 @@ export class CdpPageController {
           inflightRequests: this.inflightRequests.size,
         }
     let snapshot: unknown
-    if (action.includeSnapshot !== false) snapshot = await this.snapshot(undefined, 500)
+    if (action.includeSnapshot !== false && settle.settled) snapshot = await this.safeSnapshot()
     return {
       type: "action",
       pageId: this.options.pageId,
       action: action.type,
+      page: await this.safePageState(),
       ...(snapshot ? { snapshot } : {}),
       ...settle,
     }

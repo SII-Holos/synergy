@@ -564,11 +564,37 @@ const BrowserUserNavigateCommandSchema = z
     ...navigationSettleFields,
   })
   .strict()
-const BrowserHistoryCommandSchema = z
-  .object({ type: z.literal("history"), direction: z.enum(["back", "forward"]), ...navigationSettleFields })
+const BrowserUserHistoryCommandSchema = z
+  .object({
+    type: z.literal("history"),
+    direction: z.enum(["back", "forward"]),
+    source: z.literal("user").default("user"),
+    ...navigationSettleFields,
+  })
   .strict()
-const BrowserReloadCommandSchema = z
-  .object({ type: z.literal("reload"), ignoreCache: z.boolean().optional(), ...navigationSettleFields })
+const BrowserUserReloadCommandSchema = z
+  .object({
+    type: z.literal("reload"),
+    ignoreCache: z.boolean().optional(),
+    source: z.literal("user").default("user"),
+    ...navigationSettleFields,
+  })
+  .strict()
+const BrowserBackendHistoryCommandSchema = z
+  .object({
+    type: z.literal("history"),
+    direction: z.enum(["back", "forward"]),
+    source: z.enum(["user", "agent"]).default("agent"),
+    ...navigationSettleFields,
+  })
+  .strict()
+const BrowserBackendReloadCommandSchema = z
+  .object({
+    type: z.literal("reload"),
+    ignoreCache: z.boolean().optional(),
+    source: z.enum(["user", "agent"]).default("agent"),
+    ...navigationSettleFields,
+  })
   .strict()
 const BrowserStopCommandSchema = z.object({ type: z.literal("stop") }).strict()
 const BrowserResumeCommandSchema = z.object({ type: z.literal("resume") }).strict()
@@ -621,8 +647,8 @@ const BrowserFileChooserCommandSchema = z
 
 const browserUserCommandSchemas = [
   BrowserUserNavigateCommandSchema,
-  BrowserHistoryCommandSchema,
-  BrowserReloadCommandSchema,
+  BrowserUserHistoryCommandSchema,
+  BrowserUserReloadCommandSchema,
   BrowserStopCommandSchema,
   BrowserResumeCommandSchema,
   BrowserCloseCommandSchema,
@@ -839,8 +865,8 @@ const BrowserBackendNavigateCommandSchema = z
 
 export const BrowserBackendCommandSchema = z.discriminatedUnion("type", [
   BrowserBackendNavigateCommandSchema,
-  BrowserHistoryCommandSchema,
-  BrowserReloadCommandSchema,
+  BrowserBackendHistoryCommandSchema,
+  BrowserBackendReloadCommandSchema,
   BrowserStopCommandSchema,
   BrowserResumeCommandSchema,
   BrowserCloseCommandSchema,
@@ -890,6 +916,7 @@ export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
       pageId,
       action: nonEmpty,
       snapshot: z.unknown().optional(),
+      page: BrowserPageSchema.optional(),
       ...settleResultFields,
     })
     .strict(),

@@ -22,7 +22,11 @@ export const BrowserActionTool = Tool.define("browser_action", {
         const snapshotResult = snapshot.success && snapshot.data.type === "snapshot" ? snapshot.data : null
         const formatted = snapshotResult ? formatSnapshotText(snapshotResult.elements) : null
         const summary = actionSummary(params.action)
-        const livePage = page
+        const livePage = {
+          url: result.page?.url ?? page.url,
+          title: result.page?.title ?? page.title,
+          loading: result.page?.isLoading ?? page.loading,
+        }
         const settleLine = formatSettleSummary({
           settled: result.settled,
           settleReason: result.settleReason,

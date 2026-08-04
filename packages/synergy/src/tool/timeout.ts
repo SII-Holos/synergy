@@ -45,6 +45,8 @@ export namespace ToolTimeout {
     bashAutoBackgroundMs: 30_000,
   } as const
 
+  const SETTLING_NAVIGATION_ACTIONS = new Set(["goto", "back", "forward", "reload"])
+
   export function create(input: { toolTimeoutMs: number; operationTimeoutMs?: number; source?: Source }): Metadata {
     const operationTimeoutMs = normalizeMs(input.operationTimeoutMs)
     return {
@@ -162,11 +164,13 @@ export namespace ToolTimeout {
           timeoutMs: normalizeMs(args.action?.settleTimeoutMs ?? args.settleTimeoutMs) ?? DEFAULTS.browserSettleMs,
           source: "wait",
         }
-      case "browser_navigation":
+      case "browser_navigation": {
+        if (args.action !== undefined && !SETTLING_NAVIGATION_ACTIONS.has(String(args.action))) return undefined
         return {
           timeoutMs: normalizeMs(args.settleTimeoutMs) ?? DEFAULTS.browserSettleMs,
           source: "wait",
         }
+      }
       case "browser_downloads":
         if (args.action !== "wait") return undefined
         return {

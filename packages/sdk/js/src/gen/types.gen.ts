@@ -7363,6 +7363,13 @@ export type BrowserControlResponse = {
         pageId: string
         action: string
         snapshot?: unknown
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
         settled?: boolean
         settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
         settleElapsedMs?: number
@@ -7423,6 +7430,7 @@ export type BrowserControlRequest = {
     | {
         type: "history"
         direction: "back" | "forward"
+        source?: "user"
         /**
          * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
          */
@@ -7439,6 +7447,7 @@ export type BrowserControlRequest = {
     | {
         type: "reload"
         ignoreCache?: boolean
+        source?: "user"
         /**
          * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
          */
