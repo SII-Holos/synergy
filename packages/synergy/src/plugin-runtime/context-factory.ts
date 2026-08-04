@@ -104,6 +104,9 @@ export function createPluginInvocationContext(input: {
     shell: capabilities.has("shell.execute")
       ? { run: (value) => input.invokeHost("shell.run", value) as never }
       : undefined,
+    runtimeEndpoint: capabilities.has("runtime.endpoint.read")
+      ? { get: () => input.invokeHost("runtime.endpoint.get", {}) as never }
+      : undefined,
     tools: capabilities.has("tool.invoke")
       ? { invoke: (toolId, value) => input.invokeHost("tool.invoke", { toolId, input: value }) as never }
       : undefined,

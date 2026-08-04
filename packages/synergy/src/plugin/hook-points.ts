@@ -49,6 +49,7 @@ defineCapabilityObserver("session.user-message.after", "session.read")
 points.get("session.user-message.after")!.redactErrors = true
 defineCapabilityObserver("agent.call.after", "agent.call")
 points.get("agent.call.after")!.redactErrors = true
+defineCapabilityObserver("runtime.started", "runtime.endpoint.read")
 
 for (const name of [
   "chat.message",

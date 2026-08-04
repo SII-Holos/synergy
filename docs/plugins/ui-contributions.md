@@ -119,6 +119,8 @@ This supports one contribution with multiple stable views, such as a map, one ta
 
 Object-form settings are rendered with the host's design system. Boolean fields use `SettingRow` and `Switch`; strings, numbers, and enums use host form controls and semantic tokens. The schema's top-level description is shown as page help. Saves are optimistic and roll back with a host notification if persistence fails. A plugin component should not reproduce the settings page chrome or form layout.
 
+A custom `ui.settings` component receives `PluginSettingsComponentProps`: the existing `pluginId`, `values`, and `onChange` props plus `context: PluginSettingsSurfaceContext`. The context is the same capability-bound surface contract used by other trusted UI, so Settings can call UI-exposed query/command operations and host confirmation or notification actions without learning the Synergy server URL or token. The host continues passing the legacy props so previously built settings components remain compatible.
+
 ## Host Actions
 
 With approved `ui.hostActions`, trusted UI may call:

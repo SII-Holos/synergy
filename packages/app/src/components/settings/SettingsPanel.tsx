@@ -28,6 +28,7 @@ import type {
   ModelRoleSummary,
   SandboxStatus,
 } from "@ericsanchezok/synergy-sdk/client"
+import type { PluginSettingsComponentProps } from "@ericsanchezok/synergy-plugin"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
@@ -925,16 +926,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 }
 
-type SettingsComponentProps = {
-  pluginId?: string
-  values: Record<string, unknown>
-  onChange: (values: Record<string, unknown>) => void | Promise<void>
-}
-
 function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
-  const componentLoader = createSettingsComponentLoader<Component<SettingsComponentProps>>()
+  const componentLoader = createSettingsComponentLoader<Component<PluginSettingsComponentProps>>()
   const comp = componentLoader.component
   const loading = componentLoader.loading
 
@@ -967,8 +962,8 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   createEffect(() => {
     const current = section()
     void componentLoader.load({
-      component: current.component as Component<SettingsComponentProps> | undefined,
-      loader: current.loader as (() => Promise<{ default: Component<SettingsComponentProps> }>) | undefined,
+      component: current.component as Component<PluginSettingsComponentProps> | undefined,
+      loader: current.loader as (() => Promise<{ default: Component<PluginSettingsComponentProps> }>) | undefined,
     })
   })
 
@@ -1017,6 +1012,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
             >
               <Dynamic
                 component={c()}
+                context={section().context!}
                 pluginId={section().pluginId}
                 values={(values() ?? {}) as Record<string, unknown>}
                 onChange={(next: Record<string, unknown>) => updateValues(next)}
