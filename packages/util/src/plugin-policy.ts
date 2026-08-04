@@ -11,6 +11,11 @@ export interface RuntimeLimits {
   heartbeatIntervalMs: number
   maxMemoryMb: number
   memorySampleIntervalMs: number
+  agentCallMaxRuntimeMs: number
+  hookTimeoutMs: number
+  contributionInvokeTimeoutMs: number
+  shellRunTimeoutMs: number
+  taskRunWaitTimeoutMs: number
 }
 
 export type RuntimeLimitOverrides = Partial<RuntimeLimits>
@@ -26,6 +31,11 @@ export const DEFAULT_PLUGIN_RUNTIME_LIMITS: RuntimeLimits = {
   heartbeatIntervalMs: 5_000,
   maxMemoryMb: 512,
   memorySampleIntervalMs: 5_000,
+  agentCallMaxRuntimeMs: 120_000,
+  hookTimeoutMs: 120_000,
+  contributionInvokeTimeoutMs: 120_000,
+  shellRunTimeoutMs: 120_000,
+  taskRunWaitTimeoutMs: 120_000,
 }
 
 export interface PluginTrustDecision {

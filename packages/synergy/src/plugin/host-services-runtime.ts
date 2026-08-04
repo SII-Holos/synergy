@@ -45,6 +45,8 @@ import {
   startPluginBlueprint,
   startPluginTask,
 } from "./host-services"
+import { DEFAULT_LIMITS } from "../plugin-runtime/health"
+import { resolvePluginRuntimeLimits } from "./runtime-limits"
 
 const capabilityByMethod = {
   "session.get": "session.read",
@@ -78,7 +80,6 @@ const capabilityByMethod = {
 
 const AGENT_CALL_MAX_INPUT_CHARS = 32_000
 const AGENT_CALL_MAX_OUTPUT_CHARS = 16_000
-const AGENT_CALL_MAX_RUNTIME_MS = 120_000
 
 function pluginHostServiceError(code: string, message: string) {
   return Object.assign(new Error(message), { name: "PluginHostServiceError", code })
@@ -135,8 +136,8 @@ async function resolvePluginAgentCall(input: PluginHostServiceInvocationInput, v
   const requestedOutput = positiveConstraint(value.maxOutputChars, maxOutputChars, maxOutputChars)
   const maxRuntimeMs = positiveConstraint(
     constraints.maxRuntimeMs,
-    AGENT_CALL_MAX_RUNTIME_MS,
-    AGENT_CALL_MAX_RUNTIME_MS,
+    input.limits?.agentCallMaxRuntimeMs ?? DEFAULT_LIMITS.agentCallMaxRuntimeMs,
+    input.limits?.agentCallMaxRuntimeMs ?? DEFAULT_LIMITS.agentCallMaxRuntimeMs,
   )
   const timeoutMs = positiveConstraint(value.timeoutMs, maxRuntimeMs, maxRuntimeMs)
   const requestedRole = value.modelRole
@@ -459,9 +460,13 @@ async function runPluginTask(input: PluginHostServiceInvocationInput, value: Rec
     pluginDir: input.pluginDir,
     context: await resolveStartParent(input, "task.run", value),
     request,
+    limits: input.limits,
   })
   const active = Cortex.get(handle.taskId)
-  const timeoutSeconds = Math.ceil(((active?.timeoutMs ?? request.timeoutMs ?? 120_000) + 5_000) / 1_000)
+  const taskTimeoutMs = active?.timeoutMs ?? request.timeoutMs
+  const waitCeilingMs = input.limits?.taskRunWaitTimeoutMs ?? DEFAULT_LIMITS.taskRunWaitTimeoutMs
+  const waitMs = taskTimeoutMs === undefined ? waitCeilingMs : Math.min(taskTimeoutMs, waitCeilingMs)
+  const timeoutSeconds = Math.ceil((waitMs + 5_000) / 1_000)
   const completed = Cortex.waitFor(handle.taskId, timeoutSeconds)
   const onAbort = () => {
     void cancelPluginTask({
@@ -578,7 +583,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   }
   const command = value.command as [string, ...string[]]
   if (!command[0]) throw new Error("shell.run requires a non-empty executable")
-  const timeoutMs = value.timeoutMs ?? 120_000
+  const timeoutMs = value.timeoutMs ?? input.limits?.shellRunTimeoutMs ?? DEFAULT_LIMITS.shellRunTimeoutMs
   if (!Number.isSafeInteger(timeoutMs) || Number(timeoutMs) <= 0) {
     throw new Error("shell.run timeoutMs must be a positive integer")
   }
@@ -640,6 +645,9 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
 export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
   assertCapability(input)
   return inScope(input, async () => {
+    // Host-service invocation limits resolve in the invoking Scope so the
+    // shared per-plugin runtime does not pin one Scope's limits for others.
+    if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
     const value = params(input)
     if (input.method === "runtime.endpoint.get") {
       if (
@@ -770,6 +778,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         pluginDir: input.pluginDir,
         context: await resolveStartParent(input, "task.start", value),
         request: value as never,
+        limits: input.limits,
       })
     }
 
@@ -817,6 +826,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         context: runtimeContext,
         pluginDir: input.pluginDir,
         request: { tool: toolId, args: value.input },
+        limits: input.limits,
       })
     }
   })

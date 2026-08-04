@@ -10,7 +10,7 @@ import type {
 import type { ToolInvokeInput, ToolResult } from "@ericsanchezok/synergy-plugin/tool"
 import { Agent } from "@/agent/agent"
 import { AgentDelegation } from "@/agent/delegation"
-import { Config } from "@/config/config"
+import type { RuntimeLimits } from "@ericsanchezok/synergy-util/plugin-policy"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { ApprovalPolicy } from "@/control-profile/approval"
 import { Cortex } from "@/cortex"
@@ -25,7 +25,7 @@ import { SessionProcessor } from "@/session/processor"
 import { readPluginManifest } from "./spec-resolver"
 import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
-import { resolveRuntimeLimits } from "../plugin-runtime/health"
+import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../cortex/plugin-task"
 import { startBlueprint, getBlueprint, cancelBlueprint } from "../blueprint/plugin-adapter"
 import { SessionWorkflowService } from "../session/workflow"
@@ -53,6 +53,7 @@ export async function startPluginTask(input: {
   pluginDir: string
   context: RuntimeContext
   request: PluginTaskStartInput
+  limits?: RuntimeLimits
 }): Promise<PluginTaskHandle> {
   const request = normalizeTaskStartInput(input.request)
   const taskPermission = await assertTaskPermission(input.pluginDir, request)
@@ -78,8 +79,11 @@ export async function startPluginTask(input: {
   await askForTask(input.context, request)
 
   const model = request.model ?? (await Agent.getAvailableModel(agent)) ?? (await parentModel(input.context))
-  const limits = await defaultPluginRuntimeLimits(input.pluginDir)
-  const timeoutMs = request.timeoutMs ?? taskPermission.maxRuntimeMs ?? limits.taskRunTimeoutMs
+  const timeoutMs =
+    request.timeoutMs ??
+    taskPermission.maxRuntimeMs ??
+    input.limits?.taskRunTimeoutMs ??
+    DEFAULT_LIMITS.taskRunTimeoutMs
   const task = await Cortex.launch({
     description: request.description,
     prompt: request.prompt,
@@ -196,6 +200,7 @@ export async function invokePluginTool(input: {
   context: RuntimeContext
   pluginDir?: string
   request: ToolInvokeInput
+  limits?: RuntimeLimits
 }): Promise<ToolResult> {
   const toolName = input.request.tool
   if (!toolName || typeof toolName !== "string") throw new Error("tools.invoke requires a tool name")
@@ -225,7 +230,8 @@ export async function invokePluginTool(input: {
   const resolved = tools[toolName] as any
   if (!resolved?.execute) throw new Error(`Tool "${toolName}" is not available to this plugin context`)
 
-  const timeoutMs = input.request.timeoutMs ?? (await defaultPluginToolInvocationTimeoutMs(input.pluginDir))
+  const timeoutMs =
+    input.request.timeoutMs ?? input.limits?.toolInvocationTimeoutMs ?? DEFAULT_LIMITS.toolInvocationTimeoutMs
   const signal = input.context.abort
     ? AbortSignal.any([input.context.abort, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs)
@@ -383,7 +389,6 @@ export async function startLightLoop(input: {
 
   const execAgent = (await Agent.get(request.executionAgent.trim()))!
   const model = request.model ?? (await Agent.getAvailableModel(execAgent)) ?? (await parentModel(input.context))
-  const limits = await defaultPluginRuntimeLimits(input.pluginDir)
   const timeoutMs = request.budget.maxRuntimeMs
 
   const task = await Cortex.prepare({
@@ -670,13 +675,4 @@ function normalizeTaskStartInput(input: PluginTaskStartInput): PluginTaskStartIn
     correlationId: input.correlationId.trim(),
     visibility: input.visibility ?? "visible",
   }
-}
-
-async function defaultPluginToolInvocationTimeoutMs(pluginDir?: string): Promise<number> {
-  return (await defaultPluginRuntimeLimits(pluginDir)).toolInvocationTimeoutMs
-}
-
-async function defaultPluginRuntimeLimits(pluginDir?: string) {
-  const config = await Config.current().catch(() => undefined)
-  return resolveRuntimeLimits(config?.pluginRuntimePolicy?.limits)
 }
