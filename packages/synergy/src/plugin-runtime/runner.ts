@@ -14,7 +14,7 @@ import {
   type RuntimeActivationData,
   type RuntimeInvocationContextData,
 } from "./protocol.js"
-import { createPluginInvocationContext } from "./context-factory.js"
+import { contributionGatedCapabilities, createPluginInvocationContext } from "./context-factory.js"
 
 const entryPath = process.argv[2]
 let definition: PluginDefinition | undefined
@@ -78,7 +78,7 @@ async function activate(input: RuntimeActivationData) {
   heartbeat.unref?.()
   post({
     type: "ready",
-    protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
+    protocolVersion: input.protocolVersion,
     generation: input.generation,
     handlerIds: [...definition.handlerIds].sort(),
   })
@@ -123,11 +123,7 @@ function contextFor(
       protocolVersion: activation?.protocolVersion ?? PLUGIN_RUNTIME_PROTOCOL_VERSION,
     },
     signal: abort,
-    capabilities: new Set(
-      (activation?.capabilities ?? []).filter(
-        (capability) => capability !== "agent.call" || contribution.requires?.includes(capability),
-      ),
-    ),
+    capabilities: contributionGatedCapabilities(activation?.capabilities ?? [], contribution),
     log: logger(),
     invokeHost: (method, params) => hostRequest(requestId, method, params),
   })
@@ -150,7 +146,7 @@ async function invoke(message: Extract<HostToPlugin, { type: "invoke" }>) {
   aborts.set(message.requestId, controller)
   try {
     const contribution = handler(message.handlerId)
-    if (contribution.kind === "lifecycle.uninstall") {
+    if (contribution.kind === "lifecycle.install" || contribution.kind === "lifecycle.uninstall") {
       return await contribution.handler(contextFor(message.requestId, message.context, controller.signal, contribution))
     }
     return await contribution.handler(

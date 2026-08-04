@@ -128,7 +128,7 @@ async function buildUI(pluginDir: string, distDir: string, definition: PluginDef
       entrypoints: [entry],
       outdir: outputDirectory,
       target: "browser",
-      naming: "index.js",
+      naming: "index.[ext]",
       external: ["solid-js", "solid-js/web", "solid-js/store"],
       plugins: [solidCompilerPlugin()],
     })

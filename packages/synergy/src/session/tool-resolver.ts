@@ -29,6 +29,7 @@ import { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
 import { SessionBounds } from "./bounds"
 import { SessionToolInput } from "./tool-input"
+import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { EnforcementGate, type Capability } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
@@ -1534,7 +1535,11 @@ export namespace ToolResolver {
                 // bypass the guard as documented (issue #1006).
                 ;(ctx.extra as any).controlProfile = profileId
                 const synergyRoot = Global.Path.root
-                const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
+                const trustedRoots = Scope.Root.executionRoots(
+                  ScopeContext.current.scope,
+                  workspaceInfo,
+                  SkillSourceProfile.allRootPaths(workspace),
+                )
                 const pluginToolIds = await currentPluginToolIds()
                 const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
@@ -1611,6 +1616,7 @@ export namespace ToolResolver {
                         extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
                         protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                         dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+                        stripDefaultHomeDenyRoot: true,
                         backend: sandbox.backend,
                       })
                       if (wrapper.skipReason && sandbox.fallback !== "deny") {
@@ -1790,7 +1796,11 @@ export namespace ToolResolver {
                   })
                   // Same effective-profile carry as the builtin path (issue #1006).
                   ;(ctx.extra as any).controlProfile = profileId
-                  const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
+                  const trustedRoots = Scope.Root.executionRoots(
+                    ScopeContext.current.scope,
+                    workspaceInfo,
+                    SkillSourceProfile.allRootPaths(workspace),
+                  )
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({

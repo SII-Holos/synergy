@@ -261,6 +261,16 @@ describe("resolveVariantDisplay", () => {
     expect(resolveVariantDisplay({ ready: true, value: undefined }, undefined, "xhigh")).toBe("xhigh")
   })
 
+  test("does not display a configured default unavailable on the current model", () => {
+    expect(resolveVariantDisplay({ ready: true, value: undefined }, undefined, "max", ["low", "medium", "high"])).toBe(
+      undefined,
+    )
+  })
+
+  test("does not filter defaults when the available variant set is unknown", () => {
+    expect(resolveVariantDisplay({ ready: true, value: undefined }, "high", "xhigh", undefined)).toBe("high")
+  })
+
   test("returns undefined when no variant is configured", () => {
     expect(resolveVariantDisplay({ ready: true, value: undefined }, undefined, undefined)).toBeUndefined()
   })

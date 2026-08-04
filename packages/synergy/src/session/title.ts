@@ -4,8 +4,7 @@ import { Log } from "../util/log"
 import type { Info } from "./types"
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
-import { AgentTurn } from "./agent-turn"
-import { iife } from "../util/iife"
+import { AgentCall } from "../agent/call"
 import { LoopJob } from "./loop-job"
 import { Turn } from "./turn"
 import { SessionHistory } from "./history"
@@ -84,20 +83,16 @@ export async function ensureTitle(input: {
 
   const agent = await Agent.get("title")
   if (!agent) return
-  const result = await AgentTurn.stream({
-    agent,
+  const fallbackModel = await Provider.getModel(input.providerID, input.modelID).catch(() => undefined)
+  const result = await AgentCall.text({
+    agent: "title",
     user: firstRealUser.info as MessageV2.User,
-    system: [],
-    small: true,
-    toolDefinitions: [],
-    model: await iife(async () => {
-      const agentModel = await Agent.getAvailableModel(agent)
-      if (agentModel) return await Provider.getModel(agentModel.providerID, agentModel.modelID)
-      return await Provider.getModel(input.providerID, input.modelID)
-    }),
-    abort: input.abort,
-    sessionID: input.session.id,
+    sessionId: input.session.id,
+    fallbackModel,
+    signal: input.abort,
+    timeoutMs: 120_000,
     retries: 2,
+    maxOutputChars: 200,
     messages: [
       {
         role: "user",
@@ -105,8 +100,11 @@ export async function ensureTitle(input: {
       },
       ...MessageV2.toModelMessage(contextMessages),
     ],
+  }).catch((error) => {
+    log.error("failed to generate title", { error })
+    return undefined
   })
-  const text = await AgentTurn.collectText(result).catch((err) => log.error("failed to generate title", { error: err }))
+  const text = result?.text
   if (text) {
     const { Session } = await import(".")
     return Session.update(input.session.id, (draft) => {

@@ -76,20 +76,21 @@ printf 'extra context' | synergy send "Use stdin too"
 
 Important options:
 
-| Option                           | Meaning                                                                                    |
-| -------------------------------- | ------------------------------------------------------------------------------------------ |
-| `--attach <url>`                 | Use a running server instead of a private ephemeral server                                 |
-| `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation |
-| `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                |
-| `-s`, `--session <id>`           | Continue a specific session                                                                |
-| `--agent <name>`                 | Select a primary agent; subagent names are rejected as primary choices                     |
-| `-m`, `--model <provider/model>` | Override the model                                                                         |
-| `--variant <name>`               | Select provider-specific reasoning/model variant                                           |
-| `-f`, `--file <path>`            | Attach a file or directory; repeatable                                                     |
-| `--command <name>`               | Run a configured Synergy command, using the message as arguments                           |
-| `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                       |
-| `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                            |
-| `--port <number>`                | Port for the private local server; omitted means an available port                         |
+| Option                           | Meaning                                                                                                                                                         |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--attach <url>`                 | Use a running server instead of a private ephemeral server                                                                                                      |
+| `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation                                                                      |
+| `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                                                                                     |
+| `-s`, `--session <id>`           | Continue a specific session                                                                                                                                     |
+| `--agent <name>`                 | Select a primary agent; subagent names are rejected as primary choices                                                                                          |
+| `-m`, `--model <provider/model>` | Override the model                                                                                                                                              |
+| `--variant <name>`               | Select provider-specific reasoning/model variant                                                                                                                |
+| `-f`, `--file <path>`            | Attach a file or directory; repeatable                                                                                                                          |
+| `--command <name>`               | Run a configured Synergy command, using the message as arguments                                                                                                |
+| `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                                                                                            |
+| `--workflow lightloop`           | Run the message as a Light Loop workflow task: the session enables `loop_stop` and a reviewer loop, and `send` exits when the workflow reaches a terminal state |
+| `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                                                                                                 |
+| `--port <number>`                | Port for the private local server; omitted means an available port                                                                                              |
 
 When `--scope` is omitted, `send` uses the launch directory (or `SYNERGY_CWD`). An existing directory is resolved and registered as a project Scope when needed, even if Synergy has not opened it before; a missing directory resolves to the home Scope. Pass `--scope` to select an already registered Scope without registering the launch directory. With `--attach`, the target runtime owns and validates the Scope ID.
 
@@ -134,7 +135,7 @@ All domains are importable and default to `merge` mode. `append` recursively mer
 
 JSONC comments in existing domain files are preserved. Committed files trigger a runtime config reload; reload failure does not roll back the committed changes.
 
-The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex backend. The `openai` provider uses OpenAI Platform API-key credentials. Their login, storage, usage, and billing semantics are intentionally separate.
+The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex backend. The `openai` provider uses OpenAI Platform API-key credentials. The `grok` provider uses xAI subscription OAuth credentials (SuperGrok / X Premium+) against the OpenAI-compatible `https://api.x.ai/v1` API. Their login, storage, usage, and billing semantics are intentionally separate.
 
 See [Configuration](configuration.md) for files, precedence, domains, and instruction discovery.
 
@@ -224,12 +225,16 @@ Local source builds do not have signed release manifests; use an installed relea
 | `synergy uninstall`        | Remove the installed product after confirmation/options                                    |
 | `synergy generate`         | Generate supported artifacts used by development/release workflows                         |
 
-`synergy upgrade` preserves the detected installation channel. Package-manager installations use their owning manager, Desktop installations defer to the Desktop updater, and standalone CLI installations with the binary at `~/.synergy/bin/synergy` rerun the official installer pinned to the requested release's `vX.Y.Z` GitHub tag. Standalone upgrades therefore require a published GitHub release tag and do not use an npm-only dev or preview version's installer. Override detection with `--method <npm|yarn|pnpm|bun|brew|desktop|standalone>`. If the installation method cannot be determined, the command stops with recovery guidance instead of attempting an unknown upgrade path.
+`synergy doctor` lists the current installation method, every detected installation channel (`npm`, `yarn`, `pnpm`, `bun`, `desktop`, or `standalone`) with its version and, where available, its executable, plus the `synergy` candidates on PATH. It exits nonzero when no supported installation is detected, when multiple channels coexist, or when an installed version cannot be verified. A PATH-first mismatch (the first `synergy` on PATH is not the current CLI) is reported as a warning. Homebrew's `synergy` formula is unrelated to this project and is not detected or managed.
+
+`synergy upgrade` preserves the detected installation channel. Supported package-manager installations use their owning manager, Desktop installations defer to the Desktop updater, and standalone CLI installations rerun the official installer pinned to the requested release's `vX.Y.Z` GitHub tag. Standalone upgrades therefore require a published GitHub release tag and do not use an npm-only dev or preview version's installer. Override detection with `--method <npm|yarn|pnpm|bun|desktop|standalone>`; if multiple channels coexist and no override is provided, upgrade exits nonzero instead of guessing. Installer and package-manager warning checks are advisory and fail open, so probe failures do not block installation.
+
+`synergy uninstall` removes the selected installation channel and, by default, the shared data, cache, config, and state directories; the existing `--keep-data` and `--keep-config` options still preserve the corresponding directories. Pass `--installation-only` to remove only the selected channel while preserving shared data, cache, config, and state. Use `--method <npm|yarn|pnpm|bun|desktop|standalone>` to select the channel when multiple are installed. Package-manager channels are removed through their owning package manager. Desktop removal cleans only the CLI link or Windows PATH entry and prints platform-specific app removal guidance. Standalone removal deletes only installer-owned runtime paths, preserves shared sandbox helpers and user data, removes all exact PATH entries written by the installer, and defers deletion of a running Windows executable until the process exits.
 
 `debug` and migration commands are maintainer-oriented. Prefer stable product commands and APIs for application integrations.
 
 ## Plugins
 
-`synergy plugin` includes create, add, remove, update, build, sign, pack, list, search, doctor, validate, dev, runtime, test, publish-market, entry, info, permissions, and approval commands. `synergy plugin approve <id>` fetches the server approval review for a configured plugin and submits the opaque `reviewToken` through `POST /api/plugins/approve`; it does not send manifest, capability, source, or path data. `list` and `info` show approval-disabled plugins with their canonical identity and `Needs approval` state. Installed plugins can also contribute their own top-level CLI commands.
+`synergy plugin` includes create, add, remove, retry-install, update, build, sign, pack, list, search, doctor, validate, dev, runtime, test, publish-market, entry, info, permissions, and approval commands. `synergy plugin approve <id>` fetches the server approval review for a configured plugin and submits the opaque `reviewToken` through `POST /api/plugins/approve`; it does not send manifest, capability, source, or path data. `list` and `info` show approval-disabled plugins with their canonical identity and `Needs approval` state. Installed plugins can also contribute their own top-level CLI commands. `synergy plugin retry-install <id>` re-queues a failed or pending `lifecycle.install`; the host delivers it at the next server start or plugin runtime reload. It errors instead when the plugin's lockfile generation no longer matches the installed generation — reinstall or update the plugin to retry in that case.
 
 The canonical authoring and command reference is [Plugin documentation](../plugins/README.md).

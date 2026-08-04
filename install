@@ -583,6 +583,46 @@ print_message() {
     echo -e "${color}${message}${NC}"
 }
 
+package_manager_channel_version() {
+    local manager="$1"
+    local output=""
+
+    command -v "$manager" >/dev/null 2>&1 || return 1
+    case "$manager" in
+        npm) output=$(npm list -g --depth=0 @ericsanchezok/synergy 2>/dev/null) || return 1 ;;
+        yarn) output=$(yarn global list --pattern @ericsanchezok/synergy 2>/dev/null) || return 1 ;;
+        pnpm) output=$(pnpm list -g --depth=0 @ericsanchezok/synergy 2>/dev/null) || return 1 ;;
+        bun) output=$(bun pm ls -g 2>/dev/null) || return 1 ;;
+        *) return 1 ;;
+    esac
+
+    [[ "$output" == *"@ericsanchezok/synergy"* ]] || return 1
+    if [[ "$output" =~ @ericsanchezok/synergy@([0-9][0-9A-Za-z.+-]*) ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
+    else
+        printf '%s\n' "version unknown"
+    fi
+}
+
+warn_about_package_manager_installations() {
+    local manager version
+    local channels=""
+    for manager in npm yarn pnpm bun; do
+        if version=$(package_manager_channel_version "$manager"); then
+            channels="${channels}\n  - ${manager}: ${version}"
+        fi
+    done
+
+    [ -n "$channels" ] || return 0
+    print_message warning "${ORANGE}Warning: another Synergy installation channel is already present.${NC}"
+    printf '%b\n' "$channels"
+    if command -v synergy >/dev/null 2>&1; then
+        print_message warning "${MUTED}  - PATH currently resolves synergy to: $(command -v synergy)${NC}"
+    fi
+    print_message warning "${MUTED}The standalone installer will continue and will not remove other installations.${NC}"
+    print_message warning "${MUTED}After installation, run 'synergy doctor' and remove extra channels with 'synergy uninstall --installation-only --method <channel>'.${NC}"
+}
+
 is_linux_install() {
     [[ "${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}" == Linux* ]]
 }
@@ -1063,7 +1103,9 @@ install_from_binary() {
     fi
 }
 
+
 install_synergy
+warn_about_package_manager_installations || true
 
 
 add_to_path() {

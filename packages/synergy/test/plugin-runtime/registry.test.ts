@@ -1,3 +1,4 @@
+import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
 import { describe, expect, test } from "bun:test"
 import { PluginRuntimeRegistry, pluginRuntimeKey, type PluginRuntimeEntry } from "../../src/plugin-runtime/registry"
 
@@ -12,6 +13,7 @@ function entry(version: string, generation: string): PluginRuntimeEntry {
     handlerIds: [],
     inFlight: 0,
     startedAt: Date.now(),
+    limits: DEFAULT_PLUGIN_RUNTIME_LIMITS,
   }
 }
 

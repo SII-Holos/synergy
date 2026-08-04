@@ -2,6 +2,7 @@ import * as os from "os"
 import {
   DEFAULT_PROTECTED_PATHS,
   defaultRuntimeReadRoots,
+  joinPathLike,
   protectedMetadataUnderWritableRoot,
   PROTECTED_METADATA_PATH_NAMES,
   isMetadataWriteDenied,
@@ -43,6 +44,8 @@ export interface SandboxPolicyInput {
   approvedWritePaths: string[]
   approvedNetwork: boolean
   approvedUnixSockets: string[]
+  protectedPaths?: string[]
+  dataDenyRoots?: string[]
 }
 
 /**
@@ -64,8 +67,9 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
   const readableRoots: string[] = []
   const writableRoots: string[] = []
   const readOnlySubpaths: string[] = []
-  const protectedPaths: string[] = DEFAULT_PROTECTED_PATHS(homedir, input.workspace)
-  const dataDenyRoots: string[] = [homedir]
+  const explicitProtected = input.protectedPaths !== undefined
+  const protectedPaths: string[] = input.protectedPaths ?? DEFAULT_PROTECTED_PATHS(homedir, input.workspace)
+  const dataDenyRoots: string[] = input.dataDenyRoots ?? [homedir]
 
   // Always include platform default read roots
   const platformRoots = defaultRuntimeReadRoots(homedir)
@@ -104,6 +108,17 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
     }
   }
 
+  // Every writable root (including additional project folders) keeps its own
+  // metadata directory read-only. DEFAULT_PROTECTED_PATHS only covers the
+  // primary workspace, so each additional writable root's `.git` must be
+  // registered explicitly or it would become writable by virtue of being
+  // inside a writable root mount.
+  if (!explicitProtected) {
+    for (const root of writableRoots) {
+      const gitPath = joinPathLike(root, ".git")
+      if (!protectedPaths.includes(gitPath)) protectedPaths.push(gitPath)
+    }
+  }
   // Read-only subpaths: protect critical files inside writable roots.
   // For each writable root, ensure its protected metadata subpaths
   // become read-only subpaths in the profile.

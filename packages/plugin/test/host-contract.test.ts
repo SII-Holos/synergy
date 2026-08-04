@@ -61,6 +61,8 @@ import {
   type PluginTaskStartInput,
   type PluginToolResult,
   type PluginSurfaceContext,
+  type PluginSettingsSurfaceContext,
+  type PluginRuntimeEndpoint,
 } from "../../src/index.ts"
 
 async function useHostServices(context: PluginInvocationContext) {
@@ -88,15 +90,21 @@ async function useHostServices(context: PluginInvocationContext) {
     timeoutMs: 1_000,
   })
 
+  const endpoint: PluginRuntimeEndpoint = await context.runtimeEndpoint!.get()
+
   const result: PluginToolResult = {
     output: shellResult.stdout,
     attachments: [attachment],
   }
-  return { background, snapshot, result, stderr: shellResult.stderr, exitCode: shellResult.exitCode }
+  return { background, snapshot, result, endpoint, stderr: shellResult.stderr, exitCode: shellResult.exitCode }
 }
 
 async function replaceSurfaceSettings(settings: PluginSurfaceContext["settings"]) {
   await settings.replace({ layout: "dense" })
+}
+
+function readSettingsSurface(context: PluginSettingsSurfaceContext) {
+  return context.surface.kind
 }
 
 // @ts-expect-error start requires explicit correlation ownership; only run may omit it.
@@ -108,6 +116,7 @@ const invalidStart: PluginTaskStartInput = {
 void invalidStart
 void useHostServices
 void replaceSurfaceSettings
+void readSettingsSurface
 
 const transformHandler: (
   input: PluginHookPointInputs["experimental.chat.system.transform"],

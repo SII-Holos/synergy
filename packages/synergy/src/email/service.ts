@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import nodemailer from "nodemailer"
 import type { Transporter } from "nodemailer"
 import z from "zod"
@@ -108,9 +109,31 @@ export namespace Email {
     }
   }
 
+  /**
+   * Transport cache key built from non-sensitive identity fields only, so the
+   * password never persists in module state. A one-way fingerprint of the
+   * password is included so credential rotation rebuilds the pooled transport
+   * instead of reusing a connection authenticated with the old password.
+   */
+  export function transportIdentityKey(config: {
+    host: string
+    port: number
+    secure: boolean
+    username: string
+    password: string
+  }): string {
+    return JSON.stringify({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      username: config.username,
+      passwordFingerprint: createHash("sha256").update(config.password).digest("hex"),
+    })
+  }
+
   async function getTransport() {
     const config = await resolveConfig()
-    const nextKey = JSON.stringify(config)
+    const nextKey = transportIdentityKey(config)
     if (pooledTransport && transportKey === nextKey) return { transporter: pooledTransport, config }
 
     closePool()
