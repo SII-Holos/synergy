@@ -8,21 +8,26 @@ let currentBounds = { x: 0, y: 0, width: 0, height: 0 }
 let resizePage: ((width: number, height: number) => void) | undefined
 let failNewViews = false
 let nextControlError: Error | null = null
+let failDispose = false
 let viewCreationAttempts = 0
 
 class MockDebugger extends EventEmitter {
   attached = false
   rejectCommands = false
+  attachCalls = 0
+  detachCalls = 0
 
   isAttached() {
     return this.attached
   }
 
   attach() {
+    this.attachCalls++
     this.attached = true
   }
 
   detach() {
+    this.detachCalls++
     this.attached = false
   }
 
@@ -69,9 +74,14 @@ class MockWebContents extends EventEmitter {
   stop() {
     this.stopped++
   }
-
   reload() {
     this.reloads++
+  }
+
+  forcefullyCrashRenderer() {
+    if (this.destroyed) return
+    this.destroyed = true
+    this.emit("destroyed")
   }
 
   close() {
@@ -118,7 +128,9 @@ mock.module("electron", () => ({
 mock.module("../src/browser-host-diagnostics.js", () => ({
   BrowserHostDiagnostics: class {
     async start() {}
-    async dispose() {}
+    async dispose() {
+      if (failDispose) throw new Error("diagnostics dispose failed")
+    }
   },
 }))
 
@@ -138,11 +150,13 @@ mock.module("../src/browser-webcontents-control.js", () => ({
       return { type: "void" }
     }
 
-    async dispose() {}
+    async dispose() {
+      if (failDispose) throw new Error("control dispose failed")
+    }
   },
 }))
 
-const { BrowserNativePagePool } = await import("../src/browser-native-page-pool.js")
+const { BrowserNativePagePool, MAX_RECOVERY_BUDGET } = await import("../src/browser-native-page-pool.js")
 
 function input(ownerKey: string, emit: (event: any) => void = () => undefined) {
   return {
@@ -285,6 +299,98 @@ describe("Browser native page pool", () => {
     await pool.retry("budget", "page-budget")
 
     expect(events.filter((event) => event.type === "host.status").at(-1)?.status).toBe("ready")
+    await pool.destroy()
+  })
+  test("bounds the healthy-reload path so a wedged renderer cannot reload forever", async () => {
+    views.length = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ unresponsiveGraceMs: 1 })
+    await pool.create(input("healthy-reload", (event) => events.push(event)))
+    const contents = views.at(-1)!.webContents
+
+    // Each unresponsive episode succeeds its CDP probe (healthy path), so the
+    // pool reloads. Repeat until the shared recovery budget is exhausted.
+    for (let i = 0; i <= MAX_RECOVERY_BUDGET; i++) {
+      contents.emit("unresponsive")
+      await until(
+        () =>
+          contents.reloads === i + 1 ||
+          events.some((event) => event.type === "host.status" && event.status === "failed"),
+      )
+      if (events.some((event) => event.type === "host.status" && event.status === "failed")) break
+      contents.emit("responsive")
+    }
+
+    await until(() => events.some((event) => event.type === "host.status" && event.status === "failed"))
+    expect(contents.reloads).toBeLessThanOrEqual(MAX_RECOVERY_BUDGET)
+    expect(events.filter((event) => event.type === "host.status" && event.status === "failed")).toHaveLength(1)
+    expect(events.some((event) => event.type === "page.error" && /unresponsive/.test(event.message))).toBe(true)
+    await pool.destroy()
+  })
+
+  test("does not reset the navigation retry budget on mid-navigation loading events", async () => {
+    views.length = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ navigationTimeoutMs: 2 })
+    await pool.create(input("redirect-loop", (event) => events.push(event)))
+    const contents = views.at(-1)!.webContents
+
+    // A redirect fires multiple did-start-loading events; the retry counter
+    // must survive them so the watchdog reloads only once.
+    contents.emit("did-start-loading")
+    contents.emit("did-start-loading")
+    await until(() => contents.reloads === 1)
+    contents.emit("did-start-loading")
+    await until(() => events.some((event) => event.type === "page.error" && /automatic retry/.test(event.message)))
+
+    expect(contents.reloads).toBe(1)
+    expect(contents.destroyed).toBe(false)
+    await pool.destroy()
+  })
+
+  test("stops rebuilding after the recovery budget even when new generations succeed", async () => {
+    views.length = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0] })
+    await pool.create(input("rebuild-loop", (event) => events.push(event)))
+
+    // Each new generation immediately crashes, so every recovery round
+    // rebuilds successfully but never reaches ready. The budget must still
+    // stop the loop. Wait for each recovery flight to fully finish (ready)
+    // before triggering the next crash, otherwise single-flight dedup swallows
+    // the next signal.
+    for (let i = 0; i < MAX_RECOVERY_BUDGET; i++) {
+      views.at(-1)!.webContents.emit("render-process-gone")
+      await until(() => events.filter((event) => event.type === "host.status").at(-1)?.status === "ready")
+    }
+    views.at(-1)!.webContents.emit("render-process-gone")
+    await until(() => events.some((event) => event.type === "host.status" && event.status === "failed"))
+    expect(views.length).toBeLessThanOrEqual(MAX_RECOVERY_BUDGET + 2)
+    expect(events.filter((event) => event.type === "host.status" && event.status === "failed")).toHaveLength(1)
+    await pool.destroy()
+  })
+
+  test("keeps a successful recovery when closing the previous generation fails", async () => {
+    views.length = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0] })
+    await pool.create(input("close-fail", (event) => events.push(event)))
+    const first = views.at(-1)!
+
+    failDispose = true
+    first.webContents.emit("render-process-gone")
+    await until(
+      () => views.length === 2 && events.some((event) => event.type === "host.status" && event.status === "ready"),
+    )
+    failDispose = false
+
+    // The replacement is active and ready despite the previous generation's
+    // cleanup error; the recovery must not roll back or retry.
+    expect(views).toHaveLength(2)
+    expect(events.filter((event) => event.type === "host.status").map((event) => event.status)).toEqual([
+      "restarting",
+      "ready",
+    ])
     await pool.destroy()
   })
 })

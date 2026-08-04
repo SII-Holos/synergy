@@ -42,7 +42,6 @@ interface Generation {
   state(): BrowserPage
   navigationTimer: ReturnType<typeof setTimeout> | null
   navigationRetries: number
-  watchdogReloading: boolean
   unresponsiveTimer: ReturnType<typeof setTimeout> | null
 }
 
@@ -54,12 +53,14 @@ interface Entry extends BrowserNativePageHandle {
   recovery: Promise<void> | null
   failed: boolean
   closing: boolean
+  recoveryBudget: number
   replacementListeners: Set<(view: WebContentsView, previous: WebContentsView) => void>
 }
 
 const INITIAL_NATIVE_PAGE_VIEWPORT = { width: 1280, height: 720 }
 const DEFAULT_RECOVERY_DELAYS_MS = [0, 500, 2_000] as const
 const MAX_RECOVERY_ROUNDS = 3
+export const MAX_RECOVERY_BUDGET = 5
 const DEFAULT_UNRESPONSIVE_GRACE_MS = 5_000
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 30_000
 
@@ -92,6 +93,7 @@ export class BrowserNativePagePool {
         recovery: null,
         failed: false,
         closing: false,
+        recoveryBudget: MAX_RECOVERY_BUDGET,
         replacementListeners: new Set<(view: WebContentsView, previous: WebContentsView) => void>(),
         state: () => entry.generation.state(),
         execute: (command: BrowserBackendCommand) => this.execute(entry, command),
@@ -138,6 +140,7 @@ export class BrowserNativePagePool {
     const entry = this.find(ownerKey, pageId)
     if (!entry) throw new Error("Native Browser page was not found.")
     entry.failed = false
+    entry.recoveryBudget = MAX_RECOVERY_BUDGET
     await this.recover(entry, "manual-retry")
   }
 
@@ -227,7 +230,6 @@ export class BrowserNativePagePool {
         state,
         navigationTimer: null,
         navigationRetries: 0,
-        watchdogReloading: false,
         unresponsiveTimer: null,
       }
       cleanupEvents = this.bindPageEvents(input, generation)
@@ -252,18 +254,22 @@ export class BrowserNativePagePool {
   private bindPageEvents(input: BrowserNativePageInput, generation: Generation): () => void {
     const contents = generation.view.webContents
     const loading = () => {
-      if (generation.watchdogReloading) generation.watchdogReloading = false
-      else generation.navigationRetries = 0
       input.emit({ type: "page.loading", pageId: input.page.id, url: contents.getURL().slice(0, 20_000) })
       this.armNavigationWatchdog(input, generation)
     }
     const loaded = () => {
       this.clearNavigationWatchdog(generation)
+      // A completed navigation (or terminal failure) ends one navigation
+      // attempt. Loading events fired mid-navigation — including redirects —
+      // must never reset this counter, or a redirect loop would bypass the
+      // single automatic retry and reload forever.
+      generation.navigationRetries = 0
       input.emit({ type: "page.loaded", page: generation.state() })
     }
     const updated = () => input.emit({ type: "page.updated", page: generation.state() })
     const failed = (_event: Electron.Event, _code: number, message: string, url: string) => {
       this.clearNavigationWatchdog(generation)
+      generation.navigationRetries = 0
       input.emit({
         type: "page.error",
         pageId: input.page.id,
@@ -318,6 +324,13 @@ export class BrowserNativePagePool {
       await this.recover(entry, "unresponsive")
       return
     }
+    // A live CDP channel does not prove the main thread is healthy: a wedged
+    // page can answer probes forever. Bound the healthy-reload path with the
+    // shared recovery budget so it cannot reload indefinitely.
+    if (!this.consumeRecoveryBudget(entry)) {
+      this.markFailed(entry, "The Desktop native Browser kept becoming unresponsive; automatic recovery stopped.")
+      return
+    }
     entry.input.emit({ type: "host.status", pageId: entry.state().id, status: "restarting" })
     generation.view.webContents.stop()
     generation.view.webContents.reload()
@@ -342,8 +355,13 @@ export class BrowserNativePagePool {
       return
     }
     if (generation.navigationRetries === 0) {
+      // The single automatic retry is also bounded by the shared recovery
+      // budget so a navigation loop can never reload the page forever.
+      if (!this.consumeRecoveryBudget(entry)) {
+        this.markFailed(entry, "The Desktop native Browser exhausted its automatic recovery budget.")
+        return
+      }
       generation.navigationRetries++
-      generation.watchdogReloading = true
       contents.reload()
       this.armNavigationWatchdog(input, generation)
       return
@@ -366,8 +384,18 @@ export class BrowserNativePagePool {
     return operation
   }
 
-  private async recoverEntry(entry: Entry, _reason: string): Promise<void> {
+  private async recoverEntry(entry: Entry, reason: string): Promise<void> {
     const pageId = entry.state().id
+    if (reason !== "manual-retry" && !this.consumeRecoveryBudget(entry)) {
+      this.markFailed(entry, "The Desktop native Browser exhausted its automatic recovery budget.")
+      throw new BrowserProtocolError({
+        code: "browser_native_recovery_failed",
+        message: "The Desktop native Browser exhausted its automatic recovery budget; retry manually.",
+        retryable: true,
+        pageId,
+        suggestedAction: "Retry native Browser recovery.",
+      })
+    }
     entry.input.emit({ type: "host.status", pageId, status: "restarting" })
     const delays = this.options.recoveryDelaysMs ?? DEFAULT_RECOVERY_DELAYS_MS
     let lastError: unknown
@@ -384,7 +412,12 @@ export class BrowserNativePagePool {
           entry.failed = false
           this.bindRecoveryEvents(entry, next)
           for (const listener of entry.replacementListeners) listener(next.view, previous.view)
-          await this.closeGeneration(previous)
+          // Closing the replaced generation is best-effort: a wedged old
+          // renderer must not roll back a recovery that already succeeded, or
+          // every retry round would leak a WebContentsView and login listener.
+          await this.closeGeneration(previous).catch((error) => {
+            console.error("Native Browser previous generation cleanup failed.", error)
+          })
           entry.input.emit({ type: "host.status", pageId, status: "ready" })
           return
         } catch (error) {
@@ -392,18 +425,30 @@ export class BrowserNativePagePool {
         }
       }
     }
-    entry.failed = true
-    entry.input.emit({ type: "host.status", pageId, status: "failed" })
+    this.markFailed(entry, "The Desktop native Browser could not recover after repeated attempts.")
     throw new BrowserProtocolError(
       {
         code: "browser_native_recovery_failed",
-        message: "The Desktop native Browser could not recover after three recovery rounds.",
+        message: "The Desktop native Browser could not recover after repeated attempts.",
         retryable: true,
         pageId,
         suggestedAction: "Retry native Browser recovery.",
       },
       { cause: lastError },
     )
+  }
+
+  private consumeRecoveryBudget(entry: Entry): boolean {
+    if (entry.recoveryBudget <= 0) return false
+    entry.recoveryBudget--
+    return true
+  }
+
+  private markFailed(entry: Entry, message: string): void {
+    entry.failed = true
+    const pageId = entry.state().id
+    entry.input.emit({ type: "host.status", pageId, status: "failed" })
+    entry.input.emit({ type: "page.error", pageId, url: entry.state().url, message })
   }
 
   private clearNavigationWatchdog(generation: Generation): void {
@@ -453,8 +498,12 @@ export class BrowserNativePagePool {
 
 async function probeWebContents(contents: WebContents): Promise<boolean> {
   if (contents.isDestroyed()) return false
+  let attached = false
   try {
-    if (!contents.debugger.isAttached()) contents.debugger.attach("1.3")
+    if (!contents.debugger.isAttached()) {
+      contents.debugger.attach("1.3")
+      attached = true
+    }
     await withCdpCommandTimeout(
       contents.debugger.sendCommand("Runtime.evaluate", { expression: "1", returnByValue: true }),
       "Runtime.evaluate",
@@ -463,6 +512,10 @@ async function probeWebContents(contents: WebContents): Promise<boolean> {
     return true
   } catch {
     return false
+  } finally {
+    // Detach only when this probe performed the attach; a transport-owned
+    // attachment (control transport) must be left untouched.
+    if (attached && !contents.isDestroyed() && contents.debugger.isAttached()) contents.debugger.detach()
   }
 }
 
@@ -498,19 +551,32 @@ function closeWebContents(contents: WebContents, timeoutMs = 5_000): Promise<voi
   if (contents.isDestroyed()) return Promise.resolve()
   return new Promise((resolve, reject) => {
     let settled = false
+    let crashTimer: ReturnType<typeof setTimeout> | null = null
     const finish = (error?: unknown) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      if (crashTimer) clearTimeout(crashTimer)
       contents.off("destroyed", destroyed)
       if (error) reject(error)
       else resolve()
     }
     const destroyed = () => finish()
-    const timer = setTimeout(
-      () => finish(new Error(`Native Browser page did not close within ${timeoutMs}ms.`)),
-      timeoutMs,
-    )
+    const timer = setTimeout(() => {
+      if (contents.isDestroyed()) {
+        finish()
+        return
+      }
+      // A wedged renderer may never acknowledge close(); force-crash it so the
+      // generation is released instead of leaking a WebContentsView.
+      try {
+        contents.forcefullyCrashRenderer()
+      } catch {}
+      crashTimer = setTimeout(
+        () => finish(new Error(`Native Browser page did not close within ${timeoutMs}ms.`)),
+        2_000,
+      )
+    }, timeoutMs)
     contents.once("destroyed", destroyed)
     try {
       contents.close({ waitForBeforeUnload: false })
