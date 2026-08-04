@@ -51,6 +51,7 @@ function scheduleBootShellRemoval() {
 const platform: Platform = {
   platform: window.synergyDesktop?.platform === "desktop" ? "desktop" : "web",
   version: pkg.version,
+  buildLabel: import.meta.env.VITE_SYNERGY_BUILD_LABEL,
   browserNative: window.synergyDesktop?.browserNative,
   desktopUpdate: window.synergyDesktop?.update,
   desktopServer: window.synergyDesktop?.server,

@@ -28,6 +28,7 @@ export interface PrepareWrapperOpts {
   extraWritableRoots?: string[]
   protectedPaths?: string[]
   dataDenyRoots?: string[]
+  stripDefaultHomeDenyRoot?: boolean
   /** Test-only helper override for backend unit tests; production callers should not set this. */
   forceHelperPath?: string
   /** Test-only helper verification override paired with forceHelperPath. */
@@ -42,6 +43,7 @@ export interface PrepareLinuxWrapperOpts {
   runtimeReadRoots?: string[]
   extraReadRoots?: string[]
   extraWritableRoots?: string[]
+  protectedPaths?: string[]
   forcePlatform?: string
   /** Explicit sandbox backend selection (e.g. "bwrap-inline-debug") */
   backend?: string

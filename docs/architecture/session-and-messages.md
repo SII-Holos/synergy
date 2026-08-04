@@ -138,11 +138,13 @@ raises `ProviderModelVariantUnavailableError` at
 `SessionRootVariant.options()` — the runtime does not silently fall back to
 another variant or unset the field.
 
-`SessionRootVariant.resolve()` validates a candidate variant against the
-model's declared `variants`. When the model declares variants, an unknown
-candidate surfaces the same error before persistence so the caller can
-correct the request. A model that declares no variants leaves a newly
-resolved root variant unset.
+`SessionRootVariant.resolve()` validates an explicit candidate variant against
+the model's declared `variants`. When the model declares variants, an unknown
+explicit candidate surfaces the same error before persistence so the caller
+can correct the request. An agent or role default that the selected model does
+not declare is omitted, letting that provider use its own default rather than
+persisting an invalid root variant. A model that declares no variants leaves a
+newly resolved root variant unset.
 
 Legacy task roots that were persisted without a variant are filled by
 migration `20260726-session-root-variant` when the agent/config defaults can
@@ -376,6 +378,8 @@ The loop peeks the next task without deleting it, materializes its pre-allocated
 
 Channel routing uses these same inbox semantics rather than a provider-specific mailbox. A new external chat request or Clarus assignment uses `task`; a Task update uses a deduplicated `steer`. Clarus participation instructions and Agenda `session_guidance` deadlines are hidden system-origin `steer` messages in the same Task Session. Project discovery, subscription acknowledgements, and other Project-level protocol events do not deliver Session work.
 
+For conversation ingress, Channel core completes durable acceptance before the provider releases its per-conversation lane. An idle Session is accepted by reserving its loop lease before execution starts; a busy Session is accepted by writing a deduplicated `task` item with stable provider message identity and reply correlation metadata. Temporary inbound attachments are converted to durable message parts before acceptance. Provider-local queues remain transient ordering lanes, not recovery state.
+
 Promoting a queued user task to guide/steer changes the inbox mode instead of writing permanent guided/no-reply metadata into the message model.
 
 On abort, steer and context items are discarded while queued task items remain for explicit later execution.
@@ -438,6 +442,8 @@ Recovery covers:
 An interrupted latest reply-required root is repaired through one root-anchored, per-session serialized terminalization primitive shared by startup reconciliation, Abort, and the pre-wake guard. If that root has a non-terminal assistant, repair preserves an existing structured error, fills missing terminal timing, and sets `finish: "error"`; if it has no assistant, repair attaches one aborted terminal assistant to that root. A canonical terminal reply only causes stale `pendingReply` cleanup. Repeating repair is idempotent, and recovery state is surfaced as `recovering` whenever the latest assistant lacks a canonical terminal `finish`, not merely when `time.completed` is absent.
 
 Startup pending-reply reconciliation isolates failures by session. An unreadable history remains pending and is reported as a warning, while recovery continues for other sessions so one corrupt record cannot prevent the global runtime from starting. Ordinary startup recovery terminalizes interrupted roots without invoking the model or tools.
+
+Startup recovery also discovers Sessions that still contain runnable `task` inbox items and requests work through `SessionDrive`. Discovery and drive failures are isolated per Session, and active Session owners are skipped. Recovery never materializes inbox items directly: the ordinary loop remains responsible for peek, root materialization, and commit.
 
 ### Abort status synchronization
 

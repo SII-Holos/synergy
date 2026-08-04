@@ -31,6 +31,13 @@ export async function uploadReleaseAsset(tag: string, assetPath: string) {
   await $`gh release upload ${tag} ${assetPath} --repo ${repo} --clobber`.env(releaseEnv())
 }
 
+export async function downloadReleaseAsset(tag: string, assetName: string, outputPath: string) {
+  const repo = await currentRepo()
+  await $`gh release download ${tag} --repo ${repo} --pattern ${assetName} --output ${outputPath}`
+    .env(releaseEnv())
+    .quiet()
+}
+
 export async function finalizeRelease(tag: string) {
   const repo = await currentRepo()
   await $`gh release edit ${tag} --repo ${repo} --draft=false`.env(releaseEnv())

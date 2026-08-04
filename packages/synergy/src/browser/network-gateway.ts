@@ -31,6 +31,8 @@ const sockets = new Set<net.Socket>()
 const upstreamSockets = new Set<net.Socket>()
 const MAX_OWNER_CONNECTIONS = 64
 const PROXY_AUTHENTICATE = 'Basic realm="Synergy Browser"'
+export const BROWSER_CONNECT_ESTABLISHMENT_TIMEOUT_MS = 30_000
+export const BROWSER_TUNNEL_IDLE_TIMEOUT_MS = 30 * 60_000
 
 class BrowserProxyAuthenticationError extends Error {}
 
@@ -192,7 +194,7 @@ async function handleConnect(request: http.IncomingMessage, client: net.Socket, 
     const target = validateTarget(...splitHostPort(request.url ?? "", 443))
     trackGrantSocket(grant, client)
     const upstream = net.connect({ host: target.hostname, port: target.port })
-    trackSocket(grant, upstream)
+    trackSocket(grant, upstream, true)
     upstream.once("connect", () => {
       client.write("HTTP/1.1 200 Connection Established\r\n\r\n")
       if (head.byteLength) upstream.write(head)
@@ -231,11 +233,17 @@ function trackUpstreamRequest(grant: OwnerGrant, request: http.ClientRequest): v
   request.on("socket", (socket) => trackSocket(grant, socket))
 }
 
-function trackSocket(grant: OwnerGrant, socket: net.Socket): void {
+function trackSocket(grant: OwnerGrant, socket: net.Socket, connecting = false): void {
   upstreamSockets.add(socket)
   socket.once("close", () => upstreamSockets.delete(socket))
   trackGrantSocket(grant, socket)
-  socket.setTimeout(30 * 60_000, () => socket.destroy())
+  configureBrowserTunnelTimeouts(socket, connecting)
+}
+
+export function configureBrowserTunnelTimeouts(socket: net.Socket, connecting: boolean): void {
+  socket.setTimeout(connecting ? BROWSER_CONNECT_ESTABLISHMENT_TIMEOUT_MS : BROWSER_TUNNEL_IDLE_TIMEOUT_MS)
+  socket.once("timeout", () => socket.destroy())
+  if (connecting) socket.once("connect", () => socket.setTimeout(BROWSER_TUNNEL_IDLE_TIMEOUT_MS))
 }
 
 function trackGrantSocket(grant: OwnerGrant, socket: net.Socket): void {

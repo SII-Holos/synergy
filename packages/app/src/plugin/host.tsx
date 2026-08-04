@@ -17,18 +17,24 @@ import {
   type PluginSelectionSurfaceContext,
   type PluginTextActionSurfaceContext,
   type PluginMessageSurfaceContext,
+  type PluginSettingsSurfaceContext,
   type PluginSurfaceContext,
 } from "@ericsanchezok/synergy-plugin"
 import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
-import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { fetchUIContributions, type PluginContribution } from "./api"
+import { resolvePluginAssetUrl } from "./asset-url"
 import type { PluginLifecycleState } from "./lifecycle"
 import { loadPluginExport } from "./loaders"
-import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
+import {
+  injectPluginStylesheet,
+  loadPluginUIAssets,
+  resolvePluginIconReference,
+  type PluginUIAssets,
+} from "./ui-assets"
 import { pluginSurfaceId } from "./surface-id"
 import { registerComposerSlot, type ComposerSlotProps } from "./registries/composer-slot-registry"
 import { registerComposerExtension, type ComposerExtensionProps } from "./registries/composer-extension-registry"
@@ -47,6 +53,7 @@ import { registerMessageSlot } from "./registries/message-slot-registry"
 import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
 import { createPluginSurfaceSettings } from "./surface-settings"
 import { createPluginToolMessageContext } from "./tool-message-context"
+import { createPluginSettingsSurfaceLoader } from "./settings-surface-loader"
 
 export type PluginUIStatus = PluginLifecycleState
 export interface PluginUIError {
@@ -202,7 +209,11 @@ function registerPluginSurfaces(input: {
   replacePluginThemes(input.assets.themes.values())
 
   for (const plugin of input.contributions) {
-    const asset = (file: string) => pluginAssetUrl(plugin.pluginId, plugin.generation, file)
+    const asset = (file: string) => resolvePluginAssetUrl(input.serverUrl, plugin.pluginId, plugin.generation, file)
+    const stylesheet = input.assets.stylesheets.get(plugin.pluginId)
+    if (stylesheet) {
+      disposers.push(injectPluginStylesheet(asset(stylesheet)))
+    }
     const componentLoader = <Props extends object>(
       item: PluginManifestContribution,
       session: (props: Props) => string | undefined = () => currentSessionId(),
@@ -497,7 +508,23 @@ function registerPluginSurfaces(input: {
         )
       },
       "ui.settings": (item: Extract<PluginManifestContribution, { kind: "ui.settings" }>) => {
-        const loader = componentLoader<Record<string, never>>(item)
+        const loader = item.component
+          ? createPluginSettingsSurfaceLoader({
+              pluginId: plugin.pluginId,
+              assetUrl: asset(item.component.entry),
+              exportName: item.component.exportName,
+            })
+          : undefined
+        const context = surfaceContext({
+          contribution: plugin,
+          contributionId: item.id,
+          kind: item.kind,
+          serverUrl: input.serverUrl,
+          client: input.client,
+          events: input.events,
+          scopeKey: input.scopeKey,
+          showConfirm: input.showConfirm,
+        }) satisfies PluginSettingsSurfaceContext
         disposers.push(
           registerSettingsSection({
             id: pluginSurfaceId(plugin.pluginId, item.id),
@@ -509,7 +536,8 @@ function registerPluginSurfaces(input: {
             visibility: item.visibility,
             pluginId: plugin.pluginId,
             scopeId: plugin.scopeId,
-            loader: loader as never,
+            context,
+            loader,
           }),
         )
       },
@@ -553,7 +581,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     reloadController = controller
     try {
       const next = await fetchUIContributions(server.url, scopeKey())
-      const assets = await loadPluginUIAssets(next, { signal: controller.signal })
+      const assets = await loadPluginUIAssets(next, { serverUrl: server.url, signal: controller.signal })
       if (generation !== reloadGeneration) return
       dispose()
       const registered = registerPluginSurfaces({

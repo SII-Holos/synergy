@@ -25,7 +25,7 @@
 
 Identity, compatibility, and descriptive fields come from `definePlugin()`. `compatibility.synergy` is a semver range for the oldest host that implements every stable API4 feature used by that plugin; `definePlugin()` defaults it to the first GA API4 host. Raise the minimum only when adopting a later additive feature. `capabilities` is the approved ceiling for Synergy Host Services. `contributions` is the handler-free form of the flat source list. `artifacts` and `generation` come from the build.
 
-`apiVersion: "4.0"` identifies the entire stable API4 family; it does not track the npm SDK's minor version. Synergy reads `apiVersion` and `compatibility` before strict V4 decoding and before executable import. Early pre-GA API4 artifacts that omitted `compatibility` receive the API4 base range at the decoder boundary.
+`apiVersion: "4.0"` identifies the entire stable API4 family. The npm authoring packages follow the Synergy product release version, so their package major does not select the Plugin API family. Synergy reads `apiVersion` and `compatibility` before strict V4 decoding and before executable import. Early pre-GA API4 artifacts that omitted `compatibility` receive the API4 base range at the decoder boundary.
 
 ## Contribution Kinds
 
@@ -51,6 +51,7 @@ Identity, compatibility, and descriptive fields come from `definePlugin()`. `com
 | `ui.settings`           | no         | group, form schema, visibility, optional trusted component                   |
 | `ui.theme`              | no         | label and packaged structured-theme JSON path                                |
 | `ui.icon`               | no         | packaged SVG path                                                            |
+| `lifecycle.install`     | yes        | post-commit fresh-install handler identity                                   |
 | `lifecycle.upgrade`     | yes        | handler identity                                                             |
 | `lifecycle.uninstall`   | yes        | handler identity                                                             |
 

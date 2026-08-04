@@ -10,11 +10,19 @@
 /// sandboxed process. All other variables are stripped.
 pub const ENV_ALLOWLIST: &[&str] = &[
     "PATH",
+    // Required by cmd.exe and PowerShell for shell lookup and built-ins.
+    "ComSpec",
+    "PATHEXT",
+    "SystemDrive",
+    "WINDIR",
     "TEMP",
     "TMP",
     "USERPROFILE",
     "SYSTEMROOT",
+    "PSModulePath",
     "ProgramData",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
     "HOMEDRIVE",
     "HOMEPATH",
 ];
@@ -82,6 +90,16 @@ mod tests {
             ENV_ALLOWLIST.contains(&"PATH"),
             "Environment allowlist must include PATH for command resolution"
         );
+    }
+
+    #[test]
+    fn env_allowlist_contains_native_shell_vars() {
+        for key in ["ComSpec", "PATHEXT", "SystemDrive", "SYSTEMROOT", "WINDIR"] {
+            assert!(
+                ENV_ALLOWLIST.contains(&key),
+                "Environment allowlist must include {key} for native shell execution"
+            );
+        }
     }
 
     #[test]

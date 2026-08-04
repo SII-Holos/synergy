@@ -1,8 +1,10 @@
 import { $, sleep } from "bun"
 import { describe, expect, spyOn, test } from "bun:test"
 import path from "path"
+import { Bus } from "../../src/bus"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
+import { SessionEvent } from "../../src/session/event"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
@@ -108,6 +110,118 @@ describe("session rollback history", () => {
         expect(conflict).toBeInstanceOf(SessionHistory.UnrollbackConflictError)
         expect(await visibleTexts(session.id)).toEqual(["first", "one", "replacement"])
         expect((await Session.get(session.id)).history?.rollback?.canUnrollback).toBe(false)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("root message without rollback does not derive history", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        using storedInfo = spyOn(SessionHistory, "storedInfo")
+
+        await writeUser(session.id, "first")
+
+        expect(storedInfo).not.toHaveBeenCalled()
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("new root message publishes rollback invalidation via session.updated", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+
+        await Session.rollback({ sessionID: session.id, numTurns: 1 })
+        expect((await Session.get(session.id)).history?.rollback?.canUnrollback).toBe(true)
+        using storedInfo = spyOn(SessionHistory, "storedInfo")
+
+        const updates: Array<{ rollback?: boolean; archived: boolean }> = []
+        const unsub = Bus.subscribe(SessionEvent.Updated, (event) => {
+          const info = event.properties.info
+          if (info.id !== session.id) return
+          updates.push({
+            rollback: info.history?.rollback?.canUnrollback,
+            archived: info.time.archived !== undefined,
+          })
+        })
+        try {
+          await sleep(2)
+          await writeUser(session.id, "replacement")
+          await writeUser(session.id, "second replacement")
+        } finally {
+          unsub()
+        }
+
+        // The flip is published exactly once even though two roots were written.
+        const flips = updates.filter((update) => !update.archived && update.rollback === false)
+        expect(flips).toHaveLength(1)
+        expect(storedInfo).not.toHaveBeenCalled()
+        expect((await Session.get(session.id)).history?.rollback?.canUnrollback).toBe(false)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("later roots do not rederive an invalidated rollback", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+        await Session.rollback({ sessionID: session.id, numTurns: 1 })
+        await sleep(2)
+        await writeUser(session.id, "replacement")
+        using storedInfo = spyOn(SessionHistory, "storedInfo")
+
+        await writeUser(session.id, "second replacement")
+
+        expect(storedInfo).not.toHaveBeenCalled()
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("non-root user message after rollback does not publish rollback invalidation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+
+        const rollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+
+        const flips: boolean[] = []
+        const unsub = Bus.subscribe(SessionEvent.Updated, (event) => {
+          const info = event.properties.info
+          if (info.id !== session.id) return
+          if (info.history?.rollback?.canUnrollback === false) flips.push(false)
+        })
+        try {
+          await writeUser(session.id, "steer", { isRoot: false, rootID: rollback.cutMessageID })
+        } finally {
+          unsub()
+        }
+
+        expect(flips).toEqual([])
+        expect((await Session.get(session.id)).history?.rollback?.canUnrollback).toBe(true)
 
         await Session.remove(session.id)
       },

@@ -5,6 +5,7 @@ import { Server } from "../../src/server/server"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { SessionWorkflowService } from "../../src/session/workflow"
+import { LightLoopRuntime } from "../../src/session/light-loop-runtime"
 import { LatticeRunService } from "../../src/lattice/run-service"
 import { BlueprintLoopStore } from "../../src/blueprint/loop-store"
 import { tmpdir } from "../fixture/fixture"
@@ -172,5 +173,38 @@ describe("workflow routes", () => {
         SessionManager.unregisterRuntime(session.id)
       }
     })
+  })
+})
+
+test("reads the authoritative terminal status after the workflow is cleared", async () => {
+  await withScope(async (scope) => {
+    const session = await Session.create({})
+    await SessionWorkflowService.startLightloop(session.id, "Original task")
+    await LightLoopRuntime.setTerminalStatus(session.id, "timed_out", "deadline exceeded")
+
+    const response = await Server.App().request(`/workflow/session/${session.id}/lightloop/terminal`, {
+      method: "GET",
+      headers: { "x-synergy-scope-id": scope.id },
+    })
+
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.status).toBe("timed_out")
+    expect(body.instructions).toBe("Original task")
+    expect(body.error).toBe("deadline exceeded")
+    expect(body.createdAt).toBeNumber()
+  })
+})
+
+test("returns 404 when the session has no terminal Light Loop record", async () => {
+  await withScope(async (scope) => {
+    const session = await Session.create({})
+
+    const response = await Server.App().request(`/workflow/session/${session.id}/lightloop/terminal`, {
+      method: "GET",
+      headers: { "x-synergy-scope-id": scope.id },
+    })
+
+    expect(response.status).toBe(404)
   })
 })

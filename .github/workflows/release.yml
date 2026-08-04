@@ -84,13 +84,21 @@ jobs:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
+      - name: Assert Windows signing continuity
+        run: bun run ./script/release/assert-windows-signing-continuity.ts
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Install dependencies
-        run: bun install
+        # Runtime preparation needs every platform package (ast-grep, watcher) in
+        # node_modules/.bun, so install all os/cpu variants instead of host-only.
+        run: bun install --os='*' --cpu='*'
 
       - name: Publish npm candidate and draft assets
         id: publish
@@ -159,7 +167,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libarchive-tools rpm
 
       - name: Install dependencies
-        run: bun install
+        # Runtime preparation needs every platform package (ast-grep, watcher) in
+        # node_modules/.bun, so install all os/cpu variants instead of host-only.
+        run: bun install --os='*' --cpu='*'
 
       - name: Download sandbox assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -197,6 +207,13 @@ jobs:
         shell: bash
         run: |
           BUILDER_ARGS=(${{ matrix.builder_args }})
+          case "${WIN_CSC_LINK:-}" in
+            *[![:space:]]*) WIN_CSC_CONFIGURED=1 ;;
+            *) WIN_CSC_CONFIGURED=0 ;;
+          esac
+          if [ "${{ matrix.platform }}" = "win32" ] && [ "${WIN_CSC_CONFIGURED}" = "1" ]; then
+            BUILDER_ARGS+=(--config.forceCodeSigning=true)
+          fi
           if [ -z "${CSC_LINK:-}" ]; then
             unset CSC_LINK
             unset CSC_KEY_PASSWORD
@@ -220,8 +237,27 @@ jobs:
           CSC_INSTALLER_LINK: ${{ matrix.platform == 'darwin' && secrets.CSC_INSTALLER_LINK || '' }}
           CSC_INSTALLER_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.CSC_INSTALLER_KEY_PASSWORD || '' }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'darwin' && 'true' || 'false' }}
+          WIN_CSC_LINK: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE_PASSWORD || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Windows Authenticode signature
+        if: ${{ matrix.platform == 'win32' }}
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)) {
+            Write-Host "Windows signing not configured; skipping Authenticode signature verification"
+            exit 0
+          }
+          $installer = Get-ChildItem packages/desktop/release/Synergy-win32-x64-*.exe | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced" }
+          $signature = Get-AuthenticodeSignature $installer.FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "Windows installer Authenticode signature is not valid: $($signature.Status)"
+          }
 
       - name: Package signed Browser Host artifacts
         shell: bash

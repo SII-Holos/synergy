@@ -19,7 +19,14 @@ import { BrowserNativeViewManager } from "./browser-native-view.js"
 import { BrowserHostBrokerClient } from "./browser-host-broker.js"
 import { BrowserNativePagePool } from "./browser-native-page-pool.js"
 import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
-import { BrowserRegistrationSecretSchema } from "@ericsanchezok/synergy-browser"
+import {
+  BROWSER_PROTOCOL_VERSION,
+  BrowserRegistrationSecretSchema,
+  type BrowserNativeBrokerStatus,
+  type BrowserNativePresentationIPCError,
+  type BrowserNativePresentationTicketRequest,
+  type BrowserNativePresentationTicketResult,
+} from "@ericsanchezok/synergy-browser"
 import { desktopErrorPage } from "./error-page.js"
 import {
   DESKTOP_PROTOCOL,
@@ -33,6 +40,7 @@ import {
 import {
   parseBrowserNativeAttach,
   parseBrowserNativePage,
+  parseBrowserNativePresentationCapability,
   parseBrowserNativeResize,
   parseBrowserNativePresentationTicket,
   parseClipboardWriteText,
@@ -45,7 +53,7 @@ import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
 import { DesktopStartupOverlay } from "./startup-overlay.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
-import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
+import { DesktopUpdateMode, DesktopUpdater, desktopUpdateInstallActive } from "./updater.js"
 import {
   applyDesktopThemeToWindow,
   defaultDesktopSkinState,
@@ -82,6 +90,7 @@ let nativeViews: BrowserNativeViewManager | null = null
 let nativePagePool: BrowserNativePagePool | null = null
 let browserBroker: BrowserHostBrokerClient | null = null
 let browserBrokerOrigin: string | null = null
+let browserBrokerStatus: BrowserNativeBrokerStatus = "failed"
 let serverManager: DesktopServerManager | null = null
 let updater: DesktopUpdater | null = null
 let desktopTray: Tray | null = null
@@ -192,9 +201,22 @@ async function createWindow() {
       channel,
       currentVersion: app.getVersion(),
       userDataDir: app.getPath("userData"),
-      stopServer: () => serverManager?.stop() ?? Promise.resolve(),
+      stopServer: async () => {
+        await stopLocalBrowserBroker()
+        await serverManager?.stop()
+      },
+      restartServer: async () => {
+        if (!serverManager) return
+        const url = await serverManager.start()
+        currentAppURL = url
+        await syncLocalBrowserBroker(true)
+        await mainWindow?.loadURL(url)
+      },
     })
-    updater.onEvent((event) => mainRendererDelivery?.sendLatest("desktop-update", "desktop-update:event", event))
+    updater.onEvent((event) => {
+      isUpdateQuit = desktopUpdateInstallActive(isUpdateQuit, event.status)
+      mainRendererDelivery?.sendLatest("desktop-update", "desktop-update:event", event)
+    })
     await updater.init()
   }
 
@@ -290,7 +312,7 @@ async function createWindow() {
   })
 
   const targetURL = await resolveAppURL()
-  startLocalBrowserBroker()
+  await syncLocalBrowserBroker()
   await setStartupStatus({
     title: currentAppURL ? "Loading workspace" : "Startup needs attention",
     detail: currentAppURL
@@ -403,21 +425,39 @@ async function resolveAppURL(): Promise<string> {
   }
 }
 
-function startLocalBrowserBroker(): void {
-  if (browserBroker || !nativePagePool) return
+async function syncLocalBrowserBroker(force = false): Promise<void> {
+  if (!nativePagePool) return
   const serverUrl =
     process.env.SYNERGY_BROWSER_BROKER_SERVER_URL ??
     (serverManager?.status().mode === "managed" ? serverManager.status().url : null)
   const token = process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET
-  if (!serverUrl || !token) return
-  browserBrokerOrigin = new URL(serverUrl).origin
+  const nextOrigin = serverUrl ? new URL(serverUrl).origin : null
+  if (!force && browserBroker && nextOrigin === browserBrokerOrigin) return
+  await stopLocalBrowserBroker()
+  if (!serverUrl || !token || !nextOrigin) {
+    browserBrokerStatus = "failed"
+    return
+  }
+  browserBrokerOrigin = nextOrigin
+  browserBrokerStatus = "connecting"
   browserBroker = new BrowserHostBrokerClient({
     serverUrl,
     token,
     nativePool: nativePagePool,
     theme: getDesktopThemeSnapshot(),
+    onStatus(status) {
+      browserBrokerStatus = status
+    },
   })
   browserBroker.connect()
+}
+
+async function stopLocalBrowserBroker(): Promise<void> {
+  browserBrokerStatus = "restarting"
+  const previous = browserBroker
+  browserBroker = null
+  browserBrokerOrigin = null
+  await previous?.close()
 }
 
 function registerIpcHandlers() {
@@ -436,23 +476,103 @@ function registerIpcHandlers() {
     const { ownerKey, pageId, bounds } = parseBrowserNativeResize(input)
     nativeViews?.resize(ownerKey, pageId, bounds)
   })
-  registerNativeViewHandlers("browserNative.presentationTicket", (input) => {
-    const request = parseBrowserNativePresentationTicket(input)
+  registerNativeViewHandlers("browserNative.retry", async (input) => {
+    const { ownerKey, pageId } = parseBrowserNativePage(input)
+    await nativePagePool?.retry(ownerKey, pageId)
+  })
+  ipcMain.handle("browserNative.presentationCapability", (event, input: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) {
+      return {
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        managedLocal: false,
+        status: "failed",
+        error: nativePresentationError(
+          "browser_native_sender_rejected",
+          "The Browser native capability request was rejected.",
+          false,
+        ),
+      }
+    }
+    try {
+      const request = parseBrowserNativePresentationCapability(input)
+      const origin = new URL(request.serverUrl).origin
+      const managedLocal = Boolean(browserBrokerOrigin && origin === browserBrokerOrigin)
+      return {
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        managedLocal,
+        status: managedLocal ? browserBrokerStatus : "failed",
+      }
+    } catch {
+      return {
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        managedLocal: false,
+        status: "failed",
+        error: nativePresentationError(
+          "browser_native_ticket_rejected",
+          "The Browser native capability request was invalid.",
+          false,
+        ),
+      }
+    }
+  })
+  ipcMain.handle("browserNative.presentationTicket", (event, input: unknown): BrowserNativePresentationTicketResult => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) {
+      return nativeTicketFailure(
+        "browser_native_sender_rejected",
+        "The Browser native ticket request was rejected.",
+        false,
+      )
+    }
+    let request: BrowserNativePresentationTicketRequest
+    try {
+      request = parseBrowserNativePresentationTicket(input)
+    } catch {
+      return nativeTicketFailure(
+        "browser_native_ticket_rejected",
+        "The Browser native ticket request was invalid.",
+        false,
+      )
+    }
     const origin = new URL(request.serverUrl).origin
     if (!browserBrokerOrigin || origin !== browserBrokerOrigin) {
-      throw new Error("The connected server is not owned by this Desktop Browser Host.")
+      return nativeTicketFailure(
+        "browser_native_origin_mismatch",
+        "The connected server is not owned by this Desktop Browser Host.",
+        true,
+      )
     }
-    return BrowserNativeLease.issue(process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET!, {
-      ownerKey: request.ownerKey,
-      serverOrigin: origin,
-    })
+    if (browserBrokerStatus !== "ready") {
+      return nativeTicketFailure(
+        "browser_native_host_connecting",
+        "The Desktop Browser Host is still connecting.",
+        true,
+      )
+    }
+    try {
+      return {
+        ok: true,
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ticket: BrowserNativeLease.issue(process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET!, {
+          ownerKey: request.ownerKey,
+          serverOrigin: origin,
+        }),
+      }
+    } catch {
+      return nativeTicketFailure(
+        "browser_native_signing_failed",
+        "The Desktop Browser Host could not sign a presentation ticket.",
+        true,
+      )
+    }
   })
 
   ipcMain.handle("desktop.server.status", () => serverManager?.status() ?? null)
   ipcMain.handle("desktop.server.restart", async () => {
     if (!serverManager) throw new Error("Desktop server manager is not initialized")
+    await stopLocalBrowserBroker()
     const url = await serverManager.restart()
     currentAppURL = url
+    await syncLocalBrowserBroker(true)
     await mainWindow?.loadURL(url)
     return serverManager.status()
   })
@@ -466,10 +586,7 @@ function registerIpcHandlers() {
     return updater?.check({ manual })
   })
   ipcMain.handle("desktop.update.download", () => updater?.download())
-  ipcMain.handle("desktop.update.installAndRestart", async () => {
-    isUpdateQuit = true
-    return updater?.installAndRestart()
-  })
+  ipcMain.handle("desktop.update.installAndRestart", () => updater?.installAndRestart())
   ipcMain.handle("desktop.badge.setState", (event, input: unknown) => {
     applyDesktopUnreadUpdate({
       mainWindow,
@@ -528,6 +645,26 @@ function registerIpcHandlers() {
     mainWindow?.close()
   })
   ipcMain.handle("desktop.window.state", () => (mainWindow ? desktopWindowState(mainWindow) : null))
+}
+
+function nativePresentationError(
+  code: BrowserNativePresentationIPCError["code"],
+  message: string,
+  retryable: boolean,
+): BrowserNativePresentationIPCError {
+  return { code, message, retryable }
+}
+
+function nativeTicketFailure(
+  code: BrowserNativePresentationIPCError["code"],
+  message: string,
+  retryable: boolean,
+): BrowserNativePresentationTicketResult {
+  return {
+    ok: false,
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
+    error: nativePresentationError(code, message, retryable),
+  }
 }
 
 function registerNativeViewHandlers(channel: string, handler: (input: unknown) => unknown | Promise<unknown>) {

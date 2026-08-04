@@ -25,6 +25,18 @@ export namespace SynergyLinkHolosProtocol {
     }),
   })
 
+  export const AgentMeResponse = z
+    .object({
+      code: z.number().optional(),
+      msg: z.string().optional(),
+      message: z.string().optional(),
+      data: z.object({
+        agent_id: z.string(),
+        profile: z.record(z.string(), z.unknown()).nullable().optional(),
+      }),
+    })
+    .passthrough()
+
   export const BindExchangeResponse = z.object({
     code: z.number(),
     msg: z.string().optional(),

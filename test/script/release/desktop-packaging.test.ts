@@ -29,6 +29,28 @@ describe("desktop release packaging", () => {
     }
   })
 
+  test("forces Windows Authenticode signing only when a certificate is configured", async () => {
+    const source = await Bun.file(new URL("../../../.github/workflows/release.yml", import.meta.url)).text()
+    const workflow = Bun.YAML.parse(source) as ReleaseWorkflow
+    const steps = workflow.jobs?.stable_desktop_package?.steps ?? []
+    const packageStep = steps.find((candidate) => candidate.name === "Package desktop artifact")
+    const verifyStep = steps.find((candidate) => candidate.name === "Verify Windows Authenticode signature")
+
+    expect(packageStep?.env?.WIN_CSC_LINK).toBe(
+      "${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE || '' }}",
+    )
+    expect(packageStep?.env?.WIN_CSC_KEY_PASSWORD).toBe(
+      "${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE_PASSWORD || '' }}",
+    )
+    expect(packageStep?.run).toContain("forceCodeSigning=true")
+    expect(packageStep?.run).toContain("WIN_CSC_CONFIGURED")
+    expect(packageStep?.run).toContain("*[![:space:]]*")
+    expect(verifyStep?.run).toContain("IsNullOrWhiteSpace")
+    expect(verifyStep?.run).toContain("Get-AuthenticodeSignature")
+    expect(verifyStep?.run).toContain("Status -ne 'Valid'")
+    expect(verifyStep?.run).toContain("skipping Authenticode signature verification")
+  })
+
   test("assembles complete runtimes before packaging Desktop artifacts", async () => {
     const source = await Bun.file(new URL("../../../.github/workflows/release.yml", import.meta.url)).text()
     const workflow = Bun.YAML.parse(source) as ReleaseWorkflow

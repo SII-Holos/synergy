@@ -17,7 +17,7 @@ function environment() {
     CSC_KEY_PASSWORD: "mac-certificate-password",
     CSC_INSTALLER_LINK: "mac-installer-certificate",
     CSC_INSTALLER_KEY_PASSWORD: "mac-installer-certificate-password",
-    WINDOWS_CERTIFICATE: "windows-certificate",
+    WINDOWS_CERTIFICATE: Buffer.from([0x30, 0x03, 0x02, 0x01, 0x00]).toString("base64"),
     WINDOWS_CERTIFICATE_PASSWORD: "windows-certificate-password",
   }
 }
@@ -33,7 +33,7 @@ describe("product release environment", () => {
     expect(() => validateProductReleaseEnvironment(env)).toThrow(/APPLE_TEAM_ID/)
   })
 
-  test("accepts unsigned Windows artifacts when both signing values are absent", () => {
+  test("allows missing Windows signing material", () => {
     const env = environment()
     delete (env as Partial<typeof env>).WINDOWS_CERTIFICATE
     delete (env as Partial<typeof env>).WINDOWS_CERTIFICATE_PASSWORD
@@ -44,6 +44,12 @@ describe("product release environment", () => {
     const env = environment()
     delete (env as Partial<typeof env>).WINDOWS_CERTIFICATE_PASSWORD
     expect(() => validateProductReleaseEnvironment(env)).toThrow(/WINDOWS_CERTIFICATE_PASSWORD/)
+  })
+
+  test("rejects malformed Windows signing certificates", () => {
+    const env = environment()
+    env.WINDOWS_CERTIFICATE = Buffer.from("not a PKCS#12 certificate").toString("base64")
+    expect(() => validateProductReleaseEnvironment(env)).toThrow(/PKCS#12/)
   })
 
   test("rejects a missing macOS Installer signing identity", () => {

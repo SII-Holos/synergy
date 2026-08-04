@@ -37,6 +37,8 @@ workbenchPanel({
 
 The component exports a Solid component that receives `{ context: PluginSurfaceContext }` in source templates. plugin-kit compiles all trusted components into one named-export UI bundle, externalizes `solid-js`, `solid-js/web`, and `solid-js/store`, rewrites those imports to the host's shared runtime, and records the bundle hash. The plugin-kit CLI and standalone Synergy runtime include the compiler, so plugin projects do not install Babel presets. Bundles that include a private Solid runtime, use unsupported Solid subpaths, bypass host linking, or omit an export are rejected.
 
+Components may import CSS from the plugin project. plugin-kit extracts imported stylesheets into a sibling `ui/index.css` next to the UI bundle; the host injects that stylesheet as a `<link>` when the plugin surfaces are registered and removes it on reload, disable, or uninstall. CSS is bundled and namespaced only by the plugin author's own class names; the host does not rewrite selectors. Keep selectors prefixed with the plugin ID to avoid collisions with the host or other plugins. Assets referenced from CSS (for example `url(...)` images) are inlined as data URLs or emitted as hashed sibling assets next to the stylesheet; relative URLs resolve against the stylesheet's asset URL, so no extra declaration is required.
+
 Trusted code runs in the Synergy App context after explicit approval. This is a trust decision, not a sandbox claim.
 
 ## Surface Context
@@ -117,6 +119,8 @@ This supports one contribution with multiple stable views, such as a map, one ta
 
 Object-form settings are rendered with the host's design system. Boolean fields use `SettingRow` and `Switch`; strings, numbers, and enums use host form controls and semantic tokens. The schema's top-level description is shown as page help. Saves are optimistic and roll back with a host notification if persistence fails. A plugin component should not reproduce the settings page chrome or form layout.
 
+A custom `ui.settings` component receives `PluginSettingsComponentProps`: the existing `pluginId`, `values`, and `onChange` props plus `context: PluginSettingsSurfaceContext`. The context is the same capability-bound surface contract used by other trusted UI, so Settings can call UI-exposed query/command operations and host confirmation or notification actions without learning the Synergy server URL or token. The host continues passing the legacy props so previously built settings components remain compatible.
+
 ## Host Actions
 
 With approved `ui.hostActions`, trusted UI may call:
@@ -156,6 +160,6 @@ The host namespaces theme and icon IDs as `<plugin-id>:<contribution-id>`. Surfa
 
 ## Scope and Reload
 
-The Web host fetches contributions for the active Scope. Switching Scope rebuilds registrations with a new context. Runtime generations and asset URLs include the generation so stale bundles are not reused. A failure in one surface is reported for that contribution and does not remove unrelated plugin contributions.
+The Web host fetches contributions for the active Scope. Switching Scope rebuilds registrations with a new context. Runtime generations and asset URLs include the generation so stale bundles are not reused. The host resolves trusted UI bundles, themes, and icons against the active Synergy server URL, preserving remote origins and deployment path prefixes such as reverse-proxy mounts. A failure in one surface is reported for that contribution and does not remove unrelated plugin contributions.
 
 Registration lifecycle changes are observable to already-mounted message resolvers. Unregistering a renderer, installing or replacing its loader, and completing the current lazy load each invalidate the registry. A Tool card that briefly falls back during reload therefore retries resolution and restores its custom renderer without a page refresh; completion from a stale loader remains ignored.

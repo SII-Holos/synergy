@@ -57,6 +57,7 @@ import { SessionUserMessageMaterialization } from "./user-message-materializatio
 import {
   buildMemoryContext,
   buildAlwaysOnlyMemoryContext,
+  buildAlwaysOnlyMemoryResult,
   cacheResult,
   getCachedResult,
   evictRecallCache,
@@ -161,39 +162,77 @@ export namespace SessionInvoke {
     origin?: MessageV2.OriginUser
   }
 
-  async function invokeWithInternalTools(input: InternalInvokeInput) {
-    return SessionManager.run(input.sessionID, async (lease) => {
-      const message = await createUserMessage(input)
-      if (input.ephemeralTools?.length) {
-        ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
-      }
-      if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
+  async function invokeWithInternalTools(input: InternalInvokeInput, lease?: SessionManager.LoopLease) {
+    return SessionManager.run(
+      input.sessionID,
+      async (runLease) => {
+        const message = await createUserMessage(input)
+        if (input.ephemeralTools?.length) {
+          ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
+        }
+        if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
 
-      await Session.update(input.sessionID, (draft) => {
-        draft.pendingReply = input.noReply !== true || undefined
-      })
-
-      if (input.noReply === true) {
-        ephemeralToolsByMessage.delete(message.info.id)
-        maxOutputTokensByMessage.delete(message.info.id)
-        return message
-      }
-
-      try {
-        return await loopBodyWithIncident(input.sessionID, lease)
-      } catch (error) {
-        await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
-          log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
+        await Session.update(input.sessionID, (draft) => {
+          draft.pendingReply = input.noReply !== true || undefined
         })
-        throw error
-      } finally {
-        ephemeralToolsByMessage.delete(message.info.id)
-        maxOutputTokensByMessage.delete(message.info.id)
-      }
-    })
+
+        if (input.noReply === true) {
+          ephemeralToolsByMessage.delete(message.info.id)
+          maxOutputTokensByMessage.delete(message.info.id)
+          return message
+        }
+
+        try {
+          return await loopBodyWithIncident(input.sessionID, runLease)
+        } catch (error) {
+          await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
+            log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
+          })
+          throw error
+        } finally {
+          ephemeralToolsByMessage.delete(message.info.id)
+          maxOutputTokensByMessage.delete(message.info.id)
+        }
+      },
+      lease ? { lease, releaseLease: false } : undefined,
+    )
   }
 
   export const invoke = fn(InvokeInput, async (input) => invokeWithInternalTools(input))
+
+  export async function invokeWithLease(input: InvokeInput, lease: SessionManager.LoopLease) {
+    return invokeWithInternalTools(InvokeInput.parse(input), lease)
+  }
+  export async function invokeInboxWithLease(
+    input: { sessionID: string; itemID: string },
+    lease: SessionManager.LoopLease,
+  ) {
+    return SessionManager.run(
+      input.sessionID,
+      async (runLease) => {
+        const item = await SessionInbox.getStored(input.sessionID, input.itemID)
+        const message = await SessionInbox.materializeItem(item)
+        if (!message || message.info.role !== "user") {
+          throw new Error(`Session inbox task could not be materialized: ${input.itemID}`)
+        }
+        await SessionInbox.commitReady(input.sessionID, [item.id])
+
+        await Session.update(input.sessionID, (draft) => {
+          draft.pendingReply = true
+        })
+
+        try {
+          return await loopBodyWithIncident(input.sessionID, runLease)
+        } catch (error) {
+          await writeErrorAssistantIfMissing(input.sessionID, message.info, error).catch((err) => {
+            log.error("failed to persist inbox invocation error", { sessionID: input.sessionID, error: err })
+          })
+          throw error
+        }
+      },
+      { lease, releaseLease: false },
+    )
+  }
 
   export async function invokeInternal(input: InternalInvokeInput) {
     return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })
@@ -209,12 +248,21 @@ export namespace SessionInvoke {
     if (step === 1 && isTopSession) {
       SessionManager.setStatus(sessionID, { type: "busy", description: "Flashing back..." })
       const cfg = await Config.current()
-      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.library), RECALL_TIMEOUT_MS).catch(
-        (err: any) => {
-          log.warn("recall failed or timed out", { sessionID, error: err })
+      const buildAlwaysFallback = () => {
+        if (cfg.library?.memory?.enabled === false) return undefined
+        try {
+          return buildAlwaysOnlyMemoryResult()
+        } catch (error: unknown) {
+          log.warn("always memory fallback failed", { sessionID, error })
           return undefined
-        },
-      )
+        }
+      }
+      return withTimeout(buildMemoryContext(sessionID, scopeID, sessionMessages, cfg.library), RECALL_TIMEOUT_MS)
+        .then((result) => result ?? buildAlwaysFallback())
+        .catch((error: unknown) => {
+          log.warn("recall failed or timed out", { sessionID, error })
+          return buildAlwaysFallback()
+        })
     }
     // Keep recalled memory/experience available for every step so the agent
     // retains its knowledge context across the entire trajectory, including
@@ -254,6 +302,17 @@ export namespace SessionInvoke {
       if (SessionMemoryIncident.isOutOfMemory(error) && !(error instanceof MessageV2.SessionTerminalError)) {
         await SessionMemoryIncident.capture({ error, sessionID }).catch((incidentError) => {
           log.warn("failed to capture OOM incident", { error: incidentError })
+        })
+      }
+      // A loop that exits with an error cannot be driven again by the
+      // continuation kernel (no eligible terminal assistant message), so an
+      // active Light Loop would stay stuck until its hard timeout. Convert it
+      // to the durable failed status unless the loop was aborted (abort takes
+      // the explicit cancellation path).
+      if (!lease.signal.aborted) {
+        const { LightLoopRuntime } = await import("./light-loop-runtime")
+        await LightLoopRuntime.failActiveLoop(sessionID, error).catch((err) => {
+          log.error("failed to mark Light Loop failed after loop error", { sessionID, error: err })
         })
       }
       throw error
@@ -639,13 +698,18 @@ export namespace SessionInvoke {
             sessionID: session?.id,
             agentControlProfile: agent.controlProfile,
           })
+          const trustedRoots = Scope.Root.executionRoots(
+            ScopeContext.current.scope,
+            workspaceInfo,
+            SkillSourceProfile.allRootPaths(workspace),
+          )
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            trustedRoots: SkillSourceProfile.allRootPaths(workspace),
+            trustedRoots,
           })
           if (resolved.valid) {
-            const ctx = buildPermissionContext(resolved, workspace)
+            const ctx = buildPermissionContext(resolved, trustedRoots)
             systemParts.push(ctx)
             systemCacheBreakpoint = systemParts.length - 1
           }
@@ -2008,12 +2072,28 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     },
   )
 
-  export async function resumePending(input?: { scopeID?: string }): Promise<void> {
+  export async function resumePending(input?: { scopeID?: string; waitForProcessing?: boolean }): Promise<void> {
     await reconcileInterruptedCortexDelegations(input?.scopeID)
     const { SessionRecovery } = await import("./recovery")
     await SessionRecovery.resumePendingStopRequests(input?.scopeID)
     const { Cortex } = await import("../cortex/manager")
     await Cortex.reconcileParentNotifications(input?.scopeID)
+
+    // Startup inbox discovery: sessions with a durable queued task are driven
+    // through the existing SessionDrive/wake path so the owning loop performs
+    // the peek/materialize/commit work. No direct materialization here.
+    const { SessionDrive } = await import("./drive")
+    for (const sessionID of await SessionInbox.listRunnableSessions(input?.scopeID)) {
+      if (SessionManager.isRunning(sessionID)) continue
+      try {
+        const handled = await SessionDrive.request(sessionID, "inbox-recovery", {
+          waitForProcessing: input?.waitForProcessing,
+        })
+        log.info("startup inbox recovery drive request", { sessionID, handled })
+      } catch (error) {
+        log.warn("startup inbox recovery drive failed", { sessionID, error })
+      }
+    }
 
     const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
     for (const sessionID of sessionIDs) {

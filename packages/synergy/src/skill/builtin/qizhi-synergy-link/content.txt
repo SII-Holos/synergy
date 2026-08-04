@@ -1,0 +1,192 @@
+# Qizhi Synergy Link Deployment and Recovery
+
+Use this workflow when an agent or operator must deploy, verify, diagnose, or recover a Synergy Link host on the Qizhi platform (shared-filesystem containers/multi-instance hosts), or when a Link host stops answering, connects as the wrong identity, or must be rotated onto a fresh Agent identity.
+
+## Supported Topology
+
+- One physical/device instance (one container, one VM, one bare-metal host) runs exactly one Synergy Link host service.
+- One Holos Agent ID belongs to exactly one instance. The Agent ID is the device identity: `synergy-link whoami` and `synergy-link doctor` must show the same `agentID` on every health check.
+- The Link host uses an Agent ID distinct from the Synergy application and from every other Link deployment on the same machine.
+- A sender (a Synergy runtime with Holos enabled) controls the host through a persisted Link target. The sender never stores the host's Holos secret.
+- Shared persistent mounts may exist, but only read-only binaries, read-only install assets, and read-only shared datasets may be mounted into multiple instances.
+
+## Unsupported Topologies
+
+- The same Holos Agent ID active on two or more instances is unsupported. Holos tunnel routing is last-writer-wins: the most recently connected instance receives the traffic, and earlier instances silently lose reachability. There is no local mechanism that reliably prevents this; never claim duplicate detection is solved.
+- Never deploy two Link hosts that share a writable state root, a control socket, or a Holos credential store.
+- Never move an Agent ID to another device as failover. Replace the host with a new Agent ID, verify it, and atomically relink the sender target; retire the old identity after the new target passes its probe.
+
+## Forbidden Shared State
+
+Never share any of the following across Link instances, even when the platform provides a common persistent mount:
+
+- Writable `HOME` (shell history, SSH material, container caches, and per-user runtime dirs leak identity and state).
+- Synergy runtime data (`$SYNERGY_HOME/.synergy/`) — config, `data/auth/`, sessions, Library, state, and caches are per-instance.
+- Holos credential stores: the Synergy runtime's `$SYNERGY_HOME/.synergy/data/auth/` and the Link host's `$HOME/.synergy/data/auth/api-key.json` record written by `synergy-link login`.
+- `SYNERGY_LINK_HOME` (default `$HOME/.synergy-link/`), including `state.json`, `migrations.json`, `owner.json`, `control.sock`, and `logs/`.
+- Identity material: agent secrets, bind tokens, callback state, or any tunnel credential.
+- Control sockets, PID files, runtime locks, temp directories, and log files.
+
+Shared read-only binaries and read-only assets are allowed only when every instance mounts them read-only and no instance writes beside them.
+
+## Per-Instance Namespace Layout
+
+Use generic variables, not real local paths, so the layout applies to any Qizhi container:
+
+```text
+$INSTANCE_ROOT/            per-instance base (a non-shared volume or a dedicated directory on local disk)
+  home/                    $HOME for the Link service user
+  synergy-home/            $SYNERGY_HOME base; runtime data lives below .synergy/
+  synergy-link/            $SYNERGY_LINK_HOME host root (state.json, owner.json, control.sock, logs/)
+  tmp/                     $TMPDIR for this instance
+$SHARED_READONLY/          common mount: only read-only binaries and assets
+```
+
+Rules:
+
+- Create one `$INSTANCE_ROOT` per instance; never point two instances at the same `$INSTANCE_ROOT`.
+- Set `SYNERGY_HOME=$INSTANCE_ROOT/synergy-home`, `SYNERGY_LINK_HOME=$INSTANCE_ROOT/synergy-link`, `HOME=$INSTANCE_ROOT/home`, and `TMPDIR=$INSTANCE_ROOT/tmp` for the service environment.
+- Confirm the mounts are not shared: `df` and `mount` must show `$INSTANCE_ROOT` on instance-local storage, and the shared mount must be read-only (`ro`).
+- The control socket lives at `$SYNERGY_LINK_HOME/control.sock`. Exactly one live socket must exist per instance root; a second instance sharing the root would delete and replace it.
+
+## Preflight
+
+Before starting anything:
+
+1. Verify the container is dedicated: only one Link service user per instance; no other process holds `$SYNERGY_LINK_HOME`.
+2. Confirm `SYNERGY_HOME`, `SYNERGY_LINK_HOME`, `HOME`, and `TMPDIR` point into `$INSTANCE_ROOT` and that `$INSTANCE_ROOT` is not on the shared mount.
+3. Confirm the shared mount is read-only for this instance.
+4. Confirm no stale control socket exists: `ls "$SYNERGY_LINK_HOME/control.sock"` should fail, or the owning process must be verified dead before removal.
+5. Confirm the instance binary version: `synergy-link --version`. Record it for the target record.
+6. Check disk space and log rotation for `$SYNERGY_LINK_HOME/logs/`; a full local disk breaks state writes and the control socket.
+
+## Qizhi Process and Recovery Ownership
+
+- Prefer a Qizhi workload/container supervisor that runs `synergy-link server` in the foreground with the complete per-instance environment. The platform owns restart policy and process lifetime; Link owns only its own state and control socket.
+- `synergy-link start` is the supported fallback when the workload cannot supervise a foreground command. Invoke it only from the Qizhi platform terminal on the intended instance, never through a remote Link Bash call or merely because the shared binary is visible.
+- Remote Bash is not a Link service manager. The host applies a best-effort pre-spawn guard to obvious direct detached launches (`tmux ... -d`, `screen -dm`, `nohup`, `setsid`, `disown`, and shell `&`), but shell indirection cannot be exhaustively classified. On POSIX hosts, every launched process inherits a session-owned marker so cleanup can rediscover and terminate marked descendant process groups even after a wrapper exits. Cleanup performs an in-memory scan of same-user process environments, emits only PID/PPID/PGID and marker-match flags back to Link, and never logs or persists raw process-table output. If process enumeration is unavailable, cleanup degrades to the tracked process group. This guard is not a shell security boundary: platform-supervised service lifetime and session-owned cleanup are the enforcement boundaries.
+- On Windows hosts, Link's best-effort guard rejects direct `cmd start` and PowerShell `Start-Process`/`start`/`saps` launchers through common `cmd /c`/`/k`, `if`/`for`/`call`, and PowerShell `-Command` wrappers. It also rejects dynamic command invocation, opaque `.bat`/`.cmd` and PowerShell script entry points, PowerShell `-EncodedCommand`, and commands beyond the 16 KiB per-command, 64 nested-shell, or 128 KiB cumulative inspection budgets. Windows cannot safely rediscover a detached descendant after its launcher exits, so split oversized work into tracked `bash`/`process` operations and use a Qizhi platform supervisor for service lifetime.
+- The Qizhi platform terminal is the required independent recovery channel. If operators cannot reach the intended instance without Link, do not deploy Link as that instance's only control path.
+
+## Deploy and Start
+
+1. Install or place the `synergy-link` binary under the per-instance bin path; keep the shared mount read-only.
+2. Before starting a fresh non-interactive host, provide the Agent Secret through an instance-local protected file with mode `0600`, then run `synergy-link login --agent-id <AGENT_ID> --agent-secret-file <SECRET_FILE>`. `--agent-secret-file -` reads one secret line from stdin for an operator-controlled handoff. Never put the Secret in command arguments, prompts, logs, or chat; remove the input file after successful login. Interactive TTY sessions may use `synergy-link login` instead.
+   Credential import asks Holos to authenticate the secret and verifies that `/me` returns the supplied Agent ID before replacing any saved credential. The host reads Holos endpoint settings from the canonical `~/.synergy/config/synergy.d/100-holos.jsonc` domain file; legacy monolithic config is read only as migration fallback.
+3. Start the authenticated host: `synergy-link start` (background service) or `synergy-link server` (foreground, with `--print-logs` for debugging).
+4. Confirm the service stayed up: `synergy-link status` must show `Status source: live` and exit zero. `snapshot (last-known)` is degraded diagnostic data, exits nonzero, and is not proof that the service is healthy.
+
+## Verify
+
+Run all three checks and require every one to pass:
+
+1. Identity: `synergy-link whoami` — `loggedIn: true`, `agentID` matches the intended device identity, and the auth `source` is the expected store. Record the `linkID` for the sender target.
+2. Singleton/control socket: `synergy-link status` must show `Status source: live`. Only one `synergy-link` service process may be alive per `$SYNERGY_LINK_HOME`; check `ps` for the PID shown in status. A `snapshot (last-known)` or a second instance answering means current ownership is unverified — stop and fix, do not reuse.
+3. Health: `synergy-link doctor` — each applicable check must be `ok`:
+
+| Check | Meaning when ok |
+|---|---|
+| `config_dir` | `SYNERGY_LINK_HOME` resolves to this instance's root |
+| `mode` | runtime mode is reported |
+| `local_owner` | managed owner lease is active; not applicable in standalone mode |
+| `auth` | Holos credentials exist (standalone) or managed mode applies |
+| `endpoints` | effective sanitized API, WebSocket, and portal endpoints |
+| `service` | service is running with a PID |
+| `connection` | `connected` in standalone mode (or `disconnected` in managed mode) |
+| `holos_secret` | present only when auth exists; credentials accepted by Holos |
+
+Then confirm reachability from the network side: `synergy-link reconnect` forces a reconnect, and `doctor` shows `connection: connected` again.
+
+Standalone Link hosts send a Holos heartbeat every 60 seconds and use a 180-second missed-pong deadline; the controlling Synergy runtime uses a coordinated 30-second interval and 90-second deadline. Both deadlines are three times their interval and are enforced at the next heartbeat check after the threshold is reached. A missed-pong reconnect restores future reachability but cannot prove whether an already-dispatched remote operation ran.
+
+## Sender Target Setup and Test
+
+From the controlling Synergy runtime:
+
+1. Open Synergy Link Settings and create a target with the host's `targetAgentID` and `linkID` from `whoami`, or use the `connect` tool bootstrap path (`connect open` with `linkID` + `targetAgentID`).
+2. Test the target; a successful probe records the host observation and sets authorization to `approved`. A routine probe whose observed `linkID` differs from the target records failed reachability while preserving the prior authorization state; an identity mismatch during relink aborts and preserves the original target. Only a `refused` probe sets authorization to `revoked`.
+3. After approval, run `connect list_targets` and confirm the target is enabled for the local agent, then open a session: `connect open` with the persisted `targetID`.
+4. Run a trivial remote command to confirm execution and output routing.
+
+## Safe Remote Work
+
+- Remote Bash clamps `yieldSeconds` to five seconds so the auto-background result and process ID can return before the 30-second transport deadline.
+- Remote blocking `process poll` waits are clamped to at most 30 seconds.
+- For genuinely long work, use the tracked background flow (`bash` with `background`/`yieldSeconds`, then `process` for poll/write/kill). Direct detached-daemon patterns are rejected on a best-effort basis before spawn; Windows additionally rejects known detached launchers, dynamic or opaque script entry points, and commands beyond its bounded inspection budget because detached descendants cannot be recovered safely after the launcher exits. This guard is not a shell security boundary. Platform-supervised service lifetime and, on POSIX, session-owned cleanup remain the enforcement boundaries.
+- Every remote process belongs to the authenticated collaboration session that created it. Closing, kicking, disabling, or expiring that session terminates the tracked process tree. On POSIX, cleanup also reaps descendant process groups carrying the session-owned marker after an intermediate shell exits, and `process clear` or `process remove` reaps any still-live marked descendants before retained output is deleted. A later session cannot list or control those process IDs.
+- Duplicate delivery retries with the same request ID are idempotent inside one session. A transport timeout or missed-pong liveness loss still does not prove that the remote command failed. Treat the result as unknown, reconnect, and inspect the collaboration session and process state; never automatically retry a mutating request with a new request ID.
+- Never copy agent secrets, tunnel URLs, bind tokens, or callback state into prompts, logs, target names, or chat.
+
+## Incident Recovery
+
+Symptom: sender sees `unknown` or `unreachable` availability, timeouts, an error that a dispatched request's result is unknown (for example, the Holos transport lost liveness before a response arrived), or `refused`; or the wrong host answers.
+
+1. Check the host: `synergy-link status` and `synergy-link doctor`. If the service is down, read `synergy-link logs --tail 200` and `$SYNERGY_LINK_HOME/logs/runtime.log`.
+2. Check identity: `synergy-link whoami`. If `agentID` is not the expected device identity, the instance's auth store is wrong or shared — do not continue; rotate credentials (below).
+3. Check for a duplicate: look for a second live `synergy-link` process or a second instance whose `whoami` reports the same `agentID`. Stop the stale instance before touching the healthy one. After stopping the stale instance, run `synergy-link reconnect` on the intended host and re-verify `doctor`.
+4. If the control socket is stale (service dead but `control.sock` exists), remove it only after confirming no live service process owns it, then `synergy-link start` again.
+5. If an unrecoverable stale sender record remains, use `connect clear` for that target. It removes only the local cached session and does not contact the remote host.
+6. Re-test from the sender: `connect` probe, then a bounded remote command.
+
+## Credential Rotation and Relink
+
+1. On the old host, stop accepting work: `synergy-link stop`. If the old host cannot be reached, revoke its Agent credential before continuing.
+2. Create a distinct Holos Agent identity and Secret for the replacement device. Never copy or reuse the old host's Agent ID or Secret.
+3. On the replacement host's secure console, provide the new Secret through an instance-local protected file with mode `0600`, then run `synergy-link login --agent-id <NEW_AGENT_ID> --agent-secret-file <SECRET_FILE>` before starting the service. Remove the input file after successful login. An operator with a TTY may use interactive `synergy-link login` instead.
+4. Start the replacement: `synergy-link start`, then verify `whoami`, `doctor`, and the Link ID.
+5. On the sender, atomically relink the persisted target to the replacement `targetAgentID` and `linkID`, then require a successful probe before remote work.
+6. Confirm the old host remains stopped, revoke its credential, and retire its state only after the replacement target passes verification.
+
+## Rollback
+
+If replacement or relink verification fails:
+
+1. Stop the replacement Link and revoke its new Agent credential.
+2. Leave the sender target disabled while identity or reachability is uncertain.
+3. From the Qizhi platform terminal on the original instance, verify its per-instance environment and restart the original Link only if its original Agent identity has not been moved or copied.
+4. Re-run `whoami`, live `status`, and `doctor`, then relink the sender target to the original `targetAgentID` and `linkID` and require a successful probe.
+5. Resume remote work only after the original host identity and a bounded command are verified. If the original host cannot be verified, keep the target disabled and provision another new identity instead.
+
+## Stop Conditions
+
+- `synergy-link stop` stops the background service; confirm with `synergy-link status` that the service reports stopped.
+- `synergy-link logout` clears the standalone host's Holos credential from its per-instance `$HOME/.synergy/data/auth/` and stops the runtime; use it before decommissioning an instance.
+- On decommission, remove the instance root only after the service is stopped and the control socket is gone.
+- When an instance is retired, remove or disable its sender target so agents never route to a dead identity.
+
+## Qizhi Examples
+
+Use placeholders only; substitute real values from the deployment record.
+
+Container A (new instance):
+
+```text
+INSTANCE_ROOT=/data/link-a            # instance-local volume, NOT the shared mount
+SYNERGY_HOME=/data/link-a/synergy-home
+SYNERGY_LINK_HOME=/data/link-a/synergy-link
+HOME=/data/link-a/home
+TMPDIR=/data/link-a/tmp
+synergy-link login --agent-id <AGENT_A_ID> --agent-secret-file <SECRET_FILE>
+synergy-link start
+synergy-link whoami    # expect agentID = <AGENT_A_ID>, loggedIn true
+synergy-link doctor    # expect all checks ok, connection connected
+```
+
+Sender check:
+
+```text
+connect list_targets                          # target for <AGENT_A_ID> visible and enabled
+connect open targetID=<TARGET_ID>             # opens a session
+bash targetID=<TARGET_ID> yieldSeconds=5 command="hostname"
+```
+
+Recovery example (stale duplicate):
+
+```text
+# On the suspected stale instance: confirm and stop it
+synergy-link whoami            # agentID unexpectedly equals another instance's ID
+synergy-link stop              # stop BEFORE rotating or reconnecting
+# On the intended instance:
+synergy-link reconnect
+synergy-link doctor            # connection connected
+```
