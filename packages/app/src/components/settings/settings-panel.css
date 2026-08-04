@@ -98,31 +98,9 @@
   max-width: min(560px, 52vw);
 }
 
-.settings-font-input {
+.settings-font-controls .menu-field-trigger {
   width: 220px;
-  min-width: 0;
-  border: 1px solid var(--settings-border);
-  border-radius: 6px;
-  background: var(--settings-input-bg);
-  color: var(--text-strong);
-  padding: 8px 10px;
-  font-family: var(--font-family-sans);
-  font-size: var(--settings-type-control-size);
-  line-height: var(--settings-type-control-line-height);
-  outline: none;
-}
-
-.settings-font-input::placeholder {
-  color: var(--text-weaker);
-}
-
-.settings-font-input:focus {
-  box-shadow: var(--settings-focus-ring);
-}
-
-.settings-font-input:disabled {
-  cursor: wait;
-  opacity: 0.65;
+  max-width: 100%;
 }
 
 .settings-panel-close {

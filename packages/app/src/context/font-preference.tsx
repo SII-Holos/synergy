@@ -1,5 +1,4 @@
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Persist, persisted } from "@/utils/persist"
 
@@ -7,7 +6,7 @@ export const DEFAULT_SANS_FONT_FAMILY = '"Inter", "Inter Fallback"'
 export const DEFAULT_MONO_FONT_FAMILY = '"IBM Plex Mono", "IBM Plex Mono Fallback"'
 
 export type FontKind = "sans" | "mono"
-export type FontDetectionStatus = "default" | "editing" | "checking" | "applied" | "missing" | "unsupported" | "denied"
+export type FontPhase = "idle" | "loading" | "ready" | "unsupported" | "denied"
 
 type FontPreference = {
   requestedFamily: string
@@ -83,19 +82,6 @@ export function isValidFontFamily(value: string): boolean {
   return value.length > 0 && !/[;,{}]/.test(value)
 }
 
-const STYLE_SUFFIX_PATTERN =
-  /\s+(?:thin|extralight|ultralight|light|regular|book|medium|semibold|demibold|bold|extrabold|black|heavy|italic|oblique|常规|斜体|粗体|细体|特粗|特细|中黑|中等|书宋|黑体)$/i
-
-function withoutStyleSuffix(value: string): string {
-  return value.replace(STYLE_SUFFIX_PATTERN, "")
-}
-
-function matchesFontName(value: string | undefined, wanted: string): boolean {
-  if (!value) return false
-  const normalized = normalizeFontFamily(value).toLocaleLowerCase()
-  return normalized === wanted || withoutStyleSuffix(normalized) === withoutStyleSuffix(wanted)
-}
-
 function defaultFamily(kind: FontKind): string {
   return kind === "mono" ? DEFAULT_MONO_FONT_FAMILY : DEFAULT_SANS_FONT_FAMILY
 }
@@ -113,28 +99,35 @@ export function fontFamilyValue(family: string, kind: FontKind = "sans"): string
   return `"${escaped}", ${defaultFamily(kind)}`
 }
 
-export async function findLocalFontFamily(family: string): Promise<"found" | "missing" | "unsupported" | "denied"> {
-  const normalized = normalizeFontFamily(family)
-  if (!isValidFontFamily(normalized)) return "missing"
-
-  if (typeof window === "undefined" || typeof window.queryLocalFonts !== "function") return "unsupported"
+/**
+ * Loads the locally installed font family names. Families are deduplicated and
+ * sorted so the settings selector offers a manageable, predictable list.
+ */
+export async function loadLocalFontFamilies(): Promise<
+  { status: "ok"; families: string[] } | { status: "unsupported" | "denied" }
+> {
+  if (typeof window === "undefined" || typeof window.queryLocalFonts !== "function") return { status: "unsupported" }
 
   try {
     const fonts = await window.queryLocalFonts()
-    const wanted = normalized.toLocaleLowerCase()
-    return fonts.some((font) => matchesFontName(font.family, wanted) || matchesFontName(font.fullName, wanted))
-      ? "found"
-      : "missing"
+    const families = [
+      ...new Set(fonts.map((font) => normalizeFontFamily(font.family ?? "")).filter((family) => family.length > 0)),
+    ].sort((a, b) => a.localeCompare(b))
+    return { status: "ok", families }
   } catch (error) {
-    return error instanceof DOMException && error.name === "NotAllowedError" ? "denied" : "unsupported"
+    return { status: error instanceof DOMException && error.name === "NotAllowedError" ? "denied" : "unsupported" }
   }
 }
 
 function applyFontFamily(kind: FontKind, family: string) {
   if (typeof document === "undefined") return
   const root = document.documentElement
+  const next = family ? fontFamilyValue(family, kind) : ""
+  // Avoid broadcasting a no-op change: listeners (Monaco, terminal, previews)
+  // refresh on every event, so only fire when the value actually changes.
+  if (root.style.getPropertyValue(cssVariable(kind)) === next) return
   if (family) {
-    root.style.setProperty(cssVariable(kind), fontFamilyValue(family, kind))
+    root.style.setProperty(cssVariable(kind), next)
     // Third-party families do not ship the default fonts' OpenType features.
     root.style.setProperty(cssFeatureVariable(kind), "normal")
   } else {
@@ -152,101 +145,80 @@ export const { use: useFontPreference, provider: FontPreferenceProvider } = crea
       createStore<FontPreferenceStore>(defaultPreferences()),
     )
 
-    // The input draft is intentionally NOT persisted: typing must not write
-    // localStorage on every keystroke. Only verified (applied) preferences and
-    // the last verified requested name are persisted, on check/reset.
-    const [sansDraft, setSansDraft] = createSignal(store.sans.requestedFamily)
-    const [monoDraft, setMonoDraft] = createSignal(store.mono.requestedFamily)
-    const [sansStatus, setSansStatus] = createSignal<FontDetectionStatus>("default")
-    const [monoStatus, setMonoStatus] = createSignal<FontDetectionStatus>("default")
-    const [sansChecking, setSansChecking] = createSignal(false)
-    const [monoChecking, setMonoChecking] = createSignal(false)
+    // Per-kind UI phase: Check loads the local font list, then the user picks a
+    // family from it and Apply uses it. The list is intentionally not
+    // persisted; only the applied preference is.
+    const [phase, setPhase] = createStore<Record<FontKind, FontPhase>>({ sans: "idle", mono: "idle" })
+    const [fontList, setFontList] = createStore<Record<FontKind, string[]>>({ sans: [], mono: [] })
+    const [selected, setSelected] = createStore<Record<FontKind, string>>({
+      sans: store.sans.appliedFamily,
+      mono: store.mono.appliedFamily,
+    })
 
-    // Monotonic request sequence per kind. Any user input, reset, or newer
-    // check invalidates in-flight checks so stale results cannot clobber
-    // newer state.
+    // Monotonic request sequence per kind. Any reset or newer check
+    // invalidates in-flight loads so stale results cannot clobber newer state.
     const requestSeq: Record<FontKind, number> = { sans: 0, mono: 0 }
 
     if (ready()) {
       applyFontFamily("sans", store.sans.appliedFamily)
       applyFontFamily("mono", store.mono.appliedFamily)
-      setSansStatus(store.sans.appliedFamily ? "applied" : "default")
-      setMonoStatus(store.mono.appliedFamily ? "applied" : "default")
     }
 
-    function setStatus(kind: FontKind, status: FontDetectionStatus) {
-      if (kind === "sans") setSansStatus(status)
-      else setMonoStatus(status)
-    }
-
-    function setChecking(kind: FontKind, value: boolean) {
-      if (kind === "sans") setSansChecking(value)
-      else setMonoChecking(value)
-    }
-
-    function setDraft(kind: FontKind, value: string) {
-      if (kind === "sans") setSansDraft(value)
-      else setMonoDraft(value)
-    }
-
-    async function checkAndApply(kind: FontKind): Promise<FontDetectionStatus> {
-      const family = normalizeFontFamily(kind === "sans" ? sansDraft() : monoDraft())
-      // Empty input means "use default": treat Check as a reset.
-      if (!family) {
-        reset(kind)
-        return "default"
-      }
-
+    async function check(kind: FontKind): Promise<FontPhase> {
       const seq = ++requestSeq[kind]
-      setChecking(kind, true)
-      setStatus(kind, "checking")
-      const result = await findLocalFontFamily(family)
-      // A newer input, reset, or check superseded this request: never clobber
-      // newer state with a stale result.
-      if (seq !== requestSeq[kind]) return result === "found" ? "applied" : result
-      setChecking(kind, false)
-
-      if (result === "found") {
-        setStore(kind, "requestedFamily", family)
-        setStore(kind, "appliedFamily", family)
-        applyFontFamily(kind, family)
-        setStatus(kind, "applied")
-        return "applied"
+      setPhase(kind, "loading")
+      const result = await loadLocalFontFamilies()
+      // A reset or newer check superseded this request: never clobber newer
+      // state with a stale result.
+      if (seq !== requestSeq[kind]) return phase[kind]
+      if (result.status !== "ok") {
+        setPhase(kind, result.status)
+        return result.status
       }
 
-      // Keep the previously applied font (if any) and only report the failure.
-      setStatus(kind, result)
-      return result
+      const applied = store[kind].appliedFamily
+      let families = result.families
+      if (applied && !families.includes(applied)) {
+        families = [...families, applied].sort((a, b) => a.localeCompare(b))
+      }
+      setFontList(kind, families)
+      if (applied) setSelected(kind, applied)
+      setPhase(kind, "ready")
+      return "ready"
+    }
+
+    function apply(kind: FontKind): boolean {
+      if (phase[kind] !== "ready") return false
+      const family = normalizeFontFamily(selected[kind])
+      if (!family) return false
+      setStore(kind, { requestedFamily: family, appliedFamily: family })
+      applyFontFamily(kind, family)
+      return true
     }
 
     function reset(kind: FontKind) {
       requestSeq[kind]++
-      setChecking(kind, false)
-      setDraft(kind, "")
       setStore(kind, { requestedFamily: "", appliedFamily: "" })
+      setSelected(kind, "")
+      setFontList(kind, [])
+      setPhase(kind, "idle")
       applyFontFamily(kind, "")
-      setStatus(kind, "default")
+    }
+
+    function select(kind: FontKind, family: string) {
+      setSelected(kind, family)
     }
 
     return {
       ready,
-      family: (kind: FontKind) => (kind === "sans" ? sansDraft() : monoDraft()),
+      phase: (kind: FontKind) => phase[kind],
+      fontList: (kind: FontKind) => fontList[kind],
+      selected: (kind: FontKind) => selected[kind],
       appliedFamily: (kind: FontKind) => store[kind].appliedFamily,
-      status: (kind: FontKind) => (kind === "sans" ? sansStatus() : monoStatus()),
-      checking: (kind: FontKind) => (kind === "sans" ? sansChecking() : monoChecking()),
-      setFamily(kind: FontKind, value: string) {
-        // Typing cancels in-flight checks: the user has moved on. The draft is
-        // not persisted and the applied font is never disturbed while typing.
-        requestSeq[kind]++
-        setChecking(kind, false)
-        setDraft(kind, value)
-        const normalized = normalizeFontFamily(value)
-        const applied = normalizeFontFamily(store[kind].appliedFamily)
-        if (normalized === applied) setStatus(kind, applied ? "applied" : "default")
-        else setStatus(kind, "editing")
-      },
-      checkAndApply,
+      check,
+      apply,
       reset,
+      select,
     }
   },
 })

@@ -14254,12 +14254,16 @@ msgid "settings.general.font.applied"
 msgstr "Applied"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr "Apply"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.check"
-msgstr "Check and apply"
+msgstr "Check"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.checking"
-msgstr "Checking..."
+msgstr "Loading..."
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.default"
@@ -14271,23 +14275,19 @@ msgstr "Font access was denied; using default"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.description"
-msgstr "Enter a font installed on this device. Synergy uses the default font when it cannot be found."
+msgstr "Check loads the fonts installed on this device, then pick one and Apply it."
 
 #. js-lingui-explicit-id
-msgid "settings.general.font.editing"
-msgstr "Press Check to apply"
-
-#. js-lingui-explicit-id
-msgid "settings.general.font.missing"
-msgstr "Not found; using default"
-
-#. js-lingui-explicit-id
-msgid "settings.general.font.placeholder"
-msgstr "e.g. Segoe UI or Microsoft YaHei"
+msgid "settings.general.font.ready"
+msgstr "Select a font, then Apply"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.reset"
 msgstr "Use default"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr "Select a font"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.title"
@@ -14320,10 +14320,6 @@ msgstr "Interface language"
 #. js-lingui-explicit-id
 msgid "settings.general.monoFont.description"
 msgstr "Used for code, terminals, diffs, and other monospaced content."
-
-#. js-lingui-explicit-id
-msgid "settings.general.monoFont.placeholder"
-msgstr "e.g. Consolas or Cascadia Mono"
 
 #. js-lingui-explicit-id
 msgid "settings.general.monoFont.title"

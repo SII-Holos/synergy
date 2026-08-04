@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
-  findLocalFontFamily,
   fontFamilyValue,
   isValidFontFamily,
+  loadLocalFontFamilies,
   migrateFontPreferences,
   normalizeFontFamily,
 } from "../../src/context/font-preference"
@@ -27,13 +27,42 @@ describe("font preference helpers", () => {
     expect(isValidFontFamily("Inter; color: red")).toBe(false)
   })
 
-  test("uses the local font API when it is available", async () => {
+  test("loads, deduplicates, and sorts local font families", async () => {
     const original = window.queryLocalFonts
-    window.queryLocalFonts = async () => [{ family: "LXGW WenKai", fullName: "霞鹜文楷 Regular" }]
+    window.queryLocalFonts = async () => [
+      { family: "Zapf Dingbats", fullName: "Zapf Dingbats" },
+      { family: "  LXGW   WenKai  ", fullName: "霞鹜文楷 Regular" },
+      { family: "Arial", fullName: "Arial" },
+      { family: "Arial", fullName: "Arial Bold" },
+      { family: "", fullName: "" },
+    ]
     try {
-      await expect(findLocalFontFamily("霞鹜文楷")).resolves.toBe("found")
-      await expect(findLocalFontFamily("lxgw wenkai")).resolves.toBe("found")
-      await expect(findLocalFontFamily("Missing Font")).resolves.toBe("missing")
+      await expect(loadLocalFontFamilies()).resolves.toEqual({
+        status: "ok",
+        families: ["Arial", "LXGW WenKai", "Zapf Dingbats"],
+      })
+    } finally {
+      window.queryLocalFonts = original
+    }
+  })
+
+  test("reports unsupported when queryLocalFonts is unavailable", async () => {
+    const original = window.queryLocalFonts
+    delete (window as unknown as { queryLocalFonts?: unknown }).queryLocalFonts
+    try {
+      await expect(loadLocalFontFamilies()).resolves.toEqual({ status: "unsupported" })
+    } finally {
+      window.queryLocalFonts = original
+    }
+  })
+
+  test("reports denied when the font permission is rejected", async () => {
+    const original = window.queryLocalFonts
+    window.queryLocalFonts = async () => {
+      throw new DOMException("denied", "NotAllowedError")
+    }
+    try {
+      await expect(loadLocalFontFamilies()).resolves.toEqual({ status: "denied" })
     } finally {
       window.queryLocalFonts = original
     }
