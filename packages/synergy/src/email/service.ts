@@ -108,9 +108,28 @@ export namespace Email {
     }
   }
 
+  /**
+   * Transport cache key built from non-sensitive identity fields only, so the
+   * password never persists in module state.
+   */
+  export function transportIdentityKey(config: {
+    host: string
+    port: number
+    secure: boolean
+    username: string
+    password: string
+  }): string {
+    return JSON.stringify({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      username: config.username,
+    })
+  }
+
   async function getTransport() {
     const config = await resolveConfig()
-    const nextKey = JSON.stringify(config)
+    const nextKey = transportIdentityKey(config)
     if (pooledTransport && transportKey === nextKey) return { transporter: pooledTransport, config }
 
     closePool()
