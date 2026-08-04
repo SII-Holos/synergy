@@ -267,6 +267,10 @@ describe("resolveVariantDisplay", () => {
     )
   })
 
+  test("does not filter defaults when the available variant set is unknown", () => {
+    expect(resolveVariantDisplay({ ready: true, value: undefined }, "high", "xhigh", undefined)).toBe("high")
+  })
+
   test("returns undefined when no variant is configured", () => {
     expect(resolveVariantDisplay({ ready: true, value: undefined }, undefined, undefined)).toBeUndefined()
   })

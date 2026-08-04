@@ -361,7 +361,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           variantResolution(),
           a?.defaultVariant,
           a ? sync.data.config.role_variant?.[a.modelRole || "default"] : undefined,
-          model?.variants ? Object.keys(model.variants) : [],
+          model?.variants ? Object.keys(model.variants) : undefined,
         )
       }
 

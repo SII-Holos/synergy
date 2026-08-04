@@ -56,7 +56,17 @@ export namespace SessionRootVariant {
     const agent = await Agent.get(user.agent).catch(() => undefined)
     if (!agent) return undefined
 
-    return resolveForRoot({ agent, model: user.model })
+    try {
+      return await resolveForRoot({ agent, model: user.model })
+    } catch (error) {
+      // Legacy roots can reference providers/models that no longer exist (e.g.
+      // a removed provider or a renamed model). Treat those as unresolved so
+      // session import and the root-variant migration keep working instead of
+      // failing on stale model references.
+      const { Provider } = await import("@/provider/provider")
+      if (Provider.ModelNotFoundError.isInstance(error)) return undefined
+      throw error
+    }
   }
 
   export function options(input: {
