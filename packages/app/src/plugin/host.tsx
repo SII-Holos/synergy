@@ -53,6 +53,7 @@ import { registerMessageSlot } from "./registries/message-slot-registry"
 import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
 import { createPluginSurfaceSettings } from "./surface-settings"
 import { createPluginToolMessageContext } from "./tool-message-context"
+import { createPluginSettingsSurfaceLoader } from "./settings-surface-loader"
 
 export type PluginUIStatus = PluginLifecycleState
 export interface PluginUIError {
@@ -507,7 +508,13 @@ function registerPluginSurfaces(input: {
         )
       },
       "ui.settings": (item: Extract<PluginManifestContribution, { kind: "ui.settings" }>) => {
-        const loader = componentLoader<Record<string, never>>(item)
+        const loader = item.component
+          ? createPluginSettingsSurfaceLoader({
+              pluginId: plugin.pluginId,
+              assetUrl: asset(item.component.entry),
+              exportName: item.component.exportName,
+            })
+          : undefined
         const context = surfaceContext({
           contribution: plugin,
           contributionId: item.id,
@@ -530,7 +537,7 @@ function registerPluginSurfaces(input: {
             pluginId: plugin.pluginId,
             scopeId: plugin.scopeId,
             context,
-            loader: loader as never,
+            loader,
           }),
         )
       },
