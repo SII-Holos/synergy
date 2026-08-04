@@ -43,7 +43,9 @@ describe("desktop release packaging", () => {
       "${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE_PASSWORD || '' }}",
     )
     expect(packageStep?.run).toContain("forceCodeSigning=true")
-    expect(packageStep?.run).toContain('[ -n "${WIN_CSC_LINK:-}" ]')
+    expect(packageStep?.run).toContain("WIN_CSC_CONFIGURED")
+    expect(packageStep?.run).toContain("*[![:space:]]*")
+    expect(verifyStep?.run).toContain("IsNullOrWhiteSpace")
     expect(verifyStep?.run).toContain("Get-AuthenticodeSignature")
     expect(verifyStep?.run).toContain("Status -ne 'Valid'")
     expect(verifyStep?.run).toContain("skipping Authenticode signature verification")

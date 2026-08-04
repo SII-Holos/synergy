@@ -27,8 +27,9 @@ export function validateProductReleaseEnvironment(env: Record<string, string | u
     throw new Error(`Windows signing environment is partially configured: ${partiallyMissing.join(", ")}`)
   }
 
-  if (env.WINDOWS_CERTIFICATE?.trim()) {
-    const windowsCertificate = Buffer.from(env.WINDOWS_CERTIFICATE, "base64")
+  const windowsCertificateValue = env.WINDOWS_CERTIFICATE?.trim()
+  if (windowsCertificateValue) {
+    const windowsCertificate = Buffer.from(windowsCertificateValue, "base64")
     if (windowsCertificate.byteLength < 2 || windowsCertificate[0] !== 0x30) {
       throw new Error("WINDOWS_CERTIFICATE must be a base64-encoded PKCS#12 certificate")
     }

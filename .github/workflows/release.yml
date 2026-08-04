@@ -84,6 +84,12 @@ jobs:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
+      - name: Assert Windows signing continuity
+        run: bun run ./script/release/assert-windows-signing-continuity.ts
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
@@ -197,7 +203,11 @@ jobs:
         shell: bash
         run: |
           BUILDER_ARGS=(${{ matrix.builder_args }})
-          if [ "${{ matrix.platform }}" = "win32" ] && [ -n "${WIN_CSC_LINK:-}" ]; then
+          case "${WIN_CSC_LINK:-}" in
+            *[![:space:]]*) WIN_CSC_CONFIGURED=1 ;;
+            *) WIN_CSC_CONFIGURED=0 ;;
+          esac
+          if [ "${{ matrix.platform }}" = "win32" ] && [ "${WIN_CSC_CONFIGURED}" = "1" ]; then
             BUILDER_ARGS+=(--config.forceCodeSigning=true)
           fi
           if [ -z "${CSC_LINK:-}" ]; then
@@ -234,7 +244,7 @@ jobs:
         env:
           WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
         run: |
-          if (-not $env:WIN_CSC_LINK) {
+          if ([string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)) {
             Write-Host "Windows signing not configured; skipping Authenticode signature verification"
             exit 0
           }
