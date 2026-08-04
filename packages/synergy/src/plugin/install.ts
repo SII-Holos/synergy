@@ -40,6 +40,22 @@ export class PluginApprovalRequiredError extends Error {
   }
 }
 
+export class PluginInstallLifecycleGenerationMismatchError extends Error {
+  readonly code = "install_lifecycle_generation_mismatch"
+
+  constructor(
+    readonly pluginId: string,
+    readonly lockfileGeneration: string,
+    readonly loadedGeneration: string,
+  ) {
+    super(
+      `Plugin ${pluginId} lockfile generation ${lockfileGeneration} does not match loaded generation ` +
+        `${loadedGeneration}; reinstall or update the plugin to retry`,
+    )
+    this.name = "PluginInstallLifecycleGenerationMismatchError"
+  }
+}
+
 export async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
   try {
     return (await resolvePluginSpec(spec, { cwd: ScopeContext.current.directory, install: false })).manifest.id
@@ -479,9 +495,10 @@ export async function retryPluginInstallLifecycle(
     // Delivering against a mismatched generation would persist completed on the wrong
     // generation, and re-queueing is undeliverable (boot catch-up refuses stale
     // generations). Fail loudly so the user reinstalls/updates the plugin instead.
-    throw new Error(
-      `Plugin ${pluginId} lockfile generation ${locked.generation} does not match loaded generation ` +
-        `${plugin.manifest.artifacts.generation}; reinstall or update the plugin to retry`,
+    throw new PluginInstallLifecycleGenerationMismatchError(
+      pluginId,
+      locked.generation,
+      plugin.manifest.artifacts.generation,
     )
   }
   if (!plugin) {

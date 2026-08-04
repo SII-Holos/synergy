@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { compilePluginManifest, definePlugin, lifecycleInstall } from "@ericsanchezok/synergy-plugin"
 import {
+  add,
   deliverInstallLifecycle,
+  PluginInstallLifecycleGenerationMismatchError,
   retryPluginInstallLifecycle,
   runPendingInstallLifecycles,
 } from "../../src/plugin/install"
@@ -9,6 +13,7 @@ import type { LoadedPlugin } from "../../src/plugin/loader"
 import * as Lockfile from "../../src/plugin/lockfile"
 import { ScopeContext } from "../../src/scope/context"
 import { configureRuntimeEndpoint } from "../../src/server/runtime-endpoint"
+import { sha256File } from "../../src/util/crypto"
 import { tmpdir } from "../fixture/fixture"
 
 const manifest = compilePluginManifest(
@@ -244,7 +249,7 @@ describe("plugin install lifecycle delivery", () => {
     })
   })
 
-  test("delivery converges a stale pending entry for plugins without lifecycle.install", async () => {
+  test("runPendingInstallLifecycles converges a stale pending entry for plugins without lifecycle.install", async () => {
     await using tmp = await tmpdir({ git: true })
     const noInstall = compilePluginManifest(
       definePlugin({
@@ -290,13 +295,46 @@ describe("plugin install lifecycle delivery", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const result = await deliverInstallLifecycle(noInstallPlugin, { services })
-        expect(result).toEqual({ status: "skipped" })
+        // Exercised through the boot/reload entry point so the "pending" filter that
+        // gates the real catch-up path is covered, not just the delivery helper.
+        const results = await runPendingInstallLifecycles({ plugins: [noInstallPlugin], services })
+        expect(results).toEqual([{ status: "skipped" }])
       },
     })
     expect(counts()).toEqual({ ensured: 0, invoked: 0 })
     const locked = (await Lockfile.read()).plugins["no-install-converge"]
     expect(locked?.lifecycleInstall).toBe("completed")
+  })
+
+  test("add commits a no-contribution fresh install without the lifecycleInstall field", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const pluginDir = path.join(tmp.path, "no-install-add-path")
+    const runtimePath = path.join(pluginDir, "runtime", "index.js")
+    await Bun.write(runtimePath, `export default {}\n`)
+    const noInstall = compilePluginManifest(
+      definePlugin({
+        id: "no-install-add-path",
+        version: "1.0.0",
+        description: "No lifecycle fixture",
+        contributions: [],
+      }),
+      {
+        generation: "no-install-add-path-generation",
+        runtime: { entry: "runtime/index.js", sha256: sha256File(runtimePath) },
+      },
+    )
+    await Bun.write(path.join(pluginDir, "plugin.json"), JSON.stringify(noInstall))
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const added = await add(pathToFileURL(pluginDir).href, { skipConsent: true, source: "local" })
+        expect(added.installLifecycle).toEqual({ status: "skipped" })
+      },
+    })
+    // The committed entry must not carry lifecycleInstall, so retry-install reports
+    // "no contribution" and boot/reload catch-up never reprocesses it.
+    const locked = (await Lockfile.read()).plugins["no-install-add-path"]
+    expect(locked?.lifecycleInstall).toBeUndefined()
   })
 
   test("runPendingInstallLifecycles delivers runtime.started catch-up when requested", async () => {
@@ -353,15 +391,14 @@ describe("plugin install lifecycle delivery", () => {
   })
 
   test("retry fails loudly when the loaded generation does not match the lockfile", async () => {
-    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener" })
     await using tmp = await tmpdir({ git: true })
     await seedLockfile("failed")
     const stale = { ...plugin(), manifest: { ...manifest, artifacts: { ...manifest.artifacts, generation: "other" } } }
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        await expect(retryPluginInstallLifecycle(manifest.id, undefined, stale)).rejects.toThrow(
-          /generation .* does not match loaded generation/,
+        await expect(retryPluginInstallLifecycle(manifest.id, undefined, stale)).rejects.toBeInstanceOf(
+          PluginInstallLifecycleGenerationMismatchError,
         )
       },
     })
