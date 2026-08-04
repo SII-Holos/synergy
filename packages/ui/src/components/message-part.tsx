@@ -1575,14 +1575,14 @@ export function registerPartComponent(type: string, component: PartComponent) {
 export function Message(props: MessageProps) {
   return (
     <Switch>
-      <Match keyed when={props.message.role === "user" ? props.message : undefined}>
+      <Match when={props.message.role === "user" && props.message}>
         {(userMessage) => (
-          <UserMessageDisplay message={userMessage as UserMessage} parts={props.parts} variant={props.userVariant} />
+          <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} variant={props.userVariant} />
         )}
       </Match>
-      <Match keyed when={props.message.role === "assistant" ? props.message : undefined}>
+      <Match when={props.message.role === "assistant" && props.message}>
         {(assistantMessage) => (
-          <AssistantMessageDisplay message={assistantMessage as AssistantMessage} parts={props.parts} />
+          <AssistantMessageDisplay message={assistantMessage() as AssistantMessage} parts={props.parts} />
         )}
       </Match>
     </Switch>
@@ -1878,9 +1878,9 @@ export function Part(props: MessagePartProps) {
     partID: props.part.id,
     partType: props.part.type,
   }
-  const component = PART_MAPPING[identity.partType]
+  const component = createMemo(() => PART_MAPPING[props.part.type])
   return (
-    <Show when={component}>
+    <Show when={component()}>
       <ErrorBoundary
         fallback={(err) => {
           console.error("[MessagePart] renderer failed", identity, err)
@@ -1898,7 +1898,7 @@ export function Part(props: MessagePartProps) {
         }}
       >
         <Dynamic
-          component={component}
+          component={component()}
           part={props.part}
           message={props.message}
           hideDetails={props.hideDetails}

@@ -18,6 +18,9 @@ let result: MessagePartResult
 let dom: JSDOM
 
 beforeAll(async () => {
+  // The fixture compiles a real Solid bundle through Vite before exercising
+  // the lifecycle; keep this hook well above the default 5s test timeout so
+  // direct `bun test` invocations do not fail on cold caches or slow disks.
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".message-part-error-boundary-fixture-"))
   const messagePartPath = path.resolve(import.meta.dir, "../../src/components/message-part.tsx")
   const i18nPath = path.resolve(import.meta.dir, "../../src/testing/i18n.tsx")
@@ -142,7 +145,7 @@ beforeAll(async () => {
 
   await import(`${pathToFileURL(path.join(fixtureDirectory, "dist", "fixture.js")).href}?test=${Date.now()}`)
   result = (globalThis as typeof globalThis & { __messagePartResult: MessagePartResult }).__messagePartResult
-})
+}, 60000)
 
 afterAll(async () => {
   dom?.window.close()

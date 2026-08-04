@@ -47,7 +47,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
           >
             {i18n._(AP.errorReport.id)}
           </a>
-          <Show keyed when={platform.buildLabel ?? platform.version}>
+          <Show when={platform.buildLabel ?? platform.version}>
             {(version) => <p class="text-xs text-text-weak">{i18n._(AP.errorVersionLabel.id, { version })}</p>}
           </Show>
         </div>

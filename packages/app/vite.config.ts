@@ -38,6 +38,9 @@ function gitOutput(args: string[]): string | undefined {
       cwd: fileURLToPath(new URL("../..", import.meta.url)),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      // Avoid contending with concurrent git operations (e.g. watchers) for
+      // the index lock during config load.
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     }).trim()
   } catch {
     return undefined
