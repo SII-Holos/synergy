@@ -291,16 +291,17 @@ export const Terminal = (props: TerminalProps) => {
     term?.textarea?.removeEventListener("blur", handleTextareaBlur)
 
     const t = term
+    let snapshot: LocalPTY | undefined
     try {
       if (serializeAddon && props.onCleanup && t) {
         const buffer = serializeAddon.serialize()
-        props.onCleanup({
+        snapshot = {
           ...local.pty,
           buffer,
           rows: t.rows,
           cols: t.cols,
           scrollY: t.getViewportY(),
-        })
+        }
       }
     } catch (error) {
       console.error("Failed to persist terminal buffer on close", error)
@@ -313,6 +314,17 @@ export const Terminal = (props: TerminalProps) => {
     try {
       t?.dispose()
     } catch {}
+
+    // Capture the snapshot synchronously but defer the store write out of
+    // Solid's dispose flush: onCleanup runs inside cleanNode recursion, and a
+    // synchronous setStore here re-enters the flush while the pty memo (in the
+    // same subtree being cleaned) is still tracked, corrupting the reactive
+    // graph (null.owned crash). Same convention as terminal.close().
+    const persist = props.onCleanup
+    if (snapshot && persist) {
+      const toPersist = snapshot
+      setTimeout(() => persist(toPersist), 0)
+    }
   })
 
   return (
