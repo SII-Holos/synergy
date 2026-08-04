@@ -27207,7 +27207,12 @@
           "shutdownGraceMs": 1500,
           "heartbeatIntervalMs": 5000,
           "maxMemoryMb": 512,
-          "memorySampleIntervalMs": 5000
+          "memorySampleIntervalMs": 5000,
+          "agentCallMaxRuntimeMs": 120000,
+          "hookTimeoutMs": 120000,
+          "contributionInvokeTimeoutMs": 120000,
+          "shellRunTimeoutMs": 120000,
+          "taskRunWaitTimeoutMs": 120000
         },
         "type": "object",
         "properties": {
@@ -27255,6 +27260,36 @@
           },
           "memorySampleIntervalMs": {
             "description": "External plugin runtime RSS sampling interval in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "agentCallMaxRuntimeMs": {
+            "description": "Maximum milliseconds for a plugin agent.call/agent.start model invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hookTimeoutMs": {
+            "description": "Maximum milliseconds for one plugin hook handler invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "contributionInvokeTimeoutMs": {
+            "description": "Default maximum milliseconds for a plugin contribution invocation without a declared timeout",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "shellRunTimeoutMs": {
+            "description": "Default maximum milliseconds for plugin shell.run commands",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "taskRunWaitTimeoutMs": {
+            "description": "Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
