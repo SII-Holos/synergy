@@ -2250,6 +2250,26 @@ export type PluginRuntimeLimitsConfig = {
    * External plugin runtime RSS sampling interval in milliseconds
    */
   memorySampleIntervalMs?: number
+  /**
+   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
+   */
+  agentCallMaxRuntimeMs?: number
+  /**
+   * Maximum milliseconds for one plugin hook handler invocation
+   */
+  hookTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
+   */
+  contributionInvokeTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin shell.run commands
+   */
+  shellRunTimeoutMs?: number
+  /**
+   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
+   */
+  taskRunWaitTimeoutMs?: number
 }
 
 /**

@@ -5,6 +5,8 @@ import { EnforcementError } from "../../src/enforcement/errors"
 import { executePluginHostService } from "../../src/plugin/host-services-runtime"
 import { SandboxBackend } from "../../src/sandbox/backend"
 import { tmpdir } from "../fixture/fixture"
+import { Config } from "../../src/config/config"
+import { ScopeContext } from "../../src/scope/context"
 
 function manifest(capabilities: string[] = ["shell.execute"]) {
   return compilePluginManifest(
@@ -120,5 +122,69 @@ describe("plugin shell.run Host Service", () => {
     await expect(
       invoke({ directory: tmp.path, scopeId: scope.id, params: { command, env: { TOKEN: "secret" } } }),
     ).rejects.toThrow()
+  })
+
+  test("uses the configured shellRunTimeoutMs default when the plugin omits timeoutMs", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    const scope = await tmp.scope()
+    let receivedTimeout: number | undefined
+    const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(
+      mock(async (_wrapper: unknown, options?: { timeoutMs?: number }) => {
+        receivedTimeout = options?.timeoutMs
+        return { exitCode: 0, stdout: "", stderr: "", timedOut: false, truncated: false }
+      }),
+    )
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          await Config.state.reset()
+          await Config.update({
+            pluginRuntimePolicy: { limits: { shellRunTimeoutMs: 4_000 } },
+          } as any)
+          await Config.state.reset()
+          await invoke({ directory: tmp.path, scopeId: scope.id, params: { command: ["ls"] } })
+        },
+      })
+    } finally {
+      execute.mockRestore()
+    }
+
+    expect(receivedTimeout).toBe(4_000)
+  })
+
+  test("plugin-provided timeoutMs still wins over the configured shellRunTimeoutMs", async () => {
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+    const scope = await tmp.scope()
+    let receivedTimeout: number | undefined
+    const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(
+      mock(async (_wrapper: unknown, options?: { timeoutMs?: number }) => {
+        receivedTimeout = options?.timeoutMs
+        return { exitCode: 0, stdout: "", stderr: "", timedOut: false, truncated: false }
+      }),
+    )
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          await Config.state.reset()
+          await Config.update({
+            pluginRuntimePolicy: { limits: { shellRunTimeoutMs: 4_000 } },
+          } as any)
+          await Config.state.reset()
+          await invoke({
+            directory: tmp.path,
+            scopeId: scope.id,
+            params: { command: ["ls"], timeoutMs: 2_000 },
+          })
+        },
+      })
+    } finally {
+      execute.mockRestore()
+    }
+
+    expect(receivedTimeout).toBe(2_000)
   })
 })
