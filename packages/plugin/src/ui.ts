@@ -39,6 +39,15 @@ export interface PluginSurfaceContext {
   host: PluginUIHostActions
 }
 
+export type PluginSettingsSurfaceContext = PluginSurfaceContext
+
+export interface PluginSettingsComponentProps {
+  context: PluginSettingsSurfaceContext
+  pluginId?: string
+  values: Record<string, unknown>
+  onChange(values: Record<string, unknown>): void | Promise<void>
+}
+
 export interface PluginTextRange {
   start: number
   end: number

@@ -1,13 +1,21 @@
 import { describe, expect, spyOn, test } from "bun:test"
 import path from "path"
-import { compilePluginManifest } from "@ericsanchezok/synergy-plugin"
+import {
+  compilePluginManifest,
+  PLUGIN_RUNTIME_PROTOCOL_VERSION as PUBLIC_PLUGIN_RUNTIME_PROTOCOL_VERSION,
+} from "@ericsanchezok/synergy-plugin"
 import definition from "./fixtures/runtime-plugin"
 import upgradeDefinition from "./fixtures/upgrade-plugin-v2"
 import { PluginRuntimeError, PluginRuntimeManager } from "../../src/plugin-runtime/manager"
 import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health"
 import { pluginAgentCallRuntime } from "../../src/plugin/agent-call-runtime"
+import { PLUGIN_RUNTIME_PROTOCOL_VERSION } from "../../src/plugin-runtime/protocol"
 
 describe("PluginRuntimeManager", () => {
+  test("keeps the public diagnostic protocol version aligned with the host", () => {
+    expect(PUBLIC_PLUGIN_RUNTIME_PROTOCOL_VERSION).toBe(PLUGIN_RUNTIME_PROTOCOL_VERSION)
+  })
+
   test("memory recycling is generation-safe and reports the reclaimed runtime", async () => {
     const monitors: Array<{
       pid: number
@@ -159,7 +167,7 @@ describe("PluginRuntimeManager", () => {
         runtime: {
           pluginVersion: "1.0.0",
           pluginGeneration: "manager-test",
-          protocolVersion: 9,
+          protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
         },
       })
       expect(second).toMatchObject({ scopeId: "scope-two", activations: 1 })
@@ -198,7 +206,7 @@ describe("PluginRuntimeManager", () => {
         runtime: {
           pluginVersion: "1.0.0",
           pluginGeneration: "in-process-test",
-          protocolVersion: 9,
+          protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
         },
       })
       expect(manager.registry.active(manifest.id)?.mode).toBe("inProcess")
