@@ -324,6 +324,13 @@ export type PluginInstallLifecycleStatus = { status: "pending" | "completed" | "
 
 type InstallLifecycleServices = Parameters<typeof runPluginInstallLifecycle>[1]
 
+export interface DeliverInstallLifecycleOptions {
+  catchUpStarted?: boolean
+  services?: InstallLifecycleServices
+  /** Injectable runtime.started trigger (defaults to the real per-plugin trigger). */
+  triggerStarted?: (input: { pluginId: string; generation: string; endpointGeneration: string }) => Promise<unknown>
+}
+
 async function persistInstallLifecycle(pluginId: string, status: "pending" | "completed" | "failed") {
   // All other lockfile writers serialize on the installation lock; persist under the same
   // lock so a read-modify-write cannot clobber a concurrent entry update.
@@ -348,18 +355,22 @@ async function persistInstallLifecycle(pluginId: string, status: "pending" | "co
  */
 export async function deliverInstallLifecycle(
   plugin: LoadedPlugin,
-  options: { catchUpStarted?: boolean; services?: InstallLifecycleServices } = {},
+  options: DeliverInstallLifecycleOptions = {},
 ): Promise<PluginInstallLifecycleStatus> {
   const hasInstallContribution = plugin.manifest.contributions.some((item) => item.kind === "lifecycle.install")
   const endpointGeneration = peekRuntimeEndpointGeneration()
   if (!hasInstallContribution) {
-    // No lifecycle.install contribution: nothing to deliver, and the entry is treated as
-    // completed so boot/reload catch-up and retry-install never reprocess it. Persisting
-    // also converges entries left "pending" by earlier versions of this code.
+    // No lifecycle.install contribution: nothing to deliver. Fresh installs leave the
+    // lockfile field absent so retry-install reports "no contribution"; entries that
+    // already carry a lifecycleInstall field (a stale "pending" written by earlier
+    // versions) converge to completed so catch-up never reprocesses them.
     plugin.installLifecycle = { status: "skipped" }
-    await persistInstallLifecycle(plugin.id, "completed").catch((error) =>
-      log.warn("failed to persist completed install lifecycle", { pluginId: plugin.id, error }),
-    )
+    const lockfile = await Lockfile.read().catch(() => null)
+    if (lockfile?.plugins[plugin.id]?.lifecycleInstall) {
+      await persistInstallLifecycle(plugin.id, "completed").catch((error) =>
+        log.warn("failed to persist completed install lifecycle", { pluginId: plugin.id, error }),
+      )
+    }
   } else if (!endpointGeneration) {
     plugin.installLifecycle = { status: "pending" }
   } else {
@@ -379,13 +390,23 @@ export async function deliverInstallLifecycle(
     }
   }
   if (options.catchUpStarted !== false && endpointGeneration) {
-    await triggerForPlugin(
-      plugin.id,
-      plugin.manifest.artifacts.generation,
-      "runtime.started",
-      { endpointGeneration },
-      {},
-    ).catch((error) => log.warn("plugin runtime.started catch-up failed", { pluginId: plugin.id, error }))
+    const trigger =
+      options.triggerStarted ??
+      ((input) =>
+        triggerForPlugin(
+          input.pluginId,
+          input.generation,
+          "runtime.started",
+          {
+            endpointGeneration: input.endpointGeneration,
+          },
+          {},
+        ))
+    await trigger({
+      pluginId: plugin.id,
+      generation: plugin.manifest.artifacts.generation,
+      endpointGeneration,
+    }).catch((error) => log.warn("plugin runtime.started catch-up failed", { pluginId: plugin.id, error }))
   }
   return plugin.installLifecycle
 }
@@ -402,6 +423,7 @@ export async function runPendingInstallLifecycles(
     plugins?: LoadedPlugin[]
     services?: InstallLifecycleServices
     catchUpStarted?: boolean
+    triggerStarted?: DeliverInstallLifecycleOptions["triggerStarted"]
   } = {},
 ): Promise<PluginInstallLifecycleStatus[]> {
   const lockfile = await Lockfile.read().catch(() => null)
@@ -427,6 +449,7 @@ export async function runPendingInstallLifecycles(
       await deliverInstallLifecycle(plugin, {
         catchUpStarted: input.catchUpStarted ?? false,
         services: input.services,
+        triggerStarted: input.triggerStarted,
       }),
     )
   }
@@ -453,10 +476,13 @@ export async function retryPluginInstallLifecycle(
   if (locked.lifecycleInstall === "completed") return { status: "completed" }
   const plugin = loadedPlugin ?? (await getPlugin(pluginId))
   if (plugin && plugin.manifest.artifacts.generation !== locked.generation) {
-    // A caller-supplied or loaded plugin from a different generation cannot be delivered
-    // against the lockfile entry; re-queue for the host to pick up at the next boot.
-    await persistInstallLifecycle(pluginId, "pending")
-    return { status: "pending" }
+    // Delivering against a mismatched generation would persist completed on the wrong
+    // generation, and re-queueing is undeliverable (boot catch-up refuses stale
+    // generations). Fail loudly so the user reinstalls/updates the plugin instead.
+    throw new Error(
+      `Plugin ${pluginId} lockfile generation ${locked.generation} does not match loaded generation ` +
+        `${plugin.manifest.artifacts.generation}; reinstall or update the plugin to retry`,
+    )
   }
   if (!plugin) {
     // Runtime not loaded (e.g. crashed or disabled). The lockfile entry still records the

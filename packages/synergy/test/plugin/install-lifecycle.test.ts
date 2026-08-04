@@ -304,6 +304,8 @@ describe("plugin install lifecycle delivery", () => {
     await using tmp = await tmpdir({ git: true })
     await seedLockfile("pending")
     const { services, counts } = recordingServices()
+    let triggered = 0
+    let triggeredGeneration: string | undefined
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
@@ -311,10 +313,60 @@ describe("plugin install lifecycle delivery", () => {
           plugins: [plugin()],
           services,
           catchUpStarted: true,
+          triggerStarted: async ({ generation }) => {
+            triggered++
+            triggeredGeneration = generation
+          },
         })
         expect(results).toEqual([{ status: "completed" }])
       },
     })
     expect(counts()).toEqual({ ensured: 1, invoked: 1 })
+    // The injected trigger is only invoked when catchUpStarted is propagated; without
+    // propagation this test fails.
+    expect(triggered).toBe(1)
+    expect(triggeredGeneration).toBe(manifest.artifacts.generation)
+  })
+
+  test("boot catch-up does not fire runtime.started (broadcast serves as catch-up)", async () => {
+    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener" })
+    await using tmp = await tmpdir({ git: true })
+    await seedLockfile("pending")
+    const { services, counts } = recordingServices()
+    let triggered = 0
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const results = await runPendingInstallLifecycles({
+          plugins: [plugin()],
+          services,
+          catchUpStarted: false,
+          triggerStarted: async () => {
+            triggered++
+          },
+        })
+        expect(results).toEqual([{ status: "completed" }])
+      },
+    })
+    expect(counts()).toEqual({ ensured: 1, invoked: 1 })
+    expect(triggered).toBe(0)
+  })
+
+  test("retry fails loudly when the loaded generation does not match the lockfile", async () => {
+    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener" })
+    await using tmp = await tmpdir({ git: true })
+    await seedLockfile("failed")
+    const stale = { ...plugin(), manifest: { ...manifest, artifacts: { ...manifest.artifacts, generation: "other" } } }
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await expect(retryPluginInstallLifecycle(manifest.id, undefined, stale)).rejects.toThrow(
+          /generation .* does not match loaded generation/,
+        )
+      },
+    })
+    // The lockfile entry is left untouched so the user can reinstall/update and retry.
+    const locked = (await Lockfile.read()).plugins[manifest.id]
+    expect(locked?.lifecycleInstall).toBe("failed")
   })
 })
