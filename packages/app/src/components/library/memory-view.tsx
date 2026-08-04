@@ -1,5 +1,5 @@
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
-import { Popover } from "@kobalte/core/popover"
+import { MenuField } from "../menu-field/MenuField"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -26,7 +26,6 @@ import {
   libraryCardExpandedClass,
   libraryCardHoverClass,
   libraryInsetClass,
-  libraryMenuClass,
   libraryMetaLabelClass,
   SelectionBar,
   SelectionCheckbox,
@@ -49,8 +48,6 @@ export function MemoryView(props: {
   const { _ } = useLingui()
   const confirm = useConfirm()
   const [sort, setSort] = createSignal<MemorySortKey>("newest")
-  const [sortOpen, setSortOpen] = createSignal(false)
-  const [filterOpen, setFilterOpen] = createSignal(false)
   const [categoryFilter, setCategoryFilter] = createSignal<Set<MemoryCategory>>(new Set())
   const [expandedCards, setExpandedCards] = createSignal<Set<string>>(new Set())
   const [selecting, setSelecting] = createSignal(false)
@@ -106,15 +103,6 @@ export function MemoryView(props: {
     if (props.isSearching) base.push("relevance")
     return base
   })
-
-  function toggleCategory(cat: MemoryCategory) {
-    setCategoryFilter((prev) => {
-      const next = new Set(prev)
-      if (next.has(cat)) next.delete(cat)
-      else next.add(cat)
-      return next
-    })
-  }
 
   function toggleCard(id: string) {
     if (selecting()) {
@@ -230,50 +218,34 @@ export function MemoryView(props: {
       >
         <div class="library-list-toolbar">
           <div class="library-toolbar-left">
-            <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
-              <Popover.Trigger as="button" class="library-control-pill">
-                <span>{filterLabel()}</span>
-                <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
-                  <button
-                    type="button"
-                    classList={{
-                      "library-menu-item": true,
-                      "is-active": categoryFilter().size === 0,
-                    }}
-                    onClick={() => {
-                      setCategoryFilter(new Set<MemoryCategory>())
-                      setFilterOpen(false)
-                    }}
-                  >
-                    <span>{_({ id: "app.library.memory.allCategories", message: "All categories" })}</span>
-                    <span class="library-menu-count">{memories()?.length ?? 0}</span>
-                  </button>
-                  <For each={MEMORY_CATEGORIES}>
-                    {(cat) => {
-                      const count = () => categoryCounts().get(cat) ?? 0
-                      return (
-                        <Show when={count() > 0}>
-                          <button
-                            type="button"
-                            classList={{
-                              "library-menu-item": true,
-                              "is-active": categoryFilter().has(cat),
-                            }}
-                            onClick={() => toggleCategory(cat)}
-                          >
-                            <span>{getCategoryLabel(_, cat)}</span>
-                            <span class="library-menu-count">{count()}</span>
-                          </button>
-                        </Show>
-                      )
-                    }}
-                  </For>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover>
+            <MenuField
+              multiple
+              value={[...categoryFilter()]}
+              ariaLabel={_({ id: "app.library.memory.filter.aria", message: "Filter memories by category" })}
+              triggerLabel={filterLabel()}
+              placement="bottom-start"
+              surfaceClass="library-filter-menu"
+              options={MEMORY_CATEGORIES.filter((cat) => (categoryCounts().get(cat) ?? 0) > 0).map((cat) => ({
+                value: cat,
+                label: getCategoryLabel(_, cat),
+                count: categoryCounts().get(cat) ?? 0,
+              }))}
+              onChange={(values) => setCategoryFilter(new Set(values as MemoryCategory[]))}
+              leading={(close) => (
+                <button
+                  type="button"
+                  class="menu-field-item"
+                  classList={{ "is-active": categoryFilter().size === 0 }}
+                  onClick={() => {
+                    setCategoryFilter(new Set<MemoryCategory>())
+                    close()
+                  }}
+                >
+                  <span>{_({ id: "app.library.memory.allCategories", message: "All categories" })}</span>
+                  <span class="menu-field-count">{memories()?.length ?? 0}</span>
+                </button>
+              )}
+            />
             <span class="library-toolbar-summary">
               {_({
                 id: "app.library.memory.count",
@@ -289,34 +261,14 @@ export function MemoryView(props: {
                 <span>{_({ id: "app.library.select", message: "Select" })}</span>
               </button>
             </Show>
-            <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
-              <Popover.Trigger as="button" class={libraryActionButtonClass}>
-                <span>{getMemorySortLabel(_, sort())}</span>
-                <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content class={libraryMenuClass}>
-                  <For each={availableSorts()}>
-                    {(key) => (
-                      <button
-                        type="button"
-                        classList={{
-                          "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
-                          "workbench-selected-surface text-text-strong": sort() === key,
-                          "text-text-base hover:bg-surface-inset-base": sort() !== key,
-                        }}
-                        onClick={() => {
-                          setSort(key)
-                          setSortOpen(false)
-                        }}
-                      >
-                        {getMemorySortLabel(_, key)}
-                      </button>
-                    )}
-                  </For>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover>
+            <MenuField
+              value={sort()}
+              ariaLabel={_({ id: "app.library.memory.sort.aria", message: "Sort memories" })}
+              triggerClass={libraryActionButtonClass}
+              placement="bottom-end"
+              options={availableSorts().map((key) => ({ value: key, label: getMemorySortLabel(_, key) }))}
+              onChange={(value) => setSort(value as MemorySortKey)}
+            />
           </div>
         </div>
       </Show>

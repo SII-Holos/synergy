@@ -4,24 +4,23 @@
 
 use crate::ipc_framed::{read_frame, write_frame, IpcMessage};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_BROKEN_PIPE, ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE,
-    GetLastError, HANDLE, INVALID_HANDLE_VALUE, LocalFree, HLOCAL,
+    CloseHandle, GetLastError, LocalFree, ERROR_BROKEN_PIPE, ERROR_PIPE_CONNECTED, GENERIC_READ,
+    GENERIC_WRITE, HANDLE, HLOCAL, INVALID_HANDLE_VALUE,
 };
+use windows_sys::Win32::Security::Authorization::{
+    SetEntriesInAclW, EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, TRUSTEE_IS_SID,
+    TRUSTEE_IS_USER, TRUSTEE_W,
+};
+use windows_sys::Win32::Security::{
+    GetTokenInformation, InitializeSecurityDescriptor, SetSecurityDescriptorDacl, ACL,
+    SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR, SID_AND_ATTRIBUTES,
+};
+use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE,
     OPEN_EXISTING,
 };
 use windows_sys::Win32::System::Pipes::{ConnectNamedPipe, CreateNamedPipeW};
-use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
-use windows_sys::Win32::Security::{
-    SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR,
-    GetTokenInformation, InitializeSecurityDescriptor, SetSecurityDescriptorDacl,
-    SID_AND_ATTRIBUTES, ACL,
-};
-use windows_sys::Win32::Security::Authorization::{
-    SetEntriesInAclW, EXPLICIT_ACCESS_W, TRUSTEE_W,
-    GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, TRUSTEE_IS_SID, TRUSTEE_IS_USER,
-};
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
 const PIPE_TYPE_BYTE: u32 = 0x00000000;
@@ -54,7 +53,13 @@ unsafe fn build_pipe_sa() -> SECURITY_ATTRIBUTES {
 
     // Get required buffer size
     let mut needed: u32 = 0;
-    GetTokenInformation(token, TOKEN_USER_CLASS, std::ptr::null_mut(), 0, &mut needed);
+    GetTokenInformation(
+        token,
+        TOKEN_USER_CLASS,
+        std::ptr::null_mut(),
+        0,
+        &mut needed,
+    );
     let expected_err = GetLastError();
     if expected_err != 122 {
         // ERROR_INSUFFICIENT_BUFFER
@@ -69,7 +74,8 @@ unsafe fn build_pipe_sa() -> SECURITY_ATTRIBUTES {
         buf.as_mut_ptr() as *mut _,
         needed,
         &mut needed,
-    ) == 0 {
+    ) == 0
+    {
         CloseHandle(token);
         return zero_sa();
     }
@@ -93,7 +99,12 @@ unsafe fn build_pipe_sa() -> SECURITY_ATTRIBUTES {
     };
 
     let mut dacl: *mut ACL = std::ptr::null_mut();
-    let code = SetEntriesInAclW(1, &ea as *const EXPLICIT_ACCESS_W, std::ptr::null_mut(), &mut dacl);
+    let code = SetEntriesInAclW(
+        1,
+        &ea as *const EXPLICIT_ACCESS_W,
+        std::ptr::null_mut(),
+        &mut dacl,
+    );
     if code != 0 {
         return zero_sa();
     }
@@ -160,6 +171,12 @@ pub struct PipeClient {
     handle: HANDLE,
 }
 
+// A named-pipe HANDLE is an owning kernel handle and can be transferred
+// between threads as long as it is not accessed concurrently. PipeClient does
+// not expose shared interior access, and Drop closes the handle exactly once.
+#[cfg(target_os = "windows")]
+unsafe impl Send for PipeClient {}
+
 impl PipeServer {
     /// Create a new named pipe server listening at `name`.
     ///
@@ -173,11 +190,23 @@ impl PipeServer {
         let name_wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
         let sa = unsafe {
             #[cfg(target_os = "windows")]
-            { build_pipe_sa() }
+            {
+                build_pipe_sa()
+            }
             #[cfg(not(target_os = "windows"))]
-            { SECURITY_ATTRIBUTES { nLength: 0, lpSecurityDescriptor: std::ptr::null_mut(), bInheritHandle: 0 } }
+            {
+                SECURITY_ATTRIBUTES {
+                    nLength: 0,
+                    lpSecurityDescriptor: std::ptr::null_mut(),
+                    bInheritHandle: 0,
+                }
+            }
         };
-        let sa_ptr: *const SECURITY_ATTRIBUTES = if sa.nLength > 0 { &sa as *const _ } else { std::ptr::null() };
+        let sa_ptr: *const SECURITY_ATTRIBUTES = if sa.nLength > 0 {
+            &sa as *const _
+        } else {
+            std::ptr::null()
+        };
         let handle = unsafe {
             CreateNamedPipeW(
                 name_wide.as_ptr(),
@@ -191,10 +220,9 @@ impl PipeServer {
             )
         };
         if handle == INVALID_HANDLE_VALUE {
-            return Err(format!(
-                "CreateNamedPipeW failed: error {}",
-                unsafe { GetLastError() }
-            )
+            return Err(format!("CreateNamedPipeW failed: error {}", unsafe {
+                GetLastError()
+            })
             .into());
         }
         Ok(PipeServer {
@@ -251,6 +279,9 @@ impl PipeServer {
                 }
                 return Err(format!("WriteFile failed: error {}", err).into());
             }
+            if written == 0 {
+                return Err("WriteFile returned success without writing data".into());
+            }
             written_total += written;
         }
         Ok(())
@@ -303,7 +334,10 @@ impl PipeServer {
 
 impl Drop for PipeServer {
     fn drop(&mut self) {
-        if cfg!(target_os = "windows") && !self.handle.is_null() && self.handle != INVALID_HANDLE_VALUE {
+        if cfg!(target_os = "windows")
+            && !self.handle.is_null()
+            && self.handle != INVALID_HANDLE_VALUE
+        {
             unsafe {
                 CloseHandle(self.handle);
             }
@@ -338,11 +372,12 @@ impl PipeClient {
             )
         };
         if handle == INVALID_HANDLE_VALUE {
-            return Err(format!(
-                "CreateFileW (pipe connect) failed: error {}",
-                unsafe { GetLastError() }
-            )
-            .into());
+            return Err(
+                format!("CreateFileW (pipe connect) failed: error {}", unsafe {
+                    GetLastError()
+                })
+                .into(),
+            );
         }
         Ok(PipeClient { handle })
     }
@@ -376,6 +411,9 @@ impl PipeClient {
                     return Err("pipe broken during send".into());
                 }
                 return Err(format!("WriteFile failed: error {}", err).into());
+            }
+            if written == 0 {
+                return Err("WriteFile returned success without writing data".into());
             }
             written_total += written;
         }
@@ -427,7 +465,10 @@ impl PipeClient {
 
 impl Drop for PipeClient {
     fn drop(&mut self) {
-        if cfg!(target_os = "windows") && !self.handle.is_null() && self.handle != INVALID_HANDLE_VALUE {
+        if cfg!(target_os = "windows")
+            && !self.handle.is_null()
+            && self.handle != INVALID_HANDLE_VALUE
+        {
             unsafe {
                 CloseHandle(self.handle);
             }
@@ -453,10 +494,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn pipe_create_connect_round_trip() {
-        let pipe_name = format!(
-            "\\\\.\\pipe\\synergy-test-pipe-{}",
-            std::process::id()
-        );
+        let pipe_name = format!("\\\\.\\pipe\\synergy-test-pipe-{}", std::process::id());
         let server = PipeServer::create(&pipe_name).expect("PipeServer::create must succeed");
 
         // Client connects in a thread so the server's wait_for_client doesn't deadlock
@@ -468,9 +506,7 @@ mod tests {
         server
             .wait_for_client()
             .expect("wait_for_client must succeed");
-        let client = client_handle
-            .join()
-            .expect("client thread must not panic");
+        let client = client_handle.join().expect("client thread must not panic");
 
         // Round-trip a message
         let msg = IpcMessage::Ack {
@@ -480,7 +516,9 @@ mod tests {
         server.send(&msg).expect("server send must succeed");
 
         let mut buf = Vec::new();
-        let received = client.receive(&mut buf).expect("client receive must succeed");
+        let received = client
+            .receive(&mut buf)
+            .expect("client receive must succeed");
         assert_eq!(received, msg);
 
         // Client sends back
@@ -491,7 +529,9 @@ mod tests {
         client.send(&reply).expect("client send must succeed");
 
         let mut buf = Vec::new();
-        let received = server.receive(&mut buf).expect("server receive must succeed");
+        let received = server
+            .receive(&mut buf)
+            .expect("server receive must succeed");
         assert_eq!(received, reply);
     }
 
@@ -499,10 +539,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn pipe_fragmented_receive() {
-        let pipe_name = format!(
-            "\\\\.\\pipe\\synergy-test-frag-{}",
-            std::process::id()
-        );
+        let pipe_name = format!("\\\\.\\pipe\\synergy-test-frag-{}", std::process::id());
         let server = PipeServer::create(&pipe_name).expect("PipeServer::create must succeed");
 
         let client_pipe_name = pipe_name.clone();
@@ -513,23 +550,25 @@ mod tests {
         server
             .wait_for_client()
             .expect("wait_for_client must succeed");
-        let client = client_handle
-            .join()
-            .expect("client thread must not panic");
+        let client = client_handle.join().expect("client thread must not panic");
 
-        // Send a message with a large payload
+        // Start receiving before sending so the synchronous pipe writer can
+        // make progress while the 32 KiB payload exceeds the pipe buffer.
         let large_msg = IpcMessage::Ack {
             msg_id: "frag".into(),
             detail: "x".repeat(32 * 1024), // 32 KiB — larger than a single 4 KiB chunk
         };
-        server
-            .send(&large_msg)
-            .expect("server send must succeed");
+        let receive_handle = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            client
+                .receive(&mut buf)
+                .expect("client receive must succeed")
+        });
+        server.send(&large_msg).expect("server send must succeed");
 
-        let mut buf = Vec::new();
-        let received = client
-            .receive(&mut buf)
-            .expect("client receive must succeed");
+        let received = receive_handle
+            .join()
+            .expect("client receive thread must not panic");
         assert_eq!(received, large_msg, "fragmented receive must reassemble");
     }
 
