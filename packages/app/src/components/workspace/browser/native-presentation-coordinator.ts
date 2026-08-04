@@ -28,7 +28,10 @@ export async function resolveBrowserClientPresentation(input: {
     })
     return capability.managedLocal ? "native" : "webrtc"
   } catch {
-    return "native"
+    // A failed capability probe cannot confirm the server is managed-local.
+    // Falling back to WebRTC keeps the session usable; assuming native would
+    // pin a broken bridge into a permanent native-failed loop.
+    return "webrtc"
   }
 }
 
@@ -131,9 +134,12 @@ export class NativePresentationCoordinator {
         serverUrl: this.input.serverUrl,
       })
     } catch {
+      // The bridge threw (not a managed-local result). Treat it as remote so
+      // the coordinator stops retrying native instead of looping forever on a
+      // broken bridge.
       return {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
-        managedLocal: true,
+        managedLocal: false,
         status: "failed",
         error: {
           code: "browser_native_bridge_missing",

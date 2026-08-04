@@ -40,6 +40,37 @@ describe("native presentation coordinator", () => {
     expect(await resolveBrowserClientPresentation({ serverUrl: "https://web.example.com" })).toBe("webrtc")
   })
 
+  test("falls back to WebRTC when the native capability probe throws", async () => {
+    expect(
+      await resolveBrowserClientPresentation({
+        bridge: bridge({
+          async presentationCapability() {
+            throw new Error("bridge unavailable")
+          },
+        }),
+        serverUrl: "http://127.0.0.1:4096",
+      }),
+    ).toBe("webrtc")
+  })
+
+  test("stops native recovery when the capability bridge fails", async () => {
+    const coordinator = new NativePresentationCoordinator({
+      bridge: bridge({
+        async presentationCapability() {
+          throw new Error("bridge unavailable")
+        },
+      }),
+      serverUrl: "http://127.0.0.1:4096",
+      ownerKey: "owner-1",
+      onState() {},
+    })
+
+    await expect(coordinator.createTicket()).rejects.toMatchObject({
+      code: "browser_native_bridge_missing",
+      retryable: true,
+    })
+  })
+
   test("retries Host registration before issuing an owner-bound ticket", async () => {
     let capabilityCalls = 0
     const delays: number[] = []

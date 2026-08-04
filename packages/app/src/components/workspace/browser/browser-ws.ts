@@ -248,7 +248,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   const sessionID = options.sessionID
   const routeDirectory = options.routeDirectory
   let ws: WebSocket | undefined
-  let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
   let reconnectAttempts = 0
   const nativeCoordinator =
@@ -300,6 +300,22 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   const send = controlSender.send
 
   store._setSend(send)
+  const scheduleReconnect = () => {
+    if (disposed || reconnectTimer) return
+    const reconnectDelay =
+      options.presentation === "native" && reconnectAttempts > MAX_RECONNECT_ATTEMPTS
+        ? 30_000
+        : RECONNECT_DELAY * Math.min(4, reconnectAttempts)
+    browserDebug("ws.reconnect.schedule", {
+      sessionID,
+      reconnectAttempts,
+      delay: reconnectDelay,
+    })
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      void connect()
+    }, reconnectDelay)
+  }
 
   const connect = async () => {
     if (disposed) {
@@ -314,6 +330,11 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       const normalized = normalizeBrowserError(error, "Native Browser presentation failed")
       store.setSession("connectionStatus", "failed")
       store.setBrowserError({ severity: "error", code: normalized.code, message: normalized.message })
+      // A failed ticket attempt never opened a socket, so the close handler
+      // will not fire. Schedule the reconnect here so the session can recover
+      // once the native Host is ready again.
+      reconnectAttempts++
+      scheduleReconnect()
       return
     }
     if (disposed) return
@@ -523,16 +544,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           message: "Native Browser presentation is still recovering.",
         })
       }
-      const reconnectDelay =
-        options.presentation === "native" && reconnectAttempts > MAX_RECONNECT_ATTEMPTS
-          ? 30_000
-          : RECONNECT_DELAY * Math.min(4, reconnectAttempts)
-      browserDebug("ws.reconnect.schedule", {
-        sessionID,
-        reconnectAttempts,
-        delay: reconnectDelay,
-      })
-      reconnectTimer = setTimeout(() => void connect(), reconnectDelay)
+      scheduleReconnect()
     })
   }
 
@@ -551,7 +563,20 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     ws = undefined
   })
 
-  return { send, connect, retryNative: () => nativeCoordinator?.retry() }
+  return {
+    send,
+    connect,
+    retryNative: () => {
+      nativeCoordinator?.retry()
+      // The coordinator reset alone cannot recover a session whose socket was
+      // never opened (non-retryable ticket failure). Reconnect immediately.
+      if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        reconnectTimer = null
+        void connect()
+      }
+    },
+  }
 }
 
 function acceptSequencedMessage(
