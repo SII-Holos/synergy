@@ -4461,6 +4461,46 @@ export type Pty = {
   pid: number
 }
 
+export type ConfigIssue = {
+  /**
+   * Config domain id the issue belongs to, when known
+   */
+  domain?: string
+  /**
+   * Path of the config file that failed to load
+   */
+  path: string
+  /**
+   * Human-readable error summary
+   */
+  error: string
+  /**
+   * Stable machine-readable issue code
+   */
+  code:
+    | "config.json_syntax"
+    | "config.root_type"
+    | "config.unknown_key"
+    | "config.load_failed"
+    | "config.migration_failed"
+  /**
+   * Whether the offending file was moved aside
+   */
+  quarantined: boolean
+  /**
+   * Path the file was moved to, when quarantined
+   */
+  quarantinedPath?: string
+  /**
+   * Unix epoch milliseconds when the issue was recorded
+   */
+  timestamp: number
+}
+
+export type ConfigDiagnosticsResponse = {
+  issues: Array<ConfigIssue>
+}
+
 export type ConfigInstructionsInfo = {
   content: string
   source: "override" | "primary" | "empty"
@@ -10151,6 +10191,25 @@ export type ConfigGlobalResponses = {
 }
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
+
+export type ConfigDiagnosticsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/diagnostics"
+}
+
+export type ConfigDiagnosticsResponses = {
+  /**
+   * Recent config diagnostics
+   */
+  200: ConfigDiagnosticsResponse
+}
+
+export type ConfigDiagnosticsResponse2 = ConfigDiagnosticsResponses[keyof ConfigDiagnosticsResponses]
 
 export type ConfigInstructionsResetData = {
   body?: never

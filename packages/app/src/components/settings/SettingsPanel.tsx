@@ -28,6 +28,7 @@ import type {
   ModelRoleSummary,
   SandboxStatus,
 } from "@ericsanchezok/synergy-sdk/client"
+import type { PluginSettingsComponentProps } from "@ericsanchezok/synergy-plugin"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
@@ -161,6 +162,23 @@ const copy = {
     id: "settings.channels.clarus.diagnosticsFailed",
     message: "Failed to download Clarus diagnostics",
   },
+  configDiagnosticsTitle: {
+    id: "settings.panel.configDiagnostics.title",
+    message: "Configuration issues found",
+  },
+  configDiagnosticsDescription: {
+    id: "settings.panel.configDiagnostics.description",
+    message:
+      "One or more config files could not be loaded and were set aside. Fix the file and rename it back to continue using those settings.",
+  },
+  configDiagnosticsDetail: {
+    id: "settings.panel.configDiagnostics.detail",
+    message: "{path}: {error}",
+  },
+  configDiagnosticsQuarantined: {
+    id: "settings.panel.configDiagnostics.quarantined",
+    message: "Moved to {path}",
+  },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -248,6 +266,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [domainSummaries, { refetch: refetchDomains }] = createResource(async () => {
     const res = await globalSDK.client.config.domain.list()
     return res.data ?? []
+  })
+
+  const [configDiagnostics] = createResource(async () => {
+    const res = await globalSDK.client.config.diagnostics()
+    return res.data?.issues ?? []
   })
 
   const [desktopServerStatus] = createResource(async () => {
@@ -859,6 +882,30 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </AppPanel.Nav>
 
           <AppPanel.Content>
+            <Show when={(configDiagnostics()?.length ?? 0) > 0}>
+              <div class="settings-config-diagnostics-banner" role="alert">
+                <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
+                <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
+                <ul class="settings-config-diagnostics-list">
+                  <For each={configDiagnostics()}>
+                    {(issue) => (
+                      <li>
+                        {_({
+                          ...copy.configDiagnosticsDetail,
+                          values: { path: issue.path, error: issue.error },
+                        })}
+                        <Show when={issue.quarantinedPath}>
+                          {_({
+                            ...copy.configDiagnosticsQuarantined,
+                            values: { path: issue.quarantinedPath! },
+                          })}
+                        </Show>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </div>
+            </Show>
             <AppPanel.Body padding={false}>{renderActiveContent()}</AppPanel.Body>
 
             <AppPanel.Footer>
@@ -925,16 +972,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 }
 
-type SettingsComponentProps = {
-  pluginId?: string
-  values: Record<string, unknown>
-  onChange: (values: Record<string, unknown>) => void | Promise<void>
-}
-
 function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
-  const componentLoader = createSettingsComponentLoader<Component<SettingsComponentProps>>()
+  const componentLoader = createSettingsComponentLoader<Component<PluginSettingsComponentProps>>()
   const comp = componentLoader.component
   const loading = componentLoader.loading
 
@@ -967,8 +1008,8 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   createEffect(() => {
     const current = section()
     void componentLoader.load({
-      component: current.component as Component<SettingsComponentProps> | undefined,
-      loader: current.loader as (() => Promise<{ default: Component<SettingsComponentProps> }>) | undefined,
+      component: current.component as Component<PluginSettingsComponentProps> | undefined,
+      loader: current.loader as (() => Promise<{ default: Component<PluginSettingsComponentProps> }>) | undefined,
     })
   })
 
@@ -1017,6 +1058,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
             >
               <Dynamic
                 component={c()}
+                context={section().context!}
                 pluginId={section().pluginId}
                 values={(values() ?? {}) as Record<string, unknown>}
                 onChange={(next: Record<string, unknown>) => updateValues(next)}
