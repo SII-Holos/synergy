@@ -3223,6 +3223,47 @@
         ]
       }
     },
+    "/config/diagnostics": {
+      "get": {
+        "operationId": "config.diagnostics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get config diagnostics",
+        "description": "Return recent configuration loading issues (syntax errors, unknown keys, quarantined files). Empty when configuration loaded cleanly.",
+        "responses": {
+          "200": {
+            "description": "Recent config diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDiagnosticsResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.diagnostics({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/instructions": {
       "get": {
         "operationId": "config.instructions.get",
@@ -31711,6 +31752,59 @@
           }
         },
         "required": ["id", "title", "command", "args", "cwd", "status", "pid"]
+      },
+      "ConfigIssue": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "description": "Config domain id the issue belongs to, when known",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path of the config file that failed to load",
+            "type": "string"
+          },
+          "error": {
+            "description": "Human-readable error summary",
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable machine-readable issue code",
+            "type": "string",
+            "enum": [
+              "config.json_syntax",
+              "config.root_type",
+              "config.unknown_key",
+              "config.load_failed",
+              "config.migration_failed"
+            ]
+          },
+          "quarantined": {
+            "description": "Whether the offending file was moved aside",
+            "type": "boolean"
+          },
+          "quarantinedPath": {
+            "description": "Path the file was moved to, when quarantined",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Unix epoch milliseconds when the issue was recorded",
+            "type": "number"
+          }
+        },
+        "required": ["path", "error", "code", "quarantined", "timestamp"]
+      },
+      "ConfigDiagnosticsResponse": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigIssue"
+            }
+          }
+        },
+        "required": ["issues"]
       },
       "ConfigInstructionsInfo": {
         "type": "object",
