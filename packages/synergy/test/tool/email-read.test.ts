@@ -136,9 +136,9 @@ describe("email_read search orchestration", () => {
       since: new Date("2026-08-01"),
       before: new Date("2026-08-05"),
     })
-    // Newest-first slice from the pool.
-    expect(result.metadata.uids).toEqual([1002, 1003, 1004])
-    expect(result.metadata.truncated).toBe(false)
+    // Newest-first ordering: the server branch returns ascending UIDs, the
+    // tool reverses them so the newest message comes first.
+    expect(result.metadata.uids).toEqual([1004, 1003, 1002])
   })
 
   test("from filter is applied locally over a bounded window", async () => {
@@ -154,7 +154,7 @@ describe("email_read search orchestration", () => {
     expect(state.searchCalls[0].criteria).toEqual({ all: true })
     expect(state.searchCalls[0].options?.limit).toBe(200)
     expect(state.summariesCalls.length).toBeGreaterThan(0)
-    expect(result.metadata.uids).toEqual([1000, 1002])
+    expect(result.metadata.uids).toEqual([1002, 1000])
   })
 
   test("subject filter is applied locally", async () => {
@@ -165,7 +165,7 @@ describe("email_read search orchestration", () => {
       search: { subject: "AAAI" },
       limit: 10,
     })
-    expect(result.metadata.uids).toEqual([1000, 1002])
+    expect(result.metadata.uids).toEqual([1002, 1000])
   })
 
   test("combined server + local criteria narrow server-side first", async () => {
@@ -190,7 +190,23 @@ describe("email_read search orchestration", () => {
       limit: 10,
     })
     expect(state.fetchOneCalls.length).toBeGreaterThan(0)
-    expect(result.metadata.uids).toEqual([1000, 1002])
+    expect(result.metadata.uids).toEqual([1002, 1000])
+  })
+
+  test("text filter scans the newest messages, not the oldest", async () => {
+    resetState()
+    // 60 emails: only the newest (uid 1059) matches. The old implementation
+    // scanned slice(0, 50) — the oldest 50 — and missed it.
+    const overrides: Partial<{ from: string; subject: string; text: string }>[] = []
+    overrides[59] = { text: "needle-in-newest" }
+    seedEmails(60, overrides)
+    const result = await runTool({
+      action: "search",
+      search: { text: "needle-in-newest" },
+      limit: 10,
+    })
+    expect(result.metadata.uids).toEqual([1059])
+    expect(result.metadata.truncated).toBe(true)
   })
 
   test("window widening runs when the default window is exhausted and filtering comes up short", async () => {
@@ -252,7 +268,7 @@ describe("email_read search orchestration", () => {
     seedEmails(6)
     const result = await runTool({ action: "search", limit: 4 })
     expect(state.searchCalls[0].options?.limit).toBe(4)
-    expect(result.metadata.uids).toEqual([1002, 1003, 1004, 1005])
+    expect(result.metadata.uids).toEqual([1005, 1004, 1003, 1002])
     expect(result.metadata.truncated).toBe(false)
   })
 })

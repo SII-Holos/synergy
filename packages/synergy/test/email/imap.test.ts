@@ -159,3 +159,15 @@ describe("config resolution sanity", () => {
     })
   })
 })
+
+describe("isTruncated", () => {
+  test("server-reported size over the cap flags truncation", () => {
+    expect(EmailImap.isTruncated(EmailImap.EMAIL_MAX_BYTES + 1, 100)).toBe(true)
+    expect(EmailImap.isTruncated(EmailImap.EMAIL_MAX_BYTES, 100)).toBe(false)
+  })
+
+  test("falls back to received bytes when the server reports no size", () => {
+    expect(EmailImap.isTruncated(undefined, EmailImap.EMAIL_MAX_BYTES)).toBe(true)
+    expect(EmailImap.isTruncated(undefined, EmailImap.EMAIL_MAX_BYTES - 1)).toBe(false)
+  })
+})

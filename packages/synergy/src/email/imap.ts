@@ -149,7 +149,7 @@ export namespace EmailImap {
       try {
         const uids = await client.search(criteria, { uid: true })
         if (Array.isArray(uids) && options?.limit && uids.length > options.limit) {
-          // Newest-first ordering contract.
+          // IMAP SEARCH returns ascending UIDs; callers apply newest-first ordering.
           return uids.slice(-options.limit)
         }
         return Array.isArray(uids) ? uids : []
@@ -205,10 +205,8 @@ export namespace EmailImap {
         })
         if (!content) return undefined
 
-        // LimitedPassthrough silently drops bytes past the cap, so detect
-        // truncation from the server-reported size and stop reading early.
-        const truncated = typeof meta?.expectedSize === "number" && meta.expectedSize > EMAIL_MAX_BYTES
         const raw = await collectBuffer(content)
+        const truncated = isTruncated(meta?.expectedSize, raw.length)
 
         let text: string | undefined
         let html: string | undefined
@@ -282,6 +280,17 @@ export namespace EmailImap {
         size: attachment.size ?? 0,
       })),
     }
+  }
+
+  /**
+   * Decide whether a downloaded message was truncated by the size cap.
+   * Prefers the server-reported size; when the server does not report one,
+   * falls back to the received byte count because LimitedPassthrough silently
+   * drops bytes past the cap.
+   */
+  export function isTruncated(expectedSize: unknown, receivedBytes: number): boolean {
+    if (typeof expectedSize === "number") return expectedSize > EMAIL_MAX_BYTES
+    return receivedBytes >= EMAIL_MAX_BYTES
   }
 
   /** Collect a download stream, stopping once EMAIL_MAX_BYTES is reached. */

@@ -198,13 +198,21 @@ async function runSearch(
 ): Promise<{ uids: number[]; truncated: boolean }> {
   const hasLocalFilter = Boolean(criteria.from || criteria.subject || criteria.text)
   const hasServer = hasServerKeys(criteria)
+  const needsSummaries = Boolean(criteria.from || criteria.subject)
 
   // Server-side narrowing when date/flag keys are present; otherwise scan a
   // bounded newest-first window. Empty criteria list newest emails directly.
   let candidateUids: number[]
   let windowLimit: number | undefined
+  let truncated = false
   if (hasServer) {
     candidateUids = await EmailImap.search(folder, serverKeys(criteria) as SearchObject)
+    // Local filtering over a server-narrowed set must stay bounded: cap the
+    // scan at the newest SCAN_WINDOW_MAX matches and flag possible incompleteness.
+    if (needsSummaries && candidateUids.length > SCAN_WINDOW_MAX) {
+      candidateUids = candidateUids.slice(-SCAN_WINDOW_MAX)
+      truncated = true
+    }
   } else if (hasLocalFilter) {
     candidateUids = await EmailImap.search(folder, { all: true }, { limit: SCAN_WINDOW })
     windowLimit = SCAN_WINDOW
@@ -213,7 +221,6 @@ async function runSearch(
   }
 
   let matched = candidateUids
-  let truncated = false
 
   // Local from/subject filtering over summaries (some servers ignore these keys).
   if (criteria.from) {
@@ -240,12 +247,12 @@ async function runSearch(
       widenedMatched = filterBySubject(summaries, criteria.subject).map((s) => s.uid)
     }
     matched = widenedMatched
-    truncated = widened.length >= SCAN_WINDOW_MAX && widenedMatched.length < limit
+    truncated = truncated || (widened.length >= SCAN_WINDOW_MAX && widenedMatched.length < limit)
   }
 
   // Local body-text scan over the newest bounded candidates.
   if (criteria.text) {
-    const scanTargets = matched.slice(0, TEXT_SCAN_LIMIT)
+    const scanTargets = matched.slice(-TEXT_SCAN_LIMIT)
     const matchedUids: number[] = []
     for (const uid of scanTargets) {
       const detail = await EmailImap.fetchOne(folder, uid)
@@ -256,5 +263,5 @@ async function runSearch(
   }
 
   // Newest-first, capped at the requested limit.
-  return { uids: matched.slice(-limit), truncated }
+  return { uids: matched.slice(-limit).reverse(), truncated }
 }
