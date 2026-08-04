@@ -331,10 +331,24 @@ describe("plugin install lifecycle delivery", () => {
         expect(added.installLifecycle).toEqual({ status: "skipped" })
       },
     })
-    // The committed entry must not carry lifecycleInstall, so retry-install reports
-    // "no contribution" and boot/reload catch-up never reprocesses it.
+    // The committed entry must exist and not carry lifecycleInstall, so retry-install
+    // reports "no contribution" and boot/reload catch-up never reprocesses it.
     const locked = (await Lockfile.read()).plugins["no-install-add-path"]
+    expect(locked).toBeDefined()
     expect(locked?.lifecycleInstall).toBeUndefined()
+    // Prove the boot/reload filter never re-selects a field-absent committed entry.
+    const noInstallPlugin = {
+      id: noInstall.id,
+      name: noInstall.name,
+      manifest: noInstall,
+      pluginDir,
+      source: "local" as const,
+      spec: pathToFileURL(pluginDir).href,
+      enabledScopes: new Set<string>(),
+      contributionHealth: new Map(),
+    } as LoadedPlugin
+    const results = await runPendingInstallLifecycles({ plugins: [noInstallPlugin] })
+    expect(results).toEqual([])
   })
 
   test("runPendingInstallLifecycles delivers runtime.started catch-up when requested", async () => {
