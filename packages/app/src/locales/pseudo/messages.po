@@ -1058,6 +1058,18 @@ msgstr ""
 msgid "app.browser.menu.viewport"
 msgstr ""
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr ""
+
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr ""

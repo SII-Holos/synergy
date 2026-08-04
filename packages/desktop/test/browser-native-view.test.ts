@@ -80,4 +80,60 @@ describe("Browser native view manager", () => {
 
     expect(visibility).toEqual([true])
   })
+
+  test("atomically swaps an attached view when the page slot replaces its generation", async () => {
+    const operations: string[] = []
+    let replacement: ((view: any, previous: any) => void) | undefined
+    const makeView = (name: string) => ({
+      webContents: {
+        focus: () => operations.push(`focus:${name}`),
+        isFocused: () => true,
+        getTitle: () => "",
+        getURL: () => "about:blank",
+        on() {},
+        off() {},
+      },
+      getBounds: () => ({ x: 12, y: 24, width: 640, height: 480 }),
+      setBounds: () => operations.push(`bounds:${name}`),
+      getVisible: () => true,
+      setVisible: () => operations.push(`visible:${name}`),
+    })
+    const first = makeView("first")
+    const second = makeView("second")
+    const window = {
+      contentView: {
+        addChildView(view: unknown) {
+          operations.push(view === first ? "add:first" : "add:second")
+        },
+        removeChildView(view: unknown) {
+          operations.push(view === first ? "remove:first" : "remove:second")
+        },
+      },
+    }
+    const pool = {
+      attach: () => {
+        window.contentView.addChildView(first)
+        return first
+      },
+      detach() {},
+      onGeneration(_ownerKey: string, _pageId: string, listener: typeof replacement) {
+        replacement = listener
+        return () => undefined
+      },
+    }
+    const manager = new BrowserNativeViewManager(window as never, pool as never, () => {})
+    await manager.attach({
+      protocolVersion: 2,
+      ownerKey: "scope:test:session:generation",
+      pageId: "page-generation",
+    })
+
+    replacement?.(second, first)
+
+    expect(operations).toContain("remove:first")
+    expect(operations).toContain("add:second")
+    expect(operations).toContain("bounds:second")
+    expect(operations).toContain("visible:second")
+    expect(operations).toContain("focus:second")
+  })
 })
