@@ -17,7 +17,7 @@ import {
 } from "./loader"
 import { reload, triggerForPlugin } from "./lifecycle"
 import * as Lockfile from "./lockfile"
-import { PluginInstallationTransaction } from "./installation-transaction"
+import { PluginInstallationTransaction, withPluginInstallationLock } from "./installation-transaction"
 import { pluginRuntimeManager } from "./runtime"
 import { peekRuntimeEndpointGeneration } from "../server/runtime-endpoint"
 import { resolvePluginSpec } from "./spec-resolver"
@@ -161,10 +161,13 @@ export async function add(
     const before = await state().catch(() => undefined)
     const oldPlugin = before?.loaded.find((plugin) => plugin.id === manifest.id)
     const lockfileBefore = await Lockfile.read().catch(() => null)
-    // A fresh install is any successful commit for a plugin that is not currently loaded.
-    // Disabled/approval-pending config entries must not suppress the install lifecycle:
-    // the plugin has never completed an install, so lifecycle.install must still run once.
-    const freshInstall = oldPlugin === undefined
+    // A fresh install is any commit for a plugin that is not currently loaded and has no
+    // completed install on record. Disabled/approval-pending config entries must not
+    // suppress the install lifecycle: the plugin has never completed an install, so
+    // lifecycle.install must still run once. A previously completed install that was
+    // disabled and re-added is not fresh and must not re-run lifecycle.install.
+    const freshInstall =
+      oldPlugin === undefined && lockfileBefore?.plugins[manifest.id]?.lifecycleInstall !== "completed"
     const prepared = await prepareUpgrade({ oldPlugin, resolved })
     preparedKey = prepared?.key
 
@@ -177,7 +180,7 @@ export async function add(
     const lifecycleInstall = freshInstall
       ? "pending"
       : hasInstallContribution
-        ? (lockfileBefore?.plugins[manifest.id]?.lifecycleInstall ?? "done")
+        ? (lockfileBefore?.plugins[manifest.id]?.lifecycleInstall ?? "completed")
         : undefined
     const lockEntry: import("./lockfile-schema").PluginLockEntry = {
       spec,
@@ -209,7 +212,9 @@ export async function add(
     specToPluginId.set(spec, plugin.id)
     if (prepared) await pluginRuntimeManager.activate(prepared.key)
     preparedKey = undefined
-    if (freshInstall && hasInstallContribution) {
+    if (freshInstall) {
+      // Deliver install lifecycles (and the runtime.started catch-up) for every fresh
+      // install; the helper no-ops for manifests without a lifecycle.install contribution.
       await deliverInstallLifecycle(plugin)
     }
     return plugin
@@ -317,13 +322,17 @@ export type PluginInstallLifecycleStatus = { status: "pending" | "completed" | "
 
 type InstallLifecycleServices = Parameters<typeof runPluginInstallLifecycle>[1]
 
-async function persistInstallLifecycle(pluginId: string, status: "pending" | "done" | "failed") {
-  const lockfile = await Lockfile.read().catch(() => null)
-  const entry = lockfile?.plugins[pluginId]
-  if (!lockfile || !entry) return
-  await Lockfile.write({
-    ...lockfile,
-    plugins: { ...lockfile.plugins, [pluginId]: { ...entry, lifecycleInstall: status } },
+async function persistInstallLifecycle(pluginId: string, status: "pending" | "completed" | "failed") {
+  // All other lockfile writers serialize on the installation lock; persist under the same
+  // lock so a read-modify-write cannot clobber a concurrent entry update.
+  await withPluginInstallationLock(async () => {
+    const lockfile = await Lockfile.read().catch(() => null)
+    const entry = lockfile?.plugins[pluginId]
+    if (!lockfile || !entry) return
+    await Lockfile.write({
+      ...lockfile,
+      plugins: { ...lockfile.plugins, [pluginId]: { ...entry, lifecycleInstall: status } },
+    })
   })
 }
 
@@ -339,22 +348,31 @@ export async function deliverInstallLifecycle(
   plugin: LoadedPlugin,
   options: { catchUpStarted?: boolean; services?: InstallLifecycleServices } = {},
 ): Promise<PluginInstallLifecycleStatus> {
+  const hasInstallContribution = plugin.manifest.contributions.some((item) => item.kind === "lifecycle.install")
   const endpointGeneration = peekRuntimeEndpointGeneration()
-  if (!endpointGeneration) {
+  if (!hasInstallContribution) {
+    // No lifecycle.install contribution: nothing to deliver. Fresh installs still get the
+    // runtime.started catch-up notification below when a host is running.
+    plugin.installLifecycle = { status: "skipped" }
+  } else if (!endpointGeneration) {
     plugin.installLifecycle = { status: "pending" }
-    return plugin.installLifecycle
-  }
-  const result = await runPluginInstallLifecycle(plugin, options.services)
-  plugin.installLifecycle =
-    result.status === "failed"
-      ? { status: "failed", error: result.error }
-      : { status: result.status === "skipped" ? "skipped" : "completed" }
-  if (result.status === "completed" || result.status === "skipped") {
-    await persistInstallLifecycle(plugin.id, "done")
   } else {
-    await persistInstallLifecycle(plugin.id, "failed")
+    const result = await runPluginInstallLifecycle(plugin, options.services)
+    // runPluginInstallLifecycle only returns "skipped" when no lifecycle.install
+    // contribution exists, which is handled above.
+    plugin.installLifecycle =
+      result.status === "failed" ? { status: "failed", error: result.error } : { status: "completed" }
+    if (result.status === "completed") {
+      await persistInstallLifecycle(plugin.id, "completed").catch((error) =>
+        log.warn("failed to persist completed install lifecycle", { pluginId: plugin.id, error }),
+      )
+    } else if (result.status === "failed") {
+      await persistInstallLifecycle(plugin.id, "failed").catch((error) =>
+        log.warn("failed to persist failed install lifecycle", { pluginId: plugin.id, error }),
+      )
+    }
   }
-  if (options.catchUpStarted !== false) {
+  if (options.catchUpStarted !== false && endpointGeneration) {
     await triggerForPlugin(
       plugin.id,
       plugin.manifest.artifacts.generation,
@@ -388,25 +406,44 @@ export async function runPendingInstallLifecycles(
     const plugin = input.plugins?.find((item) => item.id === pluginId) ?? (await getPlugin(pluginId))
     if (!plugin) continue
     const locked = lockfile.plugins[pluginId]
-    if (plugin.manifest.artifacts.generation !== locked.generation) continue
+    if (plugin.manifest.artifacts.generation !== locked.generation) {
+      log.warn("skipping pending install lifecycle for stale generation", {
+        pluginId,
+        lockedGeneration: locked.generation,
+        loadedGeneration: plugin.manifest.artifacts.generation,
+      })
+      continue
+    }
     results.push(await deliverInstallLifecycle(plugin, { catchUpStarted: false, services: input.services }))
   }
   return results
 }
 
 /**
- * Re-queue a failed install lifecycle. Inside a host process the handler is delivered
- * immediately; outside one (CLI) the lockfile is set back to `pending` and the next host boot
- * retries it. Failed installs are never retried automatically.
+ * Re-queue a failed or pending install lifecycle. A completed install is never re-run.
+ * When a host process is available the handler is delivered immediately; otherwise the
+ * lockfile entry is set back to `pending` and the next host boot delivers it. Failed
+ * installs are never retried automatically.
  */
 export async function retryPluginInstallLifecycle(
   pluginId: string,
   services?: InstallLifecycleServices,
-): Promise<PluginInstallLifecycleStatus | undefined> {
-  const plugin = await getPlugin(pluginId)
-  if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
-  const install = plugin.manifest.contributions.find((item) => item.kind === "lifecycle.install")
-  if (!install) throw new Error(`Plugin ${pluginId} does not declare a lifecycle.install contribution`)
+  loadedPlugin?: LoadedPlugin,
+): Promise<PluginInstallLifecycleStatus> {
+  const lockfile = await Lockfile.read().catch(() => null)
+  const locked = lockfile?.plugins[pluginId]
+  if (!locked) throw new Error(`Plugin not found: ${pluginId}`)
+  if (!locked.lifecycleInstall) {
+    throw new Error(`Plugin ${pluginId} does not declare a lifecycle.install contribution`)
+  }
+  if (locked.lifecycleInstall === "completed") return { status: "completed" }
+  const plugin = loadedPlugin ?? (await getPlugin(pluginId))
+  if (!plugin) {
+    // Runtime not loaded (e.g. crashed or disabled). The lockfile entry still records the
+    // generation, so re-queueing for the next host boot is safe.
+    await persistInstallLifecycle(pluginId, "pending")
+    return { status: "pending" }
+  }
   if (!peekRuntimeEndpointGeneration()) {
     await persistInstallLifecycle(pluginId, "pending")
     plugin.installLifecycle = { status: "pending" }

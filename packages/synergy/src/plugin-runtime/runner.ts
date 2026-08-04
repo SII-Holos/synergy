@@ -14,7 +14,7 @@ import {
   type RuntimeActivationData,
   type RuntimeInvocationContextData,
 } from "./protocol.js"
-import { createPluginInvocationContext } from "./context-factory.js"
+import { contributionGatedCapabilities, createPluginInvocationContext } from "./context-factory.js"
 
 const entryPath = process.argv[2]
 let definition: PluginDefinition | undefined
@@ -123,13 +123,7 @@ function contextFor(
       protocolVersion: activation?.protocolVersion ?? PLUGIN_RUNTIME_PROTOCOL_VERSION,
     },
     signal: abort,
-    capabilities: new Set(
-      (activation?.capabilities ?? []).filter(
-        (capability) =>
-          (capability !== "agent.call" && capability !== "runtime.endpoint.read") ||
-          contribution.requires?.includes(capability),
-      ),
-    ),
+    capabilities: contributionGatedCapabilities(activation?.capabilities ?? [], contribution),
     log: logger(),
     invokeHost: (method, params) => hostRequest(requestId, method, params),
   })

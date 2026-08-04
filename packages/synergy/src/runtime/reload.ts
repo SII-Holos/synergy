@@ -381,6 +381,11 @@ export namespace RuntimeReload {
         const { Plugin } = await import("../plugin")
         await Plugin.reload()
         await Plugin.init()
+        // Deliver install lifecycles queued by CLI installs that ran while this server was
+        // already up (the boot-time delivery only covers plugins installed before start).
+        await Plugin.runPendingInstallLifecycles().catch((error) =>
+          Log.create({ service: "runtime-reload" }).warn("pending plugin install lifecycles failed", { error }),
+        )
         // Collect disabled plugin diagnostics
         try {
           const disabled = await Plugin.getDisabled()

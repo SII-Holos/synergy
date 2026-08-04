@@ -417,10 +417,13 @@ function registerShutdown(
 
       phase = "server stop"
       await Observability.emit("shutdown.phase", { data: { phase } })
-      await server.stop()
-      // Clear the runtime endpoint only after the server has stopped so plugins can still
-      // read it while their runtimes are being drained and stopped above.
-      configureRuntimeEndpoint(undefined)
+      try {
+        await server.stop()
+      } finally {
+        // Clear the runtime endpoint only after the server has stopped so plugins can still
+        // read it while their runtimes are being drained and stopped above.
+        configureRuntimeEndpoint(undefined)
+      }
 
       phase = "release lock"
       await Observability.emit("shutdown.phase", { data: { phase } })

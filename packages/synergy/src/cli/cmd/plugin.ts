@@ -122,7 +122,7 @@ export const PluginAddCommand = cmd({
           if (lifecycle?.status === "pending") {
             UI.println(
               `  ${UI.Style.TEXT_WARNING}Install setup queued:${UI.Style.TEXT_NORMAL} ` +
-                `lifecycle.install will run on the next Synergy start (no running host).`,
+                `lifecycle.install will run when the Synergy server picks up the plugin (next start or plugin reload).`,
             )
           } else if (lifecycle?.status === "failed") {
             UI.println(
@@ -224,12 +224,10 @@ export const PluginRetryInstallCommand = cmd({
         try {
           const result = await Plugin.retryPluginInstallLifecycle(pluginId)
           spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${pluginId}`)
-          if (!result) {
-            UI.println(`${UI.Style.TEXT_DIM}Plugin has no lifecycle.install contribution.${UI.Style.TEXT_NORMAL}`)
-          } else if (result.status === "pending") {
+          if (result.status === "pending") {
             UI.println(
               `${UI.Style.TEXT_WARNING}Install setup queued:${UI.Style.TEXT_NORMAL} ` +
-                `lifecycle.install will run on the next Synergy start (no running host).`,
+                `lifecycle.install will run on the next Synergy start.`,
             )
           } else if (result.status === "failed") {
             UI.println(
@@ -757,6 +755,7 @@ export const PluginCommand = cmd({
   describe: "install, remove, update, and inspect plugins",
   builder: (yargs: Argv) =>
     yargs
+      .command(PluginCreateCommand)
       .command(PluginAddCommand)
       .command(PluginRetryInstallCommand)
       .command(PluginRemoveCommand)

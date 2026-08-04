@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { compilePluginManifest, definePlugin, lifecycleInstall } from "@ericsanchezok/synergy-plugin"
-import { deliverInstallLifecycle, runPendingInstallLifecycles } from "../../src/plugin/install"
+import {
+  deliverInstallLifecycle,
+  retryPluginInstallLifecycle,
+  runPendingInstallLifecycles,
+} from "../../src/plugin/install"
 import type { LoadedPlugin } from "../../src/plugin/loader"
 import * as Lockfile from "../../src/plugin/lockfile"
 import { ScopeContext } from "../../src/scope/context"
@@ -33,7 +37,7 @@ function plugin(): LoadedPlugin {
   } as LoadedPlugin
 }
 
-async function seedLockfile(status: "pending" | "done" | "failed") {
+async function seedLockfile(status: "pending" | "completed" | "failed") {
   const current = await Lockfile.read()
   await Lockfile.write({
     ...current,
@@ -85,7 +89,7 @@ describe("plugin install lifecycle delivery", () => {
     expect(counts()).toEqual({ ensured: 0, invoked: 0 })
   })
 
-  test("delivers immediately inside a host process and persists done", async () => {
+  test("delivers immediately inside a host process and persists completed", async () => {
     configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener" })
     await using tmp = await tmpdir({ git: true })
     await seedLockfile("pending")
@@ -99,7 +103,7 @@ describe("plugin install lifecycle delivery", () => {
     })
     expect(counts()).toEqual({ ensured: 1, invoked: 1 })
     const locked = (await Lockfile.read()).plugins[manifest.id]
-    expect(locked?.lifecycleInstall).toBe("done")
+    expect(locked?.lifecycleInstall).toBe("completed")
   })
 
   test("persists failed state without throwing", async () => {
@@ -136,7 +140,7 @@ describe("plugin install lifecycle delivery", () => {
     })
     expect(counts()).toEqual({ ensured: 1, invoked: 1 })
     const locked = (await Lockfile.read()).plugins[manifest.id]
-    expect(locked?.lifecycleInstall).toBe("done")
+    expect(locked?.lifecycleInstall).toBe("completed")
   })
 
   test("boot catch-up skips plugins whose generation no longer matches", async () => {
@@ -153,5 +157,90 @@ describe("plugin install lifecycle delivery", () => {
       },
     })
     expect(counts()).toEqual({ ensured: 0, invoked: 0 })
+  })
+
+  test("retry refuses a completed install", async () => {
+    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener" })
+    await using tmp = await tmpdir({ git: true })
+    await seedLockfile("completed")
+    const { services, counts } = recordingServices()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const result = await retryPluginInstallLifecycle(manifest.id, services)
+        expect(result).toEqual({ status: "completed" })
+      },
+    })
+    expect(counts()).toEqual({ ensured: 0, invoked: 0 })
+  })
+
+  test("retry re-queues a failed install outside a host process", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await seedLockfile("failed")
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const result = await retryPluginInstallLifecycle(manifest.id)
+        expect(result).toEqual({ status: "pending" })
+      },
+    })
+    const locked = (await Lockfile.read()).plugins[manifest.id]
+    expect(locked?.lifecycleInstall).toBe("pending")
+  })
+
+  test("retry delivers immediately inside a host process", async () => {
+    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener" })
+    await using tmp = await tmpdir({ git: true })
+    await seedLockfile("failed")
+    const { services, counts } = recordingServices()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const result = await retryPluginInstallLifecycle(manifest.id, services, plugin())
+        expect(result).toEqual({ status: "completed" })
+      },
+    })
+    expect(counts()).toEqual({ ensured: 1, invoked: 1 })
+    const locked = (await Lockfile.read()).plugins[manifest.id]
+    expect(locked?.lifecycleInstall).toBe("completed")
+  })
+
+  test("retry reports no contribution for plugins without lifecycle.install", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const noInstall = compilePluginManifest(
+      definePlugin({
+        id: "no-install-contribution",
+        version: "1.0.0",
+        description: "No lifecycle fixture",
+        contributions: [],
+      }),
+      {
+        generation: "no-install-generation",
+        runtime: { entry: "runtime/index.js", sha256: "test" },
+      },
+    )
+    await Lockfile.write({
+      ...(await Lockfile.read()),
+      plugins: {
+        "no-install-contribution": {
+          spec: "file:///plugin",
+          source: "local",
+          version: noInstall.version,
+          apiVersion: noInstall.apiVersion,
+          generation: noInstall.artifacts.generation,
+          resolved: "/plugin/plugin.json",
+          manifestHash: "test",
+          approvalId: noInstall.id,
+        },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await expect(retryPluginInstallLifecycle("no-install-contribution")).rejects.toThrow(
+          "does not declare a lifecycle.install contribution",
+        )
+      },
+    })
   })
 })

@@ -35,7 +35,9 @@ export async function read(): Promise<PluginLockfile> {
  */
 export async function write(lockfile: PluginLockfile): Promise<void> {
   const targetPath = lockfilePath()
-  const tmpPath = path.join(os.tmpdir(), `.synergy-plugin-lock-${Date.now()}.tmp`)
+  // Unique temp name (pid + timestamp + random) so concurrent writers in the same
+  // millisecond cannot collide on one temp path and fail the rename.
+  const tmpPath = path.join(os.tmpdir(), `.synergy-plugin-lock-${process.pid}-${Date.now()}-${crypto.randomUUID()}.tmp`)
   await Bun.write(tmpPath, JSON.stringify(lockfile, null, 2) + "\n")
   await fs.mkdir(path.dirname(targetPath), { recursive: true })
   await fs.rename(tmpPath, targetPath)
