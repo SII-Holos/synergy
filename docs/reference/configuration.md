@@ -577,6 +577,13 @@ Configuration files are validated as they are loaded. A file with a JSON(C) synt
 - The event is recorded in the diagnostics registry and surfaced in the startup banner, the Web Settings panel banner, and `GET /config/diagnostics` (SDK: `client.config.diagnostics()`).
 - Section-level schema errors keep the existing behavior: the invalid section is stripped and defaults are used; the file is not moved.
 
+Quarantine uses a non-blocking domain lock: when a configuration write
+transaction (for example a Settings save) is already in flight for the same
+domain, the broken file is _not_ moved aside — the transaction's own write
+replaces it with a valid configuration, which is equivalent to recovery. The
+issue is still recorded in the diagnostics registry. Reload and startup
+paths, which hold no transaction lock, always quarantine as described above.
+
 To recover a quarantined file, fix the content and rename it back to its original name (for example `110-email.jsonc.invalid-…` → `110-email.jsonc`). The file watcher picks the change up and reloads the domain. Quarantined files are never deleted automatically.
 
 The legacy global config file (`synergy.jsonc`/`synergy.json`) is handled the same way: a broken legacy file is quarantined and the domain fragment migration is skipped. A malformed remote well-known config is skipped with a warning. Explicit CLI inputs (`SYNERGY_CONFIG_CONTENT`) still fail loudly because they are intentional process-level overrides.

@@ -543,13 +543,18 @@ export namespace Config {
 
   /**
    * Rename a broken config file aside (quarantine) under the domain lock.
-   * Returns the quarantine path, or undefined when the file is already gone
-   * or cannot be moved. Never throws.
+   * Uses a non-blocking lock acquisition: when a write transaction already
+   * holds the domain lock (e.g. a Settings save in flight), the quarantine
+   * is skipped — that transaction will overwrite the broken file with a
+   * valid config anyway, so quarantining would both deadlock and race the
+   * rename. Returns the quarantine path, or undefined when the file is
+   * already gone, cannot be moved, or the lock is held. Never throws.
    */
   async function quarantineFile(filepath: string): Promise<string | undefined> {
     const target = `${filepath}.invalid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     try {
-      using _ = await Lock.write(`config-domain:${filepath}`)
+      using _ = await Lock.tryAcquireWrite(`config-domain:${filepath}`)
+      if (!_) return undefined
       if (!(await Bun.file(filepath).exists())) return undefined
       await fs.rename(filepath, target)
       return target
@@ -1293,7 +1298,11 @@ export namespace Config {
   ) {
     const parsed = ConfigDomain.Id.parse(id)
     using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed, options.root)}`)
-    return domainUpdateUnlocked(parsed, patch, options)
+    // `return await` (not bare `return promise`): with `using`, a bare return
+    // disposes the lock before the async transaction has run, so concurrent
+    // updates would not be serialized. Awaiting inside the guarded body keeps
+    // the lock held across the read-merge-write transaction.
+    return await domainUpdateUnlocked(parsed, patch, options)
   }
 
   async function domainUpdateUnlocked(
