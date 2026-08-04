@@ -39,6 +39,21 @@ afterEach(() => {
 })
 
 describe("font preference provider interaction model (check/apply)", () => {
+  test("migrates the legacy localStorage key into the global persisted store", () => {
+    localStorage.setItem(
+      "font-preference.v1",
+      JSON.stringify({ requestedFamily: "Legacy Font", appliedFamily: "Legacy Font" }),
+    )
+
+    mountProvider()
+    const font = currentApi as FontApi
+
+    expect(font.appliedFamily("sans")).toBe("Legacy Font")
+    expect(font.selected("sans")).toBe("Legacy Font")
+    expect(localStorage.getItem("font-preference.v1")).toBeNull()
+    expect(localStorage.getItem("synergy.global.dat:font-preference")).toContain('"Legacy Font"')
+  })
+
   test("check loads and sorts the local font list and enters ready phase", async () => {
     setLocalFonts([
       { family: "Zapf Dingbats", fullName: "Zapf Dingbats" },
