@@ -88,6 +88,7 @@ export class BrowserHostPage implements BrowserPageBackend {
   }
 
   private handleEvent(event: BrowserHostPageEvent): void {
+    if (event.type === "host.status") return
     if (event.type === "page.loading") {
       this.loading = true
       this.url = event.url

@@ -230,7 +230,7 @@ export const Mermaid = Node.create({
         "width: 100%",
         "min-height: 80px",
         "padding: 0.75em",
-        "font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        "font-family: var(--font-family-mono)",
         "font-size: 0.8125rem",
         "background: var(--surface-inset-base)",
         "color: var(--text-base)",

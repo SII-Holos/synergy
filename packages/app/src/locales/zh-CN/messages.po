@@ -1058,6 +1058,18 @@ msgstr "面板"
 msgid "app.browser.menu.viewport"
 msgstr "视口"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr "正在恢复原生浏览器…"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr "原生浏览器恢复失败"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr "Synergy 将继续重试本地浏览器。你可以立即重试，系统不会切换到远程画面。"
+
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "后退"
@@ -1792,6 +1804,30 @@ msgstr "项目详情"
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.directory"
 msgstr "目录"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAdd"
+msgstr "添加文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAddTitle"
+msgstr "添加项目文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersHint"
+msgstr "附加文件夹由控制配置文件、沙箱和文件工具自动信任。"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersLabel"
+msgstr "项目文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersMain"
+msgstr "主文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersRemove"
+msgstr "移除文件夹"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.id"
@@ -14250,6 +14286,54 @@ msgid "settings.general.colorScheme.system.description"
 msgstr "跟随此设备"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr "已应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr "应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr "检查"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr "加载中……"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr "字体访问被拒绝；使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr "点击“检查”加载本机已安装的字体，选择一个后点击“应用”。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.ready"
+msgstr "选择字体，然后点击“应用”"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr "选择一种字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr "界面字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr "此浏览器无法扫描本地字体；使用默认字体"
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "选择 Synergy 控件和无障碍标签使用的语言"
 
@@ -14268,6 +14352,14 @@ msgstr "跟随系统"
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
 msgstr "界面语言"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr "用于代码、终端、差异视图和其他等宽内容。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
+msgstr "等宽字体"
 
 #. js-lingui-explicit-id
 msgid "settings.general.notifications.description"

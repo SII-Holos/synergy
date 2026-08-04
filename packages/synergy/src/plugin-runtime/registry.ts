@@ -1,6 +1,7 @@
 import type { PluginDefinition } from "@ericsanchezok/synergy-plugin"
 import type { PluginProcessHost } from "./process-host.js"
 import type { MemoryMonitor } from "./resource-limits.js"
+import type { RuntimeLimits } from "@ericsanchezok/synergy-util/plugin-policy"
 
 export interface PluginRuntimeMemory {
   currentRssBytes?: number
@@ -32,6 +33,7 @@ export interface PluginRuntimeEntry {
   memory?: PluginRuntimeMemory
   memoryMonitor?: MemoryMonitor
   memoryRecyclePending?: boolean
+  limits: RuntimeLimits
 }
 
 export function pluginRuntimeKey(pluginId: string, version: string, generation: string): string {

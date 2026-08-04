@@ -32,6 +32,7 @@ import {
 import { nextMutedToasts, toastConfigFromPreferences } from "../toast-preferences"
 import { applyLocalePreference } from "./locale-preference-change"
 import { LANGUAGE_SELF_NAMES } from "./language-self-names"
+import { useFontPreference, type FontKind } from "@/context/font-preference"
 
 const copy = {
   pageTitle: { id: "settings.general.page.title", message: "General" },
@@ -65,6 +66,32 @@ const copy = {
   languageFailedDescription: {
     id: "settings.general.language.failed.description",
     message: "The selected language catalog could not be loaded. The previous language is still active.",
+  },
+  fontTitle: { id: "settings.general.font.title", message: "Interface font" },
+  fontDescription: {
+    id: "settings.general.font.description",
+    message: "Check loads the fonts installed on this device, then pick one and Apply it.",
+  },
+  fontSelectPlaceholder: { id: "settings.general.font.select.placeholder", message: "Select a font" },
+  fontCheck: { id: "settings.general.font.check", message: "Check" },
+  fontChecking: { id: "settings.general.font.checking", message: "Loading..." },
+  fontApply: { id: "settings.general.font.apply", message: "Apply" },
+  fontReset: { id: "settings.general.font.reset", message: "Use default" },
+  fontApplied: { id: "settings.general.font.applied", message: "Applied" },
+  fontReady: { id: "settings.general.font.ready", message: "Select a font, then Apply" },
+  fontUnsupported: {
+    id: "settings.general.font.unsupported",
+    message: "This browser cannot scan local fonts; using default",
+  },
+  fontDenied: {
+    id: "settings.general.font.denied",
+    message: "Font access was denied; using default",
+  },
+  fontDefault: { id: "settings.general.font.default", message: "Using default" },
+  monoFontTitle: { id: "settings.general.monoFont.title", message: "Monospace font" },
+  monoFontDescription: {
+    id: "settings.general.monoFont.description",
+    message: "Used for code, terminals, diffs, and other monospaced content.",
   },
   behaviorTitle: { id: "settings.general.behavior.title", message: "Behavior" },
   snapshotsTitle: { id: "settings.general.snapshots.title", message: "File snapshots" },
@@ -260,6 +287,18 @@ export function GeneralPanel(props: {
             />
           }
         />
+        <FontPreferenceRow
+          kind="sans"
+          title={_(copy.fontTitle)}
+          description={_(copy.fontDescription)}
+          popoverLayer={props.popoverLayer}
+        />
+        <FontPreferenceRow
+          kind="mono"
+          title={_(copy.monoFontTitle)}
+          description={_(copy.monoFontDescription)}
+          popoverLayer={props.popoverLayer}
+        />
       </SettingsSection>
 
       <SettingsSection title={_(copy.behaviorTitle)}>
@@ -289,6 +328,74 @@ export function GeneralPanel(props: {
         </div>
       </SettingsSection>
     </SettingsPage>
+  )
+}
+
+function FontPreferenceRow(props: { kind: FontKind; title: string; description: string; popoverLayer?: HTMLElement }) {
+  const { _ } = useLingui()
+  const font = useFontPreference()
+
+  const phase = () => font.phase(props.kind)
+  const loading = () => phase() === "loading"
+  const ready = () => phase() === "ready"
+  const selectedFamily = () => font.selected(props.kind)
+  const appliedFamily = () => font.appliedFamily(props.kind)
+  const hasCustomFont = () => Boolean(appliedFamily())
+  const options = () => font.fontList(props.kind).map((family) => ({ value: family, label: family }))
+  // One action button with two phases: Check loads the local font list,
+  // Apply uses the selected family. Loading keeps the same slot disabled.
+  // Check must stay clickable while idle (and for retry after
+  // unsupported/denied); only loading and ready-without-selection disable it.
+  const actionDisabled = () => loading() || (ready() && !selectedFamily().trim())
+  const actionLabel = () => (loading() ? _(copy.fontChecking) : ready() ? _(copy.fontApply) : _(copy.fontCheck))
+
+  function statusLabel() {
+    const phaseValue = phase()
+    if (phaseValue === "loading") return _(copy.fontChecking)
+    if (phaseValue === "unsupported") return _(copy.fontUnsupported)
+    if (phaseValue === "denied") return _(copy.fontDenied)
+    if (hasCustomFont()) return _(copy.fontApplied)
+    if (phaseValue === "ready") return _(copy.fontReady)
+    return _(copy.fontDefault)
+  }
+
+  return (
+    <SettingRow
+      title={props.title}
+      description={props.description}
+      stateLabel={statusLabel()}
+      trailing={
+        <div class="settings-font-controls">
+          <Button
+            type="button"
+            variant="ghost"
+            size="small"
+            disabled={!hasCustomFont()}
+            onClick={() => font.reset(props.kind)}
+          >
+            {_(copy.fontReset)}
+          </Button>
+          <MenuField
+            value={selectedFamily()}
+            ariaLabel={props.title}
+            popoverLayer={props.popoverLayer}
+            triggerLabel={selectedFamily() || _(copy.fontSelectPlaceholder)}
+            options={options()}
+            disabled={!ready()}
+            onChange={(value) => font.select(props.kind, value)}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            disabled={actionDisabled()}
+            onClick={() => void (ready() ? font.apply(props.kind) : font.check(props.kind))}
+          >
+            {actionLabel()}
+          </Button>
+        </div>
+      }
+    />
   )
 }
 

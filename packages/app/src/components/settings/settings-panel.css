@@ -91,6 +91,18 @@
   letter-spacing: var(--letter-spacing-normal);
 }
 
+.settings-font-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(560px, 52vw);
+}
+
+.settings-font-controls .menu-field-trigger {
+  width: 220px;
+  max-width: 100%;
+}
+
 .settings-panel-close {
   position: absolute;
   top: 12px;
