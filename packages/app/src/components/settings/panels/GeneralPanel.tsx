@@ -342,9 +342,11 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
   const appliedFamily = () => font.appliedFamily(props.kind)
   const hasCustomFont = () => Boolean(appliedFamily())
   const options = () => font.fontList(props.kind).map((family) => ({ value: family, label: family }))
-  const canApply = () => ready() && Boolean(selectedFamily().trim())
   // One action button with two phases: Check loads the local font list,
   // Apply uses the selected family. Loading keeps the same slot disabled.
+  // Check must stay clickable while idle (and for retry after
+  // unsupported/denied); only loading and ready-without-selection disable it.
+  const actionDisabled = () => loading() || (ready() && !selectedFamily().trim())
   const actionLabel = () => (loading() ? _(copy.fontChecking) : ready() ? _(copy.fontApply) : _(copy.fontCheck))
 
   function statusLabel() {
@@ -386,7 +388,7 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
             type="button"
             variant="secondary"
             size="small"
-            disabled={loading() || !canApply()}
+            disabled={actionDisabled()}
             onClick={() => void (ready() ? font.apply(props.kind) : font.check(props.kind))}
           >
             {actionLabel()}
