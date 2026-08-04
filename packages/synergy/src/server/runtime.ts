@@ -20,6 +20,7 @@ import { Session } from "../session"
 import { Plugin } from "../plugin"
 import { PluginSpec } from "../util/plugin-spec"
 import { watchManagedParent } from "./managed-parent"
+import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "./runtime-endpoint"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -76,10 +77,21 @@ export async function run(options: RuntimeOptions) {
 
   Server.mountApp()
   const server = Server.listen(options.network)
+  configureRuntimeEndpoint({
+    hostname: server.hostname ?? options.network.hostname,
+    port: server.port ?? options.network.port,
+  })
   registerShutdown(server, processLock.release)
   const statuses: StartupReporter.StatusRow[] = []
 
   await GlobalRuntime.start()
+  const endpointGeneration = peekRuntimeEndpointGeneration()
+  if (endpointGeneration) {
+    void ScopeContext.provide({
+      scope: Scope.home(),
+      fn: () => Plugin.trigger("runtime.started", { endpointGeneration }, {}),
+    }).catch((error) => log.warn("plugin runtime.started hooks failed", { error }))
+  }
   statuses.push(
     await ScopeContext.provide({
       scope: Scope.home(),
@@ -397,6 +409,7 @@ function registerShutdown(
       phase = "server stop"
       await Observability.emit("shutdown.phase", { data: { phase } })
       await server.stop()
+      configureRuntimeEndpoint(undefined)
 
       phase = "release lock"
       await Observability.emit("shutdown.phase", { data: { phase } })
