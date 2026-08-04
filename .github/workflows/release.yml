@@ -96,7 +96,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Install dependencies
-        run: bun install
+        # Runtime preparation needs every platform package (ast-grep, watcher) in
+        # node_modules/.bun, so install all os/cpu variants instead of host-only.
+        run: bun install --os='*' --cpu='*'
 
       - name: Publish npm candidate and draft assets
         id: publish
@@ -165,7 +167,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libarchive-tools rpm
 
       - name: Install dependencies
-        run: bun install
+        # Runtime preparation needs every platform package (ast-grep, watcher) in
+        # node_modules/.bun, so install all os/cpu variants instead of host-only.
+        run: bun install --os='*' --cpu='*'
 
       - name: Download sandbox assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
