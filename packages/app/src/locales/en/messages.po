@@ -14250,6 +14250,54 @@ msgid "settings.general.colorScheme.system.description"
 msgstr "Follow this device"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr "Applied"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr "Apply"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr "Check"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr "Loading..."
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr "Using default"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr "Font access was denied; using default"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr "Check loads the fonts installed on this device, then pick one and Apply it."
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.ready"
+msgstr "Select a font, then Apply"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr "Use default"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr "Select a font"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr "Interface font"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr "This browser cannot scan local fonts; using default"
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "Choose the language used by Synergy controls and accessibility labels"
 
@@ -14268,6 +14316,14 @@ msgstr "Follow System"
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
 msgstr "Interface language"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr "Used for code, terminals, diffs, and other monospaced content."
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
+msgstr "Monospace font"
 
 #. js-lingui-explicit-id
 msgid "settings.general.notifications.description"
