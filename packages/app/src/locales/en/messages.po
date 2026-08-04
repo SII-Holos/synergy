@@ -1058,6 +1058,18 @@ msgstr "Panels"
 msgid "app.browser.menu.viewport"
 msgstr "Viewport"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr "Recovering the native browser…"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr "Native browser recovery failed"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr "Synergy will keep retrying the local browser. You can retry now without switching to a remote stream."
+
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "Back"
@@ -1792,6 +1804,30 @@ msgstr "Project details"
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.directory"
 msgstr "Directory"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAdd"
+msgstr "Add folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAddTitle"
+msgstr "Add project folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersHint"
+msgstr "Additional folders trusted automatically by the control profile, sandbox, and file tools."
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersLabel"
+msgstr "Project folders"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersMain"
+msgstr "Main folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersRemove"
+msgstr "Remove folder"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.id"

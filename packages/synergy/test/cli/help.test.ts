@@ -42,6 +42,13 @@ describe("product CLI help", () => {
     expect(help).toContain("current directory")
   })
 
+  test("send documents the lightloop workflow option", async () => {
+    const help = await cliHelp(["send", "--help"])
+
+    expect(help).toContain("--workflow")
+    expect(help).toContain("lightloop")
+  })
+
   test("web command opens a running server and no longer starts Vite", async () => {
     const help = await cliHelp(["web", "--help"])
 

@@ -9894,6 +9894,7 @@ export type ScopeUpdateData = {
     }
     pinned?: number | null
     archived?: number | null
+    sandboxes?: Array<string>
   }
   path: {
     scopeID: string
@@ -15877,6 +15878,48 @@ export type WorkflowSessionCancelLightloopResponses = {
 
 export type WorkflowSessionCancelLightloopResponse =
   WorkflowSessionCancelLightloopResponses[keyof WorkflowSessionCancelLightloopResponses]
+
+export type WorkflowSessionGetLightloopTerminalData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow/session/{id}/lightloop/terminal"
+}
+
+export type WorkflowSessionGetLightloopTerminalErrors = {
+  /**
+   * No terminal record for this session
+   */
+  404: {
+    message: string
+  }
+}
+
+export type WorkflowSessionGetLightloopTerminalError =
+  WorkflowSessionGetLightloopTerminalErrors[keyof WorkflowSessionGetLightloopTerminalErrors]
+
+export type WorkflowSessionGetLightloopTerminalResponses = {
+  /**
+   * Light Loop terminal record
+   */
+  200: {
+    status: "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+    instructions: string
+    error?: string
+    createdAt: number
+  }
+}
+
+export type WorkflowSessionGetLightloopTerminalResponse =
+  WorkflowSessionGetLightloopTerminalResponses[keyof WorkflowSessionGetLightloopTerminalResponses]
 
 export type AssetUploadData = {
   body?: {

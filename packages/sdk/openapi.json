@@ -2553,6 +2553,12 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "sandboxes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -15233,6 +15239,90 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflow.session.cancelLightloop({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workflow/session/{id}/lightloop/terminal": {
+      "get": {
+        "operationId": "workflow.session.getLightloopTerminal",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get Light Loop terminal status",
+        "description": "Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish approval, exhaustion, timeout, cancellation, and failure.",
+        "responses": {
+          "200": {
+            "description": "Light Loop terminal record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]
+                    },
+                    "instructions": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["status", "instructions", "createdAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No terminal record for this session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflow.session.getLightloopTerminal({\n  ...\n})"
           }
         ]
       }

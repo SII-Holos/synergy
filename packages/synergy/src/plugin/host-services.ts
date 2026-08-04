@@ -502,6 +502,7 @@ export async function cancelLightLoop(input: {
   const terminal = await LightLoopTerminalStore.get(session)
   if (terminal) {
     if (
+      terminal.pluginOwner === undefined ||
       terminal.pluginOwner.pluginId !== input.pluginId ||
       terminal.pluginOwner.pluginGeneration !== input.pluginGeneration ||
       terminal.pluginOwner.scopeId !== input.scopeId
