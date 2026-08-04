@@ -1937,21 +1937,30 @@ function HighlightedText(props: { text: string; references: AttachmentPart[] }) 
 }
 export function Part(props: MessagePartProps) {
   const { _ } = useLingui()
+  const identity = {
+    sessionID: props.part.sessionID,
+    messageID: props.part.messageID,
+    partID: props.part.id,
+    partType: props.part.type,
+  }
   const component = createMemo(() => PART_MAPPING[props.part.type])
   return (
     <Show when={component()}>
       <ErrorBoundary
-        fallback={(err) => (
-          <div class="plugin-error-card">
-            <div class="plugin-error-header">
-              <Icon name="alert-triangle" />
-              <span>
-                {_(MESSAGE_PART_DESC.partRenderError)} {props.part.type}
-              </span>
+        fallback={(err) => {
+          console.error("[MessagePart] renderer failed", identity, err)
+          return (
+            <div class="plugin-error-card">
+              <div class="plugin-error-header">
+                <Icon name="alert-triangle" />
+                <span>
+                  {_(MESSAGE_PART_DESC.partRenderError)} {identity.partType}
+                </span>
+              </div>
+              <div class="plugin-error-message">{err?.message || String(err)}</div>
             </div>
-            <div class="plugin-error-message">{err?.message || String(err)}</div>
-          </div>
-        )}
+          )
+        }}
       >
         <Dynamic
           component={component()}

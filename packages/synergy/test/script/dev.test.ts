@@ -105,6 +105,7 @@ describe("dev orchestrator planner", () => {
       expect(plan.processes.map((process) => process.label)).toEqual(["build:plugin", "build", "desktop"])
       expect(plan.processes[1]?.command).toEqual(["/bun", "run", "build"])
       expect(plan.processes[1]?.cwd).toBe(path.join(repoRoot, "packages", "app"))
+      expect(plan.processes[1]?.env).toEqual({ SYNERGY_APP_BUILD_KIND: "local" })
       expect(plan.processes[2]?.env).toMatchObject({
         BUN_BIN: "/bun",
         SYNERGY_DESKTOP_CHANNEL: "dev",
@@ -121,6 +122,13 @@ describe("dev orchestrator planner", () => {
 
     expect(plan.kind).toBe("error")
     expect(plan.message).toContain("bun dev build app|desktop")
+  })
+
+  test("marks app builds launched through the source orchestrator as local", () => {
+    const plan = createDevPlan(["build", "app"], options)
+
+    expect(plan.kind).toBe("run")
+    expect(plan.processes[0]?.env).toEqual({ SYNERGY_APP_BUILD_KIND: "local" })
   })
 })
 
