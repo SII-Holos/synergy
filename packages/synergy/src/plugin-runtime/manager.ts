@@ -556,7 +556,11 @@ export class PluginRuntimeManager {
       capabilities: new Set(
         manifest.capabilities
           .map((item) => item.id)
-          .filter((capability) => capability !== "agent.call" || contribution.requires?.includes(capability)),
+          .filter(
+            (capability) =>
+              (capability !== "agent.call" && capability !== "runtime.endpoint.read") ||
+              contribution.requires?.includes(capability),
+          ),
       ),
       log: this.#logger(entry.pluginId),
       invokeHost: (method, params) =>

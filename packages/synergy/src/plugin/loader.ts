@@ -34,6 +34,8 @@ export interface LoadedPlugin {
   spec: string
   enabledScopes: Set<string>
   contributionHealth: Map<string, { state: "healthy" | "degraded"; lastError?: string; updatedAt: number }>
+  /** Result of the post-commit install lifecycle for the current generation, when the manifest declares one. */
+  installLifecycle?: { status: "pending" | "completed" | "failed" | "skipped"; error?: string }
 }
 
 export type PluginAgentEntry = PluginAgent & {

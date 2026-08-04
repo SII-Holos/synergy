@@ -178,6 +178,8 @@ Every external generation owns its memory-monitor handle. Startup failure, crash
 
 `lifecycle.install` runs once after a fresh installation transaction commits. Failure degrades the contribution but does not roll back the completed installation; the plugin should expose an explicit retry when the work is recoverable.
 
+Install lifecycle delivery is host-process-aware. Inside a running Synergy server the handler runs immediately after the transaction commits and the outcome is recorded in the plugin lockfile (`done` or `failed`). Outside a host process — for example `synergy plugin add` in a standalone CLI where no loopback listener exists — the lockfile entry is recorded as `pending`, the CLI reports that setup is queued, and the next server boot delivers the pending lifecycle before the `runtime.started` broadcast. Updates never re-run `lifecycle.install` and preserve the recorded state. Failed installs are never retried automatically; `synergy plugin retry-install <id>` re-queues a failed install (delivering it immediately when a host is running, otherwise at the next boot).
+
 `lifecycle.upgrade` runs on the prepared new version before activation. Failure keeps the old version active. Plugin migrations must be idempotent because Synergy cannot roll back arbitrary plugin-owned data changes. Updates do not run `lifecycle.install`.
 
 `lifecycle.uninstall` runs before registration, approval, settings, and runtime state are removed. Failure stops normal uninstall. Force uninstall skips the handler and may leave plugin-owned data.

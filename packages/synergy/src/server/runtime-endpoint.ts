@@ -40,14 +40,6 @@ export function configureRuntimeEndpoint(value: Listener | undefined) {
   return listener?.generation
 }
 
-export function peekRuntimeEndpoint(): RuntimeEndpoint | undefined {
-  if (!listener || !isLoopbackReachable(listener.hostname)) return undefined
-  return {
-    url: listenerUrl(listener.hostname, listener.port),
-    generation: listener.generation!,
-  }
-}
-
 export function peekRuntimeEndpointGeneration(): string | undefined {
   if (!listener || !isLoopbackReachable(listener.hostname)) return undefined
   return listener.generation

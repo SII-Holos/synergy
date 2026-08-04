@@ -28,7 +28,7 @@ import type {
   ModelRoleSummary,
   SandboxStatus,
 } from "@ericsanchezok/synergy-sdk/client"
-import type { PluginSettingsComponentProps } from "@ericsanchezok/synergy-plugin"
+import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from "@ericsanchezok/synergy-plugin"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
@@ -972,10 +972,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 }
 
+// Host-side settings component props: the trusted context is present only for plugin
+// sections (built-in panels do not receive it). The public plugin contract keeps
+// `context` required; this host-side type reflects what the renderer actually passes.
+type SettingsHostComponentProps = Omit<PluginSettingsComponentProps, "context"> & {
+  context?: PluginSettingsSurfaceContext
+}
+
 function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
-  const componentLoader = createSettingsComponentLoader<Component<PluginSettingsComponentProps>>()
+  const componentLoader = createSettingsComponentLoader<Component<SettingsHostComponentProps>>()
   const comp = componentLoader.component
   const loading = componentLoader.loading
 
@@ -1008,8 +1015,8 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   createEffect(() => {
     const current = section()
     void componentLoader.load({
-      component: current.component as Component<PluginSettingsComponentProps> | undefined,
-      loader: current.loader as (() => Promise<{ default: Component<PluginSettingsComponentProps> }>) | undefined,
+      component: current.component as Component<SettingsHostComponentProps> | undefined,
+      loader: current.loader as (() => Promise<{ default: Component<SettingsHostComponentProps> }>) | undefined,
     })
   })
 
@@ -1058,7 +1065,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
             >
               <Dynamic
                 component={c()}
-                context={section().context!}
+                {...(section().context ? { context: section().context } : {})}
                 pluginId={section().pluginId}
                 values={(values() ?? {}) as Record<string, unknown>}
                 onChange={(next: Record<string, unknown>) => updateValues(next)}

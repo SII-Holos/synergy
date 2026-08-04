@@ -85,6 +85,15 @@ export async function run(options: RuntimeOptions) {
   const statuses: StartupReporter.StatusRow[] = []
 
   await GlobalRuntime.start()
+  // Deliver install lifecycles queued by CLI installs that ran outside a host process.
+  // Runs after the plugin catalog is loaded and before the runtime.started broadcast so the
+  // broadcast itself serves as the catch-up notification for plugins delivered here.
+  await ScopeContext.provide({
+    scope: Scope.home(),
+    fn: async () => {
+      await Plugin.runPendingInstallLifecycles()
+    },
+  }).catch((error) => log.warn("pending plugin install lifecycles failed", { error }))
   const endpointGeneration = peekRuntimeEndpointGeneration()
   if (endpointGeneration) {
     void ScopeContext.provide({
@@ -409,6 +418,8 @@ function registerShutdown(
       phase = "server stop"
       await Observability.emit("shutdown.phase", { data: { phase } })
       await server.stop()
+      // Clear the runtime endpoint only after the server has stopped so plugins can still
+      // read it while their runtimes are being drained and stopped above.
       configureRuntimeEndpoint(undefined)
 
       phase = "release lock"

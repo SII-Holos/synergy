@@ -117,6 +117,23 @@ export const PluginAddCommand = cmd({
           if (manifest.description) {
             UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
           }
+
+          const lifecycle = plugin.installLifecycle
+          if (lifecycle?.status === "pending") {
+            UI.println(
+              `  ${UI.Style.TEXT_WARNING}Install setup queued:${UI.Style.TEXT_NORMAL} ` +
+                `lifecycle.install will run on the next Synergy start (no running host).`,
+            )
+          } else if (lifecycle?.status === "failed") {
+            UI.println(
+              `${UI.Style.TEXT_DANGER}  Install setup failed:${UI.Style.TEXT_NORMAL} ${lifecycle.error ?? "unknown error"}`,
+            )
+            UI.println(
+              `  ${UI.Style.TEXT_DIM}Retry with:${UI.Style.TEXT_NORMAL} synergy plugin retry-install ${plugin.id}`,
+            )
+          } else if (lifecycle?.status === "completed") {
+            UI.println(`  ${UI.Style.TEXT_DIM}Install setup completed.${UI.Style.TEXT_NORMAL}`)
+          }
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e)
           spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${spec}`)
@@ -175,6 +192,52 @@ export const PluginRemoveCommand = cmd({
           await Plugin.remove(pluginId)
           spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Removed ${plugin.name ?? pluginId}`)
           UI.println(`${UI.Style.TEXT_DIM}Plugin uninstalled and configuration cleaned up.${UI.Style.TEXT_NORMAL}`)
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e)
+          spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginId}`)
+          UI.error(message)
+        }
+      },
+    })
+  },
+})
+// ---------------------------------------------------------------------------
+// retry-install <id>
+// ---------------------------------------------------------------------------
+
+export const PluginRetryInstallCommand = cmd({
+  command: "retry-install <id>",
+  describe: "retry a failed or pending lifecycle.install for a plugin",
+  builder: (yargs: Argv) =>
+    yargs.positional("id", {
+      type: "string",
+      describe: "plugin id to retry",
+      demandOption: true,
+    }),
+  async handler(args) {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const pluginId = args.id as string
+        const spinner = prompts.spinner()
+        spinner.start(`Retrying install setup for ${pluginId}`)
+        try {
+          const result = await Plugin.retryPluginInstallLifecycle(pluginId)
+          spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${pluginId}`)
+          if (!result) {
+            UI.println(`${UI.Style.TEXT_DIM}Plugin has no lifecycle.install contribution.${UI.Style.TEXT_NORMAL}`)
+          } else if (result.status === "pending") {
+            UI.println(
+              `${UI.Style.TEXT_WARNING}Install setup queued:${UI.Style.TEXT_NORMAL} ` +
+                `lifecycle.install will run on the next Synergy start (no running host).`,
+            )
+          } else if (result.status === "failed") {
+            UI.println(
+              `${UI.Style.TEXT_DANGER}Install setup failed:${UI.Style.TEXT_NORMAL} ${result.error ?? "unknown error"}`,
+            )
+          } else {
+            UI.println(`${UI.Style.TEXT_DIM}Install setup ${result.status}.${UI.Style.TEXT_NORMAL}`)
+          }
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e)
           spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginId}`)
@@ -694,8 +757,8 @@ export const PluginCommand = cmd({
   describe: "install, remove, update, and inspect plugins",
   builder: (yargs: Argv) =>
     yargs
-      .command(PluginCreateCommand)
       .command(PluginAddCommand)
+      .command(PluginRetryInstallCommand)
       .command(PluginRemoveCommand)
       .command(PluginUpdateCommand)
       .command(PluginBuildCommand)

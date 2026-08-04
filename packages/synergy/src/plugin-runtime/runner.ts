@@ -125,7 +125,9 @@ function contextFor(
     signal: abort,
     capabilities: new Set(
       (activation?.capabilities ?? []).filter(
-        (capability) => capability !== "agent.call" || contribution.requires?.includes(capability),
+        (capability) =>
+          (capability !== "agent.call" && capability !== "runtime.endpoint.read") ||
+          contribution.requires?.includes(capability),
       ),
     ),
     log: logger(),
