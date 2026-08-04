@@ -356,7 +356,6 @@ export async function startLightLoop(input: {
   pluginDir: string
   context: RuntimeContext
   request: LightLoopStartInput
-  limits?: RuntimeLimits
 }): Promise<LightLoopInfo> {
   const request = input.request
 

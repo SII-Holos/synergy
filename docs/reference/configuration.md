@@ -129,7 +129,7 @@ Global and per-executor tool concurrency are capped at 512. Tool executor limits
 - `shellRunTimeoutMs` — default timeout for plugin `shell.run` commands when the plugin omits `timeoutMs`
 - `taskRunWaitTimeoutMs` — maximum time a plugin `task.run` waits for a delegated task to reach a terminal state
 
-All `pluginRuntimePolicy.limits` values — startup timeout, heartbeat interval, host-service request timeout, memory monitor limits, shutdown grace, and the timeouts above — are applied to the plugin process runtime when it starts. Limits are read at runtime start, not per invocation, so changing `50-plugins.jsonc` takes effect on the next plugin start or reload.
+Process-owned `pluginRuntimePolicy.limits` values — startup timeout, heartbeat interval, host-service request timeout, memory monitor limits, and shutdown grace — are applied to the plugin process runtime when it starts and require a runtime restart or reload to change. The five timeout keys above are invocation-level: they resolve in the invoking Scope on each plugin call (or hook trigger), so a `50-plugins.jsonc` change takes effect on the next call.
 
 ## Precedence
 

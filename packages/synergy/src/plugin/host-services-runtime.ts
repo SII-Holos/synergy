@@ -455,14 +455,10 @@ async function runPluginTask(input: PluginHostServiceInvocationInput, value: Rec
     limits: input.limits,
   })
   const active = Cortex.get(handle.taskId)
-  const timeoutSeconds = Math.ceil(
-    ((active?.timeoutMs ??
-      request.timeoutMs ??
-      input.limits?.taskRunWaitTimeoutMs ??
-      DEFAULT_LIMITS.taskRunWaitTimeoutMs) +
-      5_000) /
-      1_000,
-  )
+  const taskTimeoutMs = active?.timeoutMs ?? request.timeoutMs
+  const waitCeilingMs = input.limits?.taskRunWaitTimeoutMs ?? DEFAULT_LIMITS.taskRunWaitTimeoutMs
+  const waitMs = taskTimeoutMs === undefined ? waitCeilingMs : Math.min(taskTimeoutMs, waitCeilingMs)
+  const timeoutSeconds = Math.ceil((waitMs + 5_000) / 1_000)
   const completed = Cortex.waitFor(handle.taskId, timeoutSeconds)
   const onAbort = () => {
     void cancelPluginTask({
@@ -640,10 +636,10 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
 
 export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
   assertCapability(input)
-  // Production invocations carry the runtime's captured limits; direct
-  // callers (tests, standalone dispatch) fall back to the live config.
-  if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
   return inScope(input, async () => {
+    // Host-service invocation limits resolve in the invoking Scope so the
+    // shared per-plugin runtime does not pin one Scope's limits for others.
+    if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
     const value = params(input)
     if (input.method === "event.publish") return publishEvent(input)
     if (input.method === "agent.call") return callPluginAgent(input, value)
@@ -744,7 +740,6 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         pluginDir: input.pluginDir,
         context: await resolveStartParent(input, "lightloop.start", value),
         request: value as never,
-        limits: input.limits,
       })
     }
     if (input.method === "blueprint.start") {
