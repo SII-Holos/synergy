@@ -5072,6 +5072,7 @@ export class Scope extends HeyApiClient {
       }
       pinned?: number | null
       archived?: number | null
+      sandboxes?: Array<string>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5095,6 +5096,7 @@ export class Scope extends HeyApiClient {
             { in: "body", key: "icon" },
             { in: "body", key: "pinned" },
             { in: "body", key: "archived" },
+            { in: "body", key: "sandboxes" },
           ],
         },
       ],

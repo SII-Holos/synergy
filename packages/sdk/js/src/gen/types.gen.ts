@@ -9894,6 +9894,7 @@ export type ScopeUpdateData = {
     }
     pinned?: number | null
     archived?: number | null
+    sandboxes?: Array<string>
   }
   path: {
     scopeID: string

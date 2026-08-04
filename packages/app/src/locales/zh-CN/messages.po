@@ -1806,6 +1806,30 @@ msgid "app.dialog.scope.directory"
 msgstr "目录"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAdd"
+msgstr "添加文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAddTitle"
+msgstr "添加项目文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersHint"
+msgstr "附加文件夹由控制配置文件、沙箱和文件工具自动信任。"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersLabel"
+msgstr "项目文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersMain"
+msgstr "主文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersRemove"
+msgstr "移除文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.id"
 msgstr "ID"
 

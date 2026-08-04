@@ -125,7 +125,9 @@ Hard boundaries are never eligible. When a decision involves a secret-like path,
 
 The active workspace is the default write boundary. Ordinary files outside it may be read when they are not sensitive, including files in the original checkout of a worktree session. External writes, modifications, and execution remain protected.
 
-In particular, an autonomous worktree session can inspect its original checkout but cannot write there or run commands from it. Approved external roots can be added to the execution sandbox for the authorized operation.
+A project Scope can declare multiple project folders (its main worktree plus additional folders persisted in `scope.sandboxes`). Every declared project folder is a trusted write root for the session's control profile, sandbox policy, and file-tool containment checks — reads and writes inside any project folder behave like the active workspace and do not require per-path approval. The canonical derivation is `Scope.Root.projectRoots` / `trustRoots` / `executionRoots`; gate creation sites must consume `executionRoots` so project folders stay trusted automatically.
+
+In a `git_worktree` session the original main checkout is excluded from the project trust roots and stays outside the trust boundary. An autonomous worktree session can inspect its original checkout but cannot write there or run commands from it. Approved external roots can be added to the execution sandbox for the authorized operation. Sibling worktrees declared as project folders are trusted — only the original checkout remains external.
 
 Configured skill roots and plugin skill roots are trusted runtime areas. Access inside those roots is not treated as an arbitrary external write or execution unless the requested path escapes the trusted root.
 

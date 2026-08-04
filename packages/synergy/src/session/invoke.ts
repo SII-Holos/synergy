@@ -698,13 +698,18 @@ export namespace SessionInvoke {
             sessionID: session?.id,
             agentControlProfile: agent.controlProfile,
           })
+          const trustedRoots = Scope.Root.executionRoots(
+            ScopeContext.current.scope,
+            workspaceInfo,
+            SkillSourceProfile.allRootPaths(workspace),
+          )
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            trustedRoots: SkillSourceProfile.allRootPaths(workspace),
+            trustedRoots,
           })
           if (resolved.valid) {
-            const ctx = buildPermissionContext(resolved, workspace)
+            const ctx = buildPermissionContext(resolved, trustedRoots)
             systemParts.push(ctx)
             systemCacheBreakpoint = systemParts.length - 1
           }

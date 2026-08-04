@@ -43,6 +43,7 @@ export interface PrepareLinuxWrapperOpts {
   runtimeReadRoots?: string[]
   extraReadRoots?: string[]
   extraWritableRoots?: string[]
+  protectedPaths?: string[]
   forcePlatform?: string
   /** Explicit sandbox backend selection (e.g. "bwrap-inline-debug") */
   backend?: string

@@ -1806,6 +1806,30 @@ msgid "app.dialog.scope.directory"
 msgstr "Directory"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAdd"
+msgstr "Add folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAddTitle"
+msgstr "Add project folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersHint"
+msgstr "Additional folders trusted automatically by the control profile, sandbox, and file tools."
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersLabel"
+msgstr "Project folders"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersMain"
+msgstr "Main folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersRemove"
+msgstr "Remove folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.id"
 msgstr "ID"
 
