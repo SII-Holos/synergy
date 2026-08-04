@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { createStore } from "solid-js/store"
+import { createCleanupGuard, isPtyNotFoundError } from "../../../src/components/terminal/terminal-dispose"
+import { createTabCloseGuard } from "../../../src/context/workbench/panel-model"
 
 // 回归测试：Synergy 面板打开第一个 terminal 后关闭 → 卡死 "Reconnecting"。
 //
@@ -11,52 +12,29 @@ import { createStore } from "solid-js/store"
 // （cleanNode 对已置 null 的 owned 数组双重清理 → `null['1']`），卸载中断、
 // 组件残留显示 "Reconnecting"，之后任意 setStore 再触发同一崩溃。
 //
-// 因此最终契约（当前实现）：
-//   1. Terminal 的 onCleanup 绝不写 store——同步或 setTimeout 延迟都不允许。
-//      持久化快照能力被移除；恢复只回放历史 buffer（serialize.ts 与
-//      LocalPTY.buffer 保留，供旧数据回放）。
-//   2. onCleanup 幂等（cleanupRan 守卫）：重复清理只执行一次副作用。
-//   3. closeTab 防重入（closingTabs 守卫）：await onCloseTab 期间面板自身的
+// 修复后的生产契约（本测试直接调用生产代码，不再本地重写）：
+//   1. onCleanup 绝不写 store——同步或 setTimeout 延迟都不允许。持久化快照
+//      能力被移除；恢复只回放历史 buffer。
+//   2. createCleanupGuard 让 onCleanup 幂等：重复清理只执行一次副作用。
+//   3. createTabCloseGuard 防 closeTab 重入：await onCloseTab 期间面板自身的
 //      ws close → onGone → onRequestClose 会再次 closeTab，两次交错 closeTab
 //      会把同一个 <Show keyed> 面板树 flush 两次、双重清理 computation。
+//   4. isPtyNotFoundError 识别 server 实际序列化的 NotFoundError 形状
+//      （GET /pty/{id} 404 → `{ name: "NotFoundError", data: { message } }`），
+//      也兼容旧 APIError + statusCode 形状；只有确认 PTY 消失才触发 onGone。
 //
-// 测试形态说明：Solid 内部图损坏依赖精确的节点创建/清理顺序（store → all memo
-// → pty memo → Show keyed value memo → Terminal），简化骨架无法复现崩溃；bun
-// 测试环境也没有 solid JSX 运行时渲染真实 Terminal。因此本测试直接验证上述
-// 行为契约，防止修复被回退成任何形式的 dispose-flush store 写入或并发 closeTab。
-
-type Pty = { id: string; title: string }
+// 测试形态说明：Solid 内部图损坏依赖精确的节点创建/清理顺序，bun 测试环境
+// 也没有 solid JSX 运行时渲染真实 Terminal。因此验证行为契约本身（这些辅助
+// 函数就是 Terminal/workbench 实际使用的生产代码，删除守卫或重新引入 store
+// 写入都会让对应测试失败）。
 
 describe("terminal dispose reentrancy", () => {
-  test("onCleanup must not write the store, synchronously or deferred", async () => {
-    const [store, setStore] = createStore<{ items: Pty[] }>({ items: [] })
-    const persisted: Pty[] = []
-    const persist = (pty: Pty) => {
-      setStore("items", (x) => x.map((x) => (x.id === pty.id ? { ...x, ...pty } : x)))
-      persisted.push(pty)
-    }
-
-    // 当前实现：onCleanup 只做资源清理（dispose controller、移除监听、
-    // 关闭 websocket、dispose 终端），不调用 persist，也不安排延迟写入。
-    const cleanup = () => {}
-
-    cleanup()
-
-    // 让任何潜在的 setTimeout 延迟写入都有机会执行：延迟写入会在 closeTab
-    // 的 await 续体 flush 中重新进入已清理的子树并破坏响应式图。
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    expect(persisted).toEqual([])
-    expect(store.items).toEqual([])
-  })
-
-  test("cleanupRan guard makes repeated cleanup idempotent", () => {
+  test("cleanup guard lets the first cleanup run and drops re-entrant ones", () => {
+    const cleanupRan = createCleanupGuard()
     const calls: string[] = []
-    let cleanupRan = false
+
     const cleanup = () => {
-      if (cleanupRan) return
-      cleanupRan = true
+      if (!cleanupRan()) return
       calls.push("cleanup")
       // 真实组件在这里执行一次性副作用：dispose reconnect controller、
       // 移除事件监听、关闭 websocket、dispose 终端。
@@ -69,11 +47,19 @@ describe("terminal dispose reentrancy", () => {
     expect(calls).toEqual(["cleanup"])
   })
 
-  test("closingTabs guard prevents re-entrant closeTab", async () => {
-    // 模拟 workbench closeTab：await onCloseTab 期间发生第二次 closeTab
-    // （ws close → onGone → onRequestClose），两次交错调用不得重复 flush
-    // 同一个面板树（setTabs/setActive 只应执行一次）。
-    const closingTabs = new Set<string>()
+  test("cleanup guard is per-instance, not shared across terminals", () => {
+    const first = createCleanupGuard()
+    const second = createCleanupGuard()
+
+    expect(first()).toBe(true)
+    expect(first()).toBe(false)
+    // 另一个终端实例的守卫不受影响
+    expect(second()).toBe(true)
+    expect(second()).toBe(false)
+  })
+
+  test("tab close guard blocks re-entrant closeTab for the same tab", async () => {
+    const guard = createTabCloseGuard()
     const events: string[] = []
 
     let release: () => void
@@ -82,22 +68,56 @@ describe("terminal dispose reentrancy", () => {
     })
 
     async function closeTab(tabId: string) {
-      if (closingTabs.has(tabId)) return
-      closingTabs.add(tabId)
+      if (!guard.begin(tabId)) return
       try {
         events.push("onCloseTab")
         await gate
         events.push("flush")
       } finally {
-        closingTabs.delete(tabId)
+        guard.end(tabId)
       }
     }
 
     const first = closeTab("tab-1")
     const second = closeTab("tab-1") // 重入：应被守卫拦截
+    expect(guard.isClosing("tab-1")).toBe(true)
     release!()
     await Promise.all([first, second])
 
     expect(events).toEqual(["onCloseTab", "flush"])
+    // 关闭完成后同一 tab 可以再次关闭
+    expect(guard.isClosing("tab-1")).toBe(false)
+  })
+
+  test("tab close guard allows concurrent close of different tabs", async () => {
+    const guard = createTabCloseGuard()
+
+    expect(guard.begin("tab-1")).toBe(true)
+    expect(guard.begin("tab-2")).toBe(true)
+    expect(guard.isClosing("tab-1")).toBe(true)
+    expect(guard.isClosing("tab-2")).toBe(true)
+
+    guard.end("tab-1")
+    guard.end("tab-2")
+    expect(guard.isClosing("tab-1")).toBe(false)
+    expect(guard.isClosing("tab-2")).toBe(false)
+  })
+
+  test("isPtyNotFoundError recognizes the serialized NotFoundError shape", () => {
+    // server.ts onError 对 Storage.NotFoundError 返回 err.toObject()：
+    // `{ name: "NotFoundError", data: { message } }`（SDK throwOnError 抛原样 JSON）
+    expect(isPtyNotFoundError({ name: "NotFoundError", data: { message: "Session not found" } })).toBe(true)
+  })
+
+  test("isPtyNotFoundError recognizes the legacy APIError shape", () => {
+    expect(isPtyNotFoundError({ name: "APIError", data: { statusCode: 404 } })).toBe(true)
+  })
+
+  test("isPtyNotFoundError rejects non-404 and unrelated errors", () => {
+    expect(isPtyNotFoundError({ name: "APIError", data: { statusCode: 500 } })).toBe(false)
+    expect(isPtyNotFoundError({ name: "OtherError", data: { statusCode: 404 } })).toBe(false)
+    expect(isPtyNotFoundError(new Error("network down"))).toBe(false)
+    expect(isPtyNotFoundError(undefined)).toBe(false)
+    expect(isPtyNotFoundError(null)).toBe(false)
   })
 })

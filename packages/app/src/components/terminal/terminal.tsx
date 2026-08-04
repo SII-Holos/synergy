@@ -7,8 +7,9 @@ import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-ui/theme"
 import { terminal as T } from "@/locales/messages"
 import { applyTerminalTheme, type TerminalTheme } from "./terminal-theme"
+import { createCleanupGuard, isPtyNotFoundError } from "./terminal-dispose"
+import { ReconnectController, type GiveUpReason } from "./reconnect"
 import { textSelectionController } from "@/context/text-selection"
-import { ReconnectController } from "./reconnect"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
@@ -18,14 +19,6 @@ export interface TerminalProps extends ComponentProps<"div"> {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 5
-
-function isPtyNotFoundError(error: unknown) {
-  if (typeof error !== "object" || error === null) return false
-  return (
-    (error as { name?: string }).name === "APIError" &&
-    (error as { data?: { statusCode?: number } }).data?.statusCode === 404
-  )
-}
 
 // ghostty-web 0.3.0 only applies fontFamily at construction time;
 // runtime option changes are logged as unsupported and never re-render.
@@ -52,7 +45,7 @@ export const Terminal = (props: TerminalProps) => {
   let handleTextareaBlur: () => void
   let reconnectController: ReconnectController | undefined
   let disposed = false
-  let cleanupRan = false
+  const cleanupRan = createCleanupGuard()
   const [connected, setConnected] = createSignal(false)
   const [gone, setGone] = createSignal(false)
   const lingui = useLingui()
@@ -276,8 +269,8 @@ export const Terminal = (props: TerminalProps) => {
       initialDelayMs: 1_000,
       maxDelayMs: 10_000,
       timer: {
-        setTimeout: (fn, ms) => window.setTimeout(fn, ms),
-        clearTimeout: (id) => window.clearTimeout(id),
+        setTimeout: (fn: () => void, ms: number) => window.setTimeout(fn, ms),
+        clearTimeout: (id: number) => window.clearTimeout(id),
         now: () => Date.now(),
       },
       validate: async () => {
@@ -294,7 +287,7 @@ export const Terminal = (props: TerminalProps) => {
       },
       connect,
       onConnected: () => setConnected(true),
-      onGiveUp: (reason) => {
+      onGiveUp: (reason: GiveUpReason) => {
         setGone(true)
         // Only a confirmed-missing PTY may close the tab (which removes the
         // server session). Exhaustion with a live PTY must keep the process.
@@ -309,8 +302,7 @@ export const Terminal = (props: TerminalProps) => {
   })
 
   onCleanup(() => {
-    if (cleanupRan) return
-    cleanupRan = true
+    if (!cleanupRan()) return
     disposed = true
     reconnectController?.dispose()
     if (handleResize) {

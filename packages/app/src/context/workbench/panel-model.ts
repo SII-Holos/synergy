@@ -165,3 +165,29 @@ export function closeWorkbenchPanelTab(
 export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {
   return tab?.id
 }
+
+/**
+ * Re-entrancy guard for async tab closing. closeTab awaits the panel's
+ * onCloseTab (e.g. terminal pty.remove network round-trip), and during that
+ * window the panel itself may report the resource gone (ws close -> reconnect
+ * -> validate 404 -> onGone -> onRequestClose -> closeTab again). Two
+ * interleaved closeTab calls flush the same <Show keyed> panel tree twice,
+ * double-cleaning Solid computations (cleanNode on null.owned) and leaving
+ * the panel stuck on "Reconnecting".
+ */
+export function createTabCloseGuard() {
+  const closingTabs = new Set<string>()
+  return {
+    isClosing(tabId: string) {
+      return closingTabs.has(tabId)
+    },
+    begin(tabId: string) {
+      if (closingTabs.has(tabId)) return false
+      closingTabs.add(tabId)
+      return true
+    },
+    end(tabId: string) {
+      closingTabs.delete(tabId)
+    },
+  }
+}

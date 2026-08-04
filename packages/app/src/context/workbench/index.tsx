@@ -13,6 +13,7 @@ import {
 } from "@/plugin/registries/workbench-panel-registry"
 import {
   closeWorkbenchPanelTab,
+  createTabCloseGuard,
   isWorkbenchPanelAvailable,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
@@ -36,14 +37,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const hasSession = createMemo(() => !!params.id)
     const [registryVersion, setRegistryVersion] = createSignal(0)
     let nextTabIndex = 0
-    // Guard against re-entrant closeTab: closing awaits the panel's async
-    // onCloseTab (e.g. terminal pty.remove network round-trip), and during
-    // that window the panel itself may report the session gone (ws close ->
-    // reconnect -> validate 404 -> onGone -> onRequestClose -> closeTab again).
-    // Two interleaved closeTab calls flush the same <Show keyed> panel tree
-    // twice, double-cleaning Solid computations (cleanNode on null.owned) and
-    // leaving the panel stuck on "Reconnecting".
-    const closingTabs = new Set<string>()
+    const closeGuard = createTabCloseGuard()
 
     const unsubscribe = subscribeWorkbenchPanels(() => setRegistryVersion((value) => value + 1))
     onCleanup(unsubscribe)
@@ -126,8 +120,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     }
 
     async function closeTab(tabId: string) {
-      if (closingTabs.has(tabId)) return
-      closingTabs.add(tabId)
+      if (!closeGuard.begin(tabId)) return
       try {
         for (const surfaceName of ["side", "bottom"] as const) {
           const target = surface(surfaceName)
@@ -144,7 +137,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
           return
         }
       } finally {
-        closingTabs.delete(tabId)
+        closeGuard.end(tabId)
       }
     }
 
