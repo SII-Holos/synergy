@@ -7358,6 +7358,11 @@ export type BrowserControlResponse = {
           isLoading: boolean
           lastActiveAt: number | null
         }
+        snapshot?: unknown
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
       }
     | {
         type: "snapshot"
@@ -7378,11 +7383,30 @@ export type BrowserControlResponse = {
         pageId: string
         action: string
         snapshot?: unknown
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
       }
     | {
         type: "wait"
         pageId: string
         matched: boolean
+        elapsedMs?: number
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
       }
     | {
         type: "evaluation"
@@ -7410,14 +7434,52 @@ export type BrowserControlRequest = {
         type: "navigate"
         url: string
         source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "history"
         direction: "back" | "forward"
+        source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "reload"
         ignoreCache?: boolean
+        source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "stop"

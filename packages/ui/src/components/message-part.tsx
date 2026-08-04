@@ -60,6 +60,20 @@ import { MESSAGE_PART_DESC } from "./tool-title-descriptors"
 import { useLingui } from "@lingui/solid"
 import { createTextPartProjection, isTextPartTerminal } from "./text-part-render"
 import { getLatticeToolPresentation } from "./tool/classifier"
+import {
+  browserAction,
+  browserActionType,
+  browserCondition,
+  browserElementLabel,
+  browserNavigationAction,
+  browserNumber,
+  browserTarget,
+  browserTargetName,
+  browserUrl,
+  formatBrowserCondition,
+  joinBrowserSummary,
+  shortBrowserText,
+} from "./tool/browser-info"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -248,21 +262,72 @@ export const browserToolLabels: Record<string, { icon: IconName; title: MessageD
   browser_view: { icon: "panel-right", title: TOOL_TITLE_DESC["browser_view"] },
 }
 
-function getBrowserToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo | undefined {
+function browserStateArgs(metadata: any = {}) {
+  const args: string[] = []
+  pushArg(args, metadata.settled === true ? "settled" : metadata.settled === false ? "unsettled" : undefined)
+  pushArg(args, metadata.isLoading === true ? "loading" : undefined)
+  pushArg(args, browserElementLabel(metadata.elementsCount))
+  pushArg(args, metadata.settleReason === "timeout" ? "timeout" : undefined)
+  return args
+}
+
+function genericBrowserArgs(metadata: any = {}) {
+  const args: string[] = []
+  const entryCount = browserNumber(metadata.entryCount)
+  const requestCount = browserNumber(metadata.requestCount)
+  const assetCount = browserNumber(metadata.assetCount)
+  pushArg(args, entryCount === undefined ? undefined : `${entryCount} console`)
+  pushArg(args, requestCount === undefined ? undefined : `${requestCount} requests`)
+  pushArg(args, assetCount === undefined ? undefined : `${assetCount} assets`)
+  pushArg(args, browserElementLabel(metadata.elementsCount))
+  pushArg(args, shortBrowserText(metadata.captureKind, 24))
+  return args
+}
+
+export function getBrowserToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo | undefined {
   const info = browserToolLabels[tool]
   if (!info) return undefined
 
-  const args: string[] = []
-  pushArg(args, metadata?.entryCount != null ? `${metadata.entryCount} console` : undefined)
-  pushArg(args, metadata?.requestCount != null ? `${metadata.requestCount} requests` : undefined)
-  pushArg(args, metadata?.assetCount != null ? `${metadata.assetCount} assets` : undefined)
-  pushArg(args, metadata?.elementsCount != null ? `${metadata.elementsCount} elements` : undefined)
-  pushArg(args, metadata?.captureKind)
+  let subtitle: string | undefined
+  let args: string[]
+  if (tool === "browser_action") {
+    const actionType = browserActionType(input, metadata)
+    subtitle = joinBrowserSummary(actionType, browserTargetName(browserTarget(input, metadata)))
+    args = [actionType, ...browserStateArgs(metadata)].filter(Boolean) as string[]
+  } else if (tool === "browser_navigation") {
+    const action = browserNavigationAction(input, metadata)
+    subtitle = joinBrowserSummary(action, browserUrl(input, metadata))
+    args = [action, ...browserStateArgs(metadata)].filter(Boolean) as string[]
+  } else if (tool === "browser_wait") {
+    const condition = browserCondition(input, metadata)
+    const conditionType = shortBrowserText(condition?.type, 18)
+    subtitle = joinBrowserSummary("wait", formatBrowserCondition(condition))
+    args = [conditionType].filter(Boolean) as string[]
+    if (metadata.matched === true) args.push("settled")
+    if (metadata.matched === false) args.push("unsettled")
+    if (metadata.isLoading === true) args.push("loading")
+    if (metadata.matched === false) args.push("timeout")
+    args = args.filter(Boolean) as string[]
+  } else if (tool === "browser_snapshot") {
+    const elements = browserElementLabel(metadata.elementsCount)
+    subtitle = joinBrowserSummary("snapshot", elements)
+    args = elements ? [elements] : []
+  } else {
+    const action = browserAction(input)
+    subtitle = firstString(
+      browserUrl(input, metadata),
+      shortBrowserText(metadata.title),
+      joinBrowserSummary(browserActionType(input, metadata), browserTargetName(action?.target)),
+      shortBrowserText(input.action),
+      shortBrowserText(input.type),
+    )
+    args = genericBrowserArgs(metadata)
+  }
 
   return {
     icon: info.icon,
     title: info.title,
-    subtitle: firstString(metadata?.url, input?.url, metadata?.title, input?.action, input?.type),
+    subtitle,
     args: args.length ? args : undefined,
   }
 }
@@ -1872,21 +1937,30 @@ function HighlightedText(props: { text: string; references: AttachmentPart[] }) 
 }
 export function Part(props: MessagePartProps) {
   const { _ } = useLingui()
+  const identity = {
+    sessionID: props.part.sessionID,
+    messageID: props.part.messageID,
+    partID: props.part.id,
+    partType: props.part.type,
+  }
   const component = createMemo(() => PART_MAPPING[props.part.type])
   return (
     <Show when={component()}>
       <ErrorBoundary
-        fallback={(err) => (
-          <div class="plugin-error-card">
-            <div class="plugin-error-header">
-              <Icon name="alert-triangle" />
-              <span>
-                {_(MESSAGE_PART_DESC.partRenderError)} {props.part.type}
-              </span>
+        fallback={(err) => {
+          console.error("[MessagePart] renderer failed", identity, err)
+          return (
+            <div class="plugin-error-card">
+              <div class="plugin-error-header">
+                <Icon name="alert-triangle" />
+                <span>
+                  {_(MESSAGE_PART_DESC.partRenderError)} {identity.partType}
+                </span>
+              </div>
+              <div class="plugin-error-message">{err?.message || String(err)}</div>
             </div>
-            <div class="plugin-error-message">{err?.message || String(err)}</div>
-          </div>
-        )}
+          )
+        }}
       >
         <Dynamic
           component={component()}
