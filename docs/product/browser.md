@@ -26,6 +26,8 @@ Agents operate the same page with tools for:
 - controlled evaluation
 - assets, clipboard, downloads, and Browser health
 
+Agent actions and navigation settle the page by default (quiet-network strategy, up to 30 seconds) and return a fresh accessibility snapshot, so agents rarely need an explicit wait after an action. `browser_wait` remains available for business conditions the engine cannot infer — a specific text, locator state, URL change, download, or dialog.
+
 User annotations retain the page, target reference or element, comment, optional style feedback, resolution state, and time. They can be formatted into agent context so visual feedback remains attached to the page work rather than being copied into an unrelated note.
 
 ## Presentation Modes
