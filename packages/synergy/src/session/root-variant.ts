@@ -35,32 +35,28 @@ export namespace SessionRootVariant {
   }): Promise<string | undefined> {
     const { Config } = await import("@/config/config")
     const config = await Config.current()
-    const candidate = resolveName({
-      explicit: input.explicit,
+    const explicit = input.explicit && input.explicit.length > 0 ? input.explicit : undefined
+    const fallback = resolveName({
       agentDefault: input.agent.defaultVariant,
       roleDefault: config.role_variant?.[input.agent.modelRole || "default"],
     })
+    const candidate = explicit ?? fallback
     if (!candidate || !input.model) return undefined
 
     const { Provider } = await import("@/provider/provider")
-    return resolve({
-      explicit: candidate,
-      model: await Provider.getModel(input.model.providerID, input.model.modelID),
-    })
+    const model = await Provider.getModel(input.model.providerID, input.model.modelID)
+    if (explicit) return resolve({ explicit, model })
+    return Object.hasOwn(model.variants ?? {}, candidate) ? candidate : undefined
   }
 
   export async function resolveLegacyRoot(user: MessageV2.User): Promise<string | undefined> {
     if (user.variant || user.isRoot !== true) return user.variant
 
-    const [{ Agent }, { Config }] = await Promise.all([import("@/agent/agent"), import("@/config/config")])
+    const { Agent } = await import("@/agent/agent")
     const agent = await Agent.get(user.agent).catch(() => undefined)
     if (!agent) return undefined
 
-    const config = await Config.current()
-    return resolveName({
-      agentDefault: agent.defaultVariant,
-      roleDefault: config.role_variant?.[agent.modelRole || "default"],
-    })
+    return resolveForRoot({ agent, model: user.model })
   }
 
   export function options(input: {
