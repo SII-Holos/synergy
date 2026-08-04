@@ -119,6 +119,18 @@ Agent request and event-frame protocol bounds are fixed safety invariants rather
 
 Global and per-executor tool concurrency are capped at 512. Tool executor limits are additional ceilings below `toolConcurrency`; omitted executor limits retain their defaults. Runtime shutdown stops new Agent turns, Policy classifications, and ToolTasks first, aborts active work, and bounds ToolTask drain time with `toolCancelGraceMs`. Except for the live-applied `agentWorkers` capacity, execution settings are read at global-runtime startup and require a runtime restart.
 
+### Plugin runtime limits
+
+`pluginRuntimePolicy.limits` in `50-plugins.jsonc` configures the plugin process runtime. Five timeout keys are host-configurable and default to `120000` ms:
+
+- `agentCallMaxRuntimeMs` — maximum duration of a plugin `agent.call`/`agent.start` model invocation
+- `hookTimeoutMs` — per-handler timeout for plugin hook points
+- `contributionInvokeTimeoutMs` — fallback timeout for contribution invocations that declare no `timeoutMs`
+- `shellRunTimeoutMs` — default timeout for plugin `shell.run` commands when the plugin omits `timeoutMs`
+- `taskRunWaitTimeoutMs` — maximum time a plugin `task.run` waits for a delegated task to reach a terminal state
+
+Process-owned `pluginRuntimePolicy.limits` values — startup timeout, heartbeat interval, host-service request timeout, memory monitor limits, and shutdown grace — are applied to the plugin process runtime when it starts and require a runtime restart or reload to change. The five timeout keys above are invocation-level: they resolve in the invoking Scope on each plugin call (or hook trigger), so a `50-plugins.jsonc` change takes effect on the next call.
+
 ## Precedence
 
 From lowest to highest precedence, a scoped config is assembled from:
@@ -205,6 +217,7 @@ Model names use `provider/model`. Provider definitions and model defaults live i
 
 - `openai` is the OpenAI Platform API-key provider.
 - `openai-codex` uses ChatGPT/Codex OAuth device-code credentials and the Codex backend.
+- `grok` uses xAI subscription OAuth device-code credentials (SuperGrok / X Premium+) and the OpenAI-compatible `https://api.x.ai/v1` API.
 
 Do not copy credentials or billing assumptions between them. Use `synergy auth` or the Settings UI to manage auth.
 
@@ -567,6 +580,26 @@ The Settings Import surface accepts file upload, URL fetch, or pasted JSON/JSONC
 ## Config Editing
 
 The Web Settings surface, domain APIs, and CLI all use the same domain ownership registry. Manual edits should preserve that ownership so reload targets and conflict previews remain meaningful.
+
+## Damaged Config Isolation and Recovery
+
+Configuration files are validated as they are loaded. A file with a JSON(C) syntax error, a root-level type error, or a top-level key that belongs to another domain is moved aside instead of blocking startup or interrupting a running server:
+
+- The offending file is renamed to `<filename>.invalid-<timestamp>-<random>` next to the original.
+- The affected domain is skipped; the rest of the configuration loads normally, and the server keeps running.
+- The event is recorded in the diagnostics registry and surfaced in the startup banner, the Web Settings panel banner, and `GET /config/diagnostics` (SDK: `client.config.diagnostics()`).
+- Section-level schema errors keep the existing behavior: the invalid section is stripped and defaults are used; the file is not moved.
+
+Quarantine uses a non-blocking domain lock: when a configuration write
+transaction (for example a Settings save) is already in flight for the same
+domain, the broken file is _not_ moved aside — the transaction's own write
+replaces it with a valid configuration, which is equivalent to recovery. The
+issue is still recorded in the diagnostics registry. Reload and startup
+paths, which hold no transaction lock, always quarantine as described above.
+
+To recover a quarantined file, fix the content and rename it back to its original name (for example `110-email.jsonc.invalid-…` → `110-email.jsonc`). The file watcher picks the change up and reloads the domain. Quarantined files are never deleted automatically.
+
+The legacy global config file (`synergy.jsonc`/`synergy.json`) is handled the same way: a broken legacy file is quarantined and the domain fragment migration is skipped. A malformed remote well-known config is skipped with a warning. Explicit CLI inputs (`SYNERGY_CONFIG_CONTENT`) still fail loudly because they are intentional process-level overrides.
 
 ## Process Environment
 

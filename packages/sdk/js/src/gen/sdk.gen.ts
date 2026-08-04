@@ -113,6 +113,7 @@ import type {
   ChannelStopResponses,
   CommandListResponses,
   Config as Config2,
+  ConfigDiagnosticsResponses,
   ConfigDomainGetErrors,
   ConfigDomainGetResponses,
   ConfigDomainImportApplyInput,
@@ -5811,6 +5812,36 @@ export class Config extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ConfigGlobalResponses, unknown, ThrowOnError>({
       url: "/config/global",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get config diagnostics
+   *
+   * Return recent configuration loading issues (syntax errors, unknown keys, quarantined files). Empty when configuration loaded cleanly.
+   */
+  public diagnostics<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigDiagnosticsResponses, unknown, ThrowOnError>({
+      url: "/config/diagnostics",
       ...options,
       ...params,
     })

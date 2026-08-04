@@ -115,7 +115,7 @@ Terminal ignored and gated deliveries without classifier/proposal/fix/review are
 
 ### L1 Classifier (optional, shadow only)
 
-When `classifierEnabled` and the decision is `ambiguous_issue`, the worker calls `classifyGitHubObservation()`. This uses the hidden `github-shadow-classifier` agent (nano model role, temperature 0, permission `*: deny`) sessionlessly through the external `AgentTurn` worker pool — no session is created and no transcript is persisted. The call has a 10-second abort timeout. The model budget cap (`modelBudgetNano.maxTokens`) is passed as `maxOutputTokens`. After the call, actual token usage and cost are measured against both limits; an exceeded budget silently discards the result.
+When `classifierEnabled` and the decision is `ambiguous_issue`, the worker calls `classifyGitHubObservation()`. This calls `AgentCall.text()` with the hidden `github-shadow-classifier` agent (nano model role, temperature 0, permission `*: deny`) sessionlessly — no session is created and no transcript is persisted. The call has a 10-second timeout. The model budget cap (`modelBudgetNano.maxTokens`) is passed as `maxOutputTokens`. After the call, actual token usage and cost from the returned usage are measured against the budget before parsing.
 
 A successful classification returns `{ relevant, category, confidence, reason }`. When `relevant` is true and `category === "bug"`:
 

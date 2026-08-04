@@ -3301,6 +3301,10 @@ msgid "app.library.experience.filter.all"
 msgstr "全部经验"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr "筛选体验"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr "当前作用域"
 
@@ -3360,6 +3364,10 @@ msgstr "正在显示全部 {total} 条经验"
 msgid "app.library.experience.showingOf"
 msgstr "正在显示 {shown}/{total} 条经验"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr "排序体验"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr "C"
@@ -3413,8 +3421,16 @@ msgid "app.library.memory.empty.none"
 msgstr "暂无记忆"
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr "按类别筛选记忆"
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
 msgstr "{pct}%"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
+msgstr "排序记忆"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.updated"
@@ -3647,6 +3663,10 @@ msgstr "已将 \"{name}\" 下载为 ZIP 归档"
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
 msgstr "所有技能"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
+msgstr "筛选技能"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.builtin"
@@ -13214,6 +13234,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr "选择可见项"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr "排序归档会话"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr "归档时间：最新"
 
@@ -14226,6 +14250,54 @@ msgid "settings.general.colorScheme.system.description"
 msgstr "跟随此设备"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr "已应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr "应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr "检查"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr "加载中……"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr "字体访问被拒绝；使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr "点击“检查”加载本机已安装的字体，选择一个后点击“应用”。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.ready"
+msgstr "选择字体，然后点击“应用”"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr "选择一种字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr "界面字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr "此浏览器无法扫描本地字体；使用默认字体"
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "选择 Synergy 控件和无障碍标签使用的语言"
 
@@ -14244,6 +14316,14 @@ msgstr "跟随系统"
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
 msgstr "界面语言"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr "用于代码、终端、差异视图和其他等宽内容。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
+msgstr "等宽字体"
 
 #. js-lingui-explicit-id
 msgid "settings.general.notifications.description"
@@ -15756,6 +15836,22 @@ msgstr "未保存"
 #. js-lingui-explicit-id
 msgid "settings.panel.close.label"
 msgstr "关闭设置"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.description"
+msgstr "一个或多个配置文件无法加载，已被移出。修复文件后将其改回原名，即可继续使用这些设置。"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.detail"
+msgstr "{path}：{error}"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.quarantined"
+msgstr "已移至 {path}"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.title"
+msgstr "发现配置问题"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.configFile.opened"

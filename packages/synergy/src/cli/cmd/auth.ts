@@ -13,6 +13,7 @@ import { authHook } from "../../plugin/auth-provider"
 import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import type { AuthHook } from "@ericsanchezok/synergy-plugin/auth"
+import { GrokProvider } from "@/provider/grok"
 import { CodexProvider } from "@/provider/codex"
 import { ProviderCatalog } from "@/provider/catalog"
 import { ProviderRecommendation } from "@/provider/recommendation"
@@ -396,6 +397,10 @@ async function handleBuiltinAuth(provider: string): Promise<boolean> {
     return runOauthResult(provider, await MiniMaxProvider.authorizeOAuth())
   }
 
+  if (provider === GrokProvider.PROVIDER_ID) {
+    return runOauthResult(provider, await GrokProvider.authorizeDeviceCode())
+  }
+
   return false
 }
 
@@ -559,6 +564,7 @@ export const AuthLoginCommand = cmd({
         const profiles = await ProviderCatalog.metadata({ config })
         const fallbackPriority: Record<string, number> = {
           anthropic: 10,
+          [GrokProvider.PROVIDER_ID]: 25,
           [CodexProvider.PROVIDER_ID]: 20,
           "github-copilot": 30,
           openai: 40,
@@ -622,6 +628,7 @@ export const AuthLoginCommand = cmd({
         }
 
         if (
+          provider === GrokProvider.PROVIDER_ID ||
           provider === AnthropicOAuthProvider.PROVIDER_ID ||
           provider === CopilotProvider.PROVIDER_ID ||
           provider === CopilotProvider.ENTERPRISE_PROVIDER_ID ||

@@ -7,6 +7,7 @@ import { fn } from "@/util/fn"
 import type { AuthHook, AuthImportResult, AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "@/provider/api-key"
+import { GrokProvider } from "./grok"
 import { CodexProvider } from "./codex"
 import { AnthropicOAuthProvider } from "./anthropic-oauth"
 import { CopilotProvider } from "./copilot"
@@ -134,6 +135,16 @@ export namespace ProviderAuth {
                 expires: token.expires,
               }
             },
+          },
+        ],
+      },
+      [GrokProvider.PROVIDER_ID]: {
+        provider: GrokProvider.PROVIDER_ID,
+        methods: [
+          {
+            type: "oauth" as const,
+            label: "Login with Grok",
+            authorize: () => GrokProvider.authorizeDeviceCode(),
           },
         ],
       },

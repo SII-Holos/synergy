@@ -293,6 +293,16 @@ export namespace RuntimeReload {
       case "config": {
         const resolvedScope = resolveConfigScope(ctx.scope)
         const result = await Config.reload(resolvedScope)
+        for (const issue of result.issues ?? []) {
+          ctx.diagnostics.push({
+            target: "config",
+            severity: "warning",
+            code: issue.code,
+            name: issue.domain ?? issue.path,
+            path: issue.path,
+            message: `${issue.error}${issue.quarantinedPath ? ` (quarantined to ${issue.quarantinedPath})` : ""}`,
+          })
+        }
         const oldConfig = ctx.configChange?.oldConfig ?? result.oldConfig
         const changedFields = unique([...ctx.changedFields, ...result.changedFields])
         for (const field of changedFields) {

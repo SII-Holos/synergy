@@ -46,4 +46,11 @@ describe("plugin hook contract", () => {
       redactErrors: true,
     })
   })
+  test("keeps runtime.started capability-gated and non-blocking", () => {
+    expect(PluginHookPointRegistry.get("runtime.started")).toMatchObject({
+      mode: "observer",
+      failure: "continue",
+      requiredCapability: "runtime.endpoint.read",
+    })
+  })
 })

@@ -225,6 +225,7 @@ const IconContribution = ContributionBase.extend({
   path: z.string().min(1),
 }).strict()
 
+const LifecycleInstallContribution = ContributionBase.extend({ kind: z.literal("lifecycle.install") }).strict()
 const LifecycleUpgradeContribution = ContributionBase.extend({ kind: z.literal("lifecycle.upgrade") }).strict()
 const LifecycleUninstallContribution = ContributionBase.extend({ kind: z.literal("lifecycle.uninstall") }).strict()
 
@@ -249,6 +250,7 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
   SettingsContribution,
   ThemeContribution,
   IconContribution,
+  LifecycleInstallContribution,
   LifecycleUpgradeContribution,
   LifecycleUninstallContribution,
 ])
@@ -458,9 +460,16 @@ export const PluginManifestV4 = z
       }
     }
     const needsRuntime = manifest.contributions.some((item) =>
-      ["operation", "tool", "hook", "cli.command", "authProvider", "lifecycle.upgrade", "lifecycle.uninstall"].includes(
-        item.kind,
-      ),
+      [
+        "operation",
+        "tool",
+        "hook",
+        "cli.command",
+        "authProvider",
+        "lifecycle.install",
+        "lifecycle.upgrade",
+        "lifecycle.uninstall",
+      ].includes(item.kind),
     )
     if (needsRuntime && !manifest.artifacts.runtime) {
       context.addIssue({
