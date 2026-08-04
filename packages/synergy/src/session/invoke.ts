@@ -304,6 +304,17 @@ export namespace SessionInvoke {
           log.warn("failed to capture OOM incident", { error: incidentError })
         })
       }
+      // A loop that exits with an error cannot be driven again by the
+      // continuation kernel (no eligible terminal assistant message), so an
+      // active Light Loop would stay stuck until its hard timeout. Convert it
+      // to the durable failed status unless the loop was aborted (abort takes
+      // the explicit cancellation path).
+      if (!lease.signal.aborted) {
+        const { LightLoopRuntime } = await import("./light-loop-runtime")
+        await LightLoopRuntime.failActiveLoop(sessionID, error).catch((err) => {
+          log.error("failed to mark Light Loop failed after loop error", { sessionID, error: err })
+        })
+      }
       throw error
     }
   }

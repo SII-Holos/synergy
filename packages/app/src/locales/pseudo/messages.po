@@ -1058,6 +1058,18 @@ msgstr ""
 msgid "app.browser.menu.viewport"
 msgstr ""
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr ""
+
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr ""
@@ -14274,6 +14286,54 @@ msgid "settings.general.colorScheme.system.description"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr ""
 
@@ -14291,6 +14351,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15803,6 +15871,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.panel.close.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.detail"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.quarantined"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.title"
 msgstr ""
 
 #. js-lingui-explicit-id

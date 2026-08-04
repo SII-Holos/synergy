@@ -32,6 +32,7 @@ interface PluginInvocationContext {
   agent?: PluginAgentHostService
   asset?: AssetHostService
   shell?: ShellHostService
+  runtimeEndpoint?: RuntimeEndpointHostService
 }
 ```
 
@@ -43,6 +44,8 @@ External plugins use `process`. Trusted built-ins may use `inProcess`. The proce
 
 External runtime generations are sampled by the host memory monitor. `pluginRuntimePolicy.limits.maxMemoryMb` sets the per-generation RSS limit and `memorySampleIntervalMs` sets the polling interval. A limit breach stops and restarts only the exact active registry generation, preserving its manifest and runtime limits, and records the measured recycle effect. A stale callback from a draining generation cannot stop or replace the current generation. Trusted `inProcess` plugins remain part of Control Plane memory and are not double-counted as external plugin processes.
 
+Runtime timeouts are host-configurable through `pluginRuntimePolicy.limits`. Process-owned limits — startup timeout, heartbeat interval, host-service request timeout, memory limits, and shutdown grace — are captured when the plugin runtime starts and apply for that runtime's lifetime (including memory-recycle restarts). Invocation-level timeouts resolve in the invoking Scope on each call: `agentCallMaxRuntimeMs` hard-caps a plugin `agent.call`/`agent.start` model invocation (a plugin-declared larger timeout is clamped); `hookTimeoutMs` bounds one hook handler invocation; `contributionInvokeTimeoutMs` is the fallback for a contribution invocation without a declared `timeoutMs`; `shellRunTimeoutMs` is the fallback for a plugin `shell.run` command that omits `timeoutMs`; and `taskRunWaitTimeoutMs` bounds how long a plugin `task.run` waits for a delegated task to reach a terminal state, clamping the wait independently of the task's own execution timeout. All default to `120000` ms; plugin-declared timeouts win for the four fallback keys. Because invocation-level limits are read per call, a `50-plugins.jsonc` change takes effect on the next plugin call; process-owned limits take effect on the next plugin runtime start or reload.
+
 ## Runtime Logs
 
 Every `PluginLogger` method accepts a message and optional `details: Record<string, unknown>`. Synergy preserves those structured details for both process and trusted `inProcess` runtimes, including error fields such as `code` and `reason`. The complete log entry, including `details`, counts toward the log rate limit's byte budget.
@@ -51,25 +54,28 @@ Every `PluginLogger` method accepts a message and optional `details: Record<stri
 
 Capabilities describe Synergy services the host may inject. A contribution's `requires` must be a subset of the definition's top-level capability list.
 
-| Capability           | Context service or action                                                           |
-| -------------------- | ----------------------------------------------------------------------------------- |
-| `session.read`       | `context.session.get()`                                                             |
-| `session.control`    | `context.session.abort()`                                                           |
-| `workspace.read`     | `context.workspace.read()` and `metadata()`                                         |
-| `workspace.write`    | `context.workspace.write()`                                                         |
-| `task.delegate`      | `context.task.start()`, `run()`, `current()`, `get()`, and `cancel()`               |
-| `asset.write`        | `context.asset.create()`                                                            |
-| `shell.execute`      | `context.shell.run()` with an argv-only command                                     |
-| `settings.read`      | `context.settings.get()`                                                            |
-| `settings.write`     | `context.settings.replace()`                                                        |
-| `secrets`            | plugin-scoped credential get/set/delete                                             |
-| `tool.invoke`        | `context.tools.invoke()`                                                            |
-| `ui.hostActions`     | trusted UI host navigation, panel, resource, notification, and confirmation actions |
-| `composer.read`      | active Composer snapshots and settled-draft subscription                            |
-| `composer.write`     | Composer completion, decoration, and revision-checked edits                         |
-| `composer.intercept` | serial normal-message preflight hooks                                               |
-| `selection.read`     | settled non-sensitive selected text and text-action input                           |
-| `agent.call`         | bounded Sessionless calls to owned or explicitly allowed Agents                     |
+| Capability              | Context service or action                                                           |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `session.read`          | `context.session.get()`                                                             |
+| `session.control`       | `context.session.abort()`                                                           |
+| `workspace.read`        | `context.workspace.read()` and `metadata()`                                         |
+| `workspace.write`       | `context.workspace.write()`                                                         |
+| `task.delegate`         | `context.task.start()`, `run()`, `current()`, `get()`, and `cancel()`               |
+| `asset.write`           | `context.asset.create()`                                                            |
+| `shell.execute`         | `context.shell.run()` with an argv-only command                                     |
+| `settings.read`         | `context.settings.get()`                                                            |
+| `settings.write`        | `context.settings.replace()`                                                        |
+| `secrets`               | plugin-scoped credential get/set/delete                                             |
+| `tool.invoke`           | `context.tools.invoke()`                                                            |
+| `ui.hostActions`        | trusted UI host navigation, panel, resource, notification, and confirmation actions |
+| `composer.read`         | active Composer snapshots and settled-draft subscription                            |
+| `composer.write`        | Composer completion, decoration, and revision-checked edits                         |
+| `composer.intercept`    | serial normal-message preflight hooks                                               |
+| `selection.read`        | settled non-sensitive selected text and text-action input                           |
+| `agent.call`            | bounded Sessionless calls to owned or explicitly allowed Agents                     |
+| `runtime.endpoint.read` | `context.runtimeEndpoint.get()`                                                     |
+
+`runtime.endpoint.read` returns only `{ url, generation }` for the current loopback HTTP listener. The URL has no credentials, token, path, query, or fragment. The Host Service accepts no arguments, requires the capability both at plugin and contribution level, and is not exposed through the HTTP SDK. Loopback binds (`127.0.0.1`, `localhost`, `::1`) and wildcard binds (`0.0.0.0`, `::`) are both served over loopback and return a normalized `http://127.0.0.1:<port>` URL; a bind that excludes loopback (a concrete external address) makes the service unavailable with `PLUGIN_RUNTIME_ENDPOINT_UNSAFE`. It is a generic bridge for plugins that need to point an external local process at Synergy; Core does not manage that process or its configuration.
 
 `task.delegate` may include `agents` and `maxRuntimeMs` constraints. Agent allowlists use public `agent.name` values, never Agent contribution IDs. `start()` launches native Cortex work and returns its handle immediately; `run()` waits for the same native Task to reach a terminal state and returns its `PluginTaskSnapshot`, including structured output when requested. Both paths resolve the target from Synergy's Agent registry and preserve plugin/generation/Scope ownership. A plugin's private `hidden` Agent is callable only by the same plugin ID and active generation. Non-owned targets retain ordinary Agent visibility rules.
 
@@ -162,13 +168,17 @@ Contribution health uses the API 4 identity `<kind>:<id>`. Operations, hooks, an
 
 `agent.call.after` is a directed observer, not a broadcast hook. It requires `agent.call` and receives only the terminal metadata for a call started by the same plugin generation in the same Scope. Delivery failure does not recreate or persist the transient Agent input.
 
+`runtime.started` is a capability-gated observer delivered in the Home Scope after the listener and Global Runtime are ready. It runs only for contributions that require `runtime.endpoint.read`. Failure degrades only that contribution and does not block server startup. A newly installed plugin receives one catch-up delivery when the server is already running.
+
 ## Generation Changes and Lifecycle
 
 A new generation starts and validates before it becomes active. The previous generation drains in-flight calls. A late response from an inactive generation is rejected.
 
 Every external generation owns its memory-monitor handle. Startup failure, crash, drain, upgrade, uninstall, and ordinary shutdown all stop that handle before the registry entry is removed.
 
-`lifecycle.upgrade` runs on the prepared new version before activation. Failure keeps the old version active. Plugin migrations must be idempotent because Synergy cannot roll back arbitrary plugin-owned data changes.
+`lifecycle.install` runs once after a fresh installation transaction commits. Failure degrades the contribution but does not roll back the completed installation; the plugin should expose an explicit retry when the work is recoverable.
+
+`lifecycle.upgrade` runs on the prepared new version before activation. Failure keeps the old version active. Plugin migrations must be idempotent because Synergy cannot roll back arbitrary plugin-owned data changes. Updates do not run `lifecycle.install`.
 
 `lifecycle.uninstall` runs before registration, approval, settings, and runtime state are removed. Failure stops normal uninstall. Force uninstall skips the handler and may leave plugin-owned data.
 

@@ -6,13 +6,22 @@ import { Log } from "../util/log"
 import { PluginSpec } from "../util/plugin-spec"
 import { computeManifestHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { createApprovalRecord, getApproval, type PluginApprovalRecord, verifyApproval } from "./consent/approval-store"
-import { ensureRuntime, forgetPlugin, specToPluginId, state, type LoadedPlugin } from "./loader"
-import { reload } from "./lifecycle"
+import {
+  ensureRuntime,
+  forgetPlugin,
+  markContributionDegraded,
+  specToPluginId,
+  state,
+  type LoadedPlugin,
+} from "./loader"
+import { reload, triggerForPlugin } from "./lifecycle"
 import * as Lockfile from "./lockfile"
 import { PluginInstallationTransaction } from "./installation-transaction"
 import { pluginRuntimeManager } from "./runtime"
+import { peekRuntimeEndpointGeneration } from "../server/runtime-endpoint"
 import { resolvePluginSpec } from "./spec-resolver"
 import type { PluginSource } from "./trust"
+import { resolvePluginRuntimeLimits } from "./runtime-limits"
 
 const log = Log.create({ service: "plugin.install" })
 
@@ -52,6 +61,7 @@ async function prepareUpgrade(input: {
     pluginDir: input.resolved.pluginDir,
     entryPath: input.resolved.entryPath,
     activate: false,
+    limits: await resolvePluginRuntimeLimits(),
   })
   try {
     await pluginRuntimeManager.invoke({
@@ -147,9 +157,9 @@ export async function add(
     } else {
       throw new PluginApprovalRequiredError(manifest.id, manifest.version, manifest, capabilities)
     }
-    const oldPlugin = await state()
-      .then((current) => current.loaded.find((plugin) => plugin.id === manifest.id))
-      .catch(() => undefined)
+    const before = await state().catch(() => undefined)
+    const oldPlugin = before?.loaded.find((plugin) => plugin.id === manifest.id)
+    const freshInstall = !oldPlugin && !before?.disabled.some((plugin) => plugin.pluginId === manifest.id)
     const prepared = await prepareUpgrade({ oldPlugin, resolved })
     preparedKey = prepared?.key
 
@@ -184,6 +194,19 @@ export async function add(
     specToPluginId.set(spec, plugin.id)
     if (prepared) await pluginRuntimeManager.activate(prepared.key)
     preparedKey = undefined
+    if (freshInstall) {
+      await runPluginInstallLifecycle(plugin)
+      const endpointGeneration = peekRuntimeEndpointGeneration()
+      if (endpointGeneration) {
+        await triggerForPlugin(
+          plugin.id,
+          plugin.manifest.artifacts.generation,
+          "runtime.started",
+          { endpointGeneration },
+          {},
+        ).catch((error) => log.warn("plugin runtime.started catch-up failed", { pluginId: plugin.id, error }))
+      }
+    }
     return plugin
   } catch (error) {
     if (preparedKey) await pluginRuntimeManager.stopGeneration(preparedKey).catch(() => undefined)
@@ -215,6 +238,48 @@ export async function remove(pluginId: string, options: { force?: boolean } = {}
     .stop(pluginId)
     .catch((error) => log.warn("plugin runtime stop failed during uninstall", { pluginId, error }))
   forgetPlugin(pluginId)
+}
+
+export async function runPluginInstallLifecycle(
+  plugin: LoadedPlugin,
+  services: {
+    ensureRuntime(plugin: LoadedPlugin): Promise<unknown>
+    invoke(input: Parameters<typeof pluginRuntimeManager.invoke>[0]): Promise<unknown>
+    onFailure(
+      plugin: LoadedPlugin,
+      contribution: Extract<LoadedPlugin["manifest"]["contributions"][number], { kind: "lifecycle.install" }>,
+      error: unknown,
+    ): void
+  } = {
+    ensureRuntime,
+    invoke: (input) => pluginRuntimeManager.invoke(input),
+    onFailure(target, contribution, error) {
+      markContributionDegraded(target, contribution, error)
+      log.warn("plugin install lifecycle failed", { pluginId: target.id, contributionId: contribution.id, error })
+    },
+  },
+): Promise<{ status: "skipped" | "completed" } | { status: "failed"; error: string }> {
+  const install = plugin.manifest.contributions.find((item) => item.kind === "lifecycle.install")
+  if (!install) return { status: "skipped" }
+  try {
+    await services.ensureRuntime(plugin)
+    await services.invoke({
+      pluginId: plugin.id,
+      handlerId: `lifecycle.install:${install.id}`,
+      value: {},
+      context: {
+        scopeId: ScopeContext.current.scope.id,
+        directory: ScopeContext.current.directory,
+        actor: { type: "lifecycle" },
+      },
+      pluginDir: plugin.pluginDir,
+      manifest: plugin.manifest,
+    })
+    return { status: "completed" }
+  } catch (error) {
+    services.onFailure(plugin, install, error)
+    return { status: "failed", error: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 export async function runPluginUninstallLifecycle(

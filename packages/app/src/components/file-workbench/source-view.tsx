@@ -10,6 +10,12 @@ import { textSelectionController } from "@/context/text-selection"
 
 type Monaco = typeof import("monaco-editor")
 let monacoPromise: Promise<Monaco> | undefined
+const FONT_CHANGE_EVENT = "synergy:font-change"
+
+function getConfiguredMonoFontFamily(): string {
+  if (typeof document === "undefined") return "monospace"
+  return getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono").trim() || "monospace"
+}
 
 function loadMonaco() {
   if (monacoPromise) return monacoPromise
@@ -103,8 +109,15 @@ export function FileSourceView(props: { path: string; content: string }) {
   let editor: import("monaco-editor").editor.IStandaloneCodeEditor | undefined
   let disposed = false
   let currentContent = props.content
+  let handleFontChange: ((event: Event) => void) | undefined
 
   onMount(() => {
+    handleFontChange = (event: Event) => {
+      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+      if (kind === "mono") editor?.updateOptions({ fontFamily: getConfiguredMonoFontFamily() })
+    }
+    document.addEventListener(FONT_CHANGE_EVENT, handleFontChange)
+
     void loadMonaco().then((monaco) => {
       if (disposed) return
       monacoInstance = monaco
@@ -121,7 +134,6 @@ export function FileSourceView(props: { path: string; content: string }) {
         if (cached.model.getValue() !== props.content) cached.model.setValue(props.content)
       }
 
-      const style = getComputedStyle(host)
       const sourceTheme = defineSourceTheme(monaco, theme.tokens(), theme.mode())
       editor = monaco.editor.create(host, {
         model: cached.model,
@@ -139,7 +151,7 @@ export function FileSourceView(props: { path: string; content: string }) {
         wordWrap: "off",
         quickSuggestions: false,
         suggest: { showWords: false },
-        fontFamily: style.getPropertyValue("--font-mono").trim() || "monospace",
+        fontFamily: getConfiguredMonoFontFamily(),
         fontSize: 14,
         lineHeight: 22,
         padding: { top: 12, bottom: 18 },
@@ -211,6 +223,7 @@ export function FileSourceView(props: { path: string; content: string }) {
 
   onCleanup(() => {
     disposed = true
+    if (handleFontChange) document.removeEventListener(FONT_CHANGE_EVENT, handleFontChange)
     textSelectionController.update(undefined)
     editor?.dispose()
   })

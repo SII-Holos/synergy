@@ -20,6 +20,17 @@ export interface TerminalProps extends ComponentProps<"div"> {
 
 const MAX_RECONNECT_ATTEMPTS = 5
 
+// ghostty-web 0.3.0 only applies fontFamily at construction time;
+// runtime option changes are logged as unsupported and never re-render.
+// New terminal instances pick up the configured font via this helper.
+function getTerminalFontFamily(): string {
+  if (typeof document === "undefined") return '"IBM Plex Mono", monospace'
+  return (
+    getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono").trim() ||
+    '"IBM Plex Mono", monospace'
+  )
+}
+
 export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
   const theme = useTheme()
@@ -87,13 +98,16 @@ export const Terminal = (props: TerminalProps) => {
       cursorBlink: true,
       cursorStyle: "bar",
       fontSize: 14,
-      fontFamily: "IBM Plex Mono, monospace",
+      fontFamily: getTerminalFontFamily(),
       allowTransparency: true,
       theme: terminalColors(),
       scrollback: 2_000,
       ghostty,
     })
     term = t
+
+    // No font-change listener: ghostty-web cannot re-render with a new
+    // fontFamily at runtime, so updating options would be a silent no-op.
 
     const copy = () => {
       const selection = t.getSelection()

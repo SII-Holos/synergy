@@ -113,6 +113,7 @@ import type {
   ChannelStopResponses,
   CommandListResponses,
   Config as Config2,
+  ConfigDiagnosticsResponses,
   ConfigDomainGetErrors,
   ConfigDomainGetResponses,
   ConfigDomainImportApplyInput,
@@ -543,6 +544,8 @@ import type {
   VcsGetResponses,
   WorkflowSessionCancelLightloopErrors,
   WorkflowSessionCancelLightloopResponses,
+  WorkflowSessionGetLightloopTerminalErrors,
+  WorkflowSessionGetLightloopTerminalResponses,
   WorkflowSessionSetErrors,
   WorkflowSessionSetResponses,
   WorkflowSessionUpdateLightloopErrors,
@@ -3092,6 +3095,42 @@ export class Session extends HeyApiClient {
       ThrowOnError
     >({
       url: "/workflow/session/{id}/lightloop/cancel",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Light Loop terminal status
+   *
+   * Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish approval, exhaustion, timeout, cancellation, and failure.
+   */
+  public getLightloopTerminal<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      WorkflowSessionGetLightloopTerminalResponses,
+      WorkflowSessionGetLightloopTerminalErrors,
+      ThrowOnError
+    >({
+      url: "/workflow/session/{id}/lightloop/terminal",
       ...options,
       ...params,
     })
@@ -5775,6 +5814,36 @@ export class Config extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ConfigGlobalResponses, unknown, ThrowOnError>({
       url: "/config/global",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get config diagnostics
+   *
+   * Return recent configuration loading issues (syntax errors, unknown keys, quarantined files). Empty when configuration loaded cleanly.
+   */
+  public diagnostics<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigDiagnosticsResponses, unknown, ThrowOnError>({
+      url: "/config/diagnostics",
       ...options,
       ...params,
     })

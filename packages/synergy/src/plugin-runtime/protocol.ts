@@ -46,6 +46,7 @@ export type PluginHostServiceMethod =
   | "agent.start"
   | "asset.create"
   | "shell.run"
+  | "runtime.endpoint.get"
 
 export type HostToPlugin =
   | { type: "activate"; input: RuntimeActivationData }

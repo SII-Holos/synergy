@@ -867,6 +867,63 @@ test("loads plugin runtime limits from plugin config domain", async () => {
   })
 })
 
+test("loads configurable plugin runtime timeout limits from plugin config domain", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      const domainDir = path.join(dir, ".synergy", "synergy.d")
+      await fs.mkdir(domainDir, { recursive: true })
+      await Bun.write(
+        path.join(domainDir, "50-plugins.jsonc"),
+        JSON.stringify({
+          pluginRuntimePolicy: {
+            limits: {
+              agentCallMaxRuntimeMs: 5000,
+              hookTimeoutMs: 3000,
+              contributionInvokeTimeoutMs: 7000,
+              shellRunTimeoutMs: 4000,
+              taskRunWaitTimeoutMs: 6000,
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await Config.state.reset()
+      const limits = (await Config.current()).pluginRuntimePolicy?.limits
+
+      expect(limits?.agentCallMaxRuntimeMs).toBe(5000)
+      expect(limits?.hookTimeoutMs).toBe(3000)
+      expect(limits?.contributionInvokeTimeoutMs).toBe(7000)
+      expect(limits?.shellRunTimeoutMs).toBe(4000)
+      expect(limits?.taskRunWaitTimeoutMs).toBe(6000)
+    },
+  })
+})
+
+test("plugin runtime timeout limits keep shared defaults when unset", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const { resolvePluginRuntimeLimits } = await import("../../src/plugin/runtime-limits")
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await Config.state.reset()
+      const limits = await resolvePluginRuntimeLimits()
+
+      expect(limits.agentCallMaxRuntimeMs).toBe(120000)
+      expect(limits.hookTimeoutMs).toBe(120000)
+      expect(limits.contributionInvokeTimeoutMs).toBe(120000)
+      expect(limits.shellRunTimeoutMs).toBe(120000)
+      expect(limits.taskRunWaitTimeoutMs).toBe(120000)
+    },
+  })
+})
+
 test("general domain merge preserves a configured remote embedding model when local download settings change", () => {
   const current = Config.Info.parse({
     embedding: {

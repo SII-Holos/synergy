@@ -24,6 +24,8 @@ stopwords = [
   # Public OAuth client IDs from provider modules:
   # - Ov23li8tweQw6odWQebz: packages/synergy/src/provider/copilot.ts · CopilotOAuth.OAUTH_CLIENT_ID
   # - 9d1c250a-e61b-44d9-88ed-5944d1962f5e: packages/synergy/src/provider/anthropic-oauth.ts · AnthropicOAuth.OAUTH_CLIENT_ID
+  # - b1a00492-073a-47ea-816f-4c329264a828: packages/synergy/src/provider/grok.ts · GrokProvider.OAUTH_CLIENT_ID (public Grok CLI OAuth client, from https://x.ai/cli/install.sh)
   "Ov23li8tweQw6odWQebz",
-  "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+  "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+  "b1a00492-073a-47ea-816f-4c329264a828"
 ]
