@@ -15782,6 +15782,22 @@ msgid "settings.panel.close.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.detail"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.quarantined"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.panel.configFile.opened"
 msgstr ""
 
