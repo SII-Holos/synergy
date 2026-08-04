@@ -132,6 +132,25 @@ Permissions: read/grep/glob/edit/write/bash allowed inside the checkout; `gh` CL
 
 The separate `src/provider/github.ts` (OAuth device-flow personal token) is unchanged and remains the credential source for the bash tool's `GH_TOKEN` injection and the GitHub settings panel. The channel uses the GitHub **App** installation token exclusively.
 
+## Deferred enhancements
+
+The following items are intentionally deferred from the initial channel
+migration and remain open for follow-up work:
+
+- **`review_requested` support** — responding to the GitHub `review_requested`
+  event (a reviewer explicitly added to a PR) is not yet wired into the poll
+  synthesizer. Today review triggers are PR open, head push, and draft → ready.
+- **Silent-when-clean (👍) low-noise reviews** — the agent always posts a
+  review comment, even when the change has no defects. Posting only a 👍
+  reaction (or nothing) for clean reviews is a future noise-reduction option.
+- **Large-PR token budget chunking** — PR-Agent chunks oversized diffs to fit
+  the model context window. The channel agent relies on the standard session
+  compaction loop instead; explicit diff chunking is not implemented.
+- **Personal-account reply identity** — the planned optional `postAs: "user"`
+  reply identity via the OAuth personal token was not implemented; all GitHub
+  writes use the App installation token. The user-credential provider remains
+  the bash `GH_TOKEN` source only.
+
 ## References
 
 - PR-Agent prompt organization: `The-PR-Agent/pr-agent` `pr_agent/settings/pr_reviewer_prompts.toml`, `pr_questions_prompts.toml` (role, criteria, style, output contract).
