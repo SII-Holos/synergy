@@ -1,6 +1,28 @@
 import type { PluginInvocationContext, PluginLogger, PluginRuntimeIdentity } from "@ericsanchezok/synergy-plugin"
 import type { PluginHostServiceMethod, RuntimeInvocationContextData } from "./protocol.js"
 
+/**
+ * Capabilities whose injection additionally requires the invoking contribution to declare
+ * them in `requires`, mirroring the per-contribution gate applied by the host services.
+ */
+const CONTRIBUTION_GATED_CAPABILITIES = new Set(["agent.call", "runtime.endpoint.read"])
+
+/**
+ * Filter a plugin-level capability set for a specific contribution. Capabilities that are
+ * per-contribution gated (`agent.call`, `runtime.endpoint.read`) are only injected when the
+ * contribution's own `requires` includes them, so a contribution without the requirement
+ * never receives a service that would throw at call time.
+ */
+export function contributionGatedCapabilities(
+  capabilities: Iterable<string>,
+  contribution: { requires?: string[] },
+): Set<string> {
+  return new Set(
+    [...capabilities].filter(
+      (capability) => !CONTRIBUTION_GATED_CAPABILITIES.has(capability) || contribution.requires?.includes(capability),
+    ),
+  )
+}
 export function createPluginInvocationContext(input: {
   requestId: string
   data: RuntimeInvocationContextData

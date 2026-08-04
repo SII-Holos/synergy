@@ -1194,6 +1194,36 @@ export const PluginRuntimeLimits = z
       .positive()
       .optional()
       .describe("External plugin runtime RSS sampling interval in milliseconds"),
+    agentCallMaxRuntimeMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for a plugin agent.call/agent.start model invocation"),
+    hookTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for one plugin hook handler invocation"),
+    contributionInvokeTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Default maximum milliseconds for a plugin contribution invocation without a declared timeout"),
+    shellRunTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Default maximum milliseconds for plugin shell.run commands"),
+    taskRunWaitTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state"),
   })
   .strict()
   .meta({ ref: "PluginRuntimeLimitsConfig" })

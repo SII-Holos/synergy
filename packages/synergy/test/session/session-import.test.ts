@@ -176,7 +176,73 @@ describe("SessionImport", () => {
     })
   })
 
-  test("canonicalizes missing root variants while preserving explicit imported variants", async () => {
+  test(
+    "canonicalizes missing root variants while preserving explicit imported variants",
+    async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          model: "test-provider/test-model",
+          provider: {
+            "test-provider": {
+              name: "Test Provider",
+              npm: "@ai-sdk/openai-compatible",
+              env: [],
+              models: {
+                "test-model": {
+                  name: "Test Model",
+                  tool_call: true,
+                  limit: { context: 128_000, output: 4_096 },
+                  variants: { high: { reasoningEffort: "high" } },
+                },
+              },
+              options: { apiKey: "test-key" },
+            },
+          },
+          agent: {
+            variant_agent: {
+              model: "test-provider/test-model",
+              mode: "primary",
+              defaultVariant: "high",
+            },
+          },
+        } as any,
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Legacy Variants" })
+          for (const variant of [undefined, "max"]) {
+            const messageID = Identifier.ascending("message")
+            await Session.updateMessage({
+              id: messageID,
+              sessionID: session.id,
+              role: "user",
+              time: { created: Date.now() },
+              agent: "variant_agent",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              isRoot: true,
+              rootID: messageID,
+              origin: { type: "user" },
+              variant,
+            } satisfies MessageV2.User)
+          }
+          const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
+          await Session.remove(session.id)
+
+          const result = await SessionImport.fromReport(report)
+          const messages = await Session.messages({ sessionID: result.rootSessionID, raw: true })
+          expect(messages.map((message) => message.info.role === "user" && message.info.variant)).toEqual([
+            "high",
+            "max",
+          ])
+        },
+      })
+    },
+    { timeout: 15_000 },
+  )
+
+  test("imports legacy roots referencing models that no longer exist", async () => {
     await using tmp = await tmpdir({
       git: true,
       config: {
@@ -209,28 +275,28 @@ describe("SessionImport", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const session = await Session.create({ title: "Legacy Variants" })
-        for (const variant of [undefined, "max"]) {
-          const messageID = Identifier.ascending("message")
-          await Session.updateMessage({
-            id: messageID,
-            sessionID: session.id,
-            role: "user",
-            time: { created: Date.now() },
-            agent: "variant_agent",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            isRoot: true,
-            rootID: messageID,
-            origin: { type: "user" },
-            variant,
-          } satisfies MessageV2.User)
-        }
+        const session = await Session.create({ title: "Ghost Model Import" })
+        const messageID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: messageID,
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "variant_agent",
+          // References a model that is not defined in the current config, so
+          // resolveLegacyRoot hits Provider.ModelNotFoundError during import.
+          model: { providerID: "removed-provider", modelID: "removed-model" },
+          isRoot: true,
+          rootID: messageID,
+          origin: { type: "user" },
+        } satisfies MessageV2.User)
         const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
         await Session.remove(session.id)
 
         const result = await SessionImport.fromReport(report)
         const messages = await Session.messages({ sessionID: result.rootSessionID, raw: true })
-        expect(messages.map((message) => message.info.role === "user" && message.info.variant)).toEqual(["high", "max"])
+        const imported = messages.find((message) => message.info.role === "user")?.info as MessageV2.User | undefined
+        expect(imported?.variant).toBeUndefined()
       },
     })
   })

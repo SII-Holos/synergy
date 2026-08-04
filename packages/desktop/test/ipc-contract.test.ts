@@ -3,6 +3,8 @@ import { mapSelectDirectoryDialogResponse, selectDirectoryWithNativeDialog } fro
 import {
   parseBrowserNativeAttach,
   parseBrowserNativePage,
+  parseBrowserNativePresentationCapability,
+  parseBrowserNativePresentationTicket,
   parseBrowserNativeResize,
   parseDesktopBadgeState,
   parseClipboardWriteText,
@@ -69,6 +71,30 @@ describe("desktop ipc contract", () => {
       }),
     ).toThrow()
     expect(() => parseBrowserNativeAttach({ pageId: "page" })).toThrow()
+  })
+
+  test("validates native capability and owner-bound ticket requests", () => {
+    expect(
+      parseBrowserNativePresentationCapability({
+        protocolVersion: 2,
+        serverUrl: "http://127.0.0.1:4096",
+      }),
+    ).toEqual({ protocolVersion: 2, serverUrl: "http://127.0.0.1:4096" })
+    expect(
+      parseBrowserNativePresentationTicket({
+        protocolVersion: 2,
+        serverUrl: "http://127.0.0.1:4096",
+        ownerKey: "scope:home:session:test",
+      }),
+    ).toEqual({
+      protocolVersion: 2,
+      serverUrl: "http://127.0.0.1:4096",
+      ownerKey: "scope:home:session:test",
+    })
+    expect(() => parseBrowserNativePresentationCapability({ protocolVersion: 2, serverUrl: "not-a-url" })).toThrow()
+    expect(() =>
+      parseBrowserNativePresentationTicket({ protocolVersion: 2, serverUrl: "http://127.0.0.1", ownerKey: "" }),
+    ).toThrow()
   })
 
   test("allows only safe external protocols", () => {

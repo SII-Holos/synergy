@@ -76,20 +76,21 @@ printf 'extra context' | synergy send "Use stdin too"
 
 Important options:
 
-| Option                           | Meaning                                                                                    |
-| -------------------------------- | ------------------------------------------------------------------------------------------ |
-| `--attach <url>`                 | Use a running server instead of a private ephemeral server                                 |
-| `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation |
-| `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                |
-| `-s`, `--session <id>`           | Continue a specific session                                                                |
-| `--agent <name>`                 | Select a primary agent; subagent names are rejected as primary choices                     |
-| `-m`, `--model <provider/model>` | Override the model                                                                         |
-| `--variant <name>`               | Select provider-specific reasoning/model variant                                           |
-| `-f`, `--file <path>`            | Attach a file or directory; repeatable                                                     |
-| `--command <name>`               | Run a configured Synergy command, using the message as arguments                           |
-| `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                       |
-| `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                            |
-| `--port <number>`                | Port for the private local server; omitted means an available port                         |
+| Option                           | Meaning                                                                                                                                                         |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--attach <url>`                 | Use a running server instead of a private ephemeral server                                                                                                      |
+| `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation                                                                      |
+| `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                                                                                     |
+| `-s`, `--session <id>`           | Continue a specific session                                                                                                                                     |
+| `--agent <name>`                 | Select a primary agent; subagent names are rejected as primary choices                                                                                          |
+| `-m`, `--model <provider/model>` | Override the model                                                                                                                                              |
+| `--variant <name>`               | Select provider-specific reasoning/model variant                                                                                                                |
+| `-f`, `--file <path>`            | Attach a file or directory; repeatable                                                                                                                          |
+| `--command <name>`               | Run a configured Synergy command, using the message as arguments                                                                                                |
+| `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                                                                                            |
+| `--workflow lightloop`           | Run the message as a Light Loop workflow task: the session enables `loop_stop` and a reviewer loop, and `send` exits when the workflow reaches a terminal state |
+| `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                                                                                                 |
+| `--port <number>`                | Port for the private local server; omitted means an available port                                                                                              |
 
 When `--scope` is omitted, `send` uses the launch directory (or `SYNERGY_CWD`). An existing directory is resolved and registered as a project Scope when needed, even if Synergy has not opened it before; a missing directory resolves to the home Scope. Pass `--scope` to select an already registered Scope without registering the launch directory. With `--attach`, the target runtime owns and validates the Scope ID.
 
@@ -234,6 +235,6 @@ Local source builds do not have signed release manifests; use an installed relea
 
 ## Plugins
 
-`synergy plugin` includes create, add, remove, update, build, sign, pack, list, search, doctor, validate, dev, runtime, test, publish-market, entry, info, permissions, and approval commands. `synergy plugin approve <id>` fetches the server approval review for a configured plugin and submits the opaque `reviewToken` through `POST /api/plugins/approve`; it does not send manifest, capability, source, or path data. `list` and `info` show approval-disabled plugins with their canonical identity and `Needs approval` state. Installed plugins can also contribute their own top-level CLI commands.
+`synergy plugin` includes create, add, remove, retry-install, update, build, sign, pack, list, search, doctor, validate, dev, runtime, test, publish-market, entry, info, permissions, and approval commands. `synergy plugin approve <id>` fetches the server approval review for a configured plugin and submits the opaque `reviewToken` through `POST /api/plugins/approve`; it does not send manifest, capability, source, or path data. `list` and `info` show approval-disabled plugins with their canonical identity and `Needs approval` state. Installed plugins can also contribute their own top-level CLI commands. `synergy plugin retry-install <id>` re-queues a failed or pending `lifecycle.install`; the host delivers it at the next server start or plugin runtime reload. It errors instead when the plugin's lockfile generation no longer matches the installed generation — reinstall or update the plugin to retry in that case.
 
 The canonical authoring and command reference is [Plugin documentation](../plugins/README.md).
