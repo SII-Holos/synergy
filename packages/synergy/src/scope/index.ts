@@ -39,6 +39,10 @@ export namespace Scope {
   }
 
   export function contains(scope: Scope, targetPath: string): boolean {
+    // projectRoots is empty for the home scope; fall back to the legacy
+    // single-directory containment so home-scope contexts (e.g. CLI file
+    // reads without a workspace binding) keep working.
+    if (scope.type !== "project") return Filesystem.contains(scope.directory, targetPath)
     return ScopeRoots.projectRoots(scope).some((root) => Filesystem.contains(root, targetPath))
   }
 

@@ -74,9 +74,9 @@ describe("EnforcementGate multi-root trustedRoots", () => {
     const { tmpdir } = await import("../fixture/fixture")
     const { $ } = await import("bun")
     await using tmp = await tmpdir()
+    await using sibling = await tmpdir()
     const main = tmp.path
-    const folderA = path.join(tmp.path, "folder-a")
-    await $`mkdir -p ${folderA}`.quiet()
+    const folderA = sibling.path
 
     const { Scope } = await import("../../src/scope")
     const scope: import("../../src/scope").Scope.Project = {
@@ -110,6 +110,52 @@ describe("EnforcementGate multi-root trustedRoots", () => {
     // classified as external and requires approval.
     const result = gate.classify("write", {
       filePath: path.join(main, "packages", "app", "src", "index.ts"),
+    })
+    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
+    expect(external).toBeDefined()
+  })
+
+  test("worktree session: sandbox folder nested inside the original checkout is never trusted", async () => {
+    const { tmpdir } = await import("../fixture/fixture")
+    const { $ } = await import("bun")
+    await using tmp = await tmpdir()
+    const main = tmp.path
+    // A subdirectory of the main checkout previously opened (auto-recorded
+    // into `sandboxes`) must not become a trusted root in a worktree session.
+    const nested = path.join(main, "nested")
+    await $`mkdir -p ${nested}`.quiet()
+
+    const { Scope } = await import("../../src/scope")
+    const scope: import("../../src/scope").Scope.Project = {
+      type: "project",
+      id: "d_test",
+      directory: main,
+      worktree: main,
+      vcs: "git",
+      sandboxes: [nested],
+      time: { created: 0, updated: 0 },
+    }
+    const worktreePath = path.join(main, ".synergy", "worktrees", "feature-x")
+    const roots = Scope.Root.executionRoots(scope, {
+      type: "git_worktree",
+      path: worktreePath,
+      scopeID: "d_test",
+      originalCheckout: main,
+    })
+    expect(roots).not.toContain(nested)
+    expect(roots).not.toContain(main)
+
+    const gate = await EnforcementGate.create({
+      activeWorkspace: worktreePath,
+      workspaceType: "worktree",
+      originalCheckout: main,
+      trustedRoots: roots,
+    })
+
+    // A write into the nested folder (inside the original checkout) is
+    // classified as external — worktree isolation must not be bypassed.
+    const result = gate.classify("write", {
+      filePath: path.join(nested, "src", "index.ts"),
     })
     const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
     expect(external).toBeDefined()

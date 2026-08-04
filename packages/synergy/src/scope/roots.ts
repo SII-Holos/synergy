@@ -1,6 +1,7 @@
 import path from "path"
 import { existsSync } from "fs"
 import { uniqueRoots } from "@/sandbox/policy"
+import { Filesystem } from "@/util/filesystem"
 import type { Scope } from "./index"
 import type { Workspace } from "../session/workspace-schema"
 
@@ -38,11 +39,19 @@ export namespace ScopeRoots {
     if (workspace?.type !== "git_worktree") return roots
     // The original main checkout is never trusted inside a worktree session,
     // even when the workspace metadata lacks an explicit originalCheckout —
-    // the persisted main worktree is the implicit original checkout.
+    // the persisted main worktree is the implicit original checkout. The
+    // exclusion covers the checkout itself, paths nested under it (e.g.
+    // subdirectories auto-recorded into `sandboxes` when they were opened
+    // previously), and any declared root that contains the checkout — all of
+    // which would otherwise grant write access into the original checkout
+    // from an isolated worktree session.
     const originalCheckout =
       (workspace as { originalCheckout?: string } | undefined)?.originalCheckout ?? scope.worktree
     const original = path.resolve(originalCheckout)
-    return roots.filter((root) => root !== original)
+    return roots.filter((root) => {
+      const resolved = path.resolve(root)
+      return !Filesystem.contains(original, resolved) && !Filesystem.contains(resolved, original)
+    })
   }
   /**
    * The full trusted-root set used by the execution boundary: project trust

@@ -64,34 +64,53 @@ describe("Scope.Root.trustRoots", () => {
     expect(roots).toEqual([tmp.path, folder])
   })
 
-  test("git_worktree session excludes the original checkout but keeps other folders", async () => {
+  test("git_worktree session excludes the original checkout but keeps sibling folders", async () => {
     await using tmp = await tmpdir()
-    const folder = path.join(tmp.path, "folder")
-    await $`mkdir -p ${folder}`.quiet()
+    await using sibling = await tmpdir()
 
-    const scope = projectScope({ worktree: tmp.path, sandboxes: [folder] })
+    const scope = projectScope({ worktree: tmp.path, sandboxes: [sibling.path] })
     const roots = Scope.Root.trustRoots(scope, {
       type: "git_worktree",
-      path: folder,
+      path: sibling.path,
       scopeID: "d_test",
       originalCheckout: tmp.path,
     })
-    expect(roots).toEqual([folder])
+    expect(roots).toEqual([sibling.path])
+    expect(roots).not.toContain(tmp.path)
   })
 
   test("git_worktree without originalCheckout excludes the main worktree", async () => {
     await using tmp = await tmpdir()
-    const folder = path.join(tmp.path, "folder")
-    await $`mkdir -p ${folder}`.quiet()
+    await using sibling = await tmpdir()
 
-    const roots = Scope.Root.trustRoots(projectScope({ worktree: tmp.path, sandboxes: [folder] }), {
+    const roots = Scope.Root.trustRoots(projectScope({ worktree: tmp.path, sandboxes: [sibling.path] }), {
       type: "git_worktree",
-      path: folder,
+      path: sibling.path,
       scopeID: "d_test",
     })
     // Without explicit originalCheckout metadata the persisted main worktree
     // is the implicit original checkout and stays outside the trust boundary.
-    expect(roots).toEqual([folder])
+    expect(roots).toEqual([sibling.path])
+  })
+
+  test("git_worktree session excludes sandbox folders nested inside the original checkout", async () => {
+    await using tmp = await tmpdir()
+    const nested = path.join(tmp.path, "nested-folder")
+    await $`mkdir -p ${nested}`.quiet()
+
+    // A subdirectory previously opened inside the main checkout is recorded
+    // into `sandboxes`. It must NOT become trusted inside an isolated worktree
+    // session — that would bypass worktree isolation with write access into
+    // the original checkout.
+    const scope = projectScope({ worktree: tmp.path, sandboxes: [nested] })
+    const roots = Scope.Root.trustRoots(scope, {
+      type: "git_worktree",
+      path: path.join(tmp.path, ".synergy", "worktrees", "feature-x"),
+      scopeID: "d_test",
+      originalCheckout: tmp.path,
+    })
+    expect(roots).not.toContain(tmp.path)
+    expect(roots).not.toContain(nested)
   })
 
   test("no workspace keeps all roots", async () => {
@@ -101,6 +120,15 @@ describe("Scope.Root.trustRoots", () => {
 
     const roots = Scope.Root.trustRoots(projectScope({ worktree: tmp.path, sandboxes: [folder] }))
     expect(roots).toEqual([tmp.path, folder])
+  })
+})
+
+describe("Scope.contains home fallback", () => {
+  test("home scope keeps legacy single-directory containment", () => {
+    const home = Scope.home()
+    expect(Scope.contains(home, home.directory)).toBe(true)
+    expect(Scope.contains(home, path.join(home.directory, "Documents", "notes.txt"))).toBe(true)
+    expect(Scope.contains(home, "/definitely-not-home-xyz")).toBe(false)
   })
 })
 

@@ -113,4 +113,43 @@ describe("SystemPrompt.environment with project folders", () => {
     expect(text).not.toContain("Project folders:")
     expect(text).not.toContain("Project folder:")
   })
+
+  test("git_worktree session lists only trusted project folders, never the original checkout", async () => {
+    await using tmp = await tmpdir()
+    await using sibling = await tmpdir()
+    const folder = sibling.path
+
+    const scope: import("../../src/scope").Scope.Project = {
+      type: "project",
+      id: "d_test",
+      directory: tmp.path,
+      worktree: tmp.path,
+      vcs: "git",
+      name: "Test",
+      sandboxes: [folder],
+      time: { created: 0, updated: 0 },
+    }
+    const worktreePath = path.join(folder, ".synergy", "worktrees", "feature-x")
+    const workspace = {
+      type: "git_worktree" as const,
+      path: worktreePath,
+      scopeID: "d_test",
+      originalCheckout: tmp.path,
+    }
+
+    const [text] = await ScopeContext.provide({
+      scope,
+      workspace,
+      fn: () => SystemPrompt.environment(),
+    })
+
+    // The original checkout must never be listed as a trusted project folder,
+    // and the prompt must not render a contradictory duplicate line.
+    expect(text).not.toContain(`Project folders: ${tmp.path}`)
+    expect(text).not.toContain(`Project folders: ${tmp.path}, ${folder}`)
+    expect(text).toContain(`Project folder: ${folder}`)
+    expect(text).toContain(`Original checkout: ${tmp.path}`)
+    expect(text.split("Project folders:").length - 1).toBe(0)
+    expect(text.split("Project folder:").length - 1).toBe(1)
+  })
 })
