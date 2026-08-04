@@ -28,7 +28,12 @@ import { fetchUIContributions, type PluginContribution } from "./api"
 import { resolvePluginAssetUrl } from "./asset-url"
 import type { PluginLifecycleState } from "./lifecycle"
 import { loadPluginExport } from "./loaders"
-import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
+import {
+  injectPluginStylesheet,
+  loadPluginUIAssets,
+  resolvePluginIconReference,
+  type PluginUIAssets,
+} from "./ui-assets"
 import { pluginSurfaceId } from "./surface-id"
 import { registerComposerSlot, type ComposerSlotProps } from "./registries/composer-slot-registry"
 import { registerComposerExtension, type ComposerExtensionProps } from "./registries/composer-extension-registry"
@@ -203,6 +208,10 @@ function registerPluginSurfaces(input: {
 
   for (const plugin of input.contributions) {
     const asset = (file: string) => resolvePluginAssetUrl(input.serverUrl, plugin.pluginId, plugin.generation, file)
+    const stylesheet = input.assets.stylesheets.get(plugin.pluginId)
+    if (stylesheet) {
+      disposers.push(injectPluginStylesheet(asset(stylesheet)))
+    }
     const componentLoader = <Props extends object>(
       item: PluginManifestContribution,
       session: (props: Props) => string | undefined = () => currentSessionId(),

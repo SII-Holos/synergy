@@ -37,6 +37,8 @@ workbenchPanel({
 
 The component exports a Solid component that receives `{ context: PluginSurfaceContext }` in source templates. plugin-kit compiles all trusted components into one named-export UI bundle, externalizes `solid-js`, `solid-js/web`, and `solid-js/store`, rewrites those imports to the host's shared runtime, and records the bundle hash. The plugin-kit CLI and standalone Synergy runtime include the compiler, so plugin projects do not install Babel presets. Bundles that include a private Solid runtime, use unsupported Solid subpaths, bypass host linking, or omit an export are rejected.
 
+Components may import CSS from the plugin project. plugin-kit extracts imported stylesheets into a sibling `ui/index.css` next to the UI bundle; the host injects that stylesheet as a `<link>` when the plugin surfaces are registered and removes it on reload, disable, or uninstall. CSS is bundled and namespaced only by the plugin author's own class names; the host does not rewrite selectors. Keep selectors prefixed with the plugin ID to avoid collisions with the host or other plugins. Assets referenced from CSS (for example `url(...)` images) are inlined as data URLs or emitted as hashed sibling assets next to the stylesheet; relative URLs resolve against the stylesheet's asset URL, so no extra declaration is required.
+
 Trusted code runs in the Synergy App context after explicit approval. This is a trust decision, not a sandbox claim.
 
 ## Surface Context
