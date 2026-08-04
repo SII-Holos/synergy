@@ -79,6 +79,13 @@ export interface LightLoopWaitResult {
   aborted: boolean
   /** True when the Light Loop was replaced by another workflow. */
   replaced: boolean
+  /**
+   * True when the workflow was cleared without a durable terminal record.
+   * This happens when another workflow (or an explicit workflow reset)
+   * evicted the Light Loop, so the attempt was interrupted rather than
+   * completed. Callers must not treat this as success.
+   */
+  clearedWithoutRecord: boolean
 }
 
 /**
@@ -104,11 +111,25 @@ export async function waitForLightLoopFinish(
 
   for (;;) {
     if (options.signal?.aborted) {
-      return { status: undefined, elapsedMs: Date.now() - startedAt, timedOut: false, aborted: true, replaced: false }
+      return {
+        status: undefined,
+        elapsedMs: Date.now() - startedAt,
+        timedOut: false,
+        aborted: true,
+        replaced: false,
+        clearedWithoutRecord: false,
+      }
     }
     const elapsedMs = Date.now() - startedAt
     if (Date.now() >= deadline) {
-      return { status: undefined, elapsedMs, timedOut: true, aborted: false, replaced: false }
+      return {
+        status: undefined,
+        elapsedMs,
+        timedOut: true,
+        aborted: false,
+        replaced: false,
+        clearedWithoutRecord: false,
+      }
     }
 
     const result = await sdk.session.get({ sessionID })
@@ -118,11 +139,17 @@ export async function waitForLightLoopFinish(
     const finished = isLightLoopFinished(result.data ?? {})
     if (finished.finished) {
       let status = finished.status
+      let clearedWithoutRecord = false
       if (status === undefined && !finished.replaced) {
         // The workflow was cleared; read the authoritative terminal record.
         const terminal = await sdk.workflow.session.getLightloopTerminal({ id: sessionID }).catch(() => undefined)
         if (terminal && !terminal.error && terminal.data?.status) {
           status = terminal.data.status
+        } else {
+          // No durable terminal record exists: the Light Loop was evicted by
+          // an external workflow reset rather than a terminal path. The
+          // attempt was interrupted, not completed.
+          clearedWithoutRecord = true
         }
       }
       return {
@@ -131,6 +158,7 @@ export async function waitForLightLoopFinish(
         timedOut: false,
         aborted: false,
         replaced: finished.replaced,
+        clearedWithoutRecord,
       }
     }
 

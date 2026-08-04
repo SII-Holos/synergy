@@ -1,8 +1,20 @@
 import { Session } from "."
 import { Plugin } from "../plugin"
 import { Lock } from "../util/lock"
-import { isLightLoopTerminalStatus, type LightLoopTerminalStatus } from "./light-loop-state"
+import { isActiveLightLoopWorkflow, isLightLoopTerminalStatus, type LightLoopTerminalStatus } from "./light-loop-state"
 import { LightLoopTerminalStore, type LightLoopTerminalRecord } from "./light-loop-terminal-hook"
+
+function errorText(error: unknown): string {
+  if (!error) return "Light Loop execution failed"
+  if (typeof error === "string") return error
+  if (error instanceof Error) return error.message
+  if (typeof error === "object") {
+    const obj = error as { message?: unknown; data?: { message?: unknown } }
+    if (typeof obj.data?.message === "string" && obj.data.message) return obj.data.message
+    if (typeof obj.message === "string" && obj.message) return obj.message
+  }
+  return "Light Loop execution failed"
+}
 
 const activeTimers = new Map<string, Timer>()
 
@@ -139,12 +151,12 @@ export namespace LightLoopRuntime {
     if (existing) {
       const workflow = session.workflow
       const activeLoop = workflow?.kind === "lightloop" && !isLightLoopTerminalStatus(workflow.status)
-      const matchesPlugin =
+      if (
         activeLoop &&
         workflow.pluginOwner !== undefined &&
         existing.pluginOwner !== undefined &&
         samePluginOwner(workflow.pluginOwner, existing.pluginOwner)
-      if (matchesPlugin) {
+      ) {
         // Plugin-owned retry: the same loop ended again; clear the workflow and
         // retry the pending terminal hook.
         await Session.update(sessionID, (draft) => {
@@ -154,16 +166,19 @@ export namespace LightLoopRuntime {
         await deliverTerminalHook(session, existing)
         return
       }
-      if (!activeLoop || existing.pluginOwner !== undefined) {
-        // Idempotent re-entry (same terminal state) or a stale plugin record
-        // with no matching active loop: preserve the existing record and retry
+      if (!activeLoop) {
+        // Idempotent re-entry (no active loop on this session) or a stale
+        // record with no matching loop: preserve the existing record and retry
         // its hook delivery instead of replacing it.
         await deliverTerminalHook(session, existing)
         return
       }
-      // A new ordinary loop started on the same session: the old terminal
-      // record no longer describes this session's loop, so fall through and
-      // replace it with the fresh terminal state.
+      // A different loop is ending on this session — either an ordinary loop on
+      // top of a stale plugin record, or a plugin loop whose owner does not
+      // match the retained record. Retry the stale hook best-effort (the old
+      // loop's completion notification), then replace the record with the
+      // fresh terminal state for the current loop.
+      await deliverTerminalHook(session, existing).catch(() => undefined)
     }
     if (session.workflow?.kind !== "lightloop") return
 
@@ -189,6 +204,24 @@ export namespace LightLoopRuntime {
     })
     clearDeadlineTimer(sessionID)
     await deliverTerminalHook(session, terminal)
+  }
+
+  /**
+   * Mark an active Light Loop as failed after a terminal executor error.
+   *
+   * When an assistant turn ends in error, the session has no eligible terminal
+   * assistant message, so the continuation kernel cannot drive the loop again
+   * and it would otherwise stay active forever (headless drivers would wait
+   * out the full hard timeout). This converts that stuck state into the
+   * durable `failed` terminal status through the single terminal path.
+   *
+   * Non-loop sessions and already-terminal loops are left untouched, and
+   * aborts (which take the cancellation path) never pass through here.
+   */
+  export async function failActiveLoop(sessionID: string, error?: unknown): Promise<void> {
+    const session = await Session.get(sessionID).catch(() => undefined)
+    if (!session || !isActiveLightLoopWorkflow(session.workflow)) return
+    await setTerminalStatus(sessionID, "failed", errorText(error))
   }
 
   export function scheduleDeadline(sessionID: string, deadlineAt: number) {
