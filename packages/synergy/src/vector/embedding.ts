@@ -99,7 +99,7 @@ export namespace Embedding {
     dtype: "q8"
     progress_callback: (info: ProgressInfo) => void
     local_files_only?: true
-    device?: "wasm"
+    device?: "cpu"
   }
   type LocalRuntime = {
     pipeline(task: string, model: string, options: PipelineOptions): Promise<LocalExtractor>
