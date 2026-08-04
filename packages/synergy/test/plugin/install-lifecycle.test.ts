@@ -420,4 +420,128 @@ describe("plugin install lifecycle delivery", () => {
     const locked = (await Lockfile.read()).plugins[manifest.id]
     expect(locked?.lifecycleInstall).toBe("failed")
   })
+
+  test("add with a legacy lockfile entry never re-runs the install lifecycle", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const pluginDir = path.join(tmp.path, "legacy-entry")
+    const runtimePath = path.join(pluginDir, "runtime", "index.js")
+    await Bun.write(runtimePath, `export default {}\n`)
+    const legacy = compilePluginManifest(
+      definePlugin({
+        id: "legacy-entry",
+        version: "1.0.0",
+        description: "Legacy entry fixture",
+        contributions: [lifecycleInstall({ id: "setup", handler: async () => undefined })],
+      }),
+      {
+        generation: "legacy-gen",
+        runtime: { entry: "runtime/index.js", sha256: sha256File(runtimePath) },
+      },
+    )
+    await Bun.write(path.join(pluginDir, "plugin.json"), JSON.stringify(legacy))
+    // Legacy entry: installed before lifecycleInstall tracking existed, so it has no field
+    // even though the one-time install hook already ran synchronously at install time.
+    await Lockfile.write({
+      ...(await Lockfile.read()),
+      plugins: {
+        "legacy-entry": {
+          spec: pathToFileURL(pluginDir).href,
+          source: "local",
+          version: legacy.version,
+          apiVersion: legacy.apiVersion,
+          generation: legacy.artifacts.generation,
+          resolved: path.join(pluginDir, "plugin.json"),
+          manifestHash: "test",
+          approvalId: legacy.id,
+        },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const added = await add(pathToFileURL(pluginDir).href, { skipConsent: true, source: "local" })
+        // Not fresh: an existing lockfile entry means the one-time hook already ran, so
+        // no delivery happens and the field must not be written as pending.
+        expect(added.installLifecycle).toBeUndefined()
+      },
+    })
+    const locked = (await Lockfile.read()).plugins["legacy-entry"]
+    expect(locked?.lifecycleInstall).not.toBe("pending")
+  })
+
+  test("runPendingInstallLifecycles skips entries whose delivery is in flight", async () => {
+    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener" })
+    await using tmp = await tmpdir({ git: true })
+    await seedLockfile("pending")
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { services } = recordingServices()
+        services.invoke = async () => {
+          await gate
+        }
+        // Start a delivery that blocks inside the hook; the in-flight claim is registered
+        // synchronously, so a concurrent catch-up must skip this entry.
+        const delivery = deliverInstallLifecycle(plugin(), { catchUpStarted: false, services })
+        const results = await runPendingInstallLifecycles({ plugins: [plugin()], services })
+        expect(results).toEqual([])
+        release?.()
+        await delivery
+      },
+    })
+    const locked = (await Lockfile.read()).plugins[manifest.id]
+    expect(locked?.lifecycleInstall).toBe("completed")
+  })
+
+  test("retry fails on generation mismatch for an unloaded plugin", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const pluginDir = path.join(tmp.path, "mismatch-unloaded")
+    const runtimePath = path.join(pluginDir, "runtime", "index.js")
+    await Bun.write(runtimePath, `export default {}\n`)
+    const installed = compilePluginManifest(
+      definePlugin({
+        id: "mismatch-unloaded",
+        version: "1.0.0",
+        description: "Mismatch fixture",
+        contributions: [lifecycleInstall({ id: "setup", handler: async () => undefined })],
+      }),
+      {
+        generation: "installed-gen",
+        runtime: { entry: "runtime/index.js", sha256: sha256File(runtimePath) },
+      },
+    )
+    await Bun.write(path.join(pluginDir, "plugin.json"), JSON.stringify(installed))
+    // Lockfile claims a stale generation that no longer matches the installed manifest.
+    await Lockfile.write({
+      ...(await Lockfile.read()),
+      plugins: {
+        "mismatch-unloaded": {
+          spec: pathToFileURL(pluginDir).href,
+          source: "local",
+          version: installed.version,
+          apiVersion: installed.apiVersion,
+          generation: "stale-gen",
+          resolved: path.join(pluginDir, "plugin.json"),
+          manifestHash: "test",
+          approvalId: installed.id,
+          lifecycleInstall: "failed",
+        },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await expect(retryPluginInstallLifecycle("mismatch-unloaded")).rejects.toBeInstanceOf(
+          PluginInstallLifecycleGenerationMismatchError,
+        )
+      },
+    })
+    // Entry left untouched so reinstall/update can recover.
+    const locked = (await Lockfile.read()).plugins["mismatch-unloaded"]
+    expect(locked?.lifecycleInstall).toBe("failed")
+  })
 })

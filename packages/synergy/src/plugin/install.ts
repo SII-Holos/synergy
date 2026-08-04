@@ -177,13 +177,13 @@ export async function add(
     const before = await state().catch(() => undefined)
     const oldPlugin = before?.loaded.find((plugin) => plugin.id === manifest.id)
     const lockfileBefore = await Lockfile.read().catch(() => null)
-    // A fresh install is any commit for a plugin that is not currently loaded and has no
-    // completed install on record. Disabled/approval-pending config entries must not
-    // suppress the install lifecycle: the plugin has never completed an install, so
-    // lifecycle.install must still run once. A previously completed install that was
-    // disabled and re-added is not fresh and must not re-run lifecycle.install.
-    const freshInstall =
-      oldPlugin === undefined && lockfileBefore?.plugins[manifest.id]?.lifecycleInstall !== "completed"
+    const lockedEntry = lockfileBefore?.plugins[manifest.id]
+    // A fresh install is a commit for a plugin that is not currently loaded and has no
+    // lockfile entry. A lockfile entry means the plugin was installed at least once, so
+    // its one-time install lifecycle already ran — legacy entries written before
+    // lifecycleInstall tracking ran it synchronously. Disabled/approval-pending config
+    // entries without a lockfile entry never completed an install and stay fresh.
+    const freshInstall = oldPlugin === undefined && lockedEntry === undefined
     const prepared = await prepareUpgrade({ oldPlugin, resolved })
     preparedKey = prepared?.key
 
@@ -347,6 +347,17 @@ export interface DeliverInstallLifecycleOptions {
   triggerStarted?: (input: { pluginId: string; generation: string; endpointGeneration: string }) => Promise<unknown>
 }
 
+/**
+ * Install lifecycles currently being delivered. Guards against the config-watcher reload
+ * re-selecting a pending entry while `add()` is still delivering the same plugin's hook:
+ * a second delivery would interrupt the first runtime and repeat partial side effects.
+ */
+const installLifecyclesInFlight = new Set<string>()
+
+export function isInstallLifecycleInFlight(pluginId: string): boolean {
+  return installLifecyclesInFlight.has(pluginId)
+}
+
 async function persistInstallLifecycle(pluginId: string, status: "pending" | "completed" | "failed") {
   // All other lockfile writers serialize on the installation lock; persist under the same
   // lock so a read-modify-write cannot clobber a concurrent entry update.
@@ -372,6 +383,20 @@ async function persistInstallLifecycle(pluginId: string, status: "pending" | "co
 export async function deliverInstallLifecycle(
   plugin: LoadedPlugin,
   options: DeliverInstallLifecycleOptions = {},
+): Promise<PluginInstallLifecycleStatus> {
+  // Claim the in-flight slot for the whole delivery so a config-watcher reload cannot
+  // re-select this pending entry and interrupt the running hook (see runPendingInstallLifecycles).
+  installLifecyclesInFlight.add(plugin.id)
+  try {
+    return await deliverInstallLifecycleInner(plugin, options)
+  } finally {
+    installLifecyclesInFlight.delete(plugin.id)
+  }
+}
+
+async function deliverInstallLifecycleInner(
+  plugin: LoadedPlugin,
+  options: DeliverInstallLifecycleOptions,
 ): Promise<PluginInstallLifecycleStatus> {
   const hasInstallContribution = plugin.manifest.contributions.some((item) => item.kind === "lifecycle.install")
   const endpointGeneration = peekRuntimeEndpointGeneration()
@@ -450,6 +475,10 @@ export async function runPendingInstallLifecycles(
   if (pendingIds.length === 0) return []
   const results: PluginInstallLifecycleStatus[] = []
   for (const pluginId of pendingIds) {
+    // Skip entries whose delivery is already in flight (e.g. a config-watcher reload
+    // racing an in-process add()): a second delivery would interrupt the running hook
+    // and repeat partial side effects.
+    if (isInstallLifecycleInFlight(pluginId)) continue
     const plugin = input.plugins?.find((item) => item.id === pluginId) ?? (await getPlugin(pluginId))
     if (!plugin) continue
     const locked = lockfile.plugins[pluginId]
@@ -502,8 +531,23 @@ export async function retryPluginInstallLifecycle(
     )
   }
   if (!plugin) {
-    // Runtime not loaded (e.g. crashed or disabled). The lockfile entry still records the
-    // generation, so re-queueing for the next host boot is safe.
+    // Runtime not loaded (e.g. crashed or disabled). Resolve the installed manifest from
+    // the lockfile spec (local cache read, no network) so a stale generation cannot be
+    // silently re-queued into a pending state that boot catch-up will refuse forever.
+    const resolved = await resolvePluginSpec(locked.spec, {
+      cwd: ScopeContext.current.directory,
+      install: false,
+    }).catch(() => null)
+    if (resolved && resolved.manifest.artifacts.generation !== locked.generation) {
+      throw new PluginInstallLifecycleGenerationMismatchError(
+        pluginId,
+        locked.generation,
+        resolved.manifest.artifacts.generation,
+      )
+    }
+    if (!resolved) {
+      log.warn("unable to resolve installed manifest for retry; re-queuing pending", { pluginId })
+    }
     await persistInstallLifecycle(pluginId, "pending")
     return { status: "pending" }
   }
