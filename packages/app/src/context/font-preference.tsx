@@ -148,7 +148,7 @@ export const { use: useFontPreference, provider: FontPreferenceProvider } = crea
   name: "FontPreference",
   init: () => {
     const [store, setStore, _, ready] = persisted(
-      { ...Persist.global("font-preference"), migrate: migrateFontPreferences },
+      { ...Persist.global("font-preference", ["font-preference.v1"]), migrate: migrateFontPreferences },
       createStore<FontPreferenceStore>(defaultPreferences()),
     )
 
