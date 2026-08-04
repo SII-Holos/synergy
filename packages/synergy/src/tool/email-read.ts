@@ -1,8 +1,27 @@
 import { formatLocalDate, formatLocalDateTime } from "@/util/time-format"
+import type { SearchObject } from "imapflow"
 import z from "zod"
 import { Tool } from "./tool"
 import { EmailImap } from "@/email/imap"
+import {
+  SCAN_WINDOW,
+  SCAN_WINDOW_MAX,
+  TEXT_SCAN_LIMIT,
+  filterBySender,
+  filterBySubject,
+  hasServerKeys,
+  matchesText,
+  serverKeys,
+  type SearchCriteria,
+} from "@/email/search-filter"
 import DESCRIPTION from "./email-read.txt"
+
+const dateString = z
+  .string()
+  .refine((value) => !Number.isNaN(new Date(value).getTime()), {
+    message: "Invalid date. Use ISO 8601 format, e.g. 2024-01-01.",
+  })
+  .describe("Date (ISO 8601)")
 
 const parameters = z.object({
   folder: z.string().optional().describe("Mailbox folder name, defaults to INBOX"),
@@ -14,8 +33,9 @@ const parameters = z.object({
     .object({
       from: z.string().optional().describe("Filter by sender email address"),
       subject: z.string().optional().describe("Filter by subject keyword"),
-      since: z.string().optional().describe("Emails received on or after this date (ISO 8601)"),
-      before: z.string().optional().describe("Emails received before this date (ISO 8601)"),
+      text: z.string().optional().describe("Filter by keyword in the message body"),
+      since: dateString.optional().describe("Emails received on or after this date (ISO 8601)"),
+      before: dateString.optional().describe("Emails received before this date (ISO 8601)"),
       unseen: z.boolean().optional().describe("Only unread emails"),
       flagged: z.boolean().optional().describe("Only flagged/starred emails"),
     })
@@ -50,11 +70,15 @@ export const EmailReadTool = Tool.define("email_read", {
     switch (params.action) {
       case "search": {
         const criteria = buildSearchCriteria(params.search)
-        const uids = await EmailImap.search(folder, criteria, { limit })
+        const result = await runSearch(folder, criteria, limit)
         return {
           title: `Search ${folder}`,
-          output: `Found ${uids.length} email(s) in ${folder}.\nUIDs: ${uids.join(", ") || "none"}`,
-          metadata: { folder, uids, count: uids.length, truncated: false },
+          output: `Found ${result.uids.length} email(s) in ${folder}.\nUIDs: ${result.uids.join(", ") || "none"}${
+            result.truncated
+              ? "\nNote: search window was exhausted; results may be incomplete. Narrow by date to scan older mail."
+              : ""
+          }`,
+          metadata: { folder, uids: result.uids, count: result.uids.length, truncated: result.truncated },
         }
       }
 
@@ -90,6 +114,8 @@ export const EmailReadTool = Tool.define("email_read", {
           }
         }
         const results: string[] = []
+        let anyTruncated = false
+        const allAttachments: EmailImap.EmailAttachment[] = []
         for (const uid of uids.slice(0, limit)) {
           const email = await EmailImap.fetchOne(folder, uid)
           if (!email) {
@@ -98,6 +124,13 @@ export const EmailReadTool = Tool.define("email_read", {
           }
           const date = formatLocalDateTime(email.date.getTime())
           const body = email.text ?? email.html ?? "(no body content)"
+          const attachmentBlock = email.attachments.length
+            ? "\n\nAttachments:\n" +
+              email.attachments.map((a) => `- ${a.filename} (${a.size} bytes, ${a.contentType})`).join("\n")
+            : ""
+          const truncatedNote = email.truncated
+            ? "\n\n(Message body exceeds the 10 MB size cap and was not parsed.)"
+            : ""
           results.push(
             `--- UID ${email.uid} ---\n` +
               `From: ${email.from}\n` +
@@ -105,13 +138,21 @@ export const EmailReadTool = Tool.define("email_read", {
               `Date: ${date}\n` +
               `Subject: ${email.subject}\n` +
               `Seen: ${email.seen}\n\n` +
-              `${body}`,
+              `${body}${attachmentBlock}${truncatedNote}`,
           )
+          if (email.truncated) anyTruncated = true
+          allAttachments.push(...email.attachments)
         }
         return {
           title: `Read ${folder}`,
           output: results.join("\n\n"),
-          metadata: { folder, uids: uids.slice(0, limit), truncated: false },
+          metadata: {
+            folder,
+            uids: uids.slice(0, limit),
+            count: results.length,
+            truncated: anyTruncated,
+            attachments: allAttachments,
+          },
         }
       }
 
@@ -135,16 +176,92 @@ export const EmailReadTool = Tool.define("email_read", {
   },
 })
 
-function buildSearchCriteria(search?: z.infer<typeof parameters>["search"]): Record<string, any> {
-  const criteria: Record<string, any> = {}
+function buildSearchCriteria(search?: z.infer<typeof parameters>["search"]): SearchCriteria {
+  const criteria: SearchCriteria = {}
   if (!search) return criteria
 
   if (search.from) criteria.from = search.from
   if (search.subject) criteria.subject = search.subject
-  if (search.since) criteria.since = new Date(search.since)
-  if (search.before) criteria.before = new Date(search.before)
-  if (search.unseen === true) criteria.seen = false
-  if (search.flagged === true) criteria.flagged = true
+  if (search.text) criteria.text = search.text
+  if (search.since !== undefined) criteria.since = new Date(search.since)
+  if (search.before !== undefined) criteria.before = new Date(search.before)
+  if (search.unseen !== undefined) criteria.seen = !search.unseen
+  if (search.flagged !== undefined) criteria.flagged = search.flagged
 
   return criteria
+}
+
+async function runSearch(
+  folder: string,
+  criteria: SearchCriteria,
+  limit: number,
+): Promise<{ uids: number[]; truncated: boolean }> {
+  const hasLocalFilter = Boolean(criteria.from || criteria.subject || criteria.text)
+  const hasServer = hasServerKeys(criteria)
+  const needsSummaries = Boolean(criteria.from || criteria.subject)
+
+  // Server-side narrowing when date/flag keys are present; otherwise scan a
+  // bounded newest-first window. Empty criteria list newest emails directly.
+  let candidateUids: number[]
+  let windowLimit: number | undefined
+  let truncated = false
+  if (hasServer) {
+    candidateUids = await EmailImap.search(folder, serverKeys(criteria) as SearchObject)
+    // Local filtering over a server-narrowed set must stay bounded: cap the
+    // scan at the newest SCAN_WINDOW_MAX matches and flag possible incompleteness.
+    if (needsSummaries && candidateUids.length > SCAN_WINDOW_MAX) {
+      candidateUids = candidateUids.slice(-SCAN_WINDOW_MAX)
+      truncated = true
+    }
+  } else if (hasLocalFilter) {
+    candidateUids = await EmailImap.search(folder, { all: true }, { limit: SCAN_WINDOW })
+    windowLimit = SCAN_WINDOW
+  } else {
+    candidateUids = await EmailImap.search(folder, { all: true }, { limit })
+  }
+
+  let matched = candidateUids
+
+  // Local from/subject filtering over summaries (some servers ignore these keys).
+  if (criteria.from) {
+    const summaries = await EmailImap.fetchSummaries(folder, matched)
+    matched = filterBySender(summaries, criteria.from).map((s) => s.uid)
+  }
+  if (criteria.subject) {
+    const summaries = await EmailImap.fetchSummaries(folder, matched)
+    matched = filterBySubject(summaries, criteria.subject).map((s) => s.uid)
+  }
+
+  // Widen once when the default window was exhausted (more mail may exist
+  // beyond it) and local filtering came up short of the requested limit.
+  const windowExhausted = windowLimit !== undefined && candidateUids.length >= windowLimit
+  if (windowExhausted && (criteria.from || criteria.subject) && matched.length < limit) {
+    const widened = await EmailImap.search(folder, { all: true }, { limit: SCAN_WINDOW_MAX })
+    let widenedMatched = widened
+    if (criteria.from) {
+      const summaries = await EmailImap.fetchSummaries(folder, widenedMatched)
+      widenedMatched = filterBySender(summaries, criteria.from).map((s) => s.uid)
+    }
+    if (criteria.subject) {
+      const summaries = await EmailImap.fetchSummaries(folder, widenedMatched)
+      widenedMatched = filterBySubject(summaries, criteria.subject).map((s) => s.uid)
+    }
+    matched = widenedMatched
+    truncated = truncated || (widened.length >= SCAN_WINDOW_MAX && widenedMatched.length < limit)
+  }
+
+  // Local body-text scan over the newest bounded candidates.
+  if (criteria.text) {
+    const scanTargets = matched.slice(-TEXT_SCAN_LIMIT)
+    const matchedUids: number[] = []
+    for (const uid of scanTargets) {
+      const detail = await EmailImap.fetchOne(folder, uid)
+      if (detail && matchesText(detail, criteria.text)) matchedUids.push(uid)
+    }
+    if (matchedUids.length < limit && matched.length > scanTargets.length) truncated = true
+    matched = matchedUids
+  }
+
+  // Newest-first, capped at the requested limit.
+  return { uids: matched.slice(-limit).reverse(), truncated }
 }
