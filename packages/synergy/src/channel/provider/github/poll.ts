@@ -184,6 +184,7 @@ function eventIssueNumber(event: GithubChannelEvent): number {
       return event.issueNumber
     case "pull_request.opened":
     case "pull_request.synchronize":
+    case "pull_request.ready_for_review":
       return event.pullNumber
   }
 }
@@ -263,6 +264,8 @@ function eventMessageId(event: GithubChannelEvent): string {
       return `pr-opened-${event.pullId}`
     case "pull_request.synchronize":
       return `pr-sync-${event.pullId}-${event.headSha.slice(0, 12)}`
+    case "pull_request.ready_for_review":
+      return `pr-ready-${event.pullId}-${event.headSha.slice(0, 12)}`
     case "comment.created":
       // Use the raw numeric comment ID so status reactions (e.g. 👀) land on
       // the real GitHub comment.
@@ -299,6 +302,12 @@ function eventPrompt(event: GithubChannelEvent): string {
         `GitHub pull request #${event.pullNumber} in ${event.repository} was updated (head ${event.headSha.slice(0, 12)}) by @${event.sender}.`,
         ``,
         `Review the updated change against its base and report only new actionable findings.`,
+      ].join("\n")
+    case "pull_request.ready_for_review":
+      return [
+        `GitHub pull request #${event.pullNumber} in ${event.repository} is now ready for review (head ${event.headSha.slice(0, 12)}).`,
+        ``,
+        `Review the change against its base and report only actionable findings with precise file and line evidence.`,
       ].join("\n")
     case "comment.created":
       return [

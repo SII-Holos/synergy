@@ -15,6 +15,7 @@ export const GithubChannelPollState = z
         number: z.number().int().positive(),
         headSha: z.string(),
         state: z.enum(["open", "closed"]),
+        draft: z.boolean(),
         updatedAt: z.string(),
       }),
     ),
@@ -51,6 +52,16 @@ export const GithubChannelEvent = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("pull_request.synchronize"),
+    repository: z.string(),
+    pullNumber: z.number().int().positive(),
+    title: z.string(),
+    headSha: z.string(),
+    sender: z.string(),
+    createdAt: z.number(),
+    pullId: z.number().int().positive(),
+  }),
+  z.object({
+    kind: z.literal("pull_request.ready_for_review"),
     repository: z.string(),
     pullNumber: z.number().int().positive(),
     title: z.string(),
@@ -152,7 +163,7 @@ export function synthesizeEvents(
     if (state.seenIssues[key]) state.seenIssues[key] = { number, updatedAt }
   }
 
-  // --- Pull request opened / synchronize ---
+  // --- Pull request opened / synchronize / ready_for_review ---
   for (const value of input.pullRequests) {
     const pullRequest = record(value)
     const number = positiveInteger(pullRequest.number)
@@ -162,12 +173,16 @@ export function synthesizeEvents(
     const headSha = text(record(pullRequest.head).sha)
     const baseRef = text(record(pullRequest.base).ref)
     const stateValue = pullRequest.state === "open" || pullRequest.state === "closed" ? pullRequest.state : undefined
+    const draft = pullRequest.draft === true
     if (!number || !pullId || createdAt === undefined || !updatedAt || !headSha || !stateValue) continue
 
     const key = String(number)
     const previous = state.seenPullRequests[key]
     if (!previous && stateValue === "open" && createdAt >= state.baselineTimestampMs) {
-      state.seenPullRequests[key] = { number, headSha, state: stateValue, updatedAt }
+      state.seenPullRequests[key] = { number, headSha, state: stateValue, draft, updatedAt }
+      // Draft PRs are excluded from auto-review; they only trigger once they
+      // become ready for review (see the ready_for_review branch below).
+      if (draft) continue
       events.push({
         kind: "pull_request.opened",
         repository: input.repository,
@@ -182,22 +197,42 @@ export function synthesizeEvents(
       })
       continue
     }
-    if (previous && previous.headSha !== headSha && stateValue === "open") {
-      state.seenPullRequests[key] = { number, headSha, state: stateValue, updatedAt }
-      events.push({
-        kind: "pull_request.synchronize",
-        repository: input.repository,
-        pullNumber: number,
-        title: text(pullRequest.title) ?? `PR #${number}`,
-        headSha,
-        sender: senderLogin(pullRequest, "github"),
-        createdAt: timestamp(updatedAt) ?? createdAt,
-        pullId,
-      })
-      continue
+    if (previous && stateValue === "open") {
+      // Draft → ready transition: the PR was recorded as a draft and is now
+      // ready for review; emit a dedicated review-triggering event.
+      if (previous.draft && !draft) {
+        state.seenPullRequests[key] = { number, headSha, state: stateValue, draft, updatedAt }
+        events.push({
+          kind: "pull_request.ready_for_review",
+          repository: input.repository,
+          pullNumber: number,
+          title: text(pullRequest.title) ?? `PR #${number}`,
+          headSha,
+          sender: senderLogin(pullRequest, "github"),
+          createdAt: timestamp(updatedAt) ?? createdAt,
+          pullId,
+        })
+        continue
+      }
+      // Head SHA change on a ready PR triggers a re-review. Draft PR pushes
+      // only update state (no synchronize event).
+      if (previous.headSha !== headSha && !draft) {
+        state.seenPullRequests[key] = { number, headSha, state: stateValue, draft, updatedAt }
+        events.push({
+          kind: "pull_request.synchronize",
+          repository: input.repository,
+          pullNumber: number,
+          title: text(pullRequest.title) ?? `PR #${number}`,
+          headSha,
+          sender: senderLogin(pullRequest, "github"),
+          createdAt: timestamp(updatedAt) ?? createdAt,
+          pullId,
+        })
+        continue
+      }
     }
     if (previous) {
-      state.seenPullRequests[key] = { number, headSha, state: stateValue, updatedAt }
+      state.seenPullRequests[key] = { number, headSha, state: stateValue, draft, updatedAt }
     }
   }
 

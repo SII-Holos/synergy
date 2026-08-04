@@ -16,7 +16,9 @@ export type GithubEventGate =
  * - Comments only trigger on an explicit @synergy mention (the summon
  *   surface) and require `autoRespond`.
  * - Issue openings auto-respond when `autoRespond` is on.
- * - PR opened/synchronize auto-review when `autoReview` is on.
+ * - PR opened/synchronize/ready_for_review auto-review when `autoReview` is
+ *   on. Draft PRs never produce events (handled in the synthesizer), so no
+ *   draft check is needed here.
  */
 export function gateGithubEvent(
   event: GithubChannelEvent,
@@ -37,6 +39,7 @@ export function gateGithubEvent(
       return { kind: "deliver" }
     case "pull_request.opened":
     case "pull_request.synchronize":
+    case "pull_request.ready_for_review":
       if (!input.autoReview) return { kind: "skip", reason: "autoReview disabled" }
       return { kind: "deliver" }
   }

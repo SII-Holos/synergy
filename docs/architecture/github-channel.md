@@ -58,7 +58,7 @@ One loop runs per configured repository while the account is connected. Each cyc
 2. Lists issues updated since the watermark (`GET /repos/{o}/{r}/issues?since=...&sort=updated&direction=asc`).
 3. Fetches pull request details for PR-shaped entries (`GET /repos/{o}/{r}/pulls/{n}`).
 4. Lists comments on every issue/PR in the window (`GET /repos/{o}/{r}/issues/{n}/comments?since=...`) — this is the `@synergy` summon surface.
-5. Synthesizes events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `comment.created`) with a deterministic dedup state, and delivers each through `ChannelHost.conversations.receive()`.
+5. Synthesizes events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `pull_request.ready_for_review`, `comment.created`) with a deterministic dedup state, and delivers each through `ChannelHost.conversations.receive()`.
 
 Rate-limit errors (403/429) extend the sleep using `Retry-After`/`x-ratelimit-reset`. Poll state (`seenIssues`, `seenPullRequests`, `seenComments`, watermarks) is persisted per account + repository under `data/channel/providers/github/accounts/<hash>/poll-state/...` and pruned to bound growth (open PRs + 5k recent closed; 10k comment IDs).
 
@@ -68,9 +68,19 @@ Rate-limit errors (403/429) extend the sleep using `Retry-After`/`x-ratelimit-re
 
 - `comment.created` — delivered **only when the comment mentions `@synergy`** (case-insensitive, word boundary) and `autoRespond` is on. This is the summon rule: ordinary chatter never wakes an agent.
 - `issue.opened` — delivered when `autoRespond` is on.
-- `pull_request.opened` / `pull_request.synchronize` — delivered when `autoReview` is on.
+- `pull_request.opened` / `pull_request.synchronize` / `pull_request.ready_for_review` — delivered when `autoReview` is on.
 
 Skipped events are logged and never create sessions.
+
+### Draft pull requests
+
+Draft PRs are excluded from automatic review:
+
+- Opening a draft PR records it in poll state (with its `draft: true` flag) but produces **no** `pull_request.opened` event.
+- Pushing to a draft PR updates the recorded head SHA but produces **no** `pull_request.synchronize` event.
+- When a draft PR is marked ready for review (`draft: true` → `draft: false`), the synthesizer emits a `pull_request.ready_for_review` event, which triggers the same auto-review path as a fresh PR.
+
+This mirrors the industry pattern (PR-Agent/Codex/CodeRabbit): drafts are silent until the author asks for review.
 
 ## Checkout management (per-thread Scope)
 

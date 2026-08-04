@@ -33,13 +33,21 @@ function issue(number: number, createdAt: string, updatedAt: string, login = "al
   }
 }
 
-function pullRequest(number: number, createdAt: string, updatedAt: string, headSha: string, login = "bob") {
+function pullRequest(
+  number: number,
+  createdAt: string,
+  updatedAt: string,
+  headSha: string,
+  login = "bob",
+  draft = false,
+) {
   return {
     id: 20_000 + number,
     number,
     title: `PR ${number}`,
     body: "pr body",
     state: "open",
+    draft,
     created_at: createdAt,
     updated_at: updatedAt,
     user: { login },
@@ -202,6 +210,62 @@ describe("github channel synthesizer — pull requests", () => {
       commentsByIssue: {},
     })
     expect(second.events).toHaveLength(0)
+  })
+  test("does not emit pull_request.opened for a draft PR", () => {
+    const state = freshState()
+    const result = synthesizeEvents(state, {
+      repository: "owner/repo",
+      issues: [],
+      pullRequests: [pullRequest(3, iso(NOW + 1_000), iso(NOW + 1_000), "abc123", "bob", true)],
+      commentsByIssue: {},
+    })
+    expect(result.events).toHaveLength(0)
+    // The draft state is still recorded so a later ready transition can fire.
+    expect(result.state.seenPullRequests["3"]?.draft).toBe(true)
+  })
+
+  test("does not emit pull_request.synchronize while a draft PR pushes", () => {
+    const state = freshState()
+    const first = synthesizeEvents(state, {
+      repository: "owner/repo",
+      issues: [],
+      pullRequests: [pullRequest(3, iso(NOW + 1_000), iso(NOW + 1_000), "abc123", "bob", true)],
+      commentsByIssue: {},
+    })
+    expect(first.events).toHaveLength(0)
+
+    const second = synthesizeEvents(first.state, {
+      repository: "owner/repo",
+      issues: [],
+      pullRequests: [pullRequest(3, iso(NOW + 1_000), iso(NOW + 5_000), "def456", "bob", true)],
+      commentsByIssue: {},
+    })
+    expect(second.events).toHaveLength(0)
+    expect(second.state.seenPullRequests["3"]?.headSha).toBe("def456")
+  })
+
+  test("emits pull_request.ready_for_review when a draft PR becomes ready", () => {
+    const state = freshState()
+    const first = synthesizeEvents(state, {
+      repository: "owner/repo",
+      issues: [],
+      pullRequests: [pullRequest(3, iso(NOW + 1_000), iso(NOW + 1_000), "abc123", "bob", true)],
+      commentsByIssue: {},
+    })
+    expect(first.events).toHaveLength(0)
+
+    const second = synthesizeEvents(first.state, {
+      repository: "owner/repo",
+      issues: [],
+      pullRequests: [pullRequest(3, iso(NOW + 1_000), iso(NOW + 6_000), "abc123", "bob", false)],
+      commentsByIssue: {},
+    })
+    expect(second.events).toHaveLength(1)
+    expect(second.events[0]).toMatchObject({
+      kind: "pull_request.ready_for_review",
+      pullNumber: 3,
+      headSha: "abc123",
+    })
   })
 })
 
