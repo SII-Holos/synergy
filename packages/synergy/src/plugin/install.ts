@@ -174,14 +174,16 @@ export async function add(
     const resolvedFile = resolved.entryPath ?? path.join(resolved.pluginDir, "plugin.json")
     const integrity = await Lockfile.computeIntegrity(resolvedFile)
     const hasInstallContribution = manifest.contributions.some((item) => item.kind === "lifecycle.install")
-    // Fresh installs queue the lifecycle as pending (delivered immediately inside a host
-    // process, otherwise at next host boot). Updates never re-run lifecycle.install and
-    // keep the previously recorded state so a later `retry-install` still works.
-    const lifecycleInstall = freshInstall
-      ? "pending"
-      : hasInstallContribution
-        ? (lockfileBefore?.plugins[manifest.id]?.lifecycleInstall ?? "completed")
-        : undefined
+    // Fresh installs with a lifecycle.install contribution queue as pending (delivered
+    // immediately inside a host process, otherwise at next host boot). Fresh installs
+    // without the contribution never write the field, so `retry-install` reports "no
+    // contribution" and boot catch-up never reprocesses the entry. Updates never re-run
+    // lifecycle.install and keep the previously recorded state.
+    const lifecycleInstall = !hasInstallContribution
+      ? undefined
+      : freshInstall
+        ? "pending"
+        : (lockfileBefore?.plugins[manifest.id]?.lifecycleInstall ?? "completed")
     const lockEntry: import("./lockfile-schema").PluginLockEntry = {
       spec,
       source,
@@ -351,9 +353,13 @@ export async function deliverInstallLifecycle(
   const hasInstallContribution = plugin.manifest.contributions.some((item) => item.kind === "lifecycle.install")
   const endpointGeneration = peekRuntimeEndpointGeneration()
   if (!hasInstallContribution) {
-    // No lifecycle.install contribution: nothing to deliver. Fresh installs still get the
-    // runtime.started catch-up notification below when a host is running.
+    // No lifecycle.install contribution: nothing to deliver, and the entry is treated as
+    // completed so boot/reload catch-up and retry-install never reprocess it. Persisting
+    // also converges entries left "pending" by earlier versions of this code.
     plugin.installLifecycle = { status: "skipped" }
+    await persistInstallLifecycle(plugin.id, "completed").catch((error) =>
+      log.warn("failed to persist completed install lifecycle", { pluginId: plugin.id, error }),
+    )
   } else if (!endpointGeneration) {
     plugin.installLifecycle = { status: "pending" }
   } else {
@@ -385,14 +391,17 @@ export async function deliverInstallLifecycle(
 }
 
 /**
- * Deliver pending install lifecycles at host boot. Runs after the plugin catalog is loaded and
- * before the `runtime.started` broadcast, so the broadcast itself serves as the catch-up
- * notification for plugins delivered here.
+ * Deliver pending install lifecycles. At host boot this runs after the catalog is loaded
+ * and before the `runtime.started` broadcast, so the broadcast itself serves as the
+ * catch-up (pass `catchUpStarted: false`, the default). On plugin runtime reload there is
+ * no broadcast, so callers must pass `catchUpStarted: true` to deliver `runtime.started`
+ * to each plugin whose pending lifecycle was delivered here.
  */
 export async function runPendingInstallLifecycles(
   input: {
     plugins?: LoadedPlugin[]
     services?: InstallLifecycleServices
+    catchUpStarted?: boolean
   } = {},
 ): Promise<PluginInstallLifecycleStatus[]> {
   const lockfile = await Lockfile.read().catch(() => null)
@@ -414,7 +423,12 @@ export async function runPendingInstallLifecycles(
       })
       continue
     }
-    results.push(await deliverInstallLifecycle(plugin, { catchUpStarted: false, services: input.services }))
+    results.push(
+      await deliverInstallLifecycle(plugin, {
+        catchUpStarted: input.catchUpStarted ?? false,
+        services: input.services,
+      }),
+    )
   }
   return results
 }
@@ -438,6 +452,12 @@ export async function retryPluginInstallLifecycle(
   }
   if (locked.lifecycleInstall === "completed") return { status: "completed" }
   const plugin = loadedPlugin ?? (await getPlugin(pluginId))
+  if (plugin && plugin.manifest.artifacts.generation !== locked.generation) {
+    // A caller-supplied or loaded plugin from a different generation cannot be delivered
+    // against the lockfile entry; re-queue for the host to pick up at the next boot.
+    await persistInstallLifecycle(pluginId, "pending")
+    return { status: "pending" }
+  }
   if (!plugin) {
     // Runtime not loaded (e.g. crashed or disabled). The lockfile entry still records the
     // generation, so re-queueing for the next host boot is safe.

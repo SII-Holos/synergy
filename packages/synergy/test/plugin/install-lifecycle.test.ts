@@ -243,4 +243,78 @@ describe("plugin install lifecycle delivery", () => {
       },
     })
   })
+
+  test("delivery converges a stale pending entry for plugins without lifecycle.install", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const noInstall = compilePluginManifest(
+      definePlugin({
+        id: "no-install-converge",
+        version: "1.0.0",
+        description: "No lifecycle fixture",
+        contributions: [],
+      }),
+      {
+        generation: "no-install-converge-generation",
+        runtime: { entry: "runtime/index.js", sha256: "test" },
+      },
+    )
+    const noInstallPlugin = {
+      id: noInstall.id,
+      name: noInstall.name,
+      manifest: noInstall,
+      pluginDir: "/plugin",
+      source: "local" as const,
+      spec: "file:///plugin",
+      enabledScopes: new Set<string>(),
+      contributionHealth: new Map(),
+    } as LoadedPlugin
+    // Simulate an entry left "pending" by an earlier version that wrote the field for
+    // every fresh install regardless of contribution.
+    await Lockfile.write({
+      ...(await Lockfile.read()),
+      plugins: {
+        "no-install-converge": {
+          spec: "file:///plugin",
+          source: "local",
+          version: noInstall.version,
+          apiVersion: noInstall.apiVersion,
+          generation: noInstall.artifacts.generation,
+          resolved: "/plugin/plugin.json",
+          manifestHash: "test",
+          approvalId: noInstall.id,
+          lifecycleInstall: "pending",
+        },
+      },
+    })
+    const { services, counts } = recordingServices()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const result = await deliverInstallLifecycle(noInstallPlugin, { services })
+        expect(result).toEqual({ status: "skipped" })
+      },
+    })
+    expect(counts()).toEqual({ ensured: 0, invoked: 0 })
+    const locked = (await Lockfile.read()).plugins["no-install-converge"]
+    expect(locked?.lifecycleInstall).toBe("completed")
+  })
+
+  test("runPendingInstallLifecycles delivers runtime.started catch-up when requested", async () => {
+    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 43123, generation: "listener" })
+    await using tmp = await tmpdir({ git: true })
+    await seedLockfile("pending")
+    const { services, counts } = recordingServices()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const results = await runPendingInstallLifecycles({
+          plugins: [plugin()],
+          services,
+          catchUpStarted: true,
+        })
+        expect(results).toEqual([{ status: "completed" }])
+      },
+    })
+    expect(counts()).toEqual({ ensured: 1, invoked: 1 })
+  })
 })

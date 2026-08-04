@@ -383,7 +383,9 @@ export namespace RuntimeReload {
         await Plugin.init()
         // Deliver install lifecycles queued by CLI installs that ran while this server was
         // already up (the boot-time delivery only covers plugins installed before start).
-        await Plugin.runPendingInstallLifecycles().catch((error) =>
+        // There is no runtime.started broadcast on this path, so catch up each plugin
+        // whose pending lifecycle was delivered here.
+        await Plugin.runPendingInstallLifecycles({ catchUpStarted: true }).catch((error) =>
           Log.create({ service: "runtime-reload" }).warn("pending plugin install lifecycles failed", { error }),
         )
         // Collect disabled plugin diagnostics
