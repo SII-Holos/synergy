@@ -155,6 +155,35 @@ describe("definePlugin", () => {
     })
   })
 
+  test("preserves auxiliary Plan exposure in the manifest", () => {
+    const plugin = definePlugin({
+      id: "language-feedback",
+      version: "1.0.0",
+      description: "Language feedback",
+      contributions: [
+        tool({
+          id: "feedback",
+          description: "Show feedback without replacing the user's task.",
+          exposure: { mode: "resident", plan: "auxiliary" },
+          input: z.object({ message: z.string() }),
+          handler: async () => "ok",
+        }),
+      ],
+    })
+
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-1",
+      runtime: { entry: "runtime/index.js", sha256: "a".repeat(64) },
+    })
+
+    expect(manifest.contributions[0]).toMatchObject({
+      kind: "tool",
+      id: "feedback",
+      exposure: { mode: "resident", plan: "auxiliary" },
+    })
+    expect(PluginManifestV4.parse(manifest)).toEqual(manifest)
+  })
+
   test("targets one host tool with a trusted message renderer", () => {
     const plugin = definePlugin({
       id: "correction-card",

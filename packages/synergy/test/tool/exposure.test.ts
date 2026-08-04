@@ -778,6 +778,57 @@ describe("tool exposure", () => {
     })
   })
 
+  test("Plan exposes an explicitly auxiliary Tool while keeping an ordinary Tool blocked", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const suffix = Math.random().toString(36).slice(2)
+        const auxiliaryId = `auxiliary_feedback_${suffix}`
+        const ordinaryId = `ordinary_action_${suffix}`
+        await ToolRegistry.register(
+          Tool.define(
+            auxiliaryId,
+            {
+              description: "Provide supporting feedback.",
+              parameters: z.object({}),
+              async execute() {
+                return { title: auxiliaryId, output: "ok", metadata: {} }
+              },
+            },
+            { exposure: { mode: "resident", plan: "auxiliary" } },
+          ),
+        )
+        await ToolRegistry.register(
+          Tool.define(ordinaryId, {
+            description: "Perform an ordinary action.",
+            parameters: z.object({}),
+            async execute() {
+              return { title: ordinaryId, output: "ok", metadata: {} }
+            },
+          }),
+        )
+
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.workflow = { kind: "plan" }
+        })
+
+        const ids = await definitionIDs(await Session.get(session.id))
+        expect(ids.has(auxiliaryId)).toBe(true)
+        expect(ids.has(ordinaryId)).toBe(false)
+
+        const denied = await definitionIDs(await Session.get(session.id), {
+          agent: {
+            ...allowAllAgent,
+            permission: PermissionNext.fromConfig({ "*": "allow", [auxiliaryId]: "deny" }),
+          },
+        })
+        expect(denied.has(auxiliaryId)).toBe(false)
+      },
+    })
+  })
+
   test("Plan does not override explicit permission denial for bash", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

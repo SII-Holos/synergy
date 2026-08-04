@@ -34,6 +34,8 @@ export default definePlugin({
 
 Tool IDs are plugin-local. Synergy exposes them as namespaced host tools and validates input from the generated schema. `requires` drives the contribution capability gate and must reference top-level capabilities.
 
+Set `exposure.plan: "auxiliary"` only when a Tool provides immediate supporting feedback or presentation without implementing or replacing the user's requested outcome. This keeps the Tool available in Plan while the Agent remains responsible for producing only a Blueprint. The declaration changes workflow visibility only: ordinary capability, approval, permission, and runtime enforcement still apply. Tools that execute the requested outcome, modify its deliverables, perform external identity actions, or substitute a second workflow must omit it.
+
 ## Delegated Tasks
 
 `context.task` exists only when `task.delegate` is approved. It exposes five finite Host calls:
@@ -71,7 +73,7 @@ Parent Session failures use stable Host Service error codes: `PLUGIN_TASK_PARENT
 
 ## Exposure and Display
 
-`exposure` controls how a tool appears to agents: resident, grouped, searchable, or internal. `display` supplies host-owned presentation metadata. Both are declarations copied into the generated manifest; the executable handler remains in the runtime bundle.
+`exposure` controls how a tool appears to agents: resident, grouped, searchable, or internal. Its optional `plan: "auxiliary"` field identifies a supporting Tool that remains compatible with Plan without becoming part of Blueprint execution. `display` supplies host-owned presentation metadata. These are declarations copied into the generated manifest; the executable handler remains in the runtime bundle.
 
 A handler may return a string or `ToolResult` with title, output, metadata, and attachments. Keep durable business state and provenance in plugin-owned artifacts.
 

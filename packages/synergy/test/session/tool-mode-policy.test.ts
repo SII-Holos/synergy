@@ -30,6 +30,22 @@ describe("SessionModePolicy Plan visibility", () => {
     expect(diagnostic?.code).toBe("plan_mode_blocked")
     expect(diagnostic?.mode).toBe("plan")
   })
+
+  test("allows explicitly auxiliary tools without naming a specific integration", () => {
+    expect(
+      SessionModePolicy.visibility({
+        toolName: "plugin__language-coach__feedback",
+        planExposure: "auxiliary",
+        session: planSession,
+      }),
+    ).toBeUndefined()
+    expect(
+      SessionModePolicy.visibility({
+        toolName: "plugin__language-coach__feedback",
+        session: planSession,
+      })?.code,
+    ).toBe("plan_mode_blocked")
+  })
 })
 
 describe("SessionModePolicy Channel visibility", () => {

@@ -107,9 +107,11 @@ export type PluginToolResult = ToolResult
 export type ToolExposure =
   | {
       mode: "resident"
+      plan?: "auxiliary"
     }
   | {
       mode: "group"
+      plan?: "auxiliary"
       group: string
       title?: string
       description?: string
@@ -117,11 +119,13 @@ export type ToolExposure =
     }
   | {
       mode: "search"
+      plan?: "auxiliary"
       title?: string
       keywords?: string[]
     }
   | {
       mode: "internal"
+      plan?: "auxiliary"
     }
 
 export function tool<Args extends z.ZodRawShape>(input: {

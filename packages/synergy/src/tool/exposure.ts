@@ -2,9 +2,11 @@ export namespace ToolExposure {
   export type Info =
     | {
         mode: "resident"
+        plan?: "auxiliary"
       }
     | {
         mode: "group"
+        plan?: "auxiliary"
         group: string
         title?: string
         description?: string
@@ -12,11 +14,13 @@ export namespace ToolExposure {
       }
     | {
         mode: "search"
+        plan?: "auxiliary"
         title?: string
         keywords?: string[]
       }
     | {
         mode: "internal"
+        plan?: "auxiliary"
       }
 
   export interface GroupInfo {

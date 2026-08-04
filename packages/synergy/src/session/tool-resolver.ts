@@ -1166,7 +1166,11 @@ export namespace ToolResolver {
 
       const modeDiagnostic = isEphemeral
         ? undefined
-        : SessionModePolicy.visibility({ toolName: def.id, session: input.session })
+        : SessionModePolicy.visibility({
+            toolName: def.id,
+            planExposure: def.exposure?.plan,
+            session: input.session,
+          })
       if (modeDiagnostic) {
         diagnostics.set(def.id, modeDiagnostic)
         continue
@@ -1563,6 +1567,7 @@ export namespace ToolResolver {
                 const envelope = await gate.evaluateIsolated(item.id, args as Record<string, any>, ctx.abort)
                 const modeDiagnostic = SessionModePolicy.evaluateCall({
                   toolName: item.id,
+                  planExposure: item.exposure?.plan,
                   args: args as Record<string, any>,
                   session: runtimeInput.session,
                   capabilities: envelope.capabilities,

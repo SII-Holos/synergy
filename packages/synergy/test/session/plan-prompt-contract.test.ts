@@ -39,6 +39,11 @@ describe("Plan Blueprint prompt contract", () => {
     expect(PLAN_SYNERGY_MAX).toContain("mutually exclusive")
   })
 
+  test("keeps supporting feedback compatible with Plan without authorizing execution", () => {
+    expect(PLAN).toContain("auxiliary tools for immediate supporting feedback")
+    expect(PLAN).toContain("does not implement or replace the requested outcome")
+  })
+
   test("requires the shared eight-section Blueprint structure", () => {
     for (const section of REQUIRED_BLUEPRINT_SECTIONS) {
       expect(PLAN).toContain(section)

@@ -42,6 +42,7 @@ export default definePlugin({
 - A contribution's `requires` entries must exist in top-level `capabilities`.
 - `operation()` defaults to `expose: ['ui']`; add `sdk` explicitly for public SDK access.
 - Zod and JSON Schema are accepted for operation, event, and tool schemas.
+- A supporting Tool may declare `exposure.plan: "auxiliary"` to remain visible in Plan when it provides feedback without implementing or replacing the requested outcome; ordinary capability and permission enforcement still applies.
 - `activate()` runs once per runtime generation and does not receive Scope or Session state.
 - Top-level `assets` map project-relative files or directories into package-relative targets. Asset contents are integrity-checked and included in the generation hash.
 - The plugin and plugin-kit npm package versions follow the Synergy product release version; package major versions do not select a Plugin API family.

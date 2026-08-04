@@ -72,6 +72,7 @@ export namespace SessionModePolicy {
 
   export function visibility(input: {
     toolName: string
+    planExposure?: "auxiliary"
     session?: Pick<SessionInfo, "workflow" | "blueprint" | "endpoint">
   }): ToolDiagnostic | undefined {
     if (input.toolName === "response_card" && input.session?.endpoint?.kind !== "channel") {
@@ -86,6 +87,7 @@ export namespace SessionModePolicy {
     const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
     if (latticeDiagnostic) return latticeDiagnostic
     if (!isPlan(input.session)) return undefined
+    if (input.planExposure === "auxiliary") return undefined
     if (PLAN_EXPLICIT_ALLOW.has(input.toolName)) return undefined
 
     const taxonomy = ToolTaxonomy.classify(input.toolName)
@@ -103,13 +105,18 @@ export namespace SessionModePolicy {
 
   export function evaluateCall(input: {
     toolName: string
+    planExposure?: "auxiliary"
     args: Record<string, any>
     session?: Pick<SessionInfo, "workflow" | "blueprint">
     capabilities: Capability[]
   }): ToolDiagnostic | undefined {
     if (!isPlan(input.session)) return undefined
 
-    const staticDiagnostic = visibility({ toolName: input.toolName, session: input.session })
+    const staticDiagnostic = visibility({
+      toolName: input.toolName,
+      planExposure: input.planExposure,
+      session: input.session,
+    })
     if (staticDiagnostic) return staticDiagnostic
     return undefined
   }

@@ -17,6 +17,7 @@ A Blueprint often starts with ambiguity: the user's request may be high-level, a
 You may include Assumptions only when they are locked execution defaults chosen from evidence, project conventions, or explicit user direction. Do not use Assumptions to hide unresolved decisions.
 
 You MAY:
+- Use explicitly auxiliary tools for immediate supporting feedback that does not implement or replace the requested outcome
 - Use read-only tools to inspect code, docs, sessions, memories, and external sources
 - Use bash for read-only repository inspection such as `rg`, `ls`, `cat`, and `git diff`
 - Create research/design tasks and DAGs to gather deeper context
