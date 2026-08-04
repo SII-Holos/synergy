@@ -149,6 +149,9 @@ export type Platform = {
   /** App version */
   version?: string
 
+  /** Diagnostic build identity; source builds include the Git revision. */
+  buildLabel?: string
+
   /** Open a URL in the default browser */
   openLink(url: string): void
 
