@@ -33,7 +33,7 @@ describe("browser presentation negotiation", () => {
     expect(selected?.capabilities).toEqual({ native: true, webrtc: true })
   })
 
-  test("honors explicit requests and parses unknown values as auto", () => {
+  test("keeps explicit presentation requests strict and parses unknown values as auto", () => {
     expect(parseBrowserPresentationPreference("native")).toBe("native")
     expect(parseBrowserPresentationPreference("jpeg-ws")).toBe("auto")
     expect(
@@ -41,6 +41,22 @@ describe("browser presentation negotiation", () => {
         desktopLocalHost: false,
         remote: true,
         requested: "native",
+        capabilities: { native: true, webrtc: true },
+      }),
+    ).toBeNull()
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: false,
+        requested: "webrtc",
+        capabilities: { native: true, webrtc: false },
+      }),
+    ).toBeNull()
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: false,
+        requested: "webrtc",
         capabilities: { native: true, webrtc: true },
       })?.kind,
     ).toBe("webrtc")

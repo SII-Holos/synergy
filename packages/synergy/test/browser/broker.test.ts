@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
+import { BROWSER_PROTOCOL_VERSION, type BrowserHostMessage } from "@ericsanchezok/synergy-browser"
 import { BrowserBroker, type BrowserBrokerSocket } from "../../src/browser/broker"
+import { BrowserEvent } from "../../src/browser/event"
+import type { BrowserOwner } from "../../src/browser/owner"
 
 class Socket implements BrowserBrokerSocket {
   sent: unknown[] = []
@@ -15,7 +17,10 @@ class Socket implements BrowserBrokerSocket {
   }
 }
 
-afterEach(() => BrowserBroker.resetForTest())
+afterEach(() => {
+  BrowserBroker.resetForTest()
+  BrowserEvent.resetForTest()
+})
 
 describe("Browser Host broker authentication", () => {
   test("accepts only the registration secret and rejects events for unknown owner pages", () => {
@@ -67,5 +72,54 @@ describe("Browser Host broker authentication", () => {
       event: { type: "page.error", pageId: "unknown-page", message: "forged event" },
     })
     expect(host.closed?.code).toBe(1008)
+  })
+
+  test("forwards page-scoped native recovery status through the canonical event stream", async () => {
+    const owner: BrowserOwner.Info = {
+      mode: "session",
+      scopeID: "scope-test",
+      sessionID: "session-test",
+      directory: "/tmp",
+    }
+    const host = new (class extends Socket {
+      override send(data: string): void {
+        const message = JSON.parse(data) as BrowserHostMessage
+        this.sent.push(message)
+        if (message.type !== "page.create") return
+        queueMicrotask(() =>
+          BrowserBroker.handle(this, {
+            type: "page.result",
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            requestId: message.requestId,
+            result: { type: "page", page: message.page },
+          }),
+        )
+      }
+    })()
+    BrowserBroker.attach(host, {
+      type: "host.register",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      hostId: "host-recovery",
+      token: BrowserBroker.secret(),
+      capabilities: { native: true, webrtc: false },
+    })
+    BrowserBroker.prepare(owner, "home", "native")
+    await BrowserBroker.createPage({ owner, routeDirectory: "home", presentation: "native", pageId: "page-test" })
+    const statuses: string[] = []
+    const unsubscribe = BrowserEvent.subscribe(owner, (event) => {
+      if (event.type === "host.status") statuses.push(`${event.pageId}:${event.status}`)
+    })
+
+    BrowserBroker.handle(host, {
+      type: "page.event",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: "scope:scope-test:session:session-test",
+      pageId: "page-test",
+      event: { type: "host.status", pageId: "page-test", status: "restarting" },
+    })
+
+    expect(statuses).toEqual(["page-test:restarting"])
+    unsubscribe()
+    BrowserEvent.remove(owner)
   })
 })
