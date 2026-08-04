@@ -34,6 +34,8 @@ export interface LoadedPlugin {
   spec: string
   enabledScopes: Set<string>
   contributionHealth: Map<string, { state: "healthy" | "degraded"; lastError?: string; updatedAt: number }>
+  /** Install lifecycle delivery result, populated by delivery/retry; not loaded from the lockfile at catalog load. */
+  installLifecycle?: { status: "pending" | "completed" | "failed" | "skipped"; error?: string }
 }
 
 export type PluginAgentEntry = PluginAgent & {

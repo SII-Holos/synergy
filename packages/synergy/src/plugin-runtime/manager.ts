@@ -5,7 +5,7 @@ import { spawnPluginProcess } from "./process-host.js"
 import { PluginRuntimeRegistry, pluginRuntimeKey, type PluginRuntimeEntry } from "./registry.js"
 import type { RuntimeLimits } from "./health.js"
 import { PluginLogBuffer } from "./logs.js"
-import { createPluginInvocationContext } from "./context-factory.js"
+import { contributionGatedCapabilities, createPluginInvocationContext } from "./context-factory.js"
 import { pathToFileURL } from "node:url"
 import { Installation } from "../global/installation.js"
 import { startMemoryMonitor, type MemoryMonitorInput, type MemoryMonitor } from "./resource-limits.js"
@@ -553,10 +553,9 @@ export class PluginRuntimeManager {
         protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
       },
       signal: controller.signal,
-      capabilities: new Set(
-        manifest.capabilities
-          .map((item) => item.id)
-          .filter((capability) => capability !== "agent.call" || contribution.requires?.includes(capability)),
+      capabilities: contributionGatedCapabilities(
+        manifest.capabilities.map((item) => item.id),
+        contribution,
       ),
       log: this.#logger(entry.pluginId),
       invokeHost: (method, params) =>
