@@ -3652,3 +3652,36 @@
     width: 100%;
   }
 }
+
+/* ===== Config diagnostics banner ===== */
+
+.settings-config-diagnostics-banner {
+  margin: 12px 16px 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--icon-warning-base) 40%, transparent);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklch, var(--icon-warning-base) 8%, transparent);
+}
+
+.settings-config-diagnostics-title {
+  font-size: var(--settings-type-caption-size);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-strong);
+}
+
+.settings-config-diagnostics-description {
+  margin-top: 2px;
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+  color: var(--text-weak);
+}
+
+.settings-config-diagnostics-list {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--settings-type-caption-size);
+  color: var(--text-weak);
+}
