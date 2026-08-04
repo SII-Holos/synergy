@@ -22,6 +22,7 @@ mock.module("../../../src/components/basic-tool", () => ({
   },
 }))
 mock.module("../../../src/components/message-part", () => ({
+  browserToolLabels: {},
   ToolRegistry: {
     register: (entry: { name: string; render: (props: Record<string, any>) => unknown }) => {
       registrations.set(entry.name, entry.render)
