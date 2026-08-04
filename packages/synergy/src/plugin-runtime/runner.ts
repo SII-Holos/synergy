@@ -78,7 +78,7 @@ async function activate(input: RuntimeActivationData) {
   heartbeat.unref?.()
   post({
     type: "ready",
-    protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
+    protocolVersion: input.protocolVersion,
     generation: input.generation,
     handlerIds: [...definition.handlerIds].sort(),
   })
