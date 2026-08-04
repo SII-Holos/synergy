@@ -6867,6 +6867,10 @@ msgstr "下载诊断"
 msgid "app.sidebar.channel.feishu"
 msgstr "飞书"
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.github"
+msgstr "GitHub"
+
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr "其他"
@@ -7070,10 +7074,6 @@ msgstr "后台"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.channel"
 msgstr "频道"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.section.github"
-msgstr "GitHub"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.home"
@@ -13407,7 +13407,7 @@ msgstr "频道"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.searchTerms"
-msgstr "频道 | 飞书 | 消息"
+msgstr "频道 | 飞书 | github | 消息"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.codeChecks.description"
@@ -13944,6 +13944,74 @@ msgstr "尚未配置飞书账号。"
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.title"
 msgstr "飞书"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespond"
+msgstr "自动回复提及"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespondDescription"
+msgstr "自动回复 issue 和拉取请求中提及 @synergy 的消息与提问。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReview"
+msgstr "自动评审拉取请求"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReviewDescription"
+msgstr "自动评审新开或更新的拉取请求。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.description"
+msgstr "启用或禁用现有 GitHub 频道账号。配置监听的仓库、工作区目录与评审行为。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.empty"
+msgstr "尚未配置 GitHub 账号。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.enabled"
+msgstr "已启用"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMs"
+msgstr "轮询间隔（毫秒）"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMsDescription"
+msgstr "两次 GitHub API 轮询之间的间隔（毫秒）。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingPlaceholder"
+msgstr "300000"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositories"
+msgstr "仓库列表"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesDescription"
+msgstr "以逗号分隔的 owner/repo 列表，用于监听与响应。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesPlaceholder"
+msgstr "owner/repo, owner/repo"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.title"
+msgstr "GitHub"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDir"
+msgstr "工作区目录"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirDescription"
+msgstr "在此目录下为各仓库创建工作副本。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirPlaceholder"
+msgstr "/path/to/workspace"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.page.description"

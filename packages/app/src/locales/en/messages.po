@@ -6867,6 +6867,10 @@ msgstr "Download diagnostics"
 msgid "app.sidebar.channel.feishu"
 msgstr "Feishu"
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.github"
+msgstr "GitHub"
+
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr "Other"
@@ -7070,10 +7074,6 @@ msgstr "Background"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.channel"
 msgstr "Channel"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.section.github"
-msgstr "GitHub"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.home"
@@ -13407,7 +13407,7 @@ msgstr "Channels"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.searchTerms"
-msgstr "channel | feishu | messaging"
+msgstr "channel | feishu | github | messaging"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.codeChecks.description"
@@ -13944,6 +13944,74 @@ msgstr "No Feishu accounts configured yet."
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.title"
 msgstr "Feishu"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespond"
+msgstr "Auto-respond to mentions"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespondDescription"
+msgstr "Respond to @synergy mentions and questions in issues and pull requests."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReview"
+msgstr "Auto-review pull requests"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReviewDescription"
+msgstr "Automatically review newly opened and updated pull requests."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.description"
+msgstr "Enable or disable existing GitHub channel accounts. Configure watched repositories, workspace directory, and review behavior."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.empty"
+msgstr "No GitHub accounts configured yet."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.enabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMs"
+msgstr "Polling interval (ms)"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMsDescription"
+msgstr "Interval between GitHub API polls in milliseconds."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingPlaceholder"
+msgstr "300000"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositories"
+msgstr "Repositories"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesDescription"
+msgstr "Comma-separated owner/repo pairs to watch and respond to."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesPlaceholder"
+msgstr "owner/repo, owner/repo"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.title"
+msgstr "GitHub"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDir"
+msgstr "Workspace directory"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirDescription"
+msgstr "Directory under which per-repository checkouts are created."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirPlaceholder"
+msgstr "/path/to/workspace"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.page.description"

@@ -19,7 +19,7 @@ import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke } from "../session/invoke"
 
 import { ChannelCommand } from "./command"
-import { resolveChannelAccountInvocation } from "./model-selection"
+import { resolveChannelAccountInvocation, resolveChannelAccountAgent } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
 import { ManagedProjectOwnership } from "./managed-project-ownership"
@@ -624,9 +624,19 @@ export namespace Channel {
     const createStreamingSession = conversation.createStreamingSession?.bind(conversation)
     const replyToMessageId = ctx.replyToMessageId ?? ctx.rootId ?? ctx.messageId
 
+    // Providers may resolve a per-message Scope (e.g. a dedicated checkout
+    // directory for a GitHub pull request thread). The account-level Scope
+    // stays the fallback.
+    const conversationScope =
+      (await provider.resolveConversationScope?.({
+        accountId: ctx.accountId,
+        accountConfig,
+        message: ctx,
+      })) ?? scope
+
     // --- Acceptance phase (awaited by the provider lane) ---
     return ScopeContext.provide({
-      scope,
+      scope: conversationScope,
       fn: async () => {
         try {
           if (!replyMessage || !addReaction || !createStreamingSession) {
@@ -662,7 +672,7 @@ export namespace Channel {
               wasMentioned: ctx.wasMentioned,
               mentions: ctx.mentions,
             },
-            scope,
+            conversationScope,
           )
 
           if (cmdResult.action === "handled") {
@@ -695,8 +705,11 @@ export namespace Channel {
             createdAt: Date.now(),
           })
           const session = await Session.getOrCreateForEndpoint(endpoint, {
-            scope,
+            scope: conversationScope,
             interaction: ChannelInteraction.forType(ctx.channelType),
+            ...(ctx.channelType === "github"
+              ? { agentOverride: resolveChannelAccountAgent(accountConfig) ?? "github-channel-agent" }
+              : {}),
           })
           const sessionID = session.id
           const accountInvocation = resolveChannelAccountInvocation({

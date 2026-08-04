@@ -16,7 +16,6 @@ import { ModelsDev } from "../provider/models-schemas"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
-import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
 import { validateHolosEndpoint } from "../holos/security"
 
 export const McpRetry = McpRetryConfig
@@ -353,7 +352,58 @@ export const ObservabilityConfig = z
   .meta({ ref: "ObservabilityConfig" })
 export type ObservabilityConfig = z.infer<typeof ObservabilityConfig>
 
-export const Channel = z.discriminatedUnion("type", [ChannelFeishu, ChannelClarus])
+export const ChannelGithubAccount = z
+  .object({
+    enabled: z.boolean().optional().default(true),
+    repositories: z
+      .array(z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Use owner/repo form"))
+      .min(1)
+      .describe("GitHub repositories to watch and respond to (owner/repo)"),
+    workspaceDir: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.",
+      ),
+    pollingIntervalMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(300_000)
+      .describe("Interval between GitHub API polls in milliseconds (default 5 minutes)"),
+    autoReview: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Automatically review newly opened and updated pull requests"),
+    autoRespond: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Respond to @synergy mentions and questions in issues and pull requests"),
+    agent: z.string().optional().describe("Agent used for GitHub channel sessions (defaults to github-channel-agent)"),
+    model: z
+      .string()
+      .optional()
+      .describe("Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)"),
+    variant: z.string().optional().describe("Model variant to use with this account model (e.g. low, high, max)"),
+  })
+  .strict()
+  .meta({ ref: "ChannelGithubAccountConfig" })
+export type ChannelGithubAccount = z.infer<typeof ChannelGithubAccount>
+
+export const ChannelGithub = z
+  .object({
+    type: z.literal("github"),
+    accounts: z.record(z.string(), ChannelGithubAccount),
+  })
+  .strict()
+  .meta({ ref: "ChannelGithubConfig" })
+export type ChannelGithub = z.infer<typeof ChannelGithub>
+
+export const Channel = z.discriminatedUnion("type", [ChannelFeishu, ChannelClarus, ChannelGithub])
 export type Channel = z.infer<typeof Channel>
 
 export const EmailSmtp = z
@@ -1314,9 +1364,6 @@ export const QuickSwitcher = z
   .meta({ ref: "QuickSwitcherConfig" })
 export type QuickSwitcher = z.infer<typeof QuickSwitcher>
 
-export const GitHubIntegrationConfig = GitHubIntegrationConfigSchema
-export type GitHubIntegrationConfig = z.infer<typeof GitHubIntegrationConfig>
-
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -1599,7 +1646,6 @@ export const Info = z
       .strict()
       .optional()
       .describe("Process isolation, worker recycling, and bounded execution scheduling"),
-    github: GitHubIntegrationConfig.optional().describe("Outbound GitHub App polling and automation configuration"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),
