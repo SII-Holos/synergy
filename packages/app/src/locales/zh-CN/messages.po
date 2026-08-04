@@ -14262,6 +14262,54 @@ msgid "settings.general.colorScheme.system.description"
 msgstr "跟随此设备"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr "已应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr "应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr "检查"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr "加载中……"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr "字体访问被拒绝；使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr "点击“检查”加载本机已安装的字体，选择一个后点击“应用”。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.ready"
+msgstr "选择字体，然后点击“应用”"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr "选择一种字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr "界面字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr "此浏览器无法扫描本地字体；使用默认字体"
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "选择 Synergy 控件和无障碍标签使用的语言"
 
@@ -14280,6 +14328,14 @@ msgstr "跟随系统"
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
 msgstr "界面语言"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr "用于代码、终端、差异视图和其他等宽内容。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
+msgstr "等宽字体"
 
 #. js-lingui-explicit-id
 msgid "settings.general.notifications.description"

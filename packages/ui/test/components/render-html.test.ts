@@ -13,5 +13,7 @@ describe("render HTML isolation", () => {
     const document = renderHtmlDocument("<p>Safe</p>", ":root { color-scheme: light; }")
     expect(document).toContain('http-equiv="Content-Security-Policy"')
     expect(document).toContain("<p>Safe</p>")
+    expect(document).toContain("var(--render-font-family-sans")
+    expect(document).toContain("var(--render-font-family-mono")
   })
 })

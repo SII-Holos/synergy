@@ -3,13 +3,14 @@ import { PLUGIN_RUNTIME_PROTOCOL_VERSION } from "./protocol.js"
 import type { PluginHostServiceMethod, RuntimeInvocationContextData } from "./protocol.js"
 import { spawnPluginProcess } from "./process-host.js"
 import { PluginRuntimeRegistry, pluginRuntimeKey, type PluginRuntimeEntry } from "./registry.js"
-import { DEFAULT_LIMITS, type RuntimeLimits } from "./health.js"
+import type { RuntimeLimits } from "./health.js"
 import { PluginLogBuffer } from "./logs.js"
 import { createPluginInvocationContext } from "./context-factory.js"
 import { pathToFileURL } from "node:url"
 import { Installation } from "../global/installation.js"
 import { startMemoryMonitor, type MemoryMonitorInput, type MemoryMonitor } from "./resource-limits.js"
 import { pluginAgentCallRuntime } from "../plugin/agent-call-runtime.js"
+import { resolvePluginRuntimeLimits } from "../plugin/runtime-limits.js"
 
 export type PluginRuntimeErrorCode =
   | "PLUGIN_UNAVAILABLE"
@@ -48,6 +49,7 @@ export interface PluginHostServiceInvocationInput {
   method: PluginHostServiceMethod
   params: unknown
   signal: AbortSignal
+  limits?: RuntimeLimits
 }
 
 export type PluginHostServiceDispatcher = (input: PluginHostServiceInvocationInput) => Promise<unknown>
@@ -134,7 +136,7 @@ export class PluginRuntimeManager {
       )
       .map((item) => `${item.kind}:${item.id}`)
       .sort()
-    const limits = input.limits ?? DEFAULT_LIMITS
+    const limits = input.limits ?? (await resolvePluginRuntimeLimits())
     const mode = input.mode ?? "process"
     if (mode === "inProcess" && !input.trustedBuiltin) {
       throw new Error("inProcess runtime is reserved for trusted built-in plugins")
@@ -149,6 +151,7 @@ export class PluginRuntimeManager {
       handlerIds: [],
       inFlight: 0,
       startedAt: Date.now(),
+      limits,
     }
     this.registry.set(entry)
     this.#startInputs.set(key, { ...input, limits })
@@ -328,12 +331,12 @@ export class PluginRuntimeManager {
     return entry
   }
 
-  async activate(key: string, graceMs = DEFAULT_LIMITS.shutdownGraceMs) {
+  async activate(key: string, graceMs?: number) {
     const previous = this.registry.activate(key)
     if (!previous) return
     previous.state = "draining"
     await pluginAgentCallRuntime.cancelGeneration(previous.pluginId, previous.generation, "Plugin generation replaced")
-    if (previous.inFlight === 0) void this.#stopEntry(previous, graceMs)
+    if (previous.inFlight === 0) void this.#stopEntry(previous, graceMs ?? previous.limits.shutdownGraceMs)
   }
 
   async invoke(input: {
@@ -359,7 +362,7 @@ export class PluginRuntimeManager {
     const abort = () => controller.abort(input.signal?.reason)
     if (input.signal?.aborted) abort()
     else input.signal?.addEventListener("abort", abort, { once: true })
-    const timeoutMs = input.timeoutMs ?? DEFAULT_LIMITS.toolInvocationTimeoutMs
+    const timeoutMs = input.timeoutMs ?? (await resolvePluginRuntimeLimits()).contributionInvokeTimeoutMs
     const timeout = setTimeout(
       () => controller.abort(new DOMException("Plugin invocation timed out", "TimeoutError")),
       timeoutMs,
@@ -458,19 +461,19 @@ export class PluginRuntimeManager {
       this.#invocations.delete(requestId)
       entry.inFlight--
       if (this.registry.get(entry.key)?.state === "draining" && entry.inFlight === 0) {
-        void this.#stopEntry(entry, DEFAULT_LIMITS.shutdownGraceMs)
+        void this.#stopEntry(entry, entry.limits.shutdownGraceMs)
       }
     }
   }
 
-  async stop(pluginId: string, graceMs = DEFAULT_LIMITS.shutdownGraceMs) {
+  async stop(pluginId: string, graceMs?: number) {
     const entry = this.registry.active(pluginId)
-    if (entry) await this.#stopEntry(entry, graceMs)
+    if (entry) await this.#stopEntry(entry, graceMs ?? entry.limits.shutdownGraceMs)
   }
 
-  async stopGeneration(key: string, graceMs = DEFAULT_LIMITS.shutdownGraceMs) {
+  async stopGeneration(key: string, graceMs?: number) {
     const entry = this.registry.get(key)
-    if (entry) await this.#stopEntry(entry, graceMs)
+    if (entry) await this.#stopEntry(entry, graceMs ?? entry.limits.shutdownGraceMs)
   }
 
   async #stopEntry(entry: PluginRuntimeEntry, graceMs: number) {
