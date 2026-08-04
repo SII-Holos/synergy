@@ -356,10 +356,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const displayedVariant = () => {
         const a = agent.current()
+        const model = current()
         return ComposerIntent.resolveVariantDisplay(
           variantResolution(),
           a?.defaultVariant,
           a ? sync.data.config.role_variant?.[a.modelRole || "default"] : undefined,
+          model?.variants ? Object.keys(model.variants) : undefined,
         )
       }
 
