@@ -129,6 +129,7 @@ export class PluginRuntimeManager {
           "hook",
           "cli.command",
           "authProvider",
+          "lifecycle.install",
           "lifecycle.upgrade",
           "lifecycle.uninstall",
         ].includes(item.kind),
@@ -570,7 +571,9 @@ export class PluginRuntimeManager {
           signal: controller.signal,
         }),
     })
-    if (contribution.kind === "lifecycle.uninstall") return contribution.handler(context)
+    if (contribution.kind === "lifecycle.install" || contribution.kind === "lifecycle.uninstall") {
+      return contribution.handler(context)
+    }
     return (contribution.handler as (input: unknown, context: PluginInvocationContext) => Promise<unknown>)(
       value,
       context,

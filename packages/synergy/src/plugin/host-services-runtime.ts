@@ -31,6 +31,7 @@ import { isPathContained } from "../util/path-contain"
 import { getPluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
 import { PluginEvent } from "./event"
+import { getRuntimeEndpoint } from "../server/runtime-endpoint"
 import {
   cancelPluginBlueprint,
   cancelPluginTask,
@@ -74,6 +75,7 @@ const capabilityByMethod = {
   "agent.start": "agent.call",
   "asset.create": "asset.write",
   "shell.run": "shell.execute",
+  "runtime.endpoint.get": "runtime.endpoint.read",
 } as const
 
 const AGENT_CALL_MAX_INPUT_CHARS = 32_000
@@ -91,6 +93,12 @@ function assertCapability(input: PluginHostServiceInvocationInput) {
   const required = capabilityByMethod[input.method]
   const granted = input.manifest.capabilities.some((capability) => capability.id === required)
   if (!granted) throw new Error(`Plugin ${input.pluginId} does not declare capability "${required}"`)
+  if (required === "runtime.endpoint.read") {
+    const contribution = input.manifest.contributions.find((item) => `${item.kind}:${item.id}` === input.handlerId)
+    if (!contribution?.requires?.includes(required)) {
+      throw new Error(`Plugin contribution ${input.handlerId ?? "unknown"} does not require capability "${required}"`)
+    }
+  }
   if (required !== "agent.call") return
   const contribution = input.manifest.contributions.find((item) => `${item.kind}:${item.id}` === input.handlerId)
   if (!contribution?.requires?.includes(required)) {
@@ -641,6 +649,16 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     // shared per-plugin runtime does not pin one Scope's limits for others.
     if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
     const value = params(input)
+    if (input.method === "runtime.endpoint.get") {
+      if (
+        input.params !== undefined &&
+        input.params !== null &&
+        !(typeof input.params === "object" && Object.keys(input.params).length === 0)
+      ) {
+        throw new Error("runtime.endpoint.get does not accept parameters")
+      }
+      return getRuntimeEndpoint()
+    }
     if (input.method === "event.publish") return publishEvent(input)
     if (input.method === "agent.call") return callPluginAgent(input, value)
     if (input.method === "agent.start") return startPluginAgent(input, value)

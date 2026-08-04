@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { spawn } from "node:child_process"
+import { spawn, type ChildProcess } from "node:child_process"
 import { EventEmitter } from "node:events"
 import net from "node:net"
-import type { ChildProcess } from "node:child_process"
 import {
   attachManagedServerExitHandlers,
   buildManagedServerEnv,
   findAvailablePort,
   findListeningPort,
+  managedServerArgs,
   parseListeningPort,
   terminateServerProcess,
   waitForHealth,
@@ -15,6 +15,10 @@ import {
 } from "../src/server-manager.js"
 
 describe("desktop server manager", () => {
+  test("always binds managed servers to loopback", () => {
+    expect(managedServerArgs(43121)).toEqual(["server", "--port", "43121", "--hostname", "127.0.0.1"])
+  })
+
   test("allocates a usable localhost port", async () => {
     const port = await findAvailablePort()
     await new Promise<void>((resolve, reject) => {
