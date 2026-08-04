@@ -129,6 +129,65 @@ describe("session input event ordering", () => {
 })
 
 describe("session root variants", () => {
+  test(
+    "omits an unavailable role default for a model while preserving explicit validation",
+    async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          model: "test-provider/test-model",
+          role_variant: { default: "max" },
+          provider: {
+            "test-provider": {
+              name: "Test Provider",
+              npm: "@ai-sdk/openai-compatible",
+              env: [],
+              models: {
+                "test-model": {
+                  name: "Test Model",
+                  tool_call: true,
+                  limit: { context: 128_000, output: 4_096 },
+                  variants: { high: { reasoningEffort: "high" } },
+                },
+              },
+              options: { apiKey: "test-key" },
+            },
+          },
+          agent: {
+            variant_agent: {
+              model: "test-provider/test-model",
+              mode: "primary",
+            },
+          },
+        } as any,
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const root = await createUserMessage({
+            sessionID: session.id,
+            agent: "variant_agent",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            parts: [{ type: "text", text: "use the supported provider default" }],
+          })
+
+          expect(root.info.variant).toBeUndefined()
+          await expect(
+            createUserMessage({
+              sessionID: session.id,
+              agent: "variant_agent",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              variant: "max",
+              parts: [{ type: "text", text: "preserve explicit validation" }],
+            }),
+          ).rejects.toMatchObject({ name: "ProviderModelVariantUnavailableError" })
+        },
+      })
+    },
+    { timeout: 10_000 },
+  )
+
   test("persists an agent default on a new root and omits variants from non-root input", async () => {
     await using tmp = await tmpdir({
       git: true,
