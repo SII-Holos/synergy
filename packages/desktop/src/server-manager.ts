@@ -189,7 +189,7 @@ export class DesktopServerManager {
     if (packaged && fs.existsSync(packaged)) {
       return {
         command: packaged,
-        args: serverCommandArgs(port),
+        args: managedServerArgs(port),
         cwd: path.dirname(packaged),
       }
     }
@@ -200,10 +200,14 @@ export class DesktopServerManager {
     }
     return {
       command: process.env.BUN_BIN ?? "bun",
-      args: ["run", "--conditions=browser", "./src/index.ts", ...serverCommandArgs(port)],
+      args: ["run", "--conditions=browser", "./src/index.ts", ...managedServerArgs(port)],
       cwd: sourceRoot,
     }
   }
+}
+
+export function managedServerArgs(port: number): string[] {
+  return ["server", "--port", String(port), "--hostname", "127.0.0.1"]
 }
 
 export function buildManagedServerEnv(
@@ -684,12 +688,6 @@ function waitForDeadline<T>(promise: Promise<T>, deadline: number): Promise<T | 
     timeout = setTimeout(() => finish(false), remainingMs)
     timeout.unref()
   })
-}
-
-function serverCommandArgs(port: number): string[] {
-  const args = ["server", "--port", String(port)]
-  if (process.platform === "win32" && port === 0) args.push("--hostname", "127.0.0.1")
-  return args
 }
 
 function packagedServerBinary(resourcesPath: string): string | null {

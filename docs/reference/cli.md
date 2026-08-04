@@ -134,7 +134,7 @@ All domains are importable and default to `merge` mode. `append` recursively mer
 
 JSONC comments in existing domain files are preserved. Committed files trigger a runtime config reload; reload failure does not roll back the committed changes.
 
-The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex backend. The `openai` provider uses OpenAI Platform API-key credentials. Their login, storage, usage, and billing semantics are intentionally separate.
+The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex backend. The `openai` provider uses OpenAI Platform API-key credentials. The `grok` provider uses xAI subscription OAuth credentials (SuperGrok / X Premium+) against the OpenAI-compatible `https://api.x.ai/v1` API. Their login, storage, usage, and billing semantics are intentionally separate.
 
 See [Configuration](configuration.md) for files, precedence, domains, and instruction discovery.
 
