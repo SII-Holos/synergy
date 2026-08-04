@@ -6,6 +6,7 @@ import { ScopedState } from "../scope/scoped-state"
 import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
 import { ProcessRegistry } from "../process/registry"
+import { Config } from "../config/config"
 import { Log } from "../util/log"
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
@@ -19,7 +20,7 @@ import { Session } from "../session"
 import { Plugin } from "../plugin"
 import { PluginSpec } from "../util/plugin-spec"
 import { watchManagedParent } from "./managed-parent"
-import { configureRuntimeEndpoint } from "./runtime-endpoint"
+import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "./runtime-endpoint"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -76,18 +77,21 @@ export async function run(options: RuntimeOptions) {
 
   Server.mountApp()
   const server = Server.listen(options.network)
-  const endpointGeneration = configureRuntimeEndpoint({
+  configureRuntimeEndpoint({
     hostname: server.hostname ?? options.network.hostname,
     port: server.port ?? options.network.port,
-  })!
+  })
   registerShutdown(server, processLock.release)
   const statuses: StartupReporter.StatusRow[] = []
 
   await GlobalRuntime.start()
-  void ScopeContext.provide({
-    scope: Scope.home(),
-    fn: () => Plugin.trigger("runtime.started", { endpointGeneration }, {}),
-  }).catch((error) => log.warn("plugin runtime.started hooks failed", { error }))
+  const endpointGeneration = peekRuntimeEndpointGeneration()
+  if (endpointGeneration) {
+    void ScopeContext.provide({
+      scope: Scope.home(),
+      fn: () => Plugin.trigger("runtime.started", { endpointGeneration }, {}),
+    }).catch((error) => log.warn("plugin runtime.started hooks failed", { error }))
+  }
   statuses.push(
     await ScopeContext.provide({
       scope: Scope.home(),
@@ -111,6 +115,11 @@ export async function run(options: RuntimeOptions) {
       })
     ) {
       reporter?.warning("No AI model configured — run synergy config before sending messages.")
+    }
+    const issues = Config.diagnostics()
+    for (const issue of issues) {
+      const location = issue.quarantinedPath ?? issue.path
+      reporter?.warning(`Configuration issue (${issue.code}): ${issue.error}${location ? ` — ${location}` : ""}`)
     }
     renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
   }
@@ -346,7 +355,6 @@ function registerShutdown(
 
     shuttingDown = true
     stopWatchingParent()
-    configureRuntimeEndpoint(undefined)
     log.info("received signal, shutting down gracefully", { signal })
     await Observability.emit("shutdown.signal", {
       data: {
@@ -401,6 +409,7 @@ function registerShutdown(
       phase = "server stop"
       await Observability.emit("shutdown.phase", { data: { phase } })
       await server.stop()
+      configureRuntimeEndpoint(undefined)
 
       phase = "release lock"
       await Observability.emit("shutdown.phase", { data: { phase } })

@@ -34,7 +34,22 @@ export namespace GlobalRuntime {
         fn: async () => {
           log.info("starting")
           await Plugin.init()
-          const config = await Config.globalResolved()
+          const config = await Config.globalResolved().catch(async (error) => {
+            // Fuse: a config load failure must never prevent the server from
+            // starting. Fall back to defaults and surface the issue through
+            // the diagnostics registry (visible in the startup banner and
+            // GET /config/diagnostics).
+            const message = error instanceof Error ? error.message : String(error)
+            log.error("config load failed, starting with defaults", { error: message })
+            Config.recordIssue({
+              path: "config",
+              error: message,
+              code: "config.load_failed",
+              quarantined: false,
+              timestamp: Date.now(),
+            })
+            return Config.Info.parse({})
+          })
           CortexConcurrency.configure(config.cortex?.maxConcurrentTasks)
           AgentTurn.configure({
             size: config.execution?.agentWorkers,

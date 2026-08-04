@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { ChildProcess } from "node:child_process"
-import { spawn } from "node:child_process"
+import { spawn, type ChildProcess } from "node:child_process"
 import { EventEmitter } from "node:events"
 import net from "node:net"
 import {
@@ -8,8 +7,8 @@ import {
   buildManagedServerEnv,
   findAvailablePort,
   findListeningPort,
+  managedServerArgs,
   parseListeningPort,
-  serverCommandArgs,
   terminateServerProcess,
   waitForHealth,
   waitForWindowsServerHealth,
@@ -17,7 +16,7 @@ import {
 
 describe("desktop server manager", () => {
   test("always binds managed servers to loopback", () => {
-    expect(serverCommandArgs(43121)).toEqual(["server", "--port", "43121", "--hostname", "127.0.0.1"])
+    expect(managedServerArgs(43121)).toEqual(["server", "--port", "43121", "--hostname", "127.0.0.1"])
   })
 
   test("allocates a usable localhost port", async () => {
