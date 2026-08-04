@@ -31,6 +31,7 @@ export namespace ToolTimeout {
     arxivDownloadMs: 60_000,
     browserWaitMs: 10_000,
     browserWaitMaxMs: 60_000,
+    browserSettleMs: 30_000,
     browserDownloadsWaitMs: 30_000,
     browserHelperWaitMs: 30_000,
     browserLocatorMs: 5_000,
@@ -153,7 +154,17 @@ export namespace ToolTimeout {
         return { timeoutMs: DEFAULTS.arxivDownloadMs, source: "download" }
       case "browser_wait":
         return {
-          timeoutMs: clampMs(args.timeout, DEFAULTS.browserWaitMs, 500, DEFAULTS.browserWaitMaxMs),
+          timeoutMs: clampMs(args.timeoutMs ?? args.timeout, DEFAULTS.browserWaitMs, 500, DEFAULTS.browserWaitMaxMs),
+          source: "wait",
+        }
+      case "browser_action":
+        return {
+          timeoutMs: normalizeMs(args.action?.settleTimeoutMs ?? args.settleTimeoutMs) ?? DEFAULTS.browserSettleMs,
+          source: "wait",
+        }
+      case "browser_navigation":
+        return {
+          timeoutMs: normalizeMs(args.settleTimeoutMs) ?? DEFAULTS.browserSettleMs,
           source: "wait",
         }
       case "browser_downloads":

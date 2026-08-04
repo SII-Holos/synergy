@@ -8269,6 +8269,78 @@ msgstr "错误"
 msgid "brand.logo.alt"
 msgstr "Holos"
 
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.assets"
+msgstr "{count} 个资源"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.console"
+msgstr "{count} 条控制台记录"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.loading"
+msgstr "加载中"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.requests"
+msgstr "{count} 个请求"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.settled"
+msgstr "已稳定"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.timeout"
+msgstr "超时"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.unsettled"
+msgstr "未稳定"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.condition"
+msgstr "条件"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elapsed"
+msgstr "已用时间"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elements"
+msgstr "元素"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.milliseconds"
+msgstr "{count} 毫秒"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-reason"
+msgstr "稳定原因"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-time"
+msgstr "稳定耗时"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.target"
+msgstr "目标"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.timeout"
+msgstr "超时时间"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.title"
+msgstr "标题"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.url"
+msgstr "URL"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.value-length"
+msgstr "输入长度"
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"
 msgstr "操作页面"

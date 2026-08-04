@@ -179,5 +179,8 @@ describe("shared CDP page controller contract", () => {
 })
 
 async function action(value: BrowserAction): Promise<BrowserBackendResult> {
-  return controller.execute({ type: "action", action: value })
+  return controller.execute({
+    type: "action",
+    action: { ...value, settleMode: "none" },
+  })
 }

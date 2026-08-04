@@ -34,6 +34,28 @@ const browserURL = z.string().max(20_000)
 const browserTitle = z.string().max(20_000)
 const browserMessage = z.string().max(100_000)
 const timeoutMs = z.number().int().min(100).max(120_000).optional()
+export const BROWSER_SETTLE_TIMEOUT_MS = 30_000
+export const BROWSER_SETTLE_QUIET_MS = 500
+const settleMode = z.enum(["networkquiet", "load", "none"])
+const settleTimeoutMs = z.number().int().min(1_000).max(BROWSER_SETTLE_TIMEOUT_MS)
+const settleFields = {
+  settleMode: settleMode
+    .optional()
+    .describe(
+      "Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
+    ),
+  settleTimeoutMs: settleTimeoutMs
+    .optional()
+    .describe(
+      "Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.",
+    ),
+}
+const settleResultFields = {
+  settled: z.boolean().optional(),
+  settleReason: z.enum(["networkquiet", "load", "none", "timeout", "interrupted"]).optional(),
+  settleElapsedMs: z.number().int().nonnegative().optional(),
+  inflightRequests: z.number().int().nonnegative().optional(),
+}
 
 export const BrowserSessionStatusSchema = z.enum(["empty", "suspended", "active", "migrating", "failed"])
 export type BrowserSessionStatus = z.infer<typeof BrowserSessionStatusSchema>
@@ -359,7 +381,13 @@ export type BrowserModifier = z.infer<typeof BrowserModifierSchema>
 
 const actionBase = {
   timeoutMs: timeoutMs.describe("Maximum time for locator resolution and actionability checks."),
-  includeSnapshot: z.boolean().optional().describe("Return a fresh accessibility snapshot after the action."),
+  includeSnapshot: z
+    .boolean()
+    .optional()
+    .describe(
+      "Return a fresh accessibility snapshot after the action settles so the next step can act without an extra snapshot call (default true). Set false when chaining many input events and token cost matters.",
+    ),
+  ...settleFields,
 }
 
 export const BrowserActionSchema = z.discriminatedUnion("type", [
@@ -520,13 +548,28 @@ export const BrowserEmulationSchema = z
   .refine((value) => Object.keys(value).length > 0, "At least one emulation setting is required.")
 export type BrowserEmulation = z.infer<typeof BrowserEmulationSchema>
 
+const navigationSettleFields = {
+  ...settleFields,
+  includeSnapshot: z
+    .boolean()
+    .optional()
+    .describe("Return a fresh accessibility snapshot after the navigation settles (default true)."),
+}
+
 const BrowserUserNavigateCommandSchema = z
-  .object({ type: z.literal("navigate"), url: nonEmpty, source: z.literal("user").default("user") })
+  .object({
+    type: z.literal("navigate"),
+    url: nonEmpty,
+    source: z.literal("user").default("user"),
+    ...navigationSettleFields,
+  })
   .strict()
 const BrowserHistoryCommandSchema = z
-  .object({ type: z.literal("history"), direction: z.enum(["back", "forward"]) })
+  .object({ type: z.literal("history"), direction: z.enum(["back", "forward"]), ...navigationSettleFields })
   .strict()
-const BrowserReloadCommandSchema = z.object({ type: z.literal("reload"), ignoreCache: z.boolean().optional() }).strict()
+const BrowserReloadCommandSchema = z
+  .object({ type: z.literal("reload"), ignoreCache: z.boolean().optional(), ...navigationSettleFields })
+  .strict()
 const BrowserStopCommandSchema = z.object({ type: z.literal("stop") }).strict()
 const BrowserResumeCommandSchema = z.object({ type: z.literal("resume") }).strict()
 const BrowserCloseCommandSchema = z.object({ type: z.literal("close") }).strict()
@@ -786,7 +829,12 @@ const backendOnlyCommands = [
 ] as const
 
 const BrowserBackendNavigateCommandSchema = z
-  .object({ type: z.literal("navigate"), url: nonEmpty, source: z.enum(["user", "agent"]) })
+  .object({
+    type: z.literal("navigate"),
+    url: nonEmpty,
+    source: z.enum(["user", "agent"]),
+    ...navigationSettleFields,
+  })
   .strict()
 
 export const BrowserBackendCommandSchema = z.discriminatedUnion("type", [
@@ -819,7 +867,14 @@ export type BrowserSnapshotElement = z.infer<typeof BrowserSnapshotElementSchema
 export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("void") }).strict(),
   z.object({ type: z.literal("page"), page: BrowserPageSchema }).strict(),
-  z.object({ type: z.literal("navigation"), page: BrowserPageSchema }).strict(),
+  z
+    .object({
+      type: z.literal("navigation"),
+      page: BrowserPageSchema,
+      snapshot: z.unknown().optional(),
+      ...settleResultFields,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("snapshot"),
@@ -829,8 +884,24 @@ export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
       truncated: z.boolean(),
     })
     .strict(),
-  z.object({ type: z.literal("action"), pageId, action: nonEmpty, snapshot: z.unknown().optional() }).strict(),
-  z.object({ type: z.literal("wait"), pageId, matched: z.boolean() }).strict(),
+  z
+    .object({
+      type: z.literal("action"),
+      pageId,
+      action: nonEmpty,
+      snapshot: z.unknown().optional(),
+      ...settleResultFields,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("wait"),
+      pageId,
+      matched: z.boolean(),
+      elapsedMs: z.number().int().nonnegative().optional(),
+      page: BrowserPageSchema.optional(),
+    })
+    .strict(),
   z.object({ type: z.literal("evaluation"), pageId, value: z.unknown() }).strict(),
   z
     .object({

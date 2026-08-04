@@ -2,6 +2,8 @@ import { BrowserProtocolError } from "./error.js"
 import { redactBrowserHeaders, redactBrowserText, redactBrowserURL } from "./redaction.js"
 import { BrowserStagingLeasePool } from "./staging.js"
 import {
+  BROWSER_SETTLE_QUIET_MS,
+  BROWSER_SETTLE_TIMEOUT_MS,
   BrowserBackendCommandSchema,
   BrowserCheckpointSchema,
   type BrowserAction,
@@ -202,6 +204,7 @@ const MAX_SCREENSHOT_BYTES = 25 * 1024 * 1024
 const MAX_REF_ENTRIES = 25_000
 const MAX_SNAPSHOT_TEXT_CHARS = 2_000_000
 const LONG_LIVED_NETWORK_TYPES = new Set(["WebSocket", "EventSource"])
+const SETTLE_ELIGIBLE_ACTIONS = new Set(["click", "dblclick", "fill", "type", "press", "select", "setChecked", "drag"])
 
 function boxesAreStable(previous: ElementState["box"], current: ElementState["box"]): boolean {
   if (!previous || !current) return previous === current
@@ -261,17 +264,27 @@ export class CdpPageController {
 
     switch (command.type) {
       case "navigate":
-        return this.navigate(command.url)
-      case "history":
+        return this.navigate(command)
+      case "history": {
         this.beginLoading()
         await this.options.transport.send("Page.navigateToHistoryEntry", {
           entryId: await this.historyEntry(command.direction),
         })
-        return { type: "navigation", page: await this.pageState() }
-      case "reload":
+        const settle = await this.settle({ mode: command.settleMode, timeoutMs: command.settleTimeoutMs })
+        const page = await this.pageState()
+        let snapshot: unknown
+        if (command.includeSnapshot !== false) snapshot = await this.snapshot(undefined, 500)
+        return { type: "navigation", page, ...(snapshot ? { snapshot } : {}), ...settle }
+      }
+      case "reload": {
         this.beginLoading()
         await this.options.transport.send("Page.reload", { ignoreCache: command.ignoreCache ?? false })
-        return { type: "void" }
+        const settle = await this.settle({ mode: command.settleMode, timeoutMs: command.settleTimeoutMs })
+        const page = await this.pageState()
+        let snapshot: unknown
+        if (command.includeSnapshot !== false) snapshot = await this.snapshot(undefined, 500)
+        return { type: "navigation", page, ...(snapshot ? { snapshot } : {}), ...settle }
+      }
       case "stop":
         await this.options.transport.send("Page.stopLoading")
         return { type: "void" }
@@ -302,9 +315,18 @@ export class CdpPageController {
         return this.snapshot(command.query, command.maxNodes)
       case "action":
         return this.action(command.action)
-      case "wait":
+      case "wait": {
+        const startedAt = this.now()
         await this.wait(command.condition, command.timeoutMs)
-        return { type: "wait", pageId: this.options.pageId, matched: true }
+        const elapsedMs = this.now() - startedAt
+        return {
+          type: "wait",
+          pageId: this.options.pageId,
+          matched: true,
+          elapsedMs,
+          page: await this.pageState(),
+        }
+      }
       case "evaluate":
         return {
           type: "evaluation",
@@ -668,9 +690,11 @@ export class CdpPageController {
     }
   }
 
-  private async navigate(url: string): Promise<BrowserBackendResult> {
+  private async navigate(
+    command: Extract<BrowserParsedBackendCommand, { type: "navigate" }>,
+  ): Promise<BrowserBackendResult> {
     this.beginLoading()
-    const result = await this.options.transport.send<{ errorText?: string }>("Page.navigate", { url })
+    const result = await this.options.transport.send<{ errorText?: string }>("Page.navigate", { url: command.url })
     if (result?.errorText) {
       this.loading = false
       throw new BrowserProtocolError({
@@ -678,15 +702,70 @@ export class CdpPageController {
         message: String(result.errorText),
         retryable: true,
         pageId: this.options.pageId,
-        url,
+        url: command.url,
       })
     }
-    return { type: "navigation", page: await this.pageState() }
+    const settle = await this.settle({ mode: command.settleMode, timeoutMs: command.settleTimeoutMs })
+    const page = await this.pageState()
+    let snapshot: unknown
+    if (command.includeSnapshot !== false) snapshot = await this.snapshot(undefined, 500)
+    return {
+      type: "navigation",
+      page,
+      ...(snapshot ? { snapshot } : {}),
+      ...settle,
+    }
   }
 
   private beginLoading(): void {
     this.loading = true
     this.lifecycle.clear()
+  }
+
+  private async settle(options: { mode?: "networkquiet" | "load" | "none"; timeoutMs?: number }): Promise<{
+    settled?: boolean
+    settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+    settleElapsedMs?: number
+    inflightRequests?: number
+  }> {
+    const mode = options.mode ?? "networkquiet"
+    if (mode === "none") {
+      return { settled: true, settleReason: "none", settleElapsedMs: 0, inflightRequests: this.inflightRequests.size }
+    }
+    const timeoutMs = options.timeoutMs ?? BROWSER_SETTLE_TIMEOUT_MS
+    const startedAt = this.now()
+    const deadline = startedAt + timeoutMs
+    let quietSince = this.now()
+
+    const isSettled = (): boolean => {
+      if (mode === "load") {
+        return this.lifecycle.has("load") || (!this.loading && this.lifecycle.size === 0)
+      }
+      return !this.loading && this.inflightRequests.size === 0
+    }
+
+    while (this.now() < deadline) {
+      if (isSettled()) {
+        if (mode === "load" || this.now() - quietSince >= BROWSER_SETTLE_QUIET_MS) {
+          return {
+            settled: true,
+            settleReason: mode,
+            settleElapsedMs: this.now() - startedAt,
+            inflightRequests: this.inflightRequests.size,
+          }
+        }
+      } else {
+        quietSince = this.now()
+      }
+      await this.sleep(POLL_MS)
+    }
+
+    return {
+      settled: false,
+      settleReason: "timeout",
+      settleElapsedMs: this.now() - startedAt,
+      inflightRequests: this.inflightRequests.size,
+    }
   }
 
   private async historyEntry(direction: "back" | "forward"): Promise<number> {
@@ -1010,13 +1089,22 @@ export class CdpPageController {
         break
     }
 
+    const settle = SETTLE_ELIGIBLE_ACTIONS.has(action.type)
+      ? await this.settle({ mode: action.settleMode, timeoutMs: action.settleTimeoutMs })
+      : {
+          settled: true,
+          settleReason: "none" as const,
+          settleElapsedMs: 0,
+          inflightRequests: this.inflightRequests.size,
+        }
     let snapshot: unknown
-    if (action.includeSnapshot) snapshot = await this.snapshot(undefined, 500)
+    if (action.includeSnapshot !== false) snapshot = await this.snapshot(undefined, 500)
     return {
       type: "action",
       pageId: this.options.pageId,
       action: action.type,
       ...(snapshot ? { snapshot } : {}),
+      ...settle,
     }
   }
 

@@ -1,11 +1,11 @@
 import z from "zod"
 import { BrowserActionSchema, BrowserBackendResultSchema, type BrowserAction } from "@ericsanchezok/synergy-browser"
 import { Tool } from "./tool"
-import { BrowserToolHelper, formatSnapshotText } from "./browser-shared"
+import { BrowserToolHelper, formatSettleSummary, formatSnapshotText } from "./browser-shared"
 
 export const BrowserActionTool = Tool.define("browser_action", {
   description:
-    'Perform one deterministic browser interaction. Prefer a fresh snapshot ref. Label locators target labelled form controls; use role/name for buttons. For select, strings match HTML option values; use {label: "Visible text"} for displayed labels. Set includeSnapshot when the next step depends on the changed DOM. Same-page actions are serialized and should be issued sequentially.',
+    'Perform one deterministic browser interaction. The tool first waits for the target to be actionable (visible, stable, enabled), dispatches the input, then settles the page by default (up to 30s, quiet-network strategy) and returns a fresh accessibility snapshot so the next step can act without an extra snapshot call. Do NOT call browser_wait after every action — only when you need a specific business condition (text, locator state, URL change, download, dialog). If the result reports settled:false, the page was still active when the budget ended; prefer a targeted browser_wait or a fresh snapshot over a blind retry. Set includeSnapshot:false when chaining many pure input events and token cost matters. Prefer a fresh snapshot ref; label locators target labelled form controls; use role/name for buttons. For select, strings match HTML option values; use {label: "Visible text"} for displayed labels. Same-page actions are serialized and should be issued sequentially.',
   parameters: z.object({ action: BrowserActionSchema }).strict(),
   async execute(params, ctx) {
     const page = await BrowserToolHelper.resolvePage(ctx)
@@ -22,15 +22,41 @@ export const BrowserActionTool = Tool.define("browser_action", {
         const snapshotResult = snapshot.success && snapshot.data.type === "snapshot" ? snapshot.data : null
         const formatted = snapshotResult ? formatSnapshotText(snapshotResult.elements) : null
         const summary = actionSummary(params.action)
+        const livePage = page
+        const settleLine = formatSettleSummary({
+          settled: result.settled,
+          settleReason: result.settleReason,
+          settleElapsedMs: result.settleElapsedMs,
+        })
         return {
           title: `Browser ${params.action.type}`,
-          output: snapshotResult
-            ? `${summary}\nsnapshotId: ${snapshotResult.snapshotId}\n${formatted!.output}`
-            : summary,
+          output: [
+            summary,
+            settleLine,
+            `Page: ${livePage.url}`,
+            `Loading: ${livePage.loading ? "yes" : "no"}`,
+            snapshotResult ? `snapshotId: ${snapshotResult.snapshotId}` : undefined,
+            snapshotResult ? formatted!.output : undefined,
+          ]
+            .filter(Boolean)
+            .join("\n"),
           metadata: {
             pageId: page.id,
-            action: params.action.type,
-            snapshot: result.snapshot,
+            actionType: params.action.type,
+            ...targetSummary(params.action),
+            ...(params.action.type === "fill" || params.action.type === "type"
+              ? { valueLength: params.action.value.length }
+              : {}),
+            ...(result.settled !== undefined ? { settled: result.settled } : {}),
+            ...(result.settleReason ? { settleReason: result.settleReason } : {}),
+            ...(result.settleElapsedMs !== undefined ? { settleElapsedMs: result.settleElapsedMs } : {}),
+            url: livePage.url,
+            title: livePage.title,
+            isLoading: livePage.loading,
+            ...(snapshotResult
+              ? { elementsCount: snapshotResult.elements.length, snapshotId: snapshotResult.snapshotId }
+              : {}),
+            includeSnapshot: params.action.includeSnapshot ?? true,
             outputTruncated: formatted?.truncated ?? false,
           },
         }
@@ -54,4 +80,17 @@ function actionSummary(action: BrowserAction): string {
   if (action.type === "setChecked") return `Set the target checked state to ${action.checked}.`
   if (action.type === "press") return `Pressed ${JSON.stringify(action.key)}.`
   return `Completed ${action.type}.`
+}
+
+function targetSummary(action: BrowserAction): {
+  target?: { kind: string; role?: string; name?: string; ref?: string }
+} {
+  const target = "target" in action ? action.target : undefined
+  if (!target || target.kind === "point") return {}
+  const { kind, ...rest } = target
+  const summary: { kind: string; role?: string; name?: string; ref?: string } = { kind }
+  if ("role" in rest && typeof rest.role === "string") summary.role = rest.role
+  if ("name" in rest && typeof rest.name === "string") summary.name = rest.name
+  if ("ref" in rest && typeof rest.ref === "string") summary.ref = rest.ref
+  return { target: summary }
 }

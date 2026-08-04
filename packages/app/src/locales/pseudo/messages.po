@@ -8269,6 +8269,78 @@ msgstr ""
 msgid "brand.logo.alt"
 msgstr ""
 
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.assets"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.console"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.loading"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.requests"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.settled"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.timeout"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.unsettled"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.condition"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elapsed"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elements"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.milliseconds"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-reason"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-time"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.target"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.timeout"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.title"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.url"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.value-length"
+msgstr ""
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"
 msgstr ""

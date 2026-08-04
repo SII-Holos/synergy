@@ -413,7 +413,14 @@ function requestTimeout(
   const command = message.command
   if (command.type === "evaluate") return Math.min(125_000, (command.timeoutMs ?? 30_000) + 5_000)
   if (command.type === "wait") return command.timeoutMs + 5_000
-  if (command.type === "action") return (command.action.timeoutMs ?? 5_000) + 5_000
+  if (command.type === "action") {
+    const settleMs = command.action.settleTimeoutMs ?? 30_000
+    return (command.action.timeoutMs ?? 5_000) + settleMs + 5_000
+  }
+  if (command.type === "navigate" || command.type === "history" || command.type === "reload") {
+    const settleMs = command.settleTimeoutMs ?? 30_000
+    return settleMs + 10_000
+  }
   return 35_000
 }
 
