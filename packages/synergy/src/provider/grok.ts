@@ -246,12 +246,13 @@ export namespace GrokProvider {
   export async function pollDeviceCode(
     input: { device: DeviceCode; codeVerifier: string },
     fetchFn: FetchLike = fetch,
+    sleepFn: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms),
   ): Promise<TokenPayload> {
     const started = Date.now()
     const maxWaitMs = 15 * 60 * 1000
     let intervalSeconds = input.device.intervalSeconds
     while (Date.now() - started < maxWaitMs) {
-      await Bun.sleep(intervalSeconds * 1000)
+      await sleepFn(intervalSeconds * 1000)
       const response = await fetchFn(OAUTH_TOKEN_URL, {
         method: "POST",
         headers: {

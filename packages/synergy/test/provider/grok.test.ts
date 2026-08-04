@@ -131,6 +131,7 @@ test("device-code poll continues on authorization_pending and slows down on slow
     return jsonResponse({ access_token: issuedAccess, refresh_token: "refresh-3", expires_in: 3600 })
   })
 
+  const sleeps: number[] = []
   const token = await GrokProvider.pollDeviceCode(
     {
       device: {
@@ -142,9 +143,14 @@ test("device-code poll continues on authorization_pending and slows down on slow
       codeVerifier: "verifier-3",
     },
     fetchFn,
+    async (ms) => {
+      sleeps.push(ms)
+    },
   )
   expect(token.access).toBe(issuedAccess)
   expect(polls).toBe(3)
+  // RFC 8628 slow_down increases the poll interval by 5 seconds.
+  expect(sleeps).toEqual([0, 0, 5000])
 })
 
 test("device-code poll treats access_denied as a relogin-required failure", async () => {
