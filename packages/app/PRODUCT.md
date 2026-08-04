@@ -112,6 +112,8 @@ Performance AI analysis should be an explicit action over the selected time wind
 
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
+Session changes must key the turn and message-role rendering boundaries by stable entity identity so a disposed Session or Show owner cannot be read by a reused child subtree. A failure in one message-part renderer must remain inside that part's error boundary: capture its session, message, part, and type identity before rendering the child, render the fallback from that snapshot, and report only those identifiers plus the original error. The fallback must not read live part props or include message content, tool payloads, or workspace paths in diagnostics.
+
 Streaming text and reasoning should follow the model's actual deltas through frame-bounded incremental rendering; do not add an independent character-rate playback backlog that falls behind long responses.
 When a text or reasoning part is superseded by later visible work in the same running turn, its presentation motion should settle immediately instead of competing with the current work. Supersession and coarse session status must not route a part that can still receive deltas through terminal Markdown. A completed Markdown render may settle once per content identity; sibling tool-state updates must not restart its transition or enhancements.
 

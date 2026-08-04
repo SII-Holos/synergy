@@ -814,8 +814,6 @@ export function SessionTurn(
     if (assistantPart?.type === "tool" && assistantPart.tool === "bash") return assistantPart
   })
 
-  const isShellMode = createMemo(() => !!shellModePart())
-
   const working = createMemo(() =>
     resolveTurnWorking({
       isLastUserMessage: isLastUserMessage(),
@@ -1030,34 +1028,34 @@ export function SessionTurn(
         class={props.classes?.content}
       >
         <div onClick={autoScroll.handleInteraction}>
-          <Show when={message()}>
+          <Show keyed when={message()}>
             {(msg) => (
               <div
                 ref={autoScroll.contentRef}
-                data-message={msg().id}
+                data-message={msg.id}
                 data-slot="session-turn-message-container"
                 class={props.classes?.container}
               >
                 <Switch>
-                  <Match when={isShellMode()}>
-                    <Part part={shellModePart()!} message={msg()} defaultOpen />
+                  <Match keyed when={shellModePart()}>
+                    {(shellPart) => <Part part={shellPart} message={msg} defaultOpen />}
                   </Match>
                   <Match when={true}>
                     <Show when={showUserChrome()}>{renderMessageSlot("message.before-user")}</Show>
                     <Show when={showUserChrome()}>
-                      {renderCoreMessageSlot("message.before", msg().id, "user")}
+                      {renderCoreMessageSlot("message.before", msg.id, "user")}
                       {/* Mailbox source annotation */}
-                      <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
-                        <MailboxSourceBadge message={msg() as UserMessage} />
+                      <Show when={(msg as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
+                        <MailboxSourceBadge message={msg as UserMessage} />
                       </Show>
                       {/* User message */}
                       <div data-slot="session-turn-rewind-wrapper" data-align="right">
                         <Show
                           when={specialUserMessageRenderer()}
-                          fallback={<Message message={msg()} parts={parts()} userVariant="turn-bubble" />}
+                          fallback={<Message message={msg} parts={parts()} userVariant="turn-bubble" />}
                         >
                           {(SpecialUserMessage) => (
-                            <Dynamic component={SpecialUserMessage()} message={msg()} parts={parts()} />
+                            <Dynamic component={SpecialUserMessage()} message={msg} parts={parts()} />
                           )}
                         </Show>
                         <Show when={props.onRewind && !specialUserMessageRenderer()}>
@@ -1074,9 +1072,9 @@ export function SessionTurn(
                             <span>{_(SESSION_TURN_DESC.rewind)}</span>
                           </button>
                         </Show>
-                        {renderCoreMessageSlot("message.actions", msg().id, "user")}
+                        {renderCoreMessageSlot("message.actions", msg.id, "user")}
                       </div>
-                      {renderCoreMessageSlot("message.after", msg().id, "user")}
+                      {renderCoreMessageSlot("message.after", msg.id, "user")}
                       {renderMessageSlot("message.after-user")}
                     </Show>
                     <Show
@@ -1194,11 +1192,11 @@ export function SessionTurn(
                         <Show when={!working() ? visibleDiffPanelState() : undefined}>
                           {(state) => (
                             <TurnChangeSummaryPanel
-                              diffs={msg().summary?.diffs ?? []}
+                              diffs={msg.summary?.diffs ?? []}
                               state={state()}
                               animateReady={animateReadyDiffPanel()}
-                              onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
-                              onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
+                              onReviewRequested={() => props.onReviewChanges?.({ messageID: msg.id })}
+                              onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg.id, file })}
                             />
                           )}
                         </Show>

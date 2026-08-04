@@ -1575,14 +1575,14 @@ export function registerPartComponent(type: string, component: PartComponent) {
 export function Message(props: MessageProps) {
   return (
     <Switch>
-      <Match when={props.message.role === "user" && props.message}>
+      <Match keyed when={props.message.role === "user" ? props.message : undefined}>
         {(userMessage) => (
-          <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} variant={props.userVariant} />
+          <UserMessageDisplay message={userMessage as UserMessage} parts={props.parts} variant={props.userVariant} />
         )}
       </Match>
-      <Match when={props.message.role === "assistant" && props.message}>
+      <Match keyed when={props.message.role === "assistant" ? props.message : undefined}>
         {(assistantMessage) => (
-          <AssistantMessageDisplay message={assistantMessage() as AssistantMessage} parts={props.parts} />
+          <AssistantMessageDisplay message={assistantMessage as AssistantMessage} parts={props.parts} />
         )}
       </Match>
     </Switch>
@@ -1872,24 +1872,33 @@ function HighlightedText(props: { text: string; references: AttachmentPart[] }) 
 }
 export function Part(props: MessagePartProps) {
   const { _ } = useLingui()
-  const component = createMemo(() => PART_MAPPING[props.part.type])
+  const identity = {
+    sessionID: props.part.sessionID,
+    messageID: props.part.messageID,
+    partID: props.part.id,
+    partType: props.part.type,
+  }
+  const component = PART_MAPPING[identity.partType]
   return (
-    <Show when={component()}>
+    <Show when={component}>
       <ErrorBoundary
-        fallback={(err) => (
-          <div class="plugin-error-card">
-            <div class="plugin-error-header">
-              <Icon name="alert-triangle" />
-              <span>
-                {_(MESSAGE_PART_DESC.partRenderError)} {props.part.type}
-              </span>
+        fallback={(err) => {
+          console.error("[MessagePart] renderer failed", identity, err)
+          return (
+            <div class="plugin-error-card">
+              <div class="plugin-error-header">
+                <Icon name="alert-triangle" />
+                <span>
+                  {_(MESSAGE_PART_DESC.partRenderError)} {identity.partType}
+                </span>
+              </div>
+              <div class="plugin-error-message">{err?.message || String(err)}</div>
             </div>
-            <div class="plugin-error-message">{err?.message || String(err)}</div>
-          </div>
-        )}
+          )
+        }}
       >
         <Dynamic
-          component={component()}
+          component={component}
           part={props.part}
           message={props.message}
           hideDetails={props.hideDetails}
