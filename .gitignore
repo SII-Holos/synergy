@@ -36,6 +36,9 @@ packages/synergy/nul
 
 # Local dev files
 synergy-dev
+synergy-dev/
+dev-home/
+.dev-home/
 logs/
 
 ref/
