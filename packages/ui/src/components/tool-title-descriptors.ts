@@ -112,6 +112,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   email_read: d("tool.title.read-email", "Read Email"),
   clarus_submit_task_result: d("tool.title.clarus-submit-task-result", "Submit Clarus Result"),
   clarus_extend_task: d("tool.title.clarus-extend-task", "Extend Clarus Task"),
+  github_deliver_fix: d("tool.title.github-deliver-fix", "Deliver GitHub Fix as PR"),
   email_search: d("tool.title.search-email", "Search Email"),
   email_mark_read: d("tool.title.mark-read", "Mark Read"),
   email_inbox: d("tool.title.email-inbox", "View inbox"),
@@ -492,6 +493,13 @@ export const TOOL_LABEL_DESC = {
   posts: d("tool.label.posts", "{count, plural, one {# post} other {# posts}}"),
   memories: d("tool.label.memories", "{count, plural, one {# memory} other {# memories}}"),
   found: d("tool.label.found", "{count} found"),
+  browserSettled: d("browser.label.settled", "settled"),
+  browserUnsettled: d("browser.label.unsettled", "unsettled"),
+  browserLoading: d("browser.label.loading", "loading"),
+  browserTimeout: d("browser.label.timeout", "timeout"),
+  browserConsole: d("browser.label.console", "{count} console"),
+  browserRequests: d("browser.label.requests", "{count, plural, one {# request} other {# requests}}"),
+  browserAssets: d("browser.label.assets", "{count, plural, one {# asset} other {# assets}}"),
   // Composite count labels
   matchesInNotes: d(
     "tool.label.matches-in-notes",
@@ -503,4 +511,19 @@ export const TOOL_LABEL_DESC = {
   ),
   // Question subtitle
   askedCount: d("tool.label.asked-count", "Asked {count, plural, one {# question} other {# questions}}"),
+} as const
+
+// ── Browser tool summaries ──────────────────────────────────────────
+export const BROWSER_TOOL_DESC = {
+  target: d("browser.summary.target", "Target"),
+  url: d("browser.summary.url", "URL"),
+  title: d("browser.summary.title", "Title"),
+  condition: d("browser.summary.condition", "Condition"),
+  settleTime: d("browser.summary.settle-time", "Settle time"),
+  settleReason: d("browser.summary.settle-reason", "Settle reason"),
+  valueLength: d("browser.summary.value-length", "Value length"),
+  elements: d("browser.summary.elements", "Elements"),
+  timeout: d("browser.summary.timeout", "Timeout"),
+  elapsed: d("browser.summary.elapsed", "Elapsed"),
+  milliseconds: d("browser.summary.milliseconds", "{count} ms"),
 } as const

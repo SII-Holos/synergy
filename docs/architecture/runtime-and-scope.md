@@ -90,6 +90,31 @@ The Control Plane is the only canonical observability writer. Agent and Policy w
 
 The user therefore chooses the project boundary. Code must not reintroduce implicit upward repository discovery.
 
+### Project folders (multi-root trust boundary)
+
+A project Scope can declare multiple folders: the main `worktree` plus
+additional `sandboxes` entries persisted under the same project record.
+`Scope.fromDirectory()` appends opened worktree/related directories to
+`sandboxes`, and the Web project editor manages the list explicitly.
+
+The canonical derivation lives in `Scope.Root`:
+
+- `Scope.Root.projectRoots(scope)` — `[worktree, ...sandboxes]`, absolute,
+  deduplicated, existing directories only. This is the single source of truth
+  for "which directories belong to this project Scope".
+- `Scope.Root.trustRoots(scope, workspace)` — project roots for the current
+  session; in a `git_worktree` session the original main checkout is excluded
+  so it stays outside the trust boundary.
+- `Scope.Root.executionRoots(scope, workspace, extraRoots)` — trust roots
+  merged with caller-provided roots (e.g. Skill source roots); every
+  `EnforcementGate` creation site uses this so project folders are trusted
+  automatically.
+
+The execution boundary, sandbox policy, system prompt, and file-tool
+containment checks all consume these roots. In a worktree session, sibling
+worktrees declared as project folders are trusted — only the original checkout
+remains external and requires explicit authorization.
+
 ### Scope identity and execution path
 
 Scope ownership and the current execution directory are related but distinct:

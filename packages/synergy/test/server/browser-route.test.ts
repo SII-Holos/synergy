@@ -4,9 +4,11 @@ import {
   BrowserHostMessageSchema,
   type BrowserHostMessage,
 } from "@ericsanchezok/synergy-browser"
+import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
 import { BrowserBroker, type BrowserBrokerSocket } from "../../src/browser/broker"
 import { BrowserCommandService } from "../../src/browser/command-service"
 import { BrowserNetworkGateway } from "../../src/browser/network-gateway"
+import { BrowserNativePresentation } from "../../src/browser/native-presentation"
 import { BrowserOwner } from "../../src/browser/owner"
 import { BrowserTicket } from "../../src/browser/ticket"
 import type { BrowserSession } from "../../src/browser/types"
@@ -31,6 +33,7 @@ afterEach(async () => {
   BrowserWebRTCSignaling.resetForTest()
   BrowserBroker.resetForTest()
   BrowserTicket.resetForTest()
+  BrowserNativePresentation.resetForTest()
   configureBrowserViewerOrigins([])
   await BrowserNetworkGateway.stop()
 })
@@ -182,6 +185,103 @@ async function withRoute(
 }
 
 describe("BrowserRoute protocol v2", () => {
+  test("keeps an explicit native request strict when its ticket is missing", async () => {
+    await withRoute(async (app) => {
+      const response = await app.request(
+        "/home/browser/session?mode=session&sessionID=session-route&presentation=native",
+      )
+
+      expect(response.status).toBe(500)
+      expect(await response.json()).toMatchObject({
+        type: "error",
+        code: "browser_native_ticket_required",
+        retryable: true,
+      })
+    })
+  })
+
+  test("returns structured native ticket rejection without selecting WebRTC", async () => {
+    await withRoute(async (app) => {
+      const ticket = BrowserNativeLease.issue(BrowserBroker.secret(), {
+        ownerKey: "scope:wrong:session:owner",
+        serverOrigin: "http://localhost",
+      })
+      const response = await app.request(
+        `/home/browser/session?mode=session&sessionID=session-route&presentation=native&nativeTicket=${encodeURIComponent(ticket)}`,
+      )
+
+      expect(response.status).toBe(500)
+      expect(await response.json()).toMatchObject({
+        type: "error",
+        code: "browser_native_ticket_owner_mismatch",
+        retryable: true,
+      })
+    })
+  })
+
+  test("rejects expired and wrong-origin native tickets with stable retryable codes", async () => {
+    await withRoute(async (app) => {
+      const ownerKey = BrowserOwner.key({
+        mode: "session",
+        scopeID: ScopeContext.current.scope.id,
+        sessionID: "session-route",
+        directory: ScopeContext.current.directory,
+      })
+      const expired = BrowserNativeLease.issue(BrowserBroker.secret(), {
+        ownerKey,
+        serverOrigin: "http://localhost",
+        now: 1,
+      })
+      const expiredResponse = await app.request(
+        `/home/browser/session?mode=session&sessionID=session-route&presentation=native&nativeTicket=${encodeURIComponent(expired)}`,
+      )
+      expect(await expiredResponse.json()).toMatchObject({
+        code: "browser_native_ticket_expired",
+        retryable: true,
+      })
+
+      const wrongOrigin = BrowserNativeLease.issue(BrowserBroker.secret(), {
+        ownerKey,
+        serverOrigin: "https://wrong.example.com",
+      })
+      const originResponse = await app.request(
+        `/home/browser/session?mode=session&sessionID=session-route&presentation=native&nativeTicket=${encodeURIComponent(wrongOrigin)}`,
+      )
+      expect(await originResponse.json()).toMatchObject({
+        code: "browser_native_ticket_origin_mismatch",
+        retryable: true,
+      })
+    })
+  })
+
+  test("selects native only with a matching ticket and registered native Host", async () => {
+    await withRoute(async (app) => {
+      const owner = {
+        mode: "session" as const,
+        scopeID: ScopeContext.current.scope.id,
+        sessionID: "session-route",
+        directory: ScopeContext.current.directory,
+      }
+      BrowserBroker.attach(new BrokerSocket(), {
+        type: "host.register",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        hostId: "native-host-route",
+        token: BrowserBroker.secret(),
+        capabilities: { native: true, webrtc: true },
+      })
+      const ticket = BrowserNativeLease.issue(BrowserBroker.secret(), {
+        ownerKey: BrowserOwner.key(owner),
+        serverOrigin: "http://localhost",
+      })
+      const response = await app.request(
+        `/home/browser/session?mode=session&sessionID=session-route&presentation=native&nativeTicket=${encodeURIComponent(ticket)}`,
+      )
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({ presentation: { kind: "native", reason: "requested" } })
+    })
+  })
+
   test("GET session exposes a suspended descriptor without starting a page", async () => {
     await withRoute(async (app) => {
       const response = await app.request(

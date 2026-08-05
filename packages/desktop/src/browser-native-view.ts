@@ -12,6 +12,7 @@ export class BrowserNativeViewManager {
   private pageId: string | null = null
   private view: WebContentsView | null = null
   private eventCleanup: (() => void) | null = null
+  private generationCleanup: (() => void) | null = null
 
   constructor(
     private window: BrowserWindow,
@@ -28,6 +29,20 @@ export class BrowserNativeViewManager {
       this.ownerKey = input.ownerKey
       this.pageId = input.pageId
       this.eventCleanup = this.bindEvents(input.pageId, this.view)
+      this.generationCleanup = this.pool.onGeneration?.(input.ownerKey, input.pageId, (view, previous) => {
+        if (this.view !== previous || this.ownerKey !== input.ownerKey || this.pageId !== input.pageId) return
+        const bounds = previous.getBounds()
+        const visible = previous.getVisible()
+        const focused = previous.webContents.isFocused()
+        this.eventCleanup?.()
+        this.window.contentView.removeChildView(previous)
+        view.setBounds(bounds)
+        view.setVisible(visible)
+        this.window.contentView.addChildView(view)
+        this.view = view
+        this.eventCleanup = this.bindEvents(input.pageId, view)
+        if (focused) view.webContents.focus()
+      })
     }
     this.view.setVisible(input.visible ?? true)
     if (input.bounds) this.resize(input.ownerKey, input.pageId, input.bounds)
@@ -38,6 +53,8 @@ export class BrowserNativeViewManager {
     this.pool.detach(this.window, ownerKey, pageId)
     this.eventCleanup?.()
     this.eventCleanup = null
+    this.generationCleanup?.()
+    this.generationCleanup = null
     this.view = null
     this.ownerKey = null
     this.pageId = null

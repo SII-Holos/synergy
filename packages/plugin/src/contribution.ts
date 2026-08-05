@@ -79,6 +79,7 @@ export type PluginSystemTransformInput = {
 }
 
 export interface PluginHookPointInputs {
+  "runtime.started": { endpointGeneration: string }
   "agent.call.after": PluginAgentCallAfterInput
   "cortex.task.after": PluginCortexTaskAfterInput
   "blueprint.after": BlueprintAfterInput
@@ -241,6 +242,10 @@ export interface LifecycleUpgradeContribution extends ContributionBase<"lifecycl
   handler(input: { fromVersion: string; toVersion: string }, context: PluginInvocationContext): Promise<void>
 }
 
+export interface LifecycleInstallContribution extends ContributionBase<"lifecycle.install"> {
+  handler(context: PluginInvocationContext): Promise<void>
+}
+
 export interface LifecycleUninstallContribution extends ContributionBase<"lifecycle.uninstall"> {
   handler(context: PluginInvocationContext): Promise<void>
 }
@@ -266,6 +271,7 @@ export type PluginContribution =
   | SettingsContribution
   | ThemeContribution
   | IconContribution
+  | LifecycleInstallContribution
   | LifecycleUpgradeContribution
   | LifecycleUninstallContribution
 
@@ -277,6 +283,7 @@ export const EXECUTABLE_CONTRIBUTION_KINDS = [
   "hook",
   "cli.command",
   "authProvider",
+  "lifecycle.install",
   "lifecycle.upgrade",
   "lifecycle.uninstall",
 ] as const
@@ -403,6 +410,10 @@ export function icon(input: Omit<IconContribution, "kind">): IconContribution {
 
 export function lifecycleUpgrade(input: Omit<LifecycleUpgradeContribution, "kind">): LifecycleUpgradeContribution {
   return { ...input, kind: "lifecycle.upgrade" }
+}
+
+export function lifecycleInstall(input: Omit<LifecycleInstallContribution, "kind">): LifecycleInstallContribution {
+  return { ...input, kind: "lifecycle.install" }
 }
 
 export function lifecycleUninstall(

@@ -174,6 +174,19 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
           enabled: account.enabled !== false,
         }))
       : [],
+    githubAccounts: cfg.channel?.github?.accounts
+      ? Object.entries(cfg.channel.github.accounts).map(([key, account]) => ({
+          key,
+          enabled: account.enabled !== false,
+          repositories: (account.repositories ?? []).join(", "),
+          workspaceDir: account.workspaceDir ?? "",
+          workspaceTtlHours: account.workspaceTtlHours !== undefined ? String(account.workspaceTtlHours) : "24",
+          pollingIntervalMs: account.pollingIntervalMs !== undefined ? String(account.pollingIntervalMs) : "300000",
+          autoReview: account.autoReview !== false,
+          autoRespond: account.autoRespond !== false,
+          mention: account.mention ?? "",
+        }))
+      : [],
   })
 
   const library = cfg.library

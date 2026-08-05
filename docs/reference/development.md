@@ -38,7 +38,11 @@ Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--ap
 
 Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Its server also watches the Electron parent and shuts down if Electron is force-terminated without running normal quit handlers. Normal daily Desktop work should use external mode for Vite reload speed.
 
+Vite development and App builds launched through `bun dev` identify themselves as `local@<git-revision>` (with `+dirty` when applicable) on fatal and startup error pages and emit source maps for diagnostics. The semantic package version remains unchanged for update compatibility. Direct package and release builds keep the package version label and do not emit source maps by default.
+
 Managed Desktop resolves the current user's login shell once during Desktop startup and imports only a normalized `PATH` into the managed server environment. Login-shell entries take precedence while inherited absolute entries remain as fallbacks; other profile variables and output are discarded. If the probe fails, Desktop keeps its inherited `PATH`. The Bash tool still executes commands with the ordinary non-login `shell -c` path and the existing sandbox environment allowlist. Developer-mode Settings → Observability shows the effective Desktop `PATH`, its source, and fixed command-resolution diagnostics.
+
+Managed Desktop always starts its private Synergy server with `--hostname 127.0.0.1`. Plugins with approved `runtime.endpoint.read` access may read that credential-free loopback origin; the Host Service serves loopback and wildcard binds over loopback and fails closed only when the listener excludes loopback.
 
 The development orchestrator tags each spawned command so shutdown can recover descendant process groups after an intermediate package wrapper exits. Managed servers arm cross-platform parent-process liveness monitoring before startup work can report healthy.
 

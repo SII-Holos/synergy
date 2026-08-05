@@ -12,6 +12,7 @@ import { translateDescriptor } from "@/locales/translate"
 import type { DesktopUpdateMode } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   desktopUpdateStatusCopy,
@@ -31,6 +32,7 @@ import {
 import { nextMutedToasts, toastConfigFromPreferences } from "../toast-preferences"
 import { applyLocalePreference } from "./locale-preference-change"
 import { LANGUAGE_SELF_NAMES } from "./language-self-names"
+import { useFontPreference, type FontKind } from "@/context/font-preference"
 
 const copy = {
   pageTitle: { id: "settings.general.page.title", message: "General" },
@@ -64,6 +66,32 @@ const copy = {
   languageFailedDescription: {
     id: "settings.general.language.failed.description",
     message: "The selected language catalog could not be loaded. The previous language is still active.",
+  },
+  fontTitle: { id: "settings.general.font.title", message: "Interface font" },
+  fontDescription: {
+    id: "settings.general.font.description",
+    message: "Check loads the fonts installed on this device, then pick one and Apply it.",
+  },
+  fontSelectPlaceholder: { id: "settings.general.font.select.placeholder", message: "Select a font" },
+  fontCheck: { id: "settings.general.font.check", message: "Check" },
+  fontChecking: { id: "settings.general.font.checking", message: "Loading..." },
+  fontApply: { id: "settings.general.font.apply", message: "Apply" },
+  fontReset: { id: "settings.general.font.reset", message: "Use default" },
+  fontApplied: { id: "settings.general.font.applied", message: "Applied" },
+  fontReady: { id: "settings.general.font.ready", message: "Select a font, then Apply" },
+  fontUnsupported: {
+    id: "settings.general.font.unsupported",
+    message: "This browser cannot scan local fonts; using default",
+  },
+  fontDenied: {
+    id: "settings.general.font.denied",
+    message: "Font access was denied; using default",
+  },
+  fontDefault: { id: "settings.general.font.default", message: "Using default" },
+  monoFontTitle: { id: "settings.general.monoFont.title", message: "Monospace font" },
+  monoFontDescription: {
+    id: "settings.general.monoFont.description",
+    message: "Used for code, terminals, diffs, and other monospaced content.",
   },
   behaviorTitle: { id: "settings.general.behavior.title", message: "Behavior" },
   snapshotsTitle: { id: "settings.general.snapshots.title", message: "File snapshots" },
@@ -144,6 +172,7 @@ function secondsLabel(value: number) {
 export function GeneralPanel(props: {
   general: GeneralStore
   onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
+  popoverLayer?: HTMLElement
 }) {
   const theme = useTheme()
   const selectedThemeId = () => props.general.theme || "synergy"
@@ -212,13 +241,13 @@ export function GeneralPanel(props: {
           title={_(copy.themeTitle)}
           description={_(copy.themeDescription)}
           trailing={
-            <select
-              class="settings-select"
+            <MenuField
               value={selectedThemeId()}
-              onChange={(event) => setThemeId(event.currentTarget.value)}
-            >
-              <For each={theme.themes()}>{(option) => <option value={option.id}>{option.label}</option>}</For>
-            </select>
+              ariaLabel={_(copy.themeTitle)}
+              popoverLayer={props.popoverLayer}
+              options={theme.themes().map((option) => ({ value: option.id, label: option.label }))}
+              onChange={(value) => setThemeId(value)}
+            />
           }
         />
         <div class="settings-color-grid" role="radiogroup" aria-label={_(copy.colorSchemeLabel)}>
@@ -245,17 +274,30 @@ export function GeneralPanel(props: {
           title={_(copy.languageTitle)}
           description={_(copy.languageDescription)}
           trailing={
-            <select
-              class="settings-select"
+            <MenuField
               value={props.general.locale}
-              aria-label={_(copy.languageTitle)}
-              onChange={(event) => void setLocalePreference(event.currentTarget.value as LocalePreference)}
-            >
-              <option value="system">{_(copy.languageSystem)}</option>
-              <option value="en">{LANGUAGE_SELF_NAMES.en}</option>
-              <option value="zh-CN">{LANGUAGE_SELF_NAMES["zh-CN"]}</option>
-            </select>
+              ariaLabel={_(copy.languageTitle)}
+              popoverLayer={props.popoverLayer}
+              options={[
+                { value: "system", label: _(copy.languageSystem) },
+                { value: "en", label: LANGUAGE_SELF_NAMES.en },
+                { value: "zh-CN", label: LANGUAGE_SELF_NAMES["zh-CN"] },
+              ]}
+              onChange={(value) => void setLocalePreference(value as LocalePreference)}
+            />
           }
+        />
+        <FontPreferenceRow
+          kind="sans"
+          title={_(copy.fontTitle)}
+          description={_(copy.fontDescription)}
+          popoverLayer={props.popoverLayer}
+        />
+        <FontPreferenceRow
+          kind="mono"
+          title={_(copy.monoFontTitle)}
+          description={_(copy.monoFontDescription)}
+          popoverLayer={props.popoverLayer}
         />
       </SettingsSection>
 
@@ -286,6 +328,74 @@ export function GeneralPanel(props: {
         </div>
       </SettingsSection>
     </SettingsPage>
+  )
+}
+
+function FontPreferenceRow(props: { kind: FontKind; title: string; description: string; popoverLayer?: HTMLElement }) {
+  const { _ } = useLingui()
+  const font = useFontPreference()
+
+  const phase = () => font.phase(props.kind)
+  const loading = () => phase() === "loading"
+  const ready = () => phase() === "ready"
+  const selectedFamily = () => font.selected(props.kind)
+  const appliedFamily = () => font.appliedFamily(props.kind)
+  const hasCustomFont = () => Boolean(appliedFamily())
+  const options = () => font.fontList(props.kind).map((family) => ({ value: family, label: family }))
+  // One action button with two phases: Check loads the local font list,
+  // Apply uses the selected family. Loading keeps the same slot disabled.
+  // Check must stay clickable while idle (and for retry after
+  // unsupported/denied); only loading and ready-without-selection disable it.
+  const actionDisabled = () => loading() || (ready() && !selectedFamily().trim())
+  const actionLabel = () => (loading() ? _(copy.fontChecking) : ready() ? _(copy.fontApply) : _(copy.fontCheck))
+
+  function statusLabel() {
+    const phaseValue = phase()
+    if (phaseValue === "loading") return _(copy.fontChecking)
+    if (phaseValue === "unsupported") return _(copy.fontUnsupported)
+    if (phaseValue === "denied") return _(copy.fontDenied)
+    if (hasCustomFont()) return _(copy.fontApplied)
+    if (phaseValue === "ready") return _(copy.fontReady)
+    return _(copy.fontDefault)
+  }
+
+  return (
+    <SettingRow
+      title={props.title}
+      description={props.description}
+      stateLabel={statusLabel()}
+      trailing={
+        <div class="settings-font-controls">
+          <Button
+            type="button"
+            variant="ghost"
+            size="small"
+            disabled={!hasCustomFont()}
+            onClick={() => font.reset(props.kind)}
+          >
+            {_(copy.fontReset)}
+          </Button>
+          <MenuField
+            value={selectedFamily()}
+            ariaLabel={props.title}
+            popoverLayer={props.popoverLayer}
+            triggerLabel={selectedFamily() || _(copy.fontSelectPlaceholder)}
+            options={options()}
+            disabled={!ready()}
+            onChange={(value) => font.select(props.kind, value)}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            disabled={actionDisabled()}
+            onClick={() => void (ready() ? font.apply(props.kind) : font.check(props.kind))}
+          >
+            {actionLabel()}
+          </Button>
+        </div>
+      }
+    />
   )
 }
 

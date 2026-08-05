@@ -10,6 +10,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 import { SettingRow } from "../components/SettingRow"
+import { MenuField } from "../../menu-field/MenuField"
 import { SettingsSection } from "../components/SettingsPrimitives"
 import type { LibrarySettingsStore, LocalEmbeddingSource } from "../types"
 import { describeEmbeddingModel, isEmbeddingDownloadActive, pollEmbeddingStatus } from "./library-embedding-model"
@@ -232,6 +233,7 @@ export function LibraryEmbeddingSection(props: {
   library: LibrarySettingsStore
   configDirty: boolean
   onLibraryChange: (key: keyof LibrarySettingsStore, value: string) => void
+  popoverLayer?: HTMLElement
 }) {
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
@@ -408,18 +410,17 @@ export function LibraryEmbeddingSection(props: {
             title={_(downloadSourceTitle)}
             description={_(downloadSourceDesc)}
             trailing={
-              <select
-                class="settings-select"
-                aria-label={_(downloadSourceAria)}
+              <MenuField
                 value={props.library.embeddingSource}
-                onChange={(event) =>
-                  props.onLibraryChange("embeddingSource", event.currentTarget.value as LocalEmbeddingSource)
-                }
-              >
-                <option value="huggingface">Hugging Face</option>
-                <option value="hf-mirror">HF Mirror</option>
-                <option value="custom">{_(customOriginOption)}</option>
-              </select>
+                ariaLabel={_(downloadSourceAria)}
+                popoverLayer={props.popoverLayer}
+                options={[
+                  { value: "huggingface", label: "Hugging Face" },
+                  { value: "hf-mirror", label: "HF Mirror" },
+                  { value: "custom", label: _(customOriginOption) },
+                ]}
+                onChange={(value) => props.onLibraryChange("embeddingSource", value as LocalEmbeddingSource)}
+              />
             }
           />
           <Show when={props.library.embeddingSource === "custom"}>

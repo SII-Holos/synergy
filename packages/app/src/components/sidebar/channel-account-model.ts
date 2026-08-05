@@ -31,6 +31,7 @@ export function channelAccountStatusLabel(status: ChannelAccountStatus): AppMess
 export function channelAccountGroupLabel(account: ChannelAccount): string {
   if (account.channelType === "clarus") return "Clarus"
   if (account.channelType === "feishu") return "Feishu"
+  if (account.channelType === "github") return "GitHub"
   return account.channelType.charAt(0).toUpperCase() + account.channelType.slice(1)
 }
 

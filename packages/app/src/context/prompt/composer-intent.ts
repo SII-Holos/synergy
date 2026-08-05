@@ -54,9 +54,12 @@ export function resolveVariantDisplay(
   sessionVariant: SessionVariantResolution,
   agentDefaultVariant: string | undefined,
   roleDefaultVariant: string | undefined,
+  availableVariants?: readonly string[],
 ): string | undefined {
   if (!sessionVariant.ready) return undefined
-  return sessionVariant.value ?? agentDefaultVariant ?? roleDefaultVariant
+  return [sessionVariant.value, agentDefaultVariant, roleDefaultVariant].find(
+    (variant) => variant !== undefined && (availableVariants === undefined || availableVariants.includes(variant)),
+  )
 }
 
 type RootMessageLike = { role: string; isRoot?: boolean; model?: ModelKey; agent?: string; variant?: string }

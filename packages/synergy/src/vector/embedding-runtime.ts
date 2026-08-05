@@ -30,16 +30,18 @@ function loadStandaloneOnnxRuntime(): Promise<typeof import("onnxruntime-web/was
 
 export async function loadEmbeddingTransformersRuntime(): Promise<{
   runtime: TransformersRuntime
-  device?: "wasm"
+  device?: "cpu"
 }> {
   if (!isStandalone()) return { runtime: await import("@huggingface/transformers") }
   await loadStandaloneOnnxRuntime()
-  return { runtime: await import("@huggingface/transformers"), device: "wasm" }
+  // transformers.js v4 dropped "wasm" from its device enum; "cpu" maps to the
+  // preloaded WASM execution provider in onnxruntime-web.
+  return { runtime: await import("@huggingface/transformers"), device: "cpu" }
 }
 
 export async function verifyStandaloneEmbeddingRuntime(): Promise<void> {
   const loaded = await loadEmbeddingTransformersRuntime()
-  if (loaded.device !== "wasm") throw new Error("Standalone embedding runtime did not select the WASM backend")
+  if (loaded.device !== "cpu") throw new Error("Standalone embedding runtime did not select the WASM backend")
   const runtime = await loadStandaloneOnnxRuntime()
   try {
     await runtime.InferenceSession.create(new Uint8Array([0]), { executionProviders: ["wasm"] })
