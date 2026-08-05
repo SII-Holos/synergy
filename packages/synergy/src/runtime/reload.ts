@@ -330,6 +330,10 @@ export namespace RuntimeReload {
           await GitHubRuntime.reload(result.config.github)
           await GitHubPollRuntime.start(result.config.github)
         }
+        if (resolvedScope === "global" && changedFields.includes("embedding")) {
+          const { Embedding } = await import("../vector/embedding")
+          await Embedding.dispose()
+        }
         // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
         if (changedFields.includes("library")) {
           const oldAutonomy = oldConfig.library?.autonomy !== false

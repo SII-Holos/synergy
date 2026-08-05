@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import path from "path"
+import os from "os"
 import { Config } from "../../src/config/config"
+import { Global } from "../../src/global"
 import { Embedding } from "../../src/vector/embedding"
 
 const originalConfigCurrent = Config.current
@@ -249,5 +252,40 @@ describe("local embedding cache directory", () => {
 
     expect(configuredCacheDir).toBe("/custom/models")
     expect(await Embedding.status()).toMatchObject({ source: "huggingface", asset: "cached", runtime: "ready" })
+  })
+
+  test("expands a leading tilde in the configured cache directory", async () => {
+    ;(Config.current as typeof Config.current) = mock(async () => localConfig({ cacheDir: "~/custom/models" }))
+    let configuredCacheDir = ""
+    Embedding.setLocalRuntimeControlsForTest({
+      loadRuntime: async () => ({
+        configure(input) {
+          configuredCacheDir = input.cacheDir
+        },
+        isCached: mock(async () => true),
+        pipeline: mock(async () => extractor()),
+      }),
+    })
+
+    await Embedding.warmup()
+
+    expect(configuredCacheDir).toBe(path.join(os.homedir(), "custom", "models"))
+  })
+
+  test("falls back to the default data path when no cache directory is configured", async () => {
+    let configuredCacheDir = ""
+    Embedding.setLocalRuntimeControlsForTest({
+      loadRuntime: async () => ({
+        configure(input) {
+          configuredCacheDir = input.cacheDir
+        },
+        isCached: mock(async () => true),
+        pipeline: mock(async () => extractor()),
+      }),
+    })
+
+    await Embedding.warmup()
+
+    expect(configuredCacheDir).toBe(Global.Path.embeddingModels)
   })
 })

@@ -17,6 +17,7 @@ import { Agent } from "../../src/agent/agent"
 import { Provider } from "../../src/provider/provider"
 import { ProviderAuth } from "../../src/provider/auth"
 import { Channel } from "../../src/channel"
+import { Embedding } from "../../src/vector/embedding"
 
 const originalConfigReload = Config.reload
 const originalNotifyConfigHooks = Plugin.notifyConfigHooks
@@ -624,6 +625,45 @@ describe("runtime.reload", () => {
         const result = await RuntimeReload.reload({ targets: ["skill"], scope: "global", reason: "test" })
         expect(result.executed).toContain("skill")
         expect(typeof result.success).toBe("boolean")
+      },
+    })
+  })
+
+  test("embedding config changes dispose the local embedding runtime", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const config = { embedding: { local: { source: "huggingface" } } } as Config.Info
+        Config.reload = mock(async () => ({
+          config,
+          changedFields: ["embedding"],
+          oldConfig: {},
+        })) as typeof Config.reload
+        const notify = mock(async () => {})
+        ;(Plugin as any).notifyConfigHooks = notify
+
+        const extractor = Object.assign(
+          mock(async () => ({ data: new Float32Array([0.1, 0.2]) })),
+          {
+            dispose: mock(async () => {}),
+          },
+        )
+        const loadRuntime = mock(async () => ({
+          pipeline: mock(async () => extractor),
+          isCached: mock(async () => true),
+          configure() {},
+        }))
+        Embedding.setLocalRuntimeControlsForTest({ loadRuntime })
+        await Embedding.warmup()
+        expect(loadRuntime).toHaveBeenCalledTimes(1)
+
+        await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "embedding change" })
+
+        // Dispose resets load state, so the next status inspection reloads the runtime.
+        await Embedding.status()
+        expect(loadRuntime).toHaveBeenCalledTimes(2)
+        expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "unloaded" })
       },
     })
   })

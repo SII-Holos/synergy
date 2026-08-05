@@ -1,3 +1,5 @@
+import os from "os"
+import path from "path"
 import z from "zod"
 import { embed } from "ai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
@@ -193,7 +195,9 @@ export namespace Embedding {
   }
 
   function resolveCacheDir(config: Config.Info): string {
-    return config.embedding?.local?.cacheDir?.trim() || Global.Path.embeddingModels
+    const configured = config.embedding?.local?.cacheDir?.trim()
+    if (!configured) return Global.Path.embeddingModels
+    return configured.startsWith("~/") ? path.join(os.homedir(), configured.slice(2)) : configured
   }
 
   function completeProgress(progress?: ProgressSnapshot): ProgressSnapshot {
