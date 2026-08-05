@@ -54,7 +54,6 @@ export namespace RuntimeReload {
     "library",
     "external_agent",
     "email",
-    "github",
   ])
   export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast", "locale"])
 
@@ -293,6 +292,16 @@ export namespace RuntimeReload {
       case "config": {
         const resolvedScope = resolveConfigScope(ctx.scope)
         const result = await Config.reload(resolvedScope)
+        for (const issue of result.issues ?? []) {
+          ctx.diagnostics.push({
+            target: "config",
+            severity: "warning",
+            code: issue.code,
+            name: issue.domain ?? issue.path,
+            path: issue.path,
+            message: `${issue.error}${issue.quarantinedPath ? ` (quarantined to ${issue.quarantinedPath})` : ""}`,
+          })
+        }
         const oldConfig = ctx.configChange?.oldConfig ?? result.oldConfig
         const changedFields = unique([...ctx.changedFields, ...result.changedFields])
         for (const field of changedFields) {
@@ -321,14 +330,9 @@ export namespace RuntimeReload {
           AgentTurn.resize(result.config.execution?.agentWorkers)
           ctx.liveApplied.add("execution.agentWorkers")
         }
-        if (resolvedScope === "global" && changedFields.includes("github")) {
-          const [{ GitHubPollRuntime }, { GitHubRuntime }] = await Promise.all([
-            import("../github/poll-runtime"),
-            import("../github/runtime"),
-          ])
-          await GitHubPollRuntime.stop()
-          await GitHubRuntime.reload(result.config.github)
-          await GitHubPollRuntime.start(result.config.github)
+        if (resolvedScope === "global" && changedFields.includes("embedding")) {
+          const { Embedding } = await import("../vector/embedding")
+          await Embedding.dispose()
         }
         // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
         if (changedFields.includes("library")) {
@@ -371,6 +375,13 @@ export namespace RuntimeReload {
         const { Plugin } = await import("../plugin")
         await Plugin.reload()
         await Plugin.init()
+        // Deliver install lifecycles queued by CLI installs that ran while this server was
+        // already up (the boot-time delivery only covers plugins installed before start).
+        // There is no runtime.started broadcast on this path, so catch up each plugin
+        // whose pending lifecycle was delivered here.
+        await Plugin.runPendingInstallLifecycles({ catchUpStarted: true }).catch((error) =>
+          Log.create({ service: "runtime-reload" }).warn("pending plugin install lifecycles failed", { error }),
+        )
         // Collect disabled plugin diagnostics
         try {
           const disabled = await Plugin.getDisabled()

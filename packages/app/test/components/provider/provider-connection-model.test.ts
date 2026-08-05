@@ -2,9 +2,31 @@ import { describe, expect, test } from "bun:test"
 import {
   resolveProviderAuthMethods,
   runProviderDeviceCallback,
+  shouldAutoAdvanceConnection,
 } from "../../../src/components/provider/provider-connection-model"
 
 describe("provider connection model", () => {
+  test("auto-advances a single api-key method", () => {
+    expect(shouldAutoAdvanceConnection([{ type: "api", label: "API key" }])).toBe(true)
+  })
+
+  test("does not auto-advance a single oauth method", () => {
+    expect(shouldAutoAdvanceConnection([{ type: "oauth", label: "Login with Grok" }])).toBe(false)
+  })
+
+  test("does not auto-advance when multiple methods exist", () => {
+    expect(
+      shouldAutoAdvanceConnection([
+        { type: "oauth", label: "Login with Claude Pro/Max" },
+        { type: "api", label: "API key" },
+      ]),
+    ).toBe(false)
+  })
+
+  test("auto-advances a single import method", () => {
+    expect(shouldAutoAdvanceConnection([{ type: "import", label: "Import Codex CLI credentials" }])).toBe(true)
+  })
+
   test("preserves both GitHub Copilot authentication methods", () => {
     const methods = resolveProviderAuthMethods({
       registry: {

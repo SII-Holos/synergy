@@ -22,22 +22,21 @@ Use `synergy config path` to print the active global roots.
 
 ## Domains
 
-| File                   | Domain      | Owned configuration                                                                                                                                             |
-| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, UI locale, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                                             |
-| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                                                          |
-| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                                                       |
-| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                                                     |
-| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                                                    |
-| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                                                         |
-| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                                                              |
-| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                                                                  |
-| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                                              |
-| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                                      |
-| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                                               |
-| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                                             |
-| `120-runtime.jsonc`    | Runtime     | server, timeout, Agent/Tool execution isolation, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings    |
-| `130-github.jsonc`     | GitHub      | GitHub App outbound polling integration (master enable, watched repos, polling, event types, CI thresholds, classifier/proposal, fix workflow, review workflow) |
+| File                   | Domain      | Owned configuration                                                                                                                                          |
+| ---------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `00-general.jsonc`     | General     | schema, UI locale, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                                          |
+| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                                                       |
+| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                                                    |
+| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                                                  |
+| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                                                 |
+| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                                                      |
+| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                                                           |
+| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                                                               |
+| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                                           |
+| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                                   |
+| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                                            |
+| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                                          |
+| `120-runtime.jsonc`    | Runtime     | server, timeout, Agent/Tool execution isolation, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
@@ -118,6 +117,18 @@ Agent request and event-frame protocol bounds are fixed safety invariants rather
 `policyWorkers` defaults to the smaller of two or available CPUs minus one, with a minimum of one and a maximum of 16. Global-runtime startup begins prewarming without making server availability depend on the worker handshake. A cold classification waits at most ten seconds for readiness; after readiness, `policyTimeoutMs` covers queueing, transfer, and classification. Policy requests are limited to 16 MiB and transferred in 1 MiB acknowledged chunks; those protocol limits are fixed. Expiry terminates the owning worker and makes the enforcement gate return an immediate conservative denial rather than an approval prompt. The queue, aggregate bytes, request-count recycling, RSS/heap watermarks, heartbeat timeout, and shutdown grace are independently configurable.
 
 Global and per-executor tool concurrency are capped at 512. Tool executor limits are additional ceilings below `toolConcurrency`; omitted executor limits retain their defaults. Runtime shutdown stops new Agent turns, Policy classifications, and ToolTasks first, aborts active work, and bounds ToolTask drain time with `toolCancelGraceMs`. Except for the live-applied `agentWorkers` capacity, execution settings are read at global-runtime startup and require a runtime restart.
+
+### Plugin runtime limits
+
+`pluginRuntimePolicy.limits` in `50-plugins.jsonc` configures the plugin process runtime. Five timeout keys are host-configurable and default to `120000` ms:
+
+- `agentCallMaxRuntimeMs` — maximum duration of a plugin `agent.call`/`agent.start` model invocation
+- `hookTimeoutMs` — per-handler timeout for plugin hook points
+- `contributionInvokeTimeoutMs` — fallback timeout for contribution invocations that declare no `timeoutMs`
+- `shellRunTimeoutMs` — default timeout for plugin `shell.run` commands when the plugin omits `timeoutMs`
+- `taskRunWaitTimeoutMs` — maximum time a plugin `task.run` waits for a delegated task to reach a terminal state
+
+Process-owned `pluginRuntimePolicy.limits` values — startup timeout, heartbeat interval, host-service request timeout, memory monitor limits, and shutdown grace — are applied to the plugin process runtime when it starts and require a runtime restart or reload to change. The five timeout keys above are invocation-level: they resolve in the invoking Scope on each plugin call (or hook trigger), so a `50-plugins.jsonc` change takes effect on the next call.
 
 ## Precedence
 
@@ -205,6 +216,7 @@ Model names use `provider/model`. Provider definitions and model defaults live i
 
 - `openai` is the OpenAI Platform API-key provider.
 - `openai-codex` uses ChatGPT/Codex OAuth device-code credentials and the Codex backend.
+- `grok` uses xAI subscription OAuth device-code credentials (SuperGrok / X Premium+) and the OpenAI-compatible `https://api.x.ai/v1` API.
 
 Do not copy credentials or billing assumptions between them. Use `synergy auth` or the Settings UI to manage auth.
 
@@ -368,12 +380,13 @@ When `embedding.apiKey` is absent, Synergy uses the bundled `Xenova/all-MiniLM-L
 }
 ```
 
-| Field                        | Required                    | Default         | Description                                                                                                                                                                     |
-| ---------------------------- | --------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `embedding.local.source`     | no                          | `"huggingface"` | Download source: `"huggingface"` downloads from Hugging Face Hub, `"hf-mirror"` uses the HF Mirror (`https://hf-mirror.com/`), and `"custom"` uses a user-supplied `remoteHost` |
-| `embedding.local.remoteHost` | when `source` is `"custom"` | —               | Public HTTPS origin with no credentials, path, query, or hash. Local, private, and loopback hostnames are rejected; the field is ignored for built-in sources.                  |
+| Field                        | Required                    | Default                          | Description                                                                                                                                                                     |
+| ---------------------------- | --------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `embedding.local.source`     | no                          | `"huggingface"`                  | Download source: `"huggingface"` downloads from Hugging Face Hub, `"hf-mirror"` uses the HF Mirror (`https://hf-mirror.com/`), and `"custom"` uses a user-supplied `remoteHost` |
+| `embedding.local.remoteHost` | when `source` is `"custom"` | —                                | Public HTTPS origin with no credentials, path, query, or hash. Local, private, and loopback hostnames are rejected; the field is ignored for built-in sources.                  |
+| `embedding.local.cacheDir`   | no                          | ~/.synergy/data/embedding/models | Directory where the bundled local embedding model is cached; supports {env:VAR} references                                                                                      |
 
-The model ID, quantization dtype, and ONNX cache directory are not configurable.
+The model ID and quantization dtype are not configurable. The cache directory defaults to `~/.synergy/data/embedding/models` and can be redirected with `embedding.local.cacheDir`.
 
 ### Remote
 
@@ -413,125 +426,57 @@ The global Runtime domain controls the process-wide Cortex subagent maximum:
 
 The configured value is the scheduler maximum. Memory pressure temporarily lowers new-task admission to four tasks, or two under critical pressure; running tasks are not cancelled. The scheduler uses the shared session memory classification, with earlier ArrayBuffer pressure thresholds at 1 GiB and 2 GiB. Settings and the Cortex concurrency status API report both the configured maximum and the effective pressure-capped limit. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed maximum instead of editing it.
 
-## GitHub Integration
+## GitHub Channel
 
-Synergy polls GitHub repositories outbound using GitHub App installation tokens. It requires no public inbound listener. Events are synthesized from REST API responses and processed through three independent pipelines: shadow-only diagnostic proposals, opt-in autonomous fix delivery, and opt-in automatic PR review and test. The configuration is owned by the GitHub domain (`130-github.jsonc`) and all pipelines are disabled by default.
+The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
+
+Configuration lives in the Channels domain (`90-channels.jsonc`) under `channel.github`:
 
 ```jsonc
 {
-  "github": {
-    "enabled": true,
-    "watchedRepositories": ["owner/repo"],
-    "eventTypes": ["issues.opened", "workflow_run.completed"],
-    "ciFailureThreshold": 3,
-    "ciFailureWindowHours": 24,
-    "classifierEnabled": false,
-    "proposalEnabled": false,
-    "modelBudgetNano": { "maxTokens": 256, "maxCost": 0.001 },
-    "modelBudgetProposal": { "maxTokens": 2048, "maxCost": 0.02 },
-    "polling": {
-      "enabled": true,
-      "intervalMs": 60000,
-      "overlapWindowMs": 300000,
-      "pageSize": 100,
-      "maxPages": 30,
-    },
-    "fixWorkflow": {
-      "enabled": false,
-      "repositoryMapping": { "owner/repo": "/path/to/local/repo" },
-      "maxRetries": 3,
-      "timeoutMs": 900000,
-      "locatorAgent": "github-issue-locator",
-      "agent": "github-fix-coder",
-      "pushBranchPrefix": "synergy/fix/",
-    },
-    "reviewWorkflow": {
-      "enabled": false,
-      "repositoryMapping": { "owner/repo": "/path/to/local/repo" },
-      "eventTypes": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
-      "reviewCommands": ["bun test", "bun run typecheck"],
-      "maxRetries": 3,
-      "timeoutMs": 900000,
-      "agent": "github-review-agent",
-      "publishReviewComment": true,
-      "publishCheckRun": true,
+  "channel": {
+    "github": {
+      "type": "github",
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "repositories": ["owner/repo"],
+          "workspaceDir": "github-workspaces",
+          "pollingIntervalMs": 300000,
+          "autoReview": true,
+          "autoRespond": true,
+          "agent": "github-channel-agent",
+        },
+      },
     },
   },
 }
 ```
 
-### Common settings
+### Account settings
 
-| Field                         | Required | Default                                       | Description                                                                               |
-| ----------------------------- | -------- | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `github.enabled`              | no       | `false`                                       | Master enable for all GitHub integration pipelines                                        |
-| `github.watchedRepositories`  | no       | —                                             | Repository full-name allowlist (e.g. `["owner/repo"]`). Absent = any repository accepted. |
-| `github.eventTypes`           | no       | `["issues.opened", "workflow_run.completed"]` | GitHub event types to process through the gate and shadow pipeline                        |
-| `github.ciFailureThreshold`   | no       | `3`                                           | Consecutive workflow failures before triggering a CI proposal                             |
-| `github.ciFailureWindowHours` | no       | `24`                                          | Sliding window in hours for counting CI failures                                          |
-| `github.classifierEnabled`    | no       | `false`                                       | Enable the sessionless nano classifier for ambiguous issues                               |
-| `github.proposalEnabled`      | no       | `false`                                       | Enable Cortex-based proposal generation for gated events and classified bugs              |
-| `github.modelBudgetNano`      | no       | `{ "maxTokens": 256, "maxCost": 0.001 }`      | Token and cost budget for the classifier model call                                       |
-| `github.modelBudgetProposal`  | no       | `{ "maxTokens": 2048, "maxCost": 0.02 }`      | Token and cost budget for each proposal Cortex task                                       |
-
-The `modelBudgetNano.maxTokens` cap is passed as `maxOutputTokens` to the classifier LLM call. The `modelBudgetProposal.maxTokens` cap is passed as `maxOutputTokens` to the proposal Cortex task. After the call completes, actual usage is measured against both the token and cost limits; exceeding either discards the result.
-
-### polling (outbound REST API polling)
-
-When `github.enabled` and `polling.enabled` are both true, Synergy polls each known repository's GitHub REST API on a configurable interval using ephemeral GitHub App installation tokens. At least one `watchedRepositories` entry or one `repositoryMapping` entry in fix/review workflows is required.
-
-| Field                     | Required | Default  | Description                                                                                                  |
-| ------------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------ |
-| `polling.enabled`         | no       | `true`   | Enable outbound API polling; set to false to suppress all API calls while keeping delivery processing active |
-| `polling.intervalMs`      | no       | `60000`  | Milliseconds between poll cycles per repository; accepted range 15000–300000 (15 s to 5 min)                 |
-| `polling.overlapWindowMs` | no       | `300000` | Milliseconds to extend the `since` query backward for overlap safety; accepted range 0–600000 (10 min)       |
-| `polling.pageSize`        | no       | `100`    | Results per API page; accepted range 1–100                                                                   |
-| `polling.maxPages`        | no       | `30`     | Maximum pages per query; exceeding the limit aborts with an error; accepted range 1–100                      |
-
-### fixWorkflow (autonomous issue fix delivery)
-
-When `fixWorkflow.enabled` is true, `issues.opened` events that match the bug signal regex are routed through an autonomous fix pipeline: locate root cause, post a proposed-fix issue comment, implement the fix in an isolated worktree, commit, push a branch, open a pull request, and post a completion comment. The shadow proposal pipeline is bypassed for the same event.
-
-`fixWorkflow.repositoryMapping` maps repository full names to local project directory paths. It is required when enabled. An unmapped repository is silently ignored by the gate.
-
-| Field                           | Required     | Default                  | Description                                                                                          |
-| ------------------------------- | ------------ | ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `fixWorkflow.enabled`           | no           | `false`                  | Enable the autonomous issue fix delivery workflow                                                    |
-| `fixWorkflow.repositoryMapping` | when enabled | `{}`                     | Map of repository full name → local project directory (e.g. `{"owner/repo": "/home/projects/repo"}`) |
-| `fixWorkflow.maxRetries`        | no           | `3`                      | Maximum retries before permanent failure; accepted range is 0–20                                     |
-| `fixWorkflow.timeoutMs`         | no           | `900000` (15 min)        | Timeout per locator and coder Cortex task                                                            |
-| `fixWorkflow.locatorAgent`      | no           | `"github-issue-locator"` | Hidden agent used for root-cause location                                                            |
-| `fixWorkflow.agent`             | no           | `"github-fix-coder"`     | Hidden agent used for fix implementation                                                             |
-| `fixWorkflow.pushBranchPrefix`  | no           | `"synergy/fix/"`         | Prefix for pushed fix branches; the suffix is `issue-<number>-<slug>`                                |
-
-### reviewWorkflow (automatic PR review and test)
-
-When `reviewWorkflow.enabled` is true, `pull_request.opened`, `pull_request.reopened`, and `pull_request.synchronize` events fetch the PR head and base SHAs, run a read-only reviewer in an isolated worktree, execute configured verification commands, and optionally publish a pull request review comment and a check run.
-
-`reviewWorkflow.repositoryMapping` maps repository full names to local project directory paths. It is required when enabled. An unmapped repository is silently ignored.
-
-| Field                                 | Required     | Default                                                                        | Description                                                                              |
-| ------------------------------------- | ------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `reviewWorkflow.enabled`              | no           | `false`                                                                        | Enable the automatic PR review workflow                                                  |
-| `reviewWorkflow.repositoryMapping`    | when enabled | `{}`                                                                           | Map of repository full name → local project directory                                    |
-| `reviewWorkflow.eventTypes`           | no           | `["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"]` | Pull request event types to review                                                       |
-| `reviewWorkflow.reviewCommands`       | no           | `["bun test", "bun run typecheck"]`                                            | Commands executed with the review agent's sandboxed Bash access in the isolated worktree |
-| `reviewWorkflow.maxRetries`           | no           | `3`                                                                            | Maximum retries before permanent failure; accepted range is 0–20                         |
-| `reviewWorkflow.timeoutMs`            | no           | `900000` (15 min)                                                              | Timeout for the review Cortex task                                                       |
-| `reviewWorkflow.agent`                | no           | `"github-review-agent"`                                                        | Hidden agent used for defect-first review                                                |
-| `reviewWorkflow.publishReviewComment` | no           | `true`                                                                         | Post a pull request review comment with findings                                         |
-| `reviewWorkflow.publishCheckRun`      | no           | `true`                                                                         | Create a check run on the head SHA with pass/fail conclusion                             |
+| Field               | Required | Default                  | Description                                                                                                                                                       |
+| ------------------- | -------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`           | no       | `true`                   | Master switch for the account; disabled accounts do not poll or create sessions                                                                                   |
+| `repositories`      | yes      | —                        | `owner/repo` list to watch and respond to                                                                                                                         |
+| `workspaceDir`      | yes      | —                        | Directory (relative to the Synergy data home) under which per-thread checkouts are created                                                                        |
+| `workspaceTtlHours` | no       | `24`                     | Hours an unused per-thread checkout is kept before its local clone is removed; session history is preserved and the clone is recreated on the next thread trigger |
+| `pollingIntervalMs` | no       | `300000` (5 min)         | Milliseconds between poll cycles per repository                                                                                                                   |
+| `autoReview`        | no       | `true`                   | Automatically review newly opened and updated pull requests                                                                                                       |
+| `autoRespond`       | no       | `true`                   | Respond to `@`-mentions of the bot handle and answer issue/PR questions; newly opened issues are diagnosed                                                        |
+| `agent`             | no       | `"github-channel-agent"` | Agent used for GitHub channel sessions                                                                                                                            |
+| `model` / `variant` | no       | —                        | Per-account model override (same shape as Feishu accounts)                                                                                                        |
 
 ### GitHub App credentials
 
-The integration uses GitHub App authentication for all REST API calls and git push operations. These credentials are env-only and never appear in config:
+The channel uses GitHub App authentication for all REST API calls and git operations. These credentials are env-only and never appear in config:
 
 - `SYNERGY_GITHUB_APP_ID` — the GitHub App ID used to sign installation-access JWTs
 - `SYNERGY_GITHUB_APP_PRIVATE_KEY` — the RSA private key for the GitHub App; `\n` sequences in an environment variable are automatically converted to literal newlines
 
-Polling requires these credentials. The fix and review workflows also require them. There is no webhook secret, no inbound webhook route, and no CORS bypass for GitHub.
+Polling requires these credentials. There is no webhook secret, no inbound webhook route, and no CORS bypass for GitHub.
 
-See [GitHub Integration](../architecture/github-shadow.md) for the polling architecture and processing pipeline.
+See [GitHub Channel](../architecture/github-channel.md) for the polling architecture, event gating, per-thread checkout management, and agent contract.
 
 ## Config Import
 
@@ -567,6 +512,26 @@ The Settings Import surface accepts file upload, URL fetch, or pasted JSON/JSONC
 ## Config Editing
 
 The Web Settings surface, domain APIs, and CLI all use the same domain ownership registry. Manual edits should preserve that ownership so reload targets and conflict previews remain meaningful.
+
+## Damaged Config Isolation and Recovery
+
+Configuration files are validated as they are loaded. A file with a JSON(C) syntax error, a root-level type error, or a top-level key that belongs to another domain is moved aside instead of blocking startup or interrupting a running server:
+
+- The offending file is renamed to `<filename>.invalid-<timestamp>-<random>` next to the original.
+- The affected domain is skipped; the rest of the configuration loads normally, and the server keeps running.
+- The event is recorded in the diagnostics registry and surfaced in the startup banner, the Web Settings panel banner, and `GET /config/diagnostics` (SDK: `client.config.diagnostics()`).
+- Section-level schema errors keep the existing behavior: the invalid section is stripped and defaults are used; the file is not moved.
+
+Quarantine uses a non-blocking domain lock: when a configuration write
+transaction (for example a Settings save) is already in flight for the same
+domain, the broken file is _not_ moved aside — the transaction's own write
+replaces it with a valid configuration, which is equivalent to recovery. The
+issue is still recorded in the diagnostics registry. Reload and startup
+paths, which hold no transaction lock, always quarantine as described above.
+
+To recover a quarantined file, fix the content and rename it back to its original name (for example `110-email.jsonc.invalid-…` → `110-email.jsonc`). The file watcher picks the change up and reloads the domain. Quarantined files are never deleted automatically.
+
+The legacy global config file (`synergy.jsonc`/`synergy.json`) is handled the same way: a broken legacy file is quarantined and the domain fragment migration is skipped. A malformed remote well-known config is skipped with a warning. Explicit CLI inputs (`SYNERGY_CONFIG_CONTENT`) still fail loudly because they are intentional process-level overrides.
 
 ## Process Environment
 

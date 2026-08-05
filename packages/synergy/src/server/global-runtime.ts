@@ -6,8 +6,6 @@ import { Channel } from "@/channel"
 import { Config } from "@/config/config"
 import { CortexConcurrency } from "@/cortex/concurrency"
 import { HolosRuntime } from "@/holos/runtime"
-import { GitHubRuntime } from "@/github/runtime"
-import { GitHubPollRuntime } from "@/github/poll-runtime"
 import { PluginMarketplaceRegistry } from "@/plugin/marketplace-registry"
 import { MCP } from "@/mcp"
 import { Plugin } from "@/plugin"
@@ -34,7 +32,22 @@ export namespace GlobalRuntime {
         fn: async () => {
           log.info("starting")
           await Plugin.init()
-          const config = await Config.globalResolved()
+          const config = await Config.globalResolved().catch(async (error) => {
+            // Fuse: a config load failure must never prevent the server from
+            // starting. Fall back to defaults and surface the issue through
+            // the diagnostics registry (visible in the startup banner and
+            // GET /config/diagnostics).
+            const message = error instanceof Error ? error.message : String(error)
+            log.error("config load failed, starting with defaults", { error: message })
+            Config.recordIssue({
+              path: "config",
+              error: message,
+              code: "config.load_failed",
+              quarantined: false,
+              timestamp: Date.now(),
+            })
+            return Config.Info.parse({})
+          })
           CortexConcurrency.configure(config.cortex?.maxConcurrentTasks)
           AgentTurn.configure({
             size: config.execution?.agentWorkers,
@@ -114,8 +127,6 @@ export namespace GlobalRuntime {
           PluginMarketplaceRegistry.prefetchRegistry()
           await Agenda.start()
           await AgendaBootstrap.seed()
-          await GitHubRuntime.start(config.github)
-          await GitHubPollRuntime.start(config.github)
           log.info("started")
         },
       })
@@ -125,8 +136,6 @@ export namespace GlobalRuntime {
 
   export async function stop() {
     const executionStop = Promise.all([AgentTurn.stop(), PolicyWorker.stop(), ToolScheduler.stop()])
-    await GitHubPollRuntime.stop()
-    await GitHubRuntime.stop()
     Agenda.stop()
     await executionStop
     await Promise.all([

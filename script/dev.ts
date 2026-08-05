@@ -393,7 +393,12 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       const processes: DevProcessSpec[] = [
         ...(dependenciesInstalled ? [] : [{ label: "install" as const, command: [bunPath, "install"], cwd: repoRoot }]),
         { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
-        { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app },
+        {
+          label: "build",
+          command: [bunPath, "run", "build"],
+          cwd: dirs.app,
+          env: { SYNERGY_APP_BUILD_KIND: "local" },
+        },
         desktopProcess({ repoRoot, bunPath, mode: "managed", browserHostSecret }),
       ]
       return {
@@ -487,7 +492,12 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       exitCode: 0,
       processes: [
         target === "app"
-          ? { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app }
+          ? {
+              label: "build",
+              command: [bunPath, "run", "build"],
+              cwd: dirs.app,
+              env: { SYNERGY_APP_BUILD_KIND: "local" },
+            }
           : { label: "build", command: [bunPath, "run", "desktop:build"], cwd: dirs.desktop },
       ],
       requiredPorts: [],
@@ -775,7 +785,12 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
     // Build plugin (and its util dependency) before app so Vite can resolve
     // @ericsanchezok/synergy-plugin from its `dist/` exports map.
     { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
-    { label: "build", command: [bunPath, "run", "build"], cwd: dirs.app },
+    {
+      label: "build",
+      command: [bunPath, "run", "build"],
+      cwd: dirs.app,
+      env: { SYNERGY_APP_BUILD_KIND: "local" },
+    },
   ])
   if (initial !== 0) return initial
 

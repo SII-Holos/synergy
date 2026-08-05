@@ -28,7 +28,7 @@ External server code runs in a separate process. This provides crash, timeout, c
 
 Only trusted built-ins may use `inProcess`. There is no worker runtime fallback.
 
-The runtime handshake must match protocol version, generation, and the exact executable handler set declared by the manifest. Requests carry generation and are rejected if their result arrives after another generation becomes active.
+The runtime handshake must match protocol version, generation, and the exact executable handler set declared by the manifest. The host selects the protocol in activation and the Runner echoes that selection in `ready`; it does not replace the running host's selection with a newer constant read from mutable development files. Requests carry generation and are rejected if their result arrives after another generation becomes active. Additive API4 Host Services, hooks, and contributions do not change the transport envelope and therefore do not change the runtime protocol version.
 
 ## Host Services and Scope
 

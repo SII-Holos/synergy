@@ -22,10 +22,9 @@ import { WorkspaceFileIndexer } from "../workspace-file/indexer"
 import { WorkspaceFileService } from "../workspace-file/service"
 import { WorkspaceFileStatus } from "../workspace-file/status"
 import { FileWatcherEvents } from "./watcher-events"
+import { FileWatcherBinding } from "./watcher-binding"
 
 const SUBSCRIBE_TIMEOUT_MS = 10_000
-
-declare const SYNERGY_LIBC: string | undefined
 
 export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
@@ -110,11 +109,66 @@ export namespace FileWatcher {
   }
 
   const watcher = lazy(() => {
-    const binding = require(
-      `@parcel/watcher-${process.platform}-${process.arch}${process.platform === "linux" ? `-${SYNERGY_LIBC || "glibc"}` : ""}`,
-    )
+    const binding = require(FileWatcherBinding.packageName())
     return createWrapper(binding) as typeof import("@parcel/watcher")
   })
+
+  type SubscriptionRecovery = {
+    start(): Promise<void>
+    fail(error: unknown): Promise<void>
+    dispose(): Promise<void>
+    active(): boolean
+  }
+
+  async function subscribeWithRecovery(input: {
+    directory: string
+    label: string
+    options: ParcelWatcher.Options
+    onEvents: (events: ParcelWatcher.Event[]) => void
+    resync?: () => void | Promise<void>
+  }): Promise<SubscriptionRecovery> {
+    const recovery = FileWatcherEvents.createSubscriptionRecovery({
+      connect: async (context) => {
+        const callback: ParcelWatcher.SubscribeCallback = (error, events) => {
+          if (!context.isCurrent()) return
+          if (error) {
+            void context.fail(error)
+            return
+          }
+          try {
+            input.onEvents(events)
+          } catch (error) {
+            void context.fail(error)
+          }
+        }
+        const pending = watcher().subscribe(input.directory, callback, input.options)
+        return withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((error) => {
+          pending
+            .then((subscription) => subscription.unsubscribe())
+            .catch((unsubscribeError) => {
+              log.error("failed to unsubscribe timed out watcher subscription", {
+                directory: input.directory,
+                label: input.label,
+                error: unsubscribeError,
+              })
+            })
+          throw error
+        })
+      },
+      disconnect: (subscription) => subscription.unsubscribe(),
+      onError: async (error) => {
+        log.error("file watcher subscription failed", {
+          directory: input.directory,
+          label: input.label,
+          error,
+        })
+        await input.resync?.()
+      },
+    })
+
+    await recovery.start()
+    return recovery
+  }
 
   const state = ScopedState.create(
     async () => {
@@ -131,34 +185,45 @@ export namespace FileWatcher {
       }
       log.info("watcher backend", { platform: process.platform, backend })
 
-      const subs: ParcelWatcher.AsyncSubscription[] = []
+      const subs: SubscriptionRecovery[] = []
 
       // Home context in GlobalRuntime watches global config and emits via GlobalBus.
       if (ScopeContext.current.scope.type === "home") {
         const globalConfigDir = Global.Path.config
-        const globalSubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
-          if (err) return
-          for (const evt of evts) {
-            const eventType =
-              evt.type === "create" ? "add" : evt.type === "update" ? "change" : evt.type === "delete" ? "unlink" : null
-            if (!eventType) continue
-            log.info("global config file event", { file: evt.path, event: eventType })
-            GlobalBus.emit("event", {
-              directory: "global",
-              payload: {
-                type: "global.config.file.changed",
-                properties: { file: evt.path, event: eventType },
-              },
+        const globalRecovery = await subscribeWithRecovery({
+          directory: globalConfigDir,
+          label: "global config",
+          options: { backend },
+          resync: async () => {
+            const { RuntimeReload } = await import("../runtime/reload")
+            await RuntimeReload.reloadGlobal({
+              targets: ["config", "agent", "command", "skill", "tool_registry"],
+              reason: "global config watcher recovery",
             })
-          }
-        }
-        const pending = watcher().subscribe(globalConfigDir, globalSubscribe, { backend })
-        const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-          log.error("failed to subscribe to global config directory", { error: err })
-          pending.then((s) => s.unsubscribe()).catch(() => {})
-          return undefined
+          },
+          onEvents: (evts) => {
+            for (const evt of evts) {
+              const eventType =
+                evt.type === "create"
+                  ? "add"
+                  : evt.type === "update"
+                    ? "change"
+                    : evt.type === "delete"
+                      ? "unlink"
+                      : null
+              if (!eventType) continue
+              log.info("global config file event", { file: evt.path, event: eventType })
+              GlobalBus.emit("event", {
+                directory: "global",
+                payload: {
+                  type: "global.config.file.changed",
+                  properties: { file: evt.path, event: eventType },
+                },
+              })
+            }
+          },
         })
-        if (sub) subs.push(sub)
+        subs.push(globalRecovery)
         return { subs }
       }
 
@@ -171,55 +236,63 @@ export namespace FileWatcher {
         overflow: publishWorkspaceResync,
       })
 
-      const subscribe: ParcelWatcher.SubscribeCallback = (err, events) => {
-        if (err) return
-        drain.enqueue(FileWatcherEvents.normalize(events))
-      }
-
       const cfgIgnores = cfg?.watcher?.ignore ?? []
 
       // Project runtime inputs have a dedicated subscription; generated worktrees,
       // caches, and other .synergy state remain outside the workspace hot path.
       const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
       if (existsSync(synergyDir)) {
-        const synergySubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
-          if (err) return
-          for (const evt of evts) {
-            const eventType =
-              evt.type === "create" ? "add" : evt.type === "update" ? "change" : evt.type === "delete" ? "unlink" : null
-            if (!eventType || !FileWatcherEvents.isProjectRuntimeInput(evt.path)) continue
-            log.info("project .synergy file event", { file: evt.path, event: eventType })
-            GlobalBus.emit("event", {
-              directory: ScopeContext.current.directory,
-              payload: {
-                type: "global.config.file.changed",
-                properties: { file: evt.path, event: eventType },
-              },
+        const synergyRecovery = await subscribeWithRecovery({
+          directory: synergyDir,
+          label: "project .synergy",
+          options: {
+            backend,
+            ignore: FileWatcherEvents.projectRuntimeSubscriptionIgnores(),
+          },
+          resync: async () => {
+            const { RuntimeReload } = await import("../runtime/reload")
+            await RuntimeReload.reload({
+              targets: ["config", "agent", "command", "skill", "tool_registry"],
+              scope: "project",
+              reason: "project config watcher recovery",
             })
-          }
-        }
-        const pending = watcher().subscribe(synergyDir, synergySubscribe, {
-          backend,
-          ignore: FileWatcherEvents.projectRuntimeSubscriptionIgnores(),
+          },
+          onEvents: (evts) => {
+            for (const evt of evts) {
+              const eventType =
+                evt.type === "create"
+                  ? "add"
+                  : evt.type === "update"
+                    ? "change"
+                    : evt.type === "delete"
+                      ? "unlink"
+                      : null
+              if (!eventType || !FileWatcherEvents.isProjectRuntimeInput(evt.path)) continue
+              log.info("project .synergy file event", { file: evt.path, event: eventType })
+              GlobalBus.emit("event", {
+                directory: ScopeContext.current.directory,
+                payload: {
+                  type: "global.config.file.changed",
+                  properties: { file: evt.path, event: eventType },
+                },
+              })
+            }
+          },
         })
-        const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-          log.error("failed to subscribe to project .synergy directory", { error: err })
-          pending.then((s) => s.unsubscribe()).catch(() => {})
-          return undefined
-        })
-        if (sub) subs.push(sub)
+        subs.push(synergyRecovery)
       }
 
-      const pending = watcher().subscribe(ScopeContext.current.directory, subscribe, {
-        ignore: FileWatcherEvents.workspaceSubscriptionIgnores(cfgIgnores),
-        backend,
+      const workspaceRecovery = await subscribeWithRecovery({
+        directory: ScopeContext.current.directory,
+        label: "workspace",
+        options: {
+          ignore: FileWatcherEvents.workspaceSubscriptionIgnores(cfgIgnores),
+          backend,
+        },
+        resync: () => drain.resync(),
+        onEvents: (events) => drain.enqueue(FileWatcherEvents.normalize(events)),
       })
-      const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-        log.error("failed to subscribe to workspace directory", { error: err })
-        pending.then((s) => s.unsubscribe()).catch(() => {})
-        return undefined
-      })
-      if (sub) subs.push(sub)
+      subs.push(workspaceRecovery)
 
       const vcsDir =
         ScopeContext.current.scope.vcs === "git"
@@ -231,30 +304,36 @@ export namespace FileWatcher {
               .then((x) => path.resolve(ScopeContext.current.directory, x.trim()))
               .catch(() => undefined)
           : undefined
-      const vcsSubscribe: ParcelWatcher.SubscribeCallback = (err, events) => {
-        if (err) return
-        drain.enqueue(FileWatcherEvents.normalize(events.filter((event) => path.basename(event.path) === "HEAD")))
-      }
       if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
         const gitDirContents = await readdir(vcsDir).catch(() => [])
         const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")
-        const pending = watcher().subscribe(vcsDir, vcsSubscribe, {
-          ignore: ignoreList,
-          backend,
+        const vcsRecovery = await subscribeWithRecovery({
+          directory: vcsDir,
+          label: "vcs HEAD",
+          options: {
+            ignore: ignoreList,
+            backend,
+          },
+          resync: () => drain.resync(),
+          onEvents: (events) =>
+            drain.enqueue(
+              FileWatcherEvents.normalize(
+                events.filter(
+                  (event) =>
+                    path.basename(event.path).toLowerCase() === "head" ||
+                    path.win32.basename(event.path).toLowerCase() === "head",
+                ),
+              ),
+            ),
         })
-        const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-          log.error("failed to subscribe to vcsDir", { error: err })
-          pending.then((s) => s.unsubscribe()).catch(() => {})
-          return undefined
-        })
-        if (sub) subs.push(sub)
+        subs.push(vcsRecovery)
       }
 
       return { subs, drain }
     },
     async (state) => {
       if (!state.subs) return
-      await Promise.all(state.subs.map((sub) => sub?.unsubscribe()))
+      await Promise.all(state.subs.map((sub) => sub.dispose()))
       if ("drain" in state) await state.drain?.dispose()
     },
   )

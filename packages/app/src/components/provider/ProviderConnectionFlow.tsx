@@ -16,7 +16,11 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { providerConnectCopy, providerConnectReason, providerCTA } from "./provider-recommendation"
-import { resolveProviderAuthMethods, runProviderDeviceCallback } from "./provider-connection-model"
+import {
+  resolveProviderAuthMethods,
+  runProviderDeviceCallback,
+  shouldAutoAdvanceConnection,
+} from "./provider-connection-model"
 
 export { compareProviderIDs, providerConnectCopy } from "./provider-recommendation"
 
@@ -108,7 +112,7 @@ export function ProviderConnectionFlow(props: {
   }
 
   onMount(() => {
-    if (!connected() && methods().length === 1 && !props.skipAutoAdvance) void selectMethod(0)
+    if (!connected() && !props.skipAutoAdvance && shouldAutoAdvanceConnection(methods())) void selectMethod(0)
   })
 
   async function complete() {

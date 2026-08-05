@@ -3,7 +3,10 @@ import {
   BrowserNativeViewEventSchema,
   type BrowserNativeAttachRequest,
   type BrowserNativePageRequest,
+  type BrowserNativePresentationCapabilityRequest,
+  type BrowserNativePresentationCapabilityResult,
   type BrowserNativePresentationTicketRequest,
+  type BrowserNativePresentationTicketResult,
   type BrowserNativeResizeRequest,
   type BrowserNativeViewEvent,
 } from "@ericsanchezok/synergy-browser"
@@ -26,8 +29,20 @@ const browserNative = {
   resizeView(input: BrowserNativeResizeRequest) {
     return ipcRenderer.invoke("browserNative.resize", input) as Promise<void>
   },
+  retryPage(input: BrowserNativePageRequest) {
+    return ipcRenderer.invoke("browserNative.retry", input) as Promise<void>
+  },
+  presentationCapability(input: BrowserNativePresentationCapabilityRequest) {
+    return ipcRenderer.invoke(
+      "browserNative.presentationCapability",
+      input,
+    ) as Promise<BrowserNativePresentationCapabilityResult>
+  },
   createPresentationTicket(input: BrowserNativePresentationTicketRequest) {
-    return ipcRenderer.invoke("browserNative.presentationTicket", input) as Promise<string>
+    return ipcRenderer.invoke(
+      "browserNative.presentationTicket",
+      input,
+    ) as Promise<BrowserNativePresentationTicketResult>
   },
   onEvent(listener: (event: BrowserNativeViewEvent) => void) {
     const wrapped = (_event: IpcRendererEvent, payload: unknown) => {

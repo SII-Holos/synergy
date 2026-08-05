@@ -1058,6 +1058,18 @@ msgstr "面板"
 msgid "app.browser.menu.viewport"
 msgstr "视口"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr "正在恢复原生浏览器…"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr "原生浏览器恢复失败"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr "Synergy 将继续重试本地浏览器。你可以立即重试，系统不会切换到远程画面。"
+
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "后退"
@@ -1792,6 +1804,30 @@ msgstr "项目详情"
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.directory"
 msgstr "目录"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAdd"
+msgstr "添加文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAddTitle"
+msgstr "添加项目文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersHint"
+msgstr "附加文件夹由控制配置文件、沙箱和文件工具自动信任。"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersLabel"
+msgstr "项目文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersMain"
+msgstr "主文件夹"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersRemove"
+msgstr "移除文件夹"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.id"
@@ -3301,6 +3337,10 @@ msgid "app.library.experience.filter.all"
 msgstr "全部经验"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr "筛选体验"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr "当前作用域"
 
@@ -3360,6 +3400,10 @@ msgstr "正在显示全部 {total} 条经验"
 msgid "app.library.experience.showingOf"
 msgstr "正在显示 {shown}/{total} 条经验"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr "排序体验"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr "C"
@@ -3413,8 +3457,16 @@ msgid "app.library.memory.empty.none"
 msgstr "暂无记忆"
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr "按类别筛选记忆"
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
 msgstr "{pct}%"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
+msgstr "排序记忆"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.updated"
@@ -3647,6 +3699,10 @@ msgstr "已将 \"{name}\" 下载为 ZIP 归档"
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
 msgstr "所有技能"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
+msgstr "筛选技能"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.builtin"
@@ -6811,6 +6867,10 @@ msgstr "下载诊断"
 msgid "app.sidebar.channel.feishu"
 msgstr "飞书"
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.github"
+msgstr "GitHub"
+
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr "其他"
@@ -7014,10 +7074,6 @@ msgstr "后台"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.channel"
 msgstr "频道"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.section.github"
-msgstr "GitHub"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.home"
@@ -8248,6 +8304,78 @@ msgstr "错误"
 #. js-lingui-explicit-id
 msgid "brand.logo.alt"
 msgstr "Holos"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.assets"
+msgstr "{count} 个资源"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.console"
+msgstr "{count} 条控制台记录"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.loading"
+msgstr "加载中"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.requests"
+msgstr "{count} 个请求"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.settled"
+msgstr "已稳定"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.timeout"
+msgstr "超时"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.unsettled"
+msgstr "未稳定"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.condition"
+msgstr "条件"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elapsed"
+msgstr "已用时间"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elements"
+msgstr "元素"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.milliseconds"
+msgstr "{count} 毫秒"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-reason"
+msgstr "稳定原因"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-time"
+msgstr "稳定耗时"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.target"
+msgstr "目标"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.timeout"
+msgstr "超时时间"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.title"
+msgstr "标题"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.url"
+msgstr "URL"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.value-length"
+msgstr "输入长度"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"
@@ -13214,6 +13342,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr "选择可见项"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr "排序归档会话"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr "归档时间：最新"
 
@@ -13275,7 +13407,7 @@ msgstr "频道"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.searchTerms"
-msgstr "频道 | 飞书 | 消息"
+msgstr "频道 | 飞书 | github | 消息"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.codeChecks.description"
@@ -13814,6 +13946,90 @@ msgid "settings.channels.feishu.title"
 msgstr "飞书"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespond"
+msgstr "自动回复提及"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespondDescription"
+msgstr "自动回复 issue 和拉取请求中 @提及机器人句柄的消息与提问。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReview"
+msgstr "自动评审拉取请求"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReviewDescription"
+msgstr "自动评审新开或更新的拉取请求。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.description"
+msgstr "启用或禁用现有 GitHub 频道账号。配置监听的仓库、工作区目录与评审行为。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.empty"
+msgstr "尚未配置 GitHub 账号。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.enabled"
+msgstr "已启用"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr "艾特句柄"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr "用户在评论中 @ 提及以召唤机器人的 GitHub 句柄。留空则自动从 GitHub App 解析。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMs"
+msgstr "轮询间隔（毫秒）"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMsDescription"
+msgstr "两次 GitHub API 轮询之间的间隔（毫秒）。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingPlaceholder"
+msgstr "300000"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositories"
+msgstr "仓库列表"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesDescription"
+msgstr "以逗号分隔的 owner/repo 列表，用于监听与响应。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesPlaceholder"
+msgstr "owner/repo, owner/repo"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.title"
+msgstr "GitHub"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDir"
+msgstr "工作区目录"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirDescription"
+msgstr "在此目录下为各仓库创建工作副本。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirPlaceholder"
+msgstr "/path/to/workspace"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr "检出保留时长（小时）"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr "未使用的线程检出在本地 clone 被删除前的保留小时数。会话历史会保留；下次触发该线程时自动重新创建检出。"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr "管理消息与任务频道账号。"
 
@@ -14226,6 +14442,54 @@ msgid "settings.general.colorScheme.system.description"
 msgstr "跟随此设备"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr "已应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr "应用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr "检查"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr "加载中……"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr "字体访问被拒绝；使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr "点击“检查”加载本机已安装的字体，选择一个后点击“应用”。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.ready"
+msgstr "选择字体，然后点击“应用”"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr "使用默认字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr "选择一种字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr "界面字体"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr "此浏览器无法扫描本地字体；使用默认字体"
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "选择 Synergy 控件和无障碍标签使用的语言"
 
@@ -14244,6 +14508,14 @@ msgstr "跟随系统"
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
 msgstr "界面语言"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr "用于代码、终端、差异视图和其他等宽内容。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
+msgstr "等宽字体"
 
 #. js-lingui-explicit-id
 msgid "settings.general.notifications.description"
@@ -14648,6 +14920,18 @@ msgstr "重试"
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.button.starting"
 msgstr "正在启动…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.desc"
+msgstr "Synergy 存放已下载本地模型文件的位置。留空则使用默认目录（~/.synergy/data/embedding/models）。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.label"
+msgstr "本地嵌入模型缓存目录"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.title"
+msgstr "模型缓存目录"
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.currentModel.title"
@@ -15756,6 +16040,22 @@ msgstr "未保存"
 #. js-lingui-explicit-id
 msgid "settings.panel.close.label"
 msgstr "关闭设置"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.description"
+msgstr "一个或多个配置文件无法加载，已被移出。修复文件后将其改回原名，即可继续使用这些设置。"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.detail"
+msgstr "{path}：{error}"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.quarantined"
+msgstr "已移至 {path}"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.title"
+msgstr "发现配置问题"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.configFile.opened"
@@ -17652,6 +17952,10 @@ msgstr "搜索文件"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.generate-image"
 msgstr "生成图片"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.github-deliver-fix"
+msgstr "以 PR 交付 GitHub 修复"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.glob"

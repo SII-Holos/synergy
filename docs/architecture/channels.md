@@ -9,7 +9,7 @@ Providers report typed ingress facts through `ChannelHost` and may support one o
 - Conversation ingress translates remote messages into endpoint Sessions through `host.conversations.receive()`. Matching provider capabilities may supply replies, proactive pushes, media, reactions, and streaming.
 - Project and Task ingress reports discovery and assignments through `host.projects` and `host.tasks`. Project discovery does not create a conversation Session; Task assignments use dedicated Task Sessions.
 
-Ingress families are capabilities, not mutually exclusive provider kinds. A provider may support both. Feishu currently exposes conversation ingress with a `self_connected` lifecycle. Clarus exposes only Project and Task ingress with a `borrowed_transport` lifecycle over the existing Holos Agent Tunnel.
+Ingress families are capabilities, not mutually exclusive provider kinds. A provider may support both. Feishu currently exposes conversation ingress with a `self_connected` lifecycle. Clarus exposes only Project and Task ingress with a `borrowed_transport` lifecycle over the existing Holos Agent Tunnel. GitHub exposes conversation ingress with a `self_connected` lifecycle: it polls the GitHub REST API outbound (no inbound webhook), synthesizes repository events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `comment.created`), and delivers them through `host.conversations.receive()` with `chatId = "owner/repo#<number>"`. Comments only wake an agent on an explicit mention of the bot handle (the GitHub App slug by default), and each issue/PR thread resolves to its own random-hash checkout directory Scope via the provider's `resolveConversationScope()` hook. See [GitHub Channel](github-channel.md).
 
 ## Target Identity
 
@@ -167,6 +167,7 @@ Feishu keeps unsupported image-format adaptation inside the provider boundary. O
 - Borrowed providers never create or reconnect their borrowed transport; provider initialization failures may use Channel's bounded retry backoff.
 - Conversation providers release their ingress lane only after durable acceptance, track background execution through account drain, and use `SessionInbox` as the sole durable busy-session queue.
 - Durable outbound state is written before send, and ambiguous dispatch is never retried automatically.
+- Foreground conversation replies are delivered exactly once: while a streaming card owns a root's terminal reply, the outbound bridge skips that root; after delivery the bridge persists `channelOutboundSent` so queued, recovered, or late metadata updates never re-deliver the same answer.
 - Remote archive preserves local Scope data but blocks new Task delivery.
 - An expired assignment creates no Session or assignment binding; an archived owning Session blocks replay without replacement.
 - Deadline guidance is hidden Session context, not a visible user prompt.

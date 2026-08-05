@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { synergyTheme } from "@ericsanchezok/synergy-ui/theme"
 import type { PluginContribution } from "../../src/plugin/api"
-import { loadPluginUIAssets, resolvePluginIconReference } from "../../src/plugin/ui-assets"
+import { injectPluginStylesheet, loadPluginUIAssets, resolvePluginIconReference } from "../../src/plugin/ui-assets"
 
 function contribution(pluginId: string, themeId = "theme"): PluginContribution {
   return {
@@ -113,5 +113,76 @@ describe("plugin UI asset loading", () => {
     })
     expect(result.themes.size).toBe(0)
     expect(result.errors[0]?.message).toContain('does not match contribution id "theme"')
+  })
+
+  test("collects the sibling stylesheet of the UI artifact when present", async () => {
+    const input = contribution("styled")
+    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    const requested: string[] = []
+    const result = await loadPluginUIAssets([input], {
+      serverUrl,
+      fetcher: async (url) => {
+        requested.push(url)
+        if (url.endsWith(".css")) return new Response("body { color: red }", { status: 200 })
+        return Response.json({ ...synergyTheme, id: "theme" })
+      },
+    })
+    expect(result.stylesheets.get("styled")).toBe("ui/index.css")
+    expect(requested).toContain(`${serverUrl}/plugin/assets/styled/generation-one/ui/index.css`)
+    expect(result.errors).toEqual([])
+  })
+
+  test("skips the stylesheet when the UI bundle has no sibling CSS", async () => {
+    const input = contribution("plain")
+    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    const result = await loadPluginUIAssets([input], {
+      serverUrl,
+      fetcher: async (url) =>
+        url.endsWith(".css")
+          ? new Response("not found", { status: 404 })
+          : Response.json({ ...synergyTheme, id: "theme" }),
+    })
+    expect(result.stylesheets.size).toBe(0)
+    expect(result.errors).toEqual([])
+  })
+
+  test("reports stylesheet load failures without dropping theme or icon assets", async () => {
+    const input = contribution("broken-css")
+    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    input.contributions.push({ kind: "ui.icon", id: "mark", path: "./mark.svg" })
+    const result = await loadPluginUIAssets([input], {
+      serverUrl,
+      fetcher: async (url) => {
+        if (url.endsWith(".svg")) return new Response("<svg></svg>")
+        if (url.endsWith(".css")) return new Response("error", { status: 500 })
+        return Response.json({ ...synergyTheme, id: "theme" })
+      },
+    })
+    expect(result.stylesheets.size).toBe(0)
+    expect(result.icons.has("broken-css:mark")).toBe(true)
+    expect(result.errors[0]?.message).toContain("UI stylesheet failed to load")
+  })
+
+  test("injects the stylesheet link into the document head and removes it on dispose", () => {
+    const dispose = injectPluginStylesheet("https://example.test/proxy/4096/plugin/assets/demo/gen/ui/index.css")
+    const links = [...document.head.querySelectorAll("link[rel='stylesheet']")]
+    const injected = links.find((link) => link.getAttribute("href")?.endsWith("ui/index.css"))
+    expect(injected).toBeDefined()
+    expect(injected!.getAttribute("rel")).toBe("stylesheet")
+
+    dispose()
+    expect([...document.head.querySelectorAll("link[rel='stylesheet']")].some((link) => link === injected)).toBe(false)
+  })
+
+  test("dispose is idempotent and does not remove unrelated stylesheets", () => {
+    const unrelated = document.createElement("link")
+    unrelated.rel = "stylesheet"
+    unrelated.href = "https://example.test/app.css"
+    document.head.appendChild(unrelated)
+    const dispose = injectPluginStylesheet("https://example.test/proxy/4096/plugin/assets/demo/gen/ui/index.css")
+    dispose()
+    dispose()
+    expect(document.head.contains(unrelated)).toBe(true)
+    unrelated.remove()
   })
 })

@@ -1,6 +1,6 @@
 import { spawn } from "child_process"
 import { fileURLToPath } from "url"
-import { Language } from "web-tree-sitter"
+import { Language, type Node } from "web-tree-sitter"
 import { $ } from "bun"
 import { lazy } from "@/util/lazy"
 import { Shell } from "@/util/shell"
@@ -80,9 +80,30 @@ function isGitHubCliCommand(pattern: string) {
   return normalized === "gh" || normalized.endsWith("/gh") || normalized.endsWith("\\gh.exe")
 }
 
-function canInjectGitHubCliToken(patterns: Set<string>) {
-  if (patterns.size === 0) return false
-  return Array.from(patterns).every(isGitHubCliCommand)
+function countGitHubCliCommands(root: Node): number {
+  let count = 0
+  for (const node of root.descendantsOfType("command")) {
+    if (!node) continue
+    const command: string[] = []
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i)
+      if (!child) continue
+      if (
+        child.type !== "command_name" &&
+        child.type !== "word" &&
+        child.type !== "string" &&
+        child.type !== "raw_string" &&
+        child.type !== "concatenation"
+      ) {
+        continue
+      }
+      command.push(child.text)
+    }
+    if (command.length > 0 && command[0] !== "cd" && isGitHubCliCommand(command.join(" "))) {
+      count++
+    }
+  }
+  return count
 }
 
 const ALLOW_DETACHED_DAEMONS_ENV = "SYNERGY_BASH_ALLOW_DETACHED_DAEMONS"
@@ -203,6 +224,7 @@ export const LocalBashBackend = {
     }
     const patterns = new Set<string>()
     let virtualFileReferences: BashVirtualFile.Reference[] = []
+    let ghCommandCount = 0
 
     try {
       virtualFileReferences = BashVirtualFile.references(tree.rootNode)
@@ -228,6 +250,7 @@ export const LocalBashBackend = {
           patterns.add(command.join(" "))
         }
       }
+      ghCommandCount = countGitHubCliCommands(tree.rootNode)
     } finally {
       tree.delete()
     }
@@ -268,7 +291,13 @@ export const LocalBashBackend = {
 
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
     let sandboxWarning: string | undefined
-    const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
+    let githubNotice: string | undefined
+    const warnOutput = (base: string) => {
+      const notices: string[] = []
+      if (sandboxWarning) notices.push(`[Sandbox unavailable: ${sandboxWarning}]`)
+      if (githubNotice) notices.push(githubNotice)
+      return notices.length > 0 ? `${notices.join("\n\n")}\n\n${base}` : base
+    }
     const withAttachments = async (result: BashResult): Promise<BashResult> => {
       if (AttachmentDiscovery.shouldSkip(params.command)) return result
       await trace("attachment.discovery.start", {
@@ -322,14 +351,28 @@ export const LocalBashBackend = {
         sandboxEnv[key] = val
       }
     }
-    if (canInjectGitHubCliToken(patterns) && !sandboxEnv.GH_TOKEN && !sandboxEnv.GITHUB_TOKEN) {
+    if (ghCommandCount > 0 && !sandboxEnv.GH_TOKEN && !sandboxEnv.GITHUB_TOKEN) {
       const github = await GitHubProvider.resolveToken()
       if (github?.token) {
+        // Inject via the child environment only: the token never appears in the
+        // command string, argv, or process listings, and any explicit
+        // GH_TOKEN/GITHUB_TOKEN assignment inside the command (export or prefix)
+        // takes precedence over this value when the command runs.
         sandboxEnv.GH_TOKEN = github.token
         await trace("bash.github.token.injected", {
           source: github.source,
           authKind: github.authKind,
         })
+      } else {
+        githubNotice = "[GitHub CLI token skipped: no Synergy GitHub credential is connected]"
+        await trace(
+          "bash.github.token.skipped",
+          {
+            reason: "no_credential",
+            commandCount: ghCommandCount,
+          },
+          "warn",
+        )
       }
     }
 
@@ -338,7 +381,8 @@ export const LocalBashBackend = {
       references: virtualFileReferences,
       scopeID: ScopeContext.current.scope.id,
     })
-    const executionCommand = withLinuxChildOomPreference(materialized.command)
+    let executionCommand = materialized.command
+    executionCommand = withLinuxChildOomPreference(executionCommand)
     const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
     let windowsProcessJob: WindowsProcessJob.Prepared | undefined

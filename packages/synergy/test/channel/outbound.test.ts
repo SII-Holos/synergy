@@ -676,3 +676,123 @@ test("marks a card-only async result complete when foreground delivery already r
     },
   })
 })
+
+test("skips the outbound bridge while a foreground streaming session owns the root", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const type = `outbound-foreground-${crypto.randomUUID()}`
+      const calls = { replies: [] as string[], pushes: [] as string[] }
+      Channel.registerProvider(provider(type, calls))
+      const dispose = initOutbound()
+      try {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type,
+            accountId: "acct_test",
+            chatId: "chat_test",
+          }),
+        })
+        const rootID = Identifier.ascending("message")
+
+        // The foreground streaming card owns this root's reply.
+        ChannelOutbound.beginForeground(session.id, rootID)
+        const assistant = await completedAssistant(
+          session.id,
+          "Streaming answer",
+          "stop",
+          {
+            channelPush: true,
+            channelReply: true,
+            channelReplyToMessageId: "msg_topic_root",
+          },
+          rootID,
+        )
+        await Bun.sleep(25)
+        expect(calls.replies).toEqual([])
+        expect(calls.pushes).toEqual([])
+
+        // Once the streaming session closes, the durable marker is persisted
+        // and the bridge stays silent for later metadata updates.
+        await Session.mergeMessageMetadata({
+          sessionID: session.id,
+          messageID: assistant.id,
+          metadata: { channelOutboundSent: true },
+        })
+        await Promise.all([
+          Bus.publish(MessageV2.Event.Updated, { info: assistant }),
+          Bus.publish(MessageV2.Event.Updated, { info: assistant }),
+        ])
+        await Bun.sleep(25)
+        expect(calls.replies).toEqual([])
+        expect(calls.pushes).toEqual([])
+
+        // A root not owned by a foreground session still reaches the bridge.
+        const secondRootID = Identifier.ascending("message")
+        await completedAssistant(
+          session.id,
+          "Queued answer",
+          "stop",
+          {
+            channelPush: true,
+            channelReply: true,
+            channelReplyToMessageId: "msg_topic_root",
+          },
+          secondRootID,
+        )
+        await waitFor(() => calls.replies.length === 1)
+        expect(calls.replies).toEqual(["msg_topic_root"])
+      } finally {
+        dispose()
+      }
+    },
+  })
+})
+
+test("foreground registration ends so the bridge resumes delivery for the same root", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const type = `outbound-foreground-end-${crypto.randomUUID()}`
+      const calls = { replies: [] as string[], pushes: [] as string[] }
+      Channel.registerProvider(provider(type, calls))
+      const dispose = initOutbound()
+      try {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type,
+            accountId: "acct_test",
+            chatId: "chat_test",
+          }),
+        })
+        const rootID = Identifier.ascending("message")
+        ChannelOutbound.beginForeground(session.id, rootID)
+        const assistant = await completedAssistant(
+          session.id,
+          "Streaming answer",
+          "stop",
+          {
+            channelPush: true,
+            channelReply: true,
+            channelReplyToMessageId: "msg_topic_root",
+          },
+          rootID,
+        )
+        await Bun.sleep(25)
+        expect(calls.replies).toEqual([])
+
+        // The foreground streaming session ended without persisting the sent
+        // marker (e.g. the card failed to close). The bridge must still deliver
+        // the terminal reply so the user is not left without an answer.
+        ChannelOutbound.endForeground(session.id, rootID)
+        await Bus.publish(MessageV2.Event.Updated, { info: assistant })
+        await waitFor(() => calls.replies.length === 1)
+        expect(calls.replies).toEqual(["msg_topic_root"])
+      } finally {
+        dispose()
+      }
+    },
+  })
+})

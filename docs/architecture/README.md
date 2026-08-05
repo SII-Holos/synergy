@@ -19,20 +19,20 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 
 ## Core Documents
 
-| Document                                         | Contract                                                                                                                             |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| [Runtime and Scope](runtime-and-scope.md)        | Server lifecycle, global and project runtimes, Scope resolution, workspace binding, and request context.                             |
-| [Workspace and files](workspace-and-files.md)    | Worktrees, workspace-file routes, file search/read, anchored editing, formatting, diagnostics, snapshots, and restore.               |
-| [Sessions and messages](session-and-messages.md) | Durable session state, canonical message semantics, task roots, inbox modes, history, fork, and recovery.                            |
-| [LLM loop and compaction](llm-loop.md)           | Single-writer loop, prompt assembly, model execution, tools, loop jobs, compaction, and terminal behavior.                           |
-| [Frontend data sync](frontend-data-sync.md)      | Scope event sequencing, replay, delta/checkpoint streaming, reconcile writes, compaction swaps, and eviction.                        |
-| [Frontend localization](localization.md)         | Global locale ownership, catalog activation, message IDs, formatting, translation boundaries, and verification.                      |
-| [Channels](channels.md)                          | Channel targets, provider lifecycle, managed Project ownership, task routing, borrowed transports, diagnostics, and projection.      |
-| [Execution boundaries](execution-boundaries.md)  | Tool visibility, capability classification, control profiles, permissions, SmartAllow, and OS sandboxing.                            |
-| [Cortex and delegated work](cortex.md)           | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                                 |
-| [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                                 |
-| [Browser runtime](browser-runtime.md)            | Page ownership, control, native/WebRTC presentation, navigation policy, input, and lifecycle.                                        |
-| [GitHub integration](github-shadow.md)           | Webhook receipt, L0 gate, L1 sessionless classification, L2 shadow proposals, autonomous fix delivery, and automatic PR review/test. |
+| Document                                         | Contract                                                                                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| [Runtime and Scope](runtime-and-scope.md)        | Server lifecycle, global and project runtimes, Scope resolution, workspace binding, and request context.                        |
+| [Workspace and files](workspace-and-files.md)    | Worktrees, workspace-file routes, file search/read, anchored editing, formatting, diagnostics, snapshots, and restore.          |
+| [Sessions and messages](session-and-messages.md) | Durable session state, canonical message semantics, task roots, inbox modes, history, fork, and recovery.                       |
+| [LLM loop and compaction](llm-loop.md)           | Single-writer loop, prompt assembly, model execution, tools, loop jobs, compaction, and terminal behavior.                      |
+| [Frontend data sync](frontend-data-sync.md)      | Scope event sequencing, replay, delta/checkpoint streaming, reconcile writes, compaction swaps, and eviction.                   |
+| [Frontend localization](localization.md)         | Global locale ownership, catalog activation, message IDs, formatting, translation boundaries, and verification.                 |
+| [Channels](channels.md)                          | Channel targets, provider lifecycle, managed Project ownership, task routing, borrowed transports, diagnostics, and projection. |
+| [Execution boundaries](execution-boundaries.md)  | Tool visibility, capability classification, control profiles, permissions, SmartAllow, and OS sandboxing.                       |
+| [Cortex and delegated work](cortex.md)           | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                            |
+| [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                            |
+| [Browser runtime](browser-runtime.md)            | Page ownership, control, native/WebRTC presentation, navigation policy, input, and lifecycle.                                   |
+| [GitHub Channel](github-channel.md)              | GitHub as a Channel: polling, event gating, per-thread checkouts, agentic review/QA/fix sessions, and comment delivery.         |
 
 ## Cross-Cutting Invariants
 
@@ -65,7 +65,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components                   |
 | Automation               | `packages/synergy/src/agenda/`                                                             |
 | Channels                 | `packages/synergy/src/channel/`, Channel server routes, and Web Channel account projection |
-| Other connections        | `packages/synergy/src/email/`, `holos/`, `synergy-link/`, `remote/`, `mcp/`, `github/`     |
+| Other connections        | `packages/synergy/src/email/`, `holos/`, `synergy-link/`, `remote/`, `mcp/`                |
 | External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                             |
 | Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules                    |
 | Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes              |
