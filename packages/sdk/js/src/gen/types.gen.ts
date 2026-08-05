@@ -4003,6 +4003,7 @@ export type FileDiff = {
   deletions: number
   binary?: boolean
   preview?: string
+  patch?: string
   beforeBytes?: number
   afterBytes?: number
   truncated?: boolean

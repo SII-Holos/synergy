@@ -11,6 +11,7 @@ import { ToolTextOutput } from "./tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "./message-part"
 import { ToolDiffPreview, type ToolDiffPreviewFileDiff } from "./tool/diff-preview"
 import { hasSaveFileContentInput, saveFilePreviewDiff } from "./tool/save-file-preview"
+import { DiffPatch, canRenderPatch } from "./diff-patch"
 
 type FileDiff = ToolDiffPreviewFileDiff
 
@@ -357,7 +358,14 @@ export function AnchoredReviseTool(props: ToolProps) {
       />
       <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
       <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
-        {(diff) => <ToolDiffPreview diff={diff()} />}
+        {(diff) => {
+          const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
+          return (
+            <Show when={canRenderPatch(patch())} fallback={<ToolDiffPreview diff={diff()} />}>
+              <DiffPatch patch={patch()!} diffStyle="unified" />
+            </Show>
+          )
+        }}
       </Show>
     </BasicTool>
   )
@@ -414,7 +422,14 @@ export function AnchoredSaveTool(props: ToolProps) {
           </Show>
         }
       >
-        {(diff) => <ToolDiffPreview diff={diff()} />}
+        {(diff) => {
+          const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
+          return (
+            <Show when={canRenderPatch(patch())} fallback={<ToolDiffPreview diff={diff()} />}>
+              <DiffPatch patch={patch()!} diffStyle="unified" />
+            </Show>
+          )
+        }}
       </Show>
     </BasicTool>
   )

@@ -30253,6 +30253,9 @@
           "preview": {
             "type": "string"
           },
+          "patch": {
+            "type": "string"
+          },
           "beforeBytes": {
             "type": "integer",
             "minimum": 0,
