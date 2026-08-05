@@ -388,6 +388,8 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
       else delete account.pollingIntervalMs
       account.autoReview = entry.autoReview
       account.autoRespond = entry.autoRespond
+      if (entry.mention.trim()) account.mention = entry.mention.trim()
+      else delete account.mention
     }
   }
   if (JSON.stringify(newChannel) !== JSON.stringify(currentChannel)) patch.channel = newChannel

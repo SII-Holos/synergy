@@ -183,6 +183,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
           pollingIntervalMs: account.pollingIntervalMs !== undefined ? String(account.pollingIntervalMs) : "300000",
           autoReview: account.autoReview !== false,
           autoRespond: account.autoRespond !== false,
+          mention: account.mention ?? "",
         }))
       : [],
   })

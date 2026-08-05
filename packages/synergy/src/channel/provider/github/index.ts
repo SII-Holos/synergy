@@ -51,6 +51,8 @@ type AccountState = {
   abort: AbortController
   loops: Promise<void>[]
   threadFacts: Map<string, { pullNumber?: number; defaultBranch?: string }>
+  /** GitHub handle users @-mention to summon the bot (App slug or configured override). */
+  mention: string
 }
 
 function parseChatId(chatId: string): { repository: string; issueNumber: number } | undefined {
@@ -124,12 +126,24 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     const account = input.accountConfig
     const accountHash = externalIdentityHash(input.accountId)
     const abort = new AbortController()
+    // The mention name follows the reply identity: replies are posted as the
+    // GitHub App (installation token), so the summon handle defaults to the
+    // App slug resolved from the App identity. A configured override wins.
+    let mention = account.mention?.trim() ?? ""
+    if (!mention) {
+      try {
+        mention = await GitHubChannelAuth.getAppSlug(abort.signal)
+      } catch (error) {
+        log.warn("github app slug resolution failed; @mention summoning disabled", { error })
+      }
+    }
     const state: AccountState = {
       config: account,
       accountHash,
       abort,
       loops: [],
       threadFacts: new Map(),
+      mention,
     }
     this.accounts.set(input.accountId, state)
 
@@ -155,6 +169,7 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
         maxPages: 30,
         autoReview: account.autoReview ?? true,
         autoRespond: account.autoRespond ?? true,
+        mention,
         signal: abort.signal,
         host: input.host,
       })

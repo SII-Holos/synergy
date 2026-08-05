@@ -80,6 +80,8 @@ export async function pollRepository(input: {
   maxPages: number
   autoReview: boolean
   autoRespond: boolean
+  /** GitHub App slug users @-mention (resolved from the App identity). */
+  mention?: string
   signal: AbortSignal
   host: ChannelHost.Instance
 }): Promise<void> {
@@ -137,7 +139,7 @@ export async function pollRepository(input: {
     ),
   )
 
-  // 3. Comments on every issue/PR in the window (the @synergy-agent trigger surface).
+  // 3. Comments on every issue/PR in the window (the App-slug mention trigger surface).
   const commentTargets = new Set([
     ...issueItems.flatMap((item) => {
       const number = positiveInteger(record(item).number)
@@ -195,15 +197,17 @@ async function deliverEvent(
     repository: string
     autoReview: boolean
     autoRespond: boolean
+    mention?: string
     host: ChannelHost.Instance
   },
   event: GithubChannelEvent,
 ): Promise<void> {
   // Gate events by the account toggles (autoReview / autoRespond) and the
-  // @synergy-agent mention requirement for comments.
+  // App-slug mention requirement for comments.
   const gate = gateGithubEvent(event, {
     autoReview: input.autoReview,
     autoRespond: input.autoRespond,
+    mention: input.mention,
   })
   if (gate.kind === "skip") {
     log.info("github event skipped", {
@@ -370,6 +374,8 @@ export async function runRepositoryPollLoop(input: {
   maxPages: number
   autoReview: boolean
   autoRespond: boolean
+  /** GitHub App slug users @-mention (resolved from the App identity). */
+  mention?: string
   signal: AbortSignal
   host: ChannelHost.Instance
 }): Promise<void> {
@@ -386,6 +392,7 @@ export async function runRepositoryPollLoop(input: {
         maxPages: input.maxPages,
         autoReview: input.autoReview,
         autoRespond: input.autoRespond,
+        mention: input.mention,
         signal: input.signal,
         host: input.host,
       })

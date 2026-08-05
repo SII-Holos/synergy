@@ -13951,7 +13951,7 @@ msgstr "Auto-respond to mentions"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.autoRespondDescription"
-msgstr "Respond to @synergy-agent mentions and questions in issues and pull requests."
+msgstr "Respond to @mentions of the bot handle and questions in issues and pull requests."
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.autoReview"
@@ -13972,6 +13972,14 @@ msgstr "No GitHub accounts configured yet."
 #. js-lingui-explicit-id
 msgid "settings.channels.github.enabled"
 msgstr "Enabled"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr "Mention handle"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr "GitHub handle users @-mention to summon the bot. Leave empty to resolve automatically from the GitHub App."
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.pollingIntervalMs"

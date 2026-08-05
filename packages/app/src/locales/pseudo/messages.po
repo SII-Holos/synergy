@@ -13974,6 +13974,14 @@ msgid "settings.channels.github.enabled"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.channels.github.pollingIntervalMs"
 msgstr ""
 

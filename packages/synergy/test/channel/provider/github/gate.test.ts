@@ -12,49 +12,64 @@ const baseComment = {
   isPullRequest: false,
 }
 
+/** The GitHub App slug users @-mention; matches the account the App posts as. */
+const MENTION = "synergy-agent"
+
+const gated = (body: string, overrides: { autoReview?: boolean; autoRespond?: boolean; mention?: string } = {}) =>
+  gateGithubEvent({ ...baseComment, body }, { autoReview: true, autoRespond: true, mention: MENTION, ...overrides })
+
 describe("github channel event gate — comments", () => {
-  test("delivers a comment that mentions @synergy-agent when autoRespond is on", () => {
+  test("delivers a comment that mentions the App slug when autoRespond is on", () => {
+    expect(gated("Can you @synergy-agent review this?")).toEqual({ kind: "deliver" })
+  })
+
+  test("skips a comment without the App slug mention", () => {
+    expect(gated("Just chatting")).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
+  })
+
+  test("skips all comments when autoRespond is off", () => {
+    expect(gated("Can you @synergy-agent review this?", { autoRespond: false })).toEqual({
+      kind: "skip",
+      reason: "autoRespond disabled",
+    })
+  })
+
+  test("skips when the mention name is unavailable", () => {
+    expect(
+      gateGithubEvent(
+        { ...baseComment, body: "Can you @synergy-agent review this?" },
+        {
+          autoReview: true,
+          autoRespond: true,
+        },
+      ),
+    ).toEqual({ kind: "skip", reason: "mention name unavailable" })
+  })
+
+  test("matches the mention case-insensitively and at handle boundaries", () => {
+    expect(gated("@Synergy-Agent please")).toEqual({ kind: "deliver" })
+    expect(gated("@synergy-agent1 no")).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
+    expect(gated("@synergy-agent-extra no")).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
+  })
+
+  test("does not trigger on a different handle (mention follows the configured App)", () => {
+    expect(gated("Can you @other-bot review this?")).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
+  })
+
+  test("honors a configured mention override", () => {
     const gate = gateGithubEvent(
-      { ...baseComment, body: "Can you @synergy-agent review this?" },
-      { autoReview: true, autoRespond: true },
+      { ...baseComment, body: "Can you @my-company-bot review this?" },
+      { autoReview: true, autoRespond: true, mention: "my-company-bot" },
     )
     expect(gate).toEqual({ kind: "deliver" })
   })
 
-  test("skips a comment without @synergy-agent mention", () => {
-    const gate = gateGithubEvent({ ...baseComment, body: "Just chatting" }, { autoReview: true, autoRespond: true })
-    expect(gate).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
-  })
-
-  test("skips all comments when autoRespond is off", () => {
+  test("escapes regex metacharacters in the mention slug", () => {
     const gate = gateGithubEvent(
-      { ...baseComment, body: "Can you @synergy-agent review this?" },
-      { autoReview: true, autoRespond: false },
+      { ...baseComment, body: "Can you @my.bot review this?" },
+      { autoReview: true, autoRespond: true, mention: "my.bot" },
     )
-    expect(gate).toEqual({ kind: "skip", reason: "autoRespond disabled" })
-  })
-
-  test("matches @synergy-agent case-insensitively and at handle boundaries", () => {
-    expect(
-      gateGithubEvent({ ...baseComment, body: "@Synergy-Agent please" }, { autoReview: true, autoRespond: true }),
-    ).toEqual({ kind: "deliver" })
-    expect(
-      gateGithubEvent({ ...baseComment, body: "@synergy-agent1 no" }, { autoReview: true, autoRespond: true }),
-    ).toEqual({
-      kind: "skip",
-      reason: "no @synergy-agent mention",
-    })
-    expect(
-      gateGithubEvent({ ...baseComment, body: "@synergy-agent-extra no" }, { autoReview: true, autoRespond: true }),
-    ).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
-  })
-
-  test("does not trigger on a plain @synergy mention (account name is synergy-agent)", () => {
-    const gate = gateGithubEvent(
-      { ...baseComment, body: "Can you @synergy review this?" },
-      { autoReview: true, autoRespond: true },
-    )
-    expect(gate).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
+    expect(gate).toEqual({ kind: "deliver" })
   })
 })
 

@@ -246,7 +246,7 @@ The `email_send` and `email_read` tools share the `communication.email` taxonomy
 The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
 
 - **Automatic PR review**: when `autoReview` is on, newly opened and updated pull requests are reviewed against their base, with actionable findings posted as comments.
-- **@synergy-agent summoning**: when `autoRespond` is on, comments that mention `@synergy-agent` wake the agent to answer questions about the repository or the change; newly opened issues are diagnosed and, when clearly actionable, fixed.
+- **Bot summoning**: when `autoRespond` is on, comments that mention the bot handle (the GitHub App slug by default) wake the agent to answer questions about the repository or the change; newly opened issues are diagnosed and, when clearly actionable, fixed.
 - **Per-thread checkouts**: each issue/PR thread owns a random-hash checkout directory under the configured `workspaceDir`, bound to its own project Scope. PR threads fetch `pull/<n>/head`; issue threads track the default branch. Sessions are isolated per thread.
 - **Persistent sessions**: every thread maps to one persistent Channel Session, shown in the sidebar under the Channel section, so follow-up comments continue the same conversation.
 

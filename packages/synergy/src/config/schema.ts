@@ -382,8 +382,14 @@ export const ChannelGithubAccount = z
       .boolean()
       .optional()
       .default(true)
-      .describe("Respond to @synergy-agent mentions and questions in issues and pull requests"),
+      .describe("Respond to @mentions of the bot handle and questions in issues and pull requests"),
     agent: z.string().optional().describe("Agent used for GitHub channel sessions (defaults to github-channel-agent)"),
+    mention: z
+      .string()
+      .optional()
+      .describe(
+        "GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)",
+      ),
     model: z
       .string()
       .optional()

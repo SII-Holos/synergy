@@ -28672,8 +28672,8 @@
             "type": "boolean"
           },
           "repositories": {
-            "description": "GitHub repositories to watch and respond to (owner/repo)",
-            "minItems": 1,
+            "description": "GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later",
+            "default": [],
             "type": "array",
             "items": {
               "type": "string",
@@ -28698,12 +28698,16 @@
             "type": "boolean"
           },
           "autoRespond": {
-            "description": "Respond to @synergy mentions and questions in issues and pull requests",
+            "description": "Respond to @mentions of the bot handle and questions in issues and pull requests",
             "default": true,
             "type": "boolean"
           },
           "agent": {
             "description": "Agent used for GitHub channel sessions (defaults to github-channel-agent)",
+            "type": "string"
+          },
+          "mention": {
+            "description": "GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)",
             "type": "string"
           },
           "model": {
@@ -28715,7 +28719,7 @@
             "type": "string"
           }
         },
-        "required": ["repositories", "workspaceDir"],
+        "required": ["workspaceDir"],
         "additionalProperties": false
       },
       "ChannelGithubConfig": {

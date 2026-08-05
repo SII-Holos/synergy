@@ -159,9 +159,35 @@ export namespace GitHubChannelAuth {
   }
 
   const installationTokens = new TokenCache()
+  let appSlugCache: { slug: string; fetchedAt: number } | undefined
+  const APP_SLUG_CACHE_TTL_MS = 10 * 60 * 1_000
 
   export function reset() {
     installationTokens.clear()
+    appSlugCache = undefined
+  }
+
+  /**
+   * Resolve the GitHub App slug (the @mention name users type in comments).
+   * The app metadata endpoint is authenticated with the app JWT and returns
+   * `slug`; GitHub renders the bot as `{slug}[bot]` on replies, so the
+   * mention name must equal the slug. The value is cached per process.
+   */
+  export async function getAppSlug(signal?: AbortSignal): Promise<string> {
+    if (appSlugCache && Date.now() - appSlugCache.fetchedAt < APP_SLUG_CACHE_TTL_MS) {
+      return appSlugCache.slug
+    }
+    const appId = Number(process.env.SYNERGY_GITHUB_APP_ID)
+    const privateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
+    const jwt = generateJWT({ appId, privateKey })
+    const descriptor = appRequest({ path: "/app", jwt })
+    const response = await execute<{ slug?: unknown }>(descriptor, signal)
+    if (typeof response.slug !== "string" || !response.slug.trim()) {
+      throw new Error("GitHub App metadata response has no valid slug")
+    }
+    const slug = response.slug.trim()
+    appSlugCache = { slug, fetchedAt: Date.now() }
+    return slug
   }
 
   export async function getInstallationToken(installationId: number, signal?: AbortSignal): Promise<string> {
@@ -182,6 +208,11 @@ export namespace GitHubChannelAuth {
   }
 
   export namespace GitHubClient {
+    /** Authenticated GitHub App metadata; `slug` is the @mention name users type. */
+    export function getApp(input: { jwt: string }) {
+      return appRequest({ path: "/app", jwt: input.jwt })
+    }
+
     export function resolveInstallation(input: { owner: string; repo: string; jwt: string }) {
       return appRequest({ path: `/repos/${input.owner}/${input.repo}/installation`, jwt: input.jwt })
     }

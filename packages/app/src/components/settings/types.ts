@@ -203,6 +203,8 @@ export type GithubAccountToggle = {
   pollingIntervalMs: string
   autoReview: boolean
   autoRespond: boolean
+  /** Optional GitHub handle users @-mention; empty = resolve from the App slug. */
+  mention: string
 }
 
 export type ChannelSettings = {

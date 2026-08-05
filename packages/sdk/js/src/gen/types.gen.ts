@@ -3137,9 +3137,9 @@ export type ChannelClarusConfig = {
 export type ChannelGithubAccountConfig = {
   enabled?: boolean
   /**
-   * GitHub repositories to watch and respond to (owner/repo)
+   * GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later
    */
-  repositories: Array<string>
+  repositories?: Array<string>
   /**
    * Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.
    */
@@ -3153,13 +3153,17 @@ export type ChannelGithubAccountConfig = {
    */
   autoReview?: boolean
   /**
-   * Respond to @synergy mentions and questions in issues and pull requests
+   * Respond to @mentions of the bot handle and questions in issues and pull requests
    */
   autoRespond?: boolean
   /**
    * Agent used for GitHub channel sessions (defaults to github-channel-agent)
    */
   agent?: string
+  /**
+   * GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)
+   */
+  mention?: string
   /**
    * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
    */

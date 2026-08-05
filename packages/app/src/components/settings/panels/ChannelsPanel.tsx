@@ -79,7 +79,12 @@ const githubAutoReviewDescription = {
 const githubAutoRespondLabel = { id: "settings.channels.github.autoRespond", message: "Auto-respond to mentions" }
 const githubAutoRespondDescription = {
   id: "settings.channels.github.autoRespondDescription",
-  message: "Respond to @synergy-agent mentions and questions in issues and pull requests.",
+  message: "Respond to @mentions of the bot handle and questions in issues and pull requests.",
+}
+const githubMentionLabel = { id: "settings.channels.github.mention", message: "Mention handle" }
+const githubMentionDescription = {
+  id: "settings.channels.github.mentionDescription",
+  message: "GitHub handle users @-mention to summon the bot. Leave empty to resolve automatically from the GitHub App.",
 }
 const githubRepositoriesPlaceholder = {
   id: "settings.channels.github.repositoriesPlaceholder",
@@ -225,6 +230,18 @@ export function ChannelsPanel(props: {
                     >
                       {_(githubAutoRespondLabel)}
                     </Switch>
+                  }
+                />
+                <SettingRow
+                  title={_(githubMentionLabel)}
+                  description={_(githubMentionDescription)}
+                  trailing={
+                    <TextField
+                      type="text"
+                      placeholder=""
+                      value={account.mention}
+                      onChange={(value) => props.onGithubFieldChange(index(), "mention", value)}
+                    />
                   }
                 />
               </SettingsSubsection>

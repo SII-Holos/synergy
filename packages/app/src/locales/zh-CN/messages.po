@@ -13951,7 +13951,7 @@ msgstr "自动回复提及"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.autoRespondDescription"
-msgstr "自动回复 issue 和拉取请求中提及 @synergy-agent 的消息与提问。"
+msgstr "自动回复 issue 和拉取请求中 @提及机器人句柄的消息与提问。"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.autoReview"
@@ -13972,6 +13972,14 @@ msgstr "尚未配置 GitHub 账号。"
 #. js-lingui-explicit-id
 msgid "settings.channels.github.enabled"
 msgstr "已启用"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr "艾特句柄"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr "用户在评论中 @ 提及以召唤机器人的 GitHub 句柄。留空则自动从 GitHub App 解析。"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.pollingIntervalMs"
