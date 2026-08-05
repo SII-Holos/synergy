@@ -3,11 +3,10 @@ import { CodexProvider } from "@/provider/codex"
 import { Tool } from "./tool"
 import {
   buildOpenAIImageResult,
+  codexImageFetch,
   decodeImageData,
   extractImageData,
-  normalizeCodexAuthError,
   OPENAI_IMAGE_MODEL,
-  OPENAI_IMAGE_REQUEST_TIMEOUT_MS,
   openAIImageBackgroundParameter,
   openAIImageEditDisplay,
   openAIImageQualityParameter,
@@ -64,10 +63,10 @@ export const OpenAIImageEditTool = Tool.define(
     async execute(params, ctx) {
       const outputPath = resolveImagePath(params.output_path)
       const inputImages = await Promise.all(params.input_paths.map((inputPath) => readInputImageDataURL(inputPath)))
-      let response: Response
 
-      try {
-        response = await CodexProvider.codexFetch(`${CodexProvider.runtimeBaseURL()}/images/edits`, {
+      const response = await codexImageFetch(
+        `${CodexProvider.runtimeBaseURL()}/images/edits`,
+        {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -81,11 +80,10 @@ export const OpenAIImageEditTool = Tool.define(
             quality: params.quality,
             size: params.size,
           }),
-          signal: AbortSignal.any([ctx.abort, AbortSignal.timeout(OPENAI_IMAGE_REQUEST_TIMEOUT_MS)]),
-        })
-      } catch (error) {
-        throw normalizeCodexAuthError(error)
-      }
+        },
+        ctx,
+        "edit",
+      )
 
       const payload = await parseImageResponse(response, "edit")
       const buffer = decodeImageData(extractImageData(payload, "edit"), "edit")
