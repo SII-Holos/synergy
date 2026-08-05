@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite"
 import fs from "fs/promises"
 import path from "path"
 import type { Migration } from "../migration"
-import { LibraryDB } from "./database"
+import { LibraryDB, hasColumn } from "./database"
 import { Intent } from "./intent"
 import { TurnDigest } from "./turn-digest"
 import { Log } from "../util/log"
@@ -65,11 +65,6 @@ async function migrateLibraryDataPath(): Promise<number> {
   if (await renameIfSafe(oldDebug, Global.Path.libraryDebug)) changed++
   if (await migrateStorageSnapshot()) changed++
   return changed
-}
-
-function hasColumn(conn: SqliteConn, table: string, column: string): boolean {
-  const rows = conn.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
-  return rows.some((row) => row.name === column)
 }
 
 function inferMigratedMemory(
@@ -190,6 +185,11 @@ export const migrations: Migration[] = [
 
       progress(2, 3)
       migrateMemoryRows(conn)
+
+      // The index depends on the column; on legacy databases the column is
+      // only added above, so it must be created here rather than in
+      // initialize() where the column may not exist yet.
+      conn.exec("CREATE INDEX IF NOT EXISTS idx_memory_recall_mode ON memory(recall_mode)")
 
       progress(3, 3)
     },
