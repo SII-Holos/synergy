@@ -22,10 +22,9 @@ import { WorkspaceFileIndexer } from "../workspace-file/indexer"
 import { WorkspaceFileService } from "../workspace-file/service"
 import { WorkspaceFileStatus } from "../workspace-file/status"
 import { FileWatcherEvents } from "./watcher-events"
+import { FileWatcherBinding } from "./watcher-binding"
 
 const SUBSCRIBE_TIMEOUT_MS = 10_000
-
-declare const SYNERGY_LIBC: string | undefined
 
 export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
@@ -110,9 +109,7 @@ export namespace FileWatcher {
   }
 
   const watcher = lazy(() => {
-    const binding = require(
-      `@parcel/watcher-${process.platform}-${process.arch}${process.platform === "linux" ? `-${SYNERGY_LIBC || "glibc"}` : ""}`,
-    )
+    const binding = require(FileWatcherBinding.packageName())
     return createWrapper(binding) as typeof import("@parcel/watcher")
   })
 
