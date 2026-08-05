@@ -1,14 +1,15 @@
+import { $ } from "bun"
 import { Config } from "@/config/config"
 import { Scope } from "@/scope"
 import { Log } from "@/util/log"
+import { SessionManager } from "@/session/manager"
 import type { ChannelHost } from "../../host"
 import * as ChannelTypes from "../../types"
-import { GitHubChannelAuth } from "./api"
+import { GitHubChannelAuth, buildCredentialCommand } from "./api"
 import { GithubChannelWorkspace } from "./workspace"
 import { runRepositoryPollLoop } from "./poll"
 import { lookupCommentChat } from "./reactions"
 import { externalIdentityHash } from "../../identity"
-
 const log = Log.create({ service: "channel.github" })
 
 /**
@@ -267,6 +268,112 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
       throw new Error(`GitHub App installation for ${owner}/${repo} has no valid ID`)
     }
     return GitHubChannelAuth.getInstallationToken(installation.id)
+  }
+
+  /**
+   * Deliver a locally committed fix as a pull request. The agent commits on a
+   * local branch in the thread checkout and calls the `github_deliver_fix`
+   * tool; this method pushes the branch with an ephemeral installation token
+   * (never exposed to the agent) and opens a deduplicated PR against the
+   * repository default branch.
+   */
+  async deliverFix(input: {
+    sessionID: string
+    branch: string
+    title: string
+    body: string
+  }): Promise<{ pullRequestURL: string; pullNumber: number; headBranch: string }> {
+    if (!/^[A-Za-z0-9_.\-/]+$/.test(input.branch) || input.branch.startsWith("/") || input.branch.includes("..")) {
+      throw new Error(`Invalid branch name: ${input.branch}`)
+    }
+    const session = await SessionManager.getSession(input.sessionID)
+    const channel = session?.endpoint?.channel
+    if (session?.endpoint?.kind !== "channel" || channel?.type !== "github") {
+      throw new Error("This session is not bound to a GitHub channel thread")
+    }
+    const accountId = channel.accountId ?? "default"
+    const parsed = parseChatId(channel.chatId ?? "")
+    if (!parsed) throw new Error(`Invalid GitHub chatId: ${channel.chatId}`)
+
+    const record = await GithubChannelWorkspace.find({
+      accountId,
+      repository: parsed.repository,
+      issueNumber: parsed.issueNumber,
+    })
+    if (!record) throw new Error(`No workspace checkout found for ${parsed.repository}#${parsed.issueNumber}`)
+
+    // Resolve the base branch (repository default branch preferred).
+    const { owner, repo } = splitRepository(parsed.repository)
+    const token = await this.resolveInstallationToken(owner, repo)
+    const baseBranch =
+      this.accounts.get(accountId)?.threadFacts.get(`${parsed.repository}#${parsed.issueNumber}`)?.defaultBranch ??
+      (await this.resolveDefaultBranch(owner, repo, token)) ??
+      "main"
+
+    const credential = buildCredentialCommand({ token, args: [] })
+
+    // Verify the local branch exists and is ahead of the base branch.
+    const exists = await $`git rev-parse --verify ${input.branch}`.cwd(record.directory).quiet().nothrow()
+    if (exists.exitCode !== 0) throw new Error(`Local branch ${input.branch} does not exist`)
+    const ahead = await $`git rev-list --count ${input.branch} ^origin/${baseBranch}`
+      .cwd(record.directory)
+      .quiet()
+      .nothrow()
+    const aheadCount = Number(ahead.stdout.toString().trim())
+    if (!Number.isFinite(aheadCount) || aheadCount <= 0) {
+      throw new Error(`Local branch ${input.branch} has no commits ahead of ${baseBranch}`)
+    }
+
+    // Push the branch using the ephemeral installation token credential helper.
+    const pushed = await $`git push origin ${input.branch}`.cwd(record.directory).env(credential.env).quiet().nothrow()
+    if (pushed.exitCode !== 0) {
+      throw new Error(`Failed to push branch ${input.branch}: ${pushed.stderr.toString().slice(0, 500)}`)
+    }
+
+    // Deduplicate: reuse an existing open PR with the same head branch.
+    const existing = await GitHubChannelAuth.GitHubClient.send<{ number?: unknown; html_url?: unknown }[]>(
+      GitHubChannelAuth.GitHubClient.listPullRequests({
+        owner,
+        repo,
+        state: "open",
+        head: `${owner}:${input.branch}`,
+        installationToken: token,
+      }),
+    )
+    const open = existing?.find((item) => typeof item?.number === "number")
+    if (open) {
+      return {
+        pullRequestURL:
+          typeof open.html_url === "string"
+            ? open.html_url
+            : `https://github.com/${parsed.repository}/pull/${open.number}`,
+        pullNumber: open.number as number,
+        headBranch: input.branch,
+      }
+    }
+
+    const created = await GitHubChannelAuth.GitHubClient.send<{ number?: unknown; html_url?: unknown }>(
+      GitHubChannelAuth.GitHubClient.createPullRequest({
+        owner,
+        repo,
+        title: input.title,
+        body: input.body,
+        head: input.branch,
+        base: baseBranch,
+        installationToken: token,
+      }),
+    )
+    if (typeof created?.number !== "number" || typeof created.html_url !== "string") {
+      throw new Error(`GitHub PR creation returned an invalid response for ${input.branch}`)
+    }
+    return { pullRequestURL: created.html_url, pullNumber: created.number, headBranch: input.branch }
+  }
+
+  private async resolveDefaultBranch(owner: string, repo: string, token: string): Promise<string | undefined> {
+    const repository = await GitHubChannelAuth.GitHubClient.send<{ default_branch?: unknown }>(
+      GitHubChannelAuth.GitHubClient.getRepository({ owner, repo, installationToken: token }),
+    ).catch(() => undefined)
+    return typeof repository?.default_branch === "string" ? repository.default_branch : undefined
   }
 
   async replyMessage(input: {

@@ -111,6 +111,19 @@ The channel core calls the provider's `resolveConversationScope()` per message, 
 
 Status reactions are mapped to GitHub's reaction set (`eyes` while queued/working, `rocket` on done, `confused` on error); unsupported emoji are skipped.
 
+### Fix delivery as a pull request
+
+When the agent fixes an issue, the fix is delivered as a pull request by default. The agent creates one focused local commit on a branch named `synergy/fix/<issue-number>-<slug>`, then calls the `github_deliver_fix` tool with the branch name, a concise title, and a body. The provider:
+
+1. Verifies the session is bound to a GitHub channel thread and the workspace checkout exists.
+2. Resolves the repository default branch as the PR base.
+3. Verifies the local branch exists and has commits ahead of the base.
+4. Pushes the branch with an ephemeral installation token (never exposed to the agent) through the credential helper.
+5. Deduplicates against an existing open PR with the same head branch (reuses it instead of creating a duplicate).
+6. Creates the pull request and returns its URL; the agent reports the PR link in its final comment.
+
+The agent's bash permissions keep `gh`, `git push`, and `git remote` denied — all GitHub writes flow through the provider with the installation token.
+
 ## Agent
 
 `github-channel-agent` (hidden, native, temperature 0, mid model role) is the single agent for GitHub channel sessions. Its prompt follows PR-Agent's organization — role definition, judgment standards, comment writing style, and an output contract — while keeping Synergy's agentic loop (real tool use in the checkout, autonomous execution, no single-shot restriction):

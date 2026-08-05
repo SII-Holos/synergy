@@ -308,6 +308,38 @@ export namespace GitHubChannelAuth {
       })
     }
 
+    export function listPullRequests(input: {
+      owner: string
+      repo: string
+      state: "open" | "closed" | "all"
+      head?: string
+      installationToken: string
+    }) {
+      const query = new URLSearchParams({ state: input.state, per_page: "100" })
+      if (input.head) query.set("head", input.head)
+      return request({
+        path: `/repos/${input.owner}/${input.repo}/pulls?${query.toString()}`,
+        installationToken: input.installationToken,
+      })
+    }
+
+    export function createPullRequest(input: {
+      owner: string
+      repo: string
+      title: string
+      body: string
+      head: string
+      base: string
+      installationToken: string
+    }) {
+      return request({
+        path: `/repos/${input.owner}/${input.repo}/pulls`,
+        method: "POST",
+        installationToken: input.installationToken,
+        body: { title: input.title, body: input.body, head: input.head, base: input.base },
+      })
+    }
+
     export function createIssueCommentReaction(input: {
       owner: string
       repo: string

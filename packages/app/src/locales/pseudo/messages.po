@@ -17934,6 +17934,10 @@ msgid "tool.title.generate-image"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.github-deliver-fix"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.glob"
 msgstr ""
 

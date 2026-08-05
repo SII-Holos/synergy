@@ -17934,6 +17934,10 @@ msgid "tool.title.generate-image"
 msgstr "生成图片"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.github-deliver-fix"
+msgstr "以 PR 交付 GitHub 修复"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.glob"
 msgstr "按 Glob 匹配文件"
 
