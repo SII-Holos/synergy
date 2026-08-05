@@ -36,6 +36,8 @@ import { Server } from "../../server/server"
 import { isServerReachable } from "../network"
 import { resolvePluginSpec } from "../../plugin/spec-resolver"
 import { doctor as runPluginDoctor } from "../../plugin/doctor"
+import * as Lockfile from "../../plugin/lockfile"
+import { resolvePluginUpdateTargets } from "./plugin-update-target"
 
 function readPkgVersion(pluginDir: string): string | undefined {
   try {
@@ -115,6 +117,23 @@ export const PluginAddCommand = cmd({
           if (manifest.description) {
             UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
           }
+
+          const lifecycle = plugin.installLifecycle
+          if (lifecycle?.status === "pending") {
+            UI.println(
+              `  ${UI.Style.TEXT_WARNING}Install setup queued:${UI.Style.TEXT_NORMAL} ` +
+                `lifecycle.install will run when the Synergy server picks up the plugin (next start or plugin reload).`,
+            )
+          } else if (lifecycle?.status === "failed") {
+            UI.println(
+              `${UI.Style.TEXT_DANGER}  Install setup failed:${UI.Style.TEXT_NORMAL} ${lifecycle.error ?? "unknown error"}`,
+            )
+            UI.println(
+              `  ${UI.Style.TEXT_DIM}Retry with:${UI.Style.TEXT_NORMAL} synergy plugin retry-install ${plugin.id}`,
+            )
+          } else if (lifecycle?.status === "completed") {
+            UI.println(`  ${UI.Style.TEXT_DIM}Install setup completed.${UI.Style.TEXT_NORMAL}`)
+          }
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e)
           spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${spec}`)
@@ -182,6 +201,50 @@ export const PluginRemoveCommand = cmd({
     })
   },
 })
+// ---------------------------------------------------------------------------
+// retry-install <id>
+// ---------------------------------------------------------------------------
+
+export const PluginRetryInstallCommand = cmd({
+  command: "retry-install <id>",
+  describe: "retry a failed or pending lifecycle.install for a plugin",
+  builder: (yargs: Argv) =>
+    yargs.positional("id", {
+      type: "string",
+      describe: "plugin id to retry",
+      demandOption: true,
+    }),
+  async handler(args) {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const pluginId = args.id as string
+        const spinner = prompts.spinner()
+        spinner.start(`Retrying install setup for ${pluginId}`)
+        try {
+          const result = await Plugin.retryPluginInstallLifecycle(pluginId)
+          spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${pluginId}`)
+          if (result.status === "pending") {
+            UI.println(
+              `${UI.Style.TEXT_WARNING}Install setup queued:${UI.Style.TEXT_NORMAL} ` +
+                `lifecycle.install will run on the next Synergy start.`,
+            )
+          } else if (result.status === "failed") {
+            UI.println(
+              `${UI.Style.TEXT_DANGER}Install setup failed:${UI.Style.TEXT_NORMAL} ${result.error ?? "unknown error"}`,
+            )
+          } else {
+            UI.println(`${UI.Style.TEXT_DIM}Install setup ${result.status}.${UI.Style.TEXT_NORMAL}`)
+          }
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e)
+          spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${pluginId}`)
+          UI.error(message)
+        }
+      },
+    })
+  },
+})
 
 // ---------------------------------------------------------------------------
 // update [id]
@@ -216,20 +279,18 @@ export const PluginUpdateCommand = cmd({
         const autoApprove = args["auto-approve"] as boolean
         const isInteractive = interactive()
 
-        // Determine which specs to update
-        let specsToUpdate: ConfiguredPluginPackage[] = []
-        const configuredPlugins = await Promise.all(configSpecs.map(readConfiguredPluginPackage))
+        const targetId = args.id as string | undefined
+        const specsToUpdate = await resolvePluginUpdateTargets({
+          specs: configSpecs,
+          target: targetId,
+          lockfile: await Lockfile.read(),
+          read: readConfiguredPluginPackage,
+          matches: pluginMatches,
+        })
 
-        if (args.id) {
-          const targetId = args.id as string
-          const targetPlugin = configuredPlugins.find((plugin) => pluginMatches(plugin, targetId))
-          if (!targetPlugin) {
-            UI.error(`Plugin not found: ${targetId}`)
-            return
-          }
-          specsToUpdate.push(targetPlugin)
-        } else {
-          specsToUpdate = configuredPlugins
+        if (targetId && specsToUpdate.length === 0) {
+          UI.error(`Plugin not found: ${targetId}`)
+          return
         }
 
         if (specsToUpdate.length === 0) {
@@ -696,6 +757,7 @@ export const PluginCommand = cmd({
     yargs
       .command(PluginCreateCommand)
       .command(PluginAddCommand)
+      .command(PluginRetryInstallCommand)
       .command(PluginRemoveCommand)
       .command(PluginUpdateCommand)
       .command(PluginBuildCommand)

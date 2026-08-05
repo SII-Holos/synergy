@@ -3,6 +3,7 @@ import { Ripgrep } from "../file/ripgrep"
 import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
 import { ScopeContext } from "../scope/context"
+import { Scope } from "@/scope"
 import { SessionEndpoint } from "./endpoint"
 
 import PROMPT_FALLBACK from "./prompt/fallback.txt"
@@ -46,6 +47,17 @@ export namespace SystemPrompt {
     ]
 
     const workspace = ScopeContext.current.workspace
+    // In a git_worktree session the project folder list is derived from
+    // trustRoots, which excludes the original checkout (and anything nested
+    // under it) — the prompt must match the execution boundary exactly.
+    const projectRoots =
+      workspace?.type === "git_worktree" ? Scope.Root.trustRoots(scope, workspace) : Scope.Root.projectRoots(scope)
+    if (projectRoots.length > 1) {
+      envLines.push(`  Project folders: ${projectRoots.join(", ")}`)
+    } else if (scope.type === "project" && projectRoots.length === 1) {
+      envLines.push(`  Project folder: ${projectRoots[0]}`)
+    }
+
     if (workspace) {
       envLines.push(`  Workspace type: ${workspace.type}`)
       envLines.push(`  Workspace path: ${workspace.path}`)

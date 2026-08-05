@@ -50,7 +50,7 @@ export default definePlugin({
 
 ## Contribution Factories
 
-Executable factories: `operation`, `tool`, `hook`, `cliCommand`, `authProvider`, `lifecycleUpgrade`, and `lifecycleUninstall`.
+Executable factories: `operation`, `tool`, `hook`, `cliCommand`, `authProvider`, `lifecycleInstall`, `lifecycleUpgrade`, and `lifecycleUninstall`.
 
 Declarative factories: `event`, `agent`, `skill`, `mcp`, `workbenchPanel`, `navigationItem`, `messageRenderer`, `composerAction`, `composerExtension`, `selectionExtension`, `textAction`, `messageSlot`, `settings`, `theme`, and `icon`.
 
@@ -63,6 +63,8 @@ Every executable call receives a fresh `PluginInvocationContext` with request ID
 Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes `start/run/current/get/cancel`; `run()` waits for a native Cortex Task and returns its terminal snapshot, while `current()` reads the durable owner of the invoking child Session. Non-agent callers must provide an explicit parent Session/message for `start()` in the active Scope. Contributed Agents are registered in Synergy's native Agent registry. Set `hidden: true` for an owner-only Agent that must stay out of ordinary prompt and native-task exposure.
 
 `asset.write` exposes `context.asset.create()` and returns a host-owned attachment. `shell.execute` exposes argv-only `context.shell.run()` through the ordinary permission and sandbox boundary. `cliCommand()` registers executable commands under `synergy <pluginId> <command>`. MCP contributions use strict shared local/remote schemas and are installed atomically under qualified `${pluginId}::${contributionId}` names.
+
+`runtime.endpoint.read` exposes `context.runtimeEndpoint.get()`. It accepts no arguments and returns only the current loopback HTTP origin plus an opaque listener generation. It never returns a token, route, SDK client, or wider server configuration. Loopback and wildcard binds are served over loopback and return a normalized `http://127.0.0.1:<port>` URL; a bind that excludes loopback makes the service fail closed. External process management remains plugin-owned.
 
 `task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
 
@@ -84,6 +86,8 @@ const Panel: Component<{ context: PluginSurfaceContext }> = (props) => (
 
 export default Panel
 ```
+
+A custom `ui.settings` component uses `PluginSettingsComponentProps`. It receives `context: PluginSettingsSurfaceContext` together with the compatible `pluginId`, `values`, and `onChange` props, allowing bound UI operations and approved host actions without a raw Synergy client.
 
 ## Runtime and Data
 

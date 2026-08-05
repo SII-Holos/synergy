@@ -375,6 +375,26 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
       account.enabled = entry.enabled
     }
   }
+  const github = "github" in newChannel && newChannel.github?.type === "github" ? newChannel.github : undefined
+  if (github) {
+    for (const entry of state.channels.githubAccounts) {
+      const account = github.accounts[entry.key]
+      if (!account) continue
+      account.enabled = entry.enabled
+      account.repositories = parseList(entry.repositories)
+      account.workspaceDir = entry.workspaceDir.trim()
+      const workspaceTtlHours = positiveInteger(entry.workspaceTtlHours)
+      if (workspaceTtlHours !== undefined) account.workspaceTtlHours = workspaceTtlHours
+      else delete account.workspaceTtlHours
+      const pollingIntervalMs = positiveInteger(entry.pollingIntervalMs)
+      if (pollingIntervalMs !== undefined) account.pollingIntervalMs = pollingIntervalMs
+      else delete account.pollingIntervalMs
+      account.autoReview = entry.autoReview
+      account.autoRespond = entry.autoRespond
+      if (entry.mention.trim()) account.mention = entry.mention.trim()
+      else delete account.mention
+    }
+  }
   if (JSON.stringify(newChannel) !== JSON.stringify(currentChannel)) patch.channel = newChannel
 }
 

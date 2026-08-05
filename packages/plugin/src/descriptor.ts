@@ -360,6 +360,8 @@ function compileContribution(
       return { ...base, kind: "ui.theme", label: contribution.label, path: contribution.path }
     case "ui.icon":
       return { ...base, kind: "ui.icon", path: contribution.path }
+    case "lifecycle.install":
+      return { ...base, kind: "lifecycle.install" }
     case "lifecycle.upgrade":
       return { ...base, kind: "lifecycle.upgrade" }
     case "lifecycle.uninstall":

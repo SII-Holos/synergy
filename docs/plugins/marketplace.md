@@ -55,6 +55,8 @@ Installation follows this order:
 7. reload and verify exactly one plugin registration;
 8. commit staged artifacts and remove rollback state.
 
+`synergy plugin update <id>` resolves the requested canonical plugin from the lockfile before loading its candidate manifest. An unrelated unresolved or incompatible configured plugin therefore cannot block a targeted update; updating every plugin remains responsible for the complete configured set.
+
 Any failure restores the previous config, lockfile, approvals, incompatible records, artifact directory, and runtime view. Configured approval uses the same transaction and rollback path as install/update. Registry approval completes install or update through the existing upsert transaction. Upgrade lifecycle failure leaves the previous version active.
 
 Plugin API 3 packages are recorded as incompatible and remain disabled until an API4 update is installed. Existing API4 artifacts use the frozen V4 decoder and remain loadable across later Synergy releases; they do not require repacking, reinstalling, or reapproval solely because the host changed.

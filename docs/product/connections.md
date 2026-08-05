@@ -237,21 +237,22 @@ MCP tools still pass through Synergy's tool exposure, capability, approval, time
 
 Email is an optional direct integration configured in `110-email.jsonc`. SMTP owns outgoing mail and IMAP owns mailbox search, summaries, full reads, and marking messages as seen. The send service pools at most two SMTP connections and closes an idle pool after one minute; transport errors discard the pool so the next call reconnects.
 
+`email_read` search evaluates date (`since`/`before`) and read/flag state filters on the mail server, and applies sender, subject, and body-text filters locally over a bounded newest-first window of recent mail (some servers, such as 163 Coremail, ignore IMAP header/body search keys). Results are returned newest-first, and results are flagged `truncated` when a local scan window is exhausted — narrow by date to scan older mail. Read results contain decoded text/HTML bodies plus attachment metadata (file name, size, content type); attachment contents are not downloaded. Messages larger than the 10 MB size cap return envelope data only and are flagged `truncated`.
+
 The `email_send` and `email_read` tools share the `communication.email` taxonomy. Reads are external I/O. Sending is both stateful and external, and it asks through a non-bypassable communication permission containing the recipient and subject. Email credentials remain config secrets; they are redacted from normal config responses and are not supplied by a Holos account or Channel provider.
 
-## GitHub Integration
+## GitHub Channel
 
-Synergy polls GitHub repositories outbound using GitHub App installation tokens. It requires no public inbound listener. Events are synthesized from REST API responses and processed through three independent pipelines: shadow-only diagnostic proposals, opt-in autonomous issue fix delivery, and opt-in automatic PR review and testing. All pipelines are disabled by default. Configuration is in `130-github.jsonc`.
+The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
 
-The shadow pipeline classifies issues and CI failures, then optionally produces hidden Cortex structured proposals. It is read-only and never performs GitHub API writes.
+- **Automatic PR review**: when `autoReview` is on, newly opened and updated pull requests are reviewed against their base, with actionable findings posted as comments.
+- **Bot summoning**: when `autoRespond` is on, comments that mention the bot handle (the GitHub App slug by default) wake the agent to answer questions about the repository or the change; newly opened issues are diagnosed and, when clearly actionable, fixed.
+- **Per-thread checkouts**: each issue/PR thread owns a random-hash checkout directory under the configured `workspaceDir`, bound to its own project Scope. PR threads fetch `pull/<n>/head`; issue threads track the default branch. Sessions are isolated per thread.
+- **Persistent sessions**: every thread maps to one persistent Channel Session, shown in the sidebar under the Channel section, so follow-up comments continue the same conversation.
 
-The fix workflow, when enabled with `fixWorkflow.repositoryMapping`, inspects opened issues, locates root causes, posts a proposed-fix comment, implements and tests the fix in an isolated worktree, commits, pushes a branch with an ephemeral GitHub App installation token, opens a deduplicated pull request, and posts a completion comment. Agents never receive the token and cannot run `gh`, `git push`, or `git remote` operations.
+Configuration lives in `90-channels.jsonc` under `channel.github.accounts.<accountId>` (repositories, `workspaceDir`, `pollingIntervalMs`, `autoReview`, `autoRespond`). GitHub App credentials (`SYNERGY_GITHUB_APP_ID`, `SYNERGY_GITHUB_APP_PRIVATE_KEY`) remain environment variables only. See [GitHub Channel](../architecture/github-channel.md) for the full architecture.
 
-The review workflow, when enabled with `reviewWorkflow.repositoryMapping`, fetches exact PR head and base SHAs, runs a read-only reviewer in an isolated worktree, executes configured verification commands, and publishes a pull request review comment and a check run.
-
-GitHub App credentials (`SYNERGY_GITHUB_APP_ID`, `SYNERGY_GITHUB_APP_PRIVATE_KEY`) are environment variables only. See [GitHub Integration](../architecture/github-shadow.md) for the full polling architecture and processing pipeline.
-
-When both credentials are present, the Sidebar shows a GitHub section between Background and Projects. It aggregates the durable sessions created by shadow proposals, issue location/fix work, and PR reviews across Home and project Scopes, including their silent Cortex child sessions. Credential values never cross the server boundary.
+Agents never receive the token and cannot run `gh`, `git push`, or `git remote` operations; all GitHub writes are performed by the provider with an ephemeral installation token. Credential values never cross the server boundary.
 
 ## Boundaries
 
@@ -260,5 +261,5 @@ When both credentials are present, the Sidebar shows a GitHub section between Ba
 - Synergy Link performs typed remote session and process operations over Holos transport.
 - MCP supplies callable external tools; providers supply models.
 - Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
-- GitHub integration supports shadow diagnostics plus opt-in autonomous fix delivery and PR review through outbound API polling, not a Channel endpoint or inbound webhook.
+- GitHub is a Channel endpoint: it connects a GitHub App installation through outbound API polling (no inbound webhook), translating repository events into agentic Sessions and comments.
 - Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.

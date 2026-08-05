@@ -4,10 +4,11 @@ import { resolver } from "hono-openapi"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import z from "zod"
+import path from "path"
+import { existsSync, statSync } from "fs"
 import { errors } from "./error"
 import { SessionNav, ScopeNavEntry } from "../session/nav"
 import { ManagedProjectArchiveError } from "../channel/managed-project-ownership"
-
 export const ScopeRoute = new Hono()
   .get(
     "/",
@@ -108,13 +109,23 @@ export const ScopeRoute = new Hono()
         icon: Scope.Info.shape.icon.optional(),
         pinned: z.number().nullable().optional(),
         archived: z.number().nullable().optional(),
+        sandboxes: z.array(z.string()).optional(),
       }),
     ),
     async (c) => {
       const scopeID = c.req.valid("param").scopeID
       const body = c.req.valid("json")
-      const scope = await Scope.updatePersisted({ ...body, scopeID })
-      return c.json(scope)
+      if (body.sandboxes !== undefined) {
+        const scope = await Scope.fromID(scopeID)
+        if (!scope || scope.type !== "project") return c.json({ error: "Scope not found" }, 404)
+        for (const entry of body.sandboxes) {
+          if (!path.isAbsolute(entry)) return c.json({ error: `Sandbox path must be absolute: ${entry}` }, 400)
+          if (!existsSync(entry) || !statSync(entry).isDirectory())
+            return c.json({ error: `Sandbox path is not a directory: ${entry}` }, 400)
+        }
+      }
+      const result = await Scope.updatePersisted({ ...body, scopeID })
+      return c.json(result)
     },
   )
   .delete(

@@ -95,4 +95,23 @@ export namespace Lock {
       }
     })
   }
+
+  /**
+   * Try to acquire the write lock without waiting. Returns undefined when
+   * the lock is currently held (by a writer or any reader), in which case
+   * the caller should skip the guarded work instead of queuing. When the
+   * key is idle the lock is acquired immediately (a fresh entry is created
+   * and cleaned up again on dispose, matching Lock.write semantics).
+   */
+  export async function tryAcquireWrite(key: string): Promise<Disposable | undefined> {
+    const lock = get(key)
+    if (lock.writer || lock.readers > 0) return undefined
+    lock.writer = true
+    return {
+      [Symbol.dispose]: () => {
+        lock.writer = false
+        process(key)
+      },
+    }
+  }
 }

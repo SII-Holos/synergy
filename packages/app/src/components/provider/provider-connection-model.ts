@@ -31,3 +31,10 @@ export async function runProviderDeviceCallback(input: {
     if (input.active()) input.onError()
   }
 }
+
+export function shouldAutoAdvanceConnection(methods: ProviderAuthMethod[]) {
+  if (methods.length !== 1) return false
+  // OAuth launches an external browser flow; require an explicit click so a
+  // single-method OAuth provider never opens the authorization page on select.
+  return methods[0]?.type !== "oauth"
+}

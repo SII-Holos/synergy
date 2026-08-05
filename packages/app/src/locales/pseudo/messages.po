@@ -1058,6 +1058,18 @@ msgstr ""
 msgid "app.browser.menu.viewport"
 msgstr ""
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr ""
+
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr ""
@@ -1791,6 +1803,30 @@ msgstr ""
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.directory"
+msgstr ""
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAdd"
+msgstr ""
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAddTitle"
+msgstr ""
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersHint"
+msgstr ""
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersLabel"
+msgstr ""
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersMain"
+msgstr ""
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersRemove"
 msgstr ""
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
@@ -3301,6 +3337,10 @@ msgid "app.library.experience.filter.all"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr ""
 
@@ -3360,6 +3400,10 @@ msgstr ""
 msgid "app.library.experience.showingOf"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr ""
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr ""
@@ -3413,7 +3457,15 @@ msgid "app.library.memory.empty.none"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -3646,6 +3698,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6811,6 +6867,10 @@ msgstr ""
 msgid "app.sidebar.channel.feishu"
 msgstr ""
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.github"
+msgstr ""
+
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr ""
@@ -7013,10 +7073,6 @@ msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.channel"
-msgstr ""
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.section.github"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -8247,6 +8303,78 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "brand.logo.alt"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.assets"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.console"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.loading"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.requests"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.settled"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.timeout"
+msgstr ""
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.unsettled"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.condition"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elapsed"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elements"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.milliseconds"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-reason"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-time"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.target"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.timeout"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.title"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.url"
+msgstr ""
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.value-length"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -13214,6 +13342,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr ""
 
@@ -13814,6 +13946,90 @@ msgid "settings.channels.feishu.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespond"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespondDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReviewDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMs"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMsDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositories"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDir"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr ""
 
@@ -14226,6 +14442,54 @@ msgid "settings.general.colorScheme.system.description"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr ""
 
@@ -14243,6 +14507,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15755,6 +16027,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.panel.close.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.detail"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.quarantined"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17651,6 +17939,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.generate-image"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.github-deliver-fix"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

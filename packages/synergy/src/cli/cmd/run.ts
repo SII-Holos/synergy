@@ -13,6 +13,7 @@ import { Server } from "../../server/server"
 import { runMigrations } from "../../migration"
 import { Provider } from "../../provider/provider"
 import { readPipedStdin } from "../stdin"
+import { waitForLightLoopFinish } from "../lightloop"
 
 const TOOL: Record<string, [string, string]> = {
   todowrite: ["Todo", UI.Style.TEXT_WARNING_BOLD],
@@ -158,6 +159,12 @@ export const SendCommand = cmd({
         type: "string",
         describe: "model variant (provider-specific reasoning effort, e.g., high, max, minimal)",
       })
+      .option("workflow", {
+        type: "string",
+        choices: ["lightloop"],
+        describe:
+          "run the message as a Light Loop workflow task: the session enables loop_stop and a reviewer loop, and send exits when the workflow reaches a terminal state",
+      })
   },
   handler: async (args) => {
     const directory = Flag.SYNERGY_CWD || process.cwd()
@@ -207,6 +214,11 @@ export const SendCommand = cmd({
       process.exit(1)
     }
 
+    if (args.workflow === "lightloop" && args.command) {
+      UI.error("--workflow lightloop cannot be combined with --command")
+      process.exit(1)
+    }
+
     const execute = async (sdk: SynergyClient, sessionID: string) => {
       const printEvent = (color: string, type: string, title: string) => {
         UI.println(
@@ -227,7 +239,6 @@ export const SendCommand = cmd({
 
       const events = await sdk.event.subscribe()
       let errorMsg: string | undefined
-
       const eventProcessor = (async () => {
         for await (const event of events.stream) {
           if (event.type === "message.part.updated") {
@@ -270,11 +281,20 @@ export const SendCommand = cmd({
             const error = props.error as Record<string, unknown>
             const err = errorMessage(error) ?? String(error.name)
             errorMsg = errorMsg ? errorMsg + EOL + err : err
+            // The server converts a terminal executor error into the durable
+            // "failed" Light Loop status, so the wait loop observes it through
+            // the workflow state instead of aborting here. Non-fatal errors
+            // (e.g. an attachment read failure) must not kill a recoverable
+            // loop, so the event is only reported, never used to cancel.
             if (outputJsonEvent("error", { error: props.error })) continue
             UI.error(err)
           }
 
           if (event.type === "session.idle" && event.properties.sessionID === sessionID) {
+            // Light Loop reviews run as Cortex children; the parent session goes
+            // idle while the reviewer runs, and a rejected review resumes the
+            // executor. The end of the attempt is decided from the workflow.
+            if (args.workflow === "lightloop") continue
             break
           }
 
@@ -323,6 +343,23 @@ export const SendCommand = cmd({
         return args.agent
       })()
 
+      // Enable the Light Loop workflow before the first prompt so the user
+      // message is projected with the Light Loop contract and the agent can
+      // call loop_stop. The hard timeout covers the whole attempt, including
+      // the first executor turn, so it starts before the workflow enable and
+      // the prompt is submitted asynchronously (a blocking prompt would put
+      // the timeout out of reach during the first turn).
+      const lightLoopStartedAt = Date.now()
+      if (args.workflow === "lightloop") {
+        const setResult = await sdk.workflow.session.set({
+          id: sessionID,
+          workflowSetInput: { kind: "lightloop", instructions: message },
+        })
+        if (setResult.error) {
+          throw new Error(errorMessage(setResult.error) ?? "Failed to enable Light Loop workflow")
+        }
+      }
+
       if (args.command) {
         await sdk.session.command({
           sessionID,
@@ -334,13 +371,87 @@ export const SendCommand = cmd({
         })
       } else {
         const modelParam = args.model ? Provider.parseModel(args.model) : undefined
-        await sdk.session.prompt({
-          sessionID,
-          agent: resolvedAgent,
-          model: modelParam,
-          variant: args.variant,
-          parts: [...fileParts, { type: "text", text: message }],
+        const promptParts = [...fileParts, { type: "text", text: message }]
+        if (args.workflow === "lightloop") {
+          // Submit asynchronously so the hard timeout (started above, before
+          // the workflow enable) also bounds the first executor turn. The
+          // blocking prompt route would otherwise hold this call open for the
+          // whole first turn, making the timeout unreachable.
+          const promptResult = await sdk.session.promptAsync({
+            sessionID,
+            agent: resolvedAgent,
+            model: modelParam,
+            variant: args.variant,
+            parts: promptParts,
+          })
+          if (promptResult.error) {
+            throw new Error(errorMessage(promptResult.error) ?? "Failed to submit Light Loop prompt")
+          }
+        } else {
+          await sdk.session.prompt({
+            sessionID,
+            agent: resolvedAgent,
+            model: modelParam,
+            variant: args.variant,
+            parts: promptParts,
+          })
+        }
+      }
+
+      if (args.workflow === "lightloop") {
+        // The parent session goes idle while the reviewer runs and again after
+        // a rejected review resumes the executor, so session.idle cannot end
+        // the attempt. Poll the workflow until it reaches a terminal state, is
+        // cleared by approval, or is replaced by another workflow.
+        const outcome = await waitForLightLoopFinish(sdk, sessionID, {
+          startedAt: lightLoopStartedAt,
         })
+
+        const terminalFailure = outcome.status !== undefined && outcome.status !== "completed"
+        if (terminalFailure || outcome.timedOut || outcome.replaced || outcome.clearedWithoutRecord) {
+          // Stop the host-owned workflow before exiting so a later benchmark
+          // attempt is not contaminated by a still-running loop (with
+          // --attach) or a durable active workflow resumed on next startup.
+          await sdk.workflow.session.cancelLightloop({ id: sessionID }).catch(() => undefined)
+        }
+
+        if (args.format === "json") {
+          process.stdout.write(
+            JSON.stringify({
+              type: "lightloop_finish",
+              timestamp: Date.now(),
+              sessionID,
+              status: outcome.status,
+              elapsedMs: outcome.elapsedMs,
+              timedOut: outcome.timedOut,
+              aborted: outcome.aborted,
+              replaced: outcome.replaced,
+              clearedWithoutRecord: outcome.clearedWithoutRecord,
+            }) + EOL,
+          )
+        }
+
+        if (outcome.timedOut) {
+          UI.error("Light Loop workflow timed out")
+          process.exit(1)
+        }
+        if (outcome.aborted && errorMsg) {
+          UI.error(errorMsg)
+          process.exit(1)
+        }
+        if (outcome.replaced) {
+          UI.error("Light Loop workflow was replaced by another workflow")
+          process.exit(1)
+        }
+        if (outcome.clearedWithoutRecord) {
+          UI.error("Light Loop workflow was cleared without a terminal record")
+          process.exit(1)
+        }
+        if (terminalFailure) {
+          UI.error(`Light Loop ended with status: ${outcome.status}`)
+          process.exit(1)
+        }
+        return
       }
 
       await eventProcessor

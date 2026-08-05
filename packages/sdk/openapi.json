@@ -2237,31 +2237,6 @@
         ]
       }
     },
-    "/github/configured": {
-      "get": {
-        "operationId": "github.configured",
-        "summary": "Check whether the GitHub App is configured",
-        "description": "Reports whether both required GitHub App environment variables are present without exposing them.",
-        "responses": {
-          "200": {
-            "description": "GitHub App configuration status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GitHubConfiguredResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.github.configured({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/agenda/webhook/{token}": {
       "post": {
         "operationId": "agenda.webhook",
@@ -2553,6 +2528,12 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "sandboxes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -3223,6 +3204,47 @@
         ]
       }
     },
+    "/config/diagnostics": {
+      "get": {
+        "operationId": "config.diagnostics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get config diagnostics",
+        "description": "Return recent configuration loading issues (syntax errors, unknown keys, quarantined files). Empty when configuration loaded cleanly.",
+        "responses": {
+          "200": {
+            "description": "Recent config diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDiagnosticsResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.diagnostics({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/instructions": {
       "get": {
         "operationId": "config.instructions.get",
@@ -3441,8 +3463,7 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime",
-                "github"
+                "runtime"
               ]
             },
             "required": true
@@ -3514,8 +3535,7 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime",
-                "github"
+                "runtime"
               ]
             },
             "required": true
@@ -3598,8 +3618,7 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime",
-                "github"
+                "runtime"
               ]
             },
             "required": true
@@ -15196,6 +15215,90 @@
         ]
       }
     },
+    "/workflow/session/{id}/lightloop/terminal": {
+      "get": {
+        "operationId": "workflow.session.getLightloopTerminal",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get Light Loop terminal status",
+        "description": "Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish approval, exhaustion, timeout, cancellation, and failure.",
+        "responses": {
+          "200": {
+            "description": "Light Loop terminal record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]
+                    },
+                    "instructions": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["status", "instructions", "createdAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No terminal record for this session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflow.session.getLightloopTerminal({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/asset": {
       "post": {
         "operationId": "asset.upload",
@@ -25589,15 +25692,6 @@
         },
         "required": ["items", "total"]
       },
-      "GitHubConfiguredResponse": {
-        "type": "object",
-        "properties": {
-          "configured": {
-            "type": "boolean"
-          }
-        },
-        "required": ["configured"]
-      },
       "AgendaWebhookResult": {
         "type": "object",
         "properties": {
@@ -26938,265 +27032,6 @@
         },
         "additionalProperties": false
       },
-      "GitHubIntegrationConfig": {
-        "description": "Outbound GitHub App polling and automation configuration",
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "default": false,
-            "type": "boolean"
-          },
-          "watchedRepositories": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "eventTypes": {
-            "default": ["issues.opened", "workflow_run.completed"],
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "ciFailureThreshold": {
-            "default": 3,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "ciFailureWindowHours": {
-            "default": 24,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "modelBudgetNano": {
-            "default": {
-              "maxTokens": 256,
-              "maxCost": 0.001
-            },
-            "type": "object",
-            "properties": {
-              "maxTokens": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "maxCost": {
-                "type": "number",
-                "minimum": 0
-              }
-            },
-            "required": ["maxTokens", "maxCost"],
-            "additionalProperties": false
-          },
-          "modelBudgetProposal": {
-            "default": {
-              "maxTokens": 2048,
-              "maxCost": 0.02
-            },
-            "type": "object",
-            "properties": {
-              "maxTokens": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "maxCost": {
-                "type": "number",
-                "minimum": 0
-              }
-            },
-            "required": ["maxTokens", "maxCost"],
-            "additionalProperties": false
-          },
-          "classifierEnabled": {
-            "default": false,
-            "type": "boolean"
-          },
-          "proposalEnabled": {
-            "default": false,
-            "type": "boolean"
-          },
-          "polling": {
-            "default": {
-              "enabled": true,
-              "intervalMs": 60000,
-              "overlapWindowMs": 300000,
-              "pageSize": 100,
-              "maxPages": 30
-            },
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "default": true,
-                "type": "boolean"
-              },
-              "intervalMs": {
-                "default": 60000,
-                "type": "integer",
-                "minimum": 15000,
-                "maximum": 300000
-              },
-              "overlapWindowMs": {
-                "default": 300000,
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 600000
-              },
-              "pageSize": {
-                "default": 100,
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-              },
-              "maxPages": {
-                "default": 30,
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-              }
-            },
-            "additionalProperties": false
-          },
-          "fixWorkflow": {
-            "default": {
-              "enabled": false,
-              "repositoryMapping": {},
-              "maxRetries": 3,
-              "timeoutMs": 900000,
-              "locatorAgent": "github-issue-locator",
-              "agent": "github-fix-coder",
-              "pushBranchPrefix": "synergy/fix/"
-            },
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "default": false,
-                "type": "boolean"
-              },
-              "repositoryMapping": {
-                "default": {},
-                "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "maxRetries": {
-                "default": 3,
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 20
-              },
-              "timeoutMs": {
-                "default": 900000,
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "locatorAgent": {
-                "default": "github-issue-locator",
-                "type": "string",
-                "minLength": 1
-              },
-              "agent": {
-                "default": "github-fix-coder",
-                "type": "string",
-                "minLength": 1
-              },
-              "pushBranchPrefix": {
-                "default": "synergy/fix/",
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "additionalProperties": false
-          },
-          "reviewWorkflow": {
-            "default": {
-              "enabled": false,
-              "repositoryMapping": {},
-              "eventTypes": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
-              "reviewCommands": ["bun test", "bun run typecheck"],
-              "maxRetries": 3,
-              "timeoutMs": 900000,
-              "agent": "github-review-agent",
-              "publishReviewComment": true,
-              "publishCheckRun": true
-            },
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "default": false,
-                "type": "boolean"
-              },
-              "repositoryMapping": {
-                "default": {},
-                "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "eventTypes": {
-                "default": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "reviewCommands": {
-                "default": ["bun test", "bun run typecheck"],
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "maxRetries": {
-                "default": 3,
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 20
-              },
-              "timeoutMs": {
-                "default": 900000,
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "agent": {
-                "default": "github-review-agent",
-                "type": "string",
-                "minLength": 1
-              },
-              "publishReviewComment": {
-                "default": true,
-                "type": "boolean"
-              },
-              "publishCheckRun": {
-                "default": true,
-                "type": "boolean"
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false
-      },
       "PluginRuntimeLimitsConfig": {
         "description": "Default plugin runtime resource and request limits",
         "default": {
@@ -27207,7 +27042,12 @@
           "shutdownGraceMs": 1500,
           "heartbeatIntervalMs": 5000,
           "maxMemoryMb": 512,
-          "memorySampleIntervalMs": 5000
+          "memorySampleIntervalMs": 5000,
+          "agentCallMaxRuntimeMs": 120000,
+          "hookTimeoutMs": 120000,
+          "contributionInvokeTimeoutMs": 120000,
+          "shellRunTimeoutMs": 120000,
+          "taskRunWaitTimeoutMs": 120000
         },
         "type": "object",
         "properties": {
@@ -27255,6 +27095,36 @@
           },
           "memorySampleIntervalMs": {
             "description": "External plugin runtime RSS sampling interval in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "agentCallMaxRuntimeMs": {
+            "description": "Maximum milliseconds for a plugin agent.call/agent.start model invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hookTimeoutMs": {
+            "description": "Maximum milliseconds for one plugin hook handler invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "contributionInvokeTimeoutMs": {
+            "description": "Default maximum milliseconds for a plugin contribution invocation without a declared timeout",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "shellRunTimeoutMs": {
+            "description": "Default maximum milliseconds for plugin shell.run commands",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "taskRunWaitTimeoutMs": {
+            "description": "Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -28794,6 +28664,91 @@
         "required": ["type", "accounts"],
         "additionalProperties": false
       },
+      "ChannelGithubAccountConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "repositories": {
+            "description": "GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+            }
+          },
+          "workspaceDir": {
+            "description": "Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.",
+            "type": "string",
+            "minLength": 1
+          },
+          "workspaceTtlHours": {
+            "description": "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.",
+            "default": 24,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "pollingIntervalMs": {
+            "description": "Interval between GitHub API polls in milliseconds (default 5 minutes)",
+            "default": 300000,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "autoReview": {
+            "description": "Automatically review newly opened and updated pull requests",
+            "default": true,
+            "type": "boolean"
+          },
+          "autoRespond": {
+            "description": "Respond to @mentions of the bot handle and questions in issues and pull requests",
+            "default": true,
+            "type": "boolean"
+          },
+          "agent": {
+            "description": "Agent used for GitHub channel sessions (defaults to github-channel-agent)",
+            "type": "string"
+          },
+          "mention": {
+            "description": "GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)",
+            "type": "string"
+          },
+          "model": {
+            "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+            "type": "string"
+          },
+          "variant": {
+            "description": "Model variant to use with this account model (e.g. low, high, max)",
+            "type": "string"
+          }
+        },
+        "required": ["workspaceDir"],
+        "additionalProperties": false
+      },
+      "ChannelGithubConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "github"
+          },
+          "accounts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ChannelGithubAccountConfig"
+            }
+          }
+        },
+        "required": ["type", "accounts"],
+        "additionalProperties": false
+      },
       "SandboxConfig": {
         "description": "Sandbox configuration for workspace boundary enforcement",
         "type": "object",
@@ -29512,9 +29467,6 @@
             },
             "additionalProperties": false
           },
-          "github": {
-            "$ref": "#/components/schemas/GitHubIntegrationConfig"
-          },
           "watcher": {
             "type": "object",
             "properties": {
@@ -29720,6 +29672,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ChannelClarusConfig"
+                },
+                {
+                  "$ref": "#/components/schemas/ChannelGithubConfig"
                 }
               ]
             }
@@ -31715,6 +31670,59 @@
         },
         "required": ["id", "title", "command", "args", "cwd", "status", "pid"]
       },
+      "ConfigIssue": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "description": "Config domain id the issue belongs to, when known",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path of the config file that failed to load",
+            "type": "string"
+          },
+          "error": {
+            "description": "Human-readable error summary",
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable machine-readable issue code",
+            "type": "string",
+            "enum": [
+              "config.json_syntax",
+              "config.root_type",
+              "config.unknown_key",
+              "config.load_failed",
+              "config.migration_failed"
+            ]
+          },
+          "quarantined": {
+            "description": "Whether the offending file was moved aside",
+            "type": "boolean"
+          },
+          "quarantinedPath": {
+            "description": "Path the file was moved to, when quarantined",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Unix epoch milliseconds when the issue was recorded",
+            "type": "number"
+          }
+        },
+        "required": ["path", "error", "code", "quarantined", "timestamp"]
+      },
+      "ConfigDiagnosticsResponse": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigIssue"
+            }
+          }
+        },
+        "required": ["issues"]
+      },
       "ConfigInstructionsInfo": {
         "type": "object",
         "properties": {
@@ -31778,8 +31786,7 @@
               "channels",
               "holos",
               "email",
-              "runtime",
-              "github"
+              "runtime"
             ]
           },
           "filename": {
@@ -31939,8 +31946,7 @@
               "channels",
               "holos",
               "email",
-              "runtime",
-              "github"
+              "runtime"
             ]
           },
           "filename": {
@@ -32088,8 +32094,7 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime",
-                "github"
+                "runtime"
               ]
             }
           },
@@ -32306,8 +32311,7 @@
                     "channels",
                     "holos",
                     "email",
-                    "runtime",
-                    "github"
+                    "runtime"
                   ]
                 }
               }
@@ -32362,8 +32366,7 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime",
-                "github"
+                "runtime"
               ]
             }
           },
@@ -40079,6 +40082,24 @@
                     },
                     "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
                     "additionalProperties": false
+                  },
+                  "snapshot": {},
+                  "settled": {
+                    "type": "boolean"
+                  },
+                  "settleReason": {
+                    "type": "string",
+                    "enum": ["networkquiet", "load", "none", "timeout", "interrupted"]
+                  },
+                  "settleElapsedMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "inflightRequests": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": ["type", "page"],
@@ -40163,7 +40184,60 @@
                     "minLength": 1,
                     "maxLength": 20000
                   },
-                  "snapshot": {}
+                  "snapshot": {},
+                  "page": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "pattern": "^[a-zA-Z0-9._-]+$"
+                      },
+                      "url": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "isLoading": {
+                        "type": "boolean"
+                      },
+                      "lastActiveAt": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
+                    "additionalProperties": false
+                  },
+                  "settled": {
+                    "type": "boolean"
+                  },
+                  "settleReason": {
+                    "type": "string",
+                    "enum": ["networkquiet", "load", "none", "timeout", "interrupted"]
+                  },
+                  "settleElapsedMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "inflightRequests": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
                 },
                 "required": ["type", "pageId", "action"],
                 "additionalProperties": false
@@ -40183,6 +40257,47 @@
                   },
                   "matched": {
                     "type": "boolean"
+                  },
+                  "elapsedMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "page": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "pattern": "^[a-zA-Z0-9._-]+$"
+                      },
+                      "url": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "isLoading": {
+                        "type": "boolean"
+                      },
+                      "lastActiveAt": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
+                    "additionalProperties": false
                   }
                 },
                 "required": ["type", "pageId", "matched"],
@@ -40287,6 +40402,21 @@
                     "default": "user",
                     "type": "string",
                     "const": "user"
+                  },
+                  "settleMode": {
+                    "description": "Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
+                    "type": "string",
+                    "enum": ["networkquiet", "load", "none"]
+                  },
+                  "settleTimeoutMs": {
+                    "description": "Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.",
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 30000
+                  },
+                  "includeSnapshot": {
+                    "description": "Return a fresh accessibility snapshot after the navigation settles (default true).",
+                    "type": "boolean"
                   }
                 },
                 "required": ["type", "url"],
@@ -40302,6 +40432,26 @@
                   "direction": {
                     "type": "string",
                     "enum": ["back", "forward"]
+                  },
+                  "source": {
+                    "default": "user",
+                    "type": "string",
+                    "const": "user"
+                  },
+                  "settleMode": {
+                    "description": "Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
+                    "type": "string",
+                    "enum": ["networkquiet", "load", "none"]
+                  },
+                  "settleTimeoutMs": {
+                    "description": "Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.",
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 30000
+                  },
+                  "includeSnapshot": {
+                    "description": "Return a fresh accessibility snapshot after the navigation settles (default true).",
+                    "type": "boolean"
                   }
                 },
                 "required": ["type", "direction"],
@@ -40315,6 +40465,26 @@
                     "const": "reload"
                   },
                   "ignoreCache": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "default": "user",
+                    "type": "string",
+                    "const": "user"
+                  },
+                  "settleMode": {
+                    "description": "Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
+                    "type": "string",
+                    "enum": ["networkquiet", "load", "none"]
+                  },
+                  "settleTimeoutMs": {
+                    "description": "Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.",
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 30000
+                  },
+                  "includeSnapshot": {
+                    "description": "Return a fresh accessibility snapshot after the navigation settles (default true).",
                     "type": "boolean"
                   }
                 },

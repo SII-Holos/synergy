@@ -814,8 +814,6 @@ export function SessionTurn(
     if (assistantPart?.type === "tool" && assistantPart.tool === "bash") return assistantPart
   })
 
-  const isShellMode = createMemo(() => !!shellModePart())
-
   const working = createMemo(() =>
     resolveTurnWorking({
       isLastUserMessage: isLastUserMessage(),
@@ -1039,8 +1037,8 @@ export function SessionTurn(
                 class={props.classes?.container}
               >
                 <Switch>
-                  <Match when={isShellMode()}>
-                    <Part part={shellModePart()!} message={msg()} defaultOpen />
+                  <Match when={shellModePart()}>
+                    {(shellPart) => <Part part={shellPart()} message={msg()} defaultOpen />}
                   </Match>
                   <Match when={true}>
                     <Show when={showUserChrome()}>{renderMessageSlot("message.before-user")}</Show>

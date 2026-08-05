@@ -14,6 +14,7 @@ import type { BrowserStoreAPI } from "./browser-store"
 import { applyBrowserControlResult, browserControlCommandFromMessage, createBrowserCommandId } from "./browser-command"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 import { normalizeBrowserError } from "./browser-error"
+import { NativePresentationCoordinator, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
 
 const MAX_RECONNECT_ATTEMPTS = 10
 const RECONNECT_DELAY = 2000
@@ -23,6 +24,7 @@ type BrowserWebSocketOptions = {
   sessionID: string
   ownerKey: string
   routeDirectory?: string
+  presentation: BrowserClientPresentationMode
 }
 
 type BrowserWebSocketUrlOptions = {
@@ -89,7 +91,7 @@ type ControlAttempt = {
 function createBrowserHttpControlSender(
   store: BrowserStoreAPI,
   options: BrowserWebSocketUrlOptions & { client: ReturnType<typeof useSDK>["client"] },
-  createNativeTicket?: () => Promise<string | undefined>,
+  createNativeTicket?: () => Promise<string>,
 ) {
   const controllers = new Set<AbortController>()
   let disposed = false
@@ -97,7 +99,7 @@ function createBrowserHttpControlSender(
   let retryTimer: ReturnType<typeof setTimeout> | null = null
 
   const execute = async (attempt: ControlAttempt) => {
-    const nativeTicket = await createNativeTicket?.()
+    const nativeTicket = options.presentation === "native" ? await createNativeTicket?.() : undefined
     const payload = await options.client.browser.control(
       {
         path_directory: options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey ?? "",
@@ -105,7 +107,7 @@ function createBrowserHttpControlSender(
         scopeID: options.scopeID,
         mode: "session",
         sessionID: options.sessionID,
-        presentation: nativeTicket ? "native" : (options.presentation ?? "auto"),
+        presentation: options.presentation ?? "webrtc",
         nativeTicket,
         browserControlRequest: {
           protocolVersion: BROWSER_PROTOCOL_VERSION,
@@ -246,21 +248,39 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   const sessionID = options.sessionID
   const routeDirectory = options.routeDirectory
   let ws: WebSocket | undefined
-  let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
   let reconnectAttempts = 0
-  const createNativeTicket = async () => {
-    const bridge = platform.browserNative
-    if (!bridge) return undefined
-    try {
-      return await bridge.createPresentationTicket({
-        protocolVersion: BROWSER_PROTOCOL_VERSION,
-        serverUrl: sdk.url,
-        ownerKey: options.ownerKey,
-      })
-    } catch {
-      return undefined
+  const nativeCoordinator =
+    options.presentation === "native" && platform.browserNative
+      ? new NativePresentationCoordinator({
+          bridge: platform.browserNative,
+          serverUrl: sdk.url,
+          ownerKey: options.ownerKey,
+          onState(state) {
+            const pageId = store.pageId()
+            if (pageId)
+              store.setHostStatus(
+                pageId,
+                state.phase === "ready" ? "ready" : state.phase === "failed" ? "failed" : "restarting",
+              )
+            if (state.phase === "ready") {
+              store.clearTransientHostError()
+              return
+            }
+            store.setBrowserError({
+              severity: state.phase === "failed" ? "error" : "warning",
+              code: state.error?.code ?? "browser_native_host_connecting",
+              message: state.error?.message ?? "The Desktop native Browser is recovering.",
+            })
+          },
+        })
+      : null
+  const createNativeTicket = () => {
+    if (!nativeCoordinator) {
+      throw new Error("The Desktop native Browser bridge is unavailable.")
     }
+    return nativeCoordinator.createTicket()
   }
   const controlSender = createBrowserHttpControlSender(
     store,
@@ -273,19 +293,50 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       scopeID: sdk.scopeID,
       scopeKey: sdk.scopeKey,
       traceId: store.browserTraceId(),
+      presentation: options.presentation,
     },
-    createNativeTicket,
+    options.presentation === "native" ? createNativeTicket : undefined,
   )
   const send = controlSender.send
 
   store._setSend(send)
+  const scheduleReconnect = () => {
+    if (disposed || reconnectTimer) return
+    const reconnectDelay =
+      options.presentation === "native" && reconnectAttempts > MAX_RECONNECT_ATTEMPTS
+        ? 30_000
+        : RECONNECT_DELAY * Math.min(4, reconnectAttempts)
+    browserDebug("ws.reconnect.schedule", {
+      sessionID,
+      reconnectAttempts,
+      delay: reconnectDelay,
+    })
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      void connect()
+    }, reconnectDelay)
+  }
 
   const connect = async () => {
     if (disposed) {
       browserDebug("ws.connect.skipped", { reason: "disposed" })
       return
     }
-    const nativeTicket = await createNativeTicket()
+    let nativeTicket: string | undefined
+    try {
+      nativeTicket = options.presentation === "native" ? await createNativeTicket() : undefined
+    } catch (error) {
+      if (disposed) return
+      const normalized = normalizeBrowserError(error, "Native Browser presentation failed")
+      store.setSession("connectionStatus", "failed")
+      store.setBrowserError({ severity: "error", code: normalized.code, message: normalized.message })
+      // A failed ticket attempt never opened a socket, so the close handler
+      // will not fire. Schedule the reconnect here so the session can recover
+      // once the native Host is ready again.
+      reconnectAttempts++
+      scheduleReconnect()
+      return
+    }
     if (disposed) return
     const wsUrl = createBrowserEventsWebSocketUrl({
       serverUrl: sdk.url,
@@ -297,7 +348,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       traceId: store.browserTraceId(),
       sinceSeq: store.session.seq,
       epoch: store.session.epoch,
-      presentation: nativeTicket ? "native" : "auto",
+      presentation: options.presentation,
       nativeTicket,
     })
     if (!wsUrl) {
@@ -480,17 +531,20 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       })
       if (disposed) return
       reconnectAttempts++
-      if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+      if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS && options.presentation !== "native") {
         store.setSession("connectionStatus", "failed")
         browserDebug("ws.reconnect.failed", { sessionID, reconnectAttempts })
         return
       }
-      browserDebug("ws.reconnect.schedule", {
-        sessionID,
-        reconnectAttempts,
-        delay: RECONNECT_DELAY * Math.min(4, reconnectAttempts),
-      })
-      reconnectTimer = setTimeout(() => void connect(), RECONNECT_DELAY * Math.min(4, reconnectAttempts))
+      if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+        store.setSession("connectionStatus", "failed")
+        store.setBrowserError({
+          severity: "error",
+          code: "browser_native_ticket_rejected",
+          message: "Native Browser presentation is still recovering.",
+        })
+      }
+      scheduleReconnect()
     })
   }
 
@@ -504,11 +558,25 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     disposed = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
     controlSender.dispose()
+    nativeCoordinator?.dispose()
     ws?.close()
     ws = undefined
   })
 
-  return { send, connect }
+  return {
+    send,
+    connect,
+    retryNative: () => {
+      nativeCoordinator?.retry()
+      // The coordinator reset alone cannot recover a session whose socket was
+      // never opened (non-retryable ticket failure). Reconnect immediately.
+      if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        reconnectTimer = null
+        void connect()
+      }
+    },
+  }
 }
 
 function acceptSequencedMessage(

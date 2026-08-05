@@ -390,7 +390,13 @@ async function executePage(
   let aborted = false
   const onAbort = () => {
     aborted = true
-    if (command.type === "navigate" || command.type === "reload" || command.type === "wait") {
+    if (
+      command.type === "navigate" ||
+      command.type === "reload" ||
+      command.type === "wait" ||
+      command.type === "action" ||
+      command.type === "history"
+    ) {
       void page.execute({ type: "stop" }).catch(() => undefined)
     }
   }

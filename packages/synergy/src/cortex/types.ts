@@ -125,7 +125,6 @@ export namespace CortexTypes {
     agent: z.string(),
     executionRole: ExecutionRole.optional(),
     category: z.string().optional(),
-    provenance: z.literal("github").optional(),
     parentSessionID: Identifier.schema("session"),
     parentMessageID: Identifier.schema("message"),
     dagNodeId: z.string().optional(),

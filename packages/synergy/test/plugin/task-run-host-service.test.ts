@@ -19,6 +19,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
 import { tmpdir } from "../fixture/fixture"
+import { Config } from "../../src/config/config"
 
 type TaskRunContext = PluginInvocationContext & {
   task?: NonNullable<PluginInvocationContext["task"]> & {
@@ -366,5 +367,166 @@ describe("plugin task.run Host Service", () => {
 
     await expect(running).rejects.toMatchObject({ name: "AbortError", code: "CANCELLED" })
     expect(calls).toEqual(["task.run"])
+  })
+})
+
+test("task.run wait ceiling uses the configured taskRunWaitTimeoutMs when the task has no active runtime", async () => {
+  await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+  const scope = await tmp.scope()
+  const manifest = compilePluginManifest(
+    definePlugin({
+      id: "task-run-wait-timeout-test",
+      version: "1.0.0",
+      description: "task.run wait timeout test",
+      capabilities: [capability("task.delegate", { agents: ["developer"] })],
+      contributions: [],
+    }),
+    { generation: "generation-one" },
+  )
+  await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(manifest))
+
+  await ScopeContext.provide({
+    scope,
+    fn: async () => {
+      const originalInvokeInternal = SessionInvoke.invokeInternal
+      const originalWaitFor = Cortex.waitFor
+      const originalGet = Cortex.get
+      let waitForSeconds: number | undefined
+      ;(SessionInvoke.invokeInternal as unknown) = mock(async () => new Promise(() => {}))
+      // Simulate a task whose active runtime is no longer in memory so the
+      // configured taskRunWaitTimeoutMs fallback drives the wait ceiling.
+      ;(Cortex as any).get = mock(() => undefined)
+      ;(Cortex as any).waitFor = mock(async (_taskID: string, timeoutSeconds: number) => {
+        waitForSeconds = timeoutSeconds
+        return undefined
+      })
+
+      const parent = await Session.create({})
+      let childSessionID: string | undefined
+      try {
+        await Config.state.reset()
+        await Config.update({
+          pluginRuntimePolicy: { limits: { taskRunWaitTimeoutMs: 4_000 } },
+        } as any)
+        await Config.state.reset()
+
+        const running = executePluginHostService({
+          pluginId: manifest.id,
+          pluginDir: tmp.path,
+          manifest,
+          invocation: {
+            scopeId: scope.id,
+            sessionId: parent.id,
+            directory: tmp.path,
+            actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
+          },
+          method: "task.run" as never,
+          params: {
+            ...request,
+            subagent: "developer",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            output: { mode: "final_response" },
+          },
+          signal: AbortSignal.timeout(10_000),
+        })
+
+        for (let attempt = 0; attempt < 200 && waitForSeconds === undefined; attempt++) {
+          await Bun.sleep(10)
+        }
+        // The configured 4s ceiling + 5s buffer is the waitFor timeout.
+        expect(waitForSeconds).toBe(9)
+        // waitFor resolved immediately (undefined); task.run returns the
+        // durable snapshot from the child Session's cortex record.
+        const result = (await running) as { taskId: string; sessionId: string }
+        childSessionID = result.sessionId
+        expect(result.taskId).toBeDefined()
+      } finally {
+        ;(Cortex as any).waitFor = originalWaitFor
+        ;(Cortex as any).get = originalGet
+        ;(SessionInvoke.invokeInternal as unknown) = originalInvokeInternal
+        Cortex.reset()
+        if (childSessionID) await Session.remove(childSessionID).catch(() => {})
+        await Session.remove(parent.id).catch(() => {})
+      }
+    },
+  })
+})
+
+test("task.run wait ceiling clamps to taskRunWaitTimeoutMs even when the active task has a longer execution timeout", async () => {
+  await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+  const scope = await tmp.scope()
+  const manifest = compilePluginManifest(
+    definePlugin({
+      id: "task-run-wait-ceiling-test",
+      version: "1.0.0",
+      description: "task.run wait ceiling test",
+      capabilities: [capability("task.delegate", { agents: ["developer"] })],
+      contributions: [],
+    }),
+    { generation: "generation-one" },
+  )
+  await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(manifest))
+
+  await ScopeContext.provide({
+    scope,
+    fn: async () => {
+      const originalInvokeInternal = SessionInvoke.invokeInternal
+      const originalWaitFor = Cortex.waitFor
+      const originalGet = Cortex.get
+      let waitForSeconds: number | undefined
+      ;(SessionInvoke.invokeInternal as unknown) = mock(async () => new Promise(() => {}))
+      // The active task carries the default 120s execution timeout; the
+      // configured 4s wait ceiling must clamp the wait independently.
+      ;(Cortex as any).get = mock(() => ({ taskId: "task-wait-ceiling", timeoutMs: 120_000 }))
+      ;(Cortex as any).waitFor = mock(async (_taskID: string, timeoutSeconds: number) => {
+        waitForSeconds = timeoutSeconds
+        return undefined
+      })
+
+      const parent = await Session.create({})
+      let running: Promise<unknown> | undefined
+      try {
+        await Config.state.reset()
+        await Config.update({
+          pluginRuntimePolicy: { limits: { taskRunWaitTimeoutMs: 4_000 } },
+        } as any)
+        await Config.state.reset()
+
+        running = executePluginHostService({
+          pluginId: manifest.id,
+          pluginDir: tmp.path,
+          manifest,
+          invocation: {
+            scopeId: scope.id,
+            sessionId: parent.id,
+            directory: tmp.path,
+            actor: { type: "agent", agent: "synergy", messageId: "msg_parent", callId: "call-one" },
+          },
+          method: "task.run" as never,
+          params: {
+            ...request,
+            subagent: "developer",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            output: { mode: "final_response" },
+          },
+          signal: AbortSignal.timeout(10_000),
+        })
+        // waitFor resolves immediately; the subsequent getPluginTask rejects
+        // because the mock active task has no owner. Swallow it.
+        running.catch(() => {})
+
+        for (let attempt = 0; attempt < 200 && waitForSeconds === undefined; attempt++) {
+          await Bun.sleep(10)
+        }
+        // min(120s task timeout, 4s ceiling) + 5s buffer → 9s wait.
+        expect(waitForSeconds).toBe(9)
+      } finally {
+        ;(Cortex as any).waitFor = originalWaitFor
+        ;(Cortex as any).get = originalGet
+        ;(SessionInvoke.invokeInternal as unknown) = originalInvokeInternal
+        Cortex.reset()
+        await Session.remove(parent.id).catch(() => {})
+      }
+    },
   })
 })
