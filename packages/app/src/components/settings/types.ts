@@ -195,9 +195,22 @@ export type AccountToggle = {
   variant: string
 }
 
+export type GithubAccountToggle = {
+  key: string
+  enabled: boolean
+  repositories: string
+  workspaceDir: string
+  pollingIntervalMs: string
+  autoReview: boolean
+  autoRespond: boolean
+  /** Optional GitHub handle users @-mention; empty = resolve from the App slug. */
+  mention: string
+}
+
 export type ChannelSettings = {
   feishuAccounts: AccountToggle[]
   clarusAccounts: BasicAccountToggle[]
+  githubAccounts: GithubAccountToggle[]
 }
 
 export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
@@ -449,6 +462,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
     channels: {
       feishuAccounts: [],
       clarusAccounts: [],
+      githubAccounts: [],
     },
     roleVariant: {},
   }

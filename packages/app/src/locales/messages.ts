@@ -686,7 +686,6 @@ export const sidebar = {
   home: { id: "app.sidebar.section.home", message: "Home" },
   channel: { id: "app.sidebar.section.channel", message: "Channel" },
   background: { id: "app.sidebar.section.background", message: "Background" },
-  github: { id: "app.sidebar.section.github", message: "GitHub" },
   // Empty states
   noRecentSessions: { id: "app.sidebar.empty.recent", message: "No recent sessions" },
   noSessions: { id: "app.sidebar.empty.sessions", message: "No sessions" },
@@ -739,6 +738,7 @@ export const sidebar = {
   // Brand / logo
   logoAlt: { id: "app.sidebar.brand.logo", message: "HOLOS" },
   channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },
+  channelGithub: { id: "app.sidebar.channel.github", message: "GitHub" },
   addProjectDialogTitle: { id: "app.sidebar.dialog.addProject", message: "Add project" },
   // Channel account status
   channelAccountConnected: { id: "app.sidebar.channel.account.connected", message: "Connected" },

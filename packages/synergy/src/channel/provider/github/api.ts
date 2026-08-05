@@ -3,7 +3,7 @@ import { createSign } from "node:crypto"
 const GITHUB_API_VERSION = "2022-11-28"
 const TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1_000
 const REQUEST_TIMEOUT_MS = 30_000
-const USER_AGENT = "synergy-github-app/1.0"
+const USER_AGENT = "synergy-github-channel/1.0"
 
 type InstallationToken = {
   token: string
@@ -12,7 +12,7 @@ type InstallationToken = {
 
 export type RequestDescriptor = {
   url: string
-  method: "GET" | "POST"
+  method: "GET" | "POST" | "DELETE"
   headers: Record<string, string>
   body?: string
 }
@@ -118,7 +118,7 @@ function encodeJson(value: unknown) {
   return Buffer.from(JSON.stringify(value)).toString("base64url")
 }
 
-export namespace GitHubAppAuth {
+export namespace GitHubChannelAuth {
   export function generateJWT(input: { appId: number; privateKey: string }) {
     if (!Number.isInteger(input.appId) || input.appId <= 0) throw new Error("GitHub App ID must be a positive integer")
     const privateKey = requireNonEmpty(input.privateKey, "GitHub App private key")
@@ -159,9 +159,35 @@ export namespace GitHubAppAuth {
   }
 
   const installationTokens = new TokenCache()
+  let appSlugCache: { slug: string; fetchedAt: number } | undefined
+  const APP_SLUG_CACHE_TTL_MS = 10 * 60 * 1_000
 
   export function reset() {
     installationTokens.clear()
+    appSlugCache = undefined
+  }
+
+  /**
+   * Resolve the GitHub App slug (the @mention name users type in comments).
+   * The app metadata endpoint is authenticated with the app JWT and returns
+   * `slug`; GitHub renders the bot as `{slug}[bot]` on replies, so the
+   * mention name must equal the slug. The value is cached per process.
+   */
+  export async function getAppSlug(signal?: AbortSignal): Promise<string> {
+    if (appSlugCache && Date.now() - appSlugCache.fetchedAt < APP_SLUG_CACHE_TTL_MS) {
+      return appSlugCache.slug
+    }
+    const appId = Number(process.env.SYNERGY_GITHUB_APP_ID)
+    const privateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
+    const jwt = generateJWT({ appId, privateKey })
+    const descriptor = appRequest({ path: "/app", jwt })
+    const response = await execute<{ slug?: unknown }>(descriptor, signal)
+    if (typeof response.slug !== "string" || !response.slug.trim()) {
+      throw new Error("GitHub App metadata response has no valid slug")
+    }
+    const slug = response.slug.trim()
+    appSlugCache = { slug, fetchedAt: Date.now() }
+    return slug
   }
 
   export async function getInstallationToken(installationId: number, signal?: AbortSignal): Promise<string> {
@@ -182,8 +208,17 @@ export namespace GitHubAppAuth {
   }
 
   export namespace GitHubClient {
+    /** Authenticated GitHub App metadata; `slug` is the @mention name users type. */
+    export function getApp(input: { jwt: string }) {
+      return appRequest({ path: "/app", jwt: input.jwt })
+    }
+
     export function resolveInstallation(input: { owner: string; repo: string; jwt: string }) {
       return appRequest({ path: `/repos/${input.owner}/${input.repo}/installation`, jwt: input.jwt })
+    }
+
+    export function getRepository(input: { owner: string; repo: string; installationToken: string }) {
+      return request({ path: `/repos/${input.owner}/${input.repo}`, installationToken: input.installationToken })
     }
 
     export function listRepositoryIssues(input: {
@@ -207,46 +242,40 @@ export namespace GitHubAppAuth {
       })
     }
 
-    export function followPagination(input: { url: string; installationToken: string }) {
-      const url = new URL(input.url)
-      if (url.protocol !== "https:" || url.origin !== "https://api.github.com") {
-        throw new Error("GitHub pagination URL must use the api.github.com HTTPS origin")
-      }
-      const token = requireNonEmpty(input.installationToken, "GitHub installation token")
-      return {
-        url: url.toString(),
-        method: "GET" as const,
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${token}`,
-          "X-GitHub-Api-Version": GITHUB_API_VERSION,
-          "User-Agent": USER_AGENT,
-        },
-      }
-    }
-
-    export function listWorkflowRuns(input: {
+    export function getPullRequest(input: {
       owner: string
       repo: string
-      since?: string
-      pageSize: number
+      pullNumber: number
       installationToken: string
     }) {
-      const query = new URLSearchParams()
-      if (input.since) query.set("created", `>=${input.since}`)
-      query.set("per_page", String(input.pageSize))
       return request({
-        path: `/repos/${input.owner}/${input.repo}/actions/runs?${query.toString()}`,
+        path: `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}`,
         installationToken: input.installationToken,
       })
     }
 
-    export function getWorkflowRun(input: { owner: string; repo: string; runId: number; installationToken: string }) {
+    export function getIssue(input: { owner: string; repo: string; issueNumber: number; installationToken: string }) {
       return request({
-        path: `/repos/${input.owner}/${input.repo}/actions/runs/${input.runId}`,
+        path: `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}`,
         installationToken: input.installationToken,
       })
     }
+
+    export function listIssueComments(input: {
+      owner: string
+      repo: string
+      issueNumber: number
+      since?: string
+      installationToken: string
+    }) {
+      const query = new URLSearchParams({ per_page: "100" })
+      if (input.since) query.set("since", input.since)
+      return request({
+        path: `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/comments?${query.toString()}`,
+        installationToken: input.installationToken,
+      })
+    }
+
     export function createIssueComment(input: {
       owner: string
       repo: string
@@ -259,48 +288,6 @@ export namespace GitHubAppAuth {
         method: "POST",
         installationToken: input.installationToken,
         body: { body: input.body },
-      })
-    }
-
-    export function listIssueComments(input: {
-      owner: string
-      repo: string
-      issueNumber: number
-      installationToken: string
-    }) {
-      return request({
-        path: `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/comments?per_page=100`,
-        installationToken: input.installationToken,
-      })
-    }
-
-    export function createPullRequest(input: {
-      owner: string
-      repo: string
-      head: string
-      base: string
-      title: string
-      body: string
-      installationToken: string
-    }) {
-      return request({
-        path: `/repos/${input.owner}/${input.repo}/pulls`,
-        method: "POST",
-        installationToken: input.installationToken,
-        body: { title: input.title, head: input.head, base: input.base, body: input.body },
-      })
-    }
-
-    export function listPullRequestsForHead(input: {
-      owner: string
-      repo: string
-      head: string
-      installationToken: string
-    }) {
-      const query = new URLSearchParams({ state: "all", head: input.head, per_page: "100" })
-      return request({
-        path: `/repos/${input.owner}/${input.repo}/pulls?${query.toString()}`,
-        installationToken: input.installationToken,
       })
     }
 
@@ -321,77 +308,93 @@ export namespace GitHubAppAuth {
       })
     }
 
-    export function listPullRequestReviews(input: {
+    export function listPullRequests(input: {
       owner: string
       repo: string
-      pullNumber: number
+      state: "open" | "closed" | "all"
+      head?: string
       installationToken: string
     }) {
+      const query = new URLSearchParams({ state: input.state, per_page: "100" })
+      if (input.head) query.set("head", input.head)
       return request({
-        path: `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}/reviews?per_page=100`,
+        path: `/repos/${input.owner}/${input.repo}/pulls?${query.toString()}`,
         installationToken: input.installationToken,
       })
     }
 
-    export function createCheckRun(input: {
+    export function createPullRequest(input: {
       owner: string
       repo: string
-      name: string
-      headSha: string
-      externalId?: string
-      conclusion: "success" | "failure" | "neutral" | "cancelled" | "skipped" | "timed_out" | "action_required"
-      output: { title: string; summary: string; text?: string }
+      title: string
+      body: string
+      head: string
+      base: string
       installationToken: string
     }) {
       return request({
-        path: `/repos/${input.owner}/${input.repo}/check-runs`,
+        path: `/repos/${input.owner}/${input.repo}/pulls`,
         method: "POST",
         installationToken: input.installationToken,
-        body: {
-          name: input.name,
-          ...(input.externalId ? { external_id: input.externalId } : {}),
-          head_sha: input.headSha,
-          status: "completed",
-          conclusion: input.conclusion,
-          output: input.output,
-        },
+        body: { title: input.title, body: input.body, head: input.head, base: input.base },
       })
     }
 
-    export function listCheckRunsForRef(input: {
+    export function createIssueCommentReaction(input: {
       owner: string
       repo: string
-      ref: string
+      commentId: number
+      content: string
       installationToken: string
     }) {
       return request({
-        path: `/repos/${input.owner}/${input.repo}/commits/${encodeURIComponent(input.ref)}/check-runs?per_page=100`,
+        path: `/repos/${input.owner}/${input.repo}/issues/comments/${input.commentId}/reactions`,
+        method: "POST",
         installationToken: input.installationToken,
+        body: { content: input.content },
       })
     }
 
-    export function getPullRequest(input: {
+    export function deleteIssueCommentReaction(input: {
       owner: string
       repo: string
-      pullNumber: number
+      commentId: number
+      reactionId: number
       installationToken: string
     }) {
       return request({
-        path: `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}`,
+        path: `/repos/${input.owner}/${input.repo}/issues/comments/${input.commentId}/reactions/${input.reactionId}`,
+        method: "DELETE",
         installationToken: input.installationToken,
       })
     }
 
-    export function getBranch(input: { owner: string; repo: string; branch: string; installationToken: string }) {
+    /** Reaction on the issue/PR body itself (synthetic event targets). */
+    export function createIssueReaction(input: {
+      owner: string
+      repo: string
+      issueNumber: number
+      content: string
+      installationToken: string
+    }) {
       return request({
-        path: `/repos/${input.owner}/${input.repo}/branches/${encodeURIComponent(input.branch)}`,
+        path: `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/reactions`,
+        method: "POST",
         installationToken: input.installationToken,
+        body: { content: input.content },
       })
     }
 
-    export function getRepository(input: { owner: string; repo: string; installationToken: string }) {
+    export function deleteIssueReaction(input: {
+      owner: string
+      repo: string
+      issueNumber: number
+      reactionId: number
+      installationToken: string
+    }) {
       return request({
-        path: `/repos/${input.owner}/${input.repo}`,
+        path: `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/reactions/${input.reactionId}`,
+        method: "DELETE",
         installationToken: input.installationToken,
       })
     }
@@ -404,30 +407,15 @@ export namespace GitHubAppAuth {
       return { data: response.data as T, headers: response.headers }
     }
   }
+}
 
-  const credentialHelper =
-    '!f() { test "$1" = get && printf "username=x-access-token\\npassword=%s\\n" "$SYNERGY_GITHUB_INSTALLATION_TOKEN"; }; f'
+const credentialHelper =
+  '!f() { test "$1" = get && printf "username=x-access-token\\npassword=%s\\n" "$SYNERGY_GITHUB_INSTALLATION_TOKEN"; }; f'
 
-  export function buildCredentialCommand(input: { token: string; args: string[] }) {
-    requireNonEmpty(input.token, "GitHub installation token")
-    return {
-      env: { SYNERGY_GITHUB_INSTALLATION_TOKEN: input.token },
-      args: ["-c", `credential.helper=${credentialHelper}`, ...input.args],
-    }
-  }
-
-  export function buildFixBranchName(input: { prefix: string; issueNumber: number; slug: string }) {
-    if (!Number.isInteger(input.issueNumber) || input.issueNumber <= 0) throw new Error("Issue number must be positive")
-    const prefix = requireNonEmpty(input.prefix, "Fix branch prefix")
-    if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*\/$/.test(prefix) || prefix.includes("..") || prefix.includes("//")) {
-      throw new Error("Fix branch prefix is invalid")
-    }
-    const slug = input.slug
-      .normalize("NFKD")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60)
-    return `${prefix}issue-${input.issueNumber}${slug ? `-${slug}` : ""}`
+export function buildCredentialCommand(input: { token: string; args: string[] }) {
+  requireNonEmpty(input.token, "GitHub installation token")
+  return {
+    env: { SYNERGY_GITHUB_INSTALLATION_TOKEN: input.token },
+    args: ["-c", `credential.helper=${credentialHelper}`, ...input.args],
   }
 }

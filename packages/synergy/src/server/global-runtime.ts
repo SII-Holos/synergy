@@ -6,8 +6,6 @@ import { Channel } from "@/channel"
 import { Config } from "@/config/config"
 import { CortexConcurrency } from "@/cortex/concurrency"
 import { HolosRuntime } from "@/holos/runtime"
-import { GitHubRuntime } from "@/github/runtime"
-import { GitHubPollRuntime } from "@/github/poll-runtime"
 import { PluginMarketplaceRegistry } from "@/plugin/marketplace-registry"
 import { MCP } from "@/mcp"
 import { Plugin } from "@/plugin"
@@ -129,8 +127,6 @@ export namespace GlobalRuntime {
           PluginMarketplaceRegistry.prefetchRegistry()
           await Agenda.start()
           await AgendaBootstrap.seed()
-          await GitHubRuntime.start(config.github)
-          await GitHubPollRuntime.start(config.github)
           log.info("started")
         },
       })
@@ -140,8 +136,6 @@ export namespace GlobalRuntime {
 
   export async function stop() {
     const executionStop = Promise.all([AgentTurn.stop(), PolicyWorker.stop(), ToolScheduler.stop()])
-    await GitHubPollRuntime.stop()
-    await GitHubRuntime.stop()
     Agenda.stop()
     await executionStop
     await Promise.all([
