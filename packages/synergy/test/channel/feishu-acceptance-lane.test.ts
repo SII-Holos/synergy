@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionManager } from "../../src/session/manager"
+import { SessionDrive } from "../../src/session/drive"
 import { ChannelConversationAcceptance } from "../../src/channel/conversation-acceptance"
 import { ChannelBusyHandoff } from "../../src/channel/busy-handoff"
 
@@ -333,6 +334,88 @@ describe("Channel conversation acceptance lane", () => {
         if (!acceptance.accepted) throw new Error("expected acceptance")
         await expect(acceptance.execution).rejects.toBe(failure)
         expect(SessionManager.isRunning(session.id)).toBe(false)
+      },
+    })
+  })
+
+  test("release after a completed execution drives a steer item delivered mid-run", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { SessionInvoke } = await import("../../src/session/invoke")
+        const originalLoop = SessionInvoke.loop
+        const wakes: string[] = []
+        const wake = Promise.withResolvers<string>()
+        let sessionID = ""
+        ;(SessionInvoke.loop as any) = mock(async (wokenSessionID: string) => {
+          wakes.push(wokenSessionID)
+          await SessionInbox.drainReady(wokenSessionID)
+          wake.resolve(wokenSessionID)
+        })
+
+        try {
+          const session = await Session.create({})
+          sessionID = session.id
+          const rootID = "msg_acceptance_root"
+          await Session.updateMessage({
+            id: rootID,
+            role: "user",
+            sessionID,
+            time: { created: Date.now() },
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            isRoot: true,
+            rootID,
+          } as any)
+          await Session.updatePart({
+            id: "prt_acceptance_root",
+            messageID: rootID,
+            sessionID,
+            type: "text",
+            text: "root",
+          })
+
+          const acceptance = await ChannelConversationAcceptance.accept({
+            sessionID,
+            deliveryKey: "channel:feishu:acct:msg_midrun",
+            parts: [{ type: "text", text: "main" }],
+            metadata: { channelReply: true },
+            execute: async () => {
+              // A cortex completion notification lands while the turn runs;
+              // its drive request is dropped because the session is busy.
+              await SessionInbox.deliverUnique({
+                sessionID,
+                deliveryKey: "cortex:taskNotification:ctx_midrun",
+                mode: "steer",
+                message: {
+                  role: "user",
+                  metadata: { source: "cortex" },
+                  parts: [{ type: "text", text: "Cortex task completed" }],
+                },
+              })
+            },
+          })
+          expect(acceptance.accepted).toBe(true)
+          if (!acceptance.accepted) throw new Error("expected acceptance")
+          await acceptance.execution
+
+          // The steer item must not stay stranded after the lease release.
+          expect(
+            await Promise.race([
+              wake.promise,
+              Bun.sleep(1_000).then(() => {
+                throw new Error("Completed execution release did not drive the mid-run steer item")
+              }),
+            ]),
+          ).toBe(sessionID)
+          expect(wakes).toEqual([sessionID])
+          expect(await SessionInbox.list(sessionID)).toHaveLength(0)
+        } finally {
+          ;(SessionInvoke.loop as any) = originalLoop
+          if (sessionID) SessionManager.unregisterRuntime(sessionID)
+          SessionDrive.reset()
+        }
       },
     })
   })
