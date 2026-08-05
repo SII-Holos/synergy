@@ -593,7 +593,7 @@ export function Sidebar(props: SidebarProps) {
                           />
                           <span>{_(sidebar.channelGithub)}</span>
                         </div>
-                        <Show when={githubGroupOpen()}>
+                        <SidebarDisclosure open={githubGroupOpen()}>
                           <For each={githubChannelGroups()}>
                             {(group) => (
                               <ChannelChatPartnerGroup
@@ -604,7 +604,7 @@ export function Sidebar(props: SidebarProps) {
                               />
                             )}
                           </For>
-                        </Show>
+                        </SidebarDisclosure>
                       </div>
                     </Show>
                     <Show when={layout.nav.hasMoreRootNavSection("channel")}>
