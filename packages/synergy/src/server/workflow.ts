@@ -5,6 +5,7 @@ import { Storage } from "../storage/storage"
 import { Session } from "../session"
 import { BusyError } from "../session/error"
 import { SessionWorkflowService, WorkflowConflictError } from "../session/workflow"
+import { LightLoopTerminalStore } from "../session/light-loop-terminal-hook"
 import { LatticeError } from "../lattice/error"
 import { errors } from "./error"
 
@@ -139,6 +140,63 @@ export const WorkflowRoute = new Hono()
     async (c) => {
       try {
         return c.json(await SessionWorkflowService.cancelLightloop(c.req.valid("param").id))
+      } catch (err: any) {
+        if (err instanceof Storage.NotFoundError) {
+          return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)
+        }
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+  .get(
+    "/session/:id/lightloop/terminal",
+    describeRoute({
+      summary: "Get Light Loop terminal status",
+      description:
+        "Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish approval, exhaustion, timeout, cancellation, and failure.",
+      operationId: "workflow.session.getLightloopTerminal",
+      responses: {
+        200: {
+          description: "Light Loop terminal record",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z
+                  .object({
+                    status: z.enum(["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]),
+                    instructions: z.string(),
+                    error: z.string().optional(),
+                    createdAt: z.number(),
+                  })
+                  .strict(),
+              ),
+            },
+          },
+        },
+        404: {
+          description: "No terminal record for this session",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ message: z.string() }).strict()),
+            },
+          },
+        },
+      },
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
+    async (c) => {
+      try {
+        const session = await Session.get(c.req.valid("param").id)
+        const terminal = await LightLoopTerminalStore.get(session)
+        if (!terminal) {
+          return c.json({ message: "Session has no terminal Light Loop record" }, 404)
+        }
+        return c.json({
+          status: terminal.status,
+          instructions: terminal.instructions,
+          ...(terminal.error ? { error: terminal.error } : {}),
+          createdAt: terminal.createdAt,
+        })
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError) {
           return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)

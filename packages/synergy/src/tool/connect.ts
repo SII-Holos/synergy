@@ -9,7 +9,9 @@ import { withTimeout } from "@/util/timeout"
 import { ToolTimeout } from "./timeout"
 
 const parameters = z.object({
-  action: z.enum(["open", "close", "status", "list", "list_targets"]).describe("Synergy Link action to perform"),
+  action: z
+    .enum(["open", "close", "status", "list", "list_targets", "clear"])
+    .describe("Synergy Link action to perform"),
   targetID: z
     .string()
     .optional()
@@ -20,7 +22,7 @@ const parameters = z.object({
 })
 
 type ConnectMetadata = {
-  action: "open" | "close" | "status" | "list" | "list_targets"
+  action: "open" | "close" | "status" | "list" | "list_targets" | "clear"
   targetID?: string
   linkID?: string
   targetAgentID?: string
@@ -33,8 +35,11 @@ type ConnectMetadata = {
     sessionID: string
     status: string
     label?: string
+    registered?: boolean
     openedAt: number
     lastUsedAt: number
+    lastAttemptAt?: number
+    lastVerifiedAt?: number
   }>
   targets?: Array<{
     id: string
@@ -50,7 +55,7 @@ type ConnectMetadata = {
 
 export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("connect", {
   description:
-    "Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Remote lifecycle actions never fall back locally.",
+    "Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are heartbeat-verified before they are reported open; a timeout or missed-pong liveness loss leaves already-dispatched results unknown and never authorizes an automatic mutating retry. Remote lifecycle actions never fall back locally.",
   parameters,
   async execute(params, ctx) {
     if (params.action === "list_targets") {
@@ -84,7 +89,8 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         await Promise.all(
           SynergyLinkExecution.allSessions().map(async (session) => {
             const target = await SynergyLinkTargetStore.findByLocator(session.linkID, session.targetAgentID)
-            return target && SynergyLinkTargetStore.canAgentAccess(target, ctx.agent) ? session : undefined
+            if (target) return SynergyLinkTargetStore.canAgentAccess(target, ctx.agent) ? session : undefined
+            return session.sourceAgent === ctx.agent ? session : undefined
           }),
         )
       ).flatMap((session) => (session ? [session] : []))
@@ -92,16 +98,19 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         title: "Synergy Link sessions",
         metadata: {
           action: "list",
-          sessions: sessions.map((session) => ({ ...session })),
+          sessions: sessions.map((session) => ({
+            ...session,
+            registered: session.targetID !== undefined,
+          })),
         },
         output:
           sessions.length === 0
             ? "No active Synergy Link sessions."
             : sessions
-                .map(
-                  (session) =>
-                    `${session.linkID} -> ${session.targetAgentID} :: ${session.sessionID} (${session.status})`,
-                )
+                .map((session) => {
+                  const registered = session.targetID !== undefined
+                  return `${session.linkID} -> ${session.targetAgentID} :: ${session.sessionID} (${session.status}${registered ? "" : ", unregistered"})`
+                })
                 .join("\n"),
       }
     }
@@ -132,17 +141,60 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
 
     if (params.action === "status") {
       const session = SynergyLinkExecution.getSession(linkID, sessionSelector)
+      if (!session) {
+        return {
+          title: "Connection not found",
+          metadata: {
+            action: "status",
+            targetID: registeredTarget?.id,
+            linkID,
+            targetAgentID: undefined,
+            sessionID: undefined,
+            status: "missing",
+          },
+          output: `No active connection for link ${linkID}.`,
+        }
+      }
+      const verification = await SynergyLinkExecution.verifySession(linkID, sessionSelector)
+      if (verification.kind === "missing") {
+        return {
+          title: "Connection not found",
+          metadata: {
+            action: "status",
+            targetID: registeredTarget?.id,
+            linkID,
+            targetAgentID: session.targetAgentID,
+            sessionID: session.sessionID,
+            status: "missing",
+          },
+          output: `The cached session for link ${linkID} is no longer valid on the remote host. Open a fresh session with connect open.`,
+        }
+      }
+      if (verification.kind === "unverified") {
+        return {
+          title: "Connection status unknown",
+          metadata: {
+            action: "status",
+            targetID: registeredTarget?.id,
+            linkID,
+            targetAgentID: session.targetAgentID,
+            sessionID: session.sessionID,
+            status: "unknown",
+          },
+          output: `The cached session for link "${linkID}" could not be verified (${verification.reason === "timeout" ? "the check timed out" : "transport failure or heartbeat liveness loss"}). It may still be active remotely, but its status and any dispatched result are unknown. Reconnect and inspect state instead of automatically retrying mutating work.`,
+        }
+      }
       return {
-        title: session ? "Connection status" : "Connection not found",
+        title: "Connection status",
         metadata: {
           action: "status",
           targetID: registeredTarget?.id,
           linkID,
-          targetAgentID: session?.targetAgentID,
-          sessionID: session?.sessionID,
-          status: session?.status ?? "missing",
+          targetAgentID: session.targetAgentID,
+          sessionID: session.sessionID,
+          status: "opened",
         },
-        output: session ? JSON.stringify(session, null, 2) : `No active connection for link ${linkID}.`,
+        output: JSON.stringify(session, null, 2),
       }
     }
 
@@ -155,22 +207,40 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
           `connect open requires targetAgentID. Provide it together with a Synergy Link ID such as "link_...".`,
         )
       }
+      const probedLocator = { linkID, targetAgentID }
       if (!registeredTarget && candidateSession && candidateSession.sourceAgent !== ctx.agent) {
         throw new Error(`The active Synergy Link session for link "${linkID}" belongs to another local agent.`)
       }
       if (activeSession?.status === "opened") {
-        SynergyLinkExecution.touchSession(linkID, sessionSelector)
-        return {
-          title: "Connected",
-          metadata: {
-            action: "open",
-            targetID: registeredTarget?.id,
-            linkID,
-            targetAgentID: activeSession.targetAgentID,
-            sessionID: activeSession.sessionID,
-            status: activeSession.status,
-          },
-          output: `Connection to link "${linkID}" is already open.`,
+        const verification = await SynergyLinkExecution.verifySession(linkID, sessionSelector)
+        if (verification.kind === "unverified") {
+          return {
+            title: "Connection status unknown",
+            metadata: {
+              action: "open",
+              targetID: registeredTarget?.id,
+              linkID,
+              targetAgentID: activeSession.targetAgentID,
+              sessionID: activeSession.sessionID,
+              status: "unknown",
+            },
+            output: `The cached session for link "${linkID}" could not be verified (${verification.reason === "timeout" ? "the check timed out" : "transport failure or heartbeat liveness loss"}). It may still be open remotely, so a fresh open was not attempted. Retry verification once the link is reachable; do not automatically repeat mutating work.`,
+          }
+        }
+        if (verification.kind === "verified") {
+          SynergyLinkExecution.touchSession(linkID, sessionSelector)
+          return {
+            title: "Connected",
+            metadata: {
+              action: "open",
+              targetID: registeredTarget?.id,
+              linkID,
+              targetAgentID: activeSession.targetAgentID,
+              sessionID: activeSession.sessionID,
+              status: activeSession.status,
+            },
+            output: `Connection to link "${linkID}" is already open.`,
+          }
         }
       }
       const client = SynergyLinkExecution.requireClient(linkID, "connect")
@@ -181,7 +251,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
           client.executeSession(linkID, { action: "open", label: params.label }, { targetAgentID }),
           ToolTimeout.DEFAULTS.connectMs,
           {
-            message: `Connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s. The Synergy Link host may be unreachable or slow to respond.`,
+            message: `Connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s. The host may be unreachable, but a remote session may still have opened; the result is unknown, so verify before retrying.`,
           },
         )
       } catch (error) {
@@ -192,10 +262,14 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
 
       if (opened.metadata.status !== "opened") {
         if (registeredTarget) {
-          await SynergyLinkTargetService.recordProbe(registeredTarget.id, {
-            status: opened.metadata.status === "busy" ? "busy" : "refused",
-            host: opened.metadata.host ? { ...opened.metadata.host, observedAt: Date.now() } : undefined,
-          })
+          await SynergyLinkTargetService.recordProbe(
+            registeredTarget.id,
+            {
+              status: opened.metadata.status === "busy" ? "busy" : "refused",
+              host: opened.metadata.host ? { ...opened.metadata.host, observedAt: Date.now() } : undefined,
+            },
+            probedLocator,
+          )
         }
         return {
           title: opened.title,
@@ -226,13 +300,19 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         label: params.label,
         openedAt: Date.now(),
         lastUsedAt: Date.now(),
+        lastAttemptAt: Date.now(),
+        lastVerifiedAt: Date.now(),
       })
 
       if (registeredTarget && opened.metadata.host) {
-        await SynergyLinkTargetService.recordProbe(registeredTarget.id, {
-          status: "reachable",
-          host: { ...opened.metadata.host, observedAt: Date.now() },
-        })
+        await SynergyLinkTargetService.recordProbe(
+          registeredTarget.id,
+          {
+            status: "reachable",
+            host: { ...opened.metadata.host, observedAt: Date.now() },
+          },
+          probedLocator,
+        )
       }
 
       return {
@@ -249,6 +329,23 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
       }
     }
 
+    if (params.action === "clear") {
+      const session = SynergyLinkExecution.requireSession(linkID, sessionSelector)
+      SynergyLinkExecution.clearSession(linkID, sessionSelector)
+      return {
+        title: "Cleared",
+        metadata: {
+          action: "clear",
+          targetID: registeredTarget?.id ?? session.targetID,
+          linkID,
+          targetAgentID: session.targetAgentID,
+          sessionID: session.sessionID,
+          status: "cleared",
+        },
+        output: `Cleared the cached Synergy Link session for link "${linkID}". The remote host was not contacted.`,
+      }
+    }
+
     const client = SynergyLinkExecution.requireClient(linkID, "connect")
     const session = SynergyLinkExecution.requireSession(linkID, sessionSelector)
 
@@ -262,10 +359,25 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         ),
         ToolTimeout.DEFAULTS.connectMs,
         {
-          message: `Closing connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s.`,
+          message: `Closing connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s. The remote close may have completed; its result is unknown, so verify before retrying.`,
         },
       )
     } catch (error) {
+      if (SynergyLinkExecution.isInvalidSessionError(error)) {
+        SynergyLinkExecution.clearSession(linkID, sessionSelector)
+        return {
+          title: "Disconnected",
+          metadata: {
+            action: "close",
+            targetID: registeredTarget?.id ?? session.targetID,
+            linkID,
+            targetAgentID: session.targetAgentID,
+            sessionID: session.sessionID,
+            status: "closed",
+          },
+          output: `The remote session for link "${linkID}" was already closed; the cached session was cleared.`,
+        }
+      }
       throw new Error(
         `Failed to close connection to link "${linkID}": ${error instanceof Error ? error.message : String(error)}`,
       )

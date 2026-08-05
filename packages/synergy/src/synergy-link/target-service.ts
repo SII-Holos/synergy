@@ -6,11 +6,16 @@ import { SynergyLinkExecution } from "@/tool/synergy-link-execution"
 import { ToolTimeout } from "@/tool/timeout"
 import { Log } from "@/util/log"
 import { withTimeout } from "@/util/timeout"
+import { Lock } from "@/util/lock"
 import z from "zod"
 import { SynergyLinkTargetStore } from "./target-store"
 import { SynergyLinkTarget } from "./types"
 
 const log = Log.create({ service: "synergy-link.target-service" })
+
+const targetLock = (id: string) => `synergy-link:target:${id}`
+
+type TargetLocator = Pick<SynergyLinkTarget.Info, "linkID" | "targetAgentID">
 
 export namespace SynergyLinkTargetService {
   export const Event = {
@@ -34,17 +39,144 @@ export namespace SynergyLinkTargetService {
     return ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
-        const target = await SynergyLinkTargetStore.update(id, input)
-        await Bus.publish(Event.Updated, { target })
-        return target
+        using _ = await Lock.write(targetLock(id))
+        const parsed = SynergyLinkTarget.PatchInput.parse(input)
+        if (parsed.kind === "metadata") {
+          const target = await SynergyLinkTargetStore.update(id, parsed)
+          await Bus.publish(Event.Updated, { target })
+          return target
+        }
+        const nextLinkID = parsed.linkID
+        const nextTargetAgentID = parsed.targetAgentID
+
+        const current = await SynergyLinkTargetStore.require(id)
+        if (current.linkID === nextLinkID && current.targetAgentID === nextTargetAgentID) {
+          const target = await SynergyLinkTargetStore.update(id, parsed)
+          await Bus.publish(Event.Updated, { target })
+          return target
+        }
+
+        await SynergyLinkTargetStore.assertLocatorAvailable(id, nextLinkID)
+        const client = SynergyLinkExecution.requireClient(nextLinkID, "connect")
+        const newSessionSelector = { targetAgentID: nextTargetAgentID }
+        let existingNewSession = SynergyLinkExecution.getSession(nextLinkID, newSessionSelector)
+        let temporarySessionID: string | undefined
+        const probeTimeout = { message: `Verifying the new locator for target "${current.name}" timed out.` }
+        const openProbe = () =>
+          withTimeout(
+            client.executeSession(
+              nextLinkID,
+              { action: "open", label: `Relink verification: ${current.name}` },
+              newSessionSelector,
+            ),
+            ToolTimeout.DEFAULTS.connectMs,
+            probeTimeout,
+          )
+        try {
+          let probe: Awaited<ReturnType<typeof openProbe>> | undefined
+          if (existingNewSession) {
+            try {
+              probe = await withTimeout(
+                client.executeSession(
+                  nextLinkID,
+                  { action: "heartbeat", sessionID: existingNewSession.sessionID },
+                  newSessionSelector,
+                ),
+                ToolTimeout.DEFAULTS.connectMs,
+                probeTimeout,
+              )
+            } catch (error) {
+              if (!SynergyLinkExecution.isInvalidSessionError(error)) throw error
+              SynergyLinkExecution.clearSession(nextLinkID, newSessionSelector)
+              existingNewSession = undefined
+            }
+            if (probe?.metadata.status === "closed") {
+              SynergyLinkExecution.clearSession(nextLinkID, newSessionSelector)
+              existingNewSession = undefined
+              probe = undefined
+            }
+          }
+          probe ??= await openProbe()
+          const verified = probe.metadata.status === "opened" || probe.metadata.status === "alive"
+          if (!verified || !probe.metadata.sessionID) {
+            throw new Error(
+              `The new Synergy Link locator for target "${current.name}" could not be verified (status: ${probe.metadata.status}).`,
+            )
+          }
+          if (!existingNewSession && probe.metadata.status === "opened" && !probe.metadata.reused) {
+            temporarySessionID = probe.metadata.sessionID
+          }
+          if (probe.metadata.host && probe.metadata.host.linkID !== nextLinkID) {
+            throw new Error(`Synergy Link host identity mismatch for target ${id}`)
+          }
+
+          if (existingNewSession) {
+            const verifiedAt = Date.now()
+            SynergyLinkExecution.upsertSession({
+              ...existingNewSession,
+              targetID: id,
+              lastUsedAt: verifiedAt,
+              lastVerifiedAt: verifiedAt,
+            })
+          }
+          const oldSession = SynergyLinkExecution.getSession(current.linkID, {
+            targetID: current.id,
+            targetAgentID: current.targetAgentID,
+          })
+          if (oldSession?.status === "opened") {
+            await withTimeout(
+              client.executeSession(
+                current.linkID,
+                { action: "close", sessionID: oldSession.sessionID },
+                { targetAgentID: current.targetAgentID },
+              ),
+              Math.min(ToolTimeout.DEFAULTS.connectMs, 5_000),
+              { message: `Closing the previous session for target "${current.name}" timed out.` },
+            ).catch((error) => {
+              log.warn("failed to close previous remote session after target relink", { targetID: id, error })
+            })
+          }
+          SynergyLinkExecution.clearSession(current.linkID, {
+            targetID: current.id,
+            targetAgentID: current.targetAgentID,
+          })
+          const target = await SynergyLinkTargetStore.update(id, parsed, {
+            host: probe.metadata.host ? { ...probe.metadata.host, observedAt: Date.now() } : undefined,
+          })
+          await Bus.publish(Event.Updated, { target })
+          return target
+        } finally {
+          if (temporarySessionID) {
+            await withTimeout(
+              client.executeSession(
+                nextLinkID,
+                { action: "close", sessionID: temporarySessionID },
+                { targetAgentID: nextTargetAgentID },
+              ),
+              ToolTimeout.DEFAULTS.connectMs,
+              { message: `Closing the relink verification session for target "${current.name}" timed out.` },
+            ).catch((error) => {
+              log.warn("failed to close relink verification session", { targetID: id, error })
+            })
+          }
+        }
       },
     })
   }
 
-  export async function recordProbe(id: string, input: Parameters<typeof SynergyLinkTargetStore.recordProbe>[1]) {
+  export async function recordProbe(
+    id: string,
+    input: Parameters<typeof SynergyLinkTargetStore.recordProbe>[1],
+    expectedLocator: TargetLocator,
+  ) {
     return ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
+        using _ = await Lock.write(targetLock(id))
+        const current = await SynergyLinkTargetStore.require(id)
+        if (current.linkID !== expectedLocator.linkID || current.targetAgentID !== expectedLocator.targetAgentID) {
+          return current
+        }
         const target = await SynergyLinkTargetStore.recordProbe(id, input)
         await Bus.publish(Event.Updated, { target })
         return target
@@ -56,6 +188,7 @@ export namespace SynergyLinkTargetService {
     return ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
+        using _ = await Lock.write(targetLock(id))
         const target = await SynergyLinkTargetStore.require(id)
         const session = SynergyLinkExecution.getSession(target.linkID, {
           targetID: target.id,

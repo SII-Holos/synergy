@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js"
-import { Popover } from "@kobalte/core/popover"
+import { MenuField } from "../menu-field/MenuField"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
@@ -32,7 +32,6 @@ import {
   libraryCardExpandedClass,
   libraryCardHoverClass,
   libraryInsetClass,
-  libraryMenuClass,
   libraryMetaLabelClass,
   SelectionBar,
   SelectionCheckbox,
@@ -87,8 +86,6 @@ export function ExperienceView(props: {
   const { _ } = useLingui()
   const confirm = useConfirm()
   const [sort, setSort] = createSignal<ExperienceSortKey>("newest")
-  const [sortOpen, setSortOpen] = createSignal(false)
-  const [filterOpen, setFilterOpen] = createSignal(false)
   const [filter, setFilter] = createSignal<ExperienceFilter>("all")
   const [expandedCards, setExpandedCards] = createSignal<Set<string>>(new Set())
   const [experienceDetails, setExperienceDetails] = createSignal<Record<string, ExperienceDetailInfo>>({})
@@ -425,62 +422,43 @@ export function ExperienceView(props: {
         >
           <div class="library-list-toolbar">
             <div class="library-toolbar-left">
-              <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
-                <Popover.Trigger as="button" class="library-control-pill">
-                  <span>{filterLabel()}</span>
-                  <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
-                </Popover.Trigger>
-                <Popover.Portal>
-                  <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
-                    <button
-                      type="button"
-                      classList={{
-                        "library-menu-item": true,
-                        "is-active": effectiveFilter() === "all",
-                      }}
-                      onClick={() => {
-                        setFilter("all")
-                        setFilterOpen(false)
-                      }}
-                    >
-                      <span>{_({ id: "app.library.experience.filter.all", message: "All experiences" })}</span>
-                      <span class="library-menu-count">{total() || displayedItems().length}</span>
-                    </button>
-                    <Show when={scopeAvailable()}>
-                      <button
-                        type="button"
-                        classList={{
-                          "library-menu-item": true,
-                          "is-active": effectiveFilter() === "scope",
-                        }}
-                        onClick={() => {
-                          setFilter("scope")
-                          setFilterOpen(false)
-                        }}
-                      >
-                        <span>{_({ id: "app.library.experience.filter.currentScope", message: "Current scope" })}</span>
-                      </button>
-                    </Show>
-                    <Show when={sessionAvailable()}>
-                      <button
-                        type="button"
-                        classList={{
-                          "library-menu-item": true,
-                          "is-active": effectiveFilter() === "session",
-                        }}
-                        onClick={() => {
-                          setFilter("session")
-                          setFilterOpen(false)
-                        }}
-                      >
-                        <span>
-                          {_({ id: "app.library.experience.filter.currentSession", message: "Current session" })}
-                        </span>
-                      </button>
-                    </Show>
-                  </Popover.Content>
-                </Popover.Portal>
-              </Popover>
+              <MenuField
+                value={effectiveFilter()}
+                ariaLabel={_({ id: "app.library.experience.filter.aria", message: "Filter experiences" })}
+                triggerLabel={filterLabel()}
+                placement="bottom-start"
+                surfaceClass="library-filter-menu"
+                options={[
+                  {
+                    value: "all",
+                    label: _({ id: "app.library.experience.filter.all", message: "All experiences" }),
+                    count: total() || displayedItems().length,
+                  },
+                  ...(scopeAvailable()
+                    ? [
+                        {
+                          value: "scope",
+                          label: _({
+                            id: "app.library.experience.filter.currentScope",
+                            message: "Current scope",
+                          }),
+                        },
+                      ]
+                    : []),
+                  ...(sessionAvailable()
+                    ? [
+                        {
+                          value: "session",
+                          label: _({
+                            id: "app.library.experience.filter.currentSession",
+                            message: "Current session",
+                          }),
+                        },
+                      ]
+                    : []),
+                ]}
+                onChange={(value) => setFilter(value as ExperienceFilter)}
+              />
               <span class="library-toolbar-summary">
                 <Show when={props.isSearching} fallback={statusText() || `${total()} experiences`}>
                   {_({
@@ -498,34 +476,14 @@ export function ExperienceView(props: {
                   <span>{_({ id: "app.library.experience.select", message: "Select" })}</span>
                 </button>
               </Show>
-              <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
-                <Popover.Trigger as="button" class={libraryActionButtonClass}>
-                  <span>{getExperienceSortLabel(_, sort())}</span>
-                  <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
-                </Popover.Trigger>
-                <Popover.Portal>
-                  <Popover.Content class={libraryMenuClass}>
-                    <For each={availableSorts()}>
-                      {(key) => (
-                        <button
-                          type="button"
-                          classList={{
-                            "w-full rounded-[0.8rem] px-3 py-2 text-left text-12-medium transition-colors": true,
-                            "workbench-selected-surface text-text-strong": sort() === key,
-                            "text-text-base hover:bg-surface-inset-base": sort() !== key,
-                          }}
-                          onClick={() => {
-                            setSort(key)
-                            setSortOpen(false)
-                          }}
-                        >
-                          {getExperienceSortLabel(_, key)}
-                        </button>
-                      )}
-                    </For>
-                  </Popover.Content>
-                </Popover.Portal>
-              </Popover>
+              <MenuField
+                value={sort()}
+                ariaLabel={_({ id: "app.library.experience.sort.aria", message: "Sort experiences" })}
+                triggerClass={libraryActionButtonClass}
+                placement="bottom-end"
+                options={availableSorts().map((key) => ({ value: key, label: getExperienceSortLabel(_, key) }))}
+                onChange={(value) => setSort(value as ExperienceSortKey)}
+              />
             </div>
           </div>
         </Show>

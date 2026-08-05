@@ -164,3 +164,14 @@ export function formatSnapshotText(
       .join("\n"),
   )
 }
+
+export function formatSettleSummary(input: {
+  settled?: boolean
+  settleReason?: string
+  settleElapsedMs?: number
+}): string | undefined {
+  if (input.settled === undefined) return undefined
+  const reason = input.settleReason ? ` (${input.settleReason})` : ""
+  const elapsed = input.settleElapsedMs !== undefined ? ` after ${input.settleElapsedMs}ms` : ""
+  return `Settled: ${input.settled ? "yes" : "no"}${reason}${elapsed}`
+}

@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import type { SynergyLinkTargetView } from "@ericsanchezok/synergy-sdk/client"
+import type { SynergyLinkTargetPatchInput, SynergyLinkTargetView } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -84,8 +84,9 @@ const copy = {
   authorizationApproved: { id: "settings.synergyLink.authorization.approved", message: "Approved" },
   authorizationUnverified: { id: "settings.synergyLink.authorization.unverified", message: "Unverified" },
   authorizationRevoked: { id: "settings.synergyLink.authorization.revoked", message: "Revoked" },
-  availabilityOffline: { id: "settings.synergyLink.availability.offline", message: "Holos offline" },
-  availabilityIdle: { id: "settings.synergyLink.availability.idle", message: "Ready" },
+  availabilityUnknown: { id: "settings.synergyLink.availability.unknown", message: "Unknown" },
+  availabilityUnreachable: { id: "settings.synergyLink.availability.unreachable", message: "Unreachable" },
+  availabilityReachable: { id: "settings.synergyLink.availability.reachable", message: "Reachable" },
   availabilityConnected: { id: "settings.synergyLink.availability.connected", message: "Connected" },
 }
 
@@ -342,7 +343,7 @@ function SynergyLinkTargetCard(props: {
     previousAgents = nextAgents
   })
 
-  async function update(patch: { name?: string; enabled?: boolean; allowedAgents?: string[] }) {
+  async function update(patch: SynergyLinkTargetPatchInput) {
     setBusy(true)
     try {
       await globalSDK.client.synergyLink.targetUpdate(
@@ -360,7 +361,7 @@ function SynergyLinkTargetCard(props: {
   }
 
   async function save() {
-    if (await update({ name: name().trim(), allowedAgents: normalizeAllowedAgents(agents()) })) {
+    if (await update({ kind: "metadata", name: name().trim(), allowedAgents: normalizeAllowedAgents(agents()) })) {
       showToast({ type: "success", title: _(copy.saved) })
     }
   }
@@ -414,7 +415,11 @@ function SynergyLinkTargetCard(props: {
       </div>
 
       <div class="settings-link-card-footer">
-        <Switch checked={props.target.enabled} disabled={busy()} onChange={(enabled) => void update({ enabled })}>
+        <Switch
+          checked={props.target.enabled}
+          disabled={busy()}
+          onChange={(enabled) => void update({ kind: "metadata", enabled })}
+        >
           {_(copy.enabled)}
         </Switch>
         <div class="settings-link-actions">
@@ -454,6 +459,7 @@ function authorizationDescriptor(state: SynergyLinkTargetView["authorization"]) 
 
 function availabilityDescriptor(state: SynergyLinkTargetView["availability"]) {
   if (state === "connected") return copy.availabilityConnected
-  if (state === "idle") return copy.availabilityIdle
-  return copy.availabilityOffline
+  if (state === "reachable") return copy.availabilityReachable
+  if (state === "unreachable") return copy.availabilityUnreachable
+  return copy.availabilityUnknown
 }

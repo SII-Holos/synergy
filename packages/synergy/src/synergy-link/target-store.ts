@@ -48,6 +48,13 @@ export namespace SynergyLinkTargetStore {
     )
   }
 
+  export async function assertLocatorAvailable(id: string, linkID: string): Promise<void> {
+    const duplicate = (await list()).find((target) => target.id !== id && target.linkID === linkID)
+    if (duplicate) {
+      throw new Error(`Synergy Link locator already in use: link "${linkID}" is used by target ${duplicate.id}.`)
+    }
+  }
+
   export async function require(id: string): Promise<SynergyLinkTarget.Info> {
     const target = await get(id)
     if (!target) throw new Storage.NotFoundError({ message: `Synergy Link target not found: ${id}` })
@@ -72,11 +79,35 @@ export namespace SynergyLinkTargetStore {
     return target
   }
 
-  export async function update(id: string, input: SynergyLinkTarget.PatchInput): Promise<SynergyLinkTarget.Info> {
+  export async function update(
+    id: string,
+    input: SynergyLinkTarget.PatchInput,
+    verified?: { host?: SynergyLinkTarget.HostObservation },
+  ): Promise<SynergyLinkTarget.Info> {
     const patch = SynergyLinkTarget.PatchInput.parse(input)
-    using _ = await Lock.write(`${collectionLock}:${id}`)
+    using _ = await Lock.write(collectionLock)
     const current = await require(id)
-    const target = SynergyLinkTarget.Info.parse({ ...current, ...patch, updatedAt: Date.now() })
+    const now = Date.now()
+
+    let observations: Partial<SynergyLinkTarget.Info> = {}
+    if (patch.kind === "relink") {
+      await assertLocatorAvailable(id, patch.linkID)
+      if (verified?.host && verified.host.linkID !== patch.linkID) {
+        throw new Error(`Synergy Link host identity mismatch for target ${id}`)
+      }
+      const locatorChanged = patch.linkID !== current.linkID || patch.targetAgentID !== current.targetAgentID
+      if (verified) {
+        observations = {
+          authorization: "approved",
+          host: verified.host,
+          lastProbe: { status: "reachable", checkedAt: now },
+        }
+      } else if (locatorChanged) {
+        observations = { authorization: "unverified", host: undefined, lastProbe: undefined }
+      }
+    }
+
+    const target = SynergyLinkTarget.Info.parse({ ...current, ...patch, ...observations, updatedAt: now })
     await Storage.write(StoragePath.synergyLinkTarget(target.id), target)
     return target
   }
@@ -88,7 +119,7 @@ export namespace SynergyLinkTargetStore {
       host?: SynergyLinkTarget.HostObservation
     },
   ): Promise<SynergyLinkTarget.Info> {
-    using _ = await Lock.write(`${collectionLock}:${id}`)
+    using _ = await Lock.write(collectionLock)
     const current = await require(id)
     if (input.host && input.host.linkID !== current.linkID) {
       throw new Error(`Synergy Link host identity mismatch for target ${id}`)
@@ -107,7 +138,7 @@ export namespace SynergyLinkTargetStore {
   }
 
   export async function remove(id: string): Promise<void> {
-    using _ = await Lock.write(`${collectionLock}:${id}`)
+    using _ = await Lock.write(collectionLock)
     await Storage.remove(StoragePath.synergyLinkTarget(id))
   }
 }

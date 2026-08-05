@@ -43,7 +43,7 @@ describe("Providers panel UI contract", () => {
     expect(providerFlow).not.toContain("Loading usage")
     expect(providerFlow).not.toContain("UsageSummary")
     expect(settingsCss).not.toContain(".provider-flow-usage")
-    expect(providerFlow).toContain("!connected() && methods().length === 1")
+    expect(providerFlow).toContain("shouldAutoAdvanceConnection(methods())")
   })
 
   test("uses the curated settings recommendation set", () => {

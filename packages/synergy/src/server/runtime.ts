@@ -6,6 +6,7 @@ import { ScopedState } from "../scope/scoped-state"
 import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
 import { ProcessRegistry } from "../process/registry"
+import { Config } from "../config/config"
 import { Log } from "../util/log"
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
@@ -19,6 +20,7 @@ import { Session } from "../session"
 import { Plugin } from "../plugin"
 import { PluginSpec } from "../util/plugin-spec"
 import { watchManagedParent } from "./managed-parent"
+import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "./runtime-endpoint"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -75,10 +77,30 @@ export async function run(options: RuntimeOptions) {
 
   Server.mountApp()
   const server = Server.listen(options.network)
+  configureRuntimeEndpoint({
+    hostname: server.hostname ?? options.network.hostname,
+    port: server.port ?? options.network.port,
+  })
   registerShutdown(server, processLock.release)
   const statuses: StartupReporter.StatusRow[] = []
 
   await GlobalRuntime.start()
+  // Deliver install lifecycles queued by CLI installs that ran outside a host process.
+  // Runs after the plugin catalog is loaded and before the runtime.started broadcast so the
+  // broadcast itself serves as the catch-up notification for plugins delivered here.
+  await ScopeContext.provide({
+    scope: Scope.home(),
+    fn: async () => {
+      await Plugin.runPendingInstallLifecycles()
+    },
+  }).catch((error) => log.warn("pending plugin install lifecycles failed", { error }))
+  const endpointGeneration = peekRuntimeEndpointGeneration()
+  if (endpointGeneration) {
+    void ScopeContext.provide({
+      scope: Scope.home(),
+      fn: () => Plugin.trigger("runtime.started", { endpointGeneration }, {}),
+    }).catch((error) => log.warn("plugin runtime.started hooks failed", { error }))
+  }
   statuses.push(
     await ScopeContext.provide({
       scope: Scope.home(),
@@ -102,6 +124,11 @@ export async function run(options: RuntimeOptions) {
       })
     ) {
       reporter?.warning("No AI model configured — run synergy config before sending messages.")
+    }
+    const issues = Config.diagnostics()
+    for (const issue of issues) {
+      const location = issue.quarantinedPath ?? issue.path
+      reporter?.warning(`Configuration issue (${issue.code}): ${issue.error}${location ? ` — ${location}` : ""}`)
     }
     renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
   }
@@ -390,7 +417,13 @@ function registerShutdown(
 
       phase = "server stop"
       await Observability.emit("shutdown.phase", { data: { phase } })
-      await server.stop()
+      try {
+        await server.stop()
+      } finally {
+        // Clear the runtime endpoint only after the server has stopped so plugins can still
+        // read it while their runtimes are being drained and stopped above.
+        configureRuntimeEndpoint(undefined)
+      }
 
       phase = "release lock"
       await Observability.emit("shutdown.phase", { data: { phase } })

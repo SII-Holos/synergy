@@ -45,6 +45,9 @@ export namespace Plugin {
   export const add = install.add
   export const updateReviewed = install.updateReviewed
   export const remove = install.remove
+  export const runPendingInstallLifecycles = install.runPendingInstallLifecycles
+  export const retryPluginInstallLifecycle = install.retryPluginInstallLifecycle
+  export const deliverInstallLifecycle = install.deliverInstallLifecycle
 
   // Status
   export const getStatus = status.getStatus

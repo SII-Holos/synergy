@@ -151,6 +151,27 @@ export const ConfigRoute = new Hono()
     async (c) => c.json(Config.redactForClient(await Config.globalRaw())),
   )
   .get(
+    "/diagnostics",
+    describeRoute({
+      summary: "Get config diagnostics",
+      description:
+        "Return recent configuration loading issues (syntax errors, unknown keys, quarantined files). " +
+        "Empty when configuration loaded cleanly.",
+      operationId: "config.diagnostics",
+      responses: {
+        200: {
+          description: "Recent config diagnostics",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ issues: Config.Issue.array() }).meta({ ref: "ConfigDiagnosticsResponse" })),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => c.json({ issues: Config.diagnostics() }),
+  )
+  .get(
     "/instructions",
     describeRoute({
       summary: "Get global custom instructions",

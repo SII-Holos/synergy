@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
+import path from "path"
+import fs from "fs/promises"
 import { Config } from "../../src/config/config"
+import { ConfigDomain } from "../../src/config/domain"
+import { Global } from "../../src/global"
+import { ScopeContext } from "../../src/scope/context"
 import { RuntimeReload } from "../../src/runtime/reload"
 import { ConfigRoute } from "../../src/server/config-route"
+import { tmpdir } from "../fixture/fixture"
 
 const originalRuntimeReload = RuntimeReload.reload
 let originalGeneralConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
@@ -221,5 +227,35 @@ describe.serial("global Channels config route runtime reload", () => {
         }),
       },
     )
+  })
+})
+
+describe.serial("config diagnostics route", () => {
+  test("returns empty issues when config loads cleanly", async () => {
+    Config.resetDiagnostics()
+    const response = await app().request("/config/diagnostics")
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ issues: [] })
+  })
+
+  test("returns recorded issues after a broken fragment is quarantined", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        // Plant a syntax-broken email fragment in the global domain dir.
+        const domainDir = ConfigDomain.directory(Global.Path.config)
+        await fs.mkdir(domainDir, { recursive: true })
+        await Bun.write(path.join(domainDir, "110-email.jsonc"), "{ broken")
+        await Config.reload("global")
+
+        const response = await app().request("/config/diagnostics")
+        expect(response.status).toBe(200)
+        const body = (await response.json()) as { issues: Config.Issue[] }
+        expect(body.issues.length).toBeGreaterThanOrEqual(1)
+        expect(body.issues.some((issue) => issue.path.endsWith("110-email.jsonc"))).toBe(true)
+        expect(body.issues.some((issue) => issue.quarantined)).toBe(true)
+      },
+    })
   })
 })

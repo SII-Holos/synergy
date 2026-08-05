@@ -398,11 +398,14 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "bash",
   render(props) {
+    const { _ } = useLingui()
     const cmd = () => {
       const raw = props.input.command ?? props.metadata.command ?? ""
       if (!raw) return undefined
       return raw.length > 40 ? raw.slice(0, 37) + "…" : raw
     }
+    const remoteLabel = () =>
+      props.metadata?.backend === "remote" ? _(TOOL_MISC_DESC.executedViaSynergyLink) : undefined
     return (
       <BasicTool
         {...props}
@@ -410,7 +413,12 @@ ToolRegistry.register({
           icon: "terminal",
           title: TOOL_TITLE_DESC["bash"],
           subtitle: props.input.description,
-          tags: cmd() ? [{ label: cmd()! }] : undefined,
+          tags: (() => {
+            const items = cmd() ? [{ label: cmd()! }] : []
+            const remote = remoteLabel()
+            if (remote) items.push({ label: remote })
+            return items.length > 0 ? items : undefined
+          })(),
         }}
       >
         <div data-component="tool-output" data-scrollable>
@@ -847,6 +855,7 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "process",
   render(props) {
+    const { _ } = useLingui()
     const label = () => {
       const desc = props.metadata.description as string | undefined
       const cmd = props.metadata.command as string | undefined
@@ -858,10 +867,14 @@ ToolRegistry.register({
       const id = props.input.processId || ""
       return id.length > 12 ? id.slice(0, 9) + "…" : id
     }
+    const remoteLabel = () =>
+      props.metadata?.backend === "remote" ? _(TOOL_MISC_DESC.executedViaSynergyLink) : undefined
     const args = () => {
       const result: string[] = []
       if (label()) result.push(label()!)
       if (props.input.processId) result.push(shortId())
+      const remote = remoteLabel()
+      if (remote) result.push(remote)
       return result
     }
     return (
@@ -1689,6 +1702,30 @@ ToolRegistry.register({
         trigger={{
           icon: "timer",
           title: TOOL_TITLE_DESC["clarus_extend_task"],
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "github_deliver_fix",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "git-merge",
+          title: TOOL_TITLE_DESC["github_deliver_fix"],
+          subtitle: props.input?.branch as string,
         }}
       >
         <Show when={props.output}>

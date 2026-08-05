@@ -23,6 +23,10 @@ if (pauseBeforePublishPath) {
   }
 }
 
+if (process.env.LOCK_PREPARE_UNREADABLE === "1") {
+  await fs.mkdir(ServerProcessLock.path(), { recursive: true })
+}
+
 await fs.appendFile(readyPath, `${id}\n`)
 while (!(await Bun.file(startPath).exists())) await Bun.sleep(2)
 
