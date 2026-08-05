@@ -3,6 +3,7 @@ import { embed } from "ai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
+import { Global } from "../global"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 import { loadEmbeddingTransformersRuntime } from "./embedding-runtime"
 
@@ -104,7 +105,7 @@ export namespace Embedding {
   type LocalRuntime = {
     pipeline(task: string, model: string, options: PipelineOptions): Promise<LocalExtractor>
     isCached(task: string, model: string, options: { dtype: "q8" }): Promise<boolean>
-    configure(input: { remoteHost: string }): void
+    configure(input: { remoteHost: string; cacheDir: string }): void
   }
   type LocalRuntimeControls = {
     loadRuntime(): Promise<LocalRuntime>
@@ -174,14 +175,14 @@ export namespace Embedding {
           pipeline: (task, model, options) =>
             pipeline(task, model, loaded.device ? { ...options, device: loaded.device } : options),
           isCached: (task, model, options) => runtime.ModelRegistry.is_pipeline_cached(task, model, options),
-          configure({ remoteHost }) {
+          configure({ remoteHost, cacheDir }) {
             runtime.env.remoteHost = remoteHost
+            runtime.env.cacheDir = cacheDir
           },
         }
       },
     }
   }
-
   function resolveLocalSource(config: Config.Info) {
     const source = config.embedding?.local?.source ?? "huggingface"
     if (source === "huggingface") return { source, remoteHost: HUGGINGFACE_HOST }
@@ -189,6 +190,10 @@ export namespace Embedding {
     const remoteHost = config.embedding?.local?.remoteHost
     if (!remoteHost) throw new Error("Local embedding custom source must be a public HTTPS origin")
     return { source, remoteHost: normalizePublicHttpsOrigin(remoteHost) }
+  }
+
+  function resolveCacheDir(config: Config.Info): string {
+    return config.embedding?.local?.cacheDir?.trim() || Global.Path.embeddingModels
   }
 
   function completeProgress(progress?: ProgressSnapshot): ProgressSnapshot {
@@ -212,9 +217,9 @@ export namespace Embedding {
     return { loadedBytes, totalBytes, percent }
   }
 
-  async function inspectLocalAsset(source: LocalSource, remoteHost: string) {
+  async function inspectLocalAsset(source: LocalSource, remoteHost: string, cacheDir: string) {
     const runtime = await runtimeControls.loadRuntime()
-    runtime.configure({ remoteHost })
+    runtime.configure({ remoteHost, cacheDir })
     const cached = await runtime.isCached(LOCAL_TASK, LOCAL_MODEL, { dtype: "q8" })
     return { runtime, cached }
   }
@@ -230,9 +235,11 @@ export namespace Embedding {
 
     let source: LocalSource
     let remoteHost: string
+    let cacheDir: string
     try {
       const config = await Config.current()
       ;({ source, remoteHost } = resolveLocalSource(config))
+      cacheDir = resolveCacheDir(config)
       loading.source = source
       loading.remoteHost = remoteHost
     } catch (cause) {
@@ -250,7 +257,7 @@ export namespace Embedding {
     if (retrying) log.info("retrying local embedding model load (previous attempt failed)")
 
     try {
-      const inspected = await inspectLocalAsset(source, remoteHost)
+      const inspected = await inspectLocalAsset(source, remoteHost, cacheDir)
       loading.asset = inspected.cached ? "cached" : "downloading"
       const progressCallback = (info: ProgressInfo) => {
         const progress = progressFrom(info)
@@ -408,8 +415,10 @@ export namespace Embedding {
 
     let source: LocalSource
     let remoteHost: string
+    let cacheDir: string
     try {
       ;({ source, remoteHost } = resolveLocalSource(config))
+      cacheDir = resolveCacheDir(config)
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause))
       return {
@@ -445,7 +454,7 @@ export namespace Embedding {
     }
 
     try {
-      const inspected = await inspectLocalAsset(source, remoteHost)
+      const inspected = await inspectLocalAsset(source, remoteHost, cacheDir)
       loadState = { phase: "unloaded", source, remoteHost, asset: inspected.cached ? "cached" : "missing" }
       return {
         mode: "local",

@@ -198,6 +198,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       experienceRetrieve?.epsilon !== undefined ? String(experienceRetrieve.epsilon) : UI_DEFAULTS.experienceEpsilon,
     embeddingSource: cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource,
     embeddingRemoteHost: cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost,
+    embeddingCacheDir: cfg.embedding?.local?.cacheDir ?? UI_DEFAULTS.embeddingCacheDir,
   })
 
   params.setInitialized(true)

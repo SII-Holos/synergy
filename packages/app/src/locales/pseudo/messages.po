@@ -14650,6 +14650,18 @@ msgid "settings.library.embedding.button.starting"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.library.embedding.currentModel.title"
 msgstr ""
 

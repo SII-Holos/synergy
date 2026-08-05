@@ -2603,6 +2603,10 @@ export type LocalEmbeddingConfig = {
    * Public HTTPS origin used when source is custom
    */
   remoteHost?: string
+  /**
+   * Directory where the bundled local embedding model is cached (default: ~/.synergy/data/embedding/models). Supports {env:VAR} references.
+   */
+  cacheDir?: string
 }
 
 /**

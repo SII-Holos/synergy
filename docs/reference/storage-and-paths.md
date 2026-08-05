@@ -38,6 +38,7 @@ data/sessions/<scope>/<session>/
 data/session_message_order_v1/<scope>/<session>/
 data/endpoint_session/
 data/channel/managed_ownership/
+data/embedding/models/
 data/channel/managed_ownership_reverse/
 data/channel/workspaces/<identity-hash>/workspace/
 data/channel/diagnostics/
@@ -65,6 +66,8 @@ data/github/ci/
 data/github/runtime.json
 data/github/poll-state/
 ```
+
+Local embedding model assets are cached under `data/embedding/models/`; the location can be redirected with `embedding.local.cacheDir`.
 
 Channel-managed Project ownership uses a hashed forward record under `managed_ownership/` and a Scope-ID reverse index under `managed_ownership_reverse/`. Raw external account and Project IDs remain record values rather than path components. `workspaces/<identity-hash>/workspace/` is the deterministic, symlink-rejecting Project directory and an independent Git repository.
 

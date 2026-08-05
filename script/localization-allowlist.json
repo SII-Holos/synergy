@@ -241,6 +241,14 @@
   },
   {
     "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "jsx-attribute",
+    "literal": "~/.synergy/data/embedding/models",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Default filesystem cache path placeholder illustrating the expected input format."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "invalid-message-descriptor",
     "literal": "model.description",
     "occurrence": 1,

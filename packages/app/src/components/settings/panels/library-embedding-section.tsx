@@ -87,6 +87,20 @@ const customSourceInvalid = {
   message: "Origin is required for a custom source.",
 }
 
+const cacheDirTitle = {
+  id: "settings.library.embedding.cacheDir.title",
+  message: "Model cache directory",
+}
+const cacheDirDesc = {
+  id: "settings.library.embedding.cacheDir.desc",
+  message:
+    "Where Synergy stores the downloaded local model files. Leave empty for the default (~/.synergy/data/embedding/models).",
+}
+const cacheDirLabel = {
+  id: "settings.library.embedding.cacheDir.label",
+  message: "Local embedding model cache directory",
+}
+
 const localFilesTitle = {
   id: "settings.library.embedding.localFiles.title",
   message: "Local model files",
@@ -429,6 +443,21 @@ export function LibraryEmbeddingSection(props: {
               }
             />
           </Show>
+          <SettingRow
+            title={_(cacheDirTitle)}
+            description={_(cacheDirDesc)}
+            trailing={
+              <div class="settings-embedding-host">
+                <TextField
+                  label={_(cacheDirLabel)}
+                  hideLabel
+                  placeholder="~/.synergy/data/embedding/models"
+                  value={props.library.embeddingCacheDir}
+                  onChange={(value) => props.onLibraryChange("embeddingCacheDir", value)}
+                />
+              </div>
+            }
+          />
           <Show when={localStatus()}>
             {(current) => (
               <>

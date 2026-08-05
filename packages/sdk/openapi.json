@@ -27947,6 +27947,10 @@
             "description": "Public HTTPS origin used when source is custom",
             "type": "string",
             "format": "uri"
+          },
+          "cacheDir": {
+            "description": "Directory where the bundled local embedding model is cached (default: ~/.synergy/data/embedding/models). Supports {env:VAR} references.",
+            "type": "string"
           }
         },
         "additionalProperties": false

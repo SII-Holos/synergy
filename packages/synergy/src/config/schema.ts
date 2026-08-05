@@ -969,6 +969,13 @@ export const LocalEmbeddingConfig = z
       .optional()
       .describe("Download source for the bundled local embedding model (default: huggingface)"),
     remoteHost: z.string().url().optional().describe("Public HTTPS origin used when source is custom"),
+    cacheDir: z
+      .string()
+      .optional()
+      .describe(
+        "Directory where the bundled local embedding model is cached (default: ~/.synergy/data/embedding/models). " +
+          "Supports {env:VAR} references.",
+      ),
   })
   .strict()
   .superRefine((value, ctx) => {

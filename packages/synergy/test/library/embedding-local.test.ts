@@ -4,7 +4,11 @@ import { Embedding } from "../../src/vector/embedding"
 
 const originalConfigCurrent = Config.current
 
-function localConfig(local?: { source?: "huggingface" | "hf-mirror" | "custom"; remoteHost?: string }) {
+function localConfig(local?: {
+  source?: "huggingface" | "hf-mirror" | "custom"
+  remoteHost?: string
+  cacheDir?: string
+}) {
   return { embedding: local ? { local } : undefined } as Config.Info
 }
 
@@ -59,6 +63,10 @@ describe("local embedding config", () => {
         local: { source: "huggingface", remoteHost: "https://models.example" },
       }).success,
     ).toBe(true)
+  })
+
+  test("accepts a custom cache directory", () => {
+    expect(Config.EmbeddingConfig.safeParse({ local: { cacheDir: "/custom/models" } }).success).toBe(true)
   })
 })
 
@@ -220,5 +228,26 @@ describe("local embedding asset", () => {
       baseURL: "https://embedding.example/v1",
     })
     expect(loadRuntime).not.toHaveBeenCalled()
+  })
+})
+
+describe("local embedding cache directory", () => {
+  test("passes the configured cache directory to the transformers runtime", async () => {
+    ;(Config.current as typeof Config.current) = mock(async () => localConfig({ cacheDir: "/custom/models" }))
+    let configuredCacheDir = ""
+    Embedding.setLocalRuntimeControlsForTest({
+      loadRuntime: async () => ({
+        configure(input) {
+          configuredCacheDir = input.cacheDir
+        },
+        isCached: mock(async () => true),
+        pipeline: mock(async () => extractor()),
+      }),
+    })
+
+    await Embedding.warmup()
+
+    expect(configuredCacheDir).toBe("/custom/models")
+    expect(await Embedding.status()).toMatchObject({ source: "huggingface", asset: "cached", runtime: "ready" })
   })
 })
