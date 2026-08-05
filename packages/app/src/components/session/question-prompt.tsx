@@ -148,7 +148,12 @@ export function QuestionPrompt(props: QuestionPromptProps) {
 
   return (
     <section ref={root} class="question-prompt-shell" aria-label={_(S.questionAria)}>
-      <Show when={collapsed()}>
+      <div
+        class="question-prompt-collapsed-shell"
+        classList={{ "is-open": collapsed() }}
+        aria-hidden={!collapsed()}
+        inert={!collapsed()}
+      >
         <button
           type="button"
           class="question-prompt-collapsed"
@@ -166,8 +171,13 @@ export function QuestionPrompt(props: QuestionPromptProps) {
             <span>{_(S.questionOpen)}</span>
           </span>
         </button>
-      </Show>
-      <Show when={!collapsed()}>
+      </div>
+      <div
+        class="question-prompt-expanded-shell"
+        classList={{ "is-open": !collapsed() }}
+        aria-hidden={collapsed()}
+        inert={collapsed()}
+      >
         <div class="question-prompt-expanded">
           <header class="question-prompt-meta">
             <div class="question-prompt-meta-summary">
@@ -417,7 +427,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
             </footer>
           </Show>
         </div>
-      </Show>
+      </div>
     </section>
   )
 }

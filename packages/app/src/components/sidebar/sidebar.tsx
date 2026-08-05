@@ -490,7 +490,7 @@ export function Sidebar(props: SidebarProps) {
                   </button>
                 </Show>
               </div>
-              <Show when={recentSectionOpen()}>
+              <SidebarDisclosure open={recentSectionOpen()}>
                 <Show
                   when={recentEntries().length > 0}
                   fallback={<div class="sb-section-empty">{_(sidebar.noRecentSessions)}</div>}
@@ -506,7 +506,7 @@ export function Sidebar(props: SidebarProps) {
                     </button>
                   </Show>
                 </Show>
-              </Show>
+              </SidebarDisclosure>
             </div>
 
             {/* Home */}
@@ -536,7 +536,7 @@ export function Sidebar(props: SidebarProps) {
                   class="sb-section-chevron"
                 />
               </div>
-              <Show when={channelSectionOpen()}>
+              <SidebarDisclosure open={channelSectionOpen()}>
                 <Show
                   when={channelGroupedEntries().length > 0 || managedChannelGroups().length > 0}
                   fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
@@ -556,7 +556,7 @@ export function Sidebar(props: SidebarProps) {
                         />
                         <span>{_(sidebar.channelFeishu)}</span>
                       </div>
-                      <Show when={feishuGroupOpen()}>
+                      <SidebarDisclosure open={feishuGroupOpen()}>
                         <For each={channelGroupedEntries()}>
                           {(group) => (
                             <ChannelChatPartnerGroup
@@ -567,7 +567,7 @@ export function Sidebar(props: SidebarProps) {
                             />
                           )}
                         </For>
-                      </Show>
+                      </SidebarDisclosure>
                     </div>
                     <Show when={layout.nav.hasMoreRootNavSection("channel")}>
                       <button
@@ -611,7 +611,7 @@ export function Sidebar(props: SidebarProps) {
                     )}
                   </For>
                 </Show>
-              </Show>
+              </SidebarDisclosure>
             </div>
 
             {/* Background */}
@@ -681,7 +681,7 @@ export function Sidebar(props: SidebarProps) {
                 </Tooltip>
               </div>
 
-              <Show when={projectsSectionOpen()}>
+              <SidebarDisclosure open={projectsSectionOpen()}>
                 <FlipList entries={genericScopeWorktrees()} selector="[data-scope-id]" dataKey="scopeId">
                   <For each={genericScopeWorktrees()}>
                     {(worktree) => (
@@ -708,7 +708,7 @@ export function Sidebar(props: SidebarProps) {
                     )}
                   </For>
                 </FlipList>
-              </Show>
+              </SidebarDisclosure>
             </div>
           </Show>
         </div>
@@ -940,7 +940,7 @@ function SidebarProjectGroup(props: {
           </div>
         </div>
 
-        <Show when={props.scope()?.expanded}>
+        <SidebarDisclosure open={!!props.scope()?.expanded} class="sb-project-disclosure">
           <Show
             when={!isSupplemental()}
             fallback={
@@ -1022,7 +1022,7 @@ function SidebarProjectGroup(props: {
               </Show>
             </Show>
           </Show>
-        </Show>
+        </SidebarDisclosure>
       </div>
     </Show>
   )
@@ -1066,6 +1066,19 @@ function SidebarSessionList(props: {
   )
 }
 
+function SidebarDisclosure(props: { open: boolean; class?: string; children: JSX.Element }) {
+  return (
+    <div
+      class={`sb-disclosure ${props.class ?? ""}`}
+      classList={{ "sb-disclosure-open": props.open }}
+      aria-hidden={!props.open}
+      inert={!props.open}
+    >
+      <div class="sb-disclosure-inner">{props.children}</div>
+    </div>
+  )
+}
+
 // --- RootNavSection: reusable collapsible section for Home / Channel / Background / GitHub ---
 
 function RootNavSection(props: {
@@ -1085,7 +1098,7 @@ function RootNavSection(props: {
         <span class="sb-section-title">{props.title}</span>
         <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
       </div>
-      <Show when={props.open()}>
+      <SidebarDisclosure open={props.open()}>
         <Show when={props.entries.length > 0} fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}>
           <SidebarSessionList entries={props.entries} activeID={props.activeID} onSessionClick={props.onSessionClick} />
           <Show when={props.hasMore}>
@@ -1094,7 +1107,7 @@ function RootNavSection(props: {
             </button>
           </Show>
         </Show>
-      </Show>
+      </SidebarDisclosure>
     </div>
   )
 }
@@ -1133,9 +1146,9 @@ function ChannelChatPartnerGroup(props: {
         <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
         <span>{props.name}</span>
       </div>
-      <Show when={open()}>
+      <SidebarDisclosure open={open()}>
         <SidebarSessionList entries={props.sessions} activeID={props.activeID} onSessionClick={props.onSessionClick} />
-      </Show>
+      </SidebarDisclosure>
     </div>
   )
 }
@@ -1153,14 +1166,14 @@ function ChannelProviderGroup(props: {
         <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
         <span>{props.group.label}</span>
       </div>
-      <Show when={open()}>
+      <SidebarDisclosure open={open()}>
         <Show
           when={props.group.projects.length > 0}
           fallback={<div class="sb-section-empty">{props._(sidebar.noSessions)}</div>}
         >
           <div class="sb-channel-managed-projects">{props.children}</div>
         </Show>
-      </Show>
+      </SidebarDisclosure>
     </div>
   )
 }
