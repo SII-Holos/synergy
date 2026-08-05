@@ -281,6 +281,7 @@
   padding: 0 8px;
   border-radius: 8px;
   text-align: left;
+  cursor: pointer;
   transition: background-color 150ms;
 }
 

@@ -1,6 +1,7 @@
 import z from "zod"
 import type { ChannelHost } from "./host"
 import type { Question } from "@/question"
+import type { Scope } from "@/scope"
 
 export const ChannelTarget = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("chat"), chatId: z.string() }),
@@ -339,6 +340,19 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   readonly conversation?: ConversationCapabilities
 
   waitForTransport?(input: { accountId: string; signal: AbortSignal }): Promise<void>
+
+  /**
+   * Resolve the Scope that owns the Session for an inbound conversation
+   * message. Providers may return a per-chat Scope (e.g. a managed checkout
+   * directory for a GitHub issue thread) instead of the account-level Scope
+   * chosen by `resolveAccountScope`. Returning `undefined` keeps the account
+   * Scope.
+   */
+  resolveConversationScope?(input: {
+    accountId: string
+    accountConfig: TAccountConfig
+    message: MessageContext
+  }): Promise<Scope | undefined>
 
   connect(input: {
     accountId: string

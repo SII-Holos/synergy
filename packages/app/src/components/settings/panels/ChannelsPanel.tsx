@@ -1,8 +1,12 @@
+import { For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
 import { AccountToggleCard } from "../components/AccountToggleCard"
 import { BasicAccountToggleCard } from "../components/BasicAccountToggleCard"
-import type { ChannelSettings, ProviderGroup } from "../types"
+import { SettingRow } from "../components/SettingRow"
+import type { ChannelSettings, GithubAccountToggle, ProviderGroup } from "../types"
 
 const pageTitle = { id: "settings.channels.page.title", message: "Channels" }
 const pageDescription = {
@@ -45,6 +49,53 @@ const clarusPreparingDiagnosticsLabel = {
   id: "settings.channels.clarus.preparingDiagnostics",
   message: "Preparing diagnostics…",
 }
+const githubSectionTitle = { id: "settings.channels.github.title", message: "GitHub" }
+const githubAccountsDescription = {
+  id: "settings.channels.github.description",
+  message:
+    "Enable or disable existing GitHub channel accounts. Configure watched repositories, workspace directory, and review behavior.",
+}
+const emptyGithubLabel = { id: "settings.channels.github.empty", message: "No GitHub accounts configured yet." }
+const githubRepositoriesLabel = { id: "settings.channels.github.repositories", message: "Repositories" }
+const githubRepositoriesDescription = {
+  id: "settings.channels.github.repositoriesDescription",
+  message: "Comma-separated owner/repo pairs to watch and respond to.",
+}
+const githubWorkspaceDirLabel = { id: "settings.channels.github.workspaceDir", message: "Workspace directory" }
+const githubWorkspaceDirDescription = {
+  id: "settings.channels.github.workspaceDirDescription",
+  message: "Directory under which per-repository checkouts are created.",
+}
+const githubPollingLabel = { id: "settings.channels.github.pollingIntervalMs", message: "Polling interval (ms)" }
+const githubPollingDescription = {
+  id: "settings.channels.github.pollingIntervalMsDescription",
+  message: "Interval between GitHub API polls in milliseconds.",
+}
+const githubAutoReviewLabel = { id: "settings.channels.github.autoReview", message: "Auto-review pull requests" }
+const githubAutoReviewDescription = {
+  id: "settings.channels.github.autoReviewDescription",
+  message: "Automatically review newly opened and updated pull requests.",
+}
+const githubAutoRespondLabel = { id: "settings.channels.github.autoRespond", message: "Auto-respond to mentions" }
+const githubAutoRespondDescription = {
+  id: "settings.channels.github.autoRespondDescription",
+  message: "Respond to @mentions of the bot handle and questions in issues and pull requests.",
+}
+const githubMentionLabel = { id: "settings.channels.github.mention", message: "Mention handle" }
+const githubMentionDescription = {
+  id: "settings.channels.github.mentionDescription",
+  message: "GitHub handle users @-mention to summon the bot. Leave empty to resolve automatically from the GitHub App.",
+}
+const githubRepositoriesPlaceholder = {
+  id: "settings.channels.github.repositoriesPlaceholder",
+  message: "owner/repo, owner/repo",
+}
+const githubWorkspaceDirPlaceholder = {
+  id: "settings.channels.github.workspaceDirPlaceholder",
+  message: "/path/to/workspace",
+}
+const githubPollingPlaceholder = { id: "settings.channels.github.pollingPlaceholder", message: "300000" }
+const enabledLabel = { id: "settings.channels.github.enabled", message: "Enabled" }
 
 export function ChannelsPanel(props: {
   channels: ChannelSettings
@@ -59,6 +110,8 @@ export function ChannelsPanel(props: {
   onClarusToggle: (index: number, value: boolean) => void
   onClarusRefresh: (accountID: string) => Promise<void>
   onClarusDiagnostics: (accountID: string) => Promise<void>
+  onGithubToggle: (index: number, value: boolean) => void
+  onGithubFieldChange: (index: number, field: keyof GithubAccountToggle, value: string | boolean) => void
 }) {
   const { _ } = useLingui()
   return (
@@ -95,6 +148,106 @@ export function ChannelsPanel(props: {
           onRefresh={(account) => props.onClarusRefresh(account.key)}
           onDiagnostics={(account) => props.onClarusDiagnostics(account.key)}
         />
+      </SettingsSection>
+      <SettingsSection title={_(githubSectionTitle)} description={_(githubAccountsDescription)}>
+        <Show
+          when={props.channels.githubAccounts.length > 0}
+          fallback={<div class="settings-row-description">{_(emptyGithubLabel)}</div>}
+        >
+          <For each={props.channels.githubAccounts}>
+            {(account, index) => (
+              <SettingsSubsection>
+                <SettingRow
+                  title={account.key}
+                  description={_(enabledLabel)}
+                  trailing={
+                    <Switch
+                      checked={account.enabled}
+                      hideLabel
+                      onChange={(value) => props.onGithubToggle(index(), value)}
+                    >
+                      {account.key}
+                    </Switch>
+                  }
+                />
+                <SettingRow
+                  title={_(githubRepositoriesLabel)}
+                  description={_(githubRepositoriesDescription)}
+                  trailing={
+                    <TextField
+                      type="text"
+                      placeholder={_(githubRepositoriesPlaceholder)}
+                      value={account.repositories}
+                      onChange={(value) => props.onGithubFieldChange(index(), "repositories", value)}
+                    />
+                  }
+                />
+                <SettingRow
+                  title={_(githubWorkspaceDirLabel)}
+                  description={_(githubWorkspaceDirDescription)}
+                  trailing={
+                    <TextField
+                      type="text"
+                      placeholder={_(githubWorkspaceDirPlaceholder)}
+                      value={account.workspaceDir}
+                      onChange={(value) => props.onGithubFieldChange(index(), "workspaceDir", value)}
+                    />
+                  }
+                />
+                <SettingRow
+                  title={_(githubPollingLabel)}
+                  description={_(githubPollingDescription)}
+                  trailing={
+                    <TextField
+                      type="number"
+                      placeholder={_(githubPollingPlaceholder)}
+                      value={account.pollingIntervalMs}
+                      onChange={(value) => props.onGithubFieldChange(index(), "pollingIntervalMs", value)}
+                    />
+                  }
+                />
+                <SettingRow
+                  title={_(githubAutoReviewLabel)}
+                  description={_(githubAutoReviewDescription)}
+                  trailing={
+                    <Switch
+                      checked={account.autoReview}
+                      hideLabel
+                      onChange={(value) => props.onGithubFieldChange(index(), "autoReview", value)}
+                    >
+                      {_(githubAutoReviewLabel)}
+                    </Switch>
+                  }
+                />
+                <SettingRow
+                  title={_(githubAutoRespondLabel)}
+                  description={_(githubAutoRespondDescription)}
+                  trailing={
+                    <Switch
+                      checked={account.autoRespond}
+                      hideLabel
+                      onChange={(value) => props.onGithubFieldChange(index(), "autoRespond", value)}
+                    >
+                      {_(githubAutoRespondLabel)}
+                    </Switch>
+                  }
+                />
+                <SettingRow
+                  title={_(githubMentionLabel)}
+                  description={_(githubMentionDescription)}
+                  trailing={
+                    <TextField
+                      type="text"
+                      placeholder=""
+                      value={account.mention}
+                      onChange={(value) => props.onGithubFieldChange(index(), "mention", value)}
+                    />
+                  }
+                />
+              </SettingsSubsection>
+            )}
+          </For>
+        </Show>
       </SettingsSection>
     </SettingsPage>
   )

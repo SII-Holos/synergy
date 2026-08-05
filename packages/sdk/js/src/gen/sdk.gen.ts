@@ -157,7 +157,6 @@ import type {
   ExperienceListSort,
   ExperimentalResourceListResponses,
   FormatterStatusResponses,
-  GithubConfiguredResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
@@ -4745,20 +4744,6 @@ export class SynergyLink extends HeyApiClient {
   }
 }
 
-export class Github extends HeyApiClient {
-  /**
-   * Check whether the GitHub App is configured
-   *
-   * Reports whether both required GitHub App environment variables are present without exposing them.
-   */
-  public configured<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<GithubConfiguredResponses, unknown, ThrowOnError>({
-      url: "/github/configured",
-      ...options,
-    })
-  }
-}
-
 export class Runtime extends HeyApiClient {
   /**
    * Reload runtime state
@@ -5520,7 +5505,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
     },
@@ -5566,7 +5550,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -5619,7 +5602,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
     },
@@ -11283,8 +11265,6 @@ export class SynergyClient extends HeyApiClient {
   holos = new Holos({ client: this.client })
 
   synergyLink = new SynergyLink({ client: this.client })
-
-  github = new Github({ client: this.client })
 
   agenda = new Agenda({ client: this.client })
 

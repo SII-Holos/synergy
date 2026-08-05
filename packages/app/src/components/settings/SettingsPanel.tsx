@@ -683,6 +683,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onClarusToggle={(index, value) => setSettings("channels", "clarusAccounts", index, "enabled", value)}
         onClarusRefresh={refreshClarusProjects}
         onClarusDiagnostics={downloadClarusDiagnostics}
+        onGithubToggle={(index, value) => setSettings("channels", "githubAccounts", index, "enabled", value)}
+        onGithubFieldChange={(index, field, value) =>
+          setSettings("channels", "githubAccounts", index, field, value as never)
+        }
       />
     ),
     email: () => (

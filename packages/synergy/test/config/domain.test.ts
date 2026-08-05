@@ -27,7 +27,6 @@ test("config domain filenames are stable and ordered", () => {
     "100-holos.jsonc",
     "110-email.jsonc",
     "120-runtime.jsonc",
-    "130-github.jsonc",
   ])
 })
 
@@ -76,12 +75,6 @@ test("execution isolation settings reject unsafe process and concurrency limits"
   expect(Config.Info.safeParse({ execution: { policyTimeoutMs: 49 } }).success).toBe(false)
   expect(Config.Info.safeParse({ execution: { policyHeartbeatTimeoutMs: 9_999 } }).success).toBe(false)
   expect(Config.Info.safeParse({ execution: { toolConcurrency: 513 } }).success).toBe(false)
-})
-
-test("GitHub integration has its own canonical config domain", () => {
-  const github = Config.GitHubIntegrationConfig.parse({ enabled: true, polling: { enabled: false } })
-  expect(ConfigDomain.domainForKey("github")?.id).toBe("github")
-  expect(ConfigDomain.extract({ github }, "github")).toEqual({ github })
 })
 
 test("product update mode is not part of server config", async () => {

@@ -1717,6 +1717,30 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "github_deliver_fix",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "git-merge",
+          title: TOOL_TITLE_DESC["github_deliver_fix"],
+          subtitle: props.input?.branch as string,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "email_read",
   render(props) {
     return (
