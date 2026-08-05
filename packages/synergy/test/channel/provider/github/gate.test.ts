@@ -13,35 +13,48 @@ const baseComment = {
 }
 
 describe("github channel event gate — comments", () => {
-  test("delivers a comment that mentions @synergy when autoRespond is on", () => {
+  test("delivers a comment that mentions @synergy-agent when autoRespond is on", () => {
     const gate = gateGithubEvent(
-      { ...baseComment, body: "Can you @synergy review this?" },
+      { ...baseComment, body: "Can you @synergy-agent review this?" },
       { autoReview: true, autoRespond: true },
     )
     expect(gate).toEqual({ kind: "deliver" })
   })
 
-  test("skips a comment without @synergy mention", () => {
+  test("skips a comment without @synergy-agent mention", () => {
     const gate = gateGithubEvent({ ...baseComment, body: "Just chatting" }, { autoReview: true, autoRespond: true })
-    expect(gate).toEqual({ kind: "skip", reason: "no @synergy mention" })
+    expect(gate).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
   })
 
   test("skips all comments when autoRespond is off", () => {
     const gate = gateGithubEvent(
-      { ...baseComment, body: "Can you @synergy review this?" },
+      { ...baseComment, body: "Can you @synergy-agent review this?" },
       { autoReview: true, autoRespond: false },
     )
     expect(gate).toEqual({ kind: "skip", reason: "autoRespond disabled" })
   })
 
-  test("matches @synergy case-insensitively and at word boundaries", () => {
+  test("matches @synergy-agent case-insensitively and at handle boundaries", () => {
     expect(
-      gateGithubEvent({ ...baseComment, body: "@Synergy please" }, { autoReview: true, autoRespond: true }),
+      gateGithubEvent({ ...baseComment, body: "@Synergy-Agent please" }, { autoReview: true, autoRespond: true }),
     ).toEqual({ kind: "deliver" })
-    expect(gateGithubEvent({ ...baseComment, body: "@synergy1 no" }, { autoReview: true, autoRespond: true })).toEqual({
+    expect(
+      gateGithubEvent({ ...baseComment, body: "@synergy-agent1 no" }, { autoReview: true, autoRespond: true }),
+    ).toEqual({
       kind: "skip",
-      reason: "no @synergy mention",
+      reason: "no @synergy-agent mention",
     })
+    expect(
+      gateGithubEvent({ ...baseComment, body: "@synergy-agent-extra no" }, { autoReview: true, autoRespond: true }),
+    ).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
+  })
+
+  test("does not trigger on a plain @synergy mention (account name is synergy-agent)", () => {
+    const gate = gateGithubEvent(
+      { ...baseComment, body: "Can you @synergy review this?" },
+      { autoReview: true, autoRespond: true },
+    )
+    expect(gate).toEqual({ kind: "skip", reason: "no @synergy-agent mention" })
   })
 })
 

@@ -409,7 +409,7 @@ async function addGithubChannel(printOnly: boolean, serverUrl: string): Promise<
   if (prompts.isCancel(autoReview)) throw new UI.CancelledError()
 
   const autoRespond = await prompts.confirm({
-    message: "Respond to @synergy mentions and questions?",
+    message: "Respond to @synergy-agent mentions and questions?",
     initialValue: true,
   })
   if (prompts.isCancel(autoRespond)) throw new UI.CancelledError()

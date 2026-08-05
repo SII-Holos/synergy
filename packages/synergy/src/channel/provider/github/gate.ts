@@ -13,7 +13,7 @@ export type GithubEventGate =
  * Decide whether a synthesized GitHub event should be delivered to the
  * channel conversation pipeline.
  *
- * - Comments only trigger on an explicit @synergy mention (the summon
+ * - Comments only trigger on an explicit @synergy-agent mention (the summon
  *   surface) and require `autoRespond`.
  * - Issue openings auto-respond when `autoRespond` is on.
  * - PR opened/synchronize/ready_for_review auto-review when `autoReview` is
@@ -30,8 +30,11 @@ export function gateGithubEvent(
   switch (event.kind) {
     case "comment.created":
       if (!input.autoRespond) return { kind: "skip", reason: "autoRespond disabled" }
-      if (!/@synergy\b/i.test(event.body)) {
-        return { kind: "skip", reason: "no @synergy mention" }
+      // The GitHub App account name is `synergy-agent`; users summon the bot
+      // with an @synergy-agent mention. The negative lookahead keeps similar
+      // handles such as @synergy-agent-foo from matching.
+      if (!/@synergy-agent(?![\w-])/i.test(event.body)) {
+        return { kind: "skip", reason: "no @synergy-agent mention" }
       }
       return { kind: "deliver" }
     case "issue.opened":

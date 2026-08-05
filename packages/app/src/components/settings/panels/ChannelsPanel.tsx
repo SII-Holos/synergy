@@ -79,7 +79,7 @@ const githubAutoReviewDescription = {
 const githubAutoRespondLabel = { id: "settings.channels.github.autoRespond", message: "Auto-respond to mentions" }
 const githubAutoRespondDescription = {
   id: "settings.channels.github.autoRespondDescription",
-  message: "Respond to @synergy mentions and questions in issues and pull requests.",
+  message: "Respond to @synergy-agent mentions and questions in issues and pull requests.",
 }
 const githubRepositoriesPlaceholder = {
   id: "settings.channels.github.repositoriesPlaceholder",

@@ -236,7 +236,7 @@ export function synthesizeEvents(
     }
   }
 
-  // --- Issue/PR comments (the @synergy trigger surface) ---
+  // --- Issue/PR comments (the @synergy-agent trigger surface) ---
   for (const [issueNumberRaw, comments] of Object.entries(input.commentsByIssue)) {
     const issueNumber = Number(issueNumberRaw)
     if (!Number.isInteger(issueNumber) || issueNumber <= 0) continue

@@ -18,12 +18,12 @@ The `github` provider (`packages/synergy/src/channel/provider/github/`) connects
 
 - **Conversation ingress only** — synthesized repository events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `comment.created`) flow through `ChannelHost.conversations.receive()` with `chatId = "owner/repo#<number>"`.
 - **Per-thread Scope** — implement `resolveConversationScope()` to bind each thread to its own random-hash checkout directory (see `GithubChannelWorkspace.ensure()`), so sessions are isolated per issue/PR. `workspaceDir` is configured per account.
-- **Mention gating** — comments only wake an agent on an explicit `@synergy` mention (`gateGithubEvent`); `autoReview`/`autoRespond` account toggles gate PR and issue events.
+- **Mention gating** — comments only wake an agent on an explicit `@synergy-agent` mention (`gateGithubEvent`); `autoReview`/`autoRespond` account toggles gate PR and issue events.
 - **Reactions** — `addReaction` maps the generic channel emoji vocabulary onto GitHub's reaction content set (`eyes`/`rocket`/`confused`/`+1`/`-1`/`laugh`/`hooray`/`heart`) via a comment→chatId registry populated by the poll loop; unsupported emoji are skipped.
 - **Agent** — `github-channel-agent` owns all GitHub sessions; `gh`, `git push`, and `git remote` are denied (the provider performs all GitHub writes with an installation token).
 - **Credentials** — `SYNERGY_GITHUB_APP_ID` / `SYNERGY_GITHUB_APP_PRIVATE_KEY` env-only; distinct from the user-credential `src/provider/github.ts` (bash `GH_TOKEN` injection).
 
-Preserve these invariants when changing the provider: deterministic per-thread directory resolution, `@synergy` mention gating, comment→chatId reaction registry, and the env-only credential boundary.
+Preserve these invariants when changing the provider: deterministic per-thread directory resolution, `@synergy-agent` mention gating, comment→chatId reaction registry, and the env-only credential boundary.
 
 ## Preserve Ownership
 

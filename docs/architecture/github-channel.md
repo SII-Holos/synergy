@@ -44,7 +44,7 @@ The former first-party GitHub integration (`packages/synergy/src/github/`) used 
 | `workspaceDir`      | required               | Directory (relative to the Synergy data home) under which per-thread checkouts are created.                                                  |
 | `pollingIntervalMs` | `300000`               | Poll interval (5 minutes by default; the legacy integration polled every 60s — a lower frequency is intentional to stay within rate limits). |
 | `autoReview`        | `true`                 | Automatically review newly opened and updated pull requests.                                                                                 |
-| `autoRespond`       | `true`                 | Respond to `@synergy` mentions and answer issue/PR questions.                                                                                |
+| `autoRespond`       | `true`                 | Respond to `@synergy-agent` mentions and answer issue/PR questions.                                                                          |
 | `agent`             | `github-channel-agent` | Agent used for GitHub channel sessions.                                                                                                      |
 | `model` / `variant` | —                      | Per-account model override (same shape as Feishu accounts).                                                                                  |
 
@@ -57,7 +57,7 @@ One loop runs per configured repository while the account is connected. Each cyc
 1. Resolves the installation token for the repository.
 2. Lists issues updated since the watermark (`GET /repos/{o}/{r}/issues?since=...&sort=updated&direction=asc`).
 3. Fetches pull request details for PR-shaped entries (`GET /repos/{o}/{r}/pulls/{n}`).
-4. Lists comments on every issue/PR in the window (`GET /repos/{o}/{r}/issues/{n}/comments?since=...`) — this is the `@synergy` summon surface.
+4. Lists comments on every issue/PR in the window (`GET /repos/{o}/{r}/issues/{n}/comments?since=...`) — this is the `@synergy-agent` summon surface.
 5. Synthesizes events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `pull_request.ready_for_review`, `comment.created`) with a deterministic dedup state, and delivers each through `ChannelHost.conversations.receive()`.
 
 Rate-limit errors (403/429) extend the sleep using `Retry-After`/`x-ratelimit-reset`. Poll state (`seenIssues`, `seenPullRequests`, `seenComments`, watermarks) is persisted per account + repository under `data/channel/providers/github/accounts/<hash>/poll-state/...` and pruned to bound growth (open PRs + 5k recent closed; 10k comment IDs).
@@ -66,7 +66,7 @@ Rate-limit errors (403/429) extend the sleep using `Retry-After`/`x-ratelimit-re
 
 `gateGithubEvent()` decides which synthesized events reach the conversation pipeline:
 
-- `comment.created` — delivered **only when the comment mentions `@synergy`** (case-insensitive, word boundary) and `autoRespond` is on. This is the summon rule: ordinary chatter never wakes an agent.
+- `comment.created` — delivered **only when the comment mentions `@synergy-agent`** (case-insensitive, handle boundary) and `autoRespond` is on. This is the summon rule: ordinary chatter never wakes an agent.
 - `issue.opened` — delivered when `autoRespond` is on.
 - `pull_request.opened` / `pull_request.synchronize` / `pull_request.ready_for_review` — delivered when `autoReview` is on.
 

@@ -13951,7 +13951,7 @@ msgstr "Auto-respond to mentions"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.autoRespondDescription"
-msgstr "Respond to @synergy mentions and questions in issues and pull requests."
+msgstr "Respond to @synergy-agent mentions and questions in issues and pull requests."
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.autoReview"

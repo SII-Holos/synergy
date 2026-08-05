@@ -13951,7 +13951,7 @@ msgstr "自动回复提及"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.autoRespondDescription"
-msgstr "自动回复 issue 和拉取请求中提及 @synergy 的消息与提问。"
+msgstr "自动回复 issue 和拉取请求中提及 @synergy-agent 的消息与提问。"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.github.autoReview"
