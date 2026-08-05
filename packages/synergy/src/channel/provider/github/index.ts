@@ -46,12 +46,21 @@ function normalizeReactionEmoji(emoji: string): string | undefined {
   }
 }
 
+type ThreadFacts = {
+  pullNumber?: number
+  defaultBranch?: string
+  /** PR head branch ref (e.g. `feature/xyz`), present when the thread is a PR. */
+  headRef?: string
+  /** PR head repository full name (e.g. `owner/repo`); differs from the base for fork PRs. */
+  headRepoFullName?: string
+}
+
 type AccountState = {
   config: Config.ChannelGithubAccount
   accountHash: string
   abort: AbortController
   loops: Promise<void>[]
-  threadFacts: Map<string, { pullNumber?: number; defaultBranch?: string }>
+  threadFacts: Map<string, ThreadFacts>
   /** GitHub handle users @-mention to summon the bot (App slug or configured override). */
   mention: string
 }
@@ -217,10 +226,16 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     if (!facts) {
       const token = await this.resolveInstallationToken(owner, repo)
       // Distinguish PR threads from issue threads: the pulls endpoint 404s
-      // for plain issues.
+      // for plain issues. When it is a PR, also capture the head branch and
+      // head repository so a later fix delivery can push to that PR.
       let pullNumber: number | undefined
       let defaultBranch: string | undefined
-      const pull = await GitHubChannelAuth.GitHubClient.send<{ number?: unknown }>(
+      let headRef: string | undefined
+      let headRepoFullName: string | undefined
+      const pull = await GitHubChannelAuth.GitHubClient.send<{
+        number?: unknown
+        head?: { ref?: unknown; repo?: { full_name?: unknown } | null }
+      }>(
         GitHubChannelAuth.GitHubClient.getPullRequest({
           owner,
           repo,
@@ -230,12 +245,15 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
       ).catch(() => undefined)
       if (pull && typeof pull.number === "number") {
         pullNumber = parsed.issueNumber
+        const head = pull.head
+        if (head && typeof head.ref === "string") headRef = head.ref
+        if (head?.repo && typeof head.repo.full_name === "string") headRepoFullName = head.repo.full_name
       }
       const repository = await GitHubChannelAuth.GitHubClient.send<{ default_branch?: unknown }>(
         GitHubChannelAuth.GitHubClient.getRepository({ owner, repo, installationToken: token }),
       ).catch(() => undefined)
       defaultBranch = typeof repository?.default_branch === "string" ? repository.default_branch : undefined
-      facts = { pullNumber, defaultBranch }
+      facts = { pullNumber, defaultBranch, headRef, headRepoFullName }
       state?.threadFacts.set(factKey, facts)
     }
 
@@ -274,8 +292,11 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
    * Deliver a locally committed fix as a pull request. The agent commits on a
    * local branch in the thread checkout and calls the `github_deliver_fix`
    * tool; this method pushes the branch with an ephemeral installation token
-   * (never exposed to the agent) and opens a deduplicated PR against the
-   * repository default branch.
+   * (never exposed to the agent). When the session thread is a pull request,
+   * the fix is pushed to that PR's head branch first (updating the PR in
+   * place); when that is not possible (fork without App access, protected or
+   * moved head branch), it falls back to opening a deduplicated PR against
+   * the repository default branch.
    */
   async deliverFix(input: {
     sessionID: string
@@ -305,10 +326,8 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     // Resolve the base branch (repository default branch preferred).
     const { owner, repo } = splitRepository(parsed.repository)
     const token = await this.resolveInstallationToken(owner, repo)
-    const baseBranch =
-      this.accounts.get(accountId)?.threadFacts.get(`${parsed.repository}#${parsed.issueNumber}`)?.defaultBranch ??
-      (await this.resolveDefaultBranch(owner, repo, token)) ??
-      "main"
+    const facts = this.accounts.get(accountId)?.threadFacts.get(`${parsed.repository}#${parsed.issueNumber}`)
+    const baseBranch = facts?.defaultBranch ?? (await this.resolveDefaultBranch(owner, repo, token)) ?? "main"
 
     const credential = buildCredentialCommand({ token, args: [] })
 
@@ -324,7 +343,32 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
       throw new Error(`Local branch ${input.branch} has no commits ahead of ${baseBranch}`)
     }
 
-    // Push the branch using the ephemeral installation token credential helper.
+    // When the thread is a pull request, prefer pushing the fix to the PR
+    // head branch so the PR updates in place (Codex-style behavior).
+    if (facts?.pullNumber && facts.headRef) {
+      const updated = await this.tryPushToPullRequestHead({
+        repository: parsed.repository,
+        pullNumber: facts.pullNumber,
+        headRef: facts.headRef,
+        headRepoFullName: facts.headRepoFullName,
+        branch: input.branch,
+        directory: record.directory,
+      })
+      if (updated) {
+        log.info("github fix pushed to existing pull request", {
+          repository: parsed.repository,
+          pullNumber: facts.pullNumber,
+          headRef: facts.headRef,
+        })
+        return updated
+      }
+      log.info("github fix push to pull request head unavailable; falling back to a new PR", {
+        repository: parsed.repository,
+        pullNumber: facts.pullNumber,
+      })
+    }
+
+    // Fallback: push the fix branch and open (or reuse) a PR against the base.
     const pushed = await $`git push origin ${input.branch}`.cwd(record.directory).env(credential.env).quiet().nothrow()
     if (pushed.exitCode !== 0) {
       throw new Error(`Failed to push branch ${input.branch}: ${pushed.stderr.toString().slice(0, 500)}`)
@@ -367,6 +411,67 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
       throw new Error(`GitHub PR creation returned an invalid response for ${input.branch}`)
     }
     return { pullRequestURL: created.html_url, pullNumber: created.number, headBranch: input.branch }
+  }
+
+  /**
+   * Attempt to update an existing pull request by pushing the fix branch to
+   * its head branch. Same-repository PRs push directly; fork PRs push to the
+   * fork only when the App has an installation there. Returns undefined when
+   * the push cannot be performed (fork without App access, protected or
+   * moved head branch), so the caller falls back to a new PR.
+   */
+  private async tryPushToPullRequestHead(input: {
+    repository: string
+    pullNumber: number
+    headRef: string
+    headRepoFullName: string | undefined
+    branch: string
+    directory: string
+  }): Promise<{ pullRequestURL: string; pullNumber: number; headBranch: string } | undefined> {
+    const isFork = input.headRepoFullName !== undefined && input.headRepoFullName !== input.repository
+    let pushURL: string
+    let pushToken: string
+    if (!isFork) {
+      const { owner, repo } = splitRepository(input.repository)
+      pushURL = `https://github.com/${input.repository}.git`
+      pushToken = await this.resolveInstallationToken(owner, repo)
+    } else if (input.headRepoFullName) {
+      const fork = splitRepository(input.headRepoFullName)
+      try {
+        pushURL = `https://github.com/${input.headRepoFullName}.git`
+        pushToken = await this.resolveInstallationToken(fork.owner, fork.repo)
+      } catch (error) {
+        log.warn("fork PR push unavailable (no App installation on fork)", {
+          repository: input.repository,
+          headRepo: input.headRepoFullName,
+          error,
+        })
+        return undefined
+      }
+    } else {
+      return undefined
+    }
+
+    const credential = buildCredentialCommand({ token: pushToken, args: [] })
+    const result = await $`git push ${pushURL} ${input.branch}:${input.headRef}`
+      .cwd(input.directory)
+      .env(credential.env)
+      .quiet()
+      .nothrow()
+    if (result.exitCode !== 0) {
+      log.warn("push to pull request head failed; falling back to a new PR", {
+        repository: input.repository,
+        pullNumber: input.pullNumber,
+        headRef: input.headRef,
+        stderr: result.stderr.toString().slice(0, 300),
+      })
+      return undefined
+    }
+    return {
+      pullRequestURL: `https://github.com/${input.repository}/pull/${input.pullNumber}`,
+      pullNumber: input.pullNumber,
+      headBranch: input.headRef,
+    }
   }
 
   private async resolveDefaultBranch(owner: string, repo: string, token: string): Promise<string | undefined> {
