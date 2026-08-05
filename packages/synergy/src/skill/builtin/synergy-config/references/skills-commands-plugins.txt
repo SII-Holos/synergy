@@ -196,7 +196,12 @@ Configured plugin specs live in the Plugins domain:
       "hostServiceRequestTimeoutMs": 120000,
       "taskRunTimeoutMs": 120000,
       "shutdownGraceMs": 1500,
-      "heartbeatIntervalMs": 5000
+      "heartbeatIntervalMs": 5000,
+      "agentCallMaxRuntimeMs": 120000,
+      "hookTimeoutMs": 120000,
+      "contributionInvokeTimeoutMs": 120000,
+      "shellRunTimeoutMs": 120000,
+      "taskRunWaitTimeoutMs": 120000
     }
   }
 }

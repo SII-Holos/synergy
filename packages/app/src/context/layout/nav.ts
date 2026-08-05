@@ -92,17 +92,65 @@ export function channelNavQuery(limit: number, cursor?: { lastActivityAt: number
   }
 }
 
+export function channelGithubNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
+  return {
+    category: "channel" as const,
+    channelType: "github",
+    parentOnly: true,
+    includeArchived: true,
+    limit,
+    ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+  }
+}
+
+export type ChannelNavType = "feishu" | "github"
+export type ChannelNavCursors = Record<ChannelNavType, NavCursor | null>
+
+export type ChannelNavPage = {
+  channelType: ChannelNavType
+  items: NavEntry[]
+  nextCursor: NavCursor | null
+  total: number
+}
+
+/** Merge per-channel-type pages (feishu + github) into one Channel section list. */
+export function mergeChannelNavPages(
+  existing: NavListState | undefined,
+  pages: ReadonlyArray<ChannelNavPage>,
+  mode: "replace" | "append" = "replace",
+): NavListState {
+  const byID = new Map<string, NavEntry>()
+  if (mode === "append") {
+    for (const item of existing?.items ?? []) byID.set(item.id, item)
+  }
+  for (const page of pages) {
+    for (const item of page.items) byID.set(item.id, item)
+  }
+  const items = orderNavEntries([...byID.values()])
+  const channelCursors: ChannelNavCursors = {
+    feishu: existing?.channelCursors?.feishu ?? null,
+    github: existing?.channelCursors?.github ?? null,
+  }
+  for (const page of pages) channelCursors[page.channelType] = page.nextCursor
+  const hasMore = channelCursors.feishu != null || channelCursors.github != null
+  const last = items.at(-1)
+  return {
+    items,
+    total: items.length,
+    nextCursor: hasMore && last ? { lastActivityAt: last.lastActivityAt, id: last.id } : null,
+    channelCursors,
+  }
+}
+
 export type RootNavSectionKey = "home" | "channel" | "background"
 export function removeScopeFromLoadedNavigation(
   input: {
     recent: NavListState
-    github: NavListState
     root: Record<RootNavSectionKey, NavListState>
   },
   scopeID: string,
 ) {
   const recent = removeScopeFromNavList(input.recent, scopeID)
-  const github = removeScopeFromNavList(input.github, scopeID)
   const root = {
     home: removeScopeFromNavList(input.root.home, scopeID),
     channel: removeScopeFromNavList(input.root.channel, scopeID),
@@ -111,11 +159,9 @@ export function removeScopeFromLoadedNavigation(
   const affectedRoot = (Object.keys(root) as RootNavSectionKey[]).filter((key) => root[key] !== input.root[key])
   return {
     recent,
-    github,
     root,
     affected: {
       recent: recent !== input.recent,
-      github: github !== input.github,
       root: affectedRoot,
     },
   }
@@ -146,19 +192,13 @@ export function rootNavSectionsForSessionUpdate(input: {
   channelApplied: boolean
 }): RootNavSectionKey[] {
   if (input.scopeID === "home") return ["home", "channel", "background"]
-  if ((input.navCategory === "channel" && input.channelType === "feishu") || input.channelApplied) {
+  if (
+    (input.navCategory === "channel" && (input.channelType === "feishu" || input.channelType === "github")) ||
+    input.channelApplied
+  ) {
     return ["channel"]
   }
   return []
-}
-
-export function githubNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
-  return {
-    category: "github" as const,
-    parentOnly: false,
-    limit,
-    ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
-  }
 }
 
 export async function loadNavListToDepth(input: {
@@ -315,6 +355,10 @@ export function partitionScopeNavigation(entries: readonly ScopeNavEntry[]): {
 
 const CHANNEL_ACCOUNT_PROVIDER_ACTIONS: Record<string, Partial<ChannelAccountActions>> = {
   clarus: {
+    canRefreshProjects: true,
+    canDownloadDiagnostics: true,
+  },
+  github: {
     canRefreshProjects: true,
     canDownloadDiagnostics: true,
   },

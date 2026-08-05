@@ -1,5 +1,6 @@
 import { ImapFlow } from "imapflow"
 import type { SearchObject } from "imapflow"
+import { simpleParser } from "mailparser"
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "@/config/config"
@@ -7,6 +8,9 @@ import { Log } from "@/util/log"
 
 export namespace EmailImap {
   const log = Log.create({ service: "email-imap" })
+
+  /** Hard cap for a single message body download (source bytes, pre-parse). */
+  export const EMAIL_MAX_BYTES = 10 * 1024 * 1024
 
   export const DisabledError = NamedError.create(
     "EmailImapDisabledError",
@@ -77,6 +81,8 @@ export namespace EmailImap {
     }
   }
 
+  // resolveConfig runs before the try block so NotConfiguredError/DisabledError
+  // propagate unwrapped; only transport-level failures become FetchFailedError.
   async function withClient<T>(fn: (client: ImapFlow) => Promise<T>): Promise<T> {
     const config = await resolveConfig()
     const client = new ImapFlow({
@@ -113,6 +119,12 @@ export namespace EmailImap {
     seen: boolean
   }
 
+  export type EmailAttachment = {
+    filename: string
+    contentType: string
+    size: number
+  }
+
   export type EmailDetail = {
     uid: number
     subject: string
@@ -122,13 +134,9 @@ export namespace EmailImap {
     text?: string
     html?: string
     seen: boolean
-  }
-
-  export async function listFolders(): Promise<string[]> {
-    return withClient(async (client) => {
-      const mailboxes = await client.list()
-      return mailboxes.map((mb: { path: string }) => mb.path)
-    })
+    attachments: EmailAttachment[]
+    /** True when the message exceeded EMAIL_MAX_BYTES and the body was not parsed. */
+    truncated?: boolean
   }
 
   export async function search(
@@ -141,6 +149,7 @@ export namespace EmailImap {
       try {
         const uids = await client.search(criteria, { uid: true })
         if (Array.isArray(uids) && options?.limit && uids.length > options.limit) {
+          // IMAP SEARCH returns ascending UIDs; callers apply newest-first ordering.
           return uids.slice(-options.limit)
         }
         return Array.isArray(uids) ? uids : []
@@ -186,25 +195,31 @@ export namespace EmailImap {
     return withClient(async (client) => {
       const lock = await client.getMailboxLock(folder)
       try {
-        const msg = await client.fetchOne(uid, { envelope: true, flags: true, bodyStructure: true }, { uid: true })
-        if (!msg) return undefined
+        const msg = await client.fetchOne(uid, { envelope: true, flags: true }, { uid: true })
+        if (!msg || !msg.envelope) return undefined
 
         const env = msg.envelope
-        if (!env) return undefined
+        const { content, meta } = await client.download(String(uid), undefined, {
+          uid: true,
+          maxBytes: EMAIL_MAX_BYTES,
+        })
+        if (!content) return undefined
+
+        const raw = await collectBuffer(content)
+        const truncated = isTruncated(meta?.expectedSize, raw.length)
 
         let text: string | undefined
         let html: string | undefined
-
-        const textPart = msg.bodyStructure ? findPart(msg.bodyStructure, "text/plain") : undefined
-        const htmlPart = msg.bodyStructure ? findPart(msg.bodyStructure, "text/html") : undefined
-
-        if (textPart) {
-          const { content } = await client.download(uid, textPart.part, { uid: true })
-          text = await streamToBuffer(content)
-        }
-        if (htmlPart) {
-          const { content } = await client.download(uid, htmlPart.part, { uid: true })
-          html = await streamToBuffer(content)
+        let attachments: EmailAttachment[] = []
+        if (!truncated) {
+          try {
+            const parsed = await parseMessage(raw)
+            text = parsed.text
+            html = parsed.html
+            attachments = parsed.attachments
+          } catch (error) {
+            log.warn("mailparser failed, returning envelope only", { error })
+          }
         }
 
         return {
@@ -222,6 +237,8 @@ export namespace EmailImap {
           text,
           html,
           seen: msg.flags?.has("\\Seen") ?? false,
+          attachments,
+          truncated,
         }
       } finally {
         lock.release()
@@ -241,24 +258,56 @@ export namespace EmailImap {
     })
   }
 
-  function findPart(node: any, type: string): { part: string; encoding: string } | undefined {
-    if (node.type === type) {
-      return { part: node.part, encoding: node.encoding }
-    }
-    if (node.childNodes) {
-      for (const child of node.childNodes) {
-        const found = findPart(child, type)
-        if (found) return found
-      }
-    }
-    return undefined
+  export type ParsedMessage = {
+    text?: string
+    html?: string
+    attachments: EmailAttachment[]
   }
 
-  async function streamToBuffer(stream: any): Promise<string> {
-    const chunks: Buffer[] = []
-    for await (const chunk of stream) {
-      chunks.push(chunk)
+  /**
+   * Decode a raw RFC822 message with mailparser: transfer-encoding and charset
+   * decoding for text/html bodies, plus attachment metadata (content is
+   * discarded — only names/sizes/content types are returned).
+   */
+  export async function parseMessage(raw: Buffer | string): Promise<ParsedMessage> {
+    const parsed = await simpleParser(raw)
+    return {
+      text: typeof parsed.text === "string" && parsed.text.length > 0 ? parsed.text : undefined,
+      html: typeof parsed.html === "string" && parsed.html.length > 0 ? parsed.html : undefined,
+      attachments: parsed.attachments.map((attachment) => ({
+        filename: attachment.filename ?? "unnamed",
+        contentType: attachment.contentType ?? "application/octet-stream",
+        size: attachment.size ?? 0,
+      })),
     }
-    return Buffer.concat(chunks).toString("utf-8")
+  }
+
+  /**
+   * Decide whether a downloaded message was truncated by the size cap.
+   * Prefers the server-reported size; when the server does not report one,
+   * falls back to the received byte count because LimitedPassthrough silently
+   * drops bytes past the cap.
+   */
+  export function isTruncated(expectedSize: unknown, receivedBytes: number): boolean {
+    if (typeof expectedSize === "number") return expectedSize > EMAIL_MAX_BYTES
+    return receivedBytes >= EMAIL_MAX_BYTES
+  }
+
+  /** Collect a download stream, stopping once EMAIL_MAX_BYTES is reached. */
+  async function collectBuffer(stream: AsyncIterable<Buffer | Uint8Array>): Promise<Buffer> {
+    const chunks: Buffer[] = []
+    let total = 0
+    for await (const chunk of stream) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      const remaining = EMAIL_MAX_BYTES - total
+      if (remaining <= 0) break
+      if (buffer.length > remaining) {
+        chunks.push(buffer.subarray(0, remaining))
+        break
+      }
+      chunks.push(buffer)
+      total += buffer.length
+    }
+    return Buffer.concat(chunks)
   }
 }

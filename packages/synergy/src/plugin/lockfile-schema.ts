@@ -11,6 +11,8 @@ export const PluginLockEntry = z
     integrity: z.string().optional(),
     manifestHash: z.string(),
     approvalId: z.string().optional(),
+    /** Install lifecycle delivery state: pending (queued for host boot), completed, or failed. */
+    lifecycleInstall: z.enum(["pending", "completed", "failed"]).optional(),
   })
   .strict()
 

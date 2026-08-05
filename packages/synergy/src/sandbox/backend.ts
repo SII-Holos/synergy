@@ -116,6 +116,7 @@ export namespace SandboxBackend {
           runtimeReadRoots: opts.runtimeReadRoots,
           extraReadRoots: opts.extraReadRoots,
           extraWritableRoots: opts.extraWritableRoots,
+          protectedPaths: opts.protectedPaths,
           forcePlatform: opts.forcePlatform,
           backend: opts.backend,
           forceHelperPath: opts.forceHelperPath,

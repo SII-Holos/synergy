@@ -13,6 +13,7 @@ import {
 } from "@/plugin/registries/workbench-panel-registry"
 import {
   closeWorkbenchPanelTab,
+  createTabCloseGuard,
   isWorkbenchPanelAvailable,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
@@ -36,6 +37,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const hasSession = createMemo(() => !!params.id)
     const [registryVersion, setRegistryVersion] = createSignal(0)
     let nextTabIndex = 0
+    const closeGuard = createTabCloseGuard()
 
     const unsubscribe = subscribeWorkbenchPanels(() => setRegistryVersion((value) => value + 1))
     onCleanup(unsubscribe)
@@ -118,19 +120,24 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     }
 
     async function closeTab(tabId: string) {
-      for (const surfaceName of ["side", "bottom"] as const) {
-        const target = surface(surfaceName)
-        const tab = target.tabs().find((item) => item.id === tabId)
-        if (!tab) continue
+      if (!closeGuard.begin(tabId)) return
+      try {
+        for (const surfaceName of ["side", "bottom"] as const) {
+          const target = surface(surfaceName)
+          const tab = target.tabs().find((item) => item.id === tabId)
+          if (!tab) continue
 
-        const entry = getWorkbenchPanel(tab.panelId)
-        await entry?.onCloseTab?.(tab)
+          const entry = getWorkbenchPanel(tab.panelId)
+          await entry?.onCloseTab?.(tab)
 
-        const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
-        target.setTabs(next.tabs)
-        target.setActive(next.active)
-        if (next.tabs.length === 0) target.close()
-        return
+          const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
+          target.setTabs(next.tabs)
+          target.setActive(next.active)
+          if (next.tabs.length === 0) target.close()
+          return
+        }
+      } finally {
+        closeGuard.end(tabId)
       }
     }
 

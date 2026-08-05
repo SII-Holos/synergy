@@ -261,7 +261,7 @@ const BUILTIN_SETTINGS_COPY = {
     description: { id: "settings.catalog.channels.description", message: "External messaging channel accounts." },
     searchTerms: {
       id: "settings.catalog.channels.searchTerms",
-      message: "channel | feishu | messaging",
+      message: "channel | feishu | github | messaging",
       comment: SEARCH_TERMS_COMMENT,
     },
   },

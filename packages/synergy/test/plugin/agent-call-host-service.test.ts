@@ -9,6 +9,7 @@ import { Plugin } from "@/plugin"
 import { ScopeContext } from "@/scope/context"
 import { ObservabilityStore } from "@/observability/store"
 import { tmpdir } from "../fixture/fixture"
+import { Config } from "@/config/config"
 
 const originalAgentGet = Agent.get
 const originalPluginOwner = Agent.pluginOwner
@@ -59,7 +60,11 @@ describe("plugin agent.call Host Service", () => {
     let received: AgentCall.TextInput | undefined
     ;(AgentCall.text as any) = mock(async (input: AgentCall.TextInput) => {
       received = input
-      return { text: "answer" }
+      return {
+        text: "answer",
+        model: { providerID: "provider", id: "model", headers: { "x-internal": "secret" } },
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      }
     })
 
     const invoke = (agent: string, params: Record<string, unknown> = {}, handlerId = "operation:call") =>
@@ -319,5 +324,85 @@ describe("plugin agent.call Host Service", () => {
     expect(data).not.toHaveProperty("correlationId")
     expect(data).not.toHaveProperty("text")
     expect(JSON.stringify(data)).not.toContain("metadata")
+  })
+})
+
+test("clamps agent.call runtime to the configured agentCallMaxRuntimeMs ceiling", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const scope = await tmp.scope()
+  const manifest = compilePluginManifest(
+    definePlugin({
+      id: "agent-call-config-timeout",
+      version: "1.0.0",
+      description: "Agent call configured timeout boundary",
+      capabilities: [
+        capability("agent.call", {
+          maxRuntimeMs: 10_000,
+          maxInputChars: 20,
+          maxOutputChars: 30,
+        }),
+      ],
+      contributions: [
+        operation({
+          id: "call",
+          type: "command",
+          requires: ["agent.call"],
+          input: z.object({}),
+          output: z.object({}),
+          handler: async () => ({}),
+        }),
+      ],
+    }),
+    { generation: "generation-config-timeout" },
+  )
+  const ownedAgent = { name: "owned", hidden: true }
+  ;(Agent.get as any) = mock(async () => ownedAgent)
+  ;(Agent.pluginOwner as any) = mock(() => ({
+    pluginId: manifest.id,
+    pluginGeneration: manifest.artifacts.generation,
+  }))
+  let received: AgentCall.TextInput | undefined
+  ;(AgentCall.text as any) = mock(async (input: AgentCall.TextInput) => {
+    received = input
+    return {
+      text: "answer",
+      model: { providerID: "provider", id: "model", headers: {} },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    }
+  })
+
+  const invoke = (params: Record<string, unknown> = {}) =>
+    executePluginHostService({
+      pluginId: manifest.id,
+      pluginDir: tmp.path,
+      manifest,
+      handlerId: "operation:call",
+      invocation: { scopeId: scope.id, directory: tmp.path, actor: { type: "ui" } },
+      method: "agent.call",
+      params: { agent: "owned", text: "hello", ...params },
+      signal: new AbortController().signal,
+    })
+
+  await ScopeContext.provide({
+    scope,
+    fn: async () => {
+      await Config.state.reset()
+      await Config.update({
+        pluginRuntimePolicy: {
+          limits: {
+            agentCallMaxRuntimeMs: 5_000,
+          },
+        },
+      } as any)
+      await Config.state.reset()
+
+      // Plugin omits timeoutMs → configured ceiling 5s is used.
+      await invoke()
+      expect(received?.timeoutMs).toBe(5_000)
+
+      // Plugin declares maxRuntimeMs 10s → still clamped to configured 5s.
+      await invoke({ timeoutMs: 9_000 })
+      expect(received?.timeoutMs).toBe(5_000)
+    },
   })
 })

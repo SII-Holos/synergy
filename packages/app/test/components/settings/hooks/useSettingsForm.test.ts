@@ -119,6 +119,7 @@ describe("settings form channel accounts", () => {
           enabled: false,
         },
       ],
+      githubAccounts: [],
     })
   })
 })

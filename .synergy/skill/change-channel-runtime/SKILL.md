@@ -12,6 +12,19 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 3. Trace target identity, provider configuration, account start/stop/status, `ChannelHost`, managed ownership, Session endpoint lookup, inbox delivery, navigation projection, routes, generated SDK consumers, diagnostics, and recovery state.
 4. Load `change-persistence` for ownership, indexes, provider-private state, or outboxes; `change-server-api` for routes or generated contracts; `develop-frontend` for account/navigation UI; `add-tool` for first-party Channel tools; and `develop-synergy` for isolated runtime verification.
 
+## GitHub Channel Provider
+
+The `github` provider (`packages/synergy/src/channel/provider/github/`) connects a GitHub App installation as a conversation channel. It is `self_connected` and polls the GitHub REST API outbound — no inbound webhook.
+
+- **Conversation ingress only** — synthesized repository events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `comment.created`) flow through `ChannelHost.conversations.receive()` with `chatId = "owner/repo#<number>"`.
+- **Per-thread Scope** — implement `resolveConversationScope()` to bind each thread to its own random-hash checkout directory (see `GithubChannelWorkspace.ensure()`), so sessions are isolated per issue/PR. `workspaceDir` is configured per account.
+- **Mention gating** — comments only wake an agent on an explicit `@synergy-agent` mention (`gateGithubEvent`); `autoReview`/`autoRespond` account toggles gate PR and issue events.
+- **Reactions** — `addReaction` maps the generic channel emoji vocabulary onto GitHub's reaction content set (`eyes`/`rocket`/`confused`/`+1`/`-1`/`laugh`/`hooray`/`heart`) via a comment→chatId registry populated by the poll loop; unsupported emoji are skipped.
+- **Agent** — `github-channel-agent` owns all GitHub sessions; `gh`, `git push`, and `git remote` are denied (the provider performs all GitHub writes with an installation token).
+- **Credentials** — `SYNERGY_GITHUB_APP_ID` / `SYNERGY_GITHUB_APP_PRIVATE_KEY` env-only; distinct from the user-credential `src/provider/github.ts` (bash `GH_TOKEN` injection).
+
+Preserve these invariants when changing the provider: deterministic per-thread directory resolution, `@synergy-agent` mention gating, comment→chatId reaction registry, and the env-only credential boundary.
+
 ## Preserve Ownership
 
 1. Keep Scope and Session creation in Channel core. A project/task-capable provider reports remote facts through `ChannelHost`; it does not call Scope, Session, or model execution directly.

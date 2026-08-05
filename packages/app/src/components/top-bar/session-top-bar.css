@@ -32,7 +32,7 @@
   line-height: 1;
   font-weight: 400;
   color: var(--text-subtle);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-family-mono);
 }
 .stb-left {
   display: flex;

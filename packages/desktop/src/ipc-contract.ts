@@ -1,10 +1,12 @@
 import z from "zod"
 import {
   BrowserNativeAttachRequestSchema,
+  BrowserNativePresentationCapabilityRequestSchema,
   BrowserNativePageRequestSchema,
   BrowserNativePresentationTicketRequestSchema,
   BrowserNativeResizeRequestSchema,
   type BrowserNativeAttachRequest,
+  type BrowserNativePresentationCapabilityRequest,
   type BrowserNativePageRequest,
   type BrowserNativePresentationTicketRequest,
   type BrowserNativeResizeRequest,
@@ -78,6 +80,10 @@ export function parseBrowserNativeResize(input: unknown): BrowserNativeResizeReq
 
 export function parseBrowserNativePresentationTicket(input: unknown): BrowserNativePresentationTicketRequest {
   return BrowserNativePresentationTicketRequestSchema.parse(input)
+}
+
+export function parseBrowserNativePresentationCapability(input: unknown): BrowserNativePresentationCapabilityRequest {
+  return BrowserNativePresentationCapabilityRequestSchema.parse(input)
 }
 
 export function parseExternalUrl(input: unknown): string {
