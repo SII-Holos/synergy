@@ -91,7 +91,6 @@ import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-bluepr
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 import { ComposerSlotOutlet } from "@ericsanchezok/synergy-ui/composer-slots"
 import { useLocale } from "@/context/locale"
-import { usePlatform } from "@/context/platform"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
@@ -182,7 +181,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const files = useFile()
   const prompt = usePrompt()
   const layout = useLayout()
-  const platform = usePlatform()
   const workbench = useWorkbenchPanels()
   const params = useParams()
   const command = useCommand()
@@ -1766,9 +1764,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           "overflow-hidden": true,
           "border border-border-base": !store.dragging,
           "border border-icon-info-active border-dashed": store.dragging,
-          // Keep the edge-to-edge treatment for mobile web, but preserve the
-          // desktop input chrome when the native app is resized below 768px.
-          "max-md:border-t max-md:border-x-0 max-md:border-b-0 max-md:shadow-none": platform.platform !== "desktop",
+          // Preserve the input chrome when the web or desktop window is resized
+          // below the mobile breakpoint.
+          "max-md:border-t max-md:border-b-0 max-md:shadow-none": true,
           [props.class ?? ""]: !!props.class,
         }}
         style={{ "z-index": 1 }}
