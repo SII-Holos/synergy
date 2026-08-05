@@ -23,6 +23,7 @@
     "@scope/plugin",
     "playwright",
     "@sii-holos/holos-cli",
+    "@shikijs/themes",
     "@shikijs/transformers",
     "@solid-primitives/bounds",
     "@solid-primitives/scroll",

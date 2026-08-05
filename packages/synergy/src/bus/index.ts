@@ -17,6 +17,12 @@ export namespace Bus {
   }
   const streamingPublishStats = new Map<string, StreamingPublishStats>()
 
+  // Cross-scope subscriptions. The scoped Bus above is keyed by the current
+  // scope, so subscribers that must observe events published from sessions
+  // running in OTHER scopes (e.g. the Channel outbound bridge watching
+  // terminal assistant messages in per-thread checkout scopes) register here.
+  const globalSubscriptions = new Map<string, Subscription[]>()
+
   export const ScopeRuntimeDisposed = BusEvent.define(
     "scope.runtime.disposed",
     z.object({
@@ -103,6 +109,14 @@ export namespace Bus {
         dispatch(sub)
       }
     }
+    // Cross-scope subscribers receive every published event regardless of the
+    // scope it was published from.
+    for (const key of [def.type, "*"]) {
+      const match = globalSubscriptions.get(key)
+      for (const sub of match ?? []) {
+        dispatch(sub)
+      }
+    }
     GlobalBus.emit("event", {
       // Route UI/session events to the scope directory, not the execution cwd.
       // A session may execute from a worktree workspace while still belonging to
@@ -146,6 +160,32 @@ export namespace Bus {
     callback: (event: { type: Definition["type"]; properties: z.infer<Definition["properties"]> }) => void,
   ) {
     return raw(def.type, callback)
+  }
+
+  /**
+   * Subscribe to an event across every scope. The scoped Bus only delivers
+   * events published within the subscriber's own scope; cross-scope bridges
+   * (e.g. the Channel outbound bridge observing terminal assistant messages
+   * in per-thread checkout scopes) must use this instead.
+   */
+  export function subscribeGlobal<Definition extends BusEvent.Definition>(
+    def: Definition,
+    callback: (event: { type: Definition["type"]; properties: z.infer<Definition["properties"]> }) => void,
+  ) {
+    const type = def.type
+    log.debug("subscribing globally", { type })
+    const match = globalSubscriptions.get(type) ?? []
+    match.push(callback as Subscription)
+    globalSubscriptions.set(type, match)
+    return () => {
+      log.debug("unsubscribing globally", { type })
+      const current = globalSubscriptions.get(type)
+      if (!current) return
+      const index = current.indexOf(callback as Subscription)
+      if (index === -1) return
+      current.splice(index, 1)
+      if (current.length === 0) globalSubscriptions.delete(type)
+    }
   }
 
   export function once<Definition extends BusEvent.Definition>(

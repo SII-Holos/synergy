@@ -2,7 +2,7 @@
 
 Synergy replaced its inbound GitHub App webhook endpoint with outbound GitHub REST API polling. This is an intentional clean break: the host no longer exposes `POST /integrations/github/webhook`, accepts GitHub webhook signatures, or uses `SYNERGY_GITHUB_WEBHOOK_SECRET`.
 
-For current behavior and configuration, see [GitHub Integration](../architecture/github-shadow.md) and [Configuration](../reference/configuration.md#github-integration).
+For current behavior and configuration, see [GitHub Channel](../architecture/github-channel.md) and [Configuration](../reference/configuration.md#github-channel).
 
 ## Operator Cutover
 
@@ -32,7 +32,9 @@ The first successful cycle establishes a repository baseline and does not replay
 
 Poll state uses separate cursors for issue/pull-request updates and workflow-run creation times. Issue history is not retained in poll state; open pull requests and a bounded recent closed-PR history support transition detection; only incomplete workflow runs remain pending.
 
-Existing `data/github/deliveries/`, CI failure state, and runtime workflow anchors remain valid. No webhook-to-poll-state data migration is attempted because webhook deliveries do not contain a complete repository snapshot or safe cursor baseline.
+Existing `data/github/deliveries/`, CI failure state, and runtime workflow anchors remained valid under the polling design. No webhook-to-poll-state data migration was attempted because webhook deliveries do not contain a complete repository snapshot or safe cursor baseline.
+
+> Later superseded: the GitHub integration itself was migrated into the [GitHub Channel](../architecture/github-channel.md). The old `data/github/` collections no longer exist; provider state now lives under `data/channel/providers/github/accounts/<hash>/` with per-thread checkouts under the configured `workspaceDir`.
 
 ## API and SDK Breaks
 

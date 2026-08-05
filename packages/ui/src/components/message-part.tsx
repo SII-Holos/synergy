@@ -1313,6 +1313,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "timer",
         title: TOOL_TITLE_DESC["clarus_extend_task"],
       }
+    case "github_deliver_fix":
+      return {
+        icon: "git-merge",
+        title: TOOL_TITLE_DESC["github_deliver_fix"],
+        subtitle: input?.branch,
+      }
     case "email_read": {
       const args: string[] = []
       pushArg(args, input.folder && input.folder !== "INBOX" ? input.folder : undefined)

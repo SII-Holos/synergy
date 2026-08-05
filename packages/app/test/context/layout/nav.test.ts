@@ -3,7 +3,8 @@ import type { NavEntry, NavListState, ScopeNavEntry } from "../../../src/context
 import {
   applySessionToNavList,
   channelNavQuery,
-  githubNavQuery,
+  channelGithubNavQuery,
+  mergeChannelNavPages,
   rootNavRequest,
   rootNavSectionsForSessionUpdate,
   loadNavListToDepth,
@@ -222,15 +223,84 @@ describe("rootNavSectionsForSessionUpdate", () => {
   })
 })
 
-describe("githubNavQuery", () => {
-  test("requests GitHub sessions across parent and child scopes with cursor pagination", () => {
-    expect(githubNavQuery(25, { lastActivityAt: 123, id: "ses_cursor" })).toEqual({
-      category: "github",
-      parentOnly: false,
+describe("channelGithubNavQuery", () => {
+  test("requests GitHub Channel sessions with cursor pagination", () => {
+    expect(channelGithubNavQuery(25, { lastActivityAt: 123, id: "ses_cursor" })).toEqual({
+      category: "channel",
+      channelType: "github",
+      parentOnly: true,
+      includeArchived: true,
       limit: 25,
       cursorLastActivityAt: 123,
       cursorId: "ses_cursor",
     })
+  })
+})
+
+describe("mergeChannelNavPages", () => {
+  test("merges feishu and github pages into one sorted list", () => {
+    const merged = mergeChannelNavPages(undefined, [
+      {
+        channelType: "feishu",
+        items: [entry({ id: "feishu-1", lastActivityAt: 100 })],
+        nextCursor: null,
+        total: 1,
+      },
+      {
+        channelType: "github",
+        items: [entry({ id: "github-1", lastActivityAt: 200 })],
+        nextCursor: null,
+        total: 1,
+      },
+    ])
+    expect(merged.items.map((item) => item.id)).toEqual(["github-1", "feishu-1"])
+    expect(merged.total).toBe(2)
+    expect(merged.channelCursors).toEqual({ feishu: null, github: null })
+  })
+
+  test("tracks per-type cursors and reports hasMore when either type has a next page", () => {
+    const merged = mergeChannelNavPages(undefined, [
+      {
+        channelType: "feishu",
+        items: [entry({ id: "feishu-1", lastActivityAt: 100 })],
+        nextCursor: { lastActivityAt: 100, id: "feishu-1" },
+        total: 10,
+      },
+      {
+        channelType: "github",
+        items: [entry({ id: "github-1", lastActivityAt: 200 })],
+        nextCursor: null,
+        total: 1,
+      },
+    ])
+    expect(merged.channelCursors?.feishu).toEqual({ lastActivityAt: 100, id: "feishu-1" })
+    expect(merged.channelCursors?.github).toBeNull()
+    expect(merged.nextCursor).not.toBeNull()
+  })
+
+  test("appends next pages without duplicating loaded entries", () => {
+    const first = mergeChannelNavPages(undefined, [
+      {
+        channelType: "feishu",
+        items: [entry({ id: "feishu-1", lastActivityAt: 200 })],
+        nextCursor: { lastActivityAt: 200, id: "feishu-1" },
+        total: 10,
+      },
+    ])
+    const second = mergeChannelNavPages(
+      first,
+      [
+        {
+          channelType: "feishu",
+          items: [entry({ id: "feishu-2", lastActivityAt: 100 })],
+          nextCursor: null,
+          total: 10,
+        },
+      ],
+      "append",
+    )
+    expect(second.items.map((item) => item.id)).toEqual(["feishu-1", "feishu-2"])
+    expect(second.total).toBe(2)
   })
 })
 
@@ -429,14 +499,11 @@ describe("removeScopeFromLoadedNavigation", () => {
   test("scope removal immediately evicts every loaded global navigation projection", () => {
     const archivedChannel = entry({ id: "archived-channel", scopeID: "archived", category: "channel" })
     const activeChannel = entry({ id: "active-channel", scopeID: "active", category: "channel" })
-    const archivedGitHub = entry({ id: "archived-github", scopeID: "archived", category: "github" })
-    const activeGitHub = entry({ id: "active-github", scopeID: "active", category: "github" })
     const home = list([entry({ id: "home", scopeID: "home", scopeType: "home", category: "home" })])
 
     const result = removeScopeFromLoadedNavigation(
       {
         recent: list([archivedChannel, activeChannel]),
-        github: list([archivedGitHub, activeGitHub]),
         root: {
           home,
           channel: list([archivedChannel, activeChannel]),
@@ -447,10 +514,9 @@ describe("removeScopeFromLoadedNavigation", () => {
     )
 
     expect(result.recent.items.map((item) => item.id)).toEqual(["active-channel"])
-    expect(result.github.items.map((item) => item.id)).toEqual(["active-github"])
     expect(result.root.channel.items.map((item) => item.id)).toEqual(["active-channel"])
     expect(result.root.background.items).toEqual([])
     expect(result.root.home).toBe(home)
-    expect(result.affected).toEqual({ recent: true, github: true, root: ["channel", "background"] })
+    expect(result.affected).toEqual({ recent: true, root: ["channel", "background"] })
   })
 })

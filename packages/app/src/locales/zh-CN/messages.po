@@ -6867,6 +6867,10 @@ msgstr "下载诊断"
 msgid "app.sidebar.channel.feishu"
 msgstr "飞书"
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.github"
+msgstr "GitHub"
+
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr "其他"
@@ -7070,10 +7074,6 @@ msgstr "后台"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.channel"
 msgstr "频道"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.section.github"
-msgstr "GitHub"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.home"
@@ -13407,7 +13407,7 @@ msgstr "频道"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.searchTerms"
-msgstr "频道 | 飞书 | 消息"
+msgstr "频道 | 飞书 | github | 消息"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.codeChecks.description"
@@ -13944,6 +13944,90 @@ msgstr "尚未配置飞书账号。"
 #. js-lingui-explicit-id
 msgid "settings.channels.feishu.title"
 msgstr "飞书"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespond"
+msgstr "自动回复提及"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespondDescription"
+msgstr "自动回复 issue 和拉取请求中 @提及机器人句柄的消息与提问。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReview"
+msgstr "自动评审拉取请求"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReviewDescription"
+msgstr "自动评审新开或更新的拉取请求。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.description"
+msgstr "启用或禁用现有 GitHub 频道账号。配置监听的仓库、工作区目录与评审行为。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.empty"
+msgstr "尚未配置 GitHub 账号。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.enabled"
+msgstr "已启用"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr "艾特句柄"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr "用户在评论中 @ 提及以召唤机器人的 GitHub 句柄。留空则自动从 GitHub App 解析。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMs"
+msgstr "轮询间隔（毫秒）"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMsDescription"
+msgstr "两次 GitHub API 轮询之间的间隔（毫秒）。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingPlaceholder"
+msgstr "300000"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositories"
+msgstr "仓库列表"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesDescription"
+msgstr "以逗号分隔的 owner/repo 列表，用于监听与响应。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesPlaceholder"
+msgstr "owner/repo, owner/repo"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.title"
+msgstr "GitHub"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDir"
+msgstr "工作区目录"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirDescription"
+msgstr "在此目录下为各仓库创建工作副本。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirPlaceholder"
+msgstr "/path/to/workspace"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr "检出保留时长（小时）"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr "未使用的线程检出在本地 clone 被删除前的保留小时数。会话历史会保留；下次触发该线程时自动重新创建检出。"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.page.description"
@@ -17856,6 +17940,10 @@ msgstr "搜索文件"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.generate-image"
 msgstr "生成图片"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.github-deliver-fix"
+msgstr "以 PR 交付 GitHub 修复"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.glob"

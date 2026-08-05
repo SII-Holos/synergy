@@ -6867,6 +6867,10 @@ msgstr ""
 msgid "app.sidebar.channel.feishu"
 msgstr ""
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.github"
+msgstr ""
+
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr ""
@@ -7069,10 +7073,6 @@ msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.channel"
-msgstr ""
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.section.github"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -13946,6 +13946,90 @@ msgid "settings.channels.feishu.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespond"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespondDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReviewDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMs"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMsDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositories"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDir"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr ""
 
@@ -17855,6 +17939,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.generate-image"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.github-deliver-fix"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

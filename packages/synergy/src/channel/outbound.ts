@@ -50,7 +50,11 @@ export namespace ChannelOutbound {
   export function init(input: { getProvider: (type: string) => Provider | undefined }): () => void {
     const bridge = state()
     if (!bridge.unsubscribe) {
-      bridge.unsubscribe = Bus.subscribe(MessageV2.Event.Updated, async (event) => {
+      // Cross-scope subscription: channel sessions may execute in per-thread
+      // checkout scopes (e.g. GitHub), where the terminal assistant message
+      // is published on that scope's Bus. The scoped Bus would hide the event
+      // from this bridge, so observe it globally.
+      bridge.unsubscribe = Bus.subscribeGlobal(MessageV2.Event.Updated, async (event) => {
         const msg = event.properties.info
         if (msg.role !== "assistant") return
 
