@@ -19,6 +19,7 @@ import {
   BrowserWebRTCSignalSchema,
   BrowserWebRTCMessageSchema,
   browserOwnerKey,
+  selectBrowserPresentation,
 } from "../src/protocol"
 
 describe("browser protocol v2", () => {
@@ -65,6 +66,36 @@ describe("browser protocol v2", () => {
     ).toThrow()
     expect(BrowserRegistrationSecretSchema.safeParse("weak-secret").success).toBe(false)
     expect(BrowserRegistrationSecretSchema.safeParse("a".repeat(64)).success).toBe(true)
+  })
+
+  test("does not fall back when a presentation is explicitly requested", () => {
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: false,
+        remote: true,
+        requested: "native",
+        capabilities: { native: true, webrtc: true },
+      }),
+    ).toBeNull()
+    // An explicit WebRTC request still requires the WebRTC capability: the
+    // route relies on a null selection to surface the retryable
+    // "host unavailable" error instead of a non-retryable command failure.
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: false,
+        requested: "webrtc",
+        capabilities: { native: true, webrtc: false },
+      }),
+    ).toBeNull()
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: false,
+        requested: "webrtc",
+        capabilities: { native: true, webrtc: true },
+      })?.kind,
+    ).toBe("webrtc")
   })
 
   test("accepts a page-scoped Host signaling ticket renewal message", () => {

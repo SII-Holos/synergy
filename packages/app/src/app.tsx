@@ -24,6 +24,7 @@ import { DesktopThemeSync } from "@/components/app-shell"
 import { AuthProvider } from "@/context/auth"
 import { HolosProvider } from "@/context/holos"
 import { InputProvider } from "@/context/input"
+import { FontPreferenceProvider } from "@/context/font-preference"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { FatalErrorPage } from "./pages/fatal-error"
@@ -122,18 +123,20 @@ export function AppBaseProviders(props: ParentProps) {
     <MetaProvider>
       <Font />
       <LocaleProvider>
-        <ThemeProvider>
-          <DesktopThemeSync />
-          <ErrorBoundary fallback={(error) => <FatalErrorPage error={error} />}>
-            <DialogProvider>
-              <MarkedProvider>
-                <DiffComponentProvider component={Diff}>
-                  <CodeComponentProvider component={Code}>{props.children}</CodeComponentProvider>
-                </DiffComponentProvider>
-              </MarkedProvider>
-            </DialogProvider>
-          </ErrorBoundary>
-        </ThemeProvider>
+        <FontPreferenceProvider>
+          <ThemeProvider>
+            <DesktopThemeSync />
+            <ErrorBoundary fallback={(error) => <FatalErrorPage error={error} />}>
+              <DialogProvider>
+                <MarkedProvider>
+                  <DiffComponentProvider component={Diff}>
+                    <CodeComponentProvider component={Code}>{props.children}</CodeComponentProvider>
+                  </DiffComponentProvider>
+                </MarkedProvider>
+              </DialogProvider>
+            </ErrorBoundary>
+          </ThemeProvider>
+        </FontPreferenceProvider>
       </LocaleProvider>
     </MetaProvider>
   )

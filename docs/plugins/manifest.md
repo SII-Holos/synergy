@@ -51,6 +51,7 @@ Identity, compatibility, and descriptive fields come from `definePlugin()`. `com
 | `ui.settings`           | no         | group, form schema, visibility, optional trusted component                   |
 | `ui.theme`              | no         | label and packaged structured-theme JSON path                                |
 | `ui.icon`               | no         | packaged SVG path                                                            |
+| `lifecycle.install`     | yes        | post-commit fresh-install handler identity                                   |
 | `lifecycle.upgrade`     | yes        | handler identity                                                             |
 | `lifecycle.uninstall`   | yes        | handler identity                                                             |
 

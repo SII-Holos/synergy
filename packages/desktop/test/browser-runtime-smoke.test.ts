@@ -22,7 +22,7 @@ afterEach(async () => {
 
 describe("Electron Browser Host broker contract", () => {
   runtimeTest(
-    "preserves native presentation origin across viewport resize and recreates an owner after close",
+    "recovers a crashed native renderer across both page and workspace creation orders",
     async () => {
       const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-browser-native-smoke-"))
       temporaryDirectories.push(directory)
@@ -43,11 +43,19 @@ describe("Electron Browser Host broker contract", () => {
         ],
         { cwd: path.resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
       )
-      const exitCode = await withTimeout(child.exited, 30_000, "Native Browser page pool smoke")
-      if (exitCode !== 0) {
+      try {
+        const exitCode = await withTimeout(child.exited, 30_000, "Native Browser page pool smoke")
+        if (exitCode === 0) return
         const stdout = await new Response(child.stdout).text().catch(() => "")
         const stderr = await new Response(child.stderr).text().catch(() => "")
         throw new Error(`Native Browser page pool exited with ${exitCode}.\n${stdout}\n${stderr}`)
+      } catch (error) {
+        child.kill("SIGTERM")
+        await Promise.race([child.exited, new Promise((resolve) => setTimeout(resolve, 2_000))])
+        if (child.exitCode === null) child.kill("SIGKILL")
+        const stdout = await new Response(child.stdout).text().catch(() => "")
+        const stderr = await new Response(child.stderr).text().catch(() => "")
+        throw new Error(`${error instanceof Error ? error.message : String(error)}\n${stdout}\n${stderr}`)
       }
     },
     45_000,

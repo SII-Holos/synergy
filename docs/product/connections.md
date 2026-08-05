@@ -153,15 +153,15 @@ Authentication and network readiness are separate states. A valid saved identity
 
 When Holos is enabled, the global runtime exchanges the active agent secret for a short-lived WebSocket token and opens an authenticated agent tunnel. Its observable states are `disabled`, `connecting`, `connected`, `disconnected`, and `failed`.
 
-The tunnel uses heartbeats, correlates outbound acknowledgements, and reconnects with exponential backoff bounded at 30 seconds. Reconnection stops after 50 failed attempts and exposes a failed status rather than retrying invisibly forever.
+The tunnel sends a heartbeat every 30 seconds and uses a 90-second missed-pong deadline. That deadline is checked inside the existing heartbeat interval; the first check after the threshold is reached closes the stale socket and enters the same bounded reconnect flow as an ordinary disconnect. Reconnection uses exponential backoff bounded at 30 seconds, stops after 50 failed attempts, and exposes a failed status rather than retrying invisibly forever.
 
-Disconnecting removes the live provider and the Synergy Link execution client. Saved account credentials, contacts, and message history remain local and are available again after reconnection.
+Disconnecting or losing heartbeat liveness removes the live provider and the Synergy Link execution client. Saved account credentials, contacts, and message history remain local and are available again after reconnection. Any Link or native Clarus request already dispatched when liveness is lost has an unknown remote result and is settled as ambiguous; mutating work must not be retried automatically.
 
 ## Contacts, Reachability, and Blocking
 
 Contacts are a user-managed local address book of Holos agent IDs and display names. Adding a contact does not change the remote agent's account. A contact can be removed or marked blocked locally.
 
-Presence represents recent network reachability as `online`, `offline`, or `unknown`. It is an in-memory observation with a 24-hour freshness bound, not a durable promise that an agent will accept or complete work.
+Presence represents recent network reachability as `online`, `offline`, or `unknown`. It is an in-memory observation with a five-minute freshness bound, not a durable promise that an agent will accept or complete work.
 
 Inbound handling checks contact blocking before accepting a direct message. Blocking is therefore a local receive policy, while presence remains informational.
 
@@ -175,9 +175,13 @@ The mailbox is not a Synergy session transcript. It is network correspondence th
 
 ## Synergy Link
 
-Synergy Link uses the same authenticated Holos tunnel as a transport for explicit remote-execution sessions. In the one-way A-controls-B model, A persists each remote host as a Link target with a stable local target ID, display name, target Holos agent ID, Link ID, enablement state, and optional local-agent allowlist. A does not copy or store B's Holos credentials; B remains responsible for approving, denying, or revoking access.
+Synergy Link uses the same authenticated Holos tunnel as a transport for explicit remote-execution sessions. The standalone Link host reads and updates the canonical active Holos account, so switching or removing that identity applies consistently to both runtimes. In the one-way A-controls-B model, A persists each remote host as a Link target with a stable local target ID, display name, target Holos agent ID, Link ID, enablement state, and optional local-agent allowlist. A does not copy or store B's Holos credentials; B remains responsible for approving, denying, or revoking access.
 
 The Synergy Link Settings page creates and manages these targets. A successful connection or connection test records B's observed host session and capabilities, including platform, architecture, runtime, and shell support. These observations are metadata, not a guarantee of current reachability.
+
+Target updates use an explicit `kind`: `metadata` changes at least one of the name, enablement state, or allowlist, while `relink` atomically supplies both the target Agent ID and Link ID. A Link ID belongs to only one persisted target. A successful relink persists the new locator and its verified reachability together; observations from the previous locator are never carried forward.
+
+The projected `availability` value is `connected` while a Link session is open, `unknown` when no Holos execution transport is connected, `reachable` only when a successful probe is at most five minutes old, and otherwise `unreachable`. The Settings page and `connect list_targets` use this live projection; persisted probe metadata remains available for diagnosis but does not override transport state or freshness.
 
 Agents use `connect list_targets` to discover only the enabled targets allowed for their agent name, then use the stable `targetID` for `connect`, `bash`, and `process` calls. Raw target agent and Link IDs remain available for legacy calls and manual diagnosis, but agents do not need them in the normal flow.
 
@@ -187,7 +191,33 @@ The protocol currently distinguishes:
 - remote Bash execution
 - remote process execution and process control
 
-Bash and process calls require an active Link session ID. Every request carries a protocol version, request ID, Link ID, target agent, tool/action, and typed payload. Responses are correlated to the request, schema-validated, and normalized into typed remote or transport errors. A transport request times out after 30 seconds. Any supplied remote selector is classified through the non-bypassable remote-execution capability, and invalid, disconnected, or sessionless selectors fail closed instead of running the requested operation.
+Bash and process calls require an active Link session ID. Every request carries a protocol version, request ID, Link ID, target agent, tool/action, and typed payload. The host derives an internal execution lease from the authenticated caller and validated session; that lease is never accepted from the wire payload. Remote process records and output are scoped to `sessionID + caller Agent ID + caller owner user ID`, every process read/control operation enforces the lease, and session close, kick, disable, or idle expiry terminates the session's process trees and removes its retained output. Duplicate request IDs within one execution lease reuse the original in-flight or completed result; reusing the ID for a different request is rejected. Responses are correlated to the request, schema-validated, and normalized into typed remote or transport errors. A transport request times out after 30 seconds. Remote Bash yield is capped at five seconds before auto-backgrounding so the process handle can return well before that deadline; callers should use the returned process ID for tracked long-running work. Any supplied remote selector is classified through the non-bypassable remote-execution capability, and invalid, disconnected, or sessionless selectors fail closed instead of running the command locally.
+
+A re-open from the same authenticated caller reuses the active session and reports `reused: true`; probe and relink verification therefore do not close a session that the remote host reports as reused.
+
+The sender-side Holos tunnel checks pongs every 30 seconds with a 90-second deadline. A standalone Link host sends its own heartbeat every 60 seconds with a 180-second deadline. Both deadlines are three times their interval; the first heartbeat check after the threshold is reached closes the silent socket through the normal reconnect path. If transport liveness is lost after a Bash, process, session, or native request was dispatched, Synergy reports the result as unknown; agents must reconnect and inspect state instead of automatically retrying mutating work.
+
+### Host Identity and Ownership Semantics
+
+The Holos Agent ID is the device identity for a Link host. One physical or device instance (a container, VM, or bare-metal host) runs one Link host service bound to one Agent ID, and one Agent ID is active on exactly one device. The host persists its own Link ID (`link_…`), host session ID, label, owner registry, approval mode, trust list, and pending requests in its per-instance state root (`SYNERGY_LINK_HOME`, default `~/.synergy-link/`).
+
+Ownership and reachability are verified, not assumed. A sender target records the host's observed Link ID, host session, platform, architecture, runtime, and shell support only after a successful connection or test; those observations are metadata about one authenticated contact, not a standing guarantee of reachability. A routine probe whose observed Link ID differs from the target records failed reachability while preserving the prior authorization state; an identity mismatch during relink aborts the relink and preserves the original target. Only a `refused` probe sets authorization to `revoked`. An active Link session is one session per host per authenticated controlling agent; re-opening by the same controller reuses that session, while concurrent sessions from another controller remain `busy` until the active session closes or is kicked. Session access still follows the host's collaboration, trust, and approval policy.
+
+Running the same Agent ID on two devices is unsupported. Holos tunnel routing is last-writer-wins — the most recently connected instance receives the traffic and the earlier instance silently loses reachability — and no local mechanism can reliably prevent or detect that race. Deployment must enforce one Agent ID per device; see [Qizhi Synergy Link operations](../operations/qizhi-synergy-link.md) for the shared-filesystem deployment, verification, and recovery runbook.
+
+Host state is per-instance. Never share a writable `HOME`, the Synergy runtime home (`~/.synergy/`), Holos credential stores, `SYNERGY_LINK_HOME`, control sockets, PID files, logs, or temp directories between Link hosts. Shared read-only binaries and assets are acceptable. `SYNERGY_LINK_HOME` selects the host's state root; `synergy-link status`, `whoami`, and `doctor` interpret it. The host never stores the sender's credentials, and the sender never copies the host's Holos secret.
+
+### Host CLI
+
+The standalone `synergy-link` CLI manages the host:
+
+- Service: `server [--print-logs]`, `start`, `stop`, `restart`, `status`, `logs [-f] [--tail N] [--since DURATION]`
+- Identity: `login [--agent-id ID --agent-secret-file PATH]` (`PATH` may be `-` for one stdin line; argv secrets are deprecated), `logout`, `whoami`, `reconnect`, `doctor`
+- Collaboration: `mode <status|managed|standalone>`, `collaboration <enable|disable|status>`, `requests <list|show|approve|deny> [request-id]`, `session <status|kick|block>`, `approval <get|set <auto|manual|trusted-only>>`, `trust <list|add|remove> [agent|user] [value]`, `label <get|set <label>|clear>`
+
+`doctor` checks configuration directory, mode, local owner, auth presence, service process, connection state, and — when credentials exist — validates the secret against Holos. Local ownership is not applicable in standalone mode and is required only for a managed owner lease. Credential import verifies both that Holos accepts the secret and that the authenticated `/me` Agent ID matches the supplied Agent ID before replacing stored credentials. `whoami` reports the logged-in agent, mode, ownership, Link ID, label, and service state. `status` requests live state through the host control socket and labels that output `live`; when the socket is unavailable it prints a clearly marked `snapshot (last-known)` with the control error and exits nonzero so automation cannot mistake stale state for current health.
+
+### Boundaries
 
 Synergy Link does not make the remote filesystem part of the local Scope. It is an explicit execution boundary with its own session lifecycle, transport failures, and remote error semantics. When the Holos connection is disposed, pending requests fail and active local Link-session state is cleared.
 
@@ -206,6 +236,8 @@ MCP tools still pass through Synergy's tool exposure, capability, approval, time
 ## Email
 
 Email is an optional direct integration configured in `110-email.jsonc`. SMTP owns outgoing mail and IMAP owns mailbox search, summaries, full reads, and marking messages as seen. The send service pools at most two SMTP connections and closes an idle pool after one minute; transport errors discard the pool so the next call reconnects.
+
+`email_read` search evaluates date (`since`/`before`) and read/flag state filters on the mail server, and applies sender, subject, and body-text filters locally over a bounded newest-first window of recent mail (some servers, such as 163 Coremail, ignore IMAP header/body search keys). Results are returned newest-first, and results are flagged `truncated` when a local scan window is exhausted — narrow by date to scan older mail. Read results contain decoded text/HTML bodies plus attachment metadata (file name, size, content type); attachment contents are not downloaded. Messages larger than the 10 MB size cap return envelope data only and are flagged `truncated`.
 
 The `email_send` and `email_read` tools share the `communication.email` taxonomy. Reads are external I/O. Sending is both stateful and external, and it asks through a non-bypassable communication permission containing the recipient and subject. Email credentials remain config secrets; they are redacted from normal config responses and are not supplied by a Holos account or Channel provider.
 

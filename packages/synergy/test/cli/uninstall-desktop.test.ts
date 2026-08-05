@@ -39,6 +39,23 @@ describe("desktop-managed uninstall helpers", () => {
     expect(DesktopInstallation.launcherDirectory(context)).not.toContain("resources\\synergy\\bin")
   })
 
+  test("finds a Windows Desktop runtime from its launcher directory", async () => {
+    const launcher = "D:\\Apps\\Synergy\\bin\\synergy.cmd"
+    const runtime = "D:\\Apps\\Synergy\\resources\\synergy\\bin\\synergy.exe"
+    const context = {
+      platform: "win32" as const,
+      execPath: "C:\\Users\\Eric\\.synergy\\bin\\synergy.exe",
+      realExecPath: "C:\\Users\\Eric\\.synergy\\bin\\synergy.exe",
+      env: { Path: "D:\\Apps\\Synergy\\bin" },
+    }
+
+    expect(
+      await DesktopInstallation.findWindowsRuntimePath(context, async (candidate) =>
+        [launcher, runtime].includes(candidate),
+      ),
+    ).toBe(runtime)
+  })
+
   test("removes only the exact Windows Desktop launcher directory from User PATH", async () => {
     const launcherDir = "C:\\Users\\Eric\\AppData\\Local\\Programs\\Synergy\\bin"
     const pathValue = [

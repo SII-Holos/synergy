@@ -2553,6 +2553,12 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "sandboxes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -3219,6 +3225,47 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.global({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/config/diagnostics": {
+      "get": {
+        "operationId": "config.diagnostics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get config diagnostics",
+        "description": "Return recent configuration loading issues (syntax errors, unknown keys, quarantined files). Empty when configuration loaded cleanly.",
+        "responses": {
+          "200": {
+            "description": "Recent config diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigDiagnosticsResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.diagnostics({\n  ...\n})"
           }
         ]
       }
@@ -15196,6 +15243,90 @@
         ]
       }
     },
+    "/workflow/session/{id}/lightloop/terminal": {
+      "get": {
+        "operationId": "workflow.session.getLightloopTerminal",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get Light Loop terminal status",
+        "description": "Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish approval, exhaustion, timeout, cancellation, and failure.",
+        "responses": {
+          "200": {
+            "description": "Light Loop terminal record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]
+                    },
+                    "instructions": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["status", "instructions", "createdAt"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No terminal record for this session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workflow.session.getLightloopTerminal({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/asset": {
       "post": {
         "operationId": "asset.upload",
@@ -24605,7 +24736,7 @@
           },
           "availability": {
             "type": "string",
-            "enum": ["holos_offline", "idle", "connected"]
+            "enum": ["unknown", "unreachable", "reachable", "connected"]
           },
           "sessionID": {
             "description": "Synergy Link session identifier",
@@ -24738,9 +24869,154 @@
         },
         "required": ["name", "data"]
       },
-      "SynergyLinkTargetPatchInput": {
+      "SynergyLinkTargetPatchMetadata": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              }
+            },
+            "required": ["kind", "name"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": ["kind", "enabled"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": ["kind", "name", "enabled"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "name", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "enabled", "allowedAgents"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "metadata"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "allowedAgents": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": ["kind", "name", "enabled", "allowedAgents"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "SynergyLinkTargetPatchRelink": {
         "type": "object",
         "properties": {
+          "kind": {
+            "type": "string",
+            "const": "relink"
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -24755,9 +25031,29 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
           }
         },
+        "required": ["kind", "targetAgentID", "linkID"],
         "additionalProperties": false
+      },
+      "SynergyLinkTargetPatchInput": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SynergyLinkTargetPatchMetadata"
+          },
+          {
+            "$ref": "#/components/schemas/SynergyLinkTargetPatchRelink"
+          }
+        ]
       },
       "SynergyLinkTargetRemoveResult": {
         "type": "object",
@@ -27042,7 +27338,12 @@
           "shutdownGraceMs": 1500,
           "heartbeatIntervalMs": 5000,
           "maxMemoryMb": 512,
-          "memorySampleIntervalMs": 5000
+          "memorySampleIntervalMs": 5000,
+          "agentCallMaxRuntimeMs": 120000,
+          "hookTimeoutMs": 120000,
+          "contributionInvokeTimeoutMs": 120000,
+          "shellRunTimeoutMs": 120000,
+          "taskRunWaitTimeoutMs": 120000
         },
         "type": "object",
         "properties": {
@@ -27090,6 +27391,36 @@
           },
           "memorySampleIntervalMs": {
             "description": "External plugin runtime RSS sampling interval in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "agentCallMaxRuntimeMs": {
+            "description": "Maximum milliseconds for a plugin agent.call/agent.start model invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "hookTimeoutMs": {
+            "description": "Maximum milliseconds for one plugin hook handler invocation",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "contributionInvokeTimeoutMs": {
+            "description": "Default maximum milliseconds for a plugin contribution invocation without a declared timeout",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "shellRunTimeoutMs": {
+            "description": "Default maximum milliseconds for plugin shell.run commands",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "taskRunWaitTimeoutMs": {
+            "description": "Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -31546,6 +31877,59 @@
           }
         },
         "required": ["id", "title", "command", "args", "cwd", "status", "pid"]
+      },
+      "ConfigIssue": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "description": "Config domain id the issue belongs to, when known",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path of the config file that failed to load",
+            "type": "string"
+          },
+          "error": {
+            "description": "Human-readable error summary",
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable machine-readable issue code",
+            "type": "string",
+            "enum": [
+              "config.json_syntax",
+              "config.root_type",
+              "config.unknown_key",
+              "config.load_failed",
+              "config.migration_failed"
+            ]
+          },
+          "quarantined": {
+            "description": "Whether the offending file was moved aside",
+            "type": "boolean"
+          },
+          "quarantinedPath": {
+            "description": "Path the file was moved to, when quarantined",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Unix epoch milliseconds when the issue was recorded",
+            "type": "number"
+          }
+        },
+        "required": ["path", "error", "code", "quarantined", "timestamp"]
+      },
+      "ConfigDiagnosticsResponse": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigIssue"
+            }
+          }
+        },
+        "required": ["issues"]
       },
       "ConfigInstructionsInfo": {
         "type": "object",

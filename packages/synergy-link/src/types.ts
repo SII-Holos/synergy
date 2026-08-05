@@ -25,6 +25,12 @@ export interface HolosCaller {
   profile?: Record<string, unknown>
 }
 
+export interface ExecutionLease {
+  sessionID: SynergyLinkIdentity.SessionID
+  callerAgentID: string
+  callerOwnerUserID: number
+}
+
 export interface HostTransport {
   connect(): Promise<void>
   disconnect(): Promise<void>

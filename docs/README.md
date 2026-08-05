@@ -78,6 +78,7 @@ The package-level SDK reference remains in [`packages/plugin`](../packages/plugi
 - [Open-source quality](operations/open-source-quality.md) — local checks, CI, package validation, and contributor scenarios
 - [Desktop release](operations/desktop-release.md) — packaging, signing, publishing, updating, and recovery
 - [Performance observability](operations/performance-observability.md) — metrics, traces, storage, APIs, and performance tooling
+- [Qizhi Synergy Link](operations/qizhi-synergy-link.md) — shared-filesystem deployment, verification, recovery, and credential rotation for Synergy Link hosts
 
 ## Research and Migration History
 

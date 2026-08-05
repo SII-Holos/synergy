@@ -2,7 +2,10 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import type {
   BrowserNativeAttachRequest,
   BrowserNativePageRequest,
+  BrowserNativePresentationCapabilityRequest,
+  BrowserNativePresentationCapabilityResult,
   BrowserNativePresentationTicketRequest,
+  BrowserNativePresentationTicketResult,
   BrowserNativeResizeRequest,
   BrowserNativeViewEvent,
 } from "@ericsanchezok/synergy-browser"
@@ -12,7 +15,13 @@ export type BrowserNativeViewBridge = {
   detachView(input: BrowserNativePageRequest): Promise<void>
   focusView(input: BrowserNativePageRequest): Promise<void>
   resizeView(input: BrowserNativeResizeRequest): Promise<void>
-  createPresentationTicket(input: BrowserNativePresentationTicketRequest): Promise<string>
+  retryPage(input: BrowserNativePageRequest): Promise<void>
+  presentationCapability(
+    input: BrowserNativePresentationCapabilityRequest,
+  ): Promise<BrowserNativePresentationCapabilityResult>
+  createPresentationTicket(
+    input: BrowserNativePresentationTicketRequest,
+  ): Promise<BrowserNativePresentationTicketResult>
   onEvent?(listener: (event: BrowserNativeViewEvent) => void): () => void
 }
 
@@ -139,6 +148,9 @@ export type Platform = {
 
   /** App version */
   version?: string
+
+  /** Diagnostic build identity; source builds include the Git revision. */
+  buildLabel?: string
 
   /** Open a URL in the default browser */
   openLink(url: string): void

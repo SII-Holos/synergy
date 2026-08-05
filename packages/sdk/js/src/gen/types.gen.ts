@@ -1103,7 +1103,7 @@ export type SynergyLinkTargetView = {
   lastProbe?: SynergyLinkProbe
   createdAt: number
   updatedAt: number
-  availability: "holos_offline" | "idle" | "connected"
+  availability: "unknown" | "unreachable" | "reachable" | "connected"
   /**
    * Synergy Link session identifier
    */
@@ -1145,11 +1145,54 @@ export type NotFoundError = {
   }
 }
 
-export type SynergyLinkTargetPatchInput = {
+export type SynergyLinkTargetPatchMetadata =
+  | {
+      kind: "metadata"
+      name: string
+    }
+  | {
+      kind: "metadata"
+      enabled: boolean
+    }
+  | {
+      kind: "metadata"
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      name: string
+      enabled: boolean
+    }
+  | {
+      kind: "metadata"
+      name: string
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      enabled: boolean
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      name: string
+      enabled: boolean
+      allowedAgents: Array<string>
+    }
+
+export type SynergyLinkTargetPatchRelink = {
+  kind: "relink"
   name?: string
   enabled?: boolean
   allowedAgents?: Array<string>
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
 }
+
+export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | SynergyLinkTargetPatchRelink
 
 export type SynergyLinkTargetRemoveResult = {
   success: true
@@ -2207,6 +2250,26 @@ export type PluginRuntimeLimitsConfig = {
    * External plugin runtime RSS sampling interval in milliseconds
    */
   memorySampleIntervalMs?: number
+  /**
+   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
+   */
+  agentCallMaxRuntimeMs?: number
+  /**
+   * Maximum milliseconds for one plugin hook handler invocation
+   */
+  hookTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
+   */
+  contributionInvokeTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin shell.run commands
+   */
+  shellRunTimeoutMs?: number
+  /**
+   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
+   */
+  taskRunWaitTimeoutMs?: number
 }
 
 /**
@@ -4416,6 +4479,46 @@ export type Pty = {
   cwd: string
   status: "running" | "exited"
   pid: number
+}
+
+export type ConfigIssue = {
+  /**
+   * Config domain id the issue belongs to, when known
+   */
+  domain?: string
+  /**
+   * Path of the config file that failed to load
+   */
+  path: string
+  /**
+   * Human-readable error summary
+   */
+  error: string
+  /**
+   * Stable machine-readable issue code
+   */
+  code:
+    | "config.json_syntax"
+    | "config.root_type"
+    | "config.unknown_key"
+    | "config.load_failed"
+    | "config.migration_failed"
+  /**
+   * Whether the offending file was moved aside
+   */
+  quarantined: boolean
+  /**
+   * Path the file was moved to, when quarantined
+   */
+  quarantinedPath?: string
+  /**
+   * Unix epoch milliseconds when the issue was recorded
+   */
+  timestamp: number
+}
+
+export type ConfigDiagnosticsResponse = {
+  issues: Array<ConfigIssue>
 }
 
 export type ConfigInstructionsInfo = {
@@ -7255,6 +7358,11 @@ export type BrowserControlResponse = {
           isLoading: boolean
           lastActiveAt: number | null
         }
+        snapshot?: unknown
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
       }
     | {
         type: "snapshot"
@@ -7275,11 +7383,30 @@ export type BrowserControlResponse = {
         pageId: string
         action: string
         snapshot?: unknown
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
       }
     | {
         type: "wait"
         pageId: string
         matched: boolean
+        elapsedMs?: number
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
       }
     | {
         type: "evaluation"
@@ -7307,14 +7434,52 @@ export type BrowserControlRequest = {
         type: "navigate"
         url: string
         source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "history"
         direction: "back" | "forward"
+        source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "reload"
         ignoreCache?: boolean
+        source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "stop"
@@ -9791,6 +9956,7 @@ export type ScopeUpdateData = {
     }
     pinned?: number | null
     archived?: number | null
+    sandboxes?: Array<string>
   }
   path: {
     scopeID: string
@@ -10108,6 +10274,25 @@ export type ConfigGlobalResponses = {
 }
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
+
+export type ConfigDiagnosticsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/diagnostics"
+}
+
+export type ConfigDiagnosticsResponses = {
+  /**
+   * Recent config diagnostics
+   */
+  200: ConfigDiagnosticsResponse
+}
+
+export type ConfigDiagnosticsResponse2 = ConfigDiagnosticsResponses[keyof ConfigDiagnosticsResponses]
 
 export type ConfigInstructionsResetData = {
   body?: never
@@ -15755,6 +15940,48 @@ export type WorkflowSessionCancelLightloopResponses = {
 
 export type WorkflowSessionCancelLightloopResponse =
   WorkflowSessionCancelLightloopResponses[keyof WorkflowSessionCancelLightloopResponses]
+
+export type WorkflowSessionGetLightloopTerminalData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow/session/{id}/lightloop/terminal"
+}
+
+export type WorkflowSessionGetLightloopTerminalErrors = {
+  /**
+   * No terminal record for this session
+   */
+  404: {
+    message: string
+  }
+}
+
+export type WorkflowSessionGetLightloopTerminalError =
+  WorkflowSessionGetLightloopTerminalErrors[keyof WorkflowSessionGetLightloopTerminalErrors]
+
+export type WorkflowSessionGetLightloopTerminalResponses = {
+  /**
+   * Light Loop terminal record
+   */
+  200: {
+    status: "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+    instructions: string
+    error?: string
+    createdAt: number
+  }
+}
+
+export type WorkflowSessionGetLightloopTerminalResponse =
+  WorkflowSessionGetLightloopTerminalResponses[keyof WorkflowSessionGetLightloopTerminalResponses]
 
 export type AssetUploadData = {
   body?: {

@@ -34,7 +34,7 @@ async function createPluginLightLoop(input?: { status?: "completed"; deliveredAt
 }
 
 describe("LightLoop terminal hook delivery", () => {
-  test("clears ordinary LightLoop state instead of persisting a terminal workflow", async () => {
+  test("clears ordinary LightLoop state and persists the authoritative terminal record", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -53,7 +53,14 @@ describe("LightLoop terminal hook delivery", () => {
         await LightLoopRuntime.setTerminalStatus(session.id, "completed")
 
         expect((await Session.get(session.id)).workflow).toBeUndefined()
-        expect(await LightLoopTerminalStore.get(session)).toBeUndefined()
+        // Ordinary loops now persist a terminal record so headless drivers can
+        // distinguish approval from exhaustion, timeout, cancellation, and
+        // failure after the workflow is cleared.
+        expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+          status: "completed",
+          instructions: "Finish the ordinary task",
+          hookDeliveredAt: expect.any(Number),
+        })
         expect(delivery).not.toHaveBeenCalled()
       },
     })
@@ -212,7 +219,45 @@ describe("LightLoop terminal hook delivery", () => {
     })
   })
 
-  test("terminal retry does not clear a later ordinary workflow", async () => {
+  test("reattach retries a stale terminal hook without clearing a later ordinary workflow", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await createPluginLightLoop()
+        await LightLoopTerminalStore.put(session, {
+          sessionID: session.id,
+          status: "completed",
+          instructions: "Finish the plugin-owned task",
+          pluginOwner: {
+            pluginId: "test-plugin",
+            pluginGeneration: "generation-one",
+            scopeId: session.scope.id,
+            correlationId: "correlation-one",
+          },
+          createdAt: Date.now(),
+        })
+        await Session.update(session.id, (draft) => {
+          draft.workflow = { kind: "lightloop", instructions: "Start a later ordinary task", status: "running" }
+        })
+        const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
+        ;(Plugin as any).deliverHookForPlugin = delivery
+
+        await LightLoopRuntime.reattachPluginTimers()
+
+        // Reattach only retries the retained hook; it must not clear the
+        // ordinary loop that started afterwards on the same session.
+        expect(delivery).toHaveBeenCalledTimes(1)
+        expect((await Session.get(session.id)).workflow).toEqual({
+          kind: "lightloop",
+          instructions: "Start a later ordinary task",
+          status: "running",
+        })
+      },
+    })
+  })
+
+  test("a new ordinary loop replaces a stale plugin terminal record on termination", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -238,12 +283,67 @@ describe("LightLoop terminal hook delivery", () => {
 
         await LightLoopRuntime.setTerminalStatus(session.id, "completed")
 
+        // The stale plugin hook is retried best-effort, then the terminal
+        // record is replaced by the current ordinary loop's authoritative
+        // status and the workflow is cleared (single terminal path).
         expect(delivery).toHaveBeenCalledTimes(1)
-        expect((await Session.get(session.id)).workflow).toEqual({
-          kind: "lightloop",
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        const terminal = await LightLoopTerminalStore.get(session)
+        expect(terminal).toMatchObject({
+          status: "completed",
           instructions: "Start a later ordinary task",
-          status: "running",
         })
+        expect(terminal?.pluginOwner).toBeUndefined()
+      },
+    })
+  })
+
+  test("failActiveLoop converts an active loop to the durable failed status", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Finish the ordinary task",
+            status: "running",
+          }
+        })
+
+        await LightLoopRuntime.failActiveLoop(session.id, "provider exploded")
+
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+          status: "failed",
+          instructions: "Finish the ordinary task",
+          error: "provider exploded",
+        })
+      },
+    })
+  })
+
+  test("failActiveLoop leaves non-loop and already-terminal sessions untouched", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const plain = await Session.create({})
+        await LightLoopRuntime.failActiveLoop(plain.id, "boom")
+        expect((await Session.get(plain.id)).workflow).toBeUndefined()
+        expect(await LightLoopTerminalStore.get(plain)).toBeUndefined()
+
+        const terminal = await Session.create({})
+        await Session.update(terminal.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Already terminal",
+            status: "completed",
+          }
+        })
+        await LightLoopRuntime.failActiveLoop(terminal.id, "boom")
+        expect((await Session.get(terminal.id)).workflow).toMatchObject({ status: "completed" })
       },
     })
   })

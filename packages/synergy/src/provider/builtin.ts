@@ -1,4 +1,5 @@
 import { ProviderProfile } from "./profile"
+import { GrokProvider } from "./grok"
 import { CodexProvider } from "./codex"
 import { AnthropicOAuthProvider } from "./anthropic-oauth"
 import { CopilotProvider } from "./copilot"
@@ -113,6 +114,41 @@ export function registerBuiltinProviderProfiles() {
     refreshAuth: (input) =>
       input.auth ? CodexProvider.refreshAuth(input.auth, fetch, input.providerID) : Promise.resolve(undefined),
     classifyError: CodexProvider.classifyError,
+  })
+
+  ProviderProfile.register({
+    id: GrokProvider.PROVIDER_ID,
+    name: "Grok",
+    description: "Grok subscription via xAI OAuth",
+    recommendation: recommended({
+      rank: 25,
+      headline: "Grok subscription",
+      reason: "Connect a SuperGrok or X Premium+ subscription for Grok models.",
+      defaultModel: "grok-4.5",
+    }),
+    baseURL: GrokProvider.BASE_URL,
+    apiMode: "chat_completions",
+    authKind: "oauth_external",
+    aiSdkPackage: "@ai-sdk/xai",
+    modelFactory: "openaiChat",
+    modelsDevProviderID: "xai",
+    fallbackModels: [...GrokProvider.DEFAULT_MODEL_IDS],
+    runtimeOptions: async (input) => {
+      const access = await GrokProvider.resolveToken({
+        providerID: input.providerID,
+        allowMissing: true,
+      }).catch(() => undefined)
+      if (!access) return {}
+      return {
+        apiKey: "synergy-grok-oauth",
+        baseURL: GrokProvider.BASE_URL,
+        fetch: ProviderAuthRecovery.handled(GrokProvider.grokFetchFor(input.providerID)),
+      }
+    },
+    fetchUsage: (input) => GrokProvider.fetchUsage(input.fetch, input.providerID),
+    refreshAuth: (input) =>
+      input.auth ? GrokProvider.refreshAuth(input.auth, fetch, input.providerID) : Promise.resolve(undefined),
+    classifyError: GrokProvider.classifyError,
   })
 
   ProviderProfile.register({

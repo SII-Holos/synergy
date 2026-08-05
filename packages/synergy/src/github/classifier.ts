@@ -1,9 +1,5 @@
-import { Agent } from "@/agent/agent"
-import { Identifier } from "@/id/id"
-import { Provider } from "@/provider/provider"
+import { AgentCall } from "@/agent/call"
 import { Session } from "@/session"
-import { AgentTurn } from "@/session/agent-turn"
-import type { MessageV2 } from "@/session/message-v2"
 import { Log } from "@/util/log"
 import {
   GitHubClassification,
@@ -29,26 +25,8 @@ export async function classifyGitHubObservation(
   budget: GitHubModelBudget,
 ): Promise<{ classification?: Classification; skippedReason?: string }> {
   try {
-    const agent = await Agent.get("github-shadow-classifier")
-    if (!agent) return { skippedReason: "agent_unavailable" }
-    const ref = await Agent.getAvailableModel(agent)
-    if (!ref) return { skippedReason: "model_unavailable" }
-    const model = await Provider.getModel(ref.providerID, ref.modelID)
-    const sessionID = Identifier.ascending("session")
-    const user: MessageV2.User = {
-      id: Identifier.ascending("message"),
-      sessionID,
-      role: "user",
-      time: { created: Date.now() },
-      agent: agent.name,
-      model: { providerID: model.providerID, modelID: model.id },
-      metadata: { source: "integration:github" },
-    }
-    const result = await AgentTurn.stream({
-      agent,
-      user,
-      toolDefinitions: [],
-      model,
+    const result = await AgentCall.text({
+      agent: "github-shadow-classifier",
       messages: [
         {
           role: "user",
@@ -60,21 +38,25 @@ export async function classifyGitHubObservation(
           ].join("\n"),
         },
       ],
-      abort: AbortSignal.timeout(10_000),
-      sessionID,
-      system: [],
+      userMetadata: { source: "integration:github" },
+      timeoutMs: 10_000,
       retries: 0,
+      maxOutputChars: 1_000,
+      small: false,
       maxOutputTokens: budget.maxTokens,
     })
-    const [text, usage] = await Promise.all([AgentTurn.collectText(result).catch(() => ""), result.usage])
-    if (!usage) return { skippedReason: "usage_unavailable" }
-    const measured = Session.getUsage({ model, usage })
+    if (!result.usage) return { skippedReason: "usage_unavailable" }
+    const measured = Session.getUsage({ model: result.model, usage: result.usage })
     if (measured.tokens.output > budget.maxTokens || measured.cost > budget.maxCost) {
       return { skippedReason: "budget_exceeded" }
     }
-    const classification = parseGitHubClassification(text)
+    const classification = parseGitHubClassification(result.text)
     return classification ? { classification } : { skippedReason: "invalid_output" }
   } catch (error) {
+    if (error instanceof AgentCall.Error) {
+      if (error.code === "agent_not_found") return { skippedReason: "agent_unavailable" }
+      if (error.code === "model_unavailable") return { skippedReason: "model_unavailable" }
+    }
     log.warn("classification failed", { error })
     return { skippedReason: "classifier_failed" }
   }
