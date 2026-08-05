@@ -214,22 +214,8 @@ export function synthesizeEvents(
         })
         continue
       }
-      // Head SHA change on a ready PR triggers a re-review. Draft PR pushes
-      // only update state (no synchronize event).
-      if (previous.headSha !== headSha && !draft) {
-        state.seenPullRequests[key] = { number, headSha, state: stateValue, draft, updatedAt }
-        events.push({
-          kind: "pull_request.synchronize",
-          repository: input.repository,
-          pullNumber: number,
-          title: text(pullRequest.title) ?? `PR #${number}`,
-          headSha,
-          sender: senderLogin(pullRequest, "github"),
-          createdAt: timestamp(updatedAt) ?? createdAt,
-          pullId,
-        })
-        continue
-      }
+      // Head SHA changes (new pushes) do NOT trigger a re-review — only the
+      // state is updated so later events (e.g. comments) see the new head.
     }
     if (previous) {
       state.seenPullRequests[key] = { number, headSha, state: stateValue, draft, updatedAt }

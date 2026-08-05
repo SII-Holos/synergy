@@ -71,7 +71,9 @@ Rate-limit errors (403/429) extend the sleep using `Retry-After`/`x-ratelimit-re
 The mention handle follows the reply identity: replies are posted as the GitHub App, so the summon handle defaults to the App slug resolved from `GET /app` (the name users see on the bot's comments). Set the account `mention` option to override it.
 
 - `issue.opened` — delivered when `autoRespond` is on.
-- `pull_request.opened` / `pull_request.synchronize` / `pull_request.ready_for_review` — delivered when `autoReview` is on.
+- `pull_request.opened` / `pull_request.ready_for_review` — delivered when `autoReview` is on.
+
+**PR updates (head pushes) do not trigger a review.** The synthesizer only records the new head SHA in poll state, so pushing to an open PR never wakes the agent; a review is triggered only by the PR opening, a draft → ready transition, or an explicit `@mention` comment.
 
 Skipped events are logged and never create sessions.
 
@@ -155,7 +157,8 @@ migration and remain open for follow-up work:
 
 - **`review_requested` support** — responding to the GitHub `review_requested`
   event (a reviewer explicitly added to a PR) is not yet wired into the poll
-  synthesizer. Today review triggers are PR open, head push, and draft → ready.
+  synthesizer. Today review triggers are PR open, draft → ready, and explicit
+  `@mention` comments; PR head pushes intentionally do not re-review.
 - **Silent-when-clean (👍) low-noise reviews** — the agent always posts a
   review comment, even when the change has no defects. Posting only a 👍
   reaction (or nothing) for clean reviews is a future noise-reduction option.

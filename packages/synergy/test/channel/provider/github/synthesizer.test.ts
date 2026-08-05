@@ -167,7 +167,7 @@ describe("github channel synthesizer — pull requests", () => {
     })
   })
 
-  test("emits pull_request.synchronize when the head SHA changes", () => {
+  test("does not emit pull_request.synchronize when the head SHA changes (pushes do not re-review)", () => {
     const state = freshState()
     const first = synthesizeEvents(state, {
       repository: "owner/repo",
@@ -183,12 +183,9 @@ describe("github channel synthesizer — pull requests", () => {
       pullRequests: [pullRequest(3, iso(NOW + 1_000), iso(NOW + 5_000), "def456")],
       commentsByIssue: {},
     })
-    expect(second.events).toHaveLength(1)
-    expect(second.events[0]).toMatchObject({
-      kind: "pull_request.synchronize",
-      pullNumber: 3,
-      headSha: "def456",
-    })
+    expect(second.events).toHaveLength(0)
+    // The new head SHA is still recorded so later comments see the new head.
+    expect(second.state.seenPullRequests["3"]?.headSha).toBe("def456")
   })
 
   test("does not emit synchronize when the PR is closed", () => {
