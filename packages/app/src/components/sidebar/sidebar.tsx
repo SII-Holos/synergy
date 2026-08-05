@@ -940,7 +940,7 @@ function SidebarProjectGroup(props: {
           </div>
         </div>
 
-        <SidebarDisclosure open={!!props.scope()?.expanded} class="sb-project-disclosure">
+        <SidebarDisclosure open={!!props.scope()?.expanded}>
           <Show
             when={!isSupplemental()}
             fallback={

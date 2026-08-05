@@ -238,7 +238,10 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                 type="button"
                 class="question-prompt-collapse-button"
                 aria-expanded="true"
-                onClick={() => setCollapsed(true)}
+                onClick={() => {
+                  setMenuOpen(false)
+                  setCollapsed(true)
+                }}
                 title={_(S.questionCollapseTitle)}
               >
                 <Icon name={getSemanticIcon("navigation.collapse")} size="small" />

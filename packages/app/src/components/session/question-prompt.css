@@ -37,6 +37,7 @@
 
 .question-prompt-collapsed-shell,
 .question-prompt-expanded-shell {
+  min-height: 0;
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
