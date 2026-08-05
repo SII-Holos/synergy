@@ -8,7 +8,7 @@ import * as ChannelTypes from "../../types"
 import { GitHubChannelAuth, buildCredentialCommand } from "./api"
 import { GithubChannelWorkspace } from "./workspace"
 import { runRepositoryPollLoop } from "./poll"
-import { lookupCommentChat } from "./reactions"
+import { lookupBodyChat, lookupCommentChat } from "./reactions"
 import { externalIdentityHash } from "../../identity"
 const log = Log.create({ service: "channel.github" })
 
@@ -536,13 +536,9 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     messageId: string
     emoji: string
   }): Promise<{ reactionId: string } | void> {
-    // Reactions only apply to real comment IDs (numeric); synthetic event
-    // message IDs are skipped silently.
-    const commentId = Number(input.messageId)
-    if (!Number.isInteger(commentId) || commentId <= 0) return undefined
     const content = normalizeReactionEmoji(input.emoji)
     if (!content) {
-      log.warn("github reaction skipped (unsupported emoji)", { commentId, emoji: input.emoji })
+      log.warn("github reaction skipped (unsupported emoji)", { messageId: input.messageId, emoji: input.emoji })
       return undefined
     }
     const chatId = this.chatIdForMessage(input.accountId, input.messageId)
@@ -552,26 +548,38 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     const { owner, repo } = splitRepository(parsed.repository)
     try {
       const token = await this.resolveInstallationToken(owner, repo)
-      const reaction = await GitHubChannelAuth.GitHubClient.send<{ id?: unknown }>(
-        GitHubChannelAuth.GitHubClient.createIssueCommentReaction({
-          owner,
-          repo,
-          commentId,
-          content,
-          installationToken: token,
-        }),
-      )
+      // Numeric message IDs are real comment IDs (comment reactions);
+      // synthetic event message IDs target the issue/PR body.
+      const commentId = Number(input.messageId)
+      const reaction = await (Number.isInteger(commentId) && commentId > 0
+        ? GitHubChannelAuth.GitHubClient.send<{ id?: unknown }>(
+            GitHubChannelAuth.GitHubClient.createIssueCommentReaction({
+              owner,
+              repo,
+              commentId,
+              content,
+              installationToken: token,
+            }),
+          )
+        : GitHubChannelAuth.GitHubClient.send<{ id?: unknown }>(
+            GitHubChannelAuth.GitHubClient.createIssueReaction({
+              owner,
+              repo,
+              issueNumber: parsed.issueNumber,
+              content,
+              installationToken: token,
+            }),
+          ))
       return typeof reaction?.id === "number" ? { reactionId: String(reaction.id) } : undefined
     } catch (error) {
-      log.warn("github reaction failed", { commentId, emoji: content, error })
+      log.warn("github reaction failed", { messageId: input.messageId, emoji: content, error })
       return undefined
     }
   }
 
   async removeReaction(input: { accountId: string; messageId: string; reactionId: string }): Promise<void> {
-    const commentId = Number(input.messageId)
     const reactionId = Number(input.reactionId)
-    if (!Number.isInteger(commentId) || commentId <= 0 || !Number.isInteger(reactionId) || reactionId <= 0) return
+    if (!Number.isInteger(reactionId) || reactionId <= 0) return
     const chatId = this.chatIdForMessage(input.accountId, input.messageId)
     if (!chatId) return
     const parsed = parseChatId(chatId)
@@ -579,17 +587,30 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     const { owner, repo } = splitRepository(parsed.repository)
     try {
       const token = await this.resolveInstallationToken(owner, repo)
-      await GitHubChannelAuth.GitHubClient.send<unknown>(
-        GitHubChannelAuth.GitHubClient.deleteIssueCommentReaction({
-          owner,
-          repo,
-          commentId,
-          reactionId,
-          installationToken: token,
-        }),
-      )
+      const commentId = Number(input.messageId)
+      if (Number.isInteger(commentId) && commentId > 0) {
+        await GitHubChannelAuth.GitHubClient.send<unknown>(
+          GitHubChannelAuth.GitHubClient.deleteIssueCommentReaction({
+            owner,
+            repo,
+            commentId,
+            reactionId,
+            installationToken: token,
+          }),
+        )
+      } else {
+        await GitHubChannelAuth.GitHubClient.send<unknown>(
+          GitHubChannelAuth.GitHubClient.deleteIssueReaction({
+            owner,
+            repo,
+            issueNumber: parsed.issueNumber,
+            reactionId,
+            installationToken: token,
+          }),
+        )
+      }
     } catch (error) {
-      log.warn("github reaction removal failed", { commentId, reactionId, error })
+      log.warn("github reaction removal failed", { messageId: input.messageId, reactionId, error })
     }
   }
 
@@ -604,8 +625,8 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     return new NonStreamingSession()
   }
 
-  /** Map a comment ID back to its chatId via the poll-loop registry. */
+  /** Map a message ID back to its chatId via the poll-loop registry. */
   private chatIdForMessage(accountId: string, messageId: string): string | undefined {
-    return lookupCommentChat(messageId)
+    return lookupCommentChat(messageId) ?? lookupBodyChat(messageId)
   }
 }

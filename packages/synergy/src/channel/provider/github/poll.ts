@@ -3,7 +3,7 @@ import { SessionRetry } from "@/session/retry"
 import { GitHubChannelAuth, GitHubApiError, type RequestDescriptor } from "./api"
 import { GithubChannelPollState, initializeBaseline, synthesizeEvents, type GithubChannelEvent } from "./synthesizer"
 import { record, positiveInteger } from "./record"
-import { registerCommentChat } from "./reactions"
+import { registerBodyChat, registerCommentChat } from "./reactions"
 import { gateGithubEvent } from "./gate"
 import type { ChannelHost } from "../../host"
 import type { MessageContext } from "../../types"
@@ -236,10 +236,14 @@ async function deliverEvent(
   const scopeKey = chatId
   const messageId = eventMessageId(event)
 
-  // Register real GitHub comment IDs so the provider can attach reactions
-  // (e.g. 👀 ACK) to the actual comment.
+  // Register the reaction target so the provider can attach status reactions
+  // (e.g. 👀 ACK / 🚀 done) to the real GitHub object: comments map to the
+  // comment ID, synthetic events (issue/PR opened, synchronize, ready) map
+  // to the issue/PR body.
   if (event.kind === "comment.created") {
     registerCommentChat(String(event.commentId), chatId)
+  } else {
+    registerBodyChat(messageId, chatId)
   }
 
   const ctx: MessageContext = {

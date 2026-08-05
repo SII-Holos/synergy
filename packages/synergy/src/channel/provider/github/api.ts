@@ -369,6 +369,36 @@ export namespace GitHubChannelAuth {
       })
     }
 
+    /** Reaction on the issue/PR body itself (synthetic event targets). */
+    export function createIssueReaction(input: {
+      owner: string
+      repo: string
+      issueNumber: number
+      content: string
+      installationToken: string
+    }) {
+      return request({
+        path: `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/reactions`,
+        method: "POST",
+        installationToken: input.installationToken,
+        body: { content: input.content },
+      })
+    }
+
+    export function deleteIssueReaction(input: {
+      owner: string
+      repo: string
+      issueNumber: number
+      reactionId: number
+      installationToken: string
+    }) {
+      return request({
+        path: `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/reactions/${input.reactionId}`,
+        method: "DELETE",
+        installationToken: input.installationToken,
+      })
+    }
+
     export async function send<T>(descriptor: RequestDescriptor, signal?: AbortSignal) {
       return execute<T>(descriptor, signal)
     }
