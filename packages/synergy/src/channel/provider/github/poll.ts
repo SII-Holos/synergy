@@ -14,6 +14,11 @@ import { Lock } from "@/util/lock"
 
 const log = Log.create({ service: "channel.github.poll" })
 
+/** Lookback window used on the very first poll of a repository so events that
+ * happened while the channel was disabled, failing, or just being configured
+ * are recovered instead of lost forever. */
+const FIRST_POLL_LOOKBACK_MS = 24 * 60 * 60 * 1_000
+
 type RepositoryParts = { owner: string; repo: string }
 type PollPage<T> = { data: T; headers: Headers }
 
@@ -99,13 +104,21 @@ export async function pollRepository(input: {
   const installationToken = await GitHubChannelAuth.getInstallationToken(installationId, input.signal)
 
   let state = await readPollState(input.accountHash, input.repository)
+  // On the very first poll (fresh state) the baseline is "now", so events
+  // that happened while the channel was disabled, failing, or just being
+  // set up would fall outside the normal overlap window and be lost forever.
+  // Look back 24h instead: comments are deduped by ID with no baseline gate,
+  // so old @-mention summons are recovered, while issue/PR opened events keep
+  // their baseline gate and are not re-emitted for stale items.
+  const isFirstPoll = state === undefined
   if (!state) {
     state = initializeBaseline(input.repository)
     await writePollState(input.accountHash, input.repository, state)
   }
 
   const overlapMs = Math.max(input.intervalMs, 5 * 60 * 1_000)
-  const since = new Date(Math.max(0, state.lastUpdatedAt - overlapMs)).toISOString()
+  const lookbackMs = isFirstPoll ? FIRST_POLL_LOOKBACK_MS : overlapMs
+  const since = new Date(Math.max(0, state.lastUpdatedAt - lookbackMs)).toISOString()
 
   // 1. Issues/PRs updated since the watermark (PR-shaped issues carry a pull_request key).
   const issueItems = await fetchPages({
