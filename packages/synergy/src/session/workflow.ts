@@ -6,6 +6,7 @@ import { Lock } from "../util/lock"
 import { Session } from "./index"
 import { SessionManager } from "./manager"
 import { SessionAbort } from "./abort"
+import { LightLoopRuntime } from "./light-loop-runtime"
 
 type BlueprintLoopSource = "user" | "lattice" | "plugin"
 
@@ -220,9 +221,11 @@ export namespace SessionWorkflowService {
     if (session.workflow?.kind !== "lightloop") return session
 
     await SessionAbort.abort(sessionID)
-    return Session.update(sessionID, (draft) => {
-      if (draft.workflow?.kind === "lightloop") draft.workflow = undefined
-    })
+    // Use the single terminal path so the authoritative terminal record is
+    // persisted and the interactive workflow is cleared consistently with
+    // approval, exhaustion, deadline, and failure.
+    await LightLoopRuntime.setTerminalStatus(sessionID, "cancelled")
+    return Session.get(sessionID)
   }
 
   export async function enableLattice(

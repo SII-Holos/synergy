@@ -4,6 +4,7 @@ import { Log } from "../util/log"
 import { pluginRuntimeManager } from "./runtime"
 import { pluginAgentCallRuntime } from "./agent-call-runtime"
 import { PluginHookPointRegistry } from "./hook-points"
+import { resolvePluginRuntimeLimits } from "./runtime-limits"
 import {
   ensureRuntime,
   getLoadedPlugins,
@@ -136,6 +137,7 @@ async function executePluginHooks<Input, Output>(
   options?: PluginTriggerOptions,
 ): Promise<PluginHookExecution<Output>> {
   const point = PluginHookPointRegistry.get(pointName)
+  const hookTimeoutMs = (await resolvePluginRuntimeLimits()).hookTimeoutMs
   validateHookValue(point.inputSchema, input, `Invalid input for hook point ${pointName}`)
   let value = initial
   let succeededHandlers = 0
@@ -171,7 +173,7 @@ async function executePluginHooks<Input, Output>(
         },
         pluginDir: plugin.pluginDir,
         manifest: plugin.manifest,
-        timeoutMs: point.timeoutMs,
+        timeoutMs: hookTimeoutMs,
         signal: options?.signal,
       })
       value = applyPluginHookResult(point, value, result)

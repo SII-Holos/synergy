@@ -31,6 +31,7 @@ import { isPathContained } from "../util/path-contain"
 import { getPluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
 import { PluginEvent } from "./event"
+import { getRuntimeEndpoint } from "../server/runtime-endpoint"
 import {
   cancelPluginBlueprint,
   cancelPluginTask,
@@ -44,6 +45,8 @@ import {
   startPluginBlueprint,
   startPluginTask,
 } from "./host-services"
+import { DEFAULT_LIMITS } from "../plugin-runtime/health"
+import { resolvePluginRuntimeLimits } from "./runtime-limits"
 
 const capabilityByMethod = {
   "session.get": "session.read",
@@ -72,11 +75,11 @@ const capabilityByMethod = {
   "agent.start": "agent.call",
   "asset.create": "asset.write",
   "shell.run": "shell.execute",
+  "runtime.endpoint.get": "runtime.endpoint.read",
 } as const
 
 const AGENT_CALL_MAX_INPUT_CHARS = 32_000
 const AGENT_CALL_MAX_OUTPUT_CHARS = 16_000
-const AGENT_CALL_MAX_RUNTIME_MS = 120_000
 
 function pluginHostServiceError(code: string, message: string) {
   return Object.assign(new Error(message), { name: "PluginHostServiceError", code })
@@ -90,6 +93,12 @@ function assertCapability(input: PluginHostServiceInvocationInput) {
   const required = capabilityByMethod[input.method]
   const granted = input.manifest.capabilities.some((capability) => capability.id === required)
   if (!granted) throw new Error(`Plugin ${input.pluginId} does not declare capability "${required}"`)
+  if (required === "runtime.endpoint.read") {
+    const contribution = input.manifest.contributions.find((item) => `${item.kind}:${item.id}` === input.handlerId)
+    if (!contribution?.requires?.includes(required)) {
+      throw new Error(`Plugin contribution ${input.handlerId ?? "unknown"} does not require capability "${required}"`)
+    }
+  }
   if (required !== "agent.call") return
   const contribution = input.manifest.contributions.find((item) => `${item.kind}:${item.id}` === input.handlerId)
   if (!contribution?.requires?.includes(required)) {
@@ -127,8 +136,8 @@ async function resolvePluginAgentCall(input: PluginHostServiceInvocationInput, v
   const requestedOutput = positiveConstraint(value.maxOutputChars, maxOutputChars, maxOutputChars)
   const maxRuntimeMs = positiveConstraint(
     constraints.maxRuntimeMs,
-    AGENT_CALL_MAX_RUNTIME_MS,
-    AGENT_CALL_MAX_RUNTIME_MS,
+    input.limits?.agentCallMaxRuntimeMs ?? DEFAULT_LIMITS.agentCallMaxRuntimeMs,
+    input.limits?.agentCallMaxRuntimeMs ?? DEFAULT_LIMITS.agentCallMaxRuntimeMs,
   )
   const timeoutMs = positiveConstraint(value.timeoutMs, maxRuntimeMs, maxRuntimeMs)
   const requestedRole = value.modelRole
@@ -209,7 +218,7 @@ function mapPluginAgentCallError(error: unknown): Error & { code?: string } {
 
 async function runPluginAgent(resolved: Awaited<ReturnType<typeof resolvePluginAgentCall>>, signal: AbortSignal) {
   try {
-    return await AgentCall.text({
+    const result = await AgentCall.text({
       agent: resolved.name,
       modelRole: resolved.modelRole,
       messages: [{ role: "user", content: resolved.text }],
@@ -219,6 +228,7 @@ async function runPluginAgent(resolved: Awaited<ReturnType<typeof resolvePluginA
       maxInputChars: resolved.maxInputChars,
       maxOutputChars: resolved.maxOutputChars,
     })
+    return { text: result.text }
   } catch (error) {
     throw mapPluginAgentCallError(error)
   }
@@ -450,9 +460,13 @@ async function runPluginTask(input: PluginHostServiceInvocationInput, value: Rec
     pluginDir: input.pluginDir,
     context: await resolveStartParent(input, "task.run", value),
     request,
+    limits: input.limits,
   })
   const active = Cortex.get(handle.taskId)
-  const timeoutSeconds = Math.ceil(((active?.timeoutMs ?? request.timeoutMs ?? 120_000) + 5_000) / 1_000)
+  const taskTimeoutMs = active?.timeoutMs ?? request.timeoutMs
+  const waitCeilingMs = input.limits?.taskRunWaitTimeoutMs ?? DEFAULT_LIMITS.taskRunWaitTimeoutMs
+  const waitMs = taskTimeoutMs === undefined ? waitCeilingMs : Math.min(taskTimeoutMs, waitCeilingMs)
+  const timeoutSeconds = Math.ceil((waitMs + 5_000) / 1_000)
   const completed = Cortex.waitFor(handle.taskId, timeoutSeconds)
   const onAbort = () => {
     void cancelPluginTask({
@@ -569,7 +583,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   }
   const command = value.command as [string, ...string[]]
   if (!command[0]) throw new Error("shell.run requires a non-empty executable")
-  const timeoutMs = value.timeoutMs ?? 120_000
+  const timeoutMs = value.timeoutMs ?? input.limits?.shellRunTimeoutMs ?? DEFAULT_LIMITS.shellRunTimeoutMs
   if (!Number.isSafeInteger(timeoutMs) || Number(timeoutMs) <= 0) {
     throw new Error("shell.run timeoutMs must be a positive integer")
   }
@@ -577,7 +591,11 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   const session = input.invocation.sessionId ? await Session.get(input.invocation.sessionId) : undefined
   const profileId = await Session.resolveEffectiveControlProfile({ sessionID: session?.id })
   const workspace = ScopeContext.current.workspace
-  const trustedRoots = SkillSourceProfile.allRootPaths(input.invocation.directory)
+  const trustedRoots = Scope.Root.executionRoots(
+    ScopeContext.current.scope,
+    workspace,
+    SkillSourceProfile.allRootPaths(input.invocation.directory),
+  )
   const gate = await EnforcementGate.create({
     activeWorkspace: input.invocation.directory,
     workspaceType: workspace?.type === "git_worktree" ? "worktree" : "main",
@@ -616,6 +634,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
     protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
     dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+    stripDefaultHomeDenyRoot: true,
     backend: sandbox.backend,
   })
   const executed = await SandboxBackend.executeAsync(wrapper, {
@@ -630,7 +649,20 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
 export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
   assertCapability(input)
   return inScope(input, async () => {
+    // Host-service invocation limits resolve in the invoking Scope so the
+    // shared per-plugin runtime does not pin one Scope's limits for others.
+    if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
     const value = params(input)
+    if (input.method === "runtime.endpoint.get") {
+      if (
+        input.params !== undefined &&
+        input.params !== null &&
+        !(typeof input.params === "object" && Object.keys(input.params).length === 0)
+      ) {
+        throw new Error("runtime.endpoint.get does not accept parameters")
+      }
+      return getRuntimeEndpoint()
+    }
     if (input.method === "event.publish") return publishEvent(input)
     if (input.method === "agent.call") return callPluginAgent(input, value)
     if (input.method === "agent.start") return startPluginAgent(input, value)
@@ -750,6 +782,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         pluginDir: input.pluginDir,
         context: await resolveStartParent(input, "task.start", value),
         request: value as never,
+        limits: input.limits,
       })
     }
 
@@ -797,6 +830,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         context: runtimeContext,
         pluginDir: input.pluginDir,
         request: { tool: toolId, args: value.input },
+        limits: input.limits,
       })
     }
   })

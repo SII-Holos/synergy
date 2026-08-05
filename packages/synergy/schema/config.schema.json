@@ -338,300 +338,6 @@
       },
       "additionalProperties": false
     },
-    "github": {
-      "description": "Outbound GitHub App polling and automation configuration",
-      "ref": "GitHubIntegrationConfig",
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "watchedRepositories": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "eventTypes": {
-          "default": ["issues.opened", "workflow_run.completed"],
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "ciFailureThreshold": {
-          "default": 3,
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
-        },
-        "ciFailureWindowHours": {
-          "default": 24,
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
-        },
-        "modelBudgetNano": {
-          "default": {
-            "maxTokens": 256,
-            "maxCost": 0.001
-          },
-          "type": "object",
-          "properties": {
-            "maxTokens": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "maxCost": {
-              "type": "number",
-              "minimum": 0
-            }
-          },
-          "required": ["maxTokens", "maxCost"],
-          "additionalProperties": false
-        },
-        "modelBudgetProposal": {
-          "default": {
-            "maxTokens": 2048,
-            "maxCost": 0.02
-          },
-          "type": "object",
-          "properties": {
-            "maxTokens": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "maxCost": {
-              "type": "number",
-              "minimum": 0
-            }
-          },
-          "required": ["maxTokens", "maxCost"],
-          "additionalProperties": false
-        },
-        "classifierEnabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "proposalEnabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "polling": {
-          "default": {
-            "enabled": true,
-            "intervalMs": 60000,
-            "overlapWindowMs": 300000,
-            "pageSize": 100,
-            "maxPages": 30
-          },
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "default": true,
-              "type": "boolean"
-            },
-            "intervalMs": {
-              "default": 60000,
-              "type": "integer",
-              "minimum": 15000,
-              "maximum": 300000
-            },
-            "overlapWindowMs": {
-              "default": 300000,
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 600000
-            },
-            "pageSize": {
-              "default": 100,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
-            },
-            "maxPages": {
-              "default": 30,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
-            }
-          },
-          "required": ["enabled", "intervalMs", "overlapWindowMs", "pageSize", "maxPages"],
-          "additionalProperties": false
-        },
-        "fixWorkflow": {
-          "default": {
-            "enabled": false,
-            "repositoryMapping": {},
-            "maxRetries": 3,
-            "timeoutMs": 900000,
-            "locatorAgent": "github-issue-locator",
-            "agent": "github-fix-coder",
-            "pushBranchPrefix": "synergy/fix/"
-          },
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "default": false,
-              "type": "boolean"
-            },
-            "repositoryMapping": {
-              "default": {},
-              "type": "object",
-              "propertyNames": {
-                "type": "string",
-                "minLength": 1
-              },
-              "additionalProperties": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "maxRetries": {
-              "default": 3,
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 20
-            },
-            "timeoutMs": {
-              "default": 900000,
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "locatorAgent": {
-              "default": "github-issue-locator",
-              "type": "string",
-              "minLength": 1
-            },
-            "agent": {
-              "default": "github-fix-coder",
-              "type": "string",
-              "minLength": 1
-            },
-            "pushBranchPrefix": {
-              "default": "synergy/fix/",
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "required": [
-            "enabled",
-            "repositoryMapping",
-            "maxRetries",
-            "timeoutMs",
-            "locatorAgent",
-            "agent",
-            "pushBranchPrefix"
-          ],
-          "additionalProperties": false
-        },
-        "reviewWorkflow": {
-          "default": {
-            "enabled": false,
-            "repositoryMapping": {},
-            "eventTypes": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
-            "reviewCommands": ["bun test", "bun run typecheck"],
-            "maxRetries": 3,
-            "timeoutMs": 900000,
-            "agent": "github-review-agent",
-            "publishReviewComment": true,
-            "publishCheckRun": true
-          },
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "default": false,
-              "type": "boolean"
-            },
-            "repositoryMapping": {
-              "default": {},
-              "type": "object",
-              "propertyNames": {
-                "type": "string",
-                "minLength": 1
-              },
-              "additionalProperties": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "eventTypes": {
-              "default": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "reviewCommands": {
-              "default": ["bun test", "bun run typecheck"],
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "maxRetries": {
-              "default": 3,
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 20
-            },
-            "timeoutMs": {
-              "default": 900000,
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "agent": {
-              "default": "github-review-agent",
-              "type": "string",
-              "minLength": 1
-            },
-            "publishReviewComment": {
-              "default": true,
-              "type": "boolean"
-            },
-            "publishCheckRun": {
-              "default": true,
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "enabled",
-            "repositoryMapping",
-            "eventTypes",
-            "reviewCommands",
-            "maxRetries",
-            "timeoutMs",
-            "agent",
-            "publishReviewComment",
-            "publishCheckRun"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "enabled",
-        "eventTypes",
-        "ciFailureThreshold",
-        "ciFailureWindowHours",
-        "modelBudgetNano",
-        "modelBudgetProposal",
-        "classifierEnabled",
-        "proposalEnabled",
-        "polling",
-        "fixWorkflow",
-        "reviewWorkflow"
-      ],
-      "additionalProperties": false
-    },
     "watcher": {
       "type": "object",
       "properties": {
@@ -665,7 +371,12 @@
             "shutdownGraceMs": 1500,
             "heartbeatIntervalMs": 5000,
             "maxMemoryMb": 512,
-            "memorySampleIntervalMs": 5000
+            "memorySampleIntervalMs": 5000,
+            "agentCallMaxRuntimeMs": 120000,
+            "hookTimeoutMs": 120000,
+            "contributionInvokeTimeoutMs": 120000,
+            "shellRunTimeoutMs": 120000,
+            "taskRunWaitTimeoutMs": 120000
           },
           "ref": "PluginRuntimeLimitsConfig",
           "type": "object",
@@ -714,6 +425,36 @@
             },
             "memorySampleIntervalMs": {
               "description": "External plugin runtime RSS sampling interval in milliseconds",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "agentCallMaxRuntimeMs": {
+              "description": "Maximum milliseconds for a plugin agent.call/agent.start model invocation",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "hookTimeoutMs": {
+              "description": "Maximum milliseconds for one plugin hook handler invocation",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "contributionInvokeTimeoutMs": {
+              "description": "Default maximum milliseconds for a plugin contribution invocation without a declared timeout",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "shellRunTimeoutMs": {
+              "description": "Default maximum milliseconds for plugin shell.run commands",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "taskRunWaitTimeoutMs": {
+              "description": "Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
@@ -2370,6 +2111,98 @@
                     }
                   },
                   "required": ["enabled"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["type", "accounts"],
+            "additionalProperties": false
+          },
+          {
+            "ref": "ChannelGithubConfig",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "github"
+              },
+              "accounts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "ref": "ChannelGithubAccountConfig",
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "repositories": {
+                      "description": "GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later",
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                      }
+                    },
+                    "workspaceDir": {
+                      "description": "Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "workspaceTtlHours": {
+                      "description": "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.",
+                      "default": 24,
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "pollingIntervalMs": {
+                      "description": "Interval between GitHub API polls in milliseconds (default 5 minutes)",
+                      "default": 300000,
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "autoReview": {
+                      "description": "Automatically review newly opened and updated pull requests",
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "autoRespond": {
+                      "description": "Respond to @mentions of the bot handle and questions in issues and pull requests",
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "agent": {
+                      "description": "Agent used for GitHub channel sessions (defaults to github-channel-agent)",
+                      "type": "string"
+                    },
+                    "mention": {
+                      "description": "GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)",
+                      "type": "string"
+                    },
+                    "model": {
+                      "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+                      "type": "string"
+                    },
+                    "variant": {
+                      "description": "Model variant to use with this account model (e.g. low, high, max)",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "repositories",
+                    "workspaceDir",
+                    "workspaceTtlHours",
+                    "pollingIntervalMs",
+                    "autoReview",
+                    "autoRespond"
+                  ],
                   "additionalProperties": false
                 }
               }

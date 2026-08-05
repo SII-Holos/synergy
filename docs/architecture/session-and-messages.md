@@ -138,11 +138,13 @@ raises `ProviderModelVariantUnavailableError` at
 `SessionRootVariant.options()` — the runtime does not silently fall back to
 another variant or unset the field.
 
-`SessionRootVariant.resolve()` validates a candidate variant against the
-model's declared `variants`. When the model declares variants, an unknown
-candidate surfaces the same error before persistence so the caller can
-correct the request. A model that declares no variants leaves a newly
-resolved root variant unset.
+`SessionRootVariant.resolve()` validates an explicit candidate variant against
+the model's declared `variants`. When the model declares variants, an unknown
+explicit candidate surfaces the same error before persistence so the caller
+can correct the request. An agent or role default that the selected model does
+not declare is omitted, letting that provider use its own default rather than
+persisting an invalid root variant. A model that declares no variants leaves a
+newly resolved root variant unset.
 
 Legacy task roots that were persisted without a variant are filled by
 migration `20260726-session-root-variant` when the agent/config defaults can

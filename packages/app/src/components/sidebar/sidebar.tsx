@@ -160,8 +160,8 @@ export function Sidebar(props: SidebarProps) {
   const [homeSectionOpen, setHomeSectionOpen] = createSignal(false)
   const [channelSectionOpen, setChannelSectionOpen] = createSignal(false)
   const [feishuGroupOpen, setFeishuGroupOpen] = createSignal(true)
+  const [githubGroupOpen, setGithubGroupOpen] = createSignal(true)
   const [backgroundSectionOpen, setBackgroundSectionOpen] = createSignal(false)
-  const [githubSectionOpen, setGitHubSectionOpen] = createSignal(false)
   const [projectsFlyoutOpen, setProjectsFlyoutOpen] = createSignal(false)
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
@@ -191,21 +191,23 @@ export function Sidebar(props: SidebarProps) {
         orphanSessions.push(entry)
         continue
       }
-      const existing = groups.get(key)
+      const groupKey = `${entry.channelType ?? "feishu"}:${key}`
+      const existing = groups.get(groupKey)
       if (existing) {
         existing.push(entry)
       } else {
-        groups.set(key, [entry])
+        groups.set(groupKey, [entry])
       }
     }
 
     const result = Array.from(groups.entries())
-      .map(([chatId, sessions]) => {
+      .map(([groupKey, sessions]) => {
         const first = sessions[0]!
         const typePrefix = first.chatType === "group" ? "[G] " : first.chatType === "dm" ? "[D] " : ""
         return {
-          chatId,
-          name: `${typePrefix}${first.chatName ?? chatId.slice(-8)}`,
+          chatId: first.chatId!,
+          channelType: first.channelType ?? "feishu",
+          name: `${typePrefix}${first.chatName ?? first.chatId!.slice(-8)}`,
           sessions: sessions.sort((a, b) => b.lastActivityAt - a.lastActivityAt),
         }
       })
@@ -218,6 +220,7 @@ export function Sidebar(props: SidebarProps) {
     if (orphanSessions.length > 0) {
       result.push({
         chatId: ORPHAN_CHAT_GROUP_ID,
+        channelType: "feishu",
         name: _(sidebar.orphanGroup),
         sessions: orphanSessions.sort((a, b) => b.lastActivityAt - a.lastActivityAt),
       })
@@ -225,6 +228,12 @@ export function Sidebar(props: SidebarProps) {
 
     return result
   })
+  const feishuChannelGroups = createMemo(() =>
+    channelGroupedEntries().filter((group) => group.channelType === "feishu"),
+  )
+  const githubChannelGroups = createMemo(() =>
+    channelGroupedEntries().filter((group) => group.channelType === "github"),
+  )
 
   const dir = createMemo(() => {
     if (params.dir) {
@@ -557,7 +566,7 @@ export function Sidebar(props: SidebarProps) {
                         <span>{_(sidebar.channelFeishu)}</span>
                       </div>
                       <SidebarDisclosure open={feishuGroupOpen()}>
-                        <For each={channelGroupedEntries()}>
+                        <For each={feishuChannelGroups()}>
                           {(group) => (
                             <ChannelChatPartnerGroup
                               name={group.name}
@@ -569,6 +578,35 @@ export function Sidebar(props: SidebarProps) {
                         </For>
                       </SidebarDisclosure>
                     </div>
+                    <Show when={githubChannelGroups().length > 0}>
+                      <div class="sb-session-group">
+                        <div
+                          class="sb-session-group-header"
+                          onClick={() => setGithubGroupOpen((v) => !v)}
+                          role="button"
+                          tabindex="0"
+                        >
+                          <Icon
+                            name={githubGroupOpen() ? "chevron-down" : "chevron-right"}
+                            size="small"
+                            class="sb-section-chevron"
+                          />
+                          <span>{_(sidebar.channelGithub)}</span>
+                        </div>
+                        <Show when={githubGroupOpen()}>
+                          <For each={githubChannelGroups()}>
+                            {(group) => (
+                              <ChannelChatPartnerGroup
+                                name={group.name}
+                                sessions={group.sessions}
+                                activeID={params.id}
+                                onSessionClick={handleNavEntryClick}
+                              />
+                            )}
+                          </For>
+                        </Show>
+                      </div>
+                    </Show>
                     <Show when={layout.nav.hasMoreRootNavSection("channel")}>
                       <button
                         type="button"
@@ -625,20 +663,6 @@ export function Sidebar(props: SidebarProps) {
               activeID={params.id}
               onSessionClick={handleNavEntryClick}
             />
-
-            {/* GitHub */}
-            <Show when={layout.nav.githubConfigured()}>
-              <RootNavSection
-                title={_(sidebar.github)}
-                open={githubSectionOpen}
-                onToggle={() => setGitHubSectionOpen((value) => !value)}
-                entries={layout.nav.githubEntries()}
-                hasMore={layout.nav.hasMoreGitHub()}
-                onLoadMore={() => layout.nav.loadMoreGitHub()}
-                activeID={params.id}
-                onSessionClick={handleNavEntryClick}
-              />
-            </Show>
 
             {/* Projects */}
             <div class="sb-projects">
@@ -1079,7 +1103,7 @@ function SidebarDisclosure(props: { open: boolean; class?: string; children: JSX
   )
 }
 
-// --- RootNavSection: reusable collapsible section for Home / Channel / Background / GitHub ---
+// --- RootNavSection: reusable collapsible section for Home / Channel / Background ---
 
 function RootNavSection(props: {
   title: string

@@ -25,6 +25,7 @@ import { copyHolosCliAsset } from "./holos-cli-assets"
 import { prepareBuildModelsCatalog } from "./models-catalog"
 import { stageEmbeddingRuntimeAssets, standaloneEmbeddingBuildPlugin } from "./embedding-runtime-assets"
 import { stageSvgRasterRuntimeAssets } from "./svg-raster-runtime-assets"
+import { nativePlatformPackageNames } from "./native-build-packages"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -250,9 +251,7 @@ async function ensureNativeBuildPackages() {
     ...pkg.dependencies,
     ...pkg.devDependencies,
   } as Record<string, string>
-  const packages = Object.entries(dependencies).filter(
-    ([name]) => name.startsWith("@parcel/watcher-") || name.startsWith("sqlite-vec-"),
-  )
+  const packages = nativePlatformPackageNames(dependencies).map((name) => [name, dependencies[name]] as const)
 
   for (const [name, version] of packages) {
     await ensureNpmPackageExtracted(name, version)

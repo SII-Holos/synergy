@@ -21,7 +21,8 @@ import {
 } from "./native"
 
 const log = Log.create({ service: "holos.runtime" })
-const HEARTBEAT_INTERVAL_MS = 30_000
+export const HOLOS_HEARTBEAT_INTERVAL_MS = 30_000
+export const HOLOS_HEARTBEAT_PONG_DEADLINE_MS = 90_000
 const WS_FAILURE_WINDOW_MS = 1_500
 const RECONNECT_DELAY_MS = 2_000
 const MAX_RECONNECT_DELAY_MS = 30_000
@@ -47,6 +48,8 @@ type ConnectionState = {
   ws: WebSocket | null
   peerId: string | null
   heartbeatTimer: ReturnType<typeof setInterval> | null
+  lastPongAt: number | null
+  livenessLost: boolean
   pendingSends: Map<string, PendingSend>
   pendingNativeRequests: Map<string, PendingNativeRequest>
 }
@@ -73,10 +76,13 @@ async function fetchWsToken(apiUrl: string, agentSecret: string): Promise<string
   return body.data.ws_token
 }
 
-async function syncSynergyLink(input: { provider: HolosProvider } | null) {
+async function syncSynergyLink(
+  input: { provider: HolosProvider } | null,
+  reason: "disconnected" | "transport_liveness_lost" = "disconnected",
+) {
   const { SynergyLinkExecution } = await import("@/tool/synergy-link-execution")
   if (!input) {
-    SynergyLinkExecution.setClient(null)
+    SynergyLinkExecution.setClient(null, reason)
     return
   }
   const { HolosSynergyLinkClient } = await import("@/remote/client")
@@ -118,6 +124,7 @@ export namespace HolosRuntime {
     event: string
     payload: unknown
     caller: Envelope.Caller
+    source: object
   }) => boolean | Promise<boolean>
 
   export const Event = {
@@ -200,6 +207,7 @@ export namespace HolosRuntime {
     event: string
     payload: unknown
     caller: Envelope.Caller
+    source: object
   }): Promise<boolean> {
     for (const handler of appEventHandlers) {
       if (await handler(input)) return true
@@ -278,7 +286,9 @@ export namespace HolosRuntime {
         }
         current.provider = null
         current.sessionID = null
-        void syncSynergyLink(null).catch((err) => log.warn("syncSynergyLink failed", { error: err }))
+        void syncSynergyLink(null, reason === "transport_liveness_lost" ? reason : "disconnected").catch((err) =>
+          log.warn("syncSynergyLink failed", { error: err }),
+        )
         setStatus(current, { status: "disconnected" })
         scheduleReconnect({ attempt: 0, reason })
         if (nativeTunnelPort) {
@@ -523,7 +533,8 @@ class NativeTunnelPortImpl implements NativeTunnelPort {
 type ConnectInput = {
   config: Config.Holos
   signal: AbortSignal
-  onDisconnect?: (reason?: string) => void
+  onDisconnect?: (reason?: "ws_closed" | "transport_liveness_lost") => void
+  heartbeat?: { intervalMs?: number; pongDeadlineMs?: number }
 }
 
 export class HolosProvider {
@@ -533,6 +544,8 @@ export class HolosProvider {
     ws: null,
     peerId: null,
     heartbeatTimer: null,
+    lastPongAt: null,
+    livenessLost: false,
     pendingSends: new Map(),
     pendingNativeRequests: new Map(),
   }
@@ -543,6 +556,8 @@ export class HolosProvider {
 
   async connect(input: ConnectInput): Promise<void> {
     const { config: holosConfig, signal, onDisconnect } = input
+    const heartbeatIntervalMs = input.heartbeat?.intervalMs ?? HOLOS_HEARTBEAT_INTERVAL_MS
+    const pongDeadlineMs = input.heartbeat?.pongDeadlineMs ?? HOLOS_HEARTBEAT_PONG_DEADLINE_MS
     this.holosConfig = holosConfig
 
     let capturedScope: Scope
@@ -563,6 +578,8 @@ export class HolosProvider {
       ws,
       peerId: credentials.agentId,
       heartbeatTimer: null,
+      lastPongAt: null,
+      livenessLost: false,
       pendingSends: new Map(),
       pendingNativeRequests: new Map(),
     }
@@ -575,12 +592,17 @@ export class HolosProvider {
         if (cleanedUp) return
         cleanedUp = true
         if (this.state.heartbeatTimer) clearInterval(this.state.heartbeatTimer)
+        const failureReason = this.state.livenessLost ? "transport_liveness_lost" : "disconnected"
         for (const pending of this.state.pendingSends.values()) {
           clearTimeout(pending.timer)
-          pending.resolve({ sent: false, reason: "not_connected" })
+          pending.resolve({ sent: false, reason: failureReason })
         }
         this.state.pendingSends.clear()
-        this.settleNativePending("disconnected", "Tunnel disconnected")
+        Presence.clear()
+        this.settleNativePending(
+          this.state.livenessLost ? "transport_liveness_lost" : "disconnected",
+          this.state.livenessLost ? "Tunnel heartbeat deadline expired" : "Tunnel disconnected",
+        )
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close()
         this.state.ws = null
         this.state.peerId = null
@@ -590,15 +612,23 @@ export class HolosProvider {
 
       ws.addEventListener("open", () => {
         opened = true
+        this.state.lastPongAt = Date.now()
         resolve()
 
         this.state.heartbeatTimer = setInterval(() => {
           try {
-            if (ws.readyState === WebSocket.OPEN) ws.send(Envelope.ping())
+            if (ws.readyState !== WebSocket.OPEN) return
+            const lastPongAt = this.state.lastPongAt ?? Date.now()
+            if (Date.now() - lastPongAt >= pongDeadlineMs) {
+              this.state.livenessLost = true
+              ws.close(4000, "heartbeat_timeout")
+              return
+            }
+            ws.send(Envelope.ping())
           } catch (err) {
             log.warn("heartbeat send failed", { error: err })
           }
-        }, HEARTBEAT_INTERVAL_MS)
+        }, heartbeatIntervalMs)
         this.state.heartbeatTimer.unref?.()
 
         ScopeContext.provide({
@@ -629,11 +659,15 @@ export class HolosProvider {
       })
 
       ws.addEventListener("close", () => {
+        const livenessLost = this.state.livenessLost
         cleanup()
         if (!opened) {
           reject(new Error("WebSocket connection failed"))
         } else if (onDisconnect) {
-          ScopeContext.provide({ scope: capturedScope, fn: () => onDisconnect("ws_closed") }).catch((err) =>
+          ScopeContext.provide({
+            scope: capturedScope,
+            fn: () => onDisconnect(livenessLost ? "transport_liveness_lost" : "ws_closed"),
+          }).catch((err) =>
             log.warn("disconnect handler failed", {
               error: err,
             }),
@@ -651,12 +685,9 @@ export class HolosProvider {
     if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
       return { sent: false, reason: "not_connected" }
     }
-    const status = Presence.get(targetAgentId)
-    if (status === "offline") {
-      return { sent: false, reason: "offline" }
-    }
     const requestId = crypto.randomUUID()
     this.state.ws.send(Envelope.wsSend({ targetAgentId, event, payload, requestId }))
+    Presence.markOnline(targetAgentId)
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -785,7 +816,10 @@ export class HolosProvider {
     })
   }
 
-  private settleNativePending(reason: "disconnected" | "timeout" | "aborted_after_dispatch", message: string): void {
+  private settleNativePending(
+    reason: "disconnected" | "timeout" | "aborted_after_dispatch" | "transport_liveness_lost",
+    message: string,
+  ): void {
     for (const [requestID, pending] of this.state.pendingNativeRequests) {
       if (pending.timeout) clearTimeout(pending.timeout)
       pending.reject({
@@ -801,6 +835,7 @@ export class HolosProvider {
   private handleParsedMessage(msg: Envelope.Parsed): void {
     switch (msg.kind) {
       case "pong":
+        this.state.lastPongAt = Date.now()
         break
       case "error":
         this.handleGatewayError(msg)
@@ -882,7 +917,7 @@ export class HolosProvider {
   }
 
   private handleAppEvent(event: string, payload: unknown, caller: Envelope.Caller): void {
-    void HolosRuntime.dispatchAppEvent({ event, payload, caller })
+    void HolosRuntime.dispatchAppEvent({ event, payload, caller, source: this })
       .then((handled) => {
         if (handled) return
 

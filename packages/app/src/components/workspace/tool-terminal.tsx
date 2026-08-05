@@ -37,7 +37,6 @@ export function TerminalWorkbenchContent(props: WorkbenchPanelContentProps) {
         {(activePty) => (
           <Terminal
             pty={activePty()}
-            onCleanup={terminal.update}
             onGone={() => {
               props.onRequestClose?.()
             }}

@@ -33,9 +33,12 @@ export namespace ScopeContext {
   }
 
   export function contains(targetPath: string): boolean {
+    const scope = scopeContext.use()
     const ws = workspaceContext.tryUse()
+    const roots = Scope.Root.trustRoots(scope, ws)
+    if (roots.some((root) => Filesystem.contains(root, targetPath))) return true
     if (ws) return Filesystem.contains(ws.path, targetPath)
-    return Scope.contains(scopeContext.use(), targetPath)
+    return Scope.contains(scope, targetPath)
   }
 
   export const current = {

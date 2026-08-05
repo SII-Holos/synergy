@@ -414,19 +414,39 @@ describe("Windows sandbox preserves caller protection roots", () => {
     fs.rmSync(wrapper.tempPath!, { force: true })
   })
 
-  test("does not emit an unsupported home ancestor deny root by default", () => {
+  test("preserves an explicitly supplied home deny root", () => {
     const wrapper = SandboxBackend.prepareWrapper({
       command: "cmd.exe",
       args: ["/c", "echo test"],
       workspace: path.join(os.homedir(), "project"),
       sandboxMode: "workspace_write",
+      dataDenyRoots: [os.homedir()],
       forcePlatform: "windows",
       forceHelperPath: "C:\\Synergy\\synergy-sandbox-windows.exe",
       forceHelperVerified: true,
     })
 
     const tempJson = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
-    expect(tempJson.fileSystem.dataDenyRoots).toEqual([])
+    expect(tempJson.fileSystem.dataDenyRoots).toEqual([os.homedir()])
+    fs.rmSync(wrapper.tempPath!, { force: true })
+  })
+
+  test("removes only the shared profile's default home deny root before invoking the Windows helper", () => {
+    const explicitDenyRoot = "C:\\Users\\other-user"
+    const wrapper = SandboxBackend.prepareWrapper({
+      command: "cmd.exe",
+      args: ["/c", "echo test"],
+      workspace: path.join(os.homedir(), "project"),
+      sandboxMode: "workspace_write",
+      dataDenyRoots: [os.homedir(), explicitDenyRoot],
+      stripDefaultHomeDenyRoot: true,
+      forcePlatform: "windows",
+      forceHelperPath: "C:\\Synergy\\synergy-sandbox-windows.exe",
+      forceHelperVerified: true,
+    })
+
+    const tempJson = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
+    expect(tempJson.fileSystem.dataDenyRoots).toEqual([explicitDenyRoot])
     expect(tempJson.fileSystem.protectedPaths.length).toBeGreaterThan(0)
     fs.rmSync(wrapper.tempPath!, { force: true })
   })

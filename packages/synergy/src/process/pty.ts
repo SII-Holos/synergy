@@ -216,6 +216,12 @@ export namespace Pty {
       log.info("session exited", { id, exitCode })
       session.info.status = "exited"
       flushOutputBytes()
+      // The PTY is gone: drop every subscriber so clients stop writing into a
+      // dead process and their reconnect loop can settle (validate → gone).
+      for (const ws of session.subscribers) {
+        ws.close()
+      }
+      session.subscribers.clear()
       Bus.publish(Event.Exited, { id, exitCode })
       ObservabilityMetrics.record({
         name: "pty.session.duration",

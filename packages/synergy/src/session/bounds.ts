@@ -3,6 +3,13 @@ export namespace SessionBounds {
   export const TOOL_OUTPUT_MAX_CHARS = 32_000
   export const DIFF_PREVIEW_MAX_CHARS = 8_000
   export const DIFF_AGGREGATE_PREVIEW_MAX_BYTES = 1_048_576
+  export const DIFF_AGGREGATE_PATCH_MAX_BYTES = 1_048_576
+  /**
+   * Cap for view_file metadata.content. The full snapshot cap (4 MiB) is far
+   * too large to persist in tool metadata for every view call — the content
+   * is UI-only (syntax-highlighted code view) and never fed to the model.
+   */
+  export const VIEW_CONTENT_MAX_BYTES = 512 * 1024
 
   export function byteLength(value: string): number {
     return Buffer.byteLength(value, "utf8")
@@ -46,17 +53,34 @@ export namespace SessionBounds {
       ...(preview.truncated ? { truncated: true } : {}),
     }
   }
-  export function diffAggregate<T extends { preview?: string; truncated?: boolean }>(diffs: readonly T[]): T[] {
+  export function diffAggregate<T extends { preview?: string; patch?: string; truncated?: boolean }>(
+    diffs: readonly T[],
+  ): T[] {
     let previewBytes = 0
+    let patchBytes = 0
     return diffs.map((diff) => {
-      if (!diff.preview) return diff
-      const bytes = byteLength(diff.preview)
-      if (previewBytes + bytes <= DIFF_AGGREGATE_PREVIEW_MAX_BYTES) {
-        previewBytes += bytes
-        return diff
+      const next = { ...diff } as T & { preview?: string; patch?: string; truncated?: boolean }
+      let dropped = false
+      if (diff.preview) {
+        const bytes = byteLength(diff.preview)
+        if (previewBytes + bytes <= DIFF_AGGREGATE_PREVIEW_MAX_BYTES) {
+          previewBytes += bytes
+        } else {
+          delete next.preview
+          dropped = true
+        }
       }
-      const { preview: _, ...metadata } = diff
-      return { ...metadata, truncated: true } as T
+      if (diff.patch) {
+        const bytes = byteLength(diff.patch)
+        if (patchBytes + bytes <= DIFF_AGGREGATE_PATCH_MAX_BYTES) {
+          patchBytes += bytes
+        } else {
+          delete next.patch
+          dropped = true
+        }
+      }
+      if (dropped) next.truncated = true
+      return next as T
     })
   }
 }

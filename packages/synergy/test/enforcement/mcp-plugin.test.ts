@@ -303,6 +303,52 @@ describe("EnforcementGate plugin opaque strategy", () => {
     )
   })
 
+  test("autonomous allows approved plugin settings reads and bounded agent calls", async () => {
+    const capabilities = ["settings.read", "agent.call"]
+    const unapprovedGate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      pluginToolCapabilities: {
+        "plugin__vibe-lingo__record-correction": { capabilities },
+      },
+      pluginApprovals: {},
+    })
+    expect(unapprovedGate.evaluate("plugin__vibe-lingo__record-correction", {}).decision).toBe("deny")
+
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      pluginToolCapabilities: {
+        "plugin__vibe-lingo__record-correction": { capabilities },
+      },
+      pluginApprovals: {
+        "vibe-lingo": {
+          schemaVersion: 2,
+          pluginId: "vibe-lingo",
+          source: "local",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "permissions",
+          approvedAt: 1700000000000,
+          approvedBy: "user",
+          trustTier: "trusted-import",
+          approvedCapabilities: capabilities,
+        },
+      },
+    })
+
+    const classification = gate.classify("plugin__vibe-lingo__record-correction", {})
+    expect(new Set(classification.capabilities.map((capability) => capability.class))).toEqual(
+      new Set(["config:read", "task"]),
+    )
+    expect(classification.capabilities.every((capability) => capability.approved)).toBe(true)
+    expect(classification.capabilities.every((capability) => !capability.opaque && !capability.nonBypassable)).toBe(
+      true,
+    )
+    expect(gate.evaluate("plugin__vibe-lingo__record-correction", {}).decision).toBe("allow")
+  })
+
   test("keeps unknown plugin Host Service capabilities behind a hard boundary", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",

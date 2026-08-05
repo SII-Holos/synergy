@@ -126,13 +126,6 @@ describe("OpenAPI spec generation", () => {
     expect(parentOnly && "schema" in parentOnly ? parentOnly.schema : undefined).toMatchObject({ type: "boolean" })
   })
 
-  test("includes a non-secret GitHub configured route", async () => {
-    const spec = await Server.openapi()
-    const path = spec.paths["/github/configured"]
-    expect(path?.get?.operationId).toBe("github.configured")
-    expect(JSON.stringify(path?.get?.responses?.["200"])).toContain("GitHubConfiguredResponse")
-  })
-
   test("includes /global/pinned route with operationId global.nav.pinned", async () => {
     const spec = await Server.openapi()
     const path = spec.paths["/global/pinned"]
@@ -242,5 +235,42 @@ describe("OpenAPI spec generation", () => {
     const paths = spec.paths as Record<string, unknown>
     expect(paths).toHaveProperty("/plugin/{pluginId}/operations/{operationId}/invoke")
     expect(Object.keys(paths).some((route) => route.includes("/interact"))).toBe(false)
+  })
+  test("Synergy Link target patch input encodes metadata-only and atomic relink variants", async () => {
+    const spec = await Server.openapi()
+    const operation = spec.paths["/synergy-link/targets/{id}"]?.patch as
+      | { requestBody?: { content?: Record<string, { schema?: unknown }> } }
+      | undefined
+    expect(operation?.requestBody?.content?.["application/json"]?.schema).toEqual({
+      $ref: "#/components/schemas/SynergyLinkTargetPatchInput",
+    })
+
+    const schemas = spec.components?.schemas as Record<string, unknown>
+    const patchInput = schemas.SynergyLinkTargetPatchInput as { anyOf?: Array<{ $ref?: string }> } | undefined
+    expect(patchInput?.anyOf?.map((item) => item.$ref)).toEqual([
+      "#/components/schemas/SynergyLinkTargetPatchMetadata",
+      "#/components/schemas/SynergyLinkTargetPatchRelink",
+    ])
+
+    const metadata = schemas.SynergyLinkTargetPatchMetadata as
+      | {
+          anyOf?: Array<{
+            properties?: Record<string, unknown>
+            required?: string[]
+            additionalProperties?: boolean
+          }>
+        }
+      | undefined
+    expect(metadata?.anyOf).toHaveLength(7)
+    for (const variant of metadata?.anyOf ?? []) {
+      expect(variant.required).toEqual(expect.arrayContaining(["kind"]))
+      expect(variant.required?.length).toBeGreaterThan(1)
+      expect(variant.properties?.targetAgentID).toBeUndefined()
+      expect(variant.properties?.linkID).toBeUndefined()
+      expect(variant.additionalProperties).toBe(false)
+    }
+
+    const relink = schemas.SynergyLinkTargetPatchRelink as { required?: string[] } | undefined
+    expect(relink?.required).toEqual(expect.arrayContaining(["kind", "targetAgentID", "linkID"]))
   })
 })

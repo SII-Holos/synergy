@@ -118,6 +118,11 @@ export namespace SynergyLinkCLIFormat {
     auth: unknown
     state: Record<string, unknown>
     service: Record<string, unknown>
+    source?: "live" | "snapshot"
+    stale?: boolean
+    snapshotAt?: number
+    snapshotAgeMs?: number
+    controlError?: string
   } {
     return isObject(value) && "auth" in value && "state" in value && "service" in value
   }
@@ -181,7 +186,16 @@ export namespace SynergyLinkCLIFormat {
     return isObject(value) && typeof value.ok === "boolean" && Array.isArray(value.checks)
   }
 
-  function formatStatus(value: { auth: unknown; state: Record<string, unknown>; service: Record<string, unknown> }) {
+  function formatStatus(value: {
+    auth: unknown
+    state: Record<string, unknown>
+    service: Record<string, unknown>
+    source?: "live" | "snapshot"
+    stale?: boolean
+    snapshotAt?: number
+    snapshotAgeMs?: number
+    controlError?: string
+  }) {
     const auth = isObject(value.auth) ? value.auth : {}
     const state = value.state
     const service = value.service
@@ -203,8 +217,29 @@ export namespace SynergyLinkCLIFormat {
     const pending = Array.isArray(state.pendingRequests)
       ? state.pendingRequests.filter((request) => isObject(request) && request.status === "pending").length
       : 0
+    const source = value.source === "snapshot" ? "snapshot (last-known)" : (value.source ?? "unknown")
 
     return fieldList([
+      { label: "Status source", value: source, tone: value.stale === true ? "bad" : undefined },
+      ...(value.source === "snapshot"
+        ? [
+            {
+              label: "Snapshot at",
+              value: typeof value.snapshotAt === "number" ? new Date(value.snapshotAt).toISOString() : "unknown",
+              tone: "muted" as const,
+            },
+            {
+              label: "Snapshot age",
+              value: typeof value.snapshotAgeMs === "number" ? formatAge(value.snapshotAgeMs) : "unknown",
+              tone: "bad" as const,
+            },
+            {
+              label: "Control error",
+              value: value.controlError ?? "unknown",
+              tone: "bad" as const,
+            },
+          ]
+        : []),
       { label: "Mode", value: mode },
       {
         label: "Local owner",
@@ -252,6 +287,13 @@ export namespace SynergyLinkCLIFormat {
       { label: "Pending requests", value: String(pending), tone: pending > 0 ? undefined : "muted" },
       { label: "Session", value: sessionSummary, tone: currentSession ? undefined : "muted" },
     ])
+  }
+
+  function formatAge(ms: number) {
+    if (ms < 1_000) return `${Math.max(0, Math.round(ms))}ms`
+    if (ms < 60_000) return `${Math.floor(ms / 1_000)}s`
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`
+    return `${Math.floor(ms / 3_600_000)}h`
   }
 
   function formatWhoami(value: {

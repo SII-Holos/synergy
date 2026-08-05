@@ -143,7 +143,13 @@ export namespace FileWatcherEvents {
         if (disposed || overflowed) return
         for (const event of events) {
           const key = normalizePath(event.path, input.platform)
-          const next = merge(pending.get(key), event)
+          const previous = pending.get(key)
+          if (previous?.event === "renamed" && event.event === "deleted") {
+            pending.clear()
+            overflowed = true
+            break
+          }
+          const next = merge(previous, event)
           if (next) pending.set(key, next)
           else pending.delete(key)
           if (pending.size <= input.maxPending) continue

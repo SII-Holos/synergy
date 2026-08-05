@@ -154,7 +154,6 @@ export namespace Cortex {
       session = await Session.create({
         scope: parent.scope as import("@/scope").Scope,
         parentID: input.parentSessionID,
-        provenance: input.provenance,
         title: `[Cortex] ${input.description} (@${input.agent})`,
         permission: [
           { permission: "question", pattern: "*", action: "deny" },

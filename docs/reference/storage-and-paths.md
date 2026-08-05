@@ -60,17 +60,13 @@ data/holos/contacts/
 data/holos/mailbox/
 data/synergy_link/targets/
 data/stats/
-data/github/deliveries/
-data/github/ci/
-data/github/runtime.json
-data/github/poll-state/
 ```
 
 Channel-managed Project ownership uses a hashed forward record under `managed_ownership/` and a Scope-ID reverse index under `managed_ownership_reverse/`. Raw external account and Project IDs remain record values rather than path components. `workspaces/<identity-hash>/workspace/` is the deterministic, symlink-rejecting Project directory and an independent Git repository.
 
 Channel diagnostics store bounded, redacted, independently addressable records below `data/channel/diagnostics/accounts/<account-hash>/records/`. Account-level NDJSON downloads first scan the bounded set of at most 10,000 retained record IDs, then read, validate, and encode one record per response pull instead of materializing record payloads. Obsolete pre-release per-account array files directly under `data/channel/diagnostics/` are left untouched and ignored. Clarus provider-private state is isolated below each hashed account root: `assignments/`, `assignment_session_index/`, `dedup/`, `outbox/results/`, and `outbox/extensions/`. Result and extension outboxes are durable-before-send recovery state; pending records recovered after an interrupted process become ambiguous rather than being retried blindly.
 
-GitHub integration deliveries, CI failure state, runtime anchors, and per-repository poll state live under `data/github/`. Each delivery is keyed by its synthetic delivery GUID. Poll state files use URI-encoded repository names.
+The GitHub Channel keeps provider-private state below each hashed account root at `data/channel/providers/github/accounts/<account-hash>/`: per-repository poll cursors and dedup state under `poll-state/`, and thread→checkout records under `workspaces/index/`. Actual repository checkouts live under the configured account `workspaceDir`, one random-hash directory per issue/PR thread; expired checkouts are removed after the account's `workspaceTtlHours` (default 24h) and recreated on the next thread trigger, while session history is preserved.
 
 Channel response-card registrations live under `data/channel/response_cards/`. Each provider-neutral record is keyed by channel type, account, and response-card tool-part ID. A pending record is written before the provider side effect and becomes active only after the provider returns a sent message ID. Both states retain the original chat, requester, session, card contract, and a 14-day expiry. An active registration additionally binds the provider message ID used to validate callbacks. A surviving pending record blocks resend until its expiry. Expired and malformed registrations are pruned at global runtime startup.
 
@@ -79,6 +75,8 @@ Active Feishu/Lark streaming cards live under `data/channel/feishu/streaming_car
 Feishu/Lark thread bindings live under `data/channel/feishu/thread_bindings/`, keyed by account, chat, and thread ID. Each record durably maps a Feishu `thread_id` to the endpoint `scopeKey` it belongs to, so `group_thread` sessions resume the same conversation when a later message arrives in the same thread.
 
 Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
+
+The standalone Synergy Link host keeps its own per-instance state root at `SYNERGY_LINK_HOME` (default `~/.synergy-link/`), containing `state.json`, `migrations.json`, `owner.json`, `control.sock`, and `logs/`. It is a separate root from the Synergy installation and must never be shared between Link instances; the control socket, state writes, and Holos credential handling all assume one live service per root. See [Qizhi Synergy Link operations](../operations/qizhi-synergy-link.md) for the per-instance namespace boundary.
 
 Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `lightloop_terminal.json`, `inbox/`, `messages/`, and `history/` are separate records. `lightloop_terminal.json` preserves a plugin-owned Light Loop result and its `lightloop.after` delivery acknowledgement after the interactive workflow is cleared. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 
@@ -104,6 +102,10 @@ Credential files live under `data/auth/`, including:
 - `holos-accounts.json`
 - `mcp.json`
 - integration-specific auth stores
+
+`holos-accounts.json` is the canonical multi-account Holos credential store. Its active account supplies the identity used by both the Holos runtime and the standalone Synergy Link transport. `api-key.json` is legacy migration input for Holos credentials and is not the steady-state source after migration.
+
+Synergy and Synergy Link serialize updates to `holos-accounts.json` with the shared `data/auth/.locks/` protocol. Writers use the `holos-accounts:write` lock key and atomic rename so lock-free readers never observe a partial account store.
 
 Holos account storage is permissioned to the local user. Treat the entire auth directory as sensitive. Diagnostics and SmartAllow use redaction/metadata paths rather than exposing raw secrets.
 

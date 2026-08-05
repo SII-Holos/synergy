@@ -1,4 +1,5 @@
 import type { Component } from "solid-js"
+import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from "@ericsanchezok/synergy-plugin"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { SurfaceRegistry } from "@/surface/registry"
 import type { SurfaceEntry } from "@/surface/types"
@@ -15,8 +16,9 @@ export interface SettingsSection extends SurfaceEntry {
   rowLabels?: string[]
   hidden?: boolean
   visibility?: "standard" | "developer"
-  component?: Component
-  loader?: () => Promise<{ default: Component }>
+  component?: Component<PluginSettingsComponentProps>
+  context?: PluginSettingsSurfaceContext
+  loader?: () => Promise<{ default: Component<PluginSettingsComponentProps> }>
   exportName?: string
 }
 

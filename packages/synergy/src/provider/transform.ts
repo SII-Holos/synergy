@@ -747,6 +747,10 @@ export namespace ProviderTransform {
         return {
           ["gateway" as string]: options,
         }
+      case "@ai-sdk/xai":
+        return {
+          ["xai" as string]: options,
+        }
       case "@openrouter/ai-sdk-provider":
         return {
           ["openrouter" as string]: options,
