@@ -254,13 +254,6 @@ export namespace GitHubChannelAuth {
       })
     }
 
-    export function getIssue(input: { owner: string; repo: string; issueNumber: number; installationToken: string }) {
-      return request({
-        path: `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}`,
-        installationToken: input.installationToken,
-      })
-    }
-
     export function listIssueComments(input: {
       owner: string
       repo: string
@@ -288,23 +281,6 @@ export namespace GitHubChannelAuth {
         method: "POST",
         installationToken: input.installationToken,
         body: { body: input.body },
-      })
-    }
-
-    export function createPullRequestReview(input: {
-      owner: string
-      repo: string
-      pullNumber: number
-      commitId: string
-      body: string
-      event: "COMMENT"
-      installationToken: string
-    }) {
-      return request({
-        path: `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}/reviews`,
-        method: "POST",
-        installationToken: input.installationToken,
-        body: { commit_id: input.commitId, body: input.body, event: input.event },
       })
     }
 
@@ -412,10 +388,16 @@ export namespace GitHubChannelAuth {
 const credentialHelper =
   '!f() { test "$1" = get && printf "username=x-access-token\\npassword=%s\\n" "$SYNERGY_GITHUB_INSTALLATION_TOKEN"; }; f'
 
-export function buildCredentialCommand(input: { token: string; args: string[] }) {
+export function buildCredentialCommand(input: { token: string; args: string[] }): {
+  env: Record<string, string | undefined>
+  args: string[]
+} {
   requireNonEmpty(input.token, "GitHub installation token")
   return {
-    env: { SYNERGY_GITHUB_INSTALLATION_TOKEN: input.token },
+    // Bun's shell .env() replaces the child environment instead of merging,
+    // so carry the parent process environment through (HOME, PATH, proxy
+    // settings, TLS/SSH config) and overlay only the installation token.
+    env: { ...process.env, SYNERGY_GITHUB_INSTALLATION_TOKEN: input.token },
     args: ["-c", `credential.helper=${credentialHelper}`, ...input.args],
   }
 }

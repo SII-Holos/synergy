@@ -454,16 +454,17 @@ Configuration lives in the Channels domain (`90-channels.jsonc`) under `channel.
 
 ### Account settings
 
-| Field               | Required | Default                  | Description                                                                                                |
-| ------------------- | -------- | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `enabled`           | no       | `true`                   | Master switch for the account; disabled accounts do not poll or create sessions                            |
-| `repositories`      | yes      | —                        | `owner/repo` list to watch and respond to                                                                  |
-| `workspaceDir`      | yes      | —                        | Directory (relative to the Synergy data home) under which per-thread checkouts are created                 |
-| `pollingIntervalMs` | no       | `300000` (5 min)         | Milliseconds between poll cycles per repository                                                            |
-| `autoReview`        | no       | `true`                   | Automatically review newly opened and updated pull requests                                                |
-| `autoRespond`       | no       | `true`                   | Respond to `@`-mentions of the bot handle and answer issue/PR questions; newly opened issues are diagnosed |
-| `agent`             | no       | `"github-channel-agent"` | Agent used for GitHub channel sessions                                                                     |
-| `model` / `variant` | no       | —                        | Per-account model override (same shape as Feishu accounts)                                                 |
+| Field               | Required | Default                  | Description                                                                                                                                                       |
+| ------------------- | -------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`           | no       | `true`                   | Master switch for the account; disabled accounts do not poll or create sessions                                                                                   |
+| `repositories`      | yes      | —                        | `owner/repo` list to watch and respond to                                                                                                                         |
+| `workspaceDir`      | yes      | —                        | Directory (relative to the Synergy data home) under which per-thread checkouts are created                                                                        |
+| `workspaceTtlHours` | no       | `24`                     | Hours an unused per-thread checkout is kept before its local clone is removed; session history is preserved and the clone is recreated on the next thread trigger |
+| `pollingIntervalMs` | no       | `300000` (5 min)         | Milliseconds between poll cycles per repository                                                                                                                   |
+| `autoReview`        | no       | `true`                   | Automatically review newly opened and updated pull requests                                                                                                       |
+| `autoRespond`       | no       | `true`                   | Respond to `@`-mentions of the bot handle and answer issue/PR questions; newly opened issues are diagnosed                                                        |
+| `agent`             | no       | `"github-channel-agent"` | Agent used for GitHub channel sessions                                                                                                                            |
+| `model` / `variant` | no       | —                        | Per-account model override (same shape as Feishu accounts)                                                                                                        |
 
 ### GitHub App credentials
 

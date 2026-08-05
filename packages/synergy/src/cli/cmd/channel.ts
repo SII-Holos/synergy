@@ -426,6 +426,7 @@ async function addGithubChannel(printOnly: boolean, serverUrl: string): Promise<
               .map((part) => part.trim())
               .filter(Boolean),
             workspaceDir: workspaceDir.trim(),
+            workspaceTtlHours: 24,
             pollingIntervalMs: 300_000,
             autoReview,
             autoRespond,

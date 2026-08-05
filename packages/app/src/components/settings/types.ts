@@ -200,6 +200,7 @@ export type GithubAccountToggle = {
   enabled: boolean
   repositories: string
   workspaceDir: string
+  workspaceTtlHours: string
   pollingIntervalMs: string
   autoReview: boolean
   autoRespond: boolean

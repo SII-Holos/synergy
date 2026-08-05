@@ -658,7 +658,7 @@ export namespace Channel {
           })
 
           const cmdResult = await ChannelCommand.execute(
-            ctx.text,
+            ctx.commandText ?? ctx.text,
             {
               channelType: ctx.channelType,
               accountId: ctx.accountId,
@@ -707,8 +707,8 @@ export namespace Channel {
           const session = await Session.getOrCreateForEndpoint(endpoint, {
             scope: conversationScope,
             interaction: ChannelInteraction.forType(ctx.channelType),
-            ...(ctx.channelType === "github"
-              ? { agentOverride: resolveChannelAccountAgent(accountConfig) ?? "github-channel-agent" }
+            ...(provider.defaultAgent
+              ? { agentOverride: resolveChannelAccountAgent(accountConfig) ?? provider.defaultAgent }
               : {}),
           })
           const sessionID = session.id

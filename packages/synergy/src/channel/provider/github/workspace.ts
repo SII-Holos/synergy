@@ -78,10 +78,14 @@ export namespace GithubChannelWorkspace {
    *   and checks it out so the agent reviews the exact PR head.
    * - Binds the directory to a project Scope (persisted) and records the
    *   mapping in the account workspace index.
+   * - When `workspaceTtlHours` is set and the existing checkout has been
+   *   unused longer than the TTL, the local clone is removed first and
+   *   recreated below. Session history is never touched.
    */
   export async function ensure(input: {
     accountId: string
     workspaceDir: string
+    workspaceTtlHours?: number
     repository: string
     issueNumber: number
     pullNumber?: number
@@ -109,8 +113,22 @@ export namespace GithubChannelWorkspace {
       branch = `pr-${input.pullNumber}`
     }
 
+    // TTL expiry: an unused checkout older than the TTL is removed so the
+    // clone is recreated fresh on the next trigger. The workspace record and
+    // the thread's session history are preserved.
+    const ttlMs = (input.workspaceTtlHours ?? 24) * 60 * 60 * 1_000
+    if (existing && Date.now() - (existing.updatedAt ?? 0) > ttlMs) {
+      log.info("workspace checkout expired; removing local clone", {
+        repository: input.repository,
+        issueNumber: input.issueNumber,
+        directory,
+        ttlHours: input.workspaceTtlHours ?? 24,
+      })
+      await fs.rm(directory, { recursive: true, force: true }).catch(() => {})
+    }
+
     if (existing && !(await fs.stat(gitDir).catch(() => undefined))) {
-      // The checkout disappeared (user cleanup); recreate it.
+      // The checkout disappeared (TTL expiry or user cleanup); recreate it.
       await fs.rm(directory, { recursive: true, force: true }).catch(() => {})
       await fs.mkdir(directory, { recursive: true })
     }
@@ -180,5 +198,29 @@ export namespace GithubChannelWorkspace {
       const parsed = WorkspaceRecord.safeParse(raw)
       return parsed.success ? [parsed.data] : []
     })
+  }
+
+  /**
+   * Remove local clones whose records are older than the TTL. Session
+   * history and workspace index records are preserved; the checkout is
+   * recreated by `ensure` the next time the thread is triggered.
+   * Returns the number of removed checkouts.
+   */
+  export async function sweep(input: { accountId: string; workspaceTtlHours: number }): Promise<number> {
+    const ttlMs = Math.max(1, input.workspaceTtlHours) * 60 * 60 * 1_000
+    const records = await list(input)
+    let removed = 0
+    for (const record of records) {
+      if (Date.now() - (record.updatedAt ?? 0) <= ttlMs) continue
+      log.info("sweeping expired workspace checkout", {
+        repository: record.repository,
+        issueNumber: record.issueNumber,
+        directory: record.directory,
+        ttlHours: input.workspaceTtlHours,
+      })
+      await fs.rm(record.directory, { recursive: true, force: true }).catch(() => {})
+      removed += 1
+    }
+    return removed
   }
 }

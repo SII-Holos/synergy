@@ -3145,6 +3145,10 @@ export type ChannelGithubAccountConfig = {
    */
   workspaceDir: string
   /**
+   * Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.
+   */
+  workspaceTtlHours?: number
+  /**
    * Interval between GitHub API polls in milliseconds (default 5 minutes)
    */
   pollingIntervalMs?: number

@@ -366,6 +366,15 @@ export const ChannelGithubAccount = z
       .describe(
         "Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.",
       ),
+    workspaceTtlHours: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(24)
+      .describe(
+        "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.",
+      ),
     pollingIntervalMs: z
       .number()
       .int()
