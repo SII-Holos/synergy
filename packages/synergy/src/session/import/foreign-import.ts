@@ -4,7 +4,10 @@ import os from "os"
 import { randomUUID } from "crypto"
 import { Session } from "../index"
 import { SessionImport } from "../session-import"
-import { parseClaudeCodeTranscript, type ClaudeCodeConvertOptions } from "./claude-code"
+import { SessionExport } from "../session-export"
+import { Scope } from "../../scope"
+import { ScopeContext } from "../../scope/context"
+import { parseClaudeCodeTranscript, type ClaudeCodeConvertOptions, decodeProjectDir } from "./claude-code"
 import { parseCodexTranscript, type CodexConvertOptions } from "./codex"
 import type { ForeignImportStats } from "./shared"
 import { Log } from "@/util/log"
@@ -206,15 +209,13 @@ export namespace ForeignImport {
   export function parseTranscript(
     source: Source,
     text: string,
-    options: Pick<ImportFileOptions, "includeSidechains" | "includeThinking"> = {},
-  ): {
-    report: SessionImport.Result extends never ? never : ReturnType<typeof parseClaudeCodeTranscript>["report"]
-    stats: ForeignImportStats
-  } {
+    options: Pick<ImportFileOptions, "includeSidechains" | "includeThinking"> & { cwd?: string } = {},
+  ): { report: SessionExport.Report; stats: ForeignImportStats } {
     if (source === "claude-code") {
       const { report, stats } = parseClaudeCodeTranscript(text, {
         includeSidechains: options.includeSidechains,
         includeThinking: options.includeThinking,
+        cwd: options.cwd,
       })
       return { report, stats }
     }
@@ -222,15 +223,53 @@ export namespace ForeignImport {
     return { report, stats }
   }
 
+  // Cache resolved scopes per working directory so batch imports of many
+  // transcripts from the same project do not re-run git discovery per file.
+  const scopeCache = new Map<string, Scope>()
+
   /**
-   * Import a single transcript from its raw text. When the write path fails,
-   * every session that was created for this file is removed again so a failed
-   * import leaves no partial data behind.
+   * Resolve the Synergy scope that owns a transcript's original working
+   * directory. When the directory exists, `Scope.fromDirectory` reuses the
+   * existing scope or persists a new one (same behavior as opening the
+   * directory in Synergy). When the directory is missing or unknown, fall
+   * back to the caller's current scope.
+   */
+  export async function resolveTranscriptScope(cwd: string | undefined, fallback: Scope): Promise<Scope> {
+    if (!cwd) return fallback
+    const cached = scopeCache.get(cwd)
+    if (cached) return cached
+    try {
+      const stat = await fs.stat(cwd)
+      if (!stat.isDirectory()) return fallback
+    } catch {
+      // The original working directory no longer exists on this machine.
+      return fallback
+    }
+    const { scope } = await Scope.fromDirectory(cwd)
+    scopeCache.set(cwd, scope)
+    return scope
+  }
+
+  /**
+   * Decode the original working directory from a Claude Code transcript
+   * path: `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl`. Returns
+   * undefined for custom directory layouts that are not URL-encoded paths.
+   */
+  export function claudeCodeCwdFromFile(file: string): string | undefined {
+    return decodeProjectDir(path.basename(path.dirname(file)))
+  }
+
+  /**
+   * Import a single transcript from its raw text, into the scope that owns
+   * the transcript's original working directory (creating it when needed),
+   * or the current scope when that directory is unavailable. When the write
+   * path fails, every session that was created for this file is removed
+   * again so a failed import leaves no partial data behind.
    */
   export async function importText(
     source: Source,
     text: string,
-    options: Pick<ImportFileOptions, "includeSidechains" | "includeThinking"> = {},
+    options: Pick<ImportFileOptions, "includeSidechains" | "includeThinking"> & { cwd?: string } = {},
   ): Promise<ImportFileResult> {
     const { report, stats } = parseTranscript(source, text, options)
     const sessionData = report.sessions[0]
@@ -239,8 +278,15 @@ export namespace ForeignImport {
     }
     const created: Array<{ sourceSessionID: string; sessionID: string }> = []
     try {
-      const result = await SessionImport.fromReport(report, {
-        onSessionCreated: (sourceSessionID, sessionID) => created.push({ sourceSessionID, sessionID }),
+      const fallback = ScopeContext.current.scope
+      const reportCwd = sessionData.info.scope.directory || options.cwd
+      const scope = await resolveTranscriptScope(reportCwd, fallback)
+      const result = await ScopeContext.provide({
+        scope,
+        fn: () =>
+          SessionImport.fromReport(report, {
+            onSessionCreated: (sourceSessionID, sessionID) => created.push({ sourceSessionID, sessionID }),
+          }),
       })
       return { result, stats }
     } catch (error) {
@@ -252,7 +298,11 @@ export namespace ForeignImport {
   /** Read and import a single transcript file with rollback on failure. */
   export async function importFile(file: string, options: ImportFileOptions): Promise<ImportFileResult> {
     const text = await Bun.file(file).text()
-    return importText(options.source, text, options)
+    return importText(options.source, text, {
+      includeSidechains: options.includeSidechains,
+      includeThinking: options.includeThinking,
+      cwd: options.source === "claude-code" ? claudeCodeCwdFromFile(file) : undefined,
+    })
   }
 
   async function rollbackCreatedSessions(

@@ -32,6 +32,7 @@ interface ClaudeLine {
   isSidechain?: boolean
   uuid?: string
   leafUuid?: string
+  cwd?: string
   timestamp?: string | number
   message?: {
     role?: string
@@ -41,12 +42,17 @@ interface ClaudeLine {
   summary?: string
   customTitle?: string
 }
-
 export interface ClaudeCodeConvertOptions {
   /** Include subagent (sidechain) sessions. Defaults to false. */
   includeSidechains?: boolean
   /** Include thinking blocks as reasoning parts. Defaults to false. */
   includeThinking?: boolean
+  /**
+   * Original working directory for this transcript, decoded from the
+   * `~/.claude/projects/<encoded-cwd>/` directory name. Takes precedence
+   * over any `cwd` field found inside the transcript (older formats).
+   */
+  cwd?: string
 }
 
 export interface ClaudeCodeConvertResult {
@@ -63,17 +69,22 @@ export function parseClaudeCodeTranscript(
 
   const messages: ForeignMessage[] = []
   let title: string | undefined
-  let cwd: string | undefined
+  // The working directory comes from the `~/.claude/projects/<encoded-cwd>/`
+  // directory name (decoded by the caller), or from a `cwd` field embedded in
+  // newer transcripts (uploaded files that lost their path).
+  let cwd = options.cwd
   // Tool results arrive in a later user turn; map call IDs to the tool parts
   // created earlier so results can be attached across messages.
   const toolParts = new Map<string, Extract<ForeignPart, { type: "tool" }>>()
-
   for (const line of lines) {
     if (!line || typeof line !== "object") {
       stats.skippedLines++
       continue
     }
     if (line.isSidechain && !options.includeSidechains) continue
+    // Newer transcripts embed the working directory; use it only when the
+    // caller did not already derive one from the file path.
+    if (!cwd && typeof line.cwd === "string" && line.cwd) cwd = line.cwd
 
     switch (line.type) {
       case "user":
@@ -91,7 +102,6 @@ export function parseClaudeCodeTranscript(
         if (typeof line.summary === "string" && line.summary.trim() && !title) {
           title = line.summary.trim().slice(0, 200)
         }
-        if (!cwd && typeof line.leafUuid === "string") cwd = decodeProjectDir(line.leafUuid)
         break
       case "custom-title":
         if (typeof line.customTitle === "string" && line.customTitle.trim()) {

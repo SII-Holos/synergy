@@ -185,7 +185,7 @@ See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for th
 
 `synergy import-claude [file]` imports a Claude Code transcript (jsonl under `~/.claude/projects`) as a Synergy session; `synergy import-codex [file]` imports a Codex CLI transcript (jsonl under `~/.codex/sessions`) as a Synergy session. Both commands share the same options. The default scan roots honor `$CLAUDE_CONFIG_DIR` and `$CODEX_HOME`; scanning the Codex default location also includes the sibling `archived_sessions` directory.
 
-With a `file` argument, the command imports that single transcript and prints the resulting root session ID with session and message counts. Malformed lines and unknown line types are skipped and counted instead of failing the import. If the write fails, every session created by the attempt is rolled back, so an import never leaves partial data.
+With a `file` argument, the command imports that single transcript and prints the resulting root session ID with session and message counts. Each session is created in the Scope that owns the transcript's original working directory (resolved and registered when needed), falling back to the current Scope when that directory is unavailable. Malformed lines and unknown line types are skipped and counted instead of failing the import. If the write fails, every session created by the attempt is rolled back, so an import never leaves partial data.
 
 Without a `file` argument, the command scans for candidate transcripts and imports them newest first:
 

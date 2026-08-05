@@ -56,7 +56,8 @@ const includeThinkingLabel = {
 }
 const importHint = {
   id: "settings.sessionImport.hint",
-  message: "Imported sessions are created in the current project scope. Failed imports are rolled back automatically.",
+  message:
+    "Imported sessions are created in the scope for the transcript's original working directory (created when missing), or the current scope when that directory is unavailable. Failed imports are rolled back automatically.",
 }
 
 function candidatesFoundDesc(count: number) {

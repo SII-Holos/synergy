@@ -16867,7 +16867,7 @@ msgstr "Session import failed"
 
 #. js-lingui-explicit-id
 msgid "settings.sessionImport.hint"
-msgstr "Imported sessions are created in the current project scope. Failed imports are rolled back automatically."
+msgstr "Imported sessions are created in the scope for the transcript's original working directory (created when missing), or the current scope when that directory is unavailable. Failed imports are rolled back automatically."
 
 #. js-lingui-explicit-id
 msgid "settings.sessionImport.importFile"

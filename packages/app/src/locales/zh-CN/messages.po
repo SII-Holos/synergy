@@ -16867,7 +16867,7 @@ msgstr "会话导入失败"
 
 #. js-lingui-explicit-id
 msgid "settings.sessionImport.hint"
-msgstr "导入的会话会创建在当前项目作用域中。失败的导入会自动回滚。"
+msgstr "导入的会话会创建在转录文件原始工作目录对应的 Scope 中（不存在时自动创建），目录不可用时则使用当前 Scope。失败的导入会自动回滚。"
 
 #. js-lingui-explicit-id
 msgid "settings.sessionImport.importFile"

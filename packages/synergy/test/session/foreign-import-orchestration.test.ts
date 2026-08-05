@@ -80,6 +80,43 @@ describe("ForeignImport", () => {
     })
   })
 
+  test("imports into the scope that owns the transcript working directory", async () => {
+    await using project = await tmpdir({ git: true })
+    await using current = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await current.scope(),
+      fn: async () => {
+        const { result } = await ForeignImport.importText("claude-code", CLAUDE_LINES, { cwd: project.path })
+        const session = await Session.get(result.rootSessionID)
+        const sessionScope = session.scope as { id: string }
+        const projectScope = await project.scope()
+        expect(sessionScope.id).toBe(projectScope.id)
+        expect(sessionScope.id).not.toBe((ScopeContext.current.scope as { id: string }).id)
+      },
+    })
+  })
+
+  test("falls back to the current scope when the working directory is missing", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { result } = await ForeignImport.importText("codex", CODEX_LINES, {
+          cwd: "/nonexistent/path-for-import-test",
+        })
+        const session = await Session.get(result.rootSessionID)
+        expect((session.scope as { id: string }).id).toBe((ScopeContext.current.scope as { id: string }).id)
+      },
+    })
+  })
+
+  test("claudeCodeCwdFromFile decodes the encoded project directory", () => {
+    expect(ForeignImport.claudeCodeCwdFromFile("/Users/x/.claude/projects/-Users-me-project/abc.jsonl")).toBe(
+      "/Users/me/project",
+    )
+    expect(ForeignImport.claudeCodeCwdFromFile("/tmp/custom/session.jsonl")).toBeUndefined()
+  })
+
   test("rejects transcripts with no importable messages", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
