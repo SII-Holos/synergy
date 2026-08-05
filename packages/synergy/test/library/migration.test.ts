@@ -16,12 +16,12 @@ function hasColumn(conn: Database, table: string, column: string): boolean {
 
 function hasTable(conn: Database, table: string): boolean {
   const row = conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1").get(table)
-  return row !== undefined
+  return row != null
 }
 
 function hasIndex(conn: Database, index: string): boolean {
   const row = conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1").get(index)
-  return row !== undefined
+  return row != null
 }
 
 function inferMigratedMemory(
@@ -330,6 +330,42 @@ describe.serial("library migrations", () => {
         { id: "exp-ambiguous-user-input", user_input: null },
         { id: "exp-user-input-migration", user_input: "Recover this exact request" },
       ])
+    })
+  })
+
+  describe("legacy library upgrade without recall_mode column (issue 1081)", () => {
+    test("opening a legacy database does not fail before the recall_mode migration runs", async () => {
+      // Rebuild the memory table into its pre-20260405 shape (no recall_mode column).
+      closeDB()
+      const raw = new Database(LibraryDB.dbPath())
+      raw.exec("DROP TABLE memory")
+      raw.exec(`
+        CREATE TABLE memory (
+          id              TEXT PRIMARY KEY,
+          title           TEXT NOT NULL,
+          content         TEXT NOT NULL,
+          category        TEXT NOT NULL DEFAULT 'general',
+          embedding_model TEXT,
+          created_at      INTEGER NOT NULL,
+          updated_at      INTEGER NOT NULL
+        )
+      `)
+      raw.close()
+
+      // Reopening must not throw: initialize() must tolerate the missing column
+      // instead of failing while creating idx_memory_recall_mode.
+      expect(() => LibraryDB.connection()).not.toThrow()
+      const conn = LibraryDB.connection()
+      expect(hasColumn(conn, "memory", "recall_mode")).toBe(false)
+      expect(hasIndex(conn, "idx_memory_recall_mode")).toBe(false)
+
+      // The recall_mode migration adds the column and its index.
+      const migration = migrations.find((m) => m.id === "20260405-library-memory-recall-mode")
+      expect(migration).toBeDefined()
+      await migration!.up(() => {})
+
+      expect(hasColumn(conn, "memory", "recall_mode")).toBe(true)
+      expect(hasIndex(conn, "idx_memory_recall_mode")).toBe(true)
     })
   })
 })
