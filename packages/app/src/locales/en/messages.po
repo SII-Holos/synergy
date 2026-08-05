@@ -14922,6 +14922,18 @@ msgid "settings.library.embedding.button.starting"
 msgstr "Starting…"
 
 #. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.desc"
+msgstr "Where Synergy stores the downloaded local model files. Leave empty for the default (~/.synergy/data/embedding/models)."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.label"
+msgstr "Local embedding model cache directory"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.title"
+msgstr "Model cache directory"
+
+#. js-lingui-explicit-id
 msgid "settings.library.embedding.currentModel.title"
 msgstr "Current model"
 
