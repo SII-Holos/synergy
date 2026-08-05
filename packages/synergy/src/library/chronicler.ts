@@ -17,7 +17,8 @@ export namespace Chronicler {
 
     const config = await Config.current()
     const library = (config as any).library as { memory?: { enabled?: boolean } } | undefined
-    if (!library?.memory?.enabled) return
+    // memory.enabled defaults to true; only an explicit false disables the chronicler
+    if (library?.memory?.enabled === false) return
 
     const agent = await Agent.get("chronicler")
     if (!agent) return
