@@ -335,10 +335,13 @@ describe.serial("library migrations", () => {
 
   describe("legacy library upgrade without recall_mode column (issue 1081)", () => {
     test("opening a legacy database does not fail before the recall_mode migration runs", async () => {
-      // Rebuild the memory table into its pre-20260405 shape (no recall_mode column).
+      // CI shards run test files concurrently against the same library.db, so
+      // the file may be fresh or reset by a sibling file. Bootstrap the full
+      // schema first, then reshape memory into its pre-20260405 shape.
+      LibraryDB.connection()
       closeDB()
       const raw = new Database(LibraryDB.dbPath())
-      raw.exec("DROP TABLE memory")
+      raw.exec("DROP TABLE IF EXISTS memory")
       raw.exec(`
         CREATE TABLE memory (
           id              TEXT PRIMARY KEY,
