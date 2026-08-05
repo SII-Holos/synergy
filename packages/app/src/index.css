@@ -793,6 +793,7 @@ a:active,
 @media (max-width: 767px) {
   .synergy-workbench-canvas .prompt-input-shell {
     border-radius: 0;
+    border-inline-color: color-mix(in srgb, var(--text-strong) 18%, transparent);
     box-shadow: none;
   }
 }
