@@ -82,7 +82,6 @@ export const OpenAIImageEditTool = Tool.define(
           }),
         },
         ctx,
-        "edit",
       )
 
       const payload = await parseImageResponse(response, "edit")

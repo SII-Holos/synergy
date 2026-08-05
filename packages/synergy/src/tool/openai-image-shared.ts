@@ -157,7 +157,6 @@ export async function codexImageFetch(
   url: string,
   init: RequestInit,
   ctx: Pick<Tool.Context, "abort">,
-  operation: "generation" | "edit",
 ): Promise<Response> {
   if (ctx.abort.aborted) throw new DOMException("Aborted", "AbortError")
 
@@ -177,14 +176,26 @@ export async function codexImageFetch(
       if (response.ok || !isRetryableImageStatus(response.status) || attempt === OPENAI_IMAGE_MAX_ATTEMPTS - 1) {
         return response
       }
+      const retryAfter = retryAfterSeconds(response.headers)
+      if (retryAfter !== undefined) {
+        const delayMs = retryAfter * 1000
+        if (delayMs > OPENAI_IMAGE_RETRY_MAX_DELAY_MS) {
+          // Retrying after the cap would sleep past the auth cooldown and surface a
+          // misleading credential rejection, so surface the rate limit as-is.
+          return response
+        }
+        await sleep(delayMs, ctx.abort)
+      } else {
+        await sleep(backoffDelayMs(attempt), ctx.abort)
+      }
     } else if (!isRetryableImageError(error) || attempt === OPENAI_IMAGE_MAX_ATTEMPTS - 1) {
       throw normalizeCodexAuthError(error)
+    } else {
+      await sleep(backoffDelayMs(attempt), ctx.abort)
     }
-
-    await sleep(retryDelayMs(response, attempt), ctx.abort)
   }
 
-  throw new Error(`Codex image ${operation} failed after ${OPENAI_IMAGE_MAX_ATTEMPTS} attempts.`)
+  throw new Error(`Codex image request failed after ${OPENAI_IMAGE_MAX_ATTEMPTS} attempts.`)
 }
 
 function isRetryableImageStatus(status: number): boolean {
@@ -197,10 +208,7 @@ function isRetryableImageError(error: unknown): boolean {
   if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) return false
   return true
 }
-
-function retryDelayMs(response: Response | undefined, attempt: number): number {
-  const retryAfter = response ? retryAfterSeconds(response.headers) : undefined
-  if (retryAfter !== undefined) return Math.min(retryAfter * 1000, OPENAI_IMAGE_RETRY_MAX_DELAY_MS)
+function backoffDelayMs(attempt: number): number {
   return Math.min(OPENAI_IMAGE_RETRY_INITIAL_DELAY_MS * 2 ** attempt, OPENAI_IMAGE_RETRY_MAX_DELAY_MS)
 }
 

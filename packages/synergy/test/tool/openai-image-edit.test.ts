@@ -549,6 +549,39 @@ describe("tool.openai_image_edit", () => {
       },
     })
   })
+  test("429 with retry-after over the cap surfaces the rate limit without retrying", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (String(input).includes("/images/")) imageCalls++
+      return jsonResponse({ error: { message: "rate limited" } }, { status: 429, headers: { "retry-after": "31" } })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageEditTool.init()
+        const started = Date.now()
+        await expect(
+          tool.execute(
+            {
+              prompt: "Recolor this image.",
+              input_paths: ["inputs/source.png"],
+              output_path: "outputs/ratelimited.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("Codex image edit is rate-limited or quota-limited. Retry after 31 seconds.")
+        expect(imageCalls).toBe(1)
+        expect(Date.now() - started).toBeLessThan(5_000)
+      },
+    })
+  })
 
   test("transient network failure retries and succeeds on the second attempt", async () => {
     await using tmp = await tmpdir({ git: true })

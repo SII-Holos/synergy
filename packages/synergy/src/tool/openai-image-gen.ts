@@ -72,7 +72,6 @@ export const OpenAIImageGenTool = Tool.define(
           }),
         },
         ctx,
-        "generation",
       )
 
       const payload = await parseImageResponse(response, "generation")
