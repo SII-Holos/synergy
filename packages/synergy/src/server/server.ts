@@ -38,6 +38,7 @@ import { upgradeWebSocket, websocket } from "hono/bun"
 import { errors } from "./error"
 import { QuestionRoute } from "./question"
 import { SessionExportRoute } from "./session-export"
+import { ForeignImportRoute } from "./foreign-import-route"
 import { CortexRoute } from "./cortex"
 import { Installation } from "@/global/installation"
 import { MDNS } from "./mdns"
@@ -1180,6 +1181,7 @@ export namespace Server {
         .route("", PermissionRoute)
         .route("/question", QuestionRoute)
         .route("/session", SessionExportRoute)
+        .route("/session", ForeignImportRoute)
         .route("/cortex/tasks", CortexRoute)
 
         .get(

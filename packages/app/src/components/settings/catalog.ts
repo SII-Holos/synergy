@@ -46,6 +46,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "observability",
   "import",
   "config-files",
+  "session-import",
   "archived-sessions",
   "worktrees",
 ] as const
@@ -432,6 +433,18 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
   },
+  "session-import": {
+    label: { id: "settings.catalog.sessionImport.label", message: "Session Import" },
+    description: {
+      id: "settings.catalog.sessionImport.description",
+      message: "Import past sessions from Claude Code or Codex transcripts.",
+    },
+    searchTerms: {
+      id: "settings.catalog.sessionImport.searchTerms",
+      message: "session | import | claude | codex | transcript | history",
+      comment: SEARCH_TERMS_COMMENT,
+    },
+  },
   "archived-sessions": {
     label: { id: "settings.catalog.archivedSessions.label", message: "Archived Sessions" },
     description: {
@@ -488,6 +501,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   }),
   section("import", "system", 10, "settings.import"),
   section("config-files", "system", 20, "settings.configFiles"),
+  section("session-import", "system", 25, "settings.import"),
   section("archived-sessions", "system", 30, "session.archive"),
   section("worktrees", "system", 40, "workspace.worktree"),
 ]

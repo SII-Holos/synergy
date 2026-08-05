@@ -155,6 +155,8 @@ import type {
   ExperienceListFilter,
   ExperienceListSort,
   ExperimentalResourceListResponses,
+  ForeignImportJobInput,
+  ForeignImportSource,
   FormatterStatusResponses,
   GithubConfiguredResponses,
   GlobalAgendaListErrors,
@@ -445,6 +447,8 @@ import type {
   SessionAbortResponses,
   SessionAgendaErrors,
   SessionAgendaResponses,
+  SessionCancelForeignImportJobErrors,
+  SessionCancelForeignImportJobResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -466,8 +470,12 @@ import type {
   SessionFilesRestoreResponses,
   SessionForkResponses,
   SessionGetErrors,
+  SessionGetForeignImportJobErrors,
+  SessionGetForeignImportJobResponses,
   SessionGetResponses,
   SessionImportErrors,
+  SessionImportForeignErrors,
+  SessionImportForeignResponses,
   SessionImportResponses,
   SessionInboxErrors,
   SessionInboxGuideErrors,
@@ -498,8 +506,12 @@ import type {
   SessionRollbackAckResponses,
   SessionRollbackErrors,
   SessionRollbackResponses,
+  SessionScanForeignErrors,
+  SessionScanForeignResponses,
   SessionShellErrors,
   SessionShellResponses,
+  SessionStartForeignImportJobErrors,
+  SessionStartForeignImportJobResponses,
   SessionStatusErrors,
   SessionStatusResponses,
   SessionSummarizeErrors,
@@ -2940,6 +2952,197 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Import a Claude Code or Codex transcript
+   *
+   * Parse a single Claude Code or Codex CLI jsonl transcript and import it into the current scope as a Synergy session. Any sessions created by a failed attempt are rolled back.
+   */
+  public importForeign<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      source?: ForeignImportSource
+      file?: unknown
+      includeSidechains?: string
+      includeThinking?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "source" },
+            { in: "body", key: "file" },
+            { in: "body", key: "includeSidechains" },
+            { in: "body", key: "includeThinking" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionImportForeignResponses,
+      SessionImportForeignErrors,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/session/import/foreign",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Scan for Claude Code or Codex transcripts
+   *
+   * List candidate transcript jsonl files under the default home directory (or a custom directory) for a source.
+   */
+  public scanForeign<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      source: ForeignImportSource
+      dir?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "source" },
+            { in: "query", key: "dir" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionScanForeignResponses, SessionScanForeignErrors, ThrowOnError>({
+      url: "/session/import/foreign/scan",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start a batch foreign session import job
+   *
+   * Create a server-owned batch import job over the given transcript paths and return its initial state with durable aggregate progress.
+   */
+  public startForeignImportJob<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      foreignImportJobInput?: ForeignImportJobInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "foreignImportJobInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionStartForeignImportJobResponses,
+      SessionStartForeignImportJobErrors,
+      ThrowOnError
+    >({
+      url: "/session/import/foreign/jobs",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get the current foreign import job
+   *
+   * Return the most recently created foreign import job with durable aggregate progress.
+   */
+  public getForeignImportJob<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionGetForeignImportJobResponses,
+      SessionGetForeignImportJobErrors,
+      ThrowOnError
+    >({
+      url: "/session/import/foreign/jobs/current",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel the current foreign import job
+   *
+   * Cancel the active foreign import job without discarding completed sessions.
+   */
+  public cancelForeignImportJob<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionCancelForeignImportJobResponses,
+      SessionCancelForeignImportJobErrors,
+      ThrowOnError
+    >({
+      url: "/session/import/foreign/jobs/current/cancel",
+      ...options,
+      ...params,
     })
   }
 

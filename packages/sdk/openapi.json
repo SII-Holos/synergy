@@ -8664,6 +8664,327 @@
         ]
       }
     },
+    "/session/import/foreign": {
+      "post": {
+        "operationId": "session.importForeign",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Import a Claude Code or Codex transcript",
+        "description": "Parse a single Claude Code or Codex CLI jsonl transcript and import it into the current scope as a Synergy session. Any sessions created by a failed attempt are rolled back.",
+        "responses": {
+          "200": {
+            "description": "Imported session result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportSingleResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "$ref": "#/components/schemas/ForeignImportSource"
+                  },
+                  "file": {},
+                  "includeSidechains": {
+                    "type": "string"
+                  },
+                  "includeThinking": {
+                    "type": "string"
+                  }
+                },
+                "required": ["source", "file"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.importForeign({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/import/foreign/scan": {
+      "get": {
+        "operationId": "session.scanForeign",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "$ref": "#/components/schemas/ForeignImportSource"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "dir",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Scan for Claude Code or Codex transcripts",
+        "description": "List candidate transcript jsonl files under the default home directory (or a custom directory) for a source.",
+        "responses": {
+          "200": {
+            "description": "Scan result with candidates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportScanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.scanForeign({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/import/foreign/jobs": {
+      "post": {
+        "operationId": "session.startForeignImportJob",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Start a batch foreign session import job",
+        "description": "Create a server-owned batch import job over the given transcript paths and return its initial state with durable aggregate progress.",
+        "responses": {
+          "200": {
+            "description": "Foreign import job summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportJobSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A foreign import job is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportConflict"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForeignImportJobInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.startForeignImportJob({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/import/foreign/jobs/current": {
+      "get": {
+        "operationId": "session.getForeignImportJob",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get the current foreign import job",
+        "description": "Return the most recently created foreign import job with durable aggregate progress.",
+        "responses": {
+          "200": {
+            "description": "Current foreign import job state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportJobState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No foreign import job exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.getForeignImportJob({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/import/foreign/jobs/current/cancel": {
+      "post": {
+        "operationId": "session.cancelForeignImportJob",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Cancel the current foreign import job",
+        "description": "Cancel the active foreign import job without discarding completed sessions.",
+        "responses": {
+          "200": {
+            "description": "Cancelled foreign import job state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportJobState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No foreign import job exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The current job is not running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForeignImportConflict"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.cancelForeignImportJob({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/cortex/tasks": {
       "get": {
         "operationId": "cortex.list",
@@ -35667,6 +35988,300 @@
           }
         },
         "required": ["rootSessionID", "sessions", "sessionCount", "messageCount", "warnings"]
+      },
+      "ForeignImportStats": {
+        "type": "object",
+        "properties": {
+          "skippedLines": {
+            "type": "number"
+          },
+          "unknownTypes": {
+            "type": "number"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["skippedLines", "unknownTypes", "warnings"]
+      },
+      "ForeignImportSingleResult": {
+        "type": "object",
+        "properties": {
+          "rootSessionID": {
+            "type": "string"
+          },
+          "sessionCount": {
+            "type": "number"
+          },
+          "messageCount": {
+            "type": "number"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ForeignImportStats"
+          }
+        },
+        "required": ["rootSessionID", "sessionCount", "messageCount", "warnings", "stats"]
+      },
+      "ForeignImportSource": {
+        "type": "string",
+        "enum": ["claude-code", "codex"]
+      },
+      "ForeignImportCandidate": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/ForeignImportSource"
+          },
+          "path": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "created": {
+            "type": "number"
+          },
+          "updated": {
+            "type": "number"
+          },
+          "sizeBytes": {
+            "type": "number"
+          },
+          "sidechain": {
+            "type": "boolean"
+          }
+        },
+        "required": ["source", "path", "title", "created", "updated", "sizeBytes", "sidechain"]
+      },
+      "ForeignImportScanResult": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/ForeignImportSource"
+          },
+          "root": {
+            "type": "string"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForeignImportCandidate"
+            }
+          }
+        },
+        "required": ["source", "root", "candidates"]
+      },
+      "ForeignImportJobSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ForeignImportSource"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "cancelled", "failed"]
+          },
+          "totalCount": {
+            "type": "number"
+          },
+          "completedCount": {
+            "type": "number"
+          },
+          "okCount": {
+            "type": "number"
+          },
+          "failedCount": {
+            "type": "number"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "status",
+          "totalCount",
+          "completedCount",
+          "okCount",
+          "failedCount",
+          "startedAt",
+          "completedAt",
+          "error"
+        ]
+      },
+      "ForeignImportConflict": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/ForeignImportJobSummary"
+          }
+        },
+        "required": ["code", "message", "job"]
+      },
+      "ForeignImportJobInput": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/ForeignImportSource"
+          },
+          "paths": {
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeSidechains": {
+            "type": "boolean"
+          },
+          "includeThinking": {
+            "type": "boolean"
+          }
+        },
+        "required": ["source", "paths"]
+      },
+      "ForeignImportJobItem": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "ok", "failed"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["path", "status"]
+      },
+      "ForeignImportJobState": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ForeignImportSource"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "cancelled", "failed"]
+          },
+          "totalCount": {
+            "type": "number"
+          },
+          "completedCount": {
+            "type": "number"
+          },
+          "okCount": {
+            "type": "number"
+          },
+          "failedCount": {
+            "type": "number"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForeignImportJobItem"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "status",
+          "totalCount",
+          "completedCount",
+          "okCount",
+          "failedCount",
+          "startedAt",
+          "completedAt",
+          "error",
+          "items"
+        ]
+      },
+      "ForeignImportError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"]
       },
       "CortexConcurrencyStatus": {
         "type": "object",

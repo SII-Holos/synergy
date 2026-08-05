@@ -13678,6 +13678,18 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
 msgstr ""
 
@@ -16827,6 +16839,114 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.cancelJob"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.cancellingJob"
+msgstr ""
+
+#. ── Panel ───────────────────────────────────────────────────────────────
+msgid "settings.sessionImport.candidatesFound.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.chooseFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.complete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importingFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importingSelected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importSelected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.includeThinking"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.jobFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.noCandidates"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.page.description"
+msgstr ""
+
+#. ── Copy ────────────────────────────────────────────────────────────────
+msgid "settings.sessionImport.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scanning"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.selectAll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source.claude"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source.codex"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.untitled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.upload.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.upload.title"
 msgstr ""
 
 #. js-lingui-explicit-id

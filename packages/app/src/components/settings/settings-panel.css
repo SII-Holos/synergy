@@ -3340,6 +3340,46 @@
   line-height: var(--settings-type-control-line-height);
 }
 
+.ds-import-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--text-base);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+}
+
+.ds-import-hint {
+  margin-top: 8px;
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size);
+  line-height: var(--settings-type-caption-line-height);
+  overflow-wrap: anywhere;
+}
+
+.ds-import-scan-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ds-import-candidate-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-import-candidate-meta {
+  flex-shrink: 0;
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--settings-type-caption-line-height);
+}
+
 .ds-import-domain-toggle-disabled {
   opacity: 0.45;
 }

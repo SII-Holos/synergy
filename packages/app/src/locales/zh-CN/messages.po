@@ -13678,6 +13678,18 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "沙箱 | 隔离 | 降级"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.description"
+msgstr "从 Claude Code 或 Codex 转录文件导入历史会话。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.label"
+msgstr "会话导入"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.searchTerms"
+msgstr "会话 | 导入 | claude | codex | 转录 | 历史"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
 msgstr "持久化的远程 Synergy 目标、授权状态和已观测的主机信息。"
 
@@ -16828,6 +16840,114 @@ msgstr "已保存 {label}"
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
 msgstr "未保存"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.cancelJob"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.cancellingJob"
+msgstr "正在取消…"
+
+#. ── Panel ───────────────────────────────────────────────────────────────
+msgid "settings.sessionImport.candidatesFound.desc"
+msgstr "{count} 个转录文件"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.chooseFile"
+msgstr "选择 jsonl 文件"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.complete"
+msgstr "会话导入完成"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.failed"
+msgstr "会话导入失败"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.hint"
+msgstr "导入的会话会创建在当前项目作用域中。失败的导入会自动回滚。"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importFile"
+msgstr "导入文件"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importingFile"
+msgstr "正在导入…"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importingSelected"
+msgstr "正在导入…"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importSelected"
+msgstr "导入所选"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.includeThinking"
+msgstr "包含思考块"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.jobFailed"
+msgstr "导入任务失败"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.noCandidates"
+msgstr "未找到转录文件。"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.page.description"
+msgstr "将 Claude Code 或 Codex 转录文件中的历史会话导入 Synergy。"
+
+#. ── Copy ────────────────────────────────────────────────────────────────
+msgid "settings.sessionImport.page.title"
+msgstr "会话导入"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan"
+msgstr "扫描"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan.desc"
+msgstr "扫描此电脑上的默认转录目录，并导入所选会话。"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan.title"
+msgstr "扫描本地转录文件"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scanning"
+msgstr "正在扫描…"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.selectAll"
+msgstr "全选"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source"
+msgstr "来源"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source.claude"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source.codex"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.untitled"
+msgstr "未命名会话"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.upload.desc"
+msgstr "选择单个 Claude Code 或 Codex jsonl 转录文件进行导入。"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.upload.title"
+msgstr "上传转录文件"
 
 #. js-lingui-explicit-id
 msgid "settings.stepScale.custom"

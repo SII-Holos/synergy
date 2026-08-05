@@ -70,6 +70,7 @@ import { LearningPanel, MemoryPanel, ExperiencePanel } from "./panels/LibraryPan
 import { ChannelsPanel } from "./panels/ChannelsPanel"
 import { EmailPanel } from "./panels/EmailPanel"
 import { ImportPanel } from "./panels/ImportPanel"
+import { SessionImportPanel } from "./panels/SessionImportPanel"
 import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPanel"
 import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
 import { WorktreesPanel } from "./panels/WorktreesPanel"
@@ -727,6 +728,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
       />
     ),
+    "session-import": () => <SessionImportPanel />,
     "archived-sessions": ArchivedSessionsPanel,
     worktrees: WorktreesPanel,
   })

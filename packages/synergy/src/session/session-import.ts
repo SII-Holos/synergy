@@ -128,11 +128,22 @@ export namespace SessionImport {
     throw new Error("Unsupported session import format")
   }
 
+  export interface FromReportOptions {
+    /**
+     * Called after each session is created and persisted, with the report's
+     * source session ID and the newly allocated Synergy session ID. Callers
+     * that need to roll back a partially completed import can collect these
+     * IDs and remove them on failure.
+     */
+    onSessionCreated?: (sourceSessionID: string, sessionID: string) => void
+  }
+
   export async function fromBuffer(data: ArrayBuffer | Uint8Array): Promise<Result> {
     return fromReport(parse(data))
   }
 
-  export async function fromReport(report: SessionExport.Report): Promise<Result> {
+  export async function fromReport(report: SessionExport.Report, options: FromReportOptions = {}): Promise<Result> {
+    const { onSessionCreated } = options
     if (report.sessions.length === 0) throw new Error("Session import report does not contain any sessions")
 
     const scope = ScopeContext.current.scope
@@ -171,7 +182,7 @@ export namespace SessionImport {
         completionNotice: info.completionNotice,
       })
       await writeSessionInfo(scopeID, info)
-
+      onSessionCreated?.(data.info.id, sessionID)
       for (const message of data.messages) {
         const nextMessage = await remapMessage(message.info, sessionID, idMap)
         await Session.updateMessage(nextMessage)

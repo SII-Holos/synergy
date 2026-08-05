@@ -18,6 +18,7 @@ import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
 import { ExportCommand } from "./cli/cmd/export"
 import { ImportCommand } from "./cli/cmd/import"
+import { ImportClaudeCommand, ImportCodexCommand } from "./cli/cmd/import-foreign"
 import { AcpCommand } from "./cli/cmd/acp"
 import { EOL } from "os"
 import { WebCommand } from "./cli/cmd/web"
@@ -150,6 +151,8 @@ const cli = yargs(hideBin(process.argv))
   .command(StatsCommand)
   .command(ExportCommand)
   .command(ImportCommand)
+  .command(ImportClaudeCommand)
+  .command(ImportCodexCommand)
   .command(SessionCommand)
   .command(ChannelCommand)
   .command(HolosCommand)

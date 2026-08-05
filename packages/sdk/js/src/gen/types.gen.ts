@@ -5871,6 +5871,91 @@ export type SessionImportResult = {
   warnings: Array<string>
 }
 
+export type ForeignImportStats = {
+  skippedLines: number
+  unknownTypes: number
+  warnings: Array<string>
+}
+
+export type ForeignImportSingleResult = {
+  rootSessionID: string
+  sessionCount: number
+  messageCount: number
+  warnings: Array<string>
+  stats: ForeignImportStats
+}
+
+export type ForeignImportSource = "claude-code" | "codex"
+
+export type ForeignImportCandidate = {
+  source: ForeignImportSource
+  path: string
+  title: string
+  created: number
+  updated: number
+  sizeBytes: number
+  sidechain: boolean
+}
+
+export type ForeignImportScanResult = {
+  source: ForeignImportSource
+  root: string
+  candidates: Array<ForeignImportCandidate>
+}
+
+export type ForeignImportJobSummary = {
+  id: string
+  source: ForeignImportSource
+  status: "running" | "completed" | "cancelled" | "failed"
+  totalCount: number
+  completedCount: number
+  okCount: number
+  failedCount: number
+  startedAt: number
+  completedAt: number | null
+  error: string | null
+}
+
+export type ForeignImportConflict = {
+  code: string
+  message: string
+  job: ForeignImportJobSummary
+}
+
+export type ForeignImportJobInput = {
+  source: ForeignImportSource
+  paths: Array<string>
+  includeSidechains?: boolean
+  includeThinking?: boolean
+}
+
+export type ForeignImportJobItem = {
+  path: string
+  status: "pending" | "running" | "ok" | "failed"
+  title?: string
+  sessionID?: string
+  error?: string
+}
+
+export type ForeignImportJobState = {
+  id: string
+  source: ForeignImportSource
+  status: "running" | "completed" | "cancelled" | "failed"
+  totalCount: number
+  completedCount: number
+  okCount: number
+  failedCount: number
+  startedAt: number
+  completedAt: number | null
+  error: string | null
+  items: Array<ForeignImportJobItem>
+}
+
+export type ForeignImportError = {
+  code: string
+  message: string
+}
+
 export type CortexConcurrencyStatus = {
   /**
    * User-configured global limit, or null when unset
@@ -12596,6 +12681,166 @@ export type SessionImportResponses = {
 }
 
 export type SessionImportResponse = SessionImportResponses[keyof SessionImportResponses]
+
+export type SessionImportForeignData = {
+  body?: {
+    source: ForeignImportSource
+    file: unknown
+    includeSidechains?: string
+    includeThinking?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/import/foreign"
+}
+
+export type SessionImportForeignErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionImportForeignError = SessionImportForeignErrors[keyof SessionImportForeignErrors]
+
+export type SessionImportForeignResponses = {
+  /**
+   * Imported session result
+   */
+  200: ForeignImportSingleResult
+}
+
+export type SessionImportForeignResponse = SessionImportForeignResponses[keyof SessionImportForeignResponses]
+
+export type SessionScanForeignData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    source: ForeignImportSource
+    dir?: string
+  }
+  url: "/session/import/foreign/scan"
+}
+
+export type SessionScanForeignErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionScanForeignError = SessionScanForeignErrors[keyof SessionScanForeignErrors]
+
+export type SessionScanForeignResponses = {
+  /**
+   * Scan result with candidates
+   */
+  200: ForeignImportScanResult
+}
+
+export type SessionScanForeignResponse = SessionScanForeignResponses[keyof SessionScanForeignResponses]
+
+export type SessionStartForeignImportJobData = {
+  body?: ForeignImportJobInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/import/foreign/jobs"
+}
+
+export type SessionStartForeignImportJobErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * A foreign import job is already running
+   */
+  409: ForeignImportConflict
+}
+
+export type SessionStartForeignImportJobError =
+  SessionStartForeignImportJobErrors[keyof SessionStartForeignImportJobErrors]
+
+export type SessionStartForeignImportJobResponses = {
+  /**
+   * Foreign import job summary
+   */
+  200: ForeignImportJobSummary
+}
+
+export type SessionStartForeignImportJobResponse =
+  SessionStartForeignImportJobResponses[keyof SessionStartForeignImportJobResponses]
+
+export type SessionGetForeignImportJobData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/import/foreign/jobs/current"
+}
+
+export type SessionGetForeignImportJobErrors = {
+  /**
+   * No foreign import job exists
+   */
+  404: ForeignImportError
+}
+
+export type SessionGetForeignImportJobError = SessionGetForeignImportJobErrors[keyof SessionGetForeignImportJobErrors]
+
+export type SessionGetForeignImportJobResponses = {
+  /**
+   * Current foreign import job state
+   */
+  200: ForeignImportJobState
+}
+
+export type SessionGetForeignImportJobResponse =
+  SessionGetForeignImportJobResponses[keyof SessionGetForeignImportJobResponses]
+
+export type SessionCancelForeignImportJobData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/import/foreign/jobs/current/cancel"
+}
+
+export type SessionCancelForeignImportJobErrors = {
+  /**
+   * No foreign import job exists
+   */
+  404: ForeignImportError
+  /**
+   * The current job is not running
+   */
+  409: ForeignImportConflict
+}
+
+export type SessionCancelForeignImportJobError =
+  SessionCancelForeignImportJobErrors[keyof SessionCancelForeignImportJobErrors]
+
+export type SessionCancelForeignImportJobResponses = {
+  /**
+   * Cancelled foreign import job state
+   */
+  200: ForeignImportJobState
+}
+
+export type SessionCancelForeignImportJobResponse =
+  SessionCancelForeignImportJobResponses[keyof SessionCancelForeignImportJobResponses]
 
 export type CortexListData = {
   body?: never

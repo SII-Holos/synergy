@@ -47,6 +47,12 @@ A session is the durable unit users navigate, resume, archive, fork, export, and
 
 Only one LLM loop writes a session at a time. New reply-requiring work waits as the next task; steering input can influence the active task; context input can join model context without demanding another reply.
 
+### Importing past sessions
+
+Synergy can import past Claude Code and Codex CLI transcripts as sessions. `synergy import-claude [file]` reads jsonl transcripts from `~/.claude/projects` (honoring `$CLAUDE_CONFIG_DIR`); `synergy import-codex [file]` reads from `~/.codex/sessions` and the sibling `archived_sessions` directory (honoring `$CODEX_HOME`). Each transcript becomes a durable session in the current Scope with its conversation, tool calls, and tool results mapped into message parts. Subagent (sidechain) sessions are excluded by default, and reasoning blocks are imported only when `--include-thinking` is passed. Failed imports are rolled back so no partial sessions are left behind.
+
+The same workflow is available in the Web settings under **Session Import** (system group, between Config Files and Archived Sessions): upload a single jsonl transcript, or scan the default transcript directories and batch-import selected sessions with live progress. See [CLI Reference](../reference/cli.md#import-claude-and-import-codex) for the command options.
+
 ### Channel-managed Projects and Task Sessions
 
 A task-only Channel provider can provision a managed Project Scope from a remote Project identity. The directory is deterministic and locally owned by Synergy, and the resulting Scope uses the same Git, files, LSP, configuration, archive, and Session services as a user-added Project. Navigation groups the Scope under its Channel account and excludes it from the generic Projects section so there is one canonical Project object rather than a provider-owned duplicate.

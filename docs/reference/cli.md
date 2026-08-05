@@ -169,6 +169,8 @@ See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for th
 | `synergy session repair`                            | Run session integrity/recovery repair                                                                              |
 | `synergy export [sessionID]`                        | Export session data                                                                                                |
 | `synergy import <file>`                             | Import an exported session                                                                                         |
+| `synergy import-claude [file]`                      | Import a Claude Code transcript as a Synergy session                                                               |
+| `synergy import-codex [file]`                       | Import a Codex CLI transcript as a Synergy session                                                                 |
 | `synergy library show\|learning\|memory\|reencode`  | Inspect and maintain Library learning state                                                                        |
 | `synergy stats`                                     | Read or recompute installation-wide session, model, agent, tool, token, cost, code-change, and activity statistics |
 | `synergy data path`                                 | Show the current Synergy home/data location                                                                        |
@@ -178,6 +180,34 @@ See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for th
 | `synergy data set-home <path>`                      | Set the configured data home                                                                                       |
 | `synergy migrate [--target <path>]`                 | Backward-compatible alias for the interactive data-move workflow                                                   |
 | `synergy migration status\|run\|rollback\|generate` | Inspect and manage versioned schema/data migrations                                                                |
+
+### import-claude and import-codex
+
+`synergy import-claude [file]` imports a Claude Code transcript (jsonl under `~/.claude/projects`) as a Synergy session; `synergy import-codex [file]` imports a Codex CLI transcript (jsonl under `~/.codex/sessions`) as a Synergy session. Both commands share the same options. The default scan roots honor `$CLAUDE_CONFIG_DIR` and `$CODEX_HOME`; scanning the Codex default location also includes the sibling `archived_sessions` directory.
+
+With a `file` argument, the command imports that single transcript and prints the resulting root session ID with session and message counts. Malformed lines and unknown line types are skipped and counted instead of failing the import. If the write fails, every session created by the attempt is rolled back, so an import never leaves partial data.
+
+Without a `file` argument, the command scans for candidate transcripts and imports them newest first:
+
+```bash
+synergy import-claude                    # scan ~/.claude/projects and import all transcripts
+synergy import-claude --dry-run          # list matching transcripts without importing
+synergy import-claude --dir ./transcripts
+synergy import-claude --limit 10         # import at most 10 sessions, newest first
+synergy import-claude --include-sidechains
+synergy import-codex --include-thinking  # keep reasoning blocks as reasoning parts
+```
+
+| Option                 | Meaning                                                           |
+| ---------------------- | ----------------------------------------------------------------- |
+| `file`                 | Path to one transcript jsonl; omit to scan and batch import       |
+| `--dir <path>`         | Scan a custom directory instead of the source's default root      |
+| `--dry-run`            | List matching transcript files without importing                  |
+| `--limit <n>`          | Import at most `n` sessions, newest first                         |
+| `--include-sidechains` | Also import subagent (sidechain) transcripts; excluded by default |
+| `--include-thinking`   | Include thinking/reasoning blocks as reasoning parts              |
+
+A batch import runs as a server-owned job with progress; the CLI waits for completion and prints a per-file failure summary. The same workflow is available in the Web settings under **Session Import**.
 
 Use the data commands for supported relocation and merge workflows. Copying individual JSON files while the server is running can violate indexes and atomic update assumptions.
 

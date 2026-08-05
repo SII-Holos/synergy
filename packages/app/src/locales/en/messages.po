@@ -13678,6 +13678,18 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "sandbox | isolation | fallback"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.description"
+msgstr "Import past sessions from Claude Code or Codex transcripts."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.label"
+msgstr "Session Import"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.sessionImport.searchTerms"
+msgstr "session | import | claude | codex | transcript | history"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
 msgstr "Persisted remote Synergy targets, authorization, and observed host details."
 
@@ -16828,6 +16840,114 @@ msgstr "Saved {label}"
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
 msgstr "Unsaved"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.cancelJob"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.cancellingJob"
+msgstr "Cancelling..."
+
+#. ── Panel ───────────────────────────────────────────────────────────────
+msgid "settings.sessionImport.candidatesFound.desc"
+msgstr "{count} transcripts"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.chooseFile"
+msgstr "Choose jsonl file"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.complete"
+msgstr "Session import complete"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.failed"
+msgstr "Session import failed"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.hint"
+msgstr "Imported sessions are created in the current project scope. Failed imports are rolled back automatically."
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importFile"
+msgstr "Import file"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importingFile"
+msgstr "Importing..."
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importingSelected"
+msgstr "Importing..."
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.importSelected"
+msgstr "Import selected"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.includeThinking"
+msgstr "Include thinking blocks"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.jobFailed"
+msgstr "Import job failed"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.noCandidates"
+msgstr "No transcripts found."
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.page.description"
+msgstr "Import past sessions from Claude Code or Codex transcripts into Synergy."
+
+#. ── Copy ────────────────────────────────────────────────────────────────
+msgid "settings.sessionImport.page.title"
+msgstr "Session Import"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan"
+msgstr "Scan"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan.desc"
+msgstr "Scan the default transcript directories on this computer and import selected sessions."
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scan.title"
+msgstr "Scan local transcripts"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.scanning"
+msgstr "Scanning..."
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.selectAll"
+msgstr "Select all"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source"
+msgstr "Source"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source.claude"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.source.codex"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.untitled"
+msgstr "Untitled session"
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.upload.desc"
+msgstr "Pick a single Claude Code or Codex jsonl transcript file to import."
+
+#. js-lingui-explicit-id
+msgid "settings.sessionImport.upload.title"
+msgstr "Upload transcript"
 
 #. js-lingui-explicit-id
 msgid "settings.stepScale.custom"
