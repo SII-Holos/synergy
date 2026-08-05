@@ -59,6 +59,31 @@ describe("tool.view_file content metadata", () => {
     })
   })
 
+  test("omits content between the view cap and the snapshot cap", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        // 1 MiB of text fits the snapshot cap (4 MiB) but exceeds the
+        // UI-only VIEW_CONTENT_MAX_BYTES (512 KiB) — metadata.content must
+        // stay absent so large-but-snapshotable files do not bloat the
+        // session JSON, while the raw text output is still produced.
+        const medium = `${"y".repeat(1024)}\n`.repeat(1024)
+        await Bun.write(path.join(dir, "medium.txt"), medium)
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await ViewFileTool.init()
+        const result = await tool.execute({ filePath: path.join(tmp.path, "medium.txt") }, ctx)
+
+        expect(result.metadata.snapshotAvailable).toBe(true)
+        expect(result.metadata.content).toBeUndefined()
+        expect(typeof result.output).toBe("string")
+      },
+    })
+  })
+
   test("returns full contents with ranges metadata for multi-range views", async () => {
     const lines = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`)
     const content = `${lines.join("\n")}\n`

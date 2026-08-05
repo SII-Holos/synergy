@@ -2,6 +2,7 @@ import z from "zod"
 import DESCRIPTION from "./view-file.txt"
 import { Tool } from "./tool"
 import { LSP } from "../lsp"
+import { SessionBounds } from "../session/bounds"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
 import {
   DEFAULT_VIEW_BYTES,
@@ -68,6 +69,13 @@ function recordDisplayLines(
   const seenLines: number[] = []
   for (let i = startLine; i <= endLine; i++) seenLines.push(i)
   recordSeenSessionLines(sessionID, filePath, seenLines, tag)
+}
+function viewContent(snapshotAvailable: boolean, content: string): string | undefined {
+  if (!snapshotAvailable) return undefined
+  // Cap the UI-only content at a fraction of the snapshot cap so large
+  // but snapshotable files do not permanently bloat the session JSON.
+  if (SessionBounds.byteLength(content) > SessionBounds.VIEW_CONTENT_MAX_BYTES) return undefined
+  return content
 }
 
 export const ViewFileTool = Tool.define("view_file", {
@@ -147,7 +155,7 @@ export const ViewFileTool = Tool.define("view_file", {
           truncated: !snapshotAvailable || rangeMetadata.some((range) => range.truncated),
           truncatedLines: rangeMetadata.flatMap((range) => range.truncatedLines),
           snapshotAvailable,
-          content: snapshotAvailable ? content : undefined,
+          content: viewContent(snapshotAvailable, content),
           hasConflicts: conflict.hasConflicts,
           conflicts: conflict.conflicts,
         },
@@ -161,7 +169,6 @@ export const ViewFileTool = Tool.define("view_file", {
 
     // Record the displayed offset..offset+limit range as seen lines
     recordDisplayLines(ctx.sessionID, filePath, tag, offset + 1, formatted.endLine)
-
     return {
       title: display,
       output,
@@ -175,7 +182,7 @@ export const ViewFileTool = Tool.define("view_file", {
         truncated: !snapshotAvailable || formatted.truncated,
         truncatedLines: formatted.truncatedLines,
         snapshotAvailable,
-        content: snapshotAvailable ? content : undefined,
+        content: viewContent(snapshotAvailable, content),
         hasConflicts: conflict.hasConflicts,
         conflicts: conflict.conflicts,
       },

@@ -54,11 +54,15 @@ export function DiffPatch(props: DiffPatchProps) {
   createEffect(() => {
     const metadata = fileDiff()
     if (!metadata) return
+    // Read reactive values synchronously so Solid tracks them; a diffStyle
+    // change must re-run this effect and re-render with the new layout.
+    const opts = options()
+    const pool = getWorkerPool(local.diffStyle)
     let alive = true
     void ensureSynergyHighlightTheme().then(() => {
       if (!alive) return
       instance?.cleanUp()
-      instance = new FileDiff(options(), getWorkerPool(local.diffStyle))
+      instance = new FileDiff(opts, pool)
       container.innerHTML = ""
       instance.render({ fileDiff: metadata, containerWrapper: container })
     })

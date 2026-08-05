@@ -4,6 +4,12 @@ export namespace SessionBounds {
   export const DIFF_PREVIEW_MAX_CHARS = 8_000
   export const DIFF_AGGREGATE_PREVIEW_MAX_BYTES = 1_048_576
   export const DIFF_AGGREGATE_PATCH_MAX_BYTES = 1_048_576
+  /**
+   * Cap for view_file metadata.content. The full snapshot cap (4 MiB) is far
+   * too large to persist in tool metadata for every view call — the content
+   * is UI-only (syntax-highlighted code view) and never fed to the model.
+   */
+  export const VIEW_CONTENT_MAX_BYTES = 512 * 1024
 
   export function byteLength(value: string): number {
     return Buffer.byteLength(value, "utf8")

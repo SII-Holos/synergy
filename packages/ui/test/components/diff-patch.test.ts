@@ -72,4 +72,32 @@ describe("diff-patch canRenderPatch", () => {
     ].join("\n")
     expect(canRenderPatch(patch)).toBe(false)
   })
+
+  test("rejects the synthetic combined revise_file diff (=== section markers)", () => {
+    // revise_file wraps multi-section output in createTwoFilesPatch("file", "file", ...)
+    // with `=== path ===` section headers embedded in content lines. It parses
+    // as a single "file" entry whose line numbers span all sections, which
+    // renders as a misleading merged blob — keep it on the fallback.
+    const patch = [
+      "Index: file",
+      "===================================================================",
+      "--- file",
+      "+++ file",
+      "@@ -1,4 +1,4 @@",
+      " === src/a.ts ===",
+      "-const a = 1",
+      "+const a = 2",
+      " === src/b.ts ===",
+      "-const b = 1",
+      "+const b = 2",
+    ].join("\n")
+    expect(canRenderPatch(patch)).toBe(false)
+  })
+
+  test("accepts a file literally named file when it is a real single-file diff", () => {
+    // The synthetic-name heuristic must not reject genuine patches whose
+    // path happens to be "file" (e.g. a repository file named "file").
+    const patch = ["--- file", "+++ file", "@@ -1,2 +1,2 @@", "-old line", "+new line"].join("\n")
+    expect(canRenderPatch(patch)).toBe(true)
+  })
 })
