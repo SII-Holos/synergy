@@ -46,12 +46,21 @@ describe("github channel config — account schema", () => {
         workspaceDir: "w",
       }),
     ).toThrow()
-    expect(() =>
-      ChannelGithubAccount.parse({
-        repositories: [],
-        workspaceDir: "w",
-      }),
-    ).toThrow()
+  })
+
+  test("accepts an empty repository list (channel can be created before repos are added)", () => {
+    const account = ChannelGithubAccount.parse({
+      repositories: [],
+      workspaceDir: "w",
+    })
+    expect(account.repositories).toEqual([])
+  })
+
+  test("defaults repositories to an empty array when omitted", () => {
+    const account = ChannelGithubAccount.parse({
+      workspaceDir: "w",
+    })
+    expect(account.repositories).toEqual([])
   })
 
   test("rejects unknown keys (strict)", () => {

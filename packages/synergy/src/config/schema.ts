@@ -357,8 +357,8 @@ export const ChannelGithubAccount = z
     enabled: z.boolean().optional().default(true),
     repositories: z
       .array(z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Use owner/repo form"))
-      .min(1)
-      .describe("GitHub repositories to watch and respond to (owner/repo)"),
+      .default([])
+      .describe("GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later"),
     workspaceDir: z
       .string()
       .trim()
