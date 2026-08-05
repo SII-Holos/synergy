@@ -22,6 +22,7 @@ import { panels as P } from "@/locales/messages"
 import { FileSourceView } from "@/components/file-workbench/source-view"
 import {
   AttachmentTooLargeError,
+  attachmentOpenInBrowserUrl,
   attachmentResourceState,
   classifyAttachmentPreview,
   createAttachmentPreviewReader,
@@ -165,6 +166,14 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
                     >
                       <Icon name={getSemanticIcon("workspace.files")} size="small" />
                       <span>{lingui._(A.viewSourceFile)}</span>
+                    </button>
+                  )}
+                </Show>
+                <Show when={attachmentOpenInBrowserUrl(capability()?.kind, url())}>
+                  {(href) => (
+                    <button type="button" class="attachment-workbench-action" onClick={() => platform.openLink(href())}>
+                      <Icon name={getSemanticIcon("action.open")} size="small" />
+                      <span>{lingui._(A.openInBrowser)}</span>
                     </button>
                   )}
                 </Show>
