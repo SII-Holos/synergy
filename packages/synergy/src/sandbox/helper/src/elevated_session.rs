@@ -88,10 +88,7 @@ impl ElevatedSandboxSession {
         profile: &PermissionProfile,
         user_sid: &[u8],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let pipe = self
-            .pipe_server
-            .as_ref()
-            .ok_or("no pipe server")?;
+        let pipe = self.pipe_server.as_ref().ok_or("no pipe server")?;
 
         let config_json = serde_json::json!({
             "permission_profile": profile,
@@ -108,10 +105,7 @@ impl ElevatedSandboxSession {
     ///
     /// Blocks until an `IpcMessage::Ack` is received over the pipe.
     pub fn wait_setup_ack(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let pipe = self
-            .pipe_server
-            .as_ref()
-            .ok_or("no pipe server")?;
+        let pipe = self.pipe_server.as_ref().ok_or("no pipe server")?;
         let mut buf = Vec::new();
         let msg = pipe.receive(&mut buf)?;
         match msg {
@@ -127,10 +121,7 @@ impl ElevatedSandboxSession {
     /// that the elevated child should restore DACLs, remove WFP filters,
     /// and terminate.
     pub fn request_cleanup(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let pipe = self
-            .pipe_server
-            .as_ref()
-            .ok_or("no pipe server")?;
+        let pipe = self.pipe_server.as_ref().ok_or("no pipe server")?;
         let msg = IpcMessage::Ack {
             msg_id: "cleanup".into(),
             detail: "request".into(),
@@ -157,10 +148,12 @@ impl ElevatedSandboxSession {
         let mut buf = Vec::new();
         let msg = pipe.receive(&mut buf)?;
         match msg {
-            IpcMessage::Error { ref msg_id, ref message } if msg_id == "setup_config" => {
+            IpcMessage::Error {
+                ref msg_id,
+                ref message,
+            } if msg_id == "setup_config" => {
                 // Parse and validate the setup config
-                let _config: serde_json::Value =
-                    serde_json::from_str(message)?;
+                let _config: serde_json::Value = serde_json::from_str(message)?;
                 // TODO: Phase 4+ — apply DACLs, WFP filters, etc. from config
                 // For now, acknowledge receipt so the parent can proceed.
                 let ack = IpcMessage::Ack {

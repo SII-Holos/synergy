@@ -32,7 +32,7 @@ export const TIPTAP_STYLES = `
   .tiptap {
     outline: none;
     min-height: 100%;
-    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-family-sans);
     color: var(--text-base);
   }
   .tiptap::after {
@@ -117,7 +117,7 @@ export const TIPTAP_STYLES = `
   .tiptap pre code {
     background: none;
     padding: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.875rem;
     color: var(--text-strong);
   }
@@ -126,7 +126,7 @@ export const TIPTAP_STYLES = `
     border: 1px solid color-mix(in srgb, var(--border-base) 58%, transparent);
     padding: 0.18em 0.45em;
     border-radius: 0.45rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.85em;
     color: var(--text-strong);
     box-shadow: inset 0 1px 0 var(--border-weak-base);
@@ -218,7 +218,7 @@ export const TIPTAP_STYLES = `
     border-radius: 0.3rem;
     padding: 0.05em 0.3em;
     font-size: 0.85em;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-family-mono);
   }
   .note-preview-content pre {
     background: var(--surface-inset-base);
@@ -254,7 +254,7 @@ export const TIPTAP_STYLES = `
     border-radius: 0.35rem;
     background: color-mix(in srgb, var(--surface-inset-base) 76%, transparent);
     padding: 0.05em 0.32em;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.82em;
     color: var(--text-weak);
     vertical-align: baseline;

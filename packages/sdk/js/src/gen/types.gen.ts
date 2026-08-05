@@ -1504,10 +1504,6 @@ export type PinnedResponse = {
   total: number
 }
 
-export type GitHubConfiguredResponse = {
-  configured: boolean
-}
-
 export type AgendaWebhookResult = {
   accepted: boolean
 }
@@ -2163,58 +2159,6 @@ export type ServerConfig = {
 }
 
 /**
- * Outbound GitHub App polling and automation configuration
- */
-export type GitHubIntegrationConfig = {
-  enabled?: boolean
-  watchedRepositories?: Array<string>
-  eventTypes?: Array<string>
-  ciFailureThreshold?: number
-  ciFailureWindowHours?: number
-  modelBudgetNano?: {
-    maxTokens: number
-    maxCost: number
-  }
-  modelBudgetProposal?: {
-    maxTokens: number
-    maxCost: number
-  }
-  classifierEnabled?: boolean
-  proposalEnabled?: boolean
-  polling?: {
-    enabled?: boolean
-    intervalMs?: number
-    overlapWindowMs?: number
-    pageSize?: number
-    maxPages?: number
-  }
-  fixWorkflow?: {
-    enabled?: boolean
-    repositoryMapping?: {
-      [key: string]: string
-    }
-    maxRetries?: number
-    timeoutMs?: number
-    locatorAgent?: string
-    agent?: string
-    pushBranchPrefix?: string
-  }
-  reviewWorkflow?: {
-    enabled?: boolean
-    repositoryMapping?: {
-      [key: string]: string
-    }
-    eventTypes?: Array<string>
-    reviewCommands?: Array<string>
-    maxRetries?: number
-    timeoutMs?: number
-    agent?: string
-    publishReviewComment?: boolean
-    publishCheckRun?: boolean
-  }
-}
-
-/**
  * Default plugin runtime resource and request limits
  */
 export type PluginRuntimeLimitsConfig = {
@@ -2250,6 +2194,26 @@ export type PluginRuntimeLimitsConfig = {
    * External plugin runtime RSS sampling interval in milliseconds
    */
   memorySampleIntervalMs?: number
+  /**
+   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
+   */
+  agentCallMaxRuntimeMs?: number
+  /**
+   * Maximum milliseconds for one plugin hook handler invocation
+   */
+  hookTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
+   */
+  contributionInvokeTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin shell.run commands
+   */
+  shellRunTimeoutMs?: number
+  /**
+   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
+   */
+  taskRunWaitTimeoutMs?: number
 }
 
 /**
@@ -3170,6 +3134,57 @@ export type ChannelClarusConfig = {
   }
 }
 
+export type ChannelGithubAccountConfig = {
+  enabled?: boolean
+  /**
+   * GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later
+   */
+  repositories?: Array<string>
+  /**
+   * Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.
+   */
+  workspaceDir: string
+  /**
+   * Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.
+   */
+  workspaceTtlHours?: number
+  /**
+   * Interval between GitHub API polls in milliseconds (default 5 minutes)
+   */
+  pollingIntervalMs?: number
+  /**
+   * Automatically review newly opened and updated pull requests
+   */
+  autoReview?: boolean
+  /**
+   * Respond to @mentions of the bot handle and questions in issues and pull requests
+   */
+  autoRespond?: boolean
+  /**
+   * Agent used for GitHub channel sessions (defaults to github-channel-agent)
+   */
+  agent?: string
+  /**
+   * GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)
+   */
+  mention?: string
+  /**
+   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
+   */
+  model?: string
+  /**
+   * Model variant to use with this account model (e.g. low, high, max)
+   */
+  variant?: string
+}
+
+export type ChannelGithubConfig = {
+  type: "github"
+  accounts: {
+    [key: string]: ChannelGithubAccountConfig
+  }
+}
+
 /**
  * Sandbox configuration for workspace boundary enforcement
  */
@@ -3670,7 +3685,6 @@ export type Config = {
       [key: string]: number
     }
   }
-  github?: GitHubIntegrationConfig
   watcher?: {
     ignore?: Array<string>
   }
@@ -3779,7 +3793,7 @@ export type Config = {
    * Channel configurations for messaging platform integrations
    */
   channel?: {
-    [key: string]: ChannelFeishuConfig | ChannelClarusConfig
+    [key: string]: ChannelFeishuConfig | ChannelClarusConfig | ChannelGithubConfig
   }
   sandbox?: SandboxConfig
   observability?: ObservabilityConfig
@@ -4003,6 +4017,7 @@ export type FileDiff = {
   deletions: number
   binary?: boolean
   preview?: string
+  patch?: string
   beforeBytes?: number
   afterBytes?: number
   truncated?: boolean
@@ -4461,6 +4476,46 @@ export type Pty = {
   pid: number
 }
 
+export type ConfigIssue = {
+  /**
+   * Config domain id the issue belongs to, when known
+   */
+  domain?: string
+  /**
+   * Path of the config file that failed to load
+   */
+  path: string
+  /**
+   * Human-readable error summary
+   */
+  error: string
+  /**
+   * Stable machine-readable issue code
+   */
+  code:
+    | "config.json_syntax"
+    | "config.root_type"
+    | "config.unknown_key"
+    | "config.load_failed"
+    | "config.migration_failed"
+  /**
+   * Whether the offending file was moved aside
+   */
+  quarantined: boolean
+  /**
+   * Path the file was moved to, when quarantined
+   */
+  quarantinedPath?: string
+  /**
+   * Unix epoch milliseconds when the issue was recorded
+   */
+  timestamp: number
+}
+
+export type ConfigDiagnosticsResponse = {
+  issues: Array<ConfigIssue>
+}
+
 export type ConfigInstructionsInfo = {
   content: string
   source: "override" | "primary" | "empty"
@@ -4489,7 +4544,6 @@ export type ConfigDomainSummary = {
     | "holos"
     | "email"
     | "runtime"
-    | "github"
   filename: string
   label: string
   path: string
@@ -4551,7 +4605,6 @@ export type ConfigDomainImportDomainPlan = {
     | "holos"
     | "email"
     | "runtime"
-    | "github"
   filename: string
   path: string
   mode: "merge" | "replace-domain" | "append"
@@ -4609,7 +4662,6 @@ export type ConfigDomainImportPlanInput = {
     | "holos"
     | "email"
     | "runtime"
-    | "github"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -4690,7 +4742,6 @@ export type ConfigImportRevisionConflictError = {
       | "holos"
       | "email"
       | "runtime"
-      | "github"
     >
   }
 }
@@ -4719,7 +4770,6 @@ export type ConfigDomainImportApplyInput = {
     | "holos"
     | "email"
     | "runtime"
-    | "github"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -7298,6 +7348,11 @@ export type BrowserControlResponse = {
           isLoading: boolean
           lastActiveAt: number | null
         }
+        snapshot?: unknown
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
       }
     | {
         type: "snapshot"
@@ -7318,11 +7373,30 @@ export type BrowserControlResponse = {
         pageId: string
         action: string
         snapshot?: unknown
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
       }
     | {
         type: "wait"
         pageId: string
         matched: boolean
+        elapsedMs?: number
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
       }
     | {
         type: "evaluation"
@@ -7350,14 +7424,52 @@ export type BrowserControlRequest = {
         type: "navigate"
         url: string
         source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "history"
         direction: "back" | "forward"
+        source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "reload"
         ignoreCache?: boolean
+        source?: "user"
+        /**
+         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
       }
     | {
         type: "stop"
@@ -9688,22 +9800,6 @@ export type GlobalNavPinnedResponses = {
 
 export type GlobalNavPinnedResponse = GlobalNavPinnedResponses[keyof GlobalNavPinnedResponses]
 
-export type GithubConfiguredData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/github/configured"
-}
-
-export type GithubConfiguredResponses = {
-  /**
-   * GitHub App configuration status
-   */
-  200: GitHubConfiguredResponse
-}
-
-export type GithubConfiguredResponse = GithubConfiguredResponses[keyof GithubConfiguredResponses]
-
 export type AgendaWebhookData = {
   body?: never
   path: {
@@ -9834,6 +9930,7 @@ export type ScopeUpdateData = {
     }
     pinned?: number | null
     archived?: number | null
+    sandboxes?: Array<string>
   }
   path: {
     scopeID: string
@@ -10152,6 +10249,25 @@ export type ConfigGlobalResponses = {
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
 
+export type ConfigDiagnosticsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/diagnostics"
+}
+
+export type ConfigDiagnosticsResponses = {
+  /**
+   * Recent config diagnostics
+   */
+  200: ConfigDiagnosticsResponse
+}
+
+export type ConfigDiagnosticsResponse2 = ConfigDiagnosticsResponses[keyof ConfigDiagnosticsResponses]
+
 export type ConfigInstructionsResetData = {
   body?: never
   path?: never
@@ -10255,7 +10371,6 @@ export type ConfigDomainGetData = {
       | "holos"
       | "email"
       | "runtime"
-      | "github"
   }
   query?: {
     directory?: string
@@ -10299,7 +10414,6 @@ export type ConfigDomainUpdateData = {
       | "holos"
       | "email"
       | "runtime"
-      | "github"
   }
   query?: {
     directory?: string
@@ -10343,7 +10457,6 @@ export type ConfigDomainOpenData = {
       | "holos"
       | "email"
       | "runtime"
-      | "github"
   }
   query?: {
     directory?: string
@@ -15798,6 +15911,48 @@ export type WorkflowSessionCancelLightloopResponses = {
 
 export type WorkflowSessionCancelLightloopResponse =
   WorkflowSessionCancelLightloopResponses[keyof WorkflowSessionCancelLightloopResponses]
+
+export type WorkflowSessionGetLightloopTerminalData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow/session/{id}/lightloop/terminal"
+}
+
+export type WorkflowSessionGetLightloopTerminalErrors = {
+  /**
+   * No terminal record for this session
+   */
+  404: {
+    message: string
+  }
+}
+
+export type WorkflowSessionGetLightloopTerminalError =
+  WorkflowSessionGetLightloopTerminalErrors[keyof WorkflowSessionGetLightloopTerminalErrors]
+
+export type WorkflowSessionGetLightloopTerminalResponses = {
+  /**
+   * Light Loop terminal record
+   */
+  200: {
+    status: "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+    instructions: string
+    error?: string
+    createdAt: number
+  }
+}
+
+export type WorkflowSessionGetLightloopTerminalResponse =
+  WorkflowSessionGetLightloopTerminalResponses[keyof WorkflowSessionGetLightloopTerminalResponses]
 
 export type AssetUploadData = {
   body?: {

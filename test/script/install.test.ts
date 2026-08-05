@@ -947,6 +947,8 @@ describe("CLI bundle installer", () => {
         "esac",
       ].join("\n"),
     )
+    const packageProbe = path.join(root, "package-probe")
+    await writeExecutable(path.join(fakeBin, "npm"), `printf "called" > "${packageProbe}"`)
 
     const result = Bun.spawnSync({
       cmd: ["bash", installScript, "--version", "1.2.3", "--no-modify-path"],
@@ -964,6 +966,7 @@ describe("CLI bundle installer", () => {
     expect(result.exitCode).not.toBe(0)
     expect(outputText(result)).toContain("Published CLI checksum is unavailable")
     expect(outputText(result)).not.toContain("unexpected-extraction")
+    expect(await fs.stat(packageProbe).catch(() => null)).toBeNull()
   })
 
   test("propagates a download failure without continuing post-install setup", () => {
@@ -1293,5 +1296,40 @@ describe("CLI installer guidance", () => {
 
     expect(result.exitCode).toBe(0)
     expect(outputText(result)).toContain("install Bubblewrap with your system package manager")
+  })
+
+  test("warns about package-manager channels without blocking standalone installation", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-channel-warning-"))
+    temporaryDirectories.push(root)
+    const bin = path.join(root, "bin")
+    const marker = path.join(root, "continued")
+    await fs.mkdir(bin, { recursive: true })
+    await writeExecutable(path.join(bin, "npm"), 'printf "%s\\n" "@ericsanchezok/synergy@1.2.3"; exit 0')
+
+    const command = ["warn_about_package_manager_installations", 'printf "continued" > "$1"'].join("; ")
+    const result = runInstallFunction(command, [marker], {
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(outputText(result)).toContain("another Synergy installation channel is already present")
+    expect(outputText(result)).toContain("npm: 1.2.3")
+    expect(outputText(result)).toContain("will continue and will not remove other installations")
+    expect(await Bun.file(marker).text()).toBe("continued")
+  })
+
+  test("ignores package-manager probe failures", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-channel-probe-failure-"))
+    temporaryDirectories.push(root)
+    const bin = path.join(root, "bin")
+    await fs.mkdir(bin, { recursive: true })
+    await writeExecutable(path.join(bin, "npm"), "exit 17")
+
+    const result = runInstallFunction("warn_about_package_manager_installations", [], {
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(outputText(result)).not.toContain("another Synergy installation channel")
   })
 })
