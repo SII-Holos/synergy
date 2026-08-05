@@ -3,6 +3,7 @@ import { Button } from "./button"
 import { RadioGroup } from "./radio-group"
 import { DiffChanges } from "./diff-changes"
 import { DiffPreview } from "./tool/diff-preview"
+import { DiffPatch, canRenderPatch } from "./diff-patch"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
@@ -138,7 +139,9 @@ export const SessionReview = (props: SessionReviewProps) => {
                   </Accordion.Trigger>
                 </StickyAccordionHeader>
                 <Accordion.Content data-slot="session-review-accordion-content">
-                  <DiffPreview diff={diff} variant="review" />
+                  <Show when={canRenderPatch(diff.patch)} fallback={<DiffPreview diff={diff} variant="review" />}>
+                    <DiffPatch patch={diff.patch!} diffStyle={diffStyle()} />
+                  </Show>
                 </Accordion.Content>
               </Accordion.Item>
             )}
