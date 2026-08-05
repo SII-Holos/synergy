@@ -2567,6 +2567,10 @@ export type LocalEmbeddingConfig = {
    * Public HTTPS origin used when source is custom
    */
   remoteHost?: string
+  /**
+   * Directory where the bundled local embedding model is cached (default: ~/.synergy/data/embedding/models). Supports {env:VAR} references.
+   */
+  cacheDir?: string
 }
 
 /**
@@ -3144,6 +3148,10 @@ export type ChannelGithubAccountConfig = {
    * Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.
    */
   workspaceDir: string
+  /**
+   * Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.
+   */
+  workspaceTtlHours?: number
   /**
    * Interval between GitHub API polls in milliseconds (default 5 minutes)
    */
@@ -4013,6 +4021,7 @@ export type FileDiff = {
   deletions: number
   binary?: boolean
   preview?: string
+  patch?: string
   beforeBytes?: number
   afterBytes?: number
   truncated?: boolean

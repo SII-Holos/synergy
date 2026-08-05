@@ -270,6 +270,13 @@ export const MessageContext = z
     senderId: z.string(),
     senderName: z.string().optional(),
     text: z.string(),
+    /**
+     * Raw command text used for slash-command parsing, when it differs from
+     * `text` (which may be a decorated prompt). Providers that wrap the user
+     * content (e.g. GitHub comments embedded in an event prompt) set this to
+     * the original content so `@mention`-prefixed slash commands parse.
+     */
+    commandText: z.string().optional(),
     messageId: z.string(),
     timestamp: z.number(),
     wasMentioned: z.boolean().optional(),
@@ -338,6 +345,13 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   readonly type: string
   readonly lifecycle: ProviderLifecycle
   readonly conversation?: ConversationCapabilities
+  /**
+   * Default agent used for sessions created from this provider's inbound
+   * messages. When set, the channel core passes it as the agent override
+   * (an account-level `agent` config still wins). When unset, the default
+   * agent resolution applies.
+   */
+  readonly defaultAgent?: string
 
   waitForTransport?(input: { accountId: string; signal: AbortSignal }): Promise<void>
 

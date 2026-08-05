@@ -173,5 +173,12 @@ export function formatSettleSummary(input: {
   if (input.settled === undefined) return undefined
   const reason = input.settleReason ? ` (${input.settleReason})` : ""
   const elapsed = input.settleElapsedMs !== undefined ? ` after ${input.settleElapsedMs}ms` : ""
+  if (!input.settled && input.settleReason === "timeout") {
+    return (
+      `Settled: no (timeout)${elapsed}` +
+      `. The page may still be fully usable — busy pages (subscription walls, ads, trackers, polling) can keep the network busy past the settle window. ` +
+      `Proceed with browser_snapshot/browser_read to inspect content, use browser_wait only for a specific condition, or retry with settleMode "load" or "none".`
+    )
+  }
   return `Settled: ${input.settled ? "yes" : "no"}${reason}${elapsed}`
 }

@@ -1,4 +1,11 @@
-import { type FileContents, File, FileOptions, LineAnnotation, type SelectedLineRange } from "@pierre/diffs"
+import {
+  type FileContents,
+  File,
+  FileOptions,
+  LineAnnotation,
+  type RenderRange,
+  type SelectedLineRange,
+} from "@pierre/diffs"
 import { ComponentProps, createEffect, createMemo, onCleanup, splitProps } from "solid-js"
 import { createDefaultOptions, styleVariables } from "../pierre"
 import { getWorkerPool } from "../pierre/worker"
@@ -9,6 +16,7 @@ export type CodeProps<T = {}> = FileOptions<T> & {
   file: FileContents
   annotations?: LineAnnotation<T>[]
   selectedLines?: SelectedLineRange | null
+  renderRange?: RenderRange
   class?: string
   classList?: ComponentProps<"div">["classList"]
 }
@@ -46,7 +54,14 @@ function findSide(node: Node | null): SelectionSide | undefined {
 export function Code<T>(props: CodeProps<T>) {
   let container!: HTMLDivElement
 
-  const [local, others] = splitProps(props, ["file", "class", "classList", "annotations", "selectedLines"])
+  const [local, others] = splitProps(props, [
+    "file",
+    "class",
+    "classList",
+    "annotations",
+    "selectedLines",
+    "renderRange",
+  ])
 
   const file = createMemo(
     () =>
@@ -116,6 +131,7 @@ export function Code<T>(props: CodeProps<T>) {
       file: local.file,
       lineAnnotations: local.annotations,
       containerWrapper: container,
+      renderRange: local.renderRange,
     })
   })
 

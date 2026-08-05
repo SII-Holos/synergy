@@ -234,6 +234,11 @@ function librarySqlOperation(sql: string) {
   return verb
 }
 
+export function hasColumn(conn: Database, table: string, column: string): boolean {
+  const rows = conn.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  return rows.some((row) => row.name === column)
+}
+
 function hasVecTable(conn: Database, name: string): boolean {
   const row = conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1").get(name)
   return row !== undefined
@@ -457,7 +462,12 @@ function initialize(conn: Database) {
   conn.exec("CREATE INDEX IF NOT EXISTS idx_experience_content_scope ON experience_content(scope_id)")
   conn.exec("CREATE INDEX IF NOT EXISTS idx_experience_content_session ON experience_content(session_id)")
   conn.exec("CREATE INDEX IF NOT EXISTS idx_memory_category ON memory(category, created_at)")
-  conn.exec("CREATE INDEX IF NOT EXISTS idx_memory_recall_mode ON memory(recall_mode)")
+  // recall_mode is added by the 20260405-library-memory-recall-mode migration on
+  // legacy databases; guard the index so opening an old library does not fail
+  // before the migration's ALTER TABLE runs.
+  if (hasColumn(conn, "memory", "recall_mode")) {
+    conn.exec("CREATE INDEX IF NOT EXISTS idx_memory_recall_mode ON memory(recall_mode)")
+  }
   initializeReencodeJobSchema(conn)
 
   log.info("schema ready")

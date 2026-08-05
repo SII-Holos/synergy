@@ -14022,6 +14022,14 @@ msgid "settings.channels.github.workspaceDirPlaceholder"
 msgstr "/path/to/workspace"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr "检出保留时长（小时）"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr "未使用的线程检出在本地 clone 被删除前的保留小时数。会话历史会保留；下次触发该线程时自动重新创建检出。"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr "管理消息与任务频道账号。"
 
@@ -14912,6 +14920,18 @@ msgstr "重试"
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.button.starting"
 msgstr "正在启动…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.desc"
+msgstr "Synergy 存放已下载本地模型文件的位置。留空则使用默认目录（~/.synergy/data/embedding/models）。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.label"
+msgstr "本地嵌入模型缓存目录"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.title"
+msgstr "模型缓存目录"
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.currentModel.title"

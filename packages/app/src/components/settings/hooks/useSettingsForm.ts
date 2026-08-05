@@ -180,6 +180,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
           enabled: account.enabled !== false,
           repositories: (account.repositories ?? []).join(", "),
           workspaceDir: account.workspaceDir ?? "",
+          workspaceTtlHours: account.workspaceTtlHours !== undefined ? String(account.workspaceTtlHours) : "24",
           pollingIntervalMs: account.pollingIntervalMs !== undefined ? String(account.pollingIntervalMs) : "300000",
           autoReview: account.autoReview !== false,
           autoRespond: account.autoRespond !== false,
@@ -210,6 +211,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       experienceRetrieve?.epsilon !== undefined ? String(experienceRetrieve.epsilon) : UI_DEFAULTS.experienceEpsilon,
     embeddingSource: cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource,
     embeddingRemoteHost: cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost,
+    embeddingCacheDir: cfg.embedding?.local?.cacheDir ?? UI_DEFAULTS.embeddingCacheDir,
   })
 
   params.setInitialized(true)

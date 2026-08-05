@@ -14022,6 +14022,14 @@ msgid "settings.channels.github.workspaceDirPlaceholder"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr ""
 
@@ -14911,6 +14919,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.button.starting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.title"
 msgstr ""
 
 #. js-lingui-explicit-id

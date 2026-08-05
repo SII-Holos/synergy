@@ -306,11 +306,6 @@ export namespace StoragePath {
     "index",
     workspaceHash,
   ]
-  export const githubChannelSeenComments = (accountHash: string, repository: string) => [
-    ...githubChannelAccountRoot(accountHash),
-    "seen-comments",
-    encodeURIComponent(repository),
-  ]
 
   // Stats
   export const statsRoot = () => ["stats"]

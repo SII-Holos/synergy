@@ -14022,6 +14022,14 @@ msgid "settings.channels.github.workspaceDirPlaceholder"
 msgstr "/path/to/workspace"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr "Checkout retention (hours)"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered."
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr "Messaging and task channel accounts."
 
@@ -14912,6 +14920,18 @@ msgstr "Retry"
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.button.starting"
 msgstr "Starting…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.desc"
+msgstr "Where Synergy stores the downloaded local model files. Leave empty for the default (~/.synergy/data/embedding/models)."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.label"
+msgstr "Local embedding model cache directory"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.title"
+msgstr "Model cache directory"
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.currentModel.title"

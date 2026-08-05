@@ -158,6 +158,8 @@ On failure, the command prints the error and suggests troubleshooting steps: che
 
 The download source is set in `00-general.jsonc` under `embedding.local.source` (`"huggingface"`, `"hf-mirror"`, or `"custom"`). The `custom` source requires `embedding.local.remoteHost` to be a public HTTPS origin.
 
+Model files are cached under `~/.synergy/data/embedding/models`; customize the location with `embedding.local.cacheDir`.
+
 See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for the embedding lifecycle and [Configuration: Embedding](configuration.md#embedding) for the full config schema.
 
 ## Sessions, Library, and Data

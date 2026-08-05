@@ -15,6 +15,8 @@ const log = Log.create({ service: "channel.outbound" })
 
 const INTERNAL_CHANNEL_TYPES = new Set(["app"])
 
+const foregroundSessions = new Set<string>()
+
 export namespace ChannelOutbound {
   const state = ScopedState.create(
     () => ({ unsubscribe: undefined as (() => void) | undefined }),
@@ -23,6 +25,27 @@ export namespace ChannelOutbound {
       entry.unsubscribe = undefined
     },
   )
+
+  /**
+   * Register a Channel Session root whose foreground streaming card owns the
+   * terminal reply. While registered, the outbound bridge skips that root's
+   * terminal assistant messages so the answer is not delivered twice. Call
+   * before the generation loop and unregister after the streaming card closes.
+   * A crash loses the registry and the durable channelOutboundSent flag, so
+   * queued or recovered replies still reach the bridge.
+   */
+  export function beginForeground(sessionID: string, rootID: string): void {
+    foregroundSessions.add(`${sessionID}:${rootID}`)
+  }
+
+  export function endForeground(sessionID: string, rootID: string): void {
+    foregroundSessions.delete(`${sessionID}:${rootID}`)
+  }
+
+  export function isForeground(sessionID: string, rootID: string | undefined): boolean {
+    if (!rootID) return false
+    return foregroundSessions.has(`${sessionID}:${rootID}`)
+  }
 
   export function init(input: { getProvider: (type: string) => Provider | undefined }): () => void {
     const bridge = state()
@@ -51,6 +74,10 @@ export namespace ChannelOutbound {
         if (!currentAssistant.time.completed || !SessionProgress.isTerminalAssistant(currentAssistant)) return
         if (!metadata?.mailbox && !metadata?.channelPush && !metadata?.channelReply) return
         if (metadata.channelOutboundSent) return
+        if (ChannelOutbound.isForeground(msg.sessionID, currentAssistant.rootID ?? currentAssistant.parentID)) {
+          log.debug("skipping foreground-delivered channel reply", { sessionID: msg.sessionID, messageID: msg.id })
+          return
+        }
 
         const session = await SessionManager.getSession(msg.sessionID).catch(() => undefined)
         if (!session?.endpoint || session.endpoint.kind !== "channel") return

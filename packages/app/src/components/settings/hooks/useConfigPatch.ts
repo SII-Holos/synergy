@@ -53,16 +53,24 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
 function buildEmbeddingPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   const source = state.library.embeddingSource
   const remoteHost = state.library.embeddingRemoteHost.trim()
+  const cacheDir = state.library.embeddingCacheDir.trim()
   const currentSource = cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource
   const currentRemoteHost = cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost
+  const currentCacheDir = cfg.embedding?.local?.cacheDir ?? UI_DEFAULTS.embeddingCacheDir
   const nextRemoteHost = source === "custom" ? remoteHost : ""
-
-  if (source === currentSource && nextRemoteHost === (source === "custom" ? currentRemoteHost : "")) return
+  if (
+    source === currentSource &&
+    nextRemoteHost === (source === "custom" ? currentRemoteHost : "") &&
+    cacheDir === currentCacheDir
+  ) {
+    return
+  }
 
   patch.embedding = {
     local: {
       source,
       ...(source === "custom" && nextRemoteHost ? { remoteHost: nextRemoteHost } : {}),
+      ...(cacheDir !== currentCacheDir ? { cacheDir } : {}),
     },
   }
 }
@@ -383,6 +391,9 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
       account.enabled = entry.enabled
       account.repositories = parseList(entry.repositories)
       account.workspaceDir = entry.workspaceDir.trim()
+      const workspaceTtlHours = positiveInteger(entry.workspaceTtlHours)
+      if (workspaceTtlHours !== undefined) account.workspaceTtlHours = workspaceTtlHours
+      else delete account.workspaceTtlHours
       const pollingIntervalMs = positiveInteger(entry.pollingIntervalMs)
       if (pollingIntervalMs !== undefined) account.pollingIntervalMs = pollingIntervalMs
       else delete account.pollingIntervalMs
