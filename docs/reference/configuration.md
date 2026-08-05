@@ -380,12 +380,13 @@ When `embedding.apiKey` is absent, Synergy uses the bundled `Xenova/all-MiniLM-L
 }
 ```
 
-| Field                        | Required                    | Default         | Description                                                                                                                                                                     |
-| ---------------------------- | --------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `embedding.local.source`     | no                          | `"huggingface"` | Download source: `"huggingface"` downloads from Hugging Face Hub, `"hf-mirror"` uses the HF Mirror (`https://hf-mirror.com/`), and `"custom"` uses a user-supplied `remoteHost` |
-| `embedding.local.remoteHost` | when `source` is `"custom"` | —               | Public HTTPS origin with no credentials, path, query, or hash. Local, private, and loopback hostnames are rejected; the field is ignored for built-in sources.                  |
+| Field                        | Required                    | Default                          | Description                                                                                                                                                                     |
+| ---------------------------- | --------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `embedding.local.source`     | no                          | `"huggingface"`                  | Download source: `"huggingface"` downloads from Hugging Face Hub, `"hf-mirror"` uses the HF Mirror (`https://hf-mirror.com/`), and `"custom"` uses a user-supplied `remoteHost` |
+| `embedding.local.remoteHost` | when `source` is `"custom"` | —                                | Public HTTPS origin with no credentials, path, query, or hash. Local, private, and loopback hostnames are rejected; the field is ignored for built-in sources.                  |
+| `embedding.local.cacheDir`   | no                          | ~/.synergy/data/embedding/models | Directory where the bundled local embedding model is cached; supports {env:VAR} references                                                                                      |
 
-The model ID, quantization dtype, and ONNX cache directory are not configurable.
+The model ID and quantization dtype are not configurable. The cache directory defaults to `~/.synergy/data/embedding/models` and can be redirected with `embedding.local.cacheDir`.
 
 ### Remote
 

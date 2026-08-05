@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { sendFeishuMarkdownCard } from "../../src/channel/provider/feishu/send-card"
+import { degradeMarkdownImages } from "../../src/channel/provider/feishu/markdown-image"
 
 const API_BASE = "https://open.feishu.test/open-apis"
 
@@ -284,5 +285,29 @@ describe("Feishu markdown card image materialization", () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+})
+
+describe("degradeMarkdownImages streaming-path robustness", () => {
+  test("does not hang on a lone tilde character", () => {
+    const text = "Use ~/path please"
+    expect(degradeMarkdownImages(text)).toBe(text)
+  })
+
+  test("does not hang on strikethrough syntax", () => {
+    const text = "This is ~~strikethrough~~ text"
+    expect(degradeMarkdownImages(text)).toBe(text)
+  })
+
+  test("does not hang on tilde-heavy markdown and still degrades real images", () => {
+    const text = "Home ~/me\n\n![Logo](https://img.example.com/logo.png)\n\n~~done~~"
+    const result = degradeMarkdownImages(text)
+    expect(result).toContain("[Logo](https://img.example.com/logo.png)")
+    expect(result).toContain("~~done~~")
+  })
+
+  test("leaves inline code and plain text untouched", () => {
+    const text = "Use `![alt](data:image/png;base64,AAAA)` literally"
+    expect(degradeMarkdownImages(text)).toBe(text)
   })
 })
