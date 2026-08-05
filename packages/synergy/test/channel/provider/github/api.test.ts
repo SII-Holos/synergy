@@ -94,9 +94,14 @@ describe("github channel auth — request descriptors", () => {
     expect(descriptor.url).toBe("https://api.github.com/repos/owner/repo/pulls/9")
   })
 
-  test("builds the git credential helper command", () => {
+  test("builds the git credential helper command with the process environment preserved", () => {
     const command = buildCredentialCommand({ token: "secret-token", args: ["clone", "x"] })
-    expect(command.env).toEqual({ SYNERGY_GITHUB_INSTALLATION_TOKEN: "secret-token" })
+    // Bun's shell .env() replaces the child environment, so the helper must
+    // carry the parent environment through (HOME, PATH, proxies) and overlay
+    // the installation token.
+    expect(command.env).toEqual({ ...process.env, SYNERGY_GITHUB_INSTALLATION_TOKEN: "secret-token" })
+    expect(command.env.SYNERGY_GITHUB_INSTALLATION_TOKEN).toBe("secret-token")
+    expect(command.env.HOME).toBe(process.env.HOME)
     expect(command.args[0]).toBe("-c")
     expect(command.args[1]).toContain("credential.helper=")
     // The token must never appear on the argv.

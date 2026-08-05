@@ -108,6 +108,7 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
 export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithubAccount, Config.ChannelGithub> {
   readonly type = "github"
   readonly lifecycle = "self_connected" as const
+  readonly defaultAgent = "github-channel-agent"
   readonly conversation = {
     replyMessage: (input: Parameters<GithubProvider["replyMessage"]>[0]) => this.replyMessage(input),
     pushMessage: (input: Parameters<GithubProvider["pushMessage"]>[0]) => this.pushMessage(input),

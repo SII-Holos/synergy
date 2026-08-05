@@ -257,7 +257,10 @@ async function deliverEvent(
     text: eventPrompt(event),
     messageId,
     timestamp: event.createdAt,
-    wasMentioned: false,
+    // comment.created events only reach this point after the gate confirmed
+    // an explicit bot mention, so mark them as mentioned to let the command
+    // parser strip the @handle from the agent prompt.
+    wasMentioned: event.kind === "comment.created",
     scopeKey,
     ...(event.kind === "comment.created" ? { replyToMessageId: String(event.commentId) } : {}),
   }
@@ -360,7 +363,19 @@ async function fetchPages(input: {
     items.push(...input.extract(response.data))
     const next = nextPageUrl(response.headers)
     if (!next) break
-    if (page >= input.maxPages) throw new Error(`GitHub polling exceeded the configured ${input.maxPages} page limit`)
+    if (page >= input.maxPages) {
+      // Degrade instead of throwing: a busy repository (e.g. the 24h first
+      // lookback on a large repo) can exceed the page cap. Returning the
+      // pages already collected keeps the poll loop alive; the watermark
+      // advances from what was seen, so the remainder is picked up on later
+      // polls rather than stalling this repository forever.
+      log.warn("github polling reached the configured page limit; continuing with collected pages", {
+        page,
+        maxPages: input.maxPages,
+        collected: items.length,
+      })
+      break
+    }
     const remainingHeader = response.headers.get("x-ratelimit-remaining")
     if (remainingHeader !== null && Number(remainingHeader) <= 5) {
       await SessionRetry.sleep(input.intervalMs ?? 300_000, input.signal)

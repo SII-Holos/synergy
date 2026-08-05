@@ -338,6 +338,13 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   readonly type: string
   readonly lifecycle: ProviderLifecycle
   readonly conversation?: ConversationCapabilities
+  /**
+   * Default agent used for sessions created from this provider's inbound
+   * messages. When set, the channel core passes it as the agent override
+   * (an account-level `agent` config still wins). When unset, the default
+   * agent resolution applies.
+   */
+  readonly defaultAgent?: string
 
   waitForTransport?(input: { accountId: string; signal: AbortSignal }): Promise<void>
 
