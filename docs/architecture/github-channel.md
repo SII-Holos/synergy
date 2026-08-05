@@ -139,12 +139,12 @@ Permissions: read/grep/glob/edit/write/bash allowed inside the checkout; `gh` CL
 
 ## Storage
 
-| Path                                                                 | Purpose                                                         |
-| -------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `data/channel/providers/github/accounts/<hash>/poll-state/<repo>`    | Per-repository poll cursors and dedup state                     |
-| `data/channel/providers/github/accounts/<hash>/workspaces/index/`    | Thread → checkout directory + Scope records                     |
-| `data/channel/providers/github/accounts/<hash>/seen-comments/<repo>` | Comment dedup (bounded)                                         |
-| Session/message storage                                              | Standard Channel sessions under the Channel navigation category |
+| Path                                                              | Purpose                                                                                                                                                           |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data/channel/providers/github/accounts/<hash>/poll-state/<repo>` | Per-repository poll cursors and dedup state                                                                                                                       |
+| `data/channel/providers/github/accounts/<hash>/workspaces/index/` | Thread → checkout directory + Scope records                                                                                                                       |
+| Checkouts under the configured `workspaceDir`                     | Per-thread random-hash clones; removed after `workspaceTtlHours` (default 24h) of inactivity and recreated on the next trigger. Session history is never deleted. |
+| Session/message storage                                           | Standard Channel sessions under the Channel navigation category                                                                                                   |
 
 ## Relationship to the user-credential GitHub provider
 

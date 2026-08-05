@@ -121,7 +121,7 @@ export async function pollRepository(input: {
   const since = new Date(Math.max(0, state.lastUpdatedAt - lookbackMs)).toISOString()
 
   // 1. Issues/PRs updated since the watermark (PR-shaped issues carry a pull_request key).
-  const issueItems = await fetchPages({
+  const issuePage = await fetchPages({
     descriptor: GitHubChannelAuth.GitHubClient.listRepositoryIssues({
       owner,
       repo,
@@ -135,6 +135,8 @@ export async function pollRepository(input: {
     signal: input.signal,
     extract: (data) => (Array.isArray(data) ? data : []),
   })
+  const issueItems = issuePage.items
+  let truncated = issuePage.truncated
 
   // 2. Pull request details for PR-shaped issue entries (need head SHA + base ref).
   const pullNumbers = new Set(
@@ -175,7 +177,8 @@ export async function pollRepository(input: {
       signal: input.signal,
       extract: (data) => (Array.isArray(data) ? data : []),
     })
-    commentsByIssue[issueNumber] = comments
+    commentsByIssue[issueNumber] = comments.items
+    if (comments.truncated) truncated = true
   })
 
   // 4. Synthesize events (dedup via seen state) and deliver each as a conversation message.
@@ -185,6 +188,14 @@ export async function pollRepository(input: {
     pullRequests,
     commentsByIssue,
   })
+  if (truncated) {
+    // A truncated read means items beyond the page cap exist in the window.
+    // Keep the old watermark so the next poll re-reads from the same point
+    // and picks up the omitted items; seen state still advances so already
+    // processed events are not re-delivered.
+    nextState.lastUpdatedAt = state.lastUpdatedAt
+    log.warn("github poll truncated; watermark preserved for the next poll", { repository: input.repository })
+  }
   await writePollState(input.accountHash, input.repository, nextState)
 
   for (const event of events) {
@@ -246,6 +257,7 @@ async function deliverEvent(
     registerBodyChat(messageId, chatId)
   }
 
+  const isComment = event.kind === "comment.created"
   const ctx: MessageContext = {
     channelType: "github",
     accountId: input.accountId,
@@ -259,10 +271,19 @@ async function deliverEvent(
     timestamp: event.createdAt,
     // comment.created events only reach this point after the gate confirmed
     // an explicit bot mention, so mark them as mentioned to let the command
-    // parser strip the @handle from the agent prompt.
-    wasMentioned: event.kind === "comment.created",
+    // parser strip the @handle from the agent prompt. The raw comment body is
+    // supplied as commandText (the prompt wraps it in event context) and the
+    // bot handle is listed in mentions so slash commands like
+    // `@synergy-agent /new` parse correctly.
+    wasMentioned: isComment,
+    ...(isComment
+      ? {
+          commandText: event.body,
+          mentions: [{ key: "github", name: input.mention ?? event.sender }],
+          replyToMessageId: String(event.commentId),
+        }
+      : {}),
     scopeKey,
-    ...(event.kind === "comment.created" ? { replyToMessageId: String(event.commentId) } : {}),
   }
 
   const result = await input.host.conversations.receive(ctx)
@@ -355,9 +376,10 @@ async function fetchPages(input: {
   intervalMs: number
   signal: AbortSignal
   extract: (data: unknown) => unknown[]
-}): Promise<unknown[]> {
+}): Promise<{ items: unknown[]; truncated: boolean }> {
   const items: unknown[] = []
   let descriptor: RequestDescriptor | undefined = input.descriptor
+  let truncated = false
   for (let page = 1; descriptor; page++) {
     const response: PollPage<unknown> = await GitHubChannelAuth.GitHubClient.sendPage(descriptor, input.signal)
     items.push(...input.extract(response.data))
@@ -366,9 +388,10 @@ async function fetchPages(input: {
     if (page >= input.maxPages) {
       // Degrade instead of throwing: a busy repository (e.g. the 24h first
       // lookback on a large repo) can exceed the page cap. Returning the
-      // pages already collected keeps the poll loop alive; the watermark
-      // advances from what was seen, so the remainder is picked up on later
-      // polls rather than stalling this repository forever.
+      // pages already collected keeps the poll loop alive; the caller must
+      // NOT advance the watermark on a truncated read so omitted items are
+      // picked up on later polls rather than skipped forever.
+      truncated = true
       log.warn("github polling reached the configured page limit; continuing with collected pages", {
         page,
         maxPages: input.maxPages,
@@ -391,7 +414,7 @@ async function fetchPages(input: {
       },
     }
   }
-  return items
+  return { items, truncated }
 }
 
 /**

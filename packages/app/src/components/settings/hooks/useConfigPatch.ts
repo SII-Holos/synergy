@@ -383,6 +383,9 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
       account.enabled = entry.enabled
       account.repositories = parseList(entry.repositories)
       account.workspaceDir = entry.workspaceDir.trim()
+      const workspaceTtlHours = positiveInteger(entry.workspaceTtlHours)
+      if (workspaceTtlHours !== undefined) account.workspaceTtlHours = workspaceTtlHours
+      else delete account.workspaceTtlHours
       const pollingIntervalMs = positiveInteger(entry.pollingIntervalMs)
       if (pollingIntervalMs !== undefined) account.pollingIntervalMs = pollingIntervalMs
       else delete account.pollingIntervalMs

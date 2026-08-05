@@ -658,7 +658,7 @@ export namespace Channel {
           })
 
           const cmdResult = await ChannelCommand.execute(
-            ctx.text,
+            ctx.commandText ?? ctx.text,
             {
               channelType: ctx.channelType,
               accountId: ctx.accountId,

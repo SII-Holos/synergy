@@ -171,6 +171,16 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
       log.warn("github channel account has no repositories", { accountHash })
     }
 
+    // Sweep expired checkouts on connect so unused clones are reclaimed per
+    // the account TTL (session history is preserved; clones are recreated on
+    // the next thread trigger).
+    const ttlHours = account.workspaceTtlHours ?? 24
+    GithubChannelWorkspace.sweep({ accountId: input.accountId, workspaceTtlHours: ttlHours })
+      .then((removed) => {
+        if (removed > 0) log.info("swept expired github workspace checkouts", { accountHash, removed })
+      })
+      .catch((error) => log.warn("github workspace sweep failed", { accountHash, error }))
+
     for (const repository of repositories) {
       const loop = runRepositoryPollLoop({
         accountId: input.accountId,
@@ -261,6 +271,7 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     const { record, scope } = await GithubChannelWorkspace.ensure({
       accountId: input.accountId,
       workspaceDir: account.workspaceDir,
+      workspaceTtlHours: account.workspaceTtlHours ?? 24,
       repository: parsed.repository,
       issueNumber: parsed.issueNumber,
       pullNumber: facts.pullNumber,

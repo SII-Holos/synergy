@@ -14022,6 +14022,14 @@ msgid "settings.channels.github.workspaceDirPlaceholder"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr ""
 
