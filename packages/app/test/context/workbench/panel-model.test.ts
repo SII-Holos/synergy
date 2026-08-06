@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { WorkbenchPanelTab } from "../../../src/plugin/registries/workbench-panel-registry"
 import {
   closeWorkbenchPanelTab,
+  isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
@@ -286,6 +287,60 @@ describe("workbench Escape routing", () => {
     expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, addOpen: false, dialogActive: false })).toBe(
       "none",
     )
+  })
+
+  test("lets Escape through to editable targets instead of closing the workspace", () => {
+    expect(
+      resolveWorkbenchEscapeAction({
+        key: "Escape",
+        opened: true,
+        addOpen: false,
+        dialogActive: false,
+        editableFocus: true,
+      }),
+    ).toBe("none")
+    expect(
+      resolveWorkbenchEscapeAction({
+        key: "Escape",
+        opened: true,
+        addOpen: true,
+        dialogActive: false,
+        editableFocus: true,
+      }),
+    ).toBe("none")
+  })
+})
+
+describe("isEditableEscapeTarget", () => {
+  test("treats form controls as editable", () => {
+    const input = document.createElement("input")
+    const textarea = document.createElement("textarea")
+    const select = document.createElement("select")
+    expect(isEditableEscapeTarget(input)).toBe(true)
+    expect(isEditableEscapeTarget(textarea)).toBe(true)
+    expect(isEditableEscapeTarget(select)).toBe(true)
+  })
+
+  test("treats contentEditable regions as editable", () => {
+    const editable = document.createElement("div")
+    editable.contentEditable = "true"
+    expect(isEditableEscapeTarget(editable)).toBe(true)
+  })
+
+  test("treats elements inside a protected region as editable", () => {
+    const protectedRoot = document.createElement("div")
+    protectedRoot.setAttribute("data-prevent-autofocus", "")
+    const child = document.createElement("span")
+    protectedRoot.appendChild(child)
+    expect(isEditableEscapeTarget(child)).toBe(true)
+    expect(isEditableEscapeTarget(protectedRoot)).toBe(true)
+  })
+
+  test("leaves ordinary targets untouched", () => {
+    const button = document.createElement("button")
+    expect(isEditableEscapeTarget(button)).toBe(false)
+    expect(isEditableEscapeTarget(null)).toBe(false)
+    expect(isEditableEscapeTarget(undefined)).toBe(false)
   })
 })
 
