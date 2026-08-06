@@ -743,6 +743,10 @@ msgid "app.attachment.action.download"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.attachment.action.openInBrowser"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.attachment.action.viewSourceFile"
 msgstr ""
 

@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js"
 import type { Component } from "solid-js"
+import type { AttachmentPart } from "@ericsanchezok/synergy-sdk"
 
 // ── Tool component type ──────────────────────────────────────
 
@@ -18,6 +19,7 @@ export interface ToolProps {
   forceOpen?: boolean
   sessionId?: string
   messageId?: string
+  attachments?: AttachmentPart[]
 }
 
 export type ToolComponent = Component<ToolProps>
