@@ -257,6 +257,31 @@ describe("parseCodexTranscript", () => {
     expect(tool.state.status).toBe("completed")
     expect(tool.state.output).toBe("results")
   })
+
+  test("persists rendering semantics so messagePage shows the timeline", () => {
+    // Regression: imported user messages must carry the same persisted
+    // visible/origin/includeInContext fields the normal create path writes.
+    // messagePage derives `visible` from parts, which are not loaded for
+    // non-legacy messages; an unset value would derive as `false` and hide
+    // the whole conversation in the UI.
+    for (const { report } of [parseClaudeCodeTranscript(claudeTranscript()), parseCodexTranscript(codexTranscript())]) {
+      const session = report.sessions[0]
+      const user = session.messages.find((m) => m.info.role === "user")
+      const assistant = session.messages.find((m) => m.info.role === "assistant")
+      expect(user).toBeDefined()
+      expect(assistant).toBeDefined()
+      expect(user!.info).toMatchObject({
+        visible: true,
+        includeInContext: true,
+        origin: { type: "user" },
+      })
+      expect((user!.info as { rootID?: string }).rootID).toBe(user!.info.id)
+      // Assistant messages persist their root so reads never fall back to
+      // empty-parts derivation for the session.
+      expect((assistant!.info as { rootID?: string }).rootID).toBe(user!.info.id)
+      expect((assistant!.info as { parentID?: string }).parentID).toBe(user!.info.id)
+    }
+  })
 })
 
 describe("foreign report schema", () => {

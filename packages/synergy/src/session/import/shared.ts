@@ -27,6 +27,8 @@ export interface ForeignMessage {
   role: "user" | "assistant"
   created: number
   parentID?: string
+  /** Root user-message id; assigned by `linkTurns` before report building. */
+  rootID?: string
   parts: ForeignPart[]
 }
 
@@ -106,6 +108,13 @@ function userMessage(input: {
     role: "user" as const,
     isRoot: true,
     rootID: input.id,
+    // Persist the same rendering semantics the normal create path writes
+    // (input.ts): the messagePage read path derives `visible` from parts,
+    // which are not loaded for non-legacy messages, so an unset value would
+    // be derived as `false` and hide the whole timeline.
+    visible: true,
+    origin: { type: "user" as const },
+    includeInContext: true,
     time: { created: input.created },
     agent: IMPORT_AGENT,
     model: input.model ?? UNKNOWN_MODEL,
@@ -117,6 +126,7 @@ function assistantMessage(input: {
   sessionID: string
   created: number
   parentID: string
+  rootID: string
   cwd?: string
   model?: { providerID: string; modelID: string }
 }) {
@@ -127,6 +137,7 @@ function assistantMessage(input: {
     role: "assistant" as const,
     time: { created: input.created, completed: input.created },
     parentID: input.parentID,
+    rootID: input.rootID,
     modelID: model.modelID,
     providerID: model.providerID,
     mode: "build",
@@ -198,6 +209,7 @@ function toMessageV2(
           sessionID,
           created: message.created,
           parentID: message.parentID!,
+          rootID: message.rootID ?? message.parentID!,
           cwd,
           model,
         })
@@ -237,14 +249,16 @@ export function buildReport(input: {
   }
 }
 
-/** Assign a user-message id as the root for every following assistant reply. */
+/** Assign user-message ids as roots and every following assistant reply as a child. */
 export function linkTurns(messages: ForeignMessage[]): void {
   let lastUserID: string | undefined
   for (const message of messages) {
     if (message.role === "user") {
       lastUserID = message.id
+      message.rootID = message.id
     } else if (message.role === "assistant") {
       message.parentID = lastUserID ?? message.id
+      message.rootID = lastUserID ?? message.id
     }
   }
 }
