@@ -658,7 +658,7 @@ export namespace Channel {
           })
 
           const cmdResult = await ChannelCommand.execute(
-            ctx.text,
+            ctx.commandText ?? ctx.text,
             {
               channelType: ctx.channelType,
               accountId: ctx.accountId,
@@ -707,8 +707,8 @@ export namespace Channel {
           const session = await Session.getOrCreateForEndpoint(endpoint, {
             scope: conversationScope,
             interaction: ChannelInteraction.forType(ctx.channelType),
-            ...(ctx.channelType === "github"
-              ? { agentOverride: resolveChannelAccountAgent(accountConfig) ?? "github-channel-agent" }
+            ...(provider.defaultAgent
+              ? { agentOverride: resolveChannelAccountAgent(accountConfig) ?? provider.defaultAgent }
               : {}),
           })
           const sessionID = session.id
@@ -758,6 +758,12 @@ export namespace Channel {
                 onError: (error: unknown) => log.warn("failed to update status reaction", { error }),
               })
               void reactionController.setQueued()
+
+              // The foreground streaming card owns this root's terminal reply:
+              // register the root so the outbound bridge skips it and the
+              // answer is not delivered twice. Queued (busy/recovered) roots
+              // are never registered and keep the bridge as their delivery path.
+              ChannelOutbound.beginForeground(sessionID, delivery.messageID)
 
               let streaming = createStreamingSession({
                 accountId: ctx.accountId,
@@ -861,6 +867,17 @@ export namespace Channel {
                 // degraded fallback so the user still receives tool outputs.
                 const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
                 await streaming.close(responseText || fallbackText, hasError)
+                if (result.info.role === "assistant") {
+                  // The streaming card already delivered this root's terminal
+                  // reply. Persist the sent marker so any later message update
+                  // (context usage, metadata merge) never re-triggers the
+                  // outbound bridge after the foreground registration ends.
+                  await Session.mergeMessageMetadata({
+                    sessionID,
+                    messageID: result.info.id,
+                    metadata: { channelOutboundSent: true },
+                  }).catch((err) => log.warn("failed to mark channel reply as sent", { sessionID, error: err }))
+                }
                 const rootID =
                   result.info.role === "assistant" ? (result.info.rootID ?? result.info.parentID) : result.info.id
                 const taskMessages = await loadChannelTaskMessages({ sessionID, rootID, terminal: result })
@@ -921,6 +938,7 @@ export namespace Channel {
                     log.warn("streaming card error finalization failed", { sessionID, error: closeError }),
                   )
               } finally {
+                ChannelOutbound.endForeground(sessionID, delivery.messageID)
                 unsubMessage()
                 unsubPart()
               }

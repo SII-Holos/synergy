@@ -4,6 +4,7 @@ import fs from "fs/promises"
 import path from "path"
 import z from "zod"
 import { ProviderAuthHealth } from "./auth-health"
+import { readFileWithRetry } from "../util/io-retry"
 
 export namespace Auth {
   const removalRevisions = new Map<string, number>()
@@ -271,9 +272,28 @@ export namespace Auth {
   }
 
   async function readStore(): Promise<Store> {
-    const file = Bun.file(filepath())
-    const raw = await file.json().catch(() => undefined)
-    const rawCredentials = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as any).credentials : undefined
+    let raw: string
+    try {
+      raw = await readFileWithRetry(filepath())
+    } catch (error) {
+      // A missing store is a fresh install; any other read failure must not
+      // be treated as an empty store, or a later write would wipe credentials.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { schemaVersion: 2, credentials: {} }
+      }
+      throw error
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      parsed = undefined
+    }
+    const rawCredentials =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as { credentials?: unknown }).credentials
+        : undefined
     const credentials: Record<string, StoreEntry> = {}
     if (rawCredentials && typeof rawCredentials === "object" && !Array.isArray(rawCredentials)) {
       for (const [providerID, value] of Object.entries(rawCredentials)) {

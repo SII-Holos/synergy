@@ -1101,6 +1101,10 @@
               "description": "Public HTTPS origin used when source is custom",
               "type": "string",
               "format": "uri"
+            },
+            "cacheDir": {
+              "description": "Directory where the bundled local embedding model is cached (default: ~/.synergy/data/embedding/models). Supports {env:VAR} references.",
+              "type": "string"
             }
           },
           "additionalProperties": false
@@ -2153,6 +2157,13 @@
                       "type": "string",
                       "minLength": 1
                     },
+                    "workspaceTtlHours": {
+                      "description": "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.",
+                      "default": 24,
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
                     "pollingIntervalMs": {
                       "description": "Interval between GitHub API polls in milliseconds (default 5 minutes)",
                       "default": 300000,
@@ -2191,6 +2202,7 @@
                     "enabled",
                     "repositories",
                     "workspaceDir",
+                    "workspaceTtlHours",
                     "pollingIntervalMs",
                     "autoReview",
                     "autoRespond"

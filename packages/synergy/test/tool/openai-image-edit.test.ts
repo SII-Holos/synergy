@@ -395,7 +395,7 @@ describe("tool.openai_image_edit", () => {
         expect(message).not.toContain(imageData.slice(0, 80))
       },
     })
-  })
+  }, 20_000)
 
   test("missing image data rejects without writing output", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -447,6 +447,236 @@ describe("tool.openai_image_edit", () => {
             ctx,
           ),
         ).rejects.toThrow("OpenAI Codex is not connected. Run synergy auth login and choose OpenAI Codex.")
+      },
+    })
+  })
+  test("transient 500 response retries with backoff and succeeds on the second attempt", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
+    let fetchCalls = 0
+    globalThis.fetch = asFetch(async () => {
+      fetchCalls++
+      if (fetchCalls === 1) return jsonResponse({ error: { message: "boom" } }, { status: 500 })
+      return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageEditTool.init()
+        const result = await tool.execute(
+          {
+            prompt: "Recolor this image.",
+            input_paths: ["inputs/source.png"],
+            output_path: "outputs/fixed.png",
+            size: "auto",
+            quality: "auto",
+            background: "auto",
+          },
+          ctx,
+        )
+        expect(fetchCalls).toBe(2)
+        expect(result.output).toContain("Edited image saved")
+      },
+    })
+  })
+
+  test("persistent 5xx fails after the configured number of attempts", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
+    let fetchCalls = 0
+    globalThis.fetch = asFetch(async () => {
+      fetchCalls++
+      return jsonResponse({ error: { message: "boom" } }, { status: 500 })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageEditTool.init()
+        await expect(
+          tool.execute(
+            {
+              prompt: "Recolor this image.",
+              input_paths: ["inputs/source.png"],
+              output_path: "outputs/fixed.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("Codex image edit failed with status 500")
+        expect(fetchCalls).toBe(3)
+      },
+    })
+  }, 20_000)
+
+  test("429 with retry-after retries after the indicated delay and succeeds", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (String(input).includes("/images/")) imageCalls++
+      if (imageCalls === 1) {
+        return jsonResponse({ error: { message: "rate limited" } }, { status: 429, headers: { "retry-after": "1" } })
+      }
+      return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageEditTool.init()
+        const started = Date.now()
+        const result = await tool.execute(
+          {
+            prompt: "Recolor this image.",
+            input_paths: ["inputs/source.png"],
+            output_path: "outputs/fixed.png",
+            size: "auto",
+            quality: "auto",
+            background: "auto",
+          },
+          ctx,
+        )
+        expect(imageCalls).toBe(2)
+        expect(Date.now() - started).toBeGreaterThanOrEqual(800)
+        expect(result.output).toContain("Edited image saved")
+      },
+    })
+  })
+  test("429 with retry-after over the cap surfaces the rate limit without retrying", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (String(input).includes("/images/")) imageCalls++
+      return jsonResponse({ error: { message: "rate limited" } }, { status: 429, headers: { "retry-after": "31" } })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageEditTool.init()
+        const started = Date.now()
+        await expect(
+          tool.execute(
+            {
+              prompt: "Recolor this image.",
+              input_paths: ["inputs/source.png"],
+              output_path: "outputs/ratelimited.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("Codex image edit is rate-limited or quota-limited. Retry after 31 seconds.")
+        expect(imageCalls).toBe(1)
+        expect(Date.now() - started).toBeLessThan(5_000)
+      },
+    })
+  })
+
+  test("transient network failure retries and succeeds on the second attempt", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
+    let fetchCalls = 0
+    globalThis.fetch = asFetch(async () => {
+      fetchCalls++
+      if (fetchCalls === 1) throw new TypeError("fetch failed")
+      return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageEditTool.init()
+        const result = await tool.execute(
+          {
+            prompt: "Recolor this image.",
+            input_paths: ["inputs/source.png"],
+            output_path: "outputs/fixed.png",
+            size: "auto",
+            quality: "auto",
+            background: "auto",
+          },
+          ctx,
+        )
+        expect(fetchCalls).toBe(2)
+        expect(result.output).toContain("Edited image saved")
+      },
+    })
+  })
+
+  test("401 credential rejection does not retry", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (String(input).includes("/images/")) imageCalls++
+      return jsonResponse({ error: { message: "unauthorized" } }, { status: 401 })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageEditTool.init()
+        await expect(
+          tool.execute(
+            {
+              prompt: "Recolor this image.",
+              input_paths: ["inputs/source.png"],
+              output_path: "outputs/fixed.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow()
+        expect(imageCalls).toBe(1)
+      },
+    })
+  })
+
+  test("cancellation before execution aborts without sending a request", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
+    const controller = new AbortController()
+    controller.abort()
+    let fetchCalls = 0
+    globalThis.fetch = asFetch(async () => {
+      fetchCalls++
+      return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageEditTool.init()
+        await expect(
+          tool.execute(
+            {
+              prompt: "Recolor this image.",
+              input_paths: ["inputs/source.png"],
+              output_path: "outputs/fixed.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            { ...ctx, abort: controller.signal },
+          ),
+        ).rejects.toThrow("Aborted")
+        expect(fetchCalls).toBe(0)
       },
     })
   })

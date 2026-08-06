@@ -11,6 +11,7 @@ import { ToolTextOutput } from "./tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "./message-part"
 import { ToolDiffPreview, type ToolDiffPreviewFileDiff } from "./tool/diff-preview"
 import { hasSaveFileContentInput, saveFilePreviewDiff } from "./tool/save-file-preview"
+import { DiffPatch, canRenderPatch } from "./diff-patch"
 
 type FileDiff = ToolDiffPreviewFileDiff
 
@@ -217,6 +218,7 @@ function operationCounts(operations: string[]): string[] {
 
 export function AnchoredViewTool(props: ToolProps) {
   const { _ } = useLingui()
+  const codeComponent = useCodeComponent()
   const ranges = () => (props.metadata?.ranges ?? []) as RangeInfo[]
   const primaryRange = () => {
     if (ranges().length > 0) return undefined
@@ -233,6 +235,17 @@ export function AnchoredViewTool(props: ToolProps) {
     props.metadata?.tag ? { label: _(ANCHORED_CHIP_DESC.tag) + " " + props.metadata.tag } : undefined,
     conflictCount(props.metadata) > 0 ? { label: _(ANCHORED_CHIP_DESC.conflict), tone: "warning" as const } : undefined,
   ]
+
+  // Full contents are only available when the file fits the snapshot cap;
+  // oversized/binary files keep the raw text output fallback.
+  const content = () => props.metadata?.content as string | undefined
+  const hasContent = () => typeof content() === "string" && content()!.length > 0
+  const file = () => ({
+    name: pathFromProps(props) || "file",
+    contents: content() ?? "",
+    cacheKey: (props.metadata?.tag as string | undefined) || checksum(content() ?? ""),
+  })
+
   return (
     <BasicTool
       {...props}
@@ -258,7 +271,42 @@ export function AnchoredViewTool(props: ToolProps) {
           { label: _(summaryLabelTagDescriptor), value: props.metadata?.tag },
         ]}
       />
-      <RawOutput output={props.output} />
+      <Show when={hasContent()} fallback={<RawOutput output={props.output} />}>
+        <Show when={ranges().length > 0}>
+          <For each={ranges()}>
+            {(range) => (
+              <div data-component="view-content">
+                <Dynamic
+                  component={codeComponent}
+                  file={file()}
+                  renderRange={{
+                    startingLine: range.offset ?? 0,
+                    totalLines: range.limit ?? Infinity,
+                    bufferBefore: 0,
+                    bufferAfter: 0,
+                  }}
+                  overflow="scroll"
+                />
+              </div>
+            )}
+          </For>
+        </Show>
+        <Show when={ranges().length === 0}>
+          <div data-component="view-content">
+            <Dynamic
+              component={codeComponent}
+              file={file()}
+              renderRange={{
+                startingLine: (props.metadata?.offset as number | undefined) ?? 0,
+                totalLines: (props.metadata?.limit as number | undefined) ?? Infinity,
+                bufferBefore: 0,
+                bufferAfter: 0,
+              }}
+              overflow="scroll"
+            />
+          </div>
+        </Show>
+      </Show>
     </BasicTool>
   )
 }
@@ -357,7 +405,14 @@ export function AnchoredReviseTool(props: ToolProps) {
       />
       <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
       <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
-        {(diff) => <ToolDiffPreview diff={diff()} />}
+        {(diff) => {
+          const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
+          return (
+            <Show when={canRenderPatch(patch())} fallback={<ToolDiffPreview diff={diff()} />}>
+              <DiffPatch patch={patch()!} diffStyle="unified" />
+            </Show>
+          )
+        }}
       </Show>
     </BasicTool>
   )
@@ -414,7 +469,14 @@ export function AnchoredSaveTool(props: ToolProps) {
           </Show>
         }
       >
-        {(diff) => <ToolDiffPreview diff={diff()} />}
+        {(diff) => {
+          const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
+          return (
+            <Show when={canRenderPatch(patch())} fallback={<ToolDiffPreview diff={diff()} />}>
+              <DiffPatch patch={patch()!} diffStyle="unified" />
+            </Show>
+          )
+        }}
       </Show>
     </BasicTool>
   )

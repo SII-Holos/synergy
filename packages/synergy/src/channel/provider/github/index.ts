@@ -108,6 +108,7 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
 export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithubAccount, Config.ChannelGithub> {
   readonly type = "github"
   readonly lifecycle = "self_connected" as const
+  readonly defaultAgent = "github-channel-agent"
   readonly conversation = {
     replyMessage: (input: Parameters<GithubProvider["replyMessage"]>[0]) => this.replyMessage(input),
     pushMessage: (input: Parameters<GithubProvider["pushMessage"]>[0]) => this.pushMessage(input),
@@ -169,6 +170,16 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     if (repositories.length === 0) {
       log.warn("github channel account has no repositories", { accountHash })
     }
+
+    // Sweep expired checkouts on connect so unused clones are reclaimed per
+    // the account TTL (session history is preserved; clones are recreated on
+    // the next thread trigger).
+    const ttlHours = account.workspaceTtlHours ?? 24
+    GithubChannelWorkspace.sweep({ accountId: input.accountId, workspaceTtlHours: ttlHours })
+      .then((removed) => {
+        if (removed > 0) log.info("swept expired github workspace checkouts", { accountHash, removed })
+      })
+      .catch((error) => log.warn("github workspace sweep failed", { accountHash, error }))
 
     for (const repository of repositories) {
       const loop = runRepositoryPollLoop({
@@ -260,6 +271,7 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     const { record, scope } = await GithubChannelWorkspace.ensure({
       accountId: input.accountId,
       workspaceDir: account.workspaceDir,
+      workspaceTtlHours: account.workspaceTtlHours ?? 24,
       repository: parsed.repository,
       issueNumber: parsed.issueNumber,
       pullNumber: facts.pullNumber,

@@ -91,6 +91,9 @@ export namespace Global {
     get libraryDebug() {
       return path.join(root(), "data", "library")
     },
+    get embeddingModels() {
+      return path.join(root(), "data", "embedding", "models")
+    },
     get lspPids() {
       return path.join(root(), "state", "lsp-pids.json")
     },
@@ -125,6 +128,7 @@ await Promise.all([
   fs.mkdir(Global.Path.bin, { recursive: true }),
   fs.mkdir(Global.Path.assets, { recursive: true }),
   fs.mkdir(Global.Path.media, { recursive: true }),
+  fs.mkdir(Global.Path.embeddingModels, { recursive: true }),
   fs.mkdir(Global.Path.schema, { recursive: true }),
 ])
 

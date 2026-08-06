@@ -42,6 +42,7 @@ export type TokenReceipt = {
 const MAX_BATCH = 100
 const MAX_PAYLOAD_BYTES = 256 * 1024
 const MAX_KEEPALIVE_PAYLOAD_BYTES = 60 * 1024
+const MAX_METRICS_PER_BATCH = 100
 const FLUSH_INTERVAL_MS = 10_000
 const MAX_LABEL_LENGTH = 160
 const RECENT_LONG_TASK_WINDOW_MS = 60_000
@@ -252,7 +253,8 @@ async function flushBrowserMetrics(input: { url: string; client: SynergyClient }
       { perfBrowserMetricBatch: fitted.body },
       { throwOnError: true, keepalive: options?.keepalive },
     )
-  } catch {
+  } catch (error) {
+    if (!shouldRetryBrowserMetricBatch(error)) return
     queue = [...fitted.entries, ...queue].slice(0, MAX_BATCH * 4)
     locallyRejected += rejected
   }
@@ -279,11 +281,25 @@ export function fitBrowserMetricBatch(input: {
     }
   }
   let body = build()
+  while (body.metrics.length > MAX_METRICS_PER_BATCH) {
+    const index = entries.findLastIndex((entry) => entry.kind === "metric")
+    if (index < 0) break
+    entries.splice(index, 1)
+    body = build()
+  }
   while (entries.length > 0 && encodedSize(body) > input.maxBytes) {
     entries.pop()
     body = build()
   }
-  return { entries, deferred: input.entries.slice(entries.length), body }
+  const kept = new Set(entries)
+  return { entries, deferred: input.entries.filter((entry) => !kept.has(entry)), body }
+}
+
+export function shouldRetryBrowserMetricBatch(error: unknown) {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    return (error as { code?: unknown }).code !== "PERF_INVALID_METRIC_BATCH"
+  }
+  return true
 }
 
 function observeWebVitals() {

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
+import fs from "fs/promises"
 import { Global } from "../../../../src/global"
 import { GithubChannelWorkspace } from "../../../../src/channel/provider/github/workspace"
+import { Storage } from "../../../../src/storage/storage"
+import { StoragePath } from "../../../../src/storage/path"
+import { externalIdentityHash } from "../../../../src/channel/identity"
 import {
   isNumericCommentId,
   lookupBodyChat,
@@ -74,6 +78,68 @@ describe("github channel workspace — directory resolution", () => {
   test("list returns empty for unknown accounts", async () => {
     const records = await GithubChannelWorkspace.list({ accountId: "missing" })
     expect(records).toEqual([])
+  })
+
+  test("sweep removes expired checkouts but preserves the workspace index record", async () => {
+    const accountId = `sweep-${crypto.randomUUID()}`
+    const accountHash = externalIdentityHash(accountId)
+    const directory = path.join(Global.Path.home, "github-workspaces", "sweep-target")
+    await fs.mkdir(directory, { recursive: true })
+
+    // The index key must match GithubChannelWorkspace.find's hash derivation:
+    // sha256("<repository>#<issueNumber>") first 16 hex chars.
+    const hasher = new Bun.CryptoHasher("sha256")
+    hasher.update("owner/repo#1")
+    const workspaceHash = hasher.digest("hex").slice(0, 16)
+
+    const record = {
+      workspaceHash,
+      repository: "owner/repo",
+      issueNumber: 1,
+      directory,
+      scopeID: "proj_sweep",
+      createdAt: Date.now() - 48 * 60 * 60 * 1_000,
+      updatedAt: Date.now() - 48 * 60 * 60 * 1_000,
+    }
+    await Storage.write(StoragePath.githubChannelWorkspaceIndexEntry(accountHash, workspaceHash), record)
+
+    const removed = await GithubChannelWorkspace.sweep({ accountId, workspaceTtlHours: 24 })
+    expect(removed).toBe(1)
+    await expect(fs.stat(directory)).rejects.toThrow()
+
+    // The index record survives so the thread's session history stays intact.
+    const stored = await GithubChannelWorkspace.find({
+      accountId,
+      repository: "owner/repo",
+      issueNumber: 1,
+    })
+    expect(stored?.scopeID).toBe("proj_sweep")
+  })
+
+  test("sweep keeps fresh checkouts", async () => {
+    const accountId = `sweep-fresh-${crypto.randomUUID()}`
+    const accountHash = externalIdentityHash(accountId)
+    const directory = path.join(Global.Path.home, "github-workspaces", "sweep-fresh")
+    await fs.mkdir(directory, { recursive: true })
+
+    const hasher = new Bun.CryptoHasher("sha256")
+    hasher.update("owner/repo#2")
+    const workspaceHash = hasher.digest("hex").slice(0, 16)
+
+    const record = {
+      workspaceHash,
+      repository: "owner/repo",
+      issueNumber: 2,
+      directory,
+      scopeID: "proj_fresh",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    await Storage.write(StoragePath.githubChannelWorkspaceIndexEntry(accountHash, workspaceHash), record)
+
+    const removed = await GithubChannelWorkspace.sweep({ accountId, workspaceTtlHours: 24 })
+    expect(removed).toBe(0)
+    await expect(fs.stat(directory)).resolves.toBeDefined()
   })
 })
 

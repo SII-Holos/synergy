@@ -66,6 +66,15 @@ const githubWorkspaceDirDescription = {
   id: "settings.channels.github.workspaceDirDescription",
   message: "Directory under which per-repository checkouts are created.",
 }
+const githubWorkspaceTtlLabel = {
+  id: "settings.channels.github.workspaceTtlHours",
+  message: "Checkout retention (hours)",
+}
+const githubWorkspaceTtlDescription = {
+  id: "settings.channels.github.workspaceTtlHoursDescription",
+  message:
+    "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.",
+}
 const githubPollingLabel = { id: "settings.channels.github.pollingIntervalMs", message: "Polling interval (ms)" }
 const githubPollingDescription = {
   id: "settings.channels.github.pollingIntervalMsDescription",
@@ -191,6 +200,18 @@ export function ChannelsPanel(props: {
                       placeholder={_(githubWorkspaceDirPlaceholder)}
                       value={account.workspaceDir}
                       onChange={(value) => props.onGithubFieldChange(index(), "workspaceDir", value)}
+                    />
+                  }
+                />
+                <SettingRow
+                  title={_(githubWorkspaceTtlLabel)}
+                  description={_(githubWorkspaceTtlDescription)}
+                  trailing={
+                    <TextField
+                      type="number"
+                      placeholder="24"
+                      value={account.workspaceTtlHours}
+                      onChange={(value) => props.onGithubFieldChange(index(), "workspaceTtlHours", value)}
                     />
                   }
                 />
