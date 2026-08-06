@@ -27,7 +27,7 @@ The Settings worktree browser queries only Git project Scopes and keeps successf
 
 ## Web Workspace File Service
 
-The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, file/content/symbol search, and VCS status. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
+The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
 
 Directory results can hide ignored and dot-prefixed entries, are sorted with directories first, and use bounded cursor pages. Reads distinguish:
 
@@ -47,7 +47,14 @@ File-result path enrichment has its own finite timeout and fails open to the com
 
 The classic debug file search is lazy and reuses this same bounded project index. Starting a project Scope does not launch a second fire-and-forget repository scan.
 
-The current public workspace-file routes are read/browse/search/status contracts. Agent write operations use the governed tool pipeline rather than an unguarded file-service write route.
+The current public workspace-file routes are read/browse/search/status contracts plus `POST /workspace/files/write` (operationId `workspace.files.write`), a user-direct edit channel. Writes are bounded by the same path rules as reads — lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied — and additionally:
+
+- sensitive paths are rejected via `SensitivePathPolicy` in write mode (Git metadata and secret/credential files such as `.git`, `.env`, and credential stores are not editable)
+- the target file must already exist; read-only filesystem targets are refused
+- an optional `expectedMtime` optimistic lock rejects a concurrent on-disk change with 409 unless the caller opts into `conflictPolicy: "overwrite"`
+- content is capped at 8 MiB and parent-directory creation is opt-in via `createParents`
+
+A successful write invalidates the Git-status cache and the frontend refreshes through the filesystem watcher; no `file.edited` event is published. This route is the user editing their own workspace directly: it is profile-independent and bypasses the agent approval/sandbox pipeline, so path safety is enforced by the service itself rather than by execution policy. Agent write operations remain separate and use the governed tool pipeline (write/save_file tools with permission decisions, locking, events, formatting, and diagnostics), never this route.
 
 ## File Workbench Ownership and Bounds
 
@@ -109,7 +116,7 @@ Message rollback changes the effective transcript through history events. It doe
 
 - Scope owns project context; workspace owns the execution directory.
 - Worktree removal excludes new execution and binding use before it validates and migrates current bindings.
-- Web file routes never escape the active workspace, including through symlinks.
+- Web file routes never escape the active workspace, including through symlinks; user-direct writes additionally reject sensitive paths, read-only targets, and conflicting mtimes.
 - File workbench state and caches have one frontend owner and explicit concurrency/size bounds.
 - Tool reads and writes still cross execution-policy and sensitive-path checks.
 - Anchored tags prove a file snapshot; seen-line tracking proves the agent observed an edit range.

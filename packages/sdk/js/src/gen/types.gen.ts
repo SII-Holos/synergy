@@ -6326,6 +6326,26 @@ export type WorkspaceFileStatusSummary = {
   }>
 }
 
+export type WorkspaceFileWriteResult = {
+  path: string
+  mtime: number
+  size: number
+  existed: boolean
+}
+
+export type ForbiddenError = {
+  message: string
+}
+
+export type WorkspaceFileWriteFileInput = {
+  path: string
+  content: string
+  encoding?: "utf-8" | "base64"
+  createParents?: boolean
+  conflictPolicy?: "fail" | "overwrite"
+  expectedMtime?: number
+}
+
 export type EmbeddingStatus =
   | {
       mode: "local"
@@ -13646,6 +13666,46 @@ export type WorkspaceFilesStatusResponses = {
 
 export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
 
+export type WorkspaceFilesWriteData = {
+  body?: WorkspaceFileWriteFileInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/files/write"
+}
+
+export type WorkspaceFilesWriteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Forbidden
+   */
+  403: ForbiddenError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+}
+
+export type WorkspaceFilesWriteError = WorkspaceFilesWriteErrors[keyof WorkspaceFilesWriteErrors]
+
+export type WorkspaceFilesWriteResponses = {
+  /**
+   * Workspace file write result
+   */
+  200: WorkspaceFileWriteResult
+}
+
+export type WorkspaceFilesWriteResponse = WorkspaceFilesWriteResponses[keyof WorkspaceFilesWriteResponses]
+
 export type LibraryEmbeddingStatusData = {
   body?: never
   path?: never
@@ -16895,6 +16955,10 @@ export type PluginInvokeOperationErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Forbidden
+   */
+  403: ForbiddenError
   /**
    * Not found
    */

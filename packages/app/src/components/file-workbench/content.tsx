@@ -2,16 +2,19 @@ import DOMPurify from "dompurify"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useFile } from "@/context/file"
 import { usePrompt } from "@/context/prompt"
+import { isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
-import { FileSourceView } from "./source-view"
+import { FileSourceView, type FileSourceViewApi } from "./source-view"
 import "./styles.css"
 import { fileWorkbench as F } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
@@ -236,6 +239,68 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   })
   const selectedLines = createMemo(() => file.view.selectedLines(path()))
   const breadcrumb = createMemo(() => path().split("/").filter(Boolean))
+  const [editing, setEditing] = createSignal(false)
+  const [dirty, setDirty] = createSignal(false)
+  const [saving, setSaving] = createSignal(false)
+  let sourceApi: FileSourceViewApi | undefined
+  const canEdit = createMemo(() => mode() === "source" && !!textContent())
+
+  async function runSave(overwrite = false) {
+    if (!sourceApi || saving()) return
+    setSaving(true)
+    try {
+      await file.save(path(), sourceApi.getContent(), { overwrite })
+      setDirty(false)
+      setEditing(false)
+      showToast({
+        type: "success",
+        title: lingui._({ id: F.saved.id, message: F.saved.message }),
+      })
+    } catch (error) {
+      if (isFileWriteConflictError(error)) {
+        showToast({
+          type: "warning",
+          title: lingui._({ id: F.saveConflict.id, message: F.saveConflict.message }),
+          description: lingui._({ id: F.saveConflictOverwrite.id, message: F.saveConflictOverwrite.message }),
+          actions: [
+            {
+              label: lingui._({ id: F.overwrite.id, message: F.overwrite.message }),
+              onClick: () => void runSave(true),
+            },
+            { label: lingui._({ id: F.dismiss.id, message: F.dismiss.message }), onClick: "dismiss" },
+          ],
+        })
+      } else if (isFileWriteDeniedError(error)) {
+        showToast({
+          type: "error",
+          title: lingui._({ id: F.saveDenied.id, message: F.saveDenied.message }),
+          description: error instanceof Error ? error.message : undefined,
+        })
+      } else {
+        showToast({
+          type: "error",
+          title: lingui._({ id: F.saveFailed.id, message: F.saveFailed.message }),
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function startEdit() {
+    if (editing()) return
+    setDirty(false)
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    if (!editing()) return
+    const value = textContent()
+    if (value) sourceApi?.applyContent(value.content)
+    setDirty(false)
+    setEditing(false)
+  }
 
   createEffect(() => {
     if (!path()) return
@@ -244,6 +309,12 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
 
   onMount(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        if (!editing()) return
+        event.preventDefault()
+        void runSave()
+        return
+      }
       if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key.toLowerCase() !== "v") return
       if (!capability().dual) return
       event.preventDefault()
@@ -334,6 +405,47 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               </button>
             </div>
           </Show>
+          <Show when={canEdit()}>
+            <Show
+              when={!editing()}
+              fallback={
+                <>
+                  <button
+                    type="button"
+                    class="file-edit-pill file-edit-pill--save"
+                    disabled={saving() || !dirty()}
+                    onClick={() => void runSave()}
+                  >
+                    <Icon name={getSemanticIcon("state.success")} size="small" />
+                    <span>
+                      {saving()
+                        ? lingui._({ id: F.saving.id, message: F.saving.message })
+                        : lingui._({ id: F.save.id, message: F.save.message })}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    class="file-edit-pill"
+                    disabled={saving()}
+                    onClick={cancelEdit}
+                    aria-label={lingui._({ id: F.discard.id, message: F.discard.message })}
+                  >
+                    <Icon name={getSemanticIcon("action.clear")} size="small" />
+                  </button>
+                </>
+              }
+            >
+              <button
+                type="button"
+                class="file-edit-pill"
+                classList={{ "file-edit-pill--active": editing() }}
+                onClick={startEdit}
+              >
+                <Icon name={getSemanticIcon("action.rename")} size="small" />
+                <span>{lingui._({ id: F.edit.id, message: F.edit.message })}</span>
+              </button>
+            </Show>
+          </Show>
           <IconButton
             icon={getSemanticIcon("workspace.files")}
             variant="ghost"
@@ -389,7 +501,17 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               )}
             </Match>
             <Match when={mode() === "source" ? textContent() : undefined}>
-              {(value) => <FileSourceView path={path()} content={value().content} />}
+              {(value) => (
+                <FileSourceView
+                  path={path()}
+                  content={value().content}
+                  editable={editing()}
+                  onDirtyChange={setDirty}
+                  onRegister={(api) => {
+                    sourceApi = api
+                  }}
+                />
+              )}
             </Match>
             <Match when={capability().kind === "markdown" ? textContent() : undefined}>
               {(value) => <MarkdownPreview path={path()} content={value().content} />}

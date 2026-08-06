@@ -98,7 +98,18 @@ function defineSourceTheme(monaco: Monaco, tokens: ResolvedTheme, mode: "light" 
   return theme
 }
 
-export function FileSourceView(props: { path: string; content: string }) {
+export type FileSourceViewApi = {
+  getContent: () => string
+  applyContent: (content: string) => void
+}
+
+export function FileSourceView(props: {
+  path: string
+  content: string
+  editable?: boolean
+  onDirtyChange?: (dirty: boolean) => void
+  onRegister?: (api: FileSourceViewApi) => void
+}) {
   const file = useFile()
   const sdk = useSDK()
   const theme = useTheme()
@@ -108,8 +119,9 @@ export function FileSourceView(props: { path: string; content: string }) {
   let monacoInstance: Monaco | undefined
   let editor: import("monaco-editor").editor.IStandaloneCodeEditor | undefined
   let disposed = false
-  let currentContent = props.content
   let handleFontChange: ((event: Event) => void) | undefined
+  let baseline = props.content
+  const [dirty, setDirty] = createSignal(false)
 
   onMount(() => {
     handleFontChange = (event: Event) => {
@@ -138,8 +150,8 @@ export function FileSourceView(props: { path: string; content: string }) {
       editor = monaco.editor.create(host, {
         model: cached.model,
         theme: sourceTheme,
-        readOnly: true,
-        domReadOnly: true,
+        readOnly: !props.editable,
+        domReadOnly: !props.editable,
         minimap: { enabled: false },
         automaticLayout: true,
         folding: true,
@@ -199,18 +211,42 @@ export function FileSourceView(props: { path: string; content: string }) {
         })
       })
       editor.onDidBlurEditorText(() => textSelectionController.update(undefined))
+      const modelRef = cached.model
+      modelRef.onDidChangeContent(() => {
+        const next = modelRef.getValue() !== baseline
+        setDirty(next)
+        props.onDirtyChange?.(next)
+      })
+      props.onRegister?.({
+        getContent: () => modelRef.getValue(),
+        applyContent: (content: string) => {
+          baseline = content
+          const state = editor?.saveViewState()
+          modelRef.setValue(content)
+          setDirty(false)
+          props.onDirtyChange?.(false)
+          if (state) editor?.restoreViewState(state)
+        },
+      })
       pruneFileSourceModels(key)
       setLoading(false)
     })
   })
 
   createEffect(() => {
-    if (props.content === currentContent) return
-    currentContent = props.content
+    editor?.updateOptions({ readOnly: !props.editable, domReadOnly: !props.editable })
+  })
+
+  createEffect(() => {
+    if (props.content === baseline) return
+    baseline = props.content
     const model = editor?.getModel()
     if (!model || model.getValue() === props.content) return
+    if (dirty()) return
     const state = editor?.saveViewState()
     model.setValue(props.content)
+    setDirty(false)
+    props.onDirtyChange?.(false)
     if (state) editor?.restoreViewState(state)
   })
 

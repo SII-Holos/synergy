@@ -2227,6 +2227,14 @@ msgid "app.file.action.close"
 msgstr "Close"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.dismiss"
+msgstr "Dismiss"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.overwrite"
+msgstr "Overwrite"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.retry"
 msgstr "Retry"
 
@@ -2287,8 +2295,44 @@ msgid "app.file.mode.source"
 msgstr "Source"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflict"
+msgstr "File changed on disk"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflictOverwrite"
+msgstr "The file was modified elsewhere since it was loaded. Overwrite it with your changes?"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saved"
+msgstr "File saved"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveDenied"
+msgstr "This file cannot be edited"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveFailed"
+msgstr "Failed to save file"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.addToContext"
 msgstr "Add to context"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.discard"
+msgstr "Discard"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.edit"
+msgstr "Edit"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.save"
+msgstr "Save"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.saving"
+msgstr "Saving…"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.toggleFileTree"

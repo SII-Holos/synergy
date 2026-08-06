@@ -198,3 +198,35 @@ export const WorkspaceFilesRoute = new Hono()
       return c.json(await WorkspaceFileStatus.summary())
     },
   )
+  .post(
+    "/write",
+    describeRoute({
+      summary: "Write workspace file",
+      description: "Write content to an existing workspace file with optional optimistic concurrency control.",
+      operationId: "workspace.files.write",
+      responses: {
+        200: {
+          description: "Workspace file write result",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.WriteFileResult),
+            },
+          },
+        },
+        ...errors(400, 404, 409, 403),
+      },
+    }),
+    validator("json", WorkspaceFile.WriteFileInput),
+    async (c) => {
+      const body = c.req.valid("json")
+      try {
+        return c.json(await WorkspaceFileService.write(body))
+      } catch (err: any) {
+        if (err instanceof WorkspaceFileService.AccessDeniedError) return c.json({ message: err.message }, 403)
+        if (err instanceof WorkspaceFileService.WriteConflictError) return c.json({ message: err.message }, 409)
+        if (err instanceof WorkspaceFileService.NotFoundError) return c.json({ message: err.message }, 404)
+        if (err instanceof WorkspaceFileService.TooLargeError) return c.json({ message: err.message }, 400)
+        throw err
+      }
+    },
+  )

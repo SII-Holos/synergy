@@ -92,3 +92,185 @@ describe("GET /workspace/files", () => {
     expect(JSON.stringify(body)).not.toContain(tmp.path)
   })
 })
+
+describe("POST /workspace/files/write", () => {
+  function postWrite(app: ReturnType<typeof Server.App>, directory: string, body: Record<string, unknown>) {
+    return app.request(workspaceUrl("write", directory), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  }
+
+  test("writes content to an existing file and returns the write result", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "hello.txt"), "original")
+      },
+    })
+    const app = Server.App()
+
+    const response = await postWrite(app, tmp.path, { path: "hello.txt", content: "updated content" })
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.path).toBe("hello.txt")
+    expect(body.existed).toBe(true)
+    expect(body.size).toBe(Buffer.byteLength("updated content", "utf-8"))
+    expect(typeof body.mtime).toBe("number")
+    expect(body.mtime).toBeGreaterThan(0)
+    expect(await Bun.file(path.join(tmp.path, "hello.txt")).text()).toBe("updated content")
+  })
+
+  test("allows overwriting without expectedMtime", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "notes.txt"), "first")
+      },
+    })
+    const app = Server.App()
+
+    const first = await postWrite(app, tmp.path, { path: "notes.txt", content: "second" })
+    expect(first.status).toBe(200)
+    const second = await postWrite(app, tmp.path, { path: "notes.txt", content: "third" })
+    expect(second.status).toBe(200)
+    expect(await Bun.file(path.join(tmp.path, "notes.txt")).text()).toBe("third")
+  })
+
+  test("succeeds when expectedMtime matches the on-disk mtime", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "edit.txt"), "before")
+      },
+    })
+    const app = Server.App()
+
+    const statResponse = await app.request(workspaceUrl("stat", tmp.path, { path: "edit.txt" }))
+    expect(statResponse.status).toBe(200)
+    const statBody = await statResponse.json()
+
+    const response = await postWrite(app, tmp.path, {
+      path: "edit.txt",
+      content: "after",
+      expectedMtime: statBody.mtime,
+    })
+    expect(response.status).toBe(200)
+    expect(await Bun.file(path.join(tmp.path, "edit.txt")).text()).toBe("after")
+  })
+
+  test("rejects a stale expectedMtime with 409 and leaves the file untouched", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "conflict.txt"), "v1")
+      },
+    })
+    const app = Server.App()
+
+    const file = path.join(tmp.path, "conflict.txt")
+    const staleMtime = (await fs.stat(file)).mtimeMs
+    await Bun.sleep(25)
+    await Bun.write(file, "v2")
+
+    const response = await postWrite(app, tmp.path, {
+      path: "conflict.txt",
+      content: "v3",
+      expectedMtime: staleMtime,
+    })
+    expect(response.status).toBe(409)
+    const body = await response.json()
+    expect(body.message).toContain("changed on disk")
+    expect(await Bun.file(file).text()).toBe("v2")
+  })
+
+  test("skips the mtime conflict check with conflictPolicy overwrite", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "force.txt"), "v1")
+      },
+    })
+    const app = Server.App()
+
+    const file = path.join(tmp.path, "force.txt")
+    const staleMtime = (await fs.stat(file)).mtimeMs
+    await Bun.sleep(25)
+    await Bun.write(file, "v2")
+
+    const response = await postWrite(app, tmp.path, {
+      path: "force.txt",
+      content: "v3",
+      expectedMtime: staleMtime,
+      conflictPolicy: "overwrite",
+    })
+    expect(response.status).toBe(200)
+    expect(await Bun.file(file).text()).toBe("v3")
+  })
+
+  test("returns 404 for a missing file", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const response = await postWrite(Server.App(), tmp.path, { path: "missing.txt", content: "x" })
+    expect(response.status).toBe(404)
+    const body = await response.json()
+    expect(body.message).toContain("does not exist")
+    expect(JSON.stringify(body)).not.toContain(tmp.path)
+  })
+
+  test("rejects paths escaping the workspace with 403", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const app = Server.App()
+
+    const relativeEscape = await postWrite(app, tmp.path, { path: "../outside.txt", content: "x" })
+    expect(relativeEscape.status).toBe(403)
+    expect((await relativeEscape.json()).message).toContain("Access denied")
+
+    const absoluteEscape = await postWrite(app, tmp.path, {
+      path: path.join(tmp.path, "..", "outside-absolute.txt"),
+      content: "x",
+    })
+    expect(absoluteEscape.status).toBe(403)
+    expect((await absoluteEscape.json()).message).toContain("Access denied")
+  })
+
+  test("rejects sensitive paths like .env with 403", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".env"), "SECRET=1")
+      },
+    })
+    const response = await postWrite(Server.App(), tmp.path, { path: ".env", content: "SECRET=2" })
+    expect(response.status).toBe(403)
+    const body = await response.json()
+    expect(body.message).toContain("Access denied")
+    expect(await Bun.file(path.join(tmp.path, ".env")).text()).toBe("SECRET=1")
+  })
+
+  test("rejects read-only files with 403", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "locked.txt"), "locked")
+        await fs.chmod(path.join(dir, "locked.txt"), 0o444)
+      },
+    })
+    const response = await postWrite(Server.App(), tmp.path, { path: "locked.txt", content: "unlocked?" })
+    expect(response.status).toBe(403)
+    const body = await response.json()
+    expect(body.message).toContain("read-only")
+    expect(await Bun.file(path.join(tmp.path, "locked.txt")).text()).toBe("locked")
+  })
+
+  test("requires a Scope instead of silently using home", async () => {
+    const response = await Server.App().request("/workspace/files/write", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "hello.txt", content: "x" }),
+    })
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.name).toBe("ScopeRequired")
+  })
+})

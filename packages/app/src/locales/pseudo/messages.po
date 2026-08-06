@@ -2227,6 +2227,14 @@ msgid "app.file.action.close"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.dismiss"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.overwrite"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.retry"
 msgstr ""
 
@@ -2287,7 +2295,43 @@ msgid "app.file.mode.source"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflict"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflictOverwrite"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saved"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveDenied"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveFailed"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.addToContext"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.discard"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.edit"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.save"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.saving"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
