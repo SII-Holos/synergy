@@ -1,8 +1,10 @@
+import { authLockDirectory, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { Global } from "../global"
 import fs from "fs/promises"
 import path from "path"
 import z from "zod"
 import { ProviderAuthHealth } from "./auth-health"
+import { readFileWithRetry } from "../util/io-retry"
 
 export namespace Auth {
   const removalRevisions = new Map<string, number>()
@@ -137,8 +139,6 @@ export namespace Auth {
   })
 
   const locks = new Map<string, Promise<unknown>>()
-  const FILE_LOCK_RETRY_MS = 25
-  const FILE_LOCK_TIMEOUT_MS = 60_000
 
   function filepath() {
     return Global.Path.authProvider
@@ -272,9 +272,28 @@ export namespace Auth {
   }
 
   async function readStore(): Promise<Store> {
-    const file = Bun.file(filepath())
-    const raw = await file.json().catch(() => undefined)
-    const rawCredentials = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as any).credentials : undefined
+    let raw: string
+    try {
+      raw = await readFileWithRetry(filepath())
+    } catch (error) {
+      // A missing store is a fresh install; any other read failure must not
+      // be treated as an empty store, or a later write would wipe credentials.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { schemaVersion: 2, credentials: {} }
+      }
+      throw error
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      parsed = undefined
+    }
+    const rawCredentials =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as { credentials?: unknown }).credentials
+        : undefined
     const credentials: Record<string, StoreEntry> = {}
     if (rawCredentials && typeof rawCredentials === "object" && !Array.isArray(rawCredentials)) {
       for (const [providerID, value] of Object.entries(rawCredentials)) {
@@ -496,76 +515,18 @@ export namespace Auth {
     const next = previous.catch(() => {}).then(() => current)
     locks.set(key, next)
     await previous.catch(() => {})
-    let fileLock: { release(): Promise<void> } | undefined
     try {
-      fileLock = await acquireFileLock(key)
-      return await fn()
+      return await withFileLock(
+        {
+          directory: authLockDirectory(Global.Path.root),
+          key,
+          timeoutMessage: `Timed out acquiring provider credential lock for ${key}`,
+        },
+        fn,
+      )
     } finally {
-      await fileLock?.release()
       release()
       if (locks.get(key) === next) locks.delete(key)
-    }
-  }
-
-  async function acquireFileLock(key: string): Promise<{ release(): Promise<void> }> {
-    const directory = path.join(Global.Path.auth, ".locks")
-    await fs.mkdir(directory, { recursive: true, mode: 0o700 })
-    const digest = new Bun.CryptoHasher("sha256").update(key).digest("hex")
-    const filename = path.join(directory, `${digest}.lock`)
-    const startedAt = Date.now()
-
-    while (true) {
-      try {
-        const handle = await fs.open(filename, "wx", 0o600)
-        try {
-          await handle.writeFile(JSON.stringify({ pid: process.pid, acquiredAt: Date.now() }))
-        } catch (error) {
-          await fs.unlink(filename).catch(() => {})
-          throw error
-        } finally {
-          await handle.close()
-        }
-        return {
-          async release() {
-            await fs.unlink(filename).catch((error) => {
-              if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-            })
-          },
-        }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
-        const owner = await Bun.file(filename)
-          .json()
-          .catch(() => undefined)
-        const ownerPid =
-          owner && typeof owner === "object" && typeof (owner as { pid?: unknown }).pid === "number"
-            ? (owner as { pid: number }).pid
-            : undefined
-        if (ownerPid && !processExists(ownerPid)) {
-          await fs.unlink(filename).catch(() => {})
-          continue
-        }
-        if (!ownerPid) {
-          const stat = await fs.stat(filename).catch(() => undefined)
-          if (stat && Date.now() - stat.mtimeMs > 5_000) {
-            await fs.unlink(filename).catch(() => {})
-            continue
-          }
-        }
-        if (Date.now() - startedAt >= FILE_LOCK_TIMEOUT_MS) {
-          throw new Error(`Timed out acquiring provider credential lock for ${key}`)
-        }
-        await Bun.sleep(FILE_LOCK_RETRY_MS)
-      }
-    }
-  }
-
-  function processExists(pid: number): boolean {
-    try {
-      process.kill(pid, 0)
-      return true
-    } catch (error) {
-      return (error as NodeJS.ErrnoException).code !== "ESRCH"
     }
   }
 

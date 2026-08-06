@@ -65,3 +65,41 @@ describe("question prompt selected option", () => {
     }
   })
 })
+
+describe("question prompt disclosure layout", () => {
+  test("expanded content stays scrollable inside the constrained shell (tall prompt)", async () => {
+    const page = await browser.newPage({ viewport: { width: 800, height: 500 } })
+    try {
+      await page.setContent(`
+        <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
+        <section class="question-prompt-shell" style="max-height: 300px">
+          <div class="question-prompt-expanded-shell is-open">
+            <div class="question-prompt-expanded">
+              <div class="question-prompt-content" style="min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 9px;">
+                <div style="height: 600px; flex: none;">tall content</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      `)
+
+      const metrics = await page.locator(".question-prompt-expanded").evaluate((element) => {
+        const shell = element.closest(".question-prompt-shell")!
+        const content = element.querySelector<HTMLElement>(".question-prompt-content")!
+        return {
+          shellHeight: shell.getBoundingClientRect().height,
+          expandedHeight: element.getBoundingClientRect().height,
+          contentClientHeight: content.clientHeight,
+          contentScrollHeight: content.scrollHeight,
+        }
+      })
+
+      // The expanded shell must shrink to fit the max-height shell (not overflow it),
+      // leaving the inner content area as the scroll container.
+      expect(metrics.expandedHeight).toBeLessThanOrEqual(metrics.shellHeight)
+      expect(metrics.contentScrollHeight).toBeGreaterThan(metrics.contentClientHeight)
+    } finally {
+      await page.close()
+    }
+  })
+})

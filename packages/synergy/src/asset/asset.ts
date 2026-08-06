@@ -87,7 +87,8 @@ export namespace Asset {
 
   export function generateId(buffer: Buffer, mime: string, filename?: string): string {
     const hash = new Bun.CryptoHasher("sha256").update(buffer).digest("hex").slice(0, 16)
-    const ext = MIME_TO_EXT[mime] ?? (filename ? extFromName(filename) : undefined) ?? "bin"
+    const baseMime = mime.split(";")[0]!.trim().toLowerCase()
+    const ext = MIME_TO_EXT[baseMime] ?? (filename ? extFromName(filename) : undefined) ?? "bin"
     return `${hash}.${ext}`
   }
 

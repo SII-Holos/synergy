@@ -74,7 +74,7 @@ export function createDefaultOptions<T>(style: FileDiffOptions<T>["diffStyle"]) 
     expansionLineCount: 20,
     lineDiffType: style === "split" ? "word-alt" : "none",
     maxLineDiffLength: 1000,
-    maxLineLengthForHighlighting: 1000,
+    tokenizeMaxLineLength: 1000,
     disableFileHeader: true,
     unsafeCSS,
   } as const

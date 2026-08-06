@@ -18,8 +18,7 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Bus } from "@/bus"
 
-import { AgentTurn } from "./agent-turn"
-import { Agent } from "@/agent/agent"
+import { AgentCall } from "@/agent/call"
 import { LoopJob } from "./loop-job"
 import { SessionProgress } from "./progress"
 import { SessionHistory } from "./history"
@@ -432,32 +431,29 @@ export namespace SessionSummary {
 
       const generateTitle = async (): Promise<string | undefined> => {
         if (!needsTitle || !textPart) return undefined
-        const agent = await Agent.get("title")
-        const agentModel = await Agent.getAvailableModel(agent)
-        const stream = await AgentTurn.stream({
-          agent,
+        const result = await AgentCall.text({
+          agent: "title",
           user: llmUser,
-          toolDefinitions: [],
-          model: agentModel ? await Provider.getModel(agentModel.providerID, agentModel.modelID) : fallbackModel,
-          small: true,
+          sessionId: userMsg.sessionID,
+          fallbackModel,
+          signal: input.abort,
+          timeoutMs: SUMMARY_LLM_TIMEOUT_MS,
+          retries: 3,
+          maxOutputChars: 200,
           messages: [
             {
               role: "user" as const,
               content: `The following is the text to summarize:\n<text>\n${textPart.text ?? ""}\n</text>`,
             },
           ],
-          abort: AbortSignal.any([input.abort, AbortSignal.timeout(SUMMARY_LLM_TIMEOUT_MS)]),
-          sessionID: userMsg.sessionID,
-          system: [],
-          retries: 3,
-        })
-        const result = await AgentTurn.collectText(stream).catch((error) => {
+        }).catch((error) => {
           if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary title", { error })
           return undefined
         })
-        if (result) log.info("title", { title: result })
-        return result
+        const title = result?.text
+        if (title) log.info("title", { title })
+        return title
       }
 
       const generateBody = async (): Promise<string | undefined> => {
@@ -470,16 +466,15 @@ export namespace SessionSummary {
             }
           }
         }
-        const summaryAgent = await Agent.get("summary")
-        const summaryAgentModel = await Agent.getAvailableModel(summaryAgent)
-        const stream = await AgentTurn.stream({
-          agent: summaryAgent,
+        const result = await AgentCall.text({
+          agent: "summary",
           user: llmUser,
-          toolDefinitions: [],
-          model: summaryAgentModel
-            ? await Provider.getModel(summaryAgentModel.providerID, summaryAgentModel.modelID)
-            : fallbackModel,
-          small: true,
+          sessionId: userMsg.sessionID,
+          fallbackModel,
+          signal: input.abort,
+          timeoutMs: SUMMARY_LLM_TIMEOUT_MS,
+          retries: 3,
+          maxOutputChars: 20_000,
           messages: [
             ...MessageV2.toModelMessage(prunedMessages),
             {
@@ -487,16 +482,12 @@ export namespace SessionSummary {
               content: `Summarize the above conversation according to your system prompts.`,
             },
           ],
-          abort: AbortSignal.any([input.abort, AbortSignal.timeout(SUMMARY_LLM_TIMEOUT_MS)]),
-          sessionID: userMsg.sessionID,
-          system: [],
-          retries: 3,
-        })
-        return AgentTurn.collectText(stream).catch((error) => {
+        }).catch((error) => {
           if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary body", { error })
           return undefined
         })
+        return result?.text
       }
 
       const [title, body] = await Promise.all([

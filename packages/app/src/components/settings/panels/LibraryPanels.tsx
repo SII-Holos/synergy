@@ -402,6 +402,7 @@ export function MemoryPanel(props: {
   library: LibrarySettingsStore
   embeddingConfigDirty: boolean
   onLibraryChange: (key: keyof LibrarySettingsStore, value: string) => void
+  popoverLayer?: HTMLElement
 }) {
   const { _ } = useLingui()
   const opts = () => memoryCountDefs.map((def) => stepOption(_, def))
@@ -444,6 +445,7 @@ export function MemoryPanel(props: {
         library={props.library}
         configDirty={props.embeddingConfigDirty}
         onLibraryChange={props.onLibraryChange}
+        popoverLayer={props.popoverLayer}
       />
     </SettingsPage>
   )

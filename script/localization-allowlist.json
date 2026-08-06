@@ -217,27 +217,19 @@
   },
   {
     "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
-    "kind": "jsx-text",
-    "literal": "Hugging Face",
-    "occurrence": 1,
-    "category": "brand",
-    "reason": "Third-party brand name shown as a download-source option label."
-  },
-  {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
-    "kind": "jsx-text",
-    "literal": "HF Mirror",
-    "occurrence": 1,
-    "category": "brand",
-    "reason": "Third-party service name shown as a download-source option label."
-  },
-  {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "jsx-attribute",
     "literal": "https://models.example",
     "occurrence": 1,
     "category": "code",
     "reason": "Example HTTPS origin placeholder illustrating the expected input format."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "jsx-attribute",
+    "literal": "~/.synergy/data/embedding/models",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Default filesystem cache path placeholder illustrating the expected input format."
   },
   {
     "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
@@ -366,5 +358,21 @@
     "occurrence": 2,
     "category": "machine-identifier",
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "user-visible-property",
+    "literal": "Hugging Face",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "Third-party brand name shown as a download-source option label."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "user-visible-property",
+    "literal": "HF Mirror",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "Third-party service name shown as a download-source option label."
   }
 ]

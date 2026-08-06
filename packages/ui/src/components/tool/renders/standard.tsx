@@ -1608,16 +1608,21 @@ ToolRegistry.register({
   render(props) {
     const { _ } = useLingui()
     const data = useData()
-    const files = () =>
+    const galleryFiles = () => {
+      const attachments = props.attachments
+      if (attachments?.length) return attachments
+      return (props.metadata?.files ?? []) as { assetId: string; filename: string; mime: string; size: number }[]
+    }
+    const metadataFiles = () =>
       (props.metadata?.files ?? []) as { assetId: string; filename: string; mime: string; size: number }[]
     const totalSize = () => {
-      const bytes = files().reduce((sum, f) => sum + f.size, 0)
+      const bytes = metadataFiles().reduce((sum, f) => sum + f.size, 0)
       if (bytes < 1024) return `${bytes} B`
       if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
       return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
     }
     const subtitle = () => {
-      const f = files()
+      const f = galleryFiles()
       if (f.length === 1) return f[0].filename
       return _({ ...TOOL_LABEL_DESC.files, values: { count: f.length } })
     }
@@ -1629,11 +1634,11 @@ ToolRegistry.register({
           icon: "paperclip",
           title: TOOL_TITLE_DESC["attach"],
           subtitle: subtitle(),
-          tags: files().length ? [{ label: totalSize() }] : undefined,
+          tags: galleryFiles().length ? [{ label: totalSize() }] : undefined,
         }}
       >
-        <Show when={props.status === "completed" && files().length}>
-          <AttachmentGallery files={files()} serverUrl={data.serverUrl} />
+        <Show when={props.status === "completed" && galleryFiles().length}>
+          <AttachmentGallery files={galleryFiles()} serverUrl={data.serverUrl} />
         </Show>
       </BasicTool>
     )
@@ -1702,6 +1707,30 @@ ToolRegistry.register({
         trigger={{
           icon: "timer",
           title: TOOL_TITLE_DESC["clarus_extend_task"],
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "github_deliver_fix",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "git-merge",
+          title: TOOL_TITLE_DESC["github_deliver_fix"],
+          subtitle: props.input?.branch as string,
         }}
       >
         <Show when={props.output}>

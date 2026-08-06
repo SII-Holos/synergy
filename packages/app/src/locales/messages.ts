@@ -205,6 +205,18 @@ export const browser = {
   dismiss: { id: "app.browser.error.dismiss", message: "Dismiss" },
   disconnected: { id: "app.browser.disconnected", message: "Browser disconnected" },
   retry: { id: "app.browser.retry", message: "Retry" },
+  nativeRecovering: {
+    id: "app.browser.native.recovering",
+    message: "Recovering the native browser…",
+  },
+  nativeRecoveryFailed: {
+    id: "app.browser.native.recoveryFailed",
+    message: "Native browser recovery failed",
+  },
+  nativeRecoveryHint: {
+    id: "app.browser.native.recoveryHint",
+    message: "Synergy will keep retrying the local browser. You can retry now without switching to a remote stream.",
+  },
   noPage: { id: "app.browser.empty.noPage", message: "No page open" },
   nextNavigation: { id: "app.browser.empty.nextNavigation", message: "The next navigation will appear here." },
   chooseFile: { id: "app.browser.upload.chooseFile", message: "Choose file for upload" },
@@ -366,6 +378,7 @@ export const attachmentWorkbench = {
   preview: { id: "app.attachment.mode.preview", message: "Preview" },
   viewMode: { id: "app.attachment.mode.label", message: "Attachment view mode" },
   viewSourceFile: { id: "app.attachment.action.viewSourceFile", message: "View source in Files" },
+  openInBrowser: { id: "app.attachment.action.openInBrowser", message: "Open in browser" },
   download: { id: "app.attachment.action.download", message: "Download" },
   unsupported: {
     id: "app.attachment.unsupported",
@@ -674,7 +687,6 @@ export const sidebar = {
   home: { id: "app.sidebar.section.home", message: "Home" },
   channel: { id: "app.sidebar.section.channel", message: "Channel" },
   background: { id: "app.sidebar.section.background", message: "Background" },
-  github: { id: "app.sidebar.section.github", message: "GitHub" },
   // Empty states
   noRecentSessions: { id: "app.sidebar.empty.recent", message: "No recent sessions" },
   noSessions: { id: "app.sidebar.empty.sessions", message: "No sessions" },
@@ -727,6 +739,7 @@ export const sidebar = {
   // Brand / logo
   logoAlt: { id: "app.sidebar.brand.logo", message: "HOLOS" },
   channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },
+  channelGithub: { id: "app.sidebar.channel.github", message: "GitHub" },
   addProjectDialogTitle: { id: "app.sidebar.dialog.addProject", message: "Add project" },
   // Channel account status
   channelAccountConnected: { id: "app.sidebar.channel.account.connected", message: "Connected" },
@@ -1057,6 +1070,15 @@ export const dialog = {
   scopeUpdated: { id: "app.dialog.scope.toast.updated", message: "Project updated" },
   scopeUpdateFailed: { id: "app.dialog.scope.toast.updateFailed", message: "Failed to update project" },
   scopeUpdateUnknownError: { id: "app.dialog.scope.toast.unknownError", message: "Unknown error" },
+  projectFolders: { id: "app.dialog.scope.foldersLabel", message: "Project folders" },
+  projectFoldersHint: {
+    id: "app.dialog.scope.foldersHint",
+    message: "Additional folders trusted automatically by the control profile, sandbox, and file tools.",
+  },
+  projectFoldersAdd: { id: "app.dialog.scope.foldersAdd", message: "Add folder" },
+  projectFoldersMain: { id: "app.dialog.scope.foldersMain", message: "Main folder" },
+  projectFoldersRemove: { id: "app.dialog.scope.foldersRemove", message: "Remove folder" },
+  projectFoldersAddTitle: { id: "app.dialog.scope.foldersAddTitle", message: "Add project folder" },
   // Browser model status copy
   directoryBrowserLoadingTitle: { id: "app.dialog.directory.browser.loading", message: "Searching folders" },
   directoryBrowserLoadingDesc: {

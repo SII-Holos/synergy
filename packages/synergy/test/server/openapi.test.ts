@@ -126,13 +126,6 @@ describe("OpenAPI spec generation", () => {
     expect(parentOnly && "schema" in parentOnly ? parentOnly.schema : undefined).toMatchObject({ type: "boolean" })
   })
 
-  test("includes a non-secret GitHub configured route", async () => {
-    const spec = await Server.openapi()
-    const path = spec.paths["/github/configured"]
-    expect(path?.get?.operationId).toBe("github.configured")
-    expect(JSON.stringify(path?.get?.responses?.["200"])).toContain("GitHubConfiguredResponse")
-  })
-
   test("includes /global/pinned route with operationId global.nav.pinned", async () => {
     const spec = await Server.openapi()
     const path = spec.paths["/global/pinned"]

@@ -60,7 +60,13 @@ function collectNonRenderedSpans(text: string): NonRenderedSpan[] {
         i = blockEnd
         continue
       }
-      // Inline code span: one or more backticks until the same run of backticks.
+      // Inline code span: one or more backticks until the same run of
+      // backticks. A lone tilde is not a code delimiter; only backticks
+      // open inline code, so skip it as a plain character.
+      if (ch === "~") {
+        i += 1
+        continue
+      }
       let ticks = 0
       while (i + ticks < text.length && text[i + ticks] === "`") ticks += 1
       const close = text.indexOf("`".repeat(ticks), i + ticks)

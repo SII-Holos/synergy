@@ -5,6 +5,7 @@ import {
   BrowserProtocolError,
   BrowserRegistrationSecretSchema,
   type BrowserBackendResult,
+  type BrowserNativeBrokerStatus,
   type BrowserHostMessage,
   type BrowserHostPageEvent,
 } from "@ericsanchezok/synergy-browser"
@@ -18,6 +19,7 @@ export interface BrowserHostBrokerOptions {
   hostId?: string
   nativePool?: BrowserNativePagePool
   theme: DesktopThemeSnapshot
+  onStatus?(status: BrowserNativeBrokerStatus): void
 }
 
 type ManagedPage = BrowserWebRTCHost | BrowserNativePageHandle
@@ -60,6 +62,7 @@ export class BrowserHostBrokerClient {
 
   connect(): void {
     if (this.closed || this.socket || this.disconnecting) return
+    this.options.onStatus?.("connecting")
     const url = new URL("/browser/host/broker", this.options.serverUrl)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
     url.searchParams.set("protocolVersion", String(BROWSER_PROTOCOL_VERSION))
@@ -77,12 +80,14 @@ export class BrowserHostBrokerClient {
     })
     socket.addEventListener("message", (event) => void this.handle(event.data, epoch))
     socket.addEventListener("error", () => {
+      this.options.onStatus?.("failed")
       console.error("Browser Host broker connection failed.")
     })
     socket.addEventListener("close", () => {
       if (this.socket !== socket) return
       this.connectionEpoch++
       this.socket = null
+      if (!this.closed) this.options.onStatus?.("restarting")
       const pages = this.takePages()
       this.commandTails.clear()
       const disconnecting = destroyPages(pages)
@@ -134,7 +139,10 @@ export class BrowserHostBrokerClient {
       this.socket?.close(1003, "Invalid Browser Host message")
       return
     }
-    if (message.type === "host.registered") return
+    if (message.type === "host.registered") {
+      this.options.onStatus?.("ready")
+      return
+    }
     if (
       message.type !== "page.create" &&
       message.type !== "page.close" &&

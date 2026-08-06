@@ -2,17 +2,13 @@
 // UAC elevation primitives — admin detection and elevation
 // ================================================================
 
-use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, ERROR_CANCELLED, HANDLE, HWND,
-};
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_CANCELLED, HANDLE, HWND};
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Security::{GetTokenInformation};
+use windows_sys::Win32::Security::GetTokenInformation;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::UI::Shell::{
-    ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
-};
+use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
 
 const TOKEN_ELEVATION: i32 = 20; // TOKEN_INFORMATION_CLASS value for TokenElevation
 const TOKEN_QUERY: u32 = 0x0008;
@@ -36,7 +32,9 @@ pub fn is_elevated() -> bool {
         return false;
     }
     #[cfg(target_os = "windows")]
-    unsafe { is_elevated_impl() }
+    unsafe {
+        is_elevated_impl()
+    }
     #[cfg(not(target_os = "windows"))]
     false
 }
@@ -80,7 +78,9 @@ pub fn self_elevate(
         return Err("UAC elevation is only available on Windows".into());
     }
     #[cfg(target_os = "windows")]
-    unsafe { self_elevate_impl(pipe_name, original_args) }
+    unsafe {
+        self_elevate_impl(pipe_name, original_args)
+    }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (pipe_name, original_args);
@@ -170,7 +170,10 @@ mod tests {
     #[test]
     fn is_elevated_false_on_non_windows() {
         if !cfg!(target_os = "windows") {
-            assert!(!is_elevated(), "is_elevated must return false on non-Windows");
+            assert!(
+                !is_elevated(),
+                "is_elevated must return false on non-Windows"
+            );
         }
     }
 

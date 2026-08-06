@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } from "bun:test"
+import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach, spyOn } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import fs from "node:fs/promises"
@@ -93,6 +93,23 @@ describe("HolosAccounts multi-account store", () => {
     const ids = accounts.map((a) => a.agentId).sort()
     expect(ids).toEqual(["agent_a", "agent_b"])
   })
+  test("concurrent saves preserve every account", async () => {
+    const agents = Array.from({ length: 32 }, (_, index) => `agent_${index}`)
+
+    await Promise.all(agents.map((agentId) => HolosAccounts.saveAndActivateAccount(agentId, `secret_${agentId}`)))
+
+    const stored = await HolosAccounts.listAccounts()
+    expect(stored.map((account) => account.agentId).sort()).toEqual(agents.sort())
+  })
+
+  test("save refuses to replace a malformed canonical account store", async () => {
+    await fs.writeFile(accountsPath, "not-json")
+
+    await expect(HolosAccounts.saveAndActivateAccount("agent_new", "secret_new")).rejects.toThrow(
+      "Failed to parse the shared Holos account store",
+    )
+    await expect(fs.readFile(accountsPath, "utf8")).resolves.toBe("not-json")
+  })
 
   test("saving same agentId again overwrites secret and makes it active", async () => {
     await HolosAccounts.saveAndActivateAccount("agent_x", "old_secret")
@@ -155,6 +172,21 @@ describe("HolosAccounts multi-account store", () => {
 
     const accounts = await HolosAccounts.listAccounts()
     expect(accounts).toEqual([])
+  })
+
+  test("deleteAccount removes legacy Holos credentials while preserving other entries", async () => {
+    await HolosAccounts.saveAndActivateAccount("agent_a", "secret_a")
+    await fs.writeFile(
+      apiKeyPath,
+      JSON.stringify({
+        anthropic: { type: "api", key: "keep-me" },
+        holos: { type: "holos", agentId: "legacy_agent", agentSecret: "legacy_secret" },
+      }),
+    )
+
+    await HolosAccounts.deleteAccount("agent_a")
+
+    await expect(apiKeyFile()).resolves.toEqual({ anthropic: { type: "api", key: "keep-me" } })
   })
 
   test("deleteAccount with non-active account keeps active unchanged", async () => {
@@ -266,5 +298,47 @@ describe("writeStore error handling", () => {
     const active = await HolosAccounts.getActiveAccount()
     expect(active!.agentId).toBe("ok_agent")
     expect(active!.agentSecret).toBe("secret_ok")
+  })
+})
+
+// ── Transient IO (EPERM) handling ────────────────────────────────────────
+
+describe("readStore transient IO error handling", () => {
+  function errnoError(code: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(`injected ${code}`), { code })
+  }
+
+  test("transient EPERM during read is retried and then succeeds", async () => {
+    await HolosAccounts.saveAndActivateAccount("agent_ephemeral", "secret_ephemeral")
+
+    const realReadFile = fs.readFile
+    let calls = 0
+    const impl = (async (file: string) => {
+      calls++
+      if (calls === 1) throw errnoError("EPERM")
+      return realReadFile(file, "utf8")
+    }) as unknown as typeof fs.readFile
+    using _read = spyOn(fs, "readFile").mockImplementation(impl)
+
+    const active = await HolosAccounts.getActiveAccount()
+    expect(calls).toBe(2)
+    expect(active!.agentId).toBe("agent_ephemeral")
+  })
+
+  test("persistent EPERM during read propagates and never wipes the store", async () => {
+    await HolosAccounts.saveAndActivateAccount("agent_persist", "secret_persist")
+    const before = await fs.readFile(accountsPath, "utf8")
+
+    const impl = (async () => {
+      throw errnoError("EPERM")
+    }) as unknown as typeof fs.readFile
+    {
+      using _read = spyOn(fs, "readFile").mockImplementation(impl)
+      await expect(HolosAccounts.getActiveAccount()).rejects.toMatchObject({ code: "EPERM" })
+    }
+
+    // The on-disk store must remain untouched.
+    const after = await fs.readFile(accountsPath, "utf8")
+    expect(after).toBe(before)
   })
 })

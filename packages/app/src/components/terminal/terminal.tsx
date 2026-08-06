@@ -2,23 +2,34 @@ import type { Ghostty, Terminal as Term, FitAddon } from "ghostty-web"
 import { ComponentProps, Show, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useSDK } from "@/context/sdk"
-import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-ui/theme"
 import { terminal as T } from "@/locales/messages"
 import { applyTerminalTheme, type TerminalTheme } from "./terminal-theme"
+import { createCleanupGuard, isPtyNotFoundError } from "./terminal-dispose"
+import { ReconnectController, type GiveUpReason } from "./reconnect"
 import { textSelectionController } from "@/context/text-selection"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
   onSubmit?: () => void
-  onCleanup?: (pty: LocalPTY) => void
   onConnectError?: (error: unknown) => void
   onGone?: (ptyID: string) => void
 }
 
 const MAX_RECONNECT_ATTEMPTS = 5
+
+// ghostty-web 0.3.0 only applies fontFamily at construction time;
+// runtime option changes are logged as unsupported and never re-render.
+// New terminal instances pick up the configured font via this helper.
+function getTerminalFontFamily(): string {
+  if (typeof document === "undefined") return '"IBM Plex Mono", monospace'
+  return (
+    getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono").trim() ||
+    '"IBM Plex Mono", monospace'
+  )
+}
 
 export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
@@ -28,15 +39,13 @@ export const Terminal = (props: TerminalProps) => {
   let ws: WebSocket | undefined
   let term: Term | undefined
   let ghostty: Ghostty
-  let serializeAddon: SerializeAddon
   let fitAddon: FitAddon
   let handleResize: () => void
   let handleTextareaFocus: () => void
   let handleTextareaBlur: () => void
-  let reconnect: number | undefined
+  let reconnectController: ReconnectController | undefined
   let disposed = false
-  let reconnectDelay = 1000
-  let reconnectAttempts = 0
+  const cleanupRan = createCleanupGuard()
   const [connected, setConnected] = createSignal(false)
   const [gone, setGone] = createSignal(false)
   const lingui = useLingui()
@@ -81,19 +90,24 @@ export const Terminal = (props: TerminalProps) => {
 
   onMount(async () => {
     const mod = await import("ghostty-web")
+    if (disposed) return
     ghostty = await mod.Ghostty.load()
+    if (disposed) return
 
     const t = new mod.Terminal({
       cursorBlink: true,
       cursorStyle: "bar",
       fontSize: 14,
-      fontFamily: "IBM Plex Mono, monospace",
+      fontFamily: getTerminalFontFamily(),
       allowTransparency: true,
       theme: terminalColors(),
       scrollback: 2_000,
       ghostty,
     })
     term = t
+
+    // No font-change listener: ghostty-web cannot re-render with a new
+    // fontFamily at runtime, so updating options would be a silent no-op.
 
     const copy = () => {
       const selection = t.getSelection()
@@ -128,6 +142,7 @@ export const Terminal = (props: TerminalProps) => {
       return false
     })
     t.onSelectionChange(() => {
+      if (disposed) return
       const rect = container.getBoundingClientRect()
       textSelectionController.update(t.getSelection() || undefined, {
         source: "terminal",
@@ -140,8 +155,6 @@ export const Terminal = (props: TerminalProps) => {
     })
 
     fitAddon = new mod.FitAddon()
-    serializeAddon = new SerializeAddon()
-    t.loadAddon(serializeAddon)
     t.loadAddon(fitAddon)
 
     t.open(container)
@@ -175,6 +188,7 @@ export const Terminal = (props: TerminalProps) => {
     handleResize = () => fitAddon.fit()
     window.addEventListener("resize", handleResize)
     t.onResize(async (size) => {
+      if (disposed) return
       if (ws?.readyState === WebSocket.OPEN) {
         await sdk.client.pty
           .update({
@@ -188,11 +202,13 @@ export const Terminal = (props: TerminalProps) => {
       }
     })
     t.onData((data) => {
+      if (disposed) return
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(data)
       }
     })
     t.onKey((key) => {
+      if (disposed) return
       if (key.key == "Enter") {
         props.onSubmit?.()
       }
@@ -209,9 +225,8 @@ export const Terminal = (props: TerminalProps) => {
       ws = socket
 
       socket.addEventListener("open", () => {
-        setConnected(true)
-        reconnectDelay = 1000
-        reconnectAttempts = 0
+        if (disposed) return
+        reconnectController?.onOpen()
         sdk.client.pty
           .update({
             ptyID: local.pty.id,
@@ -223,71 +238,86 @@ export const Terminal = (props: TerminalProps) => {
           .catch(() => {})
       })
       socket.addEventListener("message", (event) => {
+        if (disposed) return
         t.write(event.data)
       })
       socket.addEventListener("error", (error) => {
+        if (disposed) return
         console.error("WebSocket error:", error)
         props.onConnectError?.(error)
       })
       socket.addEventListener("close", () => {
-        setConnected(false)
-        if (disposed) return
-        reconnectAttempts++
-        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-          setGone(true)
-          local.onGone?.(local.pty.id)
-          return
-        }
-        reconnect = window.setTimeout(async () => {
+        // The server closes the socket while closeTab is still awaiting
+        // pty.remove, i.e. before this panel subtree is unmounted. A
+        // synchronous setConnected(false) enqueues computations that the same
+        // flush is about to clean, double-cleaning them (cleanNode on a
+        // nulled owned array -> "Cannot read properties of null (reading
+        // '1')"). Defer past the dispose flush (macrotask, not microtask:
+        // the fetch resolve that continues closeTab is also a microtask), so
+        // the subtree is disposed first and the guard drops the write.
+        setTimeout(() => {
           if (disposed) return
-          try {
-            const res = await sdk.client.pty.get({ ptyID: local.pty.id })
-            if (!res.data?.id) {
-              setGone(true)
-              local.onGone?.(local.pty.id)
-              return
-            }
-          } catch {
-            setGone(true)
-            local.onGone?.(local.pty.id)
-            return
-          }
-          reconnectDelay = Math.min(reconnectDelay * 2, 10_000)
-          connect()
-        }, reconnectDelay)
+          setConnected(false)
+          reconnectController?.onClose()
+        }, 0)
       })
     }
+
+    reconnectController = new ReconnectController({
+      maxAttempts: MAX_RECONNECT_ATTEMPTS,
+      quickCycleMs: 5_000,
+      initialDelayMs: 1_000,
+      maxDelayMs: 10_000,
+      timer: {
+        setTimeout: (fn: () => void, ms: number) => window.setTimeout(fn, ms),
+        clearTimeout: (id: number) => window.clearTimeout(id),
+        now: () => Date.now(),
+      },
+      validate: async () => {
+        try {
+          const res = await sdk.client.pty.get({ ptyID: local.pty.id })
+          return !!res.data?.id
+        } catch (error) {
+          if (isPtyNotFoundError(error)) return false
+          // Network/unknown errors leave the PTY's existence unconfirmed:
+          // surface them as exhaustion instead of claiming the session is gone,
+          // so a flaky connection cannot trigger the destructive close path.
+          throw error
+        }
+      },
+      connect,
+      onConnected: () => setConnected(true),
+      onGiveUp: (reason: GiveUpReason) => {
+        setGone(true)
+        // Only a confirmed-missing PTY may close the tab (which removes the
+        // server session). Exhaustion with a live PTY must keep the process.
+        if (reason === "missing") {
+          local.onGone?.(local.pty.id)
+        }
+      },
+      isDisposed: () => disposed,
+    })
 
     connect()
   })
 
   onCleanup(() => {
+    if (!cleanupRan()) return
     disposed = true
-    if (reconnect) {
-      clearTimeout(reconnect)
-    }
+    reconnectController?.dispose()
     if (handleResize) {
       window.removeEventListener("resize", handleResize)
     }
     container.removeEventListener("pointerdown", handlePointerDown)
     term?.textarea?.removeEventListener("focus", handleTextareaFocus)
     term?.textarea?.removeEventListener("blur", handleTextareaBlur)
-
-    const t = term
-    if (serializeAddon && props.onCleanup && t) {
-      const buffer = serializeAddon.serialize()
-      props.onCleanup({
-        ...local.pty,
-        buffer,
-        rows: t.rows,
-        cols: t.cols,
-        scrollY: t.getViewportY(),
-      })
-    }
-
-    ws?.close()
+    try {
+      ws?.close()
+    } catch {}
     textSelectionController.update(undefined)
-    t?.dispose()
+    try {
+      term?.dispose()
+    } catch {}
   })
 
   return (

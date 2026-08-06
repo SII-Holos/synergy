@@ -56,14 +56,16 @@ export namespace Config {
   export type ChannelClarusAccount = Schema.ChannelClarusAccount
   export const ChannelClarus = Schema.ChannelClarus
   export type ChannelClarus = Schema.ChannelClarus
+  export const ChannelGithubAccount = Schema.ChannelGithubAccount
+  export type ChannelGithubAccount = Schema.ChannelGithubAccount
+  export const ChannelGithub = Schema.ChannelGithub
+  export type ChannelGithub = Schema.ChannelGithub
   export const Holos = Schema.Holos
   export type Holos = Schema.Holos
   export const SandboxConfig = Schema.SandboxConfig
   export type SandboxConfig = Schema.SandboxConfig
   export const ObservabilityConfig = Schema.ObservabilityConfig
   export type ObservabilityConfig = Schema.ObservabilityConfig
-  export const GitHubIntegrationConfig = Schema.GitHubIntegrationConfig
-  export type GitHubIntegrationConfig = Schema.GitHubIntegrationConfig
   export const Channel = Schema.Channel
   export type Channel = Schema.Channel
   export const EmailSmtp = Schema.EmailSmtp
@@ -198,7 +200,39 @@ export namespace Config {
 
   ConfigDomain.assertRegistryComplete()
 
-  export const state = ScopedState.create(async () => {
+  export const state = ScopedState.create(loadStateValue)
+
+  type StateValue = { config: Info; directories: string[] }
+
+  // Last-good memory per scope: when a fresh load fails, keep serving the
+  // most recently loaded configuration instead of wiping runtime state.
+  const lastGoodByScope = new Map<string, StateValue>()
+
+  async function loadStateValue(): Promise<StateValue> {
+    const scopeKey = ScopeContext.current.scope.id
+    try {
+      const value = await loadStateValueInner()
+      lastGoodByScope.set(scopeKey, value)
+      return value
+    } catch (error) {
+      const lastGood = lastGoodByScope.get(scopeKey)
+      if (lastGood) {
+        const message = sanitizeErrorForIssue(error)
+        log.warn("config load failed, using last good config", { scope: scopeKey, error: message })
+        recordIssue({
+          path: "config",
+          error: message,
+          code: "config.load_failed",
+          quarantined: false,
+          timestamp: Date.now(),
+        })
+        return lastGood
+      }
+      throw error
+    }
+  }
+
+  async function loadStateValueInner(): Promise<StateValue> {
     const auth = await Auth.all()
 
     // Load remote/well-known config first as the base layer (lowest precedence)
@@ -248,10 +282,18 @@ export namespace Config {
         if (!remoteConfig) return null
 
         if (!remoteConfig.$schema) remoteConfig.$schema = Global.Path.configSchemaUrl
-        const loaded = await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`)
-        wellKnownCache.set(key, { data: loaded, timestamp: Date.now() })
-        log.debug("loaded remote config from well-known", { url: key })
-        return loaded
+        try {
+          const loaded = await load(JSON.stringify(remoteConfig), `${key}/.well-known/synergy`)
+          wellKnownCache.set(key, { data: loaded, timestamp: Date.now() })
+          log.debug("loaded remote config from well-known", { url: key })
+          return loaded
+        } catch (error) {
+          log.warn("failed to parse remote config, skipping", {
+            url: key,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          return null
+        }
       }),
     )
 
@@ -386,7 +428,7 @@ export namespace Config {
       config,
       directories,
     }
-  })
+  }
 
   const COMMAND_GLOB = new Bun.Glob("{command,commands}/**/*.md")
   async function loadCommand(dir: string) {
@@ -484,11 +526,111 @@ export namespace Config {
     let result: Info = {}
     for (const domain of ConfigDomain.definitions) {
       const filepath = ConfigDomain.filepath(domain.id, root)
-      const fragment = await loadFile(filepath, { addSchema: false })
-      ConfigDomain.validateKeys(fragment as Record<string, unknown>, domain.id)
-      result = mergeConfigConcatArrays(result, fragment as Info)
+      try {
+        const fragment = await loadFile(filepath, { addSchema: false })
+        ConfigDomain.validateKeys(fragment as Record<string, unknown>, domain.id)
+        result = mergeConfigConcatArrays(result, fragment as Info)
+        // A recovered file clears its historical diagnostic so the registry
+        // reflects the most recent load. Only clear when the file really
+        // exists: after quarantine the original path is gone, and clearing
+        // would hide the very issue we just recorded.
+        if (await Bun.file(filepath).exists()) {
+          clearIssueForPath(filepath)
+        }
+      } catch (error) {
+        await quarantineDomainFile(domain.id, filepath, error)
+      }
     }
     return Info.parse(result)
+  }
+
+  /**
+   * Rename a broken config file aside (quarantine) under the domain lock.
+   * Uses a non-blocking lock acquisition: when a write transaction already
+   * holds the domain lock (e.g. a Settings save in flight), the quarantine
+   * is skipped — that transaction will overwrite the broken file with a
+   * valid config anyway, so quarantining would both deadlock and race the
+   * rename. Returns the quarantine path, or undefined when the file is
+   * already gone, cannot be moved, or the lock is held. Never throws.
+   */
+  async function quarantineFile(filepath: string): Promise<string | undefined> {
+    const target = `${filepath}.invalid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    try {
+      using _ = await Lock.tryAcquireWrite(`config-domain:${filepath}`)
+      if (!_) return undefined
+      if (!(await Bun.file(filepath).exists())) return undefined
+      await fs.rename(filepath, target)
+      return target
+    } catch (err) {
+      log.warn("failed to quarantine config file", {
+        path: filepath,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return undefined
+    }
+  }
+
+  /**
+   * Move a broken domain config file aside so it no longer interrupts
+   * loading, then record a diagnostic. Never throws: a file that cannot be
+   * moved is only skipped, and startup continues with the remaining domains.
+   */
+  async function quarantineDomainFile(domain: ConfigDomain.Id, filepath: string, error: unknown) {
+    const message = sanitizeErrorForIssue(error)
+    const code = issueCodeForError(error)
+    const quarantinedPath = await quarantineFile(filepath)
+
+    log.warn("config domain quarantined", {
+      domain,
+      path: filepath,
+      error: message,
+      quarantined: quarantinedPath !== undefined,
+    })
+    recordIssue({
+      domain,
+      path: filepath,
+      error: message,
+      code,
+      quarantined: quarantinedPath !== undefined,
+      quarantinedPath,
+      timestamp: Date.now(),
+    })
+  }
+
+  /**
+   * Sanitize a config loading error before it reaches logs, the diagnostics
+   * registry, or HTTP responses. JsonError messages embed the full config
+   * text — including resolved {env:...}/{file:...} values that can contain
+   * real credentials — so keep only the parser-error summaries and drop the
+   * echoed source lines and caret markers. Other errors are truncated to a
+   * bounded length.
+   */
+  export function sanitizeErrorForIssue(error: unknown): string {
+    if (error instanceof JsonError && error.data.message) {
+      const errorsSection = error.data.message.split("--- Errors ---\n")[1]?.split("\n--- End ---")[0] ?? ""
+      const summaryLines = errorsSection.split("\n").filter((line: string) => {
+        const trimmed = line.trim()
+        // Keep parser error summaries ("CloseBraceExpected at line 1, column 5").
+        // Drop echoed source lines ("   Line 1: ...") and caret markers ("^").
+        return trimmed && !/^Line \d+:/.test(trimmed) && !/^[\s^]+$/.test(line)
+      })
+      if (summaryLines.length > 0) return summaryLines.join("\n")
+      return "JSON syntax error"
+    }
+    const message = error instanceof Error ? error.message : String(error)
+    return message.length > 300 ? `${message.slice(0, 300)}…` : message
+  }
+
+  function issueCodeForError(error: unknown): Issue["code"] {
+    if (error instanceof JsonError) return "config.json_syntax"
+    if (error instanceof InvalidError) {
+      const issues = error.toObject().data?.issues as Array<{ path?: (string | number)[]; code?: string }> | undefined
+      if (issues?.some((issue) => issue.path?.length === 0 && issue.code === "invalid_type")) {
+        return "config.root_type"
+      }
+      return "config.unknown_key"
+    }
+    return "config.load_failed"
   }
 
   async function migrateLegacyGlobalConfig() {
@@ -505,7 +647,44 @@ export namespace Config {
     }
 
     log.info("migrating legacy global config to domain fragments", { source: legacy.source })
-    const config = await loadFile(legacy.source)
+    let config: Info
+    try {
+      config = await loadFile(legacy.source)
+    } catch (error) {
+      // Schema errors (e.g. retired keys like `identity` or
+      // `holos_friend_reply_model`) are migration signals: the migration
+      // pipeline rewrites the file before config is read. Keep throwing so
+      // ensureMigrations() can repair the file instead of quarantining it.
+      if (!(error instanceof JsonError)) throw error
+
+      // A syntactically broken legacy file must not block startup: quarantine
+      // it and let the domain fragments continue to work on their own.
+      const message = sanitizeErrorForIssue(error)
+      log.warn("legacy global config failed to parse, quarantining and skipping migration", {
+        source: legacy.source,
+        error: message,
+      })
+      const target = `${legacy.source}.invalid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      let quarantined = false
+      try {
+        await fs.rename(legacy.source, target)
+        quarantined = true
+      } catch (err) {
+        log.warn("failed to quarantine legacy global config", {
+          source: legacy.source,
+          error: sanitizeErrorForIssue(err),
+        })
+      }
+      recordIssue({
+        path: legacy.source,
+        error: message,
+        code: "config.migration_failed",
+        quarantined,
+        quarantinedPath: quarantined ? target : undefined,
+        timestamp: Date.now(),
+      })
+      return
+    }
     const split = ConfigDomain.split(config)
     const tempDir = `${domainDir}.tmp-${process.pid}-${Date.now()}`
     await fs.rm(tempDir, { recursive: true, force: true })
@@ -815,6 +994,48 @@ export namespace Config {
     }),
   )
 
+  export const Issue = z
+    .object({
+      domain: z.string().optional().describe("Config domain id the issue belongs to, when known"),
+      path: z.string().describe("Path of the config file that failed to load"),
+      error: z.string().describe("Human-readable error summary"),
+      code: z
+        .enum([
+          "config.json_syntax",
+          "config.root_type",
+          "config.unknown_key",
+          "config.load_failed",
+          "config.migration_failed",
+        ])
+        .describe("Stable machine-readable issue code"),
+      quarantined: z.boolean().describe("Whether the offending file was moved aside"),
+      quarantinedPath: z.string().optional().describe("Path the file was moved to, when quarantined"),
+      timestamp: z.number().describe("Unix epoch milliseconds when the issue was recorded"),
+    })
+    .meta({ ref: "ConfigIssue" })
+  export type Issue = z.infer<typeof Issue>
+
+  // Module-level diagnostics registry: records the most recent config
+  // loading/reloading failures. Bounded so a broken directory cannot grow
+  // memory unboundedly. Snapshot-based: callers read a copy, not a live view.
+  const MAX_ISSUES = 20
+  let issues: Issue[] = []
+
+  export function recordIssue(issue: Issue) {
+    issues = [...issues, issue].slice(-MAX_ISSUES)
+  }
+
+  export function clearIssueForPath(path: string) {
+    issues = issues.filter((issue) => issue.path !== path)
+  }
+
+  export function diagnostics(): Issue[] {
+    return structuredClone(issues)
+  }
+
+  export function resetDiagnostics() {
+    issues = []
+  }
   export async function current() {
     return state().then((x) => x.config)
   }
@@ -952,6 +1173,7 @@ export namespace Config {
     config: Info
     changedFields: string[]
     oldConfig: Info
+    issues?: Issue[]
   }
 
   export async function reload(scope: "global" | "project" = "global"): Promise<ReloadResult> {
@@ -965,6 +1187,11 @@ export namespace Config {
       })
     }
 
+    // Each reload produces a fresh diagnostic snapshot: clear the previous
+    // run's issues before re-loading so recovered files stop reporting
+    // ghost problems. Surviving issues are re-recorded during the load.
+    resetDiagnostics()
+
     const oldConfig = await state()
       .then((x) => x.config)
       .catch(() => ({}) as Info)
@@ -976,6 +1203,10 @@ export namespace Config {
       await state.reset()
     }
 
+    // state() re-runs loadStateValue from disk. Broken domain files are
+    // quarantined during the load; unrecoverable failures fall back to the
+    // last good config instead of throwing, so a bad edit can never wipe the
+    // running configuration.
     const newConfig = await state().then((x) => x.config)
     const changedFields = diff(oldConfig, newConfig)
 
@@ -985,7 +1216,7 @@ export namespace Config {
       log.info("config reloaded, no changes detected")
     }
 
-    return { config: newConfig, changedFields, oldConfig }
+    return { config: newConfig, changedFields, oldConfig, issues: diagnostics() }
   }
 
   export async function update(config: Info) {
@@ -1051,9 +1282,16 @@ export namespace Config {
     const parsed = ConfigDomain.Id.parse(id)
     await migrateLegacyGlobalConfig()
     const filepath = ConfigDomain.filepath(parsed, root)
-    const config = await loadFile(filepath, { addSchema: false })
-    ConfigDomain.validateKeys(config as Record<string, unknown>, parsed)
-    return config
+    try {
+      const config = await loadFile(filepath, { addSchema: false })
+      ConfigDomain.validateKeys(config as Record<string, unknown>, parsed)
+      return config
+    } catch (error) {
+      // A broken single domain file should not make the domain unreadable:
+      // quarantine it and report empty (Settings will show no config).
+      await quarantineDomainFile(parsed, filepath, error)
+      return {}
+    }
   }
 
   export async function domainUpdate(
@@ -1063,7 +1301,11 @@ export namespace Config {
   ) {
     const parsed = ConfigDomain.Id.parse(id)
     using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed, options.root)}`)
-    return domainUpdateUnlocked(parsed, patch, options)
+    // `return await` (not bare `return promise`): with `using`, a bare return
+    // disposes the lock before the async transaction has run, so concurrent
+    // updates would not be serialized. Awaiting inside the guarded body keeps
+    // the lock held across the read-merge-write transaction.
+    return await domainUpdateUnlocked(parsed, patch, options)
   }
 
   async function domainUpdateUnlocked(
