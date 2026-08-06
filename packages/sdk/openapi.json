@@ -36165,7 +36165,7 @@
           },
           "paths": {
             "minItems": 1,
-            "maxItems": 200,
+            "maxItems": 1000,
             "type": "array",
             "items": {
               "type": "string"

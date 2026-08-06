@@ -132,6 +132,46 @@ describe("foreign import routes", () => {
     expect(job.items.find((item: { path: string }) => item.path === badFile)?.status).toBe("failed")
   })
 
+  test("accepts a batch job with more than 200 paths (real-world scan sizes)", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const dir = path.join(tmp.path, "sessions")
+    await fs.mkdir(dir, { recursive: true })
+    // Create 300 small transcript files to exceed the old 200-path cap.
+    for (let i = 0; i < 300; i++) {
+      await Bun.write(path.join(dir, `s-${i}.jsonl`), CLAUDE_LINES)
+    }
+    const paths = Array.from({ length: 300 }, (_, i) => path.join(dir, `s-${i}.jsonl`))
+
+    const startResponse = await app().request(
+      `/session/import/foreign/jobs?directory=${encodeURIComponent(tmp.path)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source: "claude-code", paths }),
+      },
+    )
+    expect(startResponse.status).toBe(200)
+    const summary = await startResponse.json()
+    expect(summary.totalCount).toBe(300)
+    expect(summary.status).toBe("running")
+
+    // Wait for completion. 300 sequential imports take several seconds, so
+    // poll up to 30s before giving up.
+    let job
+    for (let i = 0; i < 1500; i++) {
+      const pollResponse = await app().request(
+        `/session/import/foreign/jobs/current?directory=${encodeURIComponent(tmp.path)}`,
+      )
+      expect(pollResponse.status).toBe(200)
+      job = await pollResponse.json()
+      if (job.status !== "running") break
+      await Bun.sleep(20)
+    }
+    expect(job.status).toBe("completed")
+    expect(job.okCount).toBe(300)
+    expect(job.failedCount).toBe(0)
+  })
+
   test("returns 404 when no job exists", async () => {
     // Clear any job state from earlier tests.
     const current = ForeignImport.current()

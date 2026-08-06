@@ -92,7 +92,7 @@ const ForeignImportJobSummary = ForeignImportJobState.omit({ items: true }).meta
 const ForeignImportJobInput = z
   .object({
     source: ForeignImportSource,
-    paths: z.array(z.string()).min(1).max(200),
+    paths: z.array(z.string()).min(1).max(1000),
     includeSidechains: z.boolean().optional(),
     includeThinking: z.boolean().optional(),
   })
