@@ -188,7 +188,9 @@ describe("parseCodexTranscript", () => {
   test("converts messages, tool calls, and metadata", () => {
     const { report, stats } = parseCodexTranscript(codexTranscript())
     const session = report.sessions[0]
-    expect(session.info.title).toBe("Codex session summary")
+    // Titles derive from the first user message; turn_context.summary is a
+    // mode marker (e.g. "auto") in real rollouts, never a title.
+    expect(session.info.title).toBe("Fix the build")
     expect(session.info.scope).toMatchObject({ id: "unknown", directory: "/repo" })
     expect(session.messages.length).toBe(3)
     expect(stats.skippedLines).toBe(0)
@@ -212,6 +214,31 @@ describe("parseCodexTranscript", () => {
     const reply = session.messages[2]
     expect(reply.info.role).toBe("assistant")
     expect(reply.parts[0]).toMatchObject({ type: "text", text: "Build fixed" })
+  })
+
+  test("does not use turn_context.summary as the title (mode marker regression)", () => {
+    // Real Codex rollouts put the session's mode ("auto") in
+    // turn_context.summary; it must never become the session title.
+    const text = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: "2025-02-01T10:00:00.000Z",
+        payload: { id: "rollout-1", cwd: "/repo", source: "codex" },
+      }),
+      JSON.stringify({
+        type: "turn_context",
+        timestamp: "2025-02-01T10:00:00.000Z",
+        payload: { cwd: "/repo", model: "gpt-5", summary: "auto" },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: "2025-02-01T10:01:00.000Z",
+        payload: { type: "user_message", message: "Fix the flaky test" },
+      }),
+    ].join("\n")
+    const { report } = parseCodexTranscript(text)
+    expect(report.sessions[0].info.title).toBe("Fix the flaky test")
+    expect(report.sessions[0].info.title).not.toBe("auto")
   })
 
   test("keeps reasoning when requested", () => {

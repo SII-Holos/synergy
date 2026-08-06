@@ -76,7 +76,6 @@ export function parseCodexTranscript(text: string, options: CodexConvertOptions 
 
   const messages: ForeignMessage[] = []
   let cwd: string | undefined
-  let title: string | undefined
   let model: string | undefined
   // Map from call_id → the tool part it belongs to, so `function_call_output`
   // lines can complete the matching tool call regardless of position.
@@ -98,18 +97,15 @@ export function parseCodexTranscript(text: string, options: CodexConvertOptions 
     switch (line.type) {
       case "session_meta": {
         if (!cwd && typeof payload.cwd === "string") cwd = payload.cwd
-        // Fallback titles: the session summary from turn_context is preferred,
-        // so only set these when no summary is expected later.
-        if (typeof payload.source === "string" && payload.source && !title) title = payload.source.slice(0, 200)
-        if (typeof payload.id === "string" && !title) title = payload.id.slice(0, 200)
         break
       }
       case "turn_context": {
         if (!cwd && typeof payload.cwd === "string") cwd = payload.cwd
         if (typeof payload.model === "string" && payload.model) model = payload.model
-        if (typeof payload.summary === "string" && payload.summary.trim()) {
-          title = payload.summary.trim().slice(0, 200)
-        }
+        // NOTE: `payload.summary` here is the session's mode marker (e.g.
+        // "auto") in current Codex rollouts, not a title. It is deliberately
+        // not used as the session title; titles derive from the first user
+        // message text below.
         break
       }
       case "response_item":
@@ -131,7 +127,7 @@ export function parseCodexTranscript(text: string, options: CodexConvertOptions 
 
   const session: ForeignSession = {
     id: sessionID(),
-    title: title ?? firstUserText(messages) ?? "Imported Codex session",
+    title: firstUserText(messages) ?? "Imported Codex session",
     cwd,
     created: messages[0]?.created ?? Date.now(),
     updated: messages[messages.length - 1]?.created ?? Date.now(),
