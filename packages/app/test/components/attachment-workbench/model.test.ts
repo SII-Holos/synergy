@@ -3,6 +3,7 @@ import type { AttachmentPart, Part } from "@ericsanchezok/synergy-sdk"
 import {
   ATTACHMENT_PDF_MAX_BYTES,
   ATTACHMENT_TEXT_MAX_BYTES,
+  attachmentOpenInBrowserUrl,
   attachmentWorkbenchPanelInit,
   attachmentResourceId,
   attachmentResourceState,
@@ -205,5 +206,17 @@ describe("attachment preview classification", () => {
       ).kind,
     ).toBe("unsupported")
     expect(classifyAttachmentPreview("application/zip", "bundle.zip").kind).toBe("unsupported")
+  })
+})
+
+describe("attachment open-in-browser eligibility", () => {
+  test("returns the asset URL only for HTML attachments with a resolvable URL", () => {
+    const url = "http://127.0.0.1:51042/asset/85a8d7a97c14178e.html"
+    expect(attachmentOpenInBrowserUrl("html", url)).toBe(url)
+    expect(attachmentOpenInBrowserUrl("pdf", url)).toBeUndefined()
+    expect(attachmentOpenInBrowserUrl("markdown", url)).toBeUndefined()
+    expect(attachmentOpenInBrowserUrl("source", url)).toBeUndefined()
+    expect(attachmentOpenInBrowserUrl("html", undefined)).toBeUndefined()
+    expect(attachmentOpenInBrowserUrl(undefined, url)).toBeUndefined()
   })
 })

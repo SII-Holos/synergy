@@ -43,7 +43,7 @@ export const AttachTool = Tool.define("attach", {
       const buffer = Buffer.from(await file.arrayBuffer())
       const mime = file.type || "application/octet-stream"
       const filename = filenames[i] ?? path.basename(filePath)
-      const assetId = await Asset.write(buffer, mime)
+      const assetId = await Asset.write(buffer, mime, filename)
 
       files.push({ assetId, filename, mime, size: buffer.length })
       attachments.push({
