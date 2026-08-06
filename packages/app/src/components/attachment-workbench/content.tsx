@@ -15,6 +15,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
 import { useFile } from "@/context/file"
 import { usePlatform } from "@/context/platform"
+import { useWorkbenchPanels } from "@/context/workbench"
 import { useSDK } from "@/context/sdk"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { attachmentWorkbench as A } from "@/locales/messages"
@@ -43,6 +44,14 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
   const file = useFile()
   const platform = usePlatform()
   const sdk = useSDK()
+  const workbench = useWorkbenchPanels()
+  const [browserOpenNonce, setBrowserOpenNonce] = createSignal(0)
+  const openInBrowserPanel = (href: string) => {
+    setBrowserOpenNonce((value) => value + 1)
+    void workbench.openPanel("browser", {
+      init: { state: { url: href, nonce: browserOpenNonce() } },
+    })
+  }
   const locator = createMemo(() => attachmentResourceState(props.tab.state))
   const local = createMemo(() => {
     const value = locator()
@@ -171,7 +180,11 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
                 </Show>
                 <Show when={attachmentOpenInBrowserUrl(capability()?.kind, url())}>
                   {(href) => (
-                    <button type="button" class="attachment-workbench-action" onClick={() => platform.openLink(href())}>
+                    <button
+                      type="button"
+                      class="attachment-workbench-action"
+                      onClick={() => openInBrowserPanel(href())}
+                    >
                       <Icon name={getSemanticIcon("action.open")} size="small" />
                       <span>{lingui._(A.openInBrowser)}</span>
                     </button>
