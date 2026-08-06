@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } from "bun:test"
+import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach, spyOn } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import fs from "node:fs/promises"
@@ -298,5 +298,47 @@ describe("writeStore error handling", () => {
     const active = await HolosAccounts.getActiveAccount()
     expect(active!.agentId).toBe("ok_agent")
     expect(active!.agentSecret).toBe("secret_ok")
+  })
+})
+
+// ── Transient IO (EPERM) handling ────────────────────────────────────────
+
+describe("readStore transient IO error handling", () => {
+  function errnoError(code: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(`injected ${code}`), { code })
+  }
+
+  test("transient EPERM during read is retried and then succeeds", async () => {
+    await HolosAccounts.saveAndActivateAccount("agent_ephemeral", "secret_ephemeral")
+
+    const realReadFile = fs.readFile
+    let calls = 0
+    const impl = (async (file: string) => {
+      calls++
+      if (calls === 1) throw errnoError("EPERM")
+      return realReadFile(file, "utf8")
+    }) as unknown as typeof fs.readFile
+    using _read = spyOn(fs, "readFile").mockImplementation(impl)
+
+    const active = await HolosAccounts.getActiveAccount()
+    expect(calls).toBe(2)
+    expect(active!.agentId).toBe("agent_ephemeral")
+  })
+
+  test("persistent EPERM during read propagates and never wipes the store", async () => {
+    await HolosAccounts.saveAndActivateAccount("agent_persist", "secret_persist")
+    const before = await fs.readFile(accountsPath, "utf8")
+
+    const impl = (async () => {
+      throw errnoError("EPERM")
+    }) as unknown as typeof fs.readFile
+    {
+      using _read = spyOn(fs, "readFile").mockImplementation(impl)
+      await expect(HolosAccounts.getActiveAccount()).rejects.toMatchObject({ code: "EPERM" })
+    }
+
+    // The on-disk store must remain untouched.
+    const after = await fs.readFile(accountsPath, "utf8")
+    expect(after).toBe(before)
   })
 })
