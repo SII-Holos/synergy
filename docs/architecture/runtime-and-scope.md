@@ -96,6 +96,9 @@ A project Scope can declare multiple folders: the main `worktree` plus
 additional `sandboxes` entries persisted under the same project record.
 `Scope.fromDirectory()` appends opened worktree/related directories to
 `sandboxes`, and the Web project editor manages the list explicitly.
+`scope.update` accepts a `?directory=` query parameter: when the path
+`scopeID` is unknown, the handler resolves and persists the project from that
+directory, so a client that only knows the worktree path can still update it.
 
 The canonical derivation lives in `Scope.Root`:
 

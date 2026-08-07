@@ -12,52 +12,49 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getScopeLabel } from "@/utils/scope"
 import type { LocalScope } from "@/context/layout"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { DialogSelectDirectory } from "./dialog-select-directory"
+import { useProjectDirectoryPicker } from "./project-directory-picker"
+import { scopeUpdateErrorMessage, scopeUpdateRequest } from "./project-scope-edit-model"
 
 export function DialogScopeEdit(props: { scope: LocalScope }) {
   const dialogContext = useDialog()
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
+  const { pickProjectDirectories } = useProjectDirectoryPicker()
   const [name, setName] = createSignal(props.scope.name ?? "")
   const [folders, setFolders] = createSignal<string[]>(props.scope.sandboxes ?? [])
   const [saving, setSaving] = createSignal(false)
 
-  const scopeID = () => props.scope.id ?? props.scope.worktree
   const mainFolder = () => props.scope.worktree
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      await globalSDK.client.scope.update({
-        path_scopeID: scopeID(),
-        name: name().trim() || undefined,
+      const request = scopeUpdateRequest(props.scope, {
+        name: name().trim(),
         sandboxes: folders(),
       })
+      await globalSDK.client.scope.update(request)
       showToast({ type: "info", title: _(dialog.scopeUpdated), description: name() || getScopeLabel(props.scope) })
       dialogContext.close()
     } catch (e: any) {
       showToast({
         type: "error",
         title: _(dialog.scopeUpdateFailed),
-        description: e?.message ?? _(dialog.scopeUpdateUnknownError),
+        description: scopeUpdateErrorMessage(e, _(dialog.scopeUpdateUnknownError)),
       })
     } finally {
       setSaving(false)
     }
   }
 
-  const handleAddFolder = () => {
-    dialogContext.push(() => (
-      <DialogSelectDirectory
-        title={_(dialog.projectFoldersAddTitle)}
-        onSelect={(result) => {
-          if (!result) return
-          const selected = Array.isArray(result.directory) ? result.directory : [result.directory]
-          const next = [...folders(), ...selected]
-          setFolders([...new Set(next)])
-        }}
-      />
-    ))
+  const handleAddFolder = async () => {
+    const result = await pickProjectDirectories({
+      title: _(dialog.projectFoldersAddTitle),
+      multiple: true,
+    })
+    if (!result) return
+    const next = [...folders(), ...result.directoryPaths]
+    setFolders([...new Set(next)])
   }
 
   const handleRemoveFolder = (folder: string) => {

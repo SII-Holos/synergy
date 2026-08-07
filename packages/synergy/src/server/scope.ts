@@ -115,16 +115,27 @@ export const ScopeRoute = new Hono()
     async (c) => {
       const scopeID = c.req.valid("param").scopeID
       const body = c.req.valid("json")
+      const directory = c.req.query("directory")
+
+      // Resolve the target scope: an existing scopeID wins; otherwise fall
+      // back to ?directory= so clients that only know the project worktree
+      // (e.g. a freshly opened, not-yet-persisted project) can still update
+      // it. The directory resolution persists the project on first save.
+      let scope: Scope | undefined = await Scope.fromID(scopeID)
+      if (!scope && directory) {
+        const resolved = await Scope.fromDirectory(directory)
+        scope = resolved.scope
+      }
+      if (!scope || scope.type !== "project") return c.json({ error: "Scope not found" }, 404)
+
       if (body.sandboxes !== undefined) {
-        const scope = await Scope.fromID(scopeID)
-        if (!scope || scope.type !== "project") return c.json({ error: "Scope not found" }, 404)
         for (const entry of body.sandboxes) {
           if (!path.isAbsolute(entry)) return c.json({ error: `Sandbox path must be absolute: ${entry}` }, 400)
           if (!existsSync(entry) || !statSync(entry).isDirectory())
             return c.json({ error: `Sandbox path is not a directory: ${entry}` }, 400)
         }
       }
-      const result = await Scope.updatePersisted({ ...body, scopeID })
+      const result = await Scope.updatePersisted({ ...body, scopeID: scope.id })
       return c.json(result)
     },
   )

@@ -19,7 +19,10 @@ export function useProjectDirectoryPicker(): {
 
   async function pickServer(options: PickProjectDirectoriesOptions): Promise<PickProjectDirectoriesResult | null> {
     return await new Promise<PickProjectDirectoriesResult | null>((resolve) => {
-      dialog.show(
+      // Push (not show) so the server browser stacks above an already-open
+      // dialog (e.g. the project edit dialog) instead of closing it and
+      // losing unsaved edits. With no active dialog, push behaves like show.
+      dialog.push(
         () => (
           <DialogSelectDirectory
             title={options.title}
