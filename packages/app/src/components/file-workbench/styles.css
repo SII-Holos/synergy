@@ -313,6 +313,55 @@
   cursor: grab;
 }
 
+.file-edit-pill {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 999px;
+  padding: 0 11px;
+  margin-right: 3px;
+  background: var(--surface-raised-base);
+  color: var(--text-base);
+  font-size: 12px;
+  font-weight: 550;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.file-edit-pill:hover:not(:disabled) {
+  background: var(--surface-raised-base-hover);
+  color: var(--text-strong);
+}
+
+.file-edit-pill:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.file-edit-pill--active {
+  border-color: var(--border-focus);
+  background: var(--surface-raised-base-hover);
+  color: var(--text-strong);
+}
+
+.file-edit-pill--save {
+  border-color: var(--border-focus);
+  background: var(--surface-info-base);
+  color: var(--text-strong);
+}
+
+.file-edit-pill--save:hover:not(:disabled) {
+  background: var(--surface-info-base);
+  color: var(--text-strong);
+}
+
+.file-edit-pill svg {
+  flex-shrink: 0;
+}
 .file-explorer {
   position: relative;
   display: flex;

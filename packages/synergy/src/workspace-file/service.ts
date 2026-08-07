@@ -7,6 +7,7 @@ import { WorkspaceFile } from "./types"
 import { WorkspaceFileRead, likelyBinaryByExtension } from "./read"
 import { WorkspaceFileStatus } from "./status"
 import { isPathContained } from "../util/path-contain"
+import { SensitivePathPolicy } from "../enforcement/sensitive-path"
 
 const DEFAULT_CHILDREN_LIMIT = 200
 const NODE_CONCURRENCY = 16
@@ -50,6 +51,26 @@ export namespace WorkspaceFileService {
     constructor(message: string) {
       super(message)
       this.name = "WorkspaceFileAccessDeniedError"
+    }
+  }
+
+  export class WriteConflictError extends Error {
+    constructor(message: string) {
+      super(message)
+      this.name = "WorkspaceFileWriteConflictError"
+    }
+  }
+  export class NotFoundError extends Error {
+    constructor(message: string) {
+      super(message)
+      this.name = "WorkspaceFileNotFoundError"
+    }
+  }
+
+  export class TooLargeError extends Error {
+    constructor(message: string) {
+      super(message)
+      this.name = "WorkspaceFileTooLargeError"
     }
   }
 
@@ -219,5 +240,81 @@ export namespace WorkspaceFileService {
     mode?: "range" | "document"
   }): Promise<WorkspaceFile.ReadResult> {
     return WorkspaceFileRead.read(input, { resolve, node })
+  }
+  const WRITE_MAX_BYTES = 8 * 1024 * 1024
+
+  function assertWritableTarget(absolute: string) {
+    const relativePath = displayRelative(absolute)
+    const protectedMatch = SensitivePathPolicy.classify(relativePath, {
+      mode: "write",
+      workspaceRoot: root(),
+    })
+    if (protectedMatch.matched) {
+      const kind = protectedMatch.category === "vcs" ? "Git metadata" : "secret or credential path"
+      throw new AccessDeniedError(`Access denied: ${kind} is not editable (${relativePath})`)
+    }
+  }
+
+  async function assertRealpathWritable(absolute: string) {
+    // The lexical path check above can be bypassed through a symlink whose
+    // target is a sensitive file (for example `link.env` -> `.env`). Bun.write
+    // follows symlinks, so re-check the resolved target with the same policy.
+    const real = await realpathIfExists(absolute)
+    if (!real || real === absolute) return
+    assertWritableTarget(real)
+  }
+
+  export async function write(input: WorkspaceFile.WriteFileInput): Promise<WorkspaceFile.WriteFileResult> {
+    const absolute = resolve(input.path)
+    await assertRealpathInside(absolute)
+    assertWritableTarget(absolute)
+    await assertRealpathWritable(absolute)
+
+    let stat: Awaited<ReturnType<typeof fs.stat>>
+    try {
+      stat = await fs.stat(absolute)
+    } catch {
+      throw new NotFoundError(`File does not exist: ${displayRelative(absolute)}`)
+    }
+    const existed = true
+    if (!stat.isFile()) {
+      throw new AccessDeniedError(`Access denied: path is not a file (${displayRelative(absolute)})`)
+    }
+    if ((stat.mode & 0o200) === 0) {
+      throw new AccessDeniedError(`Access denied: file is read-only (${displayRelative(absolute)})`)
+    }
+
+    if (input.expectedMtime !== undefined && Math.abs(stat.mtimeMs - input.expectedMtime) > 1) {
+      if (input.conflictPolicy !== "overwrite") {
+        throw new WriteConflictError(`File changed on disk since it was loaded (${displayRelative(absolute)})`)
+      }
+    }
+
+    const content = input.encoding === "base64" ? Buffer.from(input.content, "base64").toString("utf-8") : input.content
+    const byteLength = Buffer.byteLength(content, "utf-8")
+    if (byteLength > WRITE_MAX_BYTES) {
+      throw new TooLargeError(`File too large to write (${byteLength} bytes, limit ${WRITE_MAX_BYTES})`)
+    }
+
+    const parentDir = path.dirname(absolute)
+    if (input.createParents) {
+      await fs.mkdir(parentDir, { recursive: true }).catch(() => {})
+    } else {
+      const parentStat = await fs.stat(parentDir).catch(() => undefined)
+      if (!parentStat?.isDirectory()) {
+        throw new NotFoundError(`Parent directory does not exist: ${displayRelative(parentDir)}`)
+      }
+    }
+
+    await Bun.write(absolute, content)
+    WorkspaceFileStatus.invalidate()
+
+    const after = await Bun.file(absolute).stat()
+    return {
+      path: displayRelative(absolute),
+      mtime: after.mtimeMs,
+      size: after.size,
+      existed,
+    }
   }
 }
