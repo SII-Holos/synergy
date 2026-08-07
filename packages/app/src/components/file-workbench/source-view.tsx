@@ -234,7 +234,11 @@ export function FileSourceView(props: {
   })
 
   createEffect(() => {
-    editor?.updateOptions({ readOnly: !props.editable, domReadOnly: !props.editable })
+    // Read `props.editable` unconditionally: when `editor` is still undefined the
+    // optional chain below short-circuits, and Solid must still track the prop so
+    // the effect re-runs once Monaco exists and the edit toggle changes.
+    const editable = props.editable
+    editor?.updateOptions({ readOnly: !editable, domReadOnly: !editable })
   })
 
   createEffect(() => {
