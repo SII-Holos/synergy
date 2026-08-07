@@ -190,10 +190,28 @@ export namespace WorkspaceFile {
       encoding: z.enum(["utf-8", "base64"]).default("utf-8"),
       createParents: z.boolean().default(false),
       conflictPolicy: WriteConflictPolicy.default("fail"),
-      expectedMtime: z.number().int().nonnegative().optional(),
+      expectedMtime: z.number().nonnegative().optional(),
     })
     .meta({ ref: "WorkspaceFileWriteFileInput" })
   export type WriteFileInput = z.infer<typeof WriteFileInput>
+
+  export const WriteFileResult = z
+    .object({
+      path: z.string(),
+      mtime: z.number().nonnegative(),
+      size: z.number().int().nonnegative(),
+      existed: z.boolean(),
+    })
+    .meta({ ref: "WorkspaceFileWriteResult" })
+  export type WriteFileResult = z.infer<typeof WriteFileResult>
+
+  export const WriteFileError = z
+    .object({
+      name: z.enum(["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]),
+      data: z.object({ message: z.string() }),
+    })
+    .meta({ ref: "WorkspaceFileWriteError" })
+  export type WriteFileError = z.infer<typeof WriteFileError>
 
   export const CreateDirectoryInput = z
     .object({

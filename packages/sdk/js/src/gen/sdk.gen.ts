@@ -558,6 +558,9 @@ import type {
   WorkspaceFilesStatErrors,
   WorkspaceFilesStatResponses,
   WorkspaceFilesStatusResponses,
+  WorkspaceFilesWriteErrors,
+  WorkspaceFilesWriteResponses,
+  WorkspaceFileWriteFileInput,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -1447,6 +1450,45 @@ export class Files extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * Write workspace file
+   *
+   * Write content to an existing workspace file with optional optimistic concurrency control.
+   */
+  public write<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      workspaceFileWriteFileInput?: WorkspaceFileWriteFileInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "workspaceFileWriteFileInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceFilesWriteResponses, WorkspaceFilesWriteErrors, ThrowOnError>(
+      {
+        url: "/workspace/files/write",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
   }
 }
 

@@ -965,7 +965,13 @@ function SessionPageContent() {
     const activeElement = document.activeElement as HTMLElement | undefined
     if (activeElement) {
       const isProtected = activeElement.closest("[data-prevent-autofocus]")
-      const isInput = /^(INPUT|TEXTAREA|SELECT)$/.test(activeElement.tagName) || activeElement.isContentEditable
+      // Monaco's native EditContext input is a div with role="textbox" (not a
+      // TEXTAREA and not contenteditable); treat any textbox role as an input
+      // so type-anywhere does not steal focus from the file editor.
+      const isInput =
+        /^(INPUT|TEXTAREA|SELECT)$/.test(activeElement.tagName) ||
+        activeElement.isContentEditable ||
+        activeElement.getAttribute("role") === "textbox"
       if (isProtected || isInput) return
     }
     if (dialog.active) return

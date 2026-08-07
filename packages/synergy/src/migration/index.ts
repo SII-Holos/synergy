@@ -1,11 +1,14 @@
+import path from "path"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { MigrationRegistry } from "./registry"
 import { orderMigrations } from "./order"
 import { progressBar, stageWrite, disableWrap, enableWrap, PROGRESS_INTERVAL } from "./format"
+import { Global } from "../global"
 import { Installation } from "../global/installation"
 import { setActiveMigrationContext } from "./context"
+import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 // Side-effect imports: register domain migrations in MigrationRegistry
 import "../agenda/migration"
 import "../browser/migration"
@@ -75,7 +78,7 @@ async function migrateOldTrackingData(): Promise<void> {
       }
     }
     if (Object.keys(domainData).length > 0) {
-      await Storage.write(StoragePath.metaMigrationLogDomain(domain), domainData)
+      await mergeDomainLog(domain, domainData)
       log.info("migrated tracking data to per-domain log", { domain, count: Object.keys(domainData).length })
     }
   }
@@ -102,7 +105,7 @@ async function migrateLegacyLibraryTrackingData(): Promise<void> {
   }
 
   if (changed) {
-    await Storage.write(libraryKey, libraryData)
+    await mergeDomainLog("library", libraryData)
     log.info("migrated legacy engram migration tracking to library", { count: Object.keys(oldData).length })
   }
   await Storage.remove(oldKey)
@@ -271,8 +274,44 @@ async function loadLogForDomain(domain: string): Promise<Record<string, number>>
   return Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain(domain)).catch(() => ({}))
 }
 
+function migrationLockDirectory() {
+  return path.join(Global.Path.data, "meta", "migration", ".locks")
+}
+
+function migrationLockOptions(domain: string) {
+  return {
+    directory: migrationLockDirectory(),
+    key: `migration-log:${domain}`,
+    timeoutMessage: `Timed out acquiring migration tracking lock for ${domain}`,
+  }
+}
+
+/**
+ * Merge completion markers into the per-domain migration log under a cross-process
+ * file lock. Multiple Synergy instances sharing one home may run migrations
+ * concurrently; a plain read-modify-write would let the last writer drop markers
+ * persisted by the other process, re-pending completed migrations on the next boot.
+ */
+async function mergeDomainLog(domain: string, entries: Record<string, number>): Promise<void> {
+  const key = StoragePath.metaMigrationLogDomain(domain)
+  await withFileLock(migrationLockOptions(domain), async () => {
+    const current = await Storage.read<Record<string, number>>(key).catch(() => ({}))
+    await Storage.write(key, { ...current, ...entries })
+  })
+}
+
 async function saveLogForDomain(domain: string, data: Record<string, number>): Promise<void> {
-  await Storage.write(StoragePath.metaMigrationLogDomain(domain), data)
+  await mergeDomainLog(domain, data)
+}
+
+/** Remove a single completion marker under the same cross-process lock, preserving concurrent markers. */
+async function deleteDomainLogEntry(domain: string, migrationID: string): Promise<void> {
+  const key = StoragePath.metaMigrationLogDomain(domain)
+  await withFileLock(migrationLockOptions(domain), async () => {
+    const current: Record<string, number> = await Storage.read<Record<string, number>>(key).catch(() => ({}))
+    delete current[migrationID]
+    await Storage.write(key, current)
+  })
 }
 
 /**
@@ -319,16 +358,14 @@ export async function rollbackMigrations(domain: string, targetId: string): Prom
     for (const migration of toRollback) {
       if (!migration.down) {
         stageWrite(`  [${domain}] ${migration.description} (no down(), unmarked)\n`)
-        delete logData[migration.id]
-        await saveLogForDomain(domain, logData)
+        await deleteDomainLogEntry(domain, migration.id)
         continue
       }
 
       try {
         await migration.down(() => {})
         stageWrite(`  [${domain}] ${migration.description} rolled back ✓\n`)
-        delete logData[migration.id]
-        await saveLogForDomain(domain, logData)
+        await deleteDomainLogEntry(domain, migration.id)
         log.info("rolled back", { id: migration.id, domain })
       } catch (err) {
         stageWrite(`  [${domain}] ${migration.description} rollback ✗\n`)
