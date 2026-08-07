@@ -33,6 +33,9 @@ The connection:
   cannot be dropped for silence);
 - probes immediately with one ping when the page becomes visible again, closing
   the socket after three missed pongs so a dead connection is detected quickly;
+- flushes any events queued while hidden as soon as the page becomes visible,
+  so the foreground applies the backlog immediately instead of waiting for the
+  next 1 s cadence tick;
 - reconnects with jittered exponential delay from 1 to 30 seconds;
 - ignores server heartbeat frames as transport liveness only.
 

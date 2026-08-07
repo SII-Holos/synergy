@@ -85,6 +85,9 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       if (document.visibilityState === "hidden") {
         clearPingTimers()
       } else {
+        // Apply any events queued while hidden immediately on return to the
+        // foreground instead of waiting for the next 1 s cadence tick.
+        eventQueue.flush()
         startPing()
         sendPing()
       }

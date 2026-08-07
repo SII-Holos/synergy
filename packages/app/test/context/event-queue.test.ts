@@ -191,6 +191,37 @@ describe("createEventQueue hidden delta coalescing", () => {
       { directory: "global", payload: delta("part_1", "b") },
     ])
   })
+
+  test("hidden events flush immediately on visibility restore (no 1s wait)", () => {
+    const harness = createHarness()
+    harness.setHidden(true)
+
+    harness.queue.push("global", delta("part_1", "a"))
+    harness.queue.push("global", delta("part_1", "b"))
+    harness.queue.push("global", stateEvent("session.status", "ses_1"))
+    // Nothing emitted yet — the 1 s hidden timer is still pending.
+    expect(harness.emitted).toHaveLength(0)
+
+    // GlobalSDKProvider calls eventQueue.flush() in its visibilitychange
+    // handler when the page returns to the foreground, so the restore path
+    // applies queued events immediately instead of waiting for the cadence.
+    harness.setHidden(false)
+    harness.queue.flush()
+
+    expect(harness.emitted).toEqual([
+      {
+        directory: "global",
+        payload: recordedPayload("message.part.delta", {
+          sessionID: "ses_1",
+          messageID: "msg_1",
+          partID: "part_1",
+          kind: "text",
+          delta: "ab",
+        }),
+      },
+      { directory: "global", payload: stateEvent("session.status", "ses_1") },
+    ])
+  })
 })
 
 describe("createEventQueue capacity", () => {
