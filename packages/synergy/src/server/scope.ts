@@ -126,7 +126,9 @@ export const ScopeRoute = new Hono()
         const resolved = await Scope.fromDirectory(directory)
         scope = resolved.scope
       }
-      if (!scope || scope.type !== "project") return c.json({ error: "Scope not found" }, 404)
+      if (!scope || scope.type !== "project") {
+        return c.json({ name: "ScopeNotFound", data: { message: "Scope not found" } }, 404)
+      }
 
       if (body.sandboxes !== undefined) {
         for (const entry of body.sandboxes) {

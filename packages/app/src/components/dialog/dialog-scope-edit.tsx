@@ -36,11 +36,11 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
       await globalSDK.client.scope.update(request)
       showToast({ type: "info", title: _(dialog.scopeUpdated), description: name() || getScopeLabel(props.scope) })
       dialogContext.close()
-    } catch (e: any) {
+    } catch (error) {
       showToast({
         type: "error",
         title: _(dialog.scopeUpdateFailed),
-        description: scopeUpdateErrorMessage(e, _(dialog.scopeUpdateUnknownError)),
+        description: scopeUpdateErrorMessage(error, _(dialog.scopeUpdateUnknownError)),
       })
     } finally {
       setSaving(false)

@@ -164,7 +164,19 @@ describe("PATCH /scope/:scopeID directory resolution", () => {
     const resp = await patchScopeByDirectory("unknown_scope_id", missing, { name: "renamed" })
     expect(resp.status).toBe(404)
     const body = await resp.json()
-    expect(body.error).toBe("Scope not found")
+    expect(body.name).toBe("ScopeNotFound")
+    expect(body.data.message).toBe("Scope not found")
+  })
+
+  test("returns 404 when ?directory= points to a file instead of a directory", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const filePath = path.join(tmp.path, "README.md")
+    await Bun.write(filePath, "# test")
+    const resp = await patchScopeByDirectory("unknown_scope_id", filePath, { name: "renamed" })
+    expect(resp.status).toBe(404)
+    const body = await resp.json()
+    expect(body.name).toBe("ScopeNotFound")
+    expect(body.data.message).toBe("Scope not found")
   })
 
   test("prefers an existing scopeID over ?directory=", async () => {
