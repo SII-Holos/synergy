@@ -4,7 +4,6 @@ import {
   HIDDEN_FLUSH_MS,
   VISIBLE_FLUSH_MS,
   createEventQueue,
-  shouldProbe,
   type EventQueue,
   type EventQueueOptions,
 } from "../../src/context/event-queue"
@@ -352,15 +351,6 @@ describe("createEventQueue flush idempotence and dispose", () => {
 
     harness.queue.push("global", stateEvent("session.status", "ses_2"))
     expect(harness.scheduled[0].ms).toBe(Math.max(0, VISIBLE_FLUSH_MS - 10))
-  })
-})
-
-describe("shouldProbe", () => {
-  test("probes only when visible and connected", () => {
-    expect(shouldProbe("visible", true)).toBe(true)
-    expect(shouldProbe("visible", false)).toBe(false)
-    expect(shouldProbe("hidden", true)).toBe(false)
-    expect(shouldProbe("hidden", false)).toBe(false)
   })
 })
 

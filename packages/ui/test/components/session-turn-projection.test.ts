@@ -78,7 +78,7 @@ mock.module("../../src/components/typewriter", () => ({ Typewriter: Empty }))
 const { collectCompactionParentIDs, collectMessagesForTurnLifecycle } = await import(
   "../../src/components/session-turn"
 )
-const { buildSessionTurnProjection, keepForTurnDisplay } = await import("../../src/components/session-turn-projection")
+const { buildSessionTurnProjection } = await import("../../src/components/session-turn-projection")
 
 function user(
   id: string,
@@ -177,15 +177,16 @@ describe("buildSessionTurnProjection", () => {
     expect([...projection.compactionParentIDs].sort()).toEqual(["parent-1", "parent-3"])
   })
 
-  test("lastUserMessageID is the last user message", () => {
-    const messages = [
-      user("r1", { isRoot: true }),
-      assistantFor("a1", "r1"),
-      user("r2", { isRoot: true }),
-      assistantFor("a2", "r2"),
-    ]
-    const projection = buildSessionTurnProjection(messages)
-    expect(projection.lastUserMessageID).toBe("r2")
+  test("rollback-filtered input aligns turn members with the trimmed timeline", () => {
+    // session.tsx builds the projection from messages() which applies
+    // messagesHiddenByRollback; during rollback the post-cut messages are
+    // removed, so earlier turns no longer surface them. The projection must
+    // faithfully reflect the filtered input (consistency improvement over the
+    // legacy raw-store scan).
+    const filtered = [user("r1", { isRoot: true }), assistantFor("a1", "r1")]
+    const projection = buildSessionTurnProjection(filtered)
+    expect(projection.roots.map((m) => m.id)).toEqual(["r1"])
+    expect(projection.turnMessagesFor(projection.roots[0]).map((m) => m.id)).toEqual(["a1"])
   })
 
   test("single pass O(N): hidden non-root user without root entry is skipped", () => {
@@ -197,17 +198,15 @@ describe("buildSessionTurnProjection", () => {
     expect(projection.turnMessagesFor(messages[0] as UserMessage)).toEqual([])
   })
 
-  test("keepForTurnDisplay keeps visible messages and projected compaction attempts", () => {
-    const visibleAssistant = assistantFor("a1", "r1")
+  test("hidden assistant messages stay in raw turn members (component filters)", () => {
     const hiddenAssistant = assistantFor("a2", "r1", { visible: false })
-    const runningCompaction = {
-      ...assistantFor("a3", "r1", { visible: false }),
-      mode: "compaction",
-      metadata: { compactionAttempt: { state: "running" } },
-    } as AssistantMessage
-
-    expect(keepForTurnDisplay(visibleAssistant)).toBe(true)
-    expect(keepForTurnDisplay(hiddenAssistant)).toBe(false)
-    expect(keepForTurnDisplay(runningCompaction)).toBe(true)
+    const projection = buildSessionTurnProjection([
+      user("r1", { isRoot: true }),
+      assistantFor("a1", "r1"),
+      hiddenAssistant,
+    ])
+    // Visibility filtering lives in the component (filterMessagesForTurnDisplay);
+    // the projection carries raw members so the component keeps its semantics.
+    expect(projection.turnMessagesFor(projection.roots[0]).map((m) => m.id)).toEqual(["a1", "a2"])
   })
 })

@@ -52,10 +52,6 @@ function deltaKey(directory: string, messageID: string, partID: string): string 
   return `delta:${directory}:${messageID}:${partID}`
 }
 
-export function shouldProbe(visibility: "visible" | "hidden", connected: boolean): boolean {
-  return visibility === "visible" && connected
-}
-
 export function createEventQueue(options: EventQueueOptions): EventQueue {
   const { emit, isHidden, batch } = options
   const now = options.now ?? Date.now
@@ -90,6 +86,13 @@ export function createEventQueue(options: EventQueueOptions): EventQueue {
 
     last = now()
     batch(() => {
+      // Merged deltas are emitted before queued state events regardless of
+      // arrival order: deltas are unsequenced and the ≤1 s server checkpoint
+      // (`message.part.updated`) is the authoritative snapshot — a checkpoint
+      // for the same part clears its pending delta on push (below), so the
+      // synthetic delta never double-applies. Emitting them first keeps the
+      // streaming renderer fed before state churn, which is harmless because
+      // sequenced state events are applied in the same batch.
       for (const entry of pendingDelta.values()) {
         emit(entry.directory, {
           type: "message.part.delta",
