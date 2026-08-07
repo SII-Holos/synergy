@@ -9,6 +9,7 @@ import { Global } from "@/global"
 import path from "path"
 import fs from "fs/promises"
 import { Auth } from "@/provider/api-key"
+import { readFileWithRetry } from "@/util/io-retry"
 
 export namespace HolosAccounts {
   export class MalformedStoreError extends Error {
@@ -38,7 +39,7 @@ export namespace HolosAccounts {
   async function readStore(): Promise<Store> {
     let raw: string
     try {
-      raw = await fs.readFile(filepath(), "utf8")
+      raw = await readFileWithRetry(filepath())
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return { activeAccountId: null, accounts: {} }

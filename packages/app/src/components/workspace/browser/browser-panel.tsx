@@ -2,7 +2,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createMemo, createResource, lazy, Show } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, lazy, Show } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
@@ -18,14 +18,15 @@ import { createBrowserCommandId, shouldResumeBrowserSession } from "./browser-co
 import { normalizeBrowserError } from "./browser-error"
 import { browser as B } from "@/locales/messages"
 import { resolveBrowserClientPresentation, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
-
+import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
+import { resolvePendingBrowserNavigation } from "./browser-view-command"
 const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
 const NetworkPanel = lazy(() => import("./network-panel").then((module) => ({ default: module.NetworkPanel })))
 const ElementsPanel = lazy(() => import("./elements-panel").then((module) => ({ default: module.ElementsPanel })))
 const DownloadsPanel = lazy(() => import("./downloads-panel").then((module) => ({ default: module.DownloadsPanel })))
 const AssetsPanel = lazy(() => import("./assets-panel").then((module) => ({ default: module.AssetsPanel })))
 
-export function BrowserPanel() {
+export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
   const params = useParams()
   const sdk = useSDK()
   const platform = usePlatform()
@@ -84,6 +85,7 @@ export function BrowserPanel() {
             clientPresentation={state.clientPresentation}
             routeDirectory={route()?.routeDirectory}
             sessionID={route()!.sessionID}
+            tab={props.tab}
           />
         )
       }}
@@ -97,6 +99,7 @@ function BrowserPanelInner(props: {
   clientPresentation: BrowserClientPresentationMode
   routeDirectory?: string
   sessionID: string
+  tab: WorkbenchPanelTab
 }) {
   const browser = props.browser
   const sdk = useSDK()
@@ -125,6 +128,14 @@ function BrowserPanelInner(props: {
   if (shouldResumeBrowserSession(props.initial)) {
     queueMicrotask(() => browser.send({ type: "resume" }))
   }
+
+  const [handledNavigationNonce, setHandledNavigationNonce] = createSignal<number | undefined>(undefined)
+  createEffect(() => {
+    const request = resolvePendingBrowserNavigation(props.tab.state, handledNavigationNonce())
+    if (!request) return
+    setHandledNavigationNonce(request.nonce)
+    browser.navigate(request.url)
+  })
 
   const retryNative = () => {
     ws.retryNative()

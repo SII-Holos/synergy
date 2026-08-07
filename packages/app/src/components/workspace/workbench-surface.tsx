@@ -12,6 +12,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
 import {
   resolveWorkbenchEscapeAction,
+  isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
 } from "@/context/workbench/panel-model"
@@ -277,6 +278,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
         opened: state().opened(),
         addOpen: local.addOpen,
         dialogActive: Boolean(dialog.active),
+        editableFocus: isEditableEscapeTarget(event.target),
       })
       if (action === "none") return
       event.preventDefault()

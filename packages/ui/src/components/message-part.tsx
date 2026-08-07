@@ -2172,6 +2172,9 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
               defaultOpen={props.defaultOpen}
               sessionId={props.message.sessionID}
               messageId={props.message.id}
+              attachments={
+                part().state.status === "completed" ? (part().state as ToolStateCompleted).attachments : undefined
+              }
             />
           </Match>
         </Switch>

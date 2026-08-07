@@ -3,6 +3,7 @@ import { StoragePath } from "@/storage/path"
 import { Global } from "@/global"
 import { HolosAccounts } from "./accounts"
 import { Log } from "@/util/log"
+import { isRetryableIOError } from "@/util/io-retry"
 import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration"
 import path from "path"
@@ -65,6 +66,12 @@ async function removePersistedAccountLabels(): Promise<number> {
       await fs.chmod(filepath, 0o600).catch(() => {})
     } catch (error) {
       await fs.rm(temporary, { force: true }).catch(() => {})
+      if (isRetryableIOError(error)) {
+        log.warn("skipping holos account label cleanup because the account store is temporarily unavailable", {
+          error: String(error),
+        })
+        return 0
+      }
       throw error
     }
     return count
@@ -102,9 +109,20 @@ export const migrations: Migration[] = [
     async up(progress) {
       progress(0, 1)
       const account = await HolosAccounts.getActiveAccount().catch((error) => {
-        if (!(error instanceof HolosAccounts.MalformedStoreError)) throw error
-        log.warn("skipping clarus channel account provisioning because the Holos account store is malformed")
-        return undefined
+        if (error instanceof HolosAccounts.MalformedStoreError) {
+          log.warn("skipping clarus channel account provisioning because the Holos account store is malformed")
+          return undefined
+        }
+        if (isRetryableIOError(error)) {
+          log.warn(
+            "skipping clarus channel account provisioning because the Holos account store is temporarily unavailable",
+            {
+              error: String(error),
+            },
+          )
+          return undefined
+        }
+        throw error
       })
       if (account) {
         const { HolosAuth } = await import("./auth")
