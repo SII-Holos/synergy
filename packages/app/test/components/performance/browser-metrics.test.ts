@@ -5,6 +5,7 @@ import {
   fitBrowserMetricBatch,
   mergeTokenReceipt,
   pageContextFromUrl,
+  shouldRetryBrowserMetricBatch,
 } from "../../../src/components/performance/browser-metrics"
 
 describe("browser performance metrics", () => {
@@ -167,5 +168,35 @@ describe("browser performance metrics", () => {
       name: "frontend.collector.rejected",
       value: 2,
     })
+  })
+  test("caps metrics at the backend batch limit including the rejected counter", () => {
+    const entries = Array.from({ length: 100 }, (_, index) => ({
+      kind: "metric" as const,
+      value: { name: "frontend.test", value: index, unit: "count" as const, labels: {} },
+    }))
+    const fitted = fitBrowserMetricBatch({ entries, rejected: 7, page: {}, maxBytes: 256 * 1024 })
+    expect(fitted.body.metrics.length).toBe(100)
+    expect(fitted.body.metrics.at(-1)).toMatchObject({ name: "frontend.collector.rejected", value: 7 })
+    expect(fitted.entries.length).toBe(99)
+    expect(fitted.deferred).toEqual([entries.at(-1)!])
+    expect(fitted.entries.length + fitted.deferred.length).toBe(entries.length)
+  })
+
+  test("defers overflow entries beyond the backend metric limit", () => {
+    const entries = Array.from({ length: 150 }, (_, index) => ({
+      kind: "metric" as const,
+      value: { name: "frontend.test", value: index, unit: "count" as const, labels: {} },
+    }))
+    const fitted = fitBrowserMetricBatch({ entries, rejected: 0, page: {}, maxBytes: 256 * 1024 })
+    expect(fitted.body.metrics.length).toBe(100)
+    expect(fitted.entries.length).toBe(100)
+    expect(fitted.deferred.length).toBe(50)
+  })
+  test("does not retry batches the server rejected as invalid", () => {
+    expect(
+      shouldRetryBrowserMetricBatch({ code: "PERF_INVALID_METRIC_BATCH", message: "Invalid performance request." }),
+    ).toBe(false)
+    expect(shouldRetryBrowserMetricBatch({ code: "PERF_RATE_LIMITED", retryAfterMs: 1000 })).toBe(true)
+    expect(shouldRetryBrowserMetricBatch(new TypeError("fetch failed"))).toBe(true)
   })
 })

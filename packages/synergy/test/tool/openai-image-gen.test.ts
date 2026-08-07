@@ -6,6 +6,7 @@ import { CodexProvider } from "../../src/provider/codex"
 import { Provider } from "../../src/provider/provider"
 import { ScopeContext } from "../../src/scope/context"
 import { OpenAIImageGenTool, openAIImageGenDisplay } from "../../src/tool/openai-image-gen"
+import { OPENAI_IMAGE_REQUEST_TIMEOUT_MS } from "../../src/tool/openai-image-shared"
 import { ToolRegistry } from "../../src/tool/registry"
 import { tmpdir } from "../fixture/fixture"
 
@@ -299,8 +300,7 @@ describe("tool.openai_image_gen", () => {
         expect(message).not.toContain(imageData.slice(0, 80))
       },
     })
-  })
-
+  }, 20_000)
   test("missing image data rejects without writing output", async () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
@@ -374,6 +374,226 @@ describe("tool.openai_image_gen", () => {
             ctx,
           ),
         ).rejects.toThrow("OpenAI Codex is not connected. Run synergy auth login and choose OpenAI Codex.")
+      },
+    })
+  })
+  test("request timeout constant is 600 seconds", async () => {
+    expect(OPENAI_IMAGE_REQUEST_TIMEOUT_MS).toBe(600_000)
+  })
+
+  test("transient 500 response retries with backoff and succeeds on the second attempt", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    let fetchCalls = 0
+    globalThis.fetch = asFetch(async () => {
+      fetchCalls++
+      if (fetchCalls === 1) return jsonResponse({ error: { message: "boom" } }, { status: 500 })
+      return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageGenTool.init()
+        const result = await tool.execute(
+          {
+            prompt: "A small star.",
+            output_path: "generated/star.png",
+            size: "auto",
+            quality: "auto",
+            background: "auto",
+          },
+          ctx,
+        )
+        expect(fetchCalls).toBe(2)
+        expect(result.output).toContain("Generated image saved")
+      },
+    })
+  })
+
+  test("persistent 5xx fails after the configured number of attempts", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    let fetchCalls = 0
+    globalThis.fetch = asFetch(async () => {
+      fetchCalls++
+      return jsonResponse({ error: { message: "boom" } }, { status: 500 })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageGenTool.init()
+        await expect(
+          tool.execute(
+            {
+              prompt: "A small star.",
+              output_path: "generated/star.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("Codex image generation failed with status 500")
+        expect(fetchCalls).toBe(3)
+      },
+    })
+  }, 20_000)
+
+  test("429 with retry-after retries after the indicated delay and succeeds", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (String(input).includes("/images/")) imageCalls++
+      if (imageCalls === 1) {
+        return jsonResponse({ error: { message: "rate limited" } }, { status: 429, headers: { "retry-after": "1" } })
+      }
+      return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageGenTool.init()
+        const started = Date.now()
+        const result = await tool.execute(
+          {
+            prompt: "A small moon.",
+            output_path: "generated/moon.png",
+            size: "auto",
+            quality: "auto",
+            background: "auto",
+          },
+          ctx,
+        )
+        expect(imageCalls).toBe(2)
+        expect(Date.now() - started).toBeGreaterThanOrEqual(800)
+        expect(result.output).toContain("Generated image saved")
+      },
+    })
+  })
+  test("429 with retry-after over the cap surfaces the rate limit without retrying", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (String(input).includes("/images/")) imageCalls++
+      return jsonResponse({ error: { message: "rate limited" } }, { status: 429, headers: { "retry-after": "31" } })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageGenTool.init()
+        const started = Date.now()
+        await expect(
+          tool.execute(
+            {
+              prompt: "A tiny probe image.",
+              output_path: "generated/ratelimited.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("Codex image generation is rate-limited or quota-limited. Retry after 31 seconds.")
+        expect(imageCalls).toBe(1)
+        expect(Date.now() - started).toBeLessThan(5_000)
+      },
+    })
+  })
+
+  test("transient network failure retries and succeeds on the second attempt", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    let fetchCalls = 0
+    globalThis.fetch = asFetch(async () => {
+      fetchCalls++
+      if (fetchCalls === 1) throw new TypeError("fetch failed")
+      return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageGenTool.init()
+        const result = await tool.execute(
+          {
+            prompt: "A tiny sun.",
+            output_path: "generated/sun.png",
+            size: "auto",
+            quality: "auto",
+            background: "auto",
+          },
+          ctx,
+        )
+        expect(fetchCalls).toBe(2)
+        expect(result.output).toContain("Generated image saved")
+      },
+    })
+  })
+
+  test("401 credential rejection does not retry", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (String(input).includes("/images/")) imageCalls++
+      return jsonResponse({ error: { message: "unauthorized" } }, { status: 401 })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageGenTool.init()
+        await expect(
+          tool.execute(
+            {
+              prompt: "A small test image.",
+              output_path: "generated/unauthorized.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow()
+        expect(imageCalls).toBe(1)
+      },
+    })
+  })
+
+  test("cancellation before execution aborts without sending a request", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await connectCodex()
+    const controller = new AbortController()
+    controller.abort()
+    let fetchCalls = 0
+    globalThis.fetch = asFetch(async () => {
+      fetchCalls++
+      return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await OpenAIImageGenTool.init()
+        await expect(
+          tool.execute(
+            {
+              prompt: "A tiny square.",
+              output_path: "generated/cancelled.png",
+              size: "auto",
+              quality: "auto",
+              background: "auto",
+            },
+            { ...ctx, abort: controller.signal },
+          ),
+        ).rejects.toThrow("Aborted")
+        expect(fetchCalls).toBe(0)
       },
     })
   })

@@ -54,7 +54,6 @@ export namespace RuntimeReload {
     "library",
     "external_agent",
     "email",
-    "github",
   ])
   export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast", "locale"])
 
@@ -331,14 +330,9 @@ export namespace RuntimeReload {
           AgentTurn.resize(result.config.execution?.agentWorkers)
           ctx.liveApplied.add("execution.agentWorkers")
         }
-        if (resolvedScope === "global" && changedFields.includes("github")) {
-          const [{ GitHubPollRuntime }, { GitHubRuntime }] = await Promise.all([
-            import("../github/poll-runtime"),
-            import("../github/runtime"),
-          ])
-          await GitHubPollRuntime.stop()
-          await GitHubRuntime.reload(result.config.github)
-          await GitHubPollRuntime.start(result.config.github)
+        if (resolvedScope === "global" && changedFields.includes("embedding")) {
+          const { Embedding } = await import("../vector/embedding")
+          await Embedding.dispose()
         }
         // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
         if (changedFields.includes("library")) {

@@ -202,3 +202,10 @@ export function createAttachmentPreviewReader(
     },
   }
 }
+
+export function attachmentOpenInBrowserUrl(
+  kind: AttachmentPreviewKind | undefined,
+  url: string | undefined,
+): string | undefined {
+  return kind === "html" && url ? url : undefined
+}

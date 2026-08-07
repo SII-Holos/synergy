@@ -83,7 +83,25 @@ export namespace ChannelConversationAcceptance {
       .then(() => {
         completed = true
       })
-      .finally(() => SessionManager.finish(lease, { requestNextWork: !completed }))
+      .finally(async () => {
+        if (completed) {
+          // The current delivery is materialized and committed by execute, so a
+          // successful turn normally leaves nothing runnable behind. But a new
+          // item can land mid-run (e.g. a cortex completion steer whose drive
+          // request was dropped while the session was busy); that item needs
+          // the release-time drive, otherwise it stays stranded in the inbox.
+          const leftover = await SessionInbox.hasRunnableItem(input.sessionID, {
+            excludeIDs: new Set([delivery.itemID]),
+          })
+          if (leftover) {
+            await SessionManager.finish(lease)
+            return
+          }
+          await SessionManager.finish(lease, { requestNextWork: false })
+          return
+        }
+        await SessionManager.finish(lease)
+      })
     void execution.catch((error) => {
       log.error("conversation execution failed", { sessionID: input.sessionID, error })
     })

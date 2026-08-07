@@ -40,6 +40,26 @@ export function compareByTimeThenId(a: MessageRef, b: MessageRef) {
   return a.time.created - b.time.created || a.id.localeCompare(b.id)
 }
 
+function insertInOrder<T extends MessageRef>(messages: T[], message: T): T[] {
+  const last = messages.at(-1)
+  if (last && compareByTimeThenId(last, message) <= 0) {
+    // Common path: an incoming message is the newest — append at the tail.
+    const next = messages.slice()
+    next.push(message)
+    return next
+  }
+  let lo = 0
+  let hi = messages.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (compareByTimeThenId(messages[mid], message) <= 0) lo = mid + 1
+    else hi = mid
+  }
+  const next = messages.slice()
+  next.splice(lo, 0, message)
+  return next
+}
+
 function mergeMessages<T extends MessageRef>(groups: T[][]) {
   const byID = new Map<string, T>()
   for (const group of groups) {
@@ -117,7 +137,17 @@ export function reconcileMessage<T extends MessageRef>(
     }
   }
 
-  const messages = mergeMessages([current.messages, [message]])
+  // Incremental insert: the window stays sorted by compareByTimeThenId, so a
+  // single message only needs its sorted insertion point instead of a full
+  // merge + sort of the whole window. An existing message is replaced by
+  // removing it first, then re-inserting at its new canonical position.
+  const messages = existing
+    ? insertInOrder(
+        current.messages.filter((item) => item.id !== message.id),
+        message,
+      )
+    : insertInOrder(current.messages, message)
+
   if (current.mode === "history") {
     return {
       window: { ...current, messages },

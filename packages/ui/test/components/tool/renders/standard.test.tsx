@@ -48,7 +48,14 @@ mock.module("../../../../src/components/basic-tool", () => ({
 mock.module("../../../../src/components/icon", () => ({ Icon: () => null }))
 mock.module("../../../../src/components/checkbox", () => ({ Checkbox: () => null }))
 mock.module("../../../../src/components/render-html", () => ({ RenderHtml: () => null }))
-mock.module("../../../../src/components/attachment-card", () => ({ AttachmentGallery: () => null }))
+let capturedGalleryFiles: unknown[] | undefined
+const lastGalleryFiles = () => capturedGalleryFiles
+mock.module("../../../../src/components/attachment-card", () => ({
+  AttachmentGallery: (props: { files: unknown[] }) => {
+    capturedGalleryFiles = props.files
+    return null
+  },
+}))
 mock.module("../../../../src/components/tool-output-text", () => ({ ToolTextOutput: () => null }))
 mock.module("../../../../src/components/semantic-icon", () => ({ getSemanticIcon: (name: string) => name }))
 mock.module("@ericsanchezok/synergy-sdk", () => ({}))
@@ -113,5 +120,37 @@ describe("remote Synergy Link provenance on bash/process cards", () => {
     i18n.loadAndActivate({ locale: "zh-CN", messages: { [REMOTE_LABEL_ID]: REMOTE_LABEL_ZH } })
     const zh = renderTrigger("bash", { input: { command: "ls" }, metadata: { backend: "remote" } })
     expect(zh?.tags).toEqual([{ label: "ls" }, { label: REMOTE_LABEL_ZH }])
+  })
+})
+
+describe("attach card gallery routing", () => {
+  test("renders gallery from full attachment parts when provided", () => {
+    capturedGalleryFiles = undefined
+    const attachment = {
+      id: "part-1",
+      sessionID: "session-1",
+      messageID: "message-1",
+      type: "attachment" as const,
+      mime: "text/html",
+      filename: "report.html",
+      url: "asset://abc",
+    }
+    renderTrigger("attach", {
+      status: "completed",
+      input: {},
+      metadata: { files: [{ assetId: "abc", filename: "report.html", mime: "text/html", size: 10 }] },
+      attachments: [attachment],
+    })
+    expect(lastGalleryFiles()).toEqual([attachment])
+  })
+
+  test("falls back to legacy metadata files without attachment parts", () => {
+    capturedGalleryFiles = undefined
+    renderTrigger("attach", {
+      status: "completed",
+      input: {},
+      metadata: { files: [{ assetId: "abc", filename: "report.html", mime: "text/html", size: 10 }] },
+    })
+    expect(lastGalleryFiles()).toEqual([{ assetId: "abc", filename: "report.html", mime: "text/html", size: 10 }])
   })
 })

@@ -157,7 +157,6 @@ import type {
   ExperienceListSort,
   ExperimentalResourceListResponses,
   FormatterStatusResponses,
-  GithubConfiguredResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
@@ -559,6 +558,9 @@ import type {
   WorkspaceFilesStatErrors,
   WorkspaceFilesStatResponses,
   WorkspaceFilesStatusResponses,
+  WorkspaceFilesWriteErrors,
+  WorkspaceFilesWriteResponses,
+  WorkspaceFileWriteFileInput,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -1448,6 +1450,45 @@ export class Files extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * Write workspace file
+   *
+   * Write content to an existing workspace file with optional optimistic concurrency control.
+   */
+  public write<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      workspaceFileWriteFileInput?: WorkspaceFileWriteFileInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "workspaceFileWriteFileInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceFilesWriteResponses, WorkspaceFilesWriteErrors, ThrowOnError>(
+      {
+        url: "/workspace/files/write",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
   }
 }
 
@@ -4745,20 +4786,6 @@ export class SynergyLink extends HeyApiClient {
   }
 }
 
-export class Github extends HeyApiClient {
-  /**
-   * Check whether the GitHub App is configured
-   *
-   * Reports whether both required GitHub App environment variables are present without exposing them.
-   */
-  public configured<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<GithubConfiguredResponses, unknown, ThrowOnError>({
-      url: "/github/configured",
-      ...options,
-    })
-  }
-}
-
 export class Runtime extends HeyApiClient {
   /**
    * Reload runtime state
@@ -5520,7 +5547,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
     },
@@ -5566,7 +5592,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -5619,7 +5644,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
     },
@@ -11283,8 +11307,6 @@ export class SynergyClient extends HeyApiClient {
   holos = new Holos({ client: this.client })
 
   synergyLink = new SynergyLink({ client: this.client })
-
-  github = new Github({ client: this.client })
 
   agenda = new Agenda({ client: this.client })
 

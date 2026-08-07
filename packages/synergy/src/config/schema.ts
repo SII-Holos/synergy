@@ -16,7 +16,6 @@ import { ModelsDev } from "../provider/models-schemas"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
-import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
 import { validateHolosEndpoint } from "../holos/security"
 
 export const McpRetry = McpRetryConfig
@@ -353,7 +352,73 @@ export const ObservabilityConfig = z
   .meta({ ref: "ObservabilityConfig" })
 export type ObservabilityConfig = z.infer<typeof ObservabilityConfig>
 
-export const Channel = z.discriminatedUnion("type", [ChannelFeishu, ChannelClarus])
+export const ChannelGithubAccount = z
+  .object({
+    enabled: z.boolean().optional().default(true),
+    repositories: z
+      .array(z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Use owner/repo form"))
+      .default([])
+      .describe("GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later"),
+    workspaceDir: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.",
+      ),
+    workspaceTtlHours: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(24)
+      .describe(
+        "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.",
+      ),
+    pollingIntervalMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(300_000)
+      .describe("Interval between GitHub API polls in milliseconds (default 5 minutes)"),
+    autoReview: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Automatically review newly opened and updated pull requests"),
+    autoRespond: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Respond to @mentions of the bot handle and questions in issues and pull requests"),
+    agent: z.string().optional().describe("Agent used for GitHub channel sessions (defaults to github-channel-agent)"),
+    mention: z
+      .string()
+      .optional()
+      .describe(
+        "GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)",
+      ),
+    model: z
+      .string()
+      .optional()
+      .describe("Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)"),
+    variant: z.string().optional().describe("Model variant to use with this account model (e.g. low, high, max)"),
+  })
+  .strict()
+  .meta({ ref: "ChannelGithubAccountConfig" })
+export type ChannelGithubAccount = z.infer<typeof ChannelGithubAccount>
+
+export const ChannelGithub = z
+  .object({
+    type: z.literal("github"),
+    accounts: z.record(z.string(), ChannelGithubAccount),
+  })
+  .strict()
+  .meta({ ref: "ChannelGithubConfig" })
+export type ChannelGithub = z.infer<typeof ChannelGithub>
+
+export const Channel = z.discriminatedUnion("type", [ChannelFeishu, ChannelClarus, ChannelGithub])
 export type Channel = z.infer<typeof Channel>
 
 export const EmailSmtp = z
@@ -969,6 +1034,13 @@ export const LocalEmbeddingConfig = z
       .optional()
       .describe("Download source for the bundled local embedding model (default: huggingface)"),
     remoteHost: z.string().url().optional().describe("Public HTTPS origin used when source is custom"),
+    cacheDir: z
+      .string()
+      .optional()
+      .describe(
+        "Directory where the bundled local embedding model is cached (default: ~/.synergy/data/embedding/models). " +
+          "Supports {env:VAR} references.",
+      ),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -1314,9 +1386,6 @@ export const QuickSwitcher = z
   .meta({ ref: "QuickSwitcherConfig" })
 export type QuickSwitcher = z.infer<typeof QuickSwitcher>
 
-export const GitHubIntegrationConfig = GitHubIntegrationConfigSchema
-export type GitHubIntegrationConfig = z.infer<typeof GitHubIntegrationConfig>
-
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -1599,7 +1668,6 @@ export const Info = z
       .strict()
       .optional()
       .describe("Process isolation, worker recycling, and bounded execution scheduling"),
-    github: GitHubIntegrationConfig.optional().describe("Outbound GitHub App polling and automation configuration"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),

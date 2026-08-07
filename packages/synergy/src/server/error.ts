@@ -17,12 +17,26 @@ export const ServiceUnavailableError = z
   })
   .meta({ ref: "ServiceUnavailableError" })
 
+export const ForbiddenError = z
+  .object({
+    message: z.string(),
+  })
+  .meta({ ref: "ForbiddenError" })
+
 export const ERRORS = {
   400: {
     description: "Bad request",
     content: {
       "application/json": {
         schema: resolver(BadRequestError),
+      },
+    },
+  },
+  403: {
+    description: "Forbidden",
+    content: {
+      "application/json": {
+        schema: resolver(ForbiddenError),
       },
     },
   },

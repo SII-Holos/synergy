@@ -743,6 +743,10 @@ msgid "app.attachment.action.download"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.attachment.action.openInBrowser"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.attachment.action.viewSourceFile"
 msgstr ""
 
@@ -2227,6 +2231,14 @@ msgid "app.file.action.close"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.dismiss"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.overwrite"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.retry"
 msgstr ""
 
@@ -2287,7 +2299,43 @@ msgid "app.file.mode.source"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflict"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflictOverwrite"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saved"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveDenied"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveFailed"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.addToContext"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.discard"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.edit"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.save"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.saving"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
@@ -6867,6 +6915,10 @@ msgstr ""
 msgid "app.sidebar.channel.feishu"
 msgstr ""
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.github"
+msgstr ""
+
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr ""
@@ -7069,10 +7121,6 @@ msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.channel"
-msgstr ""
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.section.github"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -13946,6 +13994,90 @@ msgid "settings.channels.feishu.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespond"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespondDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReviewDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMs"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMsDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositories"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDir"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr ""
 
@@ -14835,6 +14967,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.button.starting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17855,6 +17999,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.generate-image"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.github-deliver-fix"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
