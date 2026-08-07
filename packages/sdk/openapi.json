@@ -10723,6 +10723,96 @@
         ]
       }
     },
+    "/workspace/files/write": {
+      "post": {
+        "operationId": "workspace.files.write",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Write workspace file",
+        "description": "Write content to an existing workspace file with optional optimistic concurrency control.",
+        "responses": {
+          "200": {
+            "description": "Workspace file write result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileWriteFileInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.write({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/library/embedding/status": {
       "get": {
         "operationId": "library.embedding.status",
@@ -17599,6 +17689,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
                 }
               }
             }
@@ -36949,6 +37049,76 @@
         },
         "required": ["files"]
       },
+      "WorkspaceFileWriteResult": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "mtime": {
+            "type": "number",
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "existed": {
+            "type": "boolean"
+          }
+        },
+        "required": ["path", "mtime", "size", "existed"]
+      },
+      "WorkspaceFileWriteError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "WorkspaceFileWriteFileInput": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "encoding": {
+            "default": "utf-8",
+            "type": "string",
+            "enum": ["utf-8", "base64"]
+          },
+          "createParents": {
+            "default": false,
+            "type": "boolean"
+          },
+          "conflictPolicy": {
+            "default": "fail",
+            "type": "string",
+            "enum": ["fail", "overwrite"]
+          },
+          "expectedMtime": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": ["path", "content"]
+      },
       "EmbeddingStatus": {
         "anyOf": [
           {
@@ -40628,6 +40798,15 @@
         },
         "required": ["protocolVersion", "command", "commandId"],
         "additionalProperties": false
+      },
+      "ForbiddenError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"]
       },
       "PluginConfigUpdate": {
         "type": "object",
