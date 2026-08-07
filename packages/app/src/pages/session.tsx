@@ -93,9 +93,12 @@ import {
 } from "@/components/session/session-message-order"
 import {
   adjustedScrollTop,
+  adjustTrimScrollTop,
+  computeTurnTrim,
   selectPrependAnchor,
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
+import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
@@ -517,6 +520,7 @@ function SessionPageContent() {
     emptyUserMessages,
   )
   const visibleRoots = createMemo(() => rootMessages().filter((m) => m.visible !== false), emptyUserMessages)
+  const turnProjection = createMemo(() => buildSessionTurnProjection(messages()))
   const lastRoot = createMemo(() => rootMessages().at(-1))
   // visibleRoots for navigation/timeline (deprecated old names kept for compatibility)
   const visibleUserMessages = visibleRoots
@@ -652,7 +656,7 @@ function SessionPageContent() {
   // overwrite the user's explicit in-composer choice (issue #318).
 
   const renderedUserMessages = createMemo(() => {
-    const msgs = visibleRoots()
+    const msgs = turnProjection().roots
     if (!msgs) return emptyUserMessages
     const start = store.turnStart
     if (start <= 0) return msgs
@@ -1081,6 +1085,65 @@ function SessionPageContent() {
   const turnInit = 20
   const turnBatch = 20
 
+  // Keep the rendered tree bounded while pinned to the bottom: when a new turn
+  // pushes the visible root count past MAX_RENDERED_TURNS, advance turnStart so
+  // the top turns are trimmed from the DOM. Only trims in latest mode while the
+  // user is pinned at the bottom — any scrolled-up / history / user-scrolled
+  // state keeps the full window (the "Load earlier" button restores trimmed
+  // turns). The scroll position is re-pinned after layout settles because
+  // overflowAnchor is disabled (create-auto-scroll) and top removal would
+  // otherwise shift the viewport.
+  const MAX_RENDERED_TURNS = 40
+  createEffect(() => {
+    const roots = visibleUserMessages()
+    const len = roots?.length ?? 0
+    const el = scroller
+    if (!el) return
+    const decision = computeTurnTrim({
+      visibleRootCount: len,
+      turnStart: store.turnStart,
+      maxRenderedTurns: MAX_RENDERED_TURNS,
+      historyMode: historyMode() === "history",
+      scrolledUp: scrolledUp(),
+      userScrolled: autoScroll.userScrolled(),
+      distanceFromBottom: el.scrollHeight - el.clientHeight - el.scrollTop,
+      pinnedThreshold: 10,
+    })
+    if (!decision.trim) return
+
+    const beforeScrollHeight = el.scrollHeight
+    const nextStart = decision.nextTurnStart
+    setStore("turnStart", nextStart)
+
+    // A focused/hash-linked message that was trimmed away is no longer
+    // reachable in the DOM; clear it so scrollSpy/activeMessage fall back.
+    const active = store.messageId
+    if (active) {
+      const index = roots.findIndex((m) => m.id === active)
+      if (index !== -1 && index < nextStart) {
+        setStore("messageId", undefined)
+        clearHash()
+      }
+    }
+
+    afterHistoryLayoutSettles(() => {
+      const container = scroller
+      if (!container) return
+      // Re-pin to the bottom. The clamp formula is the defensive fallback if a
+      // race (trim + streamed append) left us off the bottom; when pinned the
+      // forced bottom position is what keeps the viewport stable.
+      container.scrollTop = Math.max(
+        container.scrollHeight - container.clientHeight,
+        adjustTrimScrollTop({
+          scrollTop: container.scrollTop,
+          beforeScrollHeight,
+          afterScrollHeight: container.scrollHeight,
+          clientHeight: container.clientHeight,
+        }),
+      )
+    })
+  })
+
   createEffect(
     on(
       () => [params.id, messagesReady()] as const,
@@ -1305,6 +1368,7 @@ function SessionPageContent() {
                           sessionID={params.id!}
                           paramsDir={params.dir!}
                           timeline={timeline}
+                          turnProjection={turnProjection}
                           pendingTimeline={pendingTimeline}
                           sessionTransition={visibleSessionTransition}
                           sessionTransitionActions={visibleSessionTransitionActions}
