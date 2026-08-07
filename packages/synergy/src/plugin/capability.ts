@@ -5,6 +5,8 @@ const CONTROL_PROFILE_CAPABILITY_BY_HOST_CAPABILITY: Record<string, string> = {
   "asset.write": "file_write",
   "settings.read": "config:read",
   "agent.call": "task",
+  "workspace.read": "file_read",
+  "workspace.write": "file_write",
 }
 
 export function controlProfileCapability(capability: string): string {
