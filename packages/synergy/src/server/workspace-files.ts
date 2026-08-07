@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
+import { Storage } from "../storage/storage"
 import { WorkspaceFile } from "../workspace-file/types"
 import { WorkspaceFileSearch } from "../workspace-file/search"
 import { WorkspaceFileService } from "../workspace-file/service"
@@ -213,7 +214,38 @@ export const WorkspaceFilesRoute = new Hono()
             },
           },
         },
-        ...errors(400, 404, 409, 403),
+        400: {
+          description: "Bad request",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.WriteFileError),
+            },
+          },
+        },
+        403: {
+          description: "Forbidden",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.WriteFileError),
+            },
+          },
+        },
+        404: {
+          description: "Not found",
+          content: {
+            "application/json": {
+              schema: resolver(Storage.NotFoundError.Schema),
+            },
+          },
+        },
+        409: {
+          description: "Conflict",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.WriteFileError),
+            },
+          },
+        },
       },
     }),
     validator("json", WorkspaceFile.WriteFileInput),
@@ -222,10 +254,18 @@ export const WorkspaceFilesRoute = new Hono()
       try {
         return c.json(await WorkspaceFileService.write(body))
       } catch (err: any) {
-        if (err instanceof WorkspaceFileService.AccessDeniedError) return c.json({ message: err.message }, 403)
-        if (err instanceof WorkspaceFileService.WriteConflictError) return c.json({ message: err.message }, 409)
-        if (err instanceof WorkspaceFileService.NotFoundError) return c.json({ message: err.message }, 404)
-        if (err instanceof WorkspaceFileService.TooLargeError) return c.json({ message: err.message }, 400)
+        if (err instanceof WorkspaceFileService.AccessDeniedError) {
+          return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+        }
+        if (err instanceof WorkspaceFileService.WriteConflictError) {
+          return c.json({ name: "WorkspaceFileWriteConflictError", data: { message: err.message } }, 409)
+        }
+        if (err instanceof WorkspaceFileService.NotFoundError) {
+          return c.json({ name: "NotFoundError", data: { message: err.message } }, 404)
+        }
+        if (err instanceof WorkspaceFileService.TooLargeError) {
+          return c.json({ name: "WorkspaceFileTooLargeError", data: { message: err.message } }, 400)
+        }
         throw err
       }
     },

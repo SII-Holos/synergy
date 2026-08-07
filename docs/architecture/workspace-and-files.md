@@ -49,10 +49,12 @@ The classic debug file search is lazy and reuses this same bounded project index
 
 The current public workspace-file routes are read/browse/search/status contracts plus `POST /workspace/files/write` (operationId `workspace.files.write`), a user-direct edit channel. Writes are bounded by the same path rules as reads — lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied — and additionally:
 
-- sensitive paths are rejected via `SensitivePathPolicy` in write mode (Git metadata and secret/credential files such as `.git`, `.env`, and credential stores are not editable)
-- the target file must already exist; read-only filesystem targets are refused
+- sensitive paths are rejected via `SensitivePathPolicy` in write mode (Git metadata and secret/credential files such as `.git`, `.env`, and credential stores are not editable), and the check also runs against the resolved real path so a symlink whose target is a sensitive file cannot bypass it
+- the target must be an existing regular file; directories and read-only filesystem targets are refused
 - an optional `expectedMtime` optimistic lock rejects a concurrent on-disk change with 409 unless the caller opts into `conflictPolicy: "overwrite"`
 - content is capped at 8 MiB and parent-directory creation is opt-in via `createParents`
+
+Write failures use the same structured error shape as the rest of the API: `{ name, data: { message } }` with `WorkspaceFileAccessDeniedError` (403), `WorkspaceFileWriteConflictError` (409), `WorkspaceFileTooLargeError` (400), and `NotFoundError` (404).
 
 A successful write invalidates the Git-status cache and the frontend refreshes through the filesystem watcher; no `file.edited` event is published. This route is the user editing their own workspace directly: it is profile-independent and bypasses the agent approval/sandbox pipeline, so path safety is enforced by the service itself rather than by execution policy. Agent write operations remain separate and use the governed tool pipeline (write/save_file tools with permission decisions, locking, events, formatting, and diagnostics), never this route.
 

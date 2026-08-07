@@ -205,6 +205,14 @@ export namespace WorkspaceFile {
     .meta({ ref: "WorkspaceFileWriteResult" })
   export type WriteFileResult = z.infer<typeof WriteFileResult>
 
+  export const WriteFileError = z
+    .object({
+      name: z.enum(["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]),
+      data: z.object({ message: z.string() }),
+    })
+    .meta({ ref: "WorkspaceFileWriteError" })
+  export type WriteFileError = z.infer<typeof WriteFileError>
+
   export const CreateDirectoryInput = z
     .object({
       path: z.string(),

@@ -10,7 +10,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useFile } from "@/context/file"
 import { usePrompt } from "@/context/prompt"
-import { isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
+import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
@@ -243,7 +243,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   const [dirty, setDirty] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
   let sourceApi: FileSourceViewApi | undefined
-  const canEdit = createMemo(() => mode() === "source" && !!textContent())
+  const canEdit = createMemo(() => mode() === "source" && !!textContent() && textContent()?.truncationReason !== "size")
 
   async function runSave(overwrite = false) {
     if (!sourceApi || saving()) return
@@ -274,13 +274,13 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
         showToast({
           type: "error",
           title: lingui._({ id: F.saveDenied.id, message: F.saveDenied.message }),
-          description: error instanceof Error ? error.message : undefined,
+          description: fileWriteErrorMessage(error),
         })
       } else {
         showToast({
           type: "error",
           title: lingui._({ id: F.saveFailed.id, message: F.saveFailed.message }),
-          description: error instanceof Error ? error.message : undefined,
+          description: fileWriteErrorMessage(error),
         })
       }
     } finally {

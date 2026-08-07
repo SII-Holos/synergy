@@ -6333,8 +6333,11 @@ export type WorkspaceFileWriteResult = {
   existed: boolean
 }
 
-export type ForbiddenError = {
-  message: string
+export type WorkspaceFileWriteError = {
+  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileWriteConflictError" | "WorkspaceFileTooLargeError"
+  data: {
+    message: string
+  }
 }
 
 export type WorkspaceFileWriteFileInput = {
@@ -7526,6 +7529,10 @@ export type BrowserControlRequest = {
       }
   commandId: string
   traceId?: string
+}
+
+export type ForbiddenError = {
+  message: string
 }
 
 export type PluginConfigUpdate = {
@@ -13680,11 +13687,11 @@ export type WorkspaceFilesWriteErrors = {
   /**
    * Bad request
    */
-  400: BadRequestError
+  400: WorkspaceFileWriteError
   /**
    * Forbidden
    */
-  403: ForbiddenError
+  403: WorkspaceFileWriteError
   /**
    * Not found
    */
@@ -13692,7 +13699,7 @@ export type WorkspaceFilesWriteErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: WorkspaceFileWriteError
 }
 
 export type WorkspaceFilesWriteError = WorkspaceFilesWriteErrors[keyof WorkspaceFilesWriteErrors]

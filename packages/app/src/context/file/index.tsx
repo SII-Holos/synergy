@@ -779,7 +779,19 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
           "documents",
           path,
           produce((draft) => {
+            if (draft.content?.kind === "text") {
+              draft.content = {
+                ...draft.content,
+                content,
+                truncated: false,
+                truncationReason: undefined,
+                totalBytes: result.size,
+                lineCount: content.split(/\r?\n/).length,
+              }
+            }
             draft.version = { mtime: result.mtime, size: result.size }
+            draft.stale = false
+            draft.error = undefined
           }),
         )
         return result

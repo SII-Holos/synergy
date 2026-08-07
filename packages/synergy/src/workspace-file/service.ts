@@ -255,18 +255,31 @@ export namespace WorkspaceFileService {
     }
   }
 
+  async function assertRealpathWritable(absolute: string) {
+    // The lexical path check above can be bypassed through a symlink whose
+    // target is a sensitive file (for example `link.env` -> `.env`). Bun.write
+    // follows symlinks, so re-check the resolved target with the same policy.
+    const real = await realpathIfExists(absolute)
+    if (!real || real === absolute) return
+    assertWritableTarget(real)
+  }
+
   export async function write(input: WorkspaceFile.WriteFileInput): Promise<WorkspaceFile.WriteFileResult> {
     const absolute = resolve(input.path)
     await assertRealpathInside(absolute)
     assertWritableTarget(absolute)
+    await assertRealpathWritable(absolute)
 
-    const file = Bun.file(absolute)
-    const existed = await file.exists()
-    if (!existed) {
+    let stat: Awaited<ReturnType<typeof fs.stat>>
+    try {
+      stat = await fs.stat(absolute)
+    } catch {
       throw new NotFoundError(`File does not exist: ${displayRelative(absolute)}`)
     }
-
-    const stat = await file.stat()
+    const existed = true
+    if (!stat.isFile()) {
+      throw new AccessDeniedError(`Access denied: path is not a file (${displayRelative(absolute)})`)
+    }
     if ((stat.mode & 0o200) === 0) {
       throw new AccessDeniedError(`Access denied: file is read-only (${displayRelative(absolute)})`)
     }

@@ -181,7 +181,8 @@ describe("POST /workspace/files/write", () => {
     })
     expect(response.status).toBe(409)
     const body = await response.json()
-    expect(body.message).toContain("changed on disk")
+    expect(body.name).toBe("WorkspaceFileWriteConflictError")
+    expect(body.data.message).toContain("changed on disk")
     expect(await Bun.file(file).text()).toBe("v2")
   })
 
@@ -214,7 +215,8 @@ describe("POST /workspace/files/write", () => {
     const response = await postWrite(Server.App(), tmp.path, { path: "missing.txt", content: "x" })
     expect(response.status).toBe(404)
     const body = await response.json()
-    expect(body.message).toContain("does not exist")
+    expect(body.name).toBe("NotFoundError")
+    expect(body.data.message).toContain("does not exist")
     expect(JSON.stringify(body)).not.toContain(tmp.path)
   })
 
@@ -224,14 +226,18 @@ describe("POST /workspace/files/write", () => {
 
     const relativeEscape = await postWrite(app, tmp.path, { path: "../outside.txt", content: "x" })
     expect(relativeEscape.status).toBe(403)
-    expect((await relativeEscape.json()).message).toContain("Access denied")
+    const relativeBody = await relativeEscape.json()
+    expect(relativeBody.name).toBe("WorkspaceFileAccessDeniedError")
+    expect(relativeBody.data.message).toContain("Access denied")
 
     const absoluteEscape = await postWrite(app, tmp.path, {
       path: path.join(tmp.path, "..", "outside-absolute.txt"),
       content: "x",
     })
     expect(absoluteEscape.status).toBe(403)
-    expect((await absoluteEscape.json()).message).toContain("Access denied")
+    const absoluteBody = await absoluteEscape.json()
+    expect(absoluteBody.name).toBe("WorkspaceFileAccessDeniedError")
+    expect(absoluteBody.data.message).toContain("Access denied")
   })
 
   test("rejects sensitive paths like .env with 403", async () => {
@@ -244,8 +250,55 @@ describe("POST /workspace/files/write", () => {
     const response = await postWrite(Server.App(), tmp.path, { path: ".env", content: "SECRET=2" })
     expect(response.status).toBe(403)
     const body = await response.json()
-    expect(body.message).toContain("Access denied")
+    expect(body.name).toBe("WorkspaceFileAccessDeniedError")
+    expect(body.data.message).toContain("Access denied")
     expect(await Bun.file(path.join(tmp.path, ".env")).text()).toBe("SECRET=1")
+  })
+
+  test("rejects a symlink pointing at a sensitive path with 403", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".env"), "SECRET=1")
+        await fs.symlink(path.join(dir, ".env"), path.join(dir, "link.env"))
+      },
+    })
+    const response = await postWrite(Server.App(), tmp.path, { path: "link.env", content: "SECRET=2" })
+    expect(response.status).toBe(403)
+    const body = await response.json()
+    expect(body.name).toBe("WorkspaceFileAccessDeniedError")
+    expect(await Bun.file(path.join(tmp.path, ".env")).text()).toBe("SECRET=1")
+  })
+
+  test("rejects a directory target with 403", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await fs.mkdir(path.join(dir, "folder"), { recursive: true })
+      },
+    })
+    const response = await postWrite(Server.App(), tmp.path, { path: "folder", content: "x" })
+    expect(response.status).toBe(403)
+    const body = await response.json()
+    expect(body.name).toBe("WorkspaceFileAccessDeniedError")
+    expect(body.data.message).toContain("not a file")
+  })
+
+  test("rejects content larger than the write cap with 400", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "big.txt"), "small")
+      },
+    })
+    const response = await postWrite(Server.App(), tmp.path, {
+      path: "big.txt",
+      content: "x".repeat(8 * 1024 * 1024 + 1),
+    })
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.name).toBe("WorkspaceFileTooLargeError")
+    expect(await Bun.file(path.join(tmp.path, "big.txt")).text()).toBe("small")
   })
 
   test("rejects read-only files with 403", async () => {
@@ -257,9 +310,9 @@ describe("POST /workspace/files/write", () => {
       },
     })
     const response = await postWrite(Server.App(), tmp.path, { path: "locked.txt", content: "unlocked?" })
-    expect(response.status).toBe(403)
     const body = await response.json()
-    expect(body.message).toContain("read-only")
+    expect(body.name).toBe("WorkspaceFileAccessDeniedError")
+    expect(body.data.message).toContain("read-only")
     expect(await Bun.file(path.join(tmp.path, "locked.txt")).text()).toBe("locked")
   })
 

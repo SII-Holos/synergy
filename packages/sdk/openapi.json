@@ -10760,7 +10760,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
                 }
               }
             }
@@ -10770,7 +10770,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ForbiddenError"
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
                 }
               }
             }
@@ -10790,7 +10790,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NoteConflictError"
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
                 }
               }
             }
@@ -37070,14 +37070,24 @@
         },
         "required": ["path", "mtime", "size", "existed"]
       },
-      "ForbiddenError": {
+      "WorkspaceFileWriteError": {
         "type": "object",
         "properties": {
-          "message": {
-            "type": "string"
+          "name": {
+            "type": "string",
+            "enum": ["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
           }
         },
-        "required": ["message"]
+        "required": ["name", "data"]
       },
       "WorkspaceFileWriteFileInput": {
         "type": "object",
@@ -40788,6 +40798,15 @@
         },
         "required": ["protocolVersion", "command", "commandId"],
         "additionalProperties": false
+      },
+      "ForbiddenError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"]
       },
       "PluginConfigUpdate": {
         "type": "object",
