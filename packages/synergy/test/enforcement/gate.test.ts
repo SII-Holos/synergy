@@ -240,6 +240,74 @@ describe("EnforcementGate path classification", () => {
         .capabilities.map((cap: any) => cap.class),
     ).toEqual(["browser_interact", "network_request"])
   })
+
+  test("plugin tools requiring workspace.read/write are allowed under autonomous when approved", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      registeredPluginTools: new Set(["plugin__synergy-taskboard__task-list"]),
+      pluginToolCapabilities: {
+        "plugin__synergy-taskboard__task-list": {
+          capabilities: ["workspace.read", "workspace.write"],
+        },
+      },
+      pluginApprovals: {
+        "synergy-taskboard": {
+          schemaVersion: 2,
+          pluginId: "synergy-taskboard",
+          source: "local",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "permissions",
+          approvedAt: 1700000000000,
+          approvedBy: "user",
+          trustTier: "declarative",
+          approvedCapabilities: ["workspace.read", "workspace.write"],
+        },
+      },
+    })
+
+    const envelope = gate.evaluate("plugin__synergy-taskboard__task-list", {})
+
+    // workspace.read maps to file_read (low) and workspace.write maps to
+    // file_write (medium) — both allowed under autonomous once mapped.
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.map((cap: any) => cap.class)).toEqual(["file_read", "file_write"])
+    expect(envelope.capabilities.some((cap: any) => cap.opaque === true)).toBe(false)
+  })
+
+  test("plugin tools with unmapped capabilities stay opaque and deny under autonomous", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      registeredPluginTools: new Set(["plugin__mystery__probe"]),
+      pluginToolCapabilities: {
+        plugin__mystery__probe: {
+          capabilities: ["mystery.capability"],
+        },
+      },
+      pluginApprovals: {
+        mystery: {
+          schemaVersion: 2,
+          pluginId: "mystery",
+          source: "npm",
+          grant: { capabilities: [], contributionRequirements: [] },
+          grantHash: "permissions",
+          approvedAt: 1700000000000,
+          approvedBy: "user",
+          trustTier: "declarative",
+          approvedCapabilities: ["mystery.capability"],
+        },
+      },
+    })
+
+    const envelope = gate.evaluate("plugin__mystery__probe", {})
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities[0]?.opaque).toBe(true)
+    expect(envelope.refusal?.matchedPermission).toBe("mystery.capability")
+  })
   test("revise_file target path is classified from hashline patch header", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",

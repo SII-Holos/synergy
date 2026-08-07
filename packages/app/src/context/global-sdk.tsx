@@ -2,6 +2,7 @@ import { createSynergyClient, type Event } from "@ericsanchezok/synergy-sdk/clie
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, createSignal, onCleanup } from "solid-js"
+import { createEventQueue } from "./event-queue"
 import { usePlatform } from "./platform"
 import {
   recordTokenReceive,
@@ -23,47 +24,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       [key: string]: Event
     }>()
 
-    type Queued = { directory: string; payload: Event }
-
-    let queue: Array<Queued | undefined> = []
-    const coalesced = new Map<string, number>()
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let last = 0
-
-    const key = (directory: string, payload: Event) => {
-      if (payload.type === "session.status") return `session.status:${directory}:${payload.properties.sessionID}`
-      if (payload.type === "session.inbox.updated")
-        return `session.inbox.updated:${directory}:${payload.properties.sessionID}`
-      if (payload.type === "lsp.updated") return `lsp.updated:${directory}`
-      if (payload.type === "message.part.updated") {
-        const part = payload.properties.part
-        return `message.part.updated:${directory}:${part.messageID}:${part.id}`
-      }
-    }
-
-    const flush = () => {
-      if (timer) clearTimeout(timer)
-      timer = undefined
-
-      const events = queue
-      queue = []
-      coalesced.clear()
-      if (events.length === 0) return
-
-      last = Date.now()
-      batch(() => {
-        for (const event of events) {
-          if (!event) continue
-          emitter.emit(event.directory, event.payload)
-        }
-      })
-    }
-
-    const schedule = () => {
-      if (timer) return
-      const elapsed = Date.now() - last
-      timer = setTimeout(flush, Math.max(0, 16 - elapsed))
-    }
+    const eventQueue = createEventQueue({
+      emit: (directory, payload) => emitter.emit(directory, payload as Event),
+      isHidden: () => document.visibilityState === "hidden",
+      batch,
+    })
 
     let disposed = false
     let ws: WebSocket | undefined
@@ -95,24 +60,39 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       missedPongs = 0
     }
 
+    const sendPing = () => {
+      const socket = ws
+      if (!socket || socket.readyState !== WebSocket.OPEN) return
+      try {
+        socket.send(JSON.stringify({ payload: { type: "client.ping", properties: {} } }))
+      } catch {
+        return
+      }
+      pongTimer = setTimeout(() => {
+        missedPongs++
+        if (missedPongs >= MAX_MISSED_PONGS) {
+          socket.close()
+        }
+      }, PONG_TIMEOUT)
+    }
+
     const startPing = () => {
       clearPingTimers()
-      pingTimer = setInterval(() => {
-        const socket = ws
-        if (!socket || socket.readyState !== WebSocket.OPEN) return
-        try {
-          socket.send(JSON.stringify({ payload: { type: "client.ping", properties: {} } }))
-        } catch {
-          return
-        }
-        pongTimer = setTimeout(() => {
-          missedPongs++
-          if (missedPongs >= MAX_MISSED_PONGS) {
-            socket.close()
-          }
-        }, PONG_TIMEOUT)
-      }, PING_INTERVAL)
+      pingTimer = setInterval(sendPing, PING_INTERVAL)
     }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        clearPingTimers()
+      } else {
+        // Apply any events queued while hidden immediately on return to the
+        // foreground instead of waiting for the next 1 s cadence tick.
+        eventQueue.flush()
+        startPing()
+        sendPing()
+      }
+    }
+    window.addEventListener("visibilitychange", handleVisibilityChange)
 
     function connect() {
       if (disposed) return
@@ -154,16 +134,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         if (tokenReceipt) recordTokenReceive(tokenReceipt.part, { delta: tokenReceipt.delta })
 
         const directory = parsed.directory ?? "global"
-        const k = key(directory, payload)
-        if (k) {
-          const i = coalesced.get(k)
-          if (i !== undefined) {
-            queue[i] = undefined
-          }
-          coalesced.set(k, queue.length)
-        }
-        queue.push({ directory, payload })
-        schedule()
+        eventQueue.push(directory, payload)
       }
 
       socket.onclose = () => {
@@ -190,7 +161,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       clearPingTimers()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       ws?.close()
-      flush()
+      eventQueue.dispose()
+      window.removeEventListener("visibilitychange", handleVisibilityChange)
       stopBrowserPerformanceMetrics()
     })
 

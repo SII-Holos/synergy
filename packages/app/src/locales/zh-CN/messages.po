@@ -2231,6 +2231,14 @@ msgid "app.file.action.close"
 msgstr "关闭"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.dismiss"
+msgstr "关闭"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.overwrite"
+msgstr "覆盖"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.retry"
 msgstr "重试"
 
@@ -2291,8 +2299,44 @@ msgid "app.file.mode.source"
 msgstr "源码"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflict"
+msgstr "文件已在磁盘上被修改"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflictOverwrite"
+msgstr "文件自加载以来已被其他位置修改。要用你的更改覆盖它吗？"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saved"
+msgstr "文件已保存"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveDenied"
+msgstr "此文件无法编辑"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveFailed"
+msgstr "保存文件失败"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.addToContext"
 msgstr "添加到上下文"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.discard"
+msgstr "放弃"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.edit"
+msgstr "编辑"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.save"
+msgstr "保存"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.saving"
+msgstr "保存中…"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.toggleFileTree"

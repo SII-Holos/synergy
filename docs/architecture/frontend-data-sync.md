@@ -27,13 +27,27 @@ The server sends envelopes containing:
 
 The connection:
 
-- pings every 20 seconds;
-- waits 10 seconds for a pong;
-- closes after three missed pongs;
+- pings every 20 seconds while the page is visible;
+- stops pinging while the page is hidden (the server keeps the transport alive
+  with its own 30-second heartbeat and Bun `idleTimeout: 0`, so a hidden tab
+  cannot be dropped for silence);
+- probes immediately with one ping when the page becomes visible again, closing
+  the socket after three missed pongs so a dead connection is detected quickly;
+- flushes any events queued while hidden as soon as the page becomes visible,
+  so the foreground applies the backlog immediately instead of waiting for the
+  next 1 s cadence tick;
 - reconnects with jittered exponential delay from 1 to 30 seconds;
 - ignores server heartbeat frames as transport liveness only.
 
-Incoming events are batched on an approximately 16 ms cadence. Replaceable high-frequency state such as session status, inbox snapshots, LSP state, and full part updates is coalesced by identity before the Solid batch is applied.
+Incoming events are batched on an approximately 16 ms cadence while visible.
+Replaceable high-frequency state such as session status, inbox snapshots, LSP
+state, and full part updates is coalesced by identity before the Solid batch is
+applied. While the page is hidden the cadence relaxes to 1 second and streaming
+`message.part.delta` frames are merged per part into a single pending delta
+(the ≤1 s server checkpoint converges the authoritative part), keeping the
+background main-thread cost bounded without dropping sequenced state events.
+The event queue is capped; when the cap is reached it flushes early so
+watermarks keep advancing.
 
 ## Store Shape
 
@@ -139,6 +153,16 @@ History page responses are intentionally applied without snapshot-version orderi
 ### Scroll anchor
 
 Successful prepend in history mode captures the DOM offset of the first visible message before the fetch and restores it afterward, keeping the visible conversation stable. The session page's `turnStart`, which controls how many user turns are visible in the scroller, is reset to 0 only after a successful load so failed loads do not disturb the turn pagination state.
+
+While pinned at the bottom of a latest-mode conversation, the session page keeps
+the rendered turn tree bounded: when new turns push the visible count past
+`MAX_RENDERED_TURNS` (40), `turnStart` advances so the oldest turns are trimmed
+from the DOM. Trimming only happens when the user is at the bottom; history,
+scrolled-up, and user-scrolled states keep the full window (the "Load earlier"
+button restores trimmed turns). Because the scroller disables native
+`overflow-anchor`, the viewport is re-pinned to the bottom after the trim
+layout settles. A focused/hash-linked message that falls outside the trimmed
+window clears its active marker so scrollSpy falls back to the newest message.
 
 ## Initial and Explicit Loads
 
@@ -317,9 +341,15 @@ Encoder checkpoint state is transport-local. The global WebSocket delta clients 
 
 The reconciled `part.text` string remains the authoritative frontend snapshot. Active text and reasoning renderers keep an offset into that snapshot and pass only the appended suffix through the display projection and the streaming Markdown parser. They do not compare, transform, or replay the accumulated prefix on each update, and they do not create a separate character-rate backlog between the event stream and the renderer.
 
-The display projection preserves leading-trim behavior without rewriting model-authored Markdown, including absolute paths, across chunk boundaries. A part identity change, source shrink, or transition to terminal state rebuilds from the authoritative snapshot once. Terminal state comes only from the part's explicit end marker or the owning message's completion marker; coarse session status and the presence of a later timeline part do not terminate a renderer that can still receive deltas. The terminal Markdown path then performs the complete Marked, syntax, math, and sanitization render once and replaces the streaming tree. Its optional visual transition is one-shot and interrupt-safe: cancellation collapses the staged terminal tree immediately, and activation does not force a synchronous layout read.
+The display projection preserves leading-trim behavior without rewriting model-authored Markdown, including absolute paths, across chunk boundaries. A part identity change, source shrink, or transition to terminal state rebuilds from the authoritative snapshot once. Terminal state comes only from the part's explicit end marker or the owning message's completion marker; coarse session status and the presence of a later timeline part do not terminate a renderer that can still receive deltas. The terminal Mark…
 
 Streaming Markdown creates a fixed set of token elements through DOM APIs and rejects unsafe link and image URL protocols before setting attributes. Raw model HTML is never assigned to `innerHTML` during streaming. Automatic bottom-following is coalesced so content growth schedules at most one scroll operation per animation frame.
+
+While the page is hidden, per-part delta frames are merged into one pending
+delta per part before application; a full `message.part.updated` checkpoint for
+the same part clears that pending delta (the checkpoint is authoritative, so
+merged deltas never double-append). Visible pages keep per-delta application so
+token receive telemetry stays intact.
 
 ## Server Part Write-Behind
 
@@ -411,3 +441,19 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 - Only a loaded session message bucket — both `messages[sessionID]` and `messageWindow[sessionID]` present — forms an authoritative visible window. Incoming `message.updated` events for an unloaded or evicted session advance resource freshness and the `latestContextMessage` projection but must not create a message window from empty state. The window is established by `messagePage` when the user enters the session.
 - `messageWindow` metadata and messages are evicted together by the message-bucket LRU.
 - Latest Context usage is sync-owned and independent of history viewport suppression; authoritative latest pages seed it and bucket eviction removes it.
+- The event queue relaxes to a 1 s cadence and merges streaming deltas per part
+  while the page is hidden; sequenced state events are never dropped, and a
+  hidden page does not ping the server (the server's own heartbeat keeps the
+  transport alive). Visible pages return to the 16 ms cadence and probe the
+  connection immediately.
+- Single-message reconcile inserts into the sorted window incrementally
+  (binary-search insertion point) instead of re-merging and re-sorting the
+  whole window; the window order and eviction semantics stay canonical.
+- The rendered turn tree is bounded: while pinned at the bottom in latest mode,
+  `turnStart` advances so at most `MAX_RENDERED_TURNS` user turns are mounted;
+  the trim re-pins the scroller after layout settles.
+- Each `SessionTurn` consumes a precomputed projection of its turn members
+  instead of rescanning the message window, so a new message invalidates only
+  the projection memo rather than every rendered turn.
+- `BrowserViewEffects` keeps its handled-callID set bounded to the timeline
+  window, releasing callIDs that were trimmed or switched away.

@@ -38,9 +38,39 @@ export function resolveWorkbenchEscapeAction(input: {
   opened: boolean
   addOpen: boolean
   dialogActive: boolean
+  editableFocus?: boolean
 }): WorkbenchEscapeAction {
   if (input.key !== "Escape" || !input.opened || input.dialogActive) return "none"
+  if (input.editableFocus) return "none"
   return input.addOpen ? "close-add-menu" : "close-surface"
+}
+
+interface WorkbenchEscapeTarget {
+  tagName?: string
+  isContentEditable?: boolean
+  closest?: (selector: string) => Element | null
+}
+
+/**
+ * Whether an Escape keydown target should receive the key itself instead of
+ * the workbench surface closing. Matches the session page's protected-focus
+ * predicate: form controls, contentEditable regions, and elements inside a
+ * `[data-prevent-autofocus]` region (terminal and browser surfaces).
+ */
+export function isEditableEscapeTarget(target: unknown): boolean {
+  if (!target || typeof target !== "object") return false
+  const node = target as WorkbenchEscapeTarget
+  const tagName = typeof node.tagName === "string" ? node.tagName.toUpperCase() : ""
+  if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return true
+  if (node.isContentEditable === true) return true
+  if (typeof node.closest === "function") {
+    try {
+      return Boolean(node.closest("[data-prevent-autofocus]"))
+    } catch {
+      return false
+    }
+  }
+  return false
 }
 
 export function createWorkbenchTab(input: {
