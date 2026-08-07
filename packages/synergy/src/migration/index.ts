@@ -78,7 +78,7 @@ async function migrateOldTrackingData(): Promise<void> {
       }
     }
     if (Object.keys(domainData).length > 0) {
-      await Storage.write(StoragePath.metaMigrationLogDomain(domain), domainData)
+      await mergeDomainLog(domain, domainData)
       log.info("migrated tracking data to per-domain log", { domain, count: Object.keys(domainData).length })
     }
   }
@@ -105,7 +105,7 @@ async function migrateLegacyLibraryTrackingData(): Promise<void> {
   }
 
   if (changed) {
-    await Storage.write(libraryKey, libraryData)
+    await mergeDomainLog("library", libraryData)
     log.info("migrated legacy engram migration tracking to library", { count: Object.keys(oldData).length })
   }
   await Storage.remove(oldKey)
@@ -278,6 +278,14 @@ function migrationLockDirectory() {
   return path.join(Global.Path.data, "meta", "migration", ".locks")
 }
 
+function migrationLockOptions(domain: string) {
+  return {
+    directory: migrationLockDirectory(),
+    key: `migration-log:${domain}`,
+    timeoutMessage: `Timed out acquiring migration tracking lock for ${domain}`,
+  }
+}
+
 /**
  * Merge completion markers into the per-domain migration log under a cross-process
  * file lock. Multiple Synergy instances sharing one home may run migrations
@@ -286,17 +294,10 @@ function migrationLockDirectory() {
  */
 async function mergeDomainLog(domain: string, entries: Record<string, number>): Promise<void> {
   const key = StoragePath.metaMigrationLogDomain(domain)
-  await withFileLock(
-    {
-      directory: migrationLockDirectory(),
-      key: `migration-log:${domain}`,
-      timeoutMessage: `Timed out acquiring migration tracking lock for ${domain}`,
-    },
-    async () => {
-      const current = await Storage.read<Record<string, number>>(key).catch(() => ({}))
-      await Storage.write(key, { ...current, ...entries })
-    },
-  )
+  await withFileLock(migrationLockOptions(domain), async () => {
+    const current = await Storage.read<Record<string, number>>(key).catch(() => ({}))
+    await Storage.write(key, { ...current, ...entries })
+  })
 }
 
 async function saveLogForDomain(domain: string, data: Record<string, number>): Promise<void> {
@@ -306,18 +307,11 @@ async function saveLogForDomain(domain: string, data: Record<string, number>): P
 /** Remove a single completion marker under the same cross-process lock, preserving concurrent markers. */
 async function deleteDomainLogEntry(domain: string, migrationID: string): Promise<void> {
   const key = StoragePath.metaMigrationLogDomain(domain)
-  await withFileLock(
-    {
-      directory: migrationLockDirectory(),
-      key: `migration-log:${domain}`,
-      timeoutMessage: `Timed out acquiring migration tracking lock for ${domain}`,
-    },
-    async () => {
-      const current: Record<string, number> = await Storage.read<Record<string, number>>(key).catch(() => ({}))
-      delete current[migrationID]
-      await Storage.write(key, current)
-    },
-  )
+  await withFileLock(migrationLockOptions(domain), async () => {
+    const current: Record<string, number> = await Storage.read<Record<string, number>>(key).catch(() => ({}))
+    delete current[migrationID]
+    await Storage.write(key, current)
+  })
 }
 
 /**
