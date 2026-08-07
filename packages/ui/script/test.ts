@@ -7,6 +7,7 @@ const root = path.resolve(import.meta.dir, "..")
 const isolated = new Set([
   "test/components/message-part-error-boundary.test.ts",
   "test/components/session-turn-timeline.test.ts",
+  "test/components/session-turn-projection.test.ts",
   "test/components/tool/renders/task.test.tsx",
   "test/components/tool/renders/standard.test.tsx",
 ])
