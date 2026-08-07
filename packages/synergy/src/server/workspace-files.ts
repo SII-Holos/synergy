@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
+import { Storage } from "../storage/storage"
 import { WorkspaceFile } from "../workspace-file/types"
 import { WorkspaceFileSearch } from "../workspace-file/search"
 import { WorkspaceFileService } from "../workspace-file/service"
@@ -196,5 +197,76 @@ export const WorkspaceFilesRoute = new Hono()
     }),
     async (c) => {
       return c.json(await WorkspaceFileStatus.summary())
+    },
+  )
+  .post(
+    "/write",
+    describeRoute({
+      summary: "Write workspace file",
+      description: "Write content to an existing workspace file with optional optimistic concurrency control.",
+      operationId: "workspace.files.write",
+      responses: {
+        200: {
+          description: "Workspace file write result",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.WriteFileResult),
+            },
+          },
+        },
+        400: {
+          description: "Bad request",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.WriteFileError),
+            },
+          },
+        },
+        403: {
+          description: "Forbidden",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.WriteFileError),
+            },
+          },
+        },
+        404: {
+          description: "Not found",
+          content: {
+            "application/json": {
+              schema: resolver(Storage.NotFoundError.Schema),
+            },
+          },
+        },
+        409: {
+          description: "Conflict",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.WriteFileError),
+            },
+          },
+        },
+      },
+    }),
+    validator("json", WorkspaceFile.WriteFileInput),
+    async (c) => {
+      const body = c.req.valid("json")
+      try {
+        return c.json(await WorkspaceFileService.write(body))
+      } catch (err: any) {
+        if (err instanceof WorkspaceFileService.AccessDeniedError) {
+          return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+        }
+        if (err instanceof WorkspaceFileService.WriteConflictError) {
+          return c.json({ name: "WorkspaceFileWriteConflictError", data: { message: err.message } }, 409)
+        }
+        if (err instanceof WorkspaceFileService.NotFoundError) {
+          return c.json({ name: "NotFoundError", data: { message: err.message } }, 404)
+        }
+        if (err instanceof WorkspaceFileService.TooLargeError) {
+          return c.json({ name: "WorkspaceFileTooLargeError", data: { message: err.message } }, 400)
+        }
+        throw err
+      }
     },
   )

@@ -760,6 +760,42 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
           .then((response) =>
             (response.data?.items ?? []).filter((item) => item.kind === "file").map((item) => item.path),
           ),
+      save: async (input: string, content: string, options?: { overwrite?: boolean }) => {
+        const path = normalize(input)
+        if (!path) throw new Error("Invalid file path")
+        const document = store.documents[path]
+        const expectedMtime = document?.version?.mtime
+        const response = await sdk.client.workspace.files.write({
+          workspaceFileWriteFileInput: {
+            path,
+            content,
+            expectedMtime,
+            conflictPolicy: options?.overwrite ? "overwrite" : "fail",
+          },
+        })
+        const result = response.data
+        if (!result) throw new Error("The server returned an empty write response")
+        setStore(
+          "documents",
+          path,
+          produce((draft) => {
+            if (draft.content?.kind === "text") {
+              draft.content = {
+                ...draft.content,
+                content,
+                truncated: false,
+                truncationReason: undefined,
+                totalBytes: result.size,
+                lineCount: content.split(/\r?\n/).length,
+              }
+            }
+            draft.version = { mtime: result.mtime, size: result.size }
+            draft.stale = false
+            draft.error = undefined
+          }),
+        )
+        return result
+      },
     }
   },
 })

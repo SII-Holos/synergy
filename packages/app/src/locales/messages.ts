@@ -361,6 +361,20 @@ export const fileWorkbench = {
   zoomIn: { id: "app.file.image.zoomIn", message: "Zoom in" },
   fit: { id: "app.file.image.fit", message: "Fit" },
   loadingSourceViewer: { id: "app.file.loading.sourceViewer", message: "Loading source viewer…" },
+  edit: { id: "app.file.toolbar.edit", message: "Edit" },
+  save: { id: "app.file.toolbar.save", message: "Save" },
+  saving: { id: "app.file.toolbar.saving", message: "Saving…" },
+  discard: { id: "app.file.toolbar.discard", message: "Discard" },
+  saved: { id: "app.file.toast.saved", message: "File saved" },
+  saveConflict: { id: "app.file.toast.saveConflict", message: "File changed on disk" },
+  saveConflictOverwrite: {
+    id: "app.file.toast.saveConflictOverwrite",
+    message: "The file was modified elsewhere since it was loaded. Overwrite it with your changes?",
+  },
+  overwrite: { id: "app.file.action.overwrite", message: "Overwrite" },
+  dismiss: { id: "app.file.action.dismiss", message: "Dismiss" },
+  saveDenied: { id: "app.file.toast.saveDenied", message: "This file cannot be edited" },
+  saveFailed: { id: "app.file.toast.saveFailed", message: "Failed to save file" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 export const attachmentWorkbench = {
