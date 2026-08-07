@@ -1,7 +1,7 @@
 import z from "zod"
 import path from "path"
 import { $ } from "bun"
-import { existsSync } from "fs"
+import { existsSync, statSync } from "fs"
 import { Filesystem } from "../util/filesystem"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
@@ -110,7 +110,7 @@ export namespace Scope {
     const persist = options?.persist ?? true
     log.info("fromDirectory", { directory })
 
-    if (!existsSync(directory)) {
+    if (!existsSync(directory) || !statSync(directory).isDirectory()) {
       if (persist) {
         const existing = await readPersisted(dirHash(directory))
         if (existing && !existing.time?.archived) {
