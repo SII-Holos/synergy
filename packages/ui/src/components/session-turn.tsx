@@ -49,12 +49,7 @@ import {
   type ActivityDisplayMode,
   type ActivityTimelineItem,
 } from "./session-turn-activity"
-import {
-  timelineItemStableKey,
-  timelineVisualKind,
-  type SessionTurnTimelineItem,
-  type SessionTurnTimelineVisualKind,
-} from "./session-turn-timeline-item"
+import { timelineItemStableKey, timelineVisualKind, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
 export { timelineItemStableKey, timelineVisualKind } from "./session-turn-timeline-item"
 export type { SessionTurnTimelineItem, SessionTurnTimelineVisualKind } from "./session-turn-timeline-item"
 
