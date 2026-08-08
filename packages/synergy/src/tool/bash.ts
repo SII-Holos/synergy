@@ -42,6 +42,12 @@ const parameters = z
         "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
       ),
     targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
+    detach: z
+      .boolean()
+      .optional()
+      .describe(
+        "Remote-only: detach the command from the Synergy Link session lifecycle. The process is spawned without the session owner marker, so it survives session close and cleanup; the caller is responsible for managing it. Ignored for local execution.",
+      ),
   })
   .strict()
 

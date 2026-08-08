@@ -479,6 +479,47 @@ describe("synergy-link host hardening", () => {
     }
   })
 
+  test("detached processes survive session close (no owner marker, skipped by cleanup)", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "synergy-link-detach-"))
+    const markerPath = path.join(root, "marker")
+    const host = createHost()
+    try {
+      const sessionID = await openSession(host)
+      const response = await host.inbound.handle({
+        caller: callerA,
+        body: {
+          version: 2,
+          requestID: "req_detach_survive",
+          linkID: "link_test",
+          tool: "bash",
+          action: "execute",
+          sessionID,
+          payload: {
+            command: `sleep 1 && touch ${JSON.stringify(markerPath)}`,
+            description: "detach survival",
+            background: true,
+            detach: true,
+          },
+        },
+      })
+      expect(response.ok).toBe(true)
+
+      await host.sessions.close(callerA, sessionID)
+      await Bun.sleep(2_000)
+
+      // The detached process must survive session close and finish its work.
+      expect(await Bun.file(markerPath).exists()).toBe(true)
+      expect(
+        host.rpc.processRegistry.has(
+          response.ok && response.tool === "bash" ? (response.result.metadata.processId ?? "") : "",
+        ),
+      ).toBe(false)
+    } finally {
+      await host.rpc.processRegistry.reset()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 10_000)
+
   test("allows benign shell syntax that only mentions daemon tokens or ampersands", async () => {
     const host = createHost()
     try {
