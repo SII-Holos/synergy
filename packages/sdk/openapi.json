@@ -29280,6 +29280,11 @@
             "description": "Theme name to use for the interface",
             "type": "string"
           },
+          "activityDisplay": {
+            "description": "How much activity detail to show in the interface: full = everything, balanced = recommended defaults, minimal = only essential activity (default: balanced)",
+            "type": "string",
+            "enum": ["full", "balanced", "minimal"]
+          },
           "keybinds": {
             "$ref": "#/components/schemas/KeybindsConfig"
           },

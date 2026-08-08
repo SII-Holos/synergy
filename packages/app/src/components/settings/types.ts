@@ -21,6 +21,8 @@ export type ModelKey =
   | "long_context_model"
   | "creative_model"
 
+export type ActivityDisplay = "full" | "balanced" | "minimal"
+
 /** Empty strings mean this role falls back to runtime model resolution. */
 export const MODEL_DEFAULTS: Record<ModelKey, string> = {
   model: "",
@@ -37,6 +39,7 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 export const UI_DEFAULTS = {
   locale: "system" as LocalePreference,
   theme: "" as string,
+  activityDisplay: "balanced" as ActivityDisplay,
   username: "" as string,
   snapshot: true,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
@@ -273,6 +276,7 @@ export type GeneralStore = {
   username: string
   theme: string
   locale: LocalePreference
+  activityDisplay: ActivityDisplay
   mutedToasts: string[]
   toastDurations: ToastDurationOverrides
   sendShortcut: SendShortcut
@@ -380,6 +384,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       locale: UI_DEFAULTS.locale,
+      activityDisplay: UI_DEFAULTS.activityDisplay,
       mutedToasts: [],
       toastDurations: emptyToastDurationOverrides(),
       sendShortcut,

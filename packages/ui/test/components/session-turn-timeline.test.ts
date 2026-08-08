@@ -69,13 +69,22 @@ mock.module("../../src/components/clipboard", () => ({
     tooltip: () => "Copy Markdown",
   }),
 }))
+mock.module("../../src/components/activity-trace", () => ({
+  ActivityReceipt: Empty,
+  ActivityTrace: Empty,
+  MinimalActivitySummary: Empty,
+}))
 mock.module("../../src/components/diff-changes", () => ({ DiffChanges: Empty }))
 mock.module("../../src/components/compaction-card", () => ({ CompactionCard: Empty }))
 mock.module("../../src/components/error-card", () => ({ ErrorCard: Empty }))
 mock.module("../../src/components/file-icon", () => ({ FileIcon: Empty }))
 mock.module("../../src/components/icon", () => ({ Icon: Empty }))
 mock.module("../../src/components/media-generation-card", () => ({ MediaGenerationCard: Empty }))
-mock.module("../../src/components/message-part", () => ({ Message: Empty, Part: Empty }))
+mock.module("../../src/components/message-part", () => ({
+  Message: Empty,
+  Part: Empty,
+  getToolInfo: (tool: string) => ({ icon: "activity", title: tool }),
+}))
 mock.module("../../src/components/session-turn.css", () => ({}))
 mock.module("../../src/components/turn-change-summary-panel", () => ({ TurnChangeSummaryPanel: Empty }))
 mock.module("../../src/components/special-user-message", () => ({ getSpecialUserMessageRenderer: () => undefined }))

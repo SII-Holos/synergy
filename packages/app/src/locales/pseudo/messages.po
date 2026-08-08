@@ -5,6 +5,74 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#. js-lingui-explicit-id
+msgid "activity.trace.actions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.activity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.browser"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.coordination"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.delegate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.execute"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.external-action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.generic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.inspect-local"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.modify-files"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.produce"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.research-web"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.done"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.waiting-approval"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.steps"
+msgstr ""
+
 #. ── Anchored-tool chip labels ──────────────────────────────────────
 msgid "anchored-chip.conflict"
 msgstr ""
@@ -13586,6 +13654,10 @@ msgid "settings.catalog.general.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.activityDisplay"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.colorScheme"
 msgstr ""
 
@@ -14451,6 +14523,26 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.email.state.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.balanced"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.full"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.minimal"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.title"
 msgstr ""
 
 #. js-lingui-explicit-id

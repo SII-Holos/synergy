@@ -202,6 +202,38 @@ describe("settings form locale hydration", () => {
   })
 })
 
+describe("settings form activity display hydration", () => {
+  test("defaults to balanced when absent from config", () => {
+    expect(initializedActivityDisplay({})).toBe("balanced")
+  })
+
+  test("hydrates explicit full display from config", () => {
+    expect(initializedActivityDisplay({ activityDisplay: "full" })).toBe("full")
+  })
+
+  test("hydrates explicit minimal display from config", () => {
+    expect(initializedActivityDisplay({ activityDisplay: "minimal" })).toBe("minimal")
+  })
+})
+
+function initializedActivityDisplay(config: Record<string, unknown>) {
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+  ensureInit({
+    cfg: config as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    setSettings,
+    setInitialized: () => undefined,
+    originalMcpsRef: { current: {} },
+  })
+
+  return settings.general.activityDisplay
+}
+
 function initializedGeneral(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 

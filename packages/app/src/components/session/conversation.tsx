@@ -3,6 +3,7 @@ import type { Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import type { SessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
+import type { ActivityDisplayMode } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
@@ -26,6 +27,7 @@ export function SessionConversation(props: {
   paramsDir: string
   timeline: Accessor<Message[]>
   turnProjection: Accessor<SessionTurnProjection>
+  activityDisplay: Accessor<ActivityDisplayMode>
   pendingTimeline?: Accessor<SessionInboxItem[]>
   sessionTransition?: Accessor<SessionTransitionProgress | null>
   sessionTransitionActions?: Accessor<SessionTransitionActions | undefined>
@@ -201,6 +203,7 @@ export function SessionConversation(props: {
                 rootMessage={msg}
                 messages={turnMessages()}
                 compactionParentIDs={turnProjection().compactionParentIDs}
+                activityDisplay={props.activityDisplay()}
                 lastUserMessageID={props.lastUserMessage()?.id}
                 onRewind={messageAllowsCanonicalActions(msg) ? () => props.onRewind?.(msg as UserMessage) : undefined}
                 rollbackActive={props.rollbackActive}

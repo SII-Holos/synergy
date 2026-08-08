@@ -5,6 +5,74 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#. js-lingui-explicit-id
+msgid "activity.trace.actions"
+msgstr "{count, plural, one {# action} other {# actions}}"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.activity"
+msgstr "Activity"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.browser"
+msgstr "Browsed"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.coordination"
+msgstr "Coordinated"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.delegate"
+msgstr "Delegated"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.execute"
+msgstr "Ran"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.external-action"
+msgstr "External action"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.generic"
+msgstr "Worked"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.inspect-local"
+msgstr "Inspected"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.modify-files"
+msgstr "Changed"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.produce"
+msgstr "Produced"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.research-web"
+msgstr "Researched"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.done"
+msgstr "Done"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.error"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.waiting-approval"
+msgstr "Waiting for approval"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.steps"
+msgstr "{count, plural, one {# step} other {# steps}}"
+
 #. ── Anchored-tool chip labels ──────────────────────────────────────
 msgid "anchored-chip.conflict"
 msgstr "conflict"
@@ -13586,6 +13654,10 @@ msgid "settings.catalog.general.label"
 msgstr "General"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.activityDisplay"
+msgstr "Activity Display"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.colorScheme"
 msgstr "Color Scheme"
 
@@ -13611,7 +13683,7 @@ msgstr "Toast Duration"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "appearance | color | light | dark | auto | language | snapshot | product update | toast | notification"
+msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -14452,6 +14524,26 @@ msgstr "On"
 #. js-lingui-explicit-id
 msgid "settings.email.state.paused"
 msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.balanced"
+msgstr "Balanced"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.description"
+msgstr "Choose how much activity detail Synergy shows in the interface"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.full"
+msgstr "Full"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.minimal"
+msgstr "Minimal"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.title"
+msgstr "Activity display"
 
 #. js-lingui-explicit-id
 msgid "settings.general.appearance.title"

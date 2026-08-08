@@ -88,3 +88,14 @@ test("product update mode is not part of server config", async () => {
 test("locale belongs to the general domain", () => {
   expect(ConfigDomain.domainForKey("locale")?.id).toBe("general")
 })
+
+test("activity display preference belongs to the general domain", () => {
+  expect(ConfigDomain.domainForKey("activityDisplay")?.id).toBe("general")
+})
+
+test("activity display schema accepts only full, balanced, and minimal", () => {
+  for (const value of ["full", "balanced", "minimal"]) {
+    expect(Config.Info.safeParse({ activityDisplay: value }).success).toBe(true)
+  }
+  expect(Config.Info.safeParse({ activityDisplay: "verbose" }).success).toBe(false)
+})

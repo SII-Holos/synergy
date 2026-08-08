@@ -160,6 +160,24 @@ Remote well-known config is cached for ten minutes and acts only as a base: loca
 
 The frontend may mirror the value locally to choose a catalog before the server responds, but `00-general.jsonc` remains authoritative after global configuration synchronization. Locale changes are client-side and do not restart the server or providers.
 
+## Activity display
+
+`activityDisplay` is a global General preference controlling how much agent activity detail the interface shows. It lives in `00-general.jsonc` and accepts three values:
+
+```jsonc
+{
+  "activityDisplay": "balanced", // full | balanced | minimal
+}
+```
+
+`balanced` is the default when the field is absent; any missing or unknown value resolves to `balanced`. Settings manages the preference globally in the installation config. If the key is declared manually in project config, ordinary project-over-global precedence still applies.
+
+- `full` preserves the detailed turn timeline: every reasoning, text, tool, media, and attachment part stays in its original part order, matching pre-preference behavior.
+- `balanced` groups adjacent ordinary tools that share the same activity family and scope into expandable Activity Trace groups, while keeping important receipts explicit: permission requests, failures, and external actions. Reasoning, text, media, attachments, compaction, and other non-tool items still render in their original position.
+- `minimal` collapses each completed turn into one compact per-turn activity summary with animated count updates, while keeping permission, failure, and external-action receipts explicit. Non-tool timeline items continue to render in their original position.
+
+The mode only changes presentation of ordinary activity; it never hides permission requests, failures, or external-action receipts, and it does not alter persisted message data. Mode changes update already rendered turns reactively without remounting them.
+
 ## JSONC, Schema, and References
 
 Files allow comments and trailing commas. On startup, the installed config schema is copied to:
