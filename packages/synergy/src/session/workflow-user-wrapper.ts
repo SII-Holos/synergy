@@ -8,7 +8,7 @@ import { isActiveLightLoopWorkflow } from "./light-loop-state"
  * projection wraps only root user-origin text parts.
  */
 export namespace WorkflowUserWrapper {
-  export type Mode = "plan" | "lattice" | "lightloop"
+  export type Mode = "plan" | "lattice" | "lightloop" | "boss"
 
   export const METADATA_MODE = "workflow"
   export const METADATA_AGENT = "workflowAgent"
@@ -23,9 +23,10 @@ export namespace WorkflowUserWrapper {
     "light_loop_approved",
     "light_loop_rejected",
     "lattice_continuation",
+    "boss_report",
   ])
 
-  const VALID_MODES = new Set<Mode>(["plan", "lattice", "lightloop"])
+  const VALID_MODES = new Set<Mode>(["plan", "lattice", "lightloop", "boss"])
 
   type PromptBuilder = (query: string) => string
   type ModePromptBuilders = Record<Mode, PromptBuilder>
@@ -35,11 +36,13 @@ export namespace WorkflowUserWrapper {
       plan: synergyPlan,
       lattice: synergyLattice,
       lightloop: synergyLightloop,
+      boss: synergyBoss,
     },
     "synergy-max": {
       plan: synergyMaxPlan,
       lattice: synergyMaxLattice,
       lightloop: synergyMaxLightloop,
+      boss: synergyMaxBoss,
     },
   }
 
@@ -47,6 +50,7 @@ export namespace WorkflowUserWrapper {
     plan: genericPlan,
     lattice: genericLattice,
     lightloop: genericLightloop,
+    boss: genericBoss,
   }
 
   export function activeMode(session?: Pick<SessionInfo, "workflow">): Mode | undefined {
@@ -278,6 +282,41 @@ export namespace WorkflowUserWrapper {
       "User request:",
       query,
       "</lightloop-user-request>",
+    ].join("\n")
+  }
+  function genericBoss(query: string): string {
+    return [
+      "<boss-user-request>",
+      "You are in the Boss Mode workflow.",
+      "You are the boss: you decide, delegate, monitor, and summarize. Route this request yourself — answer directly or assign it to a worker.",
+      "",
+      "User request:",
+      query,
+      "</boss-user-request>",
+    ].join("\n")
+  }
+
+  function synergyBoss(query: string): string {
+    return [
+      "<boss-user-request>",
+      "You are synergy in the Boss Mode workflow.",
+      "You are the boss of a worker tree. Decide whether to answer directly, delegate to a specialist worker (boss_spawn / boss_assign), monitor progress (boss_status), or cancel work (boss_cancel). Summarize results back to the human.",
+      "",
+      "User request:",
+      query,
+      "</boss-user-request>",
+    ].join("\n")
+  }
+
+  function synergyMaxBoss(query: string): string {
+    return [
+      "<boss-user-request>",
+      "You are synergy-max in the Boss Mode workflow.",
+      "You are the boss of a worker tree. Decide whether to answer directly, delegate to a specialist worker (boss_spawn / boss_assign), monitor progress (boss_status), or cancel work (boss_cancel). Summarize results back to the human.",
+      "",
+      "User request:",
+      query,
+      "</boss-user-request>",
     ].join("\n")
   }
 }

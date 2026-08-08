@@ -1,0 +1,33 @@
+import z from "zod"
+import { BossService } from "../session/boss"
+import { Tool } from "./tool"
+import DESCRIPTION from "./boss-status.txt"
+
+function renderTree(node: BossService.BossTreeNode, indent: string): string[] {
+  const task = node.currentTask
+    ? ` — task ${node.currentTask.taskID}${node.currentTask.taskTitle ? `: ${node.currentTask.taskTitle}` : ""}`
+    : ""
+  const role = node.role === "boss" ? "boss" : `worker(${node.workerRole ?? "?"})`
+  const agent = node.agent ? ` [${node.agent}]` : ""
+  const lines = [`${indent}- [${node.status}] ${node.title} (${role}${agent}, ${node.sessionID})${task}`]
+  for (const child of node.children) lines.push(...renderTree(child, `${indent}  `))
+  return lines
+}
+
+const parameters = z.object({
+  depth: z.number().int().min(0).optional().describe("Maximum tree depth to render. Default 16."),
+})
+
+export const BossStatusTool = Tool.define("boss_status", {
+  description: DESCRIPTION,
+  parameters,
+  async execute(params, ctx) {
+    const tree = await BossService.status(ctx.sessionID, { depth: params.depth })
+    const lines = renderTree(tree, "")
+    return {
+      title: `Boss tree (${tree.children.length} workers)`,
+      metadata: { rootSessionID: tree.sessionID, workerCount: tree.children.length },
+      output: lines.join("\n"),
+    }
+  },
+})

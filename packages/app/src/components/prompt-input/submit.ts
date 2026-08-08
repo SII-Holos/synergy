@@ -89,6 +89,8 @@ type PromptSubmitInput = {
   clearPendingLattice: () => void
   pendingLightLoop: Accessor<boolean>
   clearPendingLightLoop: () => void
+  pendingBoss: Accessor<boolean>
+  clearPendingBoss: () => void
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   setBlueprintLoading: Setter<boolean>
@@ -340,6 +342,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const armedLattice = isNewSession ? input.pendingLattice() : null
     if (armedLattice) input.clearPendingLattice()
     const armedLightLoop = input.pendingLightLoop()
+    const armedBoss = input.pendingBoss()
+    if (armedBoss) input.clearPendingBoss()
     const fileAttachmentsForInstructions = currentPrompt.filter(
       (part): part is FileAttachmentPart => part.type === "file",
     )
@@ -374,6 +378,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           plan: armedPlan,
           lattice: armedLattice,
           lightLoop: armedLightLoop,
+          boss: armedBoss,
           blueprintSlot,
           agent: currentAgent.name,
           model: selectedModel,
@@ -622,6 +627,24 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             description: sessionStartFailureMessage(message),
           })
           failSessionSetup(sessionID, i18n._(PI.submitFailedLightLoop), message)
+          return undefined
+        })
+      if (!session) return
+    }
+    if (armedBoss && !blueprintSlot && session.workflow?.kind !== "boss") {
+      const sessionID = session.id
+      const fallbackSession = session
+      session = await client.workflow.session
+        .set({ id: sessionID, workflowSetInput: { kind: "boss" } })
+        .then((x) => x.data ?? fallbackSession)
+        .catch(async (err) => {
+          const message = errorMessage(err)
+          showToast({
+            type: "error",
+            title: i18n._(PI.submitFailedEnableBoss),
+            description: sessionStartFailureMessage(message),
+          })
+          failSessionSetup(sessionID, i18n._(PI.submitFailedEnableBoss), message)
           return undefined
         })
       if (!session) return

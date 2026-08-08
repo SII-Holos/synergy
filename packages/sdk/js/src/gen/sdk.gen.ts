@@ -86,6 +86,17 @@ import type {
   BlueprintLoopStartResponses,
   BlueprintLoopWaitErrors,
   BlueprintLoopWaitResponses,
+  BossSessionTreeErrors,
+  BossSessionTreeResponses,
+  BossSessionWorkerAssignErrors,
+  BossSessionWorkerAssignResponses,
+  BossSessionWorkerCancelErrors,
+  BossSessionWorkerCancelResponses,
+  BossSessionWorkerCreateErrors,
+  BossSessionWorkerCreateResponses,
+  BossWorkerAssignInput,
+  BossWorkerCancelInput,
+  BossWorkerCreateInput,
   BrowserAnnotationRequest,
   BrowserControlErrors,
   BrowserControlRequest,
@@ -1564,6 +1575,137 @@ export class Export extends HeyApiClient {
       url: "/session/{sessionID}/export",
       ...options,
       ...params,
+    })
+  }
+}
+
+export class Worker extends HeyApiClient {
+  /**
+   * Spawn a Boss Mode worker
+   *
+   * Spawn a persistent specialist worker as a direct child of the boss session.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      bossWorkerCreateInput?: BossWorkerCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "bossWorkerCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BossSessionWorkerCreateResponses,
+      BossSessionWorkerCreateErrors,
+      ThrowOnError
+    >({
+      url: "/boss/session/{id}/worker",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Assign a task to a Boss Mode worker
+   *
+   * Assign a task to a direct child worker. Idempotent per (caller, taskID).
+   */
+  public assign<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      bossWorkerAssignInput?: BossWorkerAssignInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "bossWorkerAssignInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BossSessionWorkerAssignResponses,
+      BossSessionWorkerAssignErrors,
+      ThrowOnError
+    >({
+      url: "/boss/session/{id}/assign",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Cancel a Boss Mode task
+   *
+   * Cancel a task (or all tasks) assigned to a direct child worker.
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      bossWorkerCancelInput?: BossWorkerCancelInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "bossWorkerCancelInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BossSessionWorkerCancelResponses,
+      BossSessionWorkerCancelErrors,
+      ThrowOnError
+    >({
+      url: "/boss/session/{id}/cancel",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }
@@ -3177,9 +3319,43 @@ export class Session extends HeyApiClient {
     })
   }
 
+  /**
+   * Get the Boss Mode tree
+   *
+   * Returns the Boss Mode subtree derived from the session parent chain, rooted at the session.
+   */
+  public tree<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BossSessionTreeResponses, BossSessionTreeErrors, ThrowOnError>({
+      url: "/boss/session/{id}/tree",
+      ...options,
+      ...params,
+    })
+  }
+
   files = new Files({ client: this.client })
 
   export = new Export({ client: this.client })
+
+  worker = new Worker({ client: this.client })
 }
 
 export class Nav extends HeyApiClient {
@@ -9370,6 +9546,10 @@ export class Workflow extends HeyApiClient {
   session = new Session({ client: this.client })
 }
 
+export class Boss extends HeyApiClient {
+  session = new Session({ client: this.client })
+}
+
 export class Asset extends HeyApiClient {
   /**
    * Upload asset
@@ -11357,6 +11537,8 @@ export class SynergyClient extends HeyApiClient {
   lattice = new Lattice({ client: this.client })
 
   workflow = new Workflow({ client: this.client })
+
+  boss = new Boss({ client: this.client })
 
   asset = new Asset({ client: this.client })
 
