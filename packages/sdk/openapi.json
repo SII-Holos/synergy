@@ -15389,6 +15389,397 @@
         ]
       }
     },
+    "/boss/session/{id}/tree": {
+      "get": {
+        "operationId": "boss.session.tree",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get the Boss Mode tree",
+        "description": "Returns the Boss Mode subtree derived from the session parent chain, rooted at the session.",
+        "responses": {
+          "200": {
+            "description": "Boss Mode tree",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BossTreeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BossErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.boss.session.tree({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/boss/session/{id}/worker": {
+      "post": {
+        "operationId": "boss.session.worker.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Spawn a Boss Mode worker",
+        "description": "Spawn a persistent specialist worker as a direct child of the boss session.",
+        "responses": {
+          "200": {
+            "description": "Created worker session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BossErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BossWorkerCreateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.boss.session.worker.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/boss/session/{id}/assign": {
+      "post": {
+        "operationId": "boss.session.worker.assign",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Assign a task to a Boss Mode worker",
+        "description": "Assign a task to a direct child worker. Idempotent per (caller, taskID).",
+        "responses": {
+          "200": {
+            "description": "Assignment result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BossWorkerAssignResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BossErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BossWorkerAssignInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.boss.session.worker.assign({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/boss/session/{id}/cancel": {
+      "post": {
+        "operationId": "boss.session.worker.cancel",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Cancel a Boss Mode task",
+        "description": "Cancel a task (or all tasks) assigned to a direct child worker.",
+        "responses": {
+          "200": {
+            "description": "Cancellation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BossWorkerCancelResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BossErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BossWorkerCancelInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.boss.session.worker.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/asset": {
       "post": {
         "operationId": "asset.upload",
@@ -30993,6 +31384,29 @@
               }
             },
             "required": ["kind", "runID", "mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "boss"
+              },
+              "role": {
+                "type": "string",
+                "enum": ["boss", "worker"]
+              },
+              "workerRole": {
+                "type": "string"
+              },
+              "rootID": {
+                "type": "string"
+              },
+              "instructions": {
+                "type": "string"
+              }
+            },
+            "required": ["kind", "role"]
           }
         ]
       },
@@ -39334,6 +39748,17 @@
             },
             "required": ["kind", "mode"],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "boss"
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
           }
         ]
       },
@@ -39346,6 +39771,176 @@
           }
         },
         "required": ["instructions"]
+      },
+      "BossTreeNode": {
+        "id": "BossTreeNode",
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["boss", "worker"]
+          },
+          "workerRole": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "queued", "idle", "archived"]
+          },
+          "currentTask": {
+            "type": "object",
+            "properties": {
+              "taskID": {
+                "type": "string"
+              },
+              "taskTitle": {
+                "type": "string"
+              }
+            },
+            "required": ["taskID"]
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BossTreeNode"
+            }
+          }
+        },
+        "required": ["sessionID", "title", "role", "status", "children"]
+      },
+      "BossTreeResponse": {
+        "type": "object",
+        "properties": {
+          "tree": {
+            "$ref": "#/components/schemas/BossTreeNode"
+          }
+        },
+        "required": ["tree"],
+        "additionalProperties": false,
+        "$defs": {
+          "BossTreeNode": {
+            "$ref": "#/components/schemas/BossTreeNode"
+          }
+        }
+      },
+      "BossErrorResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": ["message", "code"],
+        "additionalProperties": false
+      },
+      "BossWorkerCreateInput": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "description": "Worker role label",
+            "type": "string",
+            "minLength": 1
+          },
+          "agent": {
+            "description": "Agent to run the worker",
+            "type": "string",
+            "minLength": 1
+          },
+          "instructions": {
+            "description": "Standing instructions for the worker",
+            "type": "string"
+          }
+        },
+        "required": ["role"],
+        "additionalProperties": false
+      },
+      "BossWorkerAssignResult": {
+        "type": "object",
+        "properties": {
+          "itemID": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "created": {
+            "type": "boolean"
+          }
+        },
+        "required": ["itemID", "messageID", "created"],
+        "additionalProperties": false
+      },
+      "BossWorkerAssignInput": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "description": "Worker session ID",
+            "type": "string",
+            "minLength": 1
+          },
+          "taskID": {
+            "description": "Task ID",
+            "type": "string",
+            "minLength": 1
+          },
+          "task": {
+            "description": "Task description",
+            "type": "string",
+            "minLength": 1
+          },
+          "context": {
+            "description": "Additional context",
+            "type": "string"
+          },
+          "acceptance": {
+            "description": "Acceptance criteria",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["sessionID", "taskID", "task"],
+        "additionalProperties": false
+      },
+      "BossWorkerCancelResult": {
+        "type": "object",
+        "properties": {
+          "cancelled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["cancelled"],
+        "additionalProperties": false
+      },
+      "BossWorkerCancelInput": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "description": "Worker session ID",
+            "type": "string",
+            "minLength": 1
+          },
+          "taskID": {
+            "description": "Task ID to cancel; all tasks when omitted",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["sessionID"],
+        "additionalProperties": false
       },
       "AssetInfo": {
         "type": "object",

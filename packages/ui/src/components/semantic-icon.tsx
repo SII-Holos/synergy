@@ -156,6 +156,7 @@ export const SemanticIconToken = {
   "prompt.attach": "paperclip",
   "prompt.plan": "list-checks",
   "prompt.lattice": "waypoints",
+  "prompt.boss": "crown",
   "prompt.lightLoop": "repeat",
   "prompt.shell": "file-terminal",
   "prompt.signal": "signal",

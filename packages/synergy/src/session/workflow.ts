@@ -53,6 +53,7 @@ export namespace SessionWorkflowService {
         maxModelCalls?: number
         goal?: string
       }
+    | { kind: "boss" }
 
   export function current(session: Session.Info): Session.Info["workflow"] {
     return session.workflow
@@ -99,7 +100,36 @@ export namespace SessionWorkflowService {
     if (input.kind === "none") return setNone(sessionID)
     if (input.kind === "plan") return enablePlan(sessionID)
     if (input.kind === "lightloop") return startLightloop(sessionID, input.instructions)
+    if (input.kind === "boss") return enableBoss(sessionID)
     return enableLattice(sessionID, input)
+  }
+
+  /**
+   * Enable Boss Mode on a session, making it the root boss of a worker tree.
+   * Workers are created by BossService.spawn as children; disabling only clears
+   * this root projection and does not cascade to workers (their continuation
+   * policy observes the root is gone and falls dormant).
+   */
+  export async function enableBoss(sessionID: string): Promise<Session.Info> {
+    using _ = await workflowLock(sessionID)
+    SessionManager.assertIdle(sessionID)
+    const session = await Session.get(sessionID)
+    if (session.workflow) {
+      throw new WorkflowConflictError(
+        session.workflow.kind,
+        `Cannot enable Boss Mode while the ${session.workflow.kind} workflow is active.`,
+      )
+    }
+    await assertNoActiveBlueprintLoop(session, "Boss Mode")
+    return Session.update(sessionID, (draft) => {
+      if (draft.workflow) {
+        throw new WorkflowConflictError(
+          draft.workflow.kind,
+          `Cannot enable Boss Mode while the ${draft.workflow.kind} workflow is active.`,
+        )
+      }
+      draft.workflow = { kind: "boss", role: "boss" }
+    })
   }
 
   export async function setNone(sessionID: string, options?: { allowRunning?: boolean }): Promise<Session.Info> {

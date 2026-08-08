@@ -127,6 +127,13 @@ export const WorkflowInfo = z
       runID: z.string(),
       mode: z.enum(["auto", "collaborative"]),
     }),
+    z.object({
+      kind: z.literal("boss"),
+      role: z.enum(["boss", "worker"]),
+      workerRole: z.string().optional(),
+      rootID: z.string().optional(),
+      instructions: z.string().optional(),
+    }),
   ])
   .meta({ ref: "SessionWorkflowInfo" })
 export type WorkflowInfo = z.infer<typeof WorkflowInfo>

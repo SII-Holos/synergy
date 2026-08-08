@@ -233,7 +233,7 @@ The following principles should remain true as individual features evolve:
 - Scope describes workspace context; session describes durable work within that context.
 - Compaction replaces old model context with a continuation summary; it does not erase the session's durable history.
 - A child session represents delegated work; an Agenda item represents triggered work; a Blueprint represents an executable authored plan.
-- Plan produces a Blueprint; BlueprintLoop executes and audits it; Light Loop persists on one task; Lattice coordinates a Pathway of Blueprint-backed steps.
+- Plan produces a Blueprint; BlueprintLoop executes and audits it; Light Loop persists on one task; Lattice coordinates a Pathway of Blueprint-backed steps; Boss Mode routes work across a tree of persistent worker sessions.
 - Library stores reusable memory and experience; Notes store authored documents.
 - Channels adapt external messaging into sessions; Holos provides optional identity and agent-network connectivity.
 - Browser is a session workspace with one shared page, not a separate tab or screenshot-stream automation system.

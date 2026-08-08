@@ -4,6 +4,7 @@ import { MessageV2 } from "./message-v2"
 import { SessionProgress } from "./progress"
 import type { Info as SessionInfo } from "./types"
 import { BlueprintContinuationPolicy } from "./blueprint-continuation"
+import { BossContinuationPolicy } from "./boss-continuation"
 import { LightLoopContinuationPolicy } from "./light-loop-continuation"
 import { LatticeContinuationPolicy } from "../lattice/policy"
 import { SessionManager } from "./manager"
@@ -148,6 +149,7 @@ export namespace ContinuationKernel {
   function registerBuiltins(): void {
     if (builtinsRegistered) return
     builtinsRegistered = true
+    register(BossContinuationPolicy)
     register(BlueprintContinuationPolicy)
     register(LightLoopContinuationPolicy)
     register(LatticeContinuationPolicy)

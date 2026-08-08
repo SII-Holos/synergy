@@ -38,6 +38,7 @@ export const panels = {
   context: { id: "app.panel.context", message: "Context" },
   review: { id: "app.panel.review", message: "Review" },
   lattice: { id: "app.panel.lattice", message: "Lattice" },
+  boss: { id: "app.panel.boss", message: "Boss" },
   attachment: { id: "app.panel.attachment", message: "Attachment" },
   files: { id: "app.panel.files", message: "Files" },
   openFile: { id: "app.panel.files.openFile", message: "Open file" },

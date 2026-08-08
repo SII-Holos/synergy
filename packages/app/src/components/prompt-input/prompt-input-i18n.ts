@@ -51,6 +51,7 @@ export const PI = {
   submitFailedLightLoop: { id: "prompt.submit.failedLightLoop", message: "Failed to enable Light Loop" },
   submitFailedTogglePlan: { id: "prompt.submit.failedTogglePlan", message: "Failed to toggle Plan" },
   submitFailedEnableLattice: { id: "prompt.submit.failedEnableLattice", message: "Failed to enable Lattice" },
+  submitFailedEnableBoss: { id: "prompt.submit.failedEnableBoss", message: "Failed to enable Boss Mode" },
   submitSentDesc: { id: "prompt.submit.sent.description", message: "Response will appear after reconnection" },
   worktreeUnavailableTitle: {
     id: "prompt.submit.worktreeUnavailable.title",
@@ -166,6 +167,8 @@ export const PI = {
   cancelLightLoop: { id: "prompt.cancelLightLoop", message: "Cancel Light Loop" },
   cancelLatticeLabel: { id: "prompt.cancelLattice.label", message: "Lattice" },
   cancelLattice: { id: "prompt.cancelLattice", message: "Cancel Lattice" },
+  cancelBossLabel: { id: "prompt.cancelBoss.label", message: "Boss" },
+  cancelBoss: { id: "prompt.cancelBoss", message: "Exit Boss Mode" },
   connectionLost: { id: "prompt.connectionLost", message: "Connection lost — responses may be delayed" },
   loopReady: { id: "prompt.loopReady", message: "Loop ready" },
   startBpLoop: { id: "prompt.startBlueprintLoop", message: "Start BlueprintLoop" },
@@ -250,6 +253,8 @@ export const PI = {
   workflowPlanDesc: { id: "prompt.workflow.planDesc", message: "Planning before execution" },
   workflowPlanDescAlt: { id: "prompt.workflow.planDescAlt", message: "Ask for an approach first" },
   workflowLattice: { id: "prompt.workflow.lattice", message: "Lattice" },
+  workflowBoss: { id: "prompt.workflow.boss", message: "Boss" },
+  workflowBossDesc: { id: "prompt.workflow.bossDesc", message: "Delegate to a worker tree" },
   workflowUnavailableBlueprint: {
     id: "prompt.workflow.unavailable.blueprint",
     message: "Light Loop is unavailable while a Blueprint is equipped",
@@ -379,6 +384,11 @@ export const PI = {
     id: "prompt.attach.cancelLattice",
     message: "Cancel Lattice before equipping a user Blueprint.",
   },
+  attachBossActive: { id: "prompt.attach.bossActive", message: "Boss Mode is active" },
+  attachCancelBoss: {
+    id: "prompt.attach.cancelBoss",
+    message: "Exit Boss Mode before equipping a user Blueprint.",
+  },
   attachExitPlanFailed: { id: "prompt.attach.exitPlanFailed", message: "Failed to exit Plan" },
   attachExitLightLoopFailed: { id: "prompt.attach.exitLightLoopFailed", message: "Failed to exit Light Loop" },
   attachRequestFailed: { id: "prompt.attach.requestFailed", message: "Request failed" },
@@ -387,6 +397,24 @@ export const PI = {
   wmRecursiveBpActive: { id: "prompt.wm.recursiveBpActive", message: "Recursive Blueprint run active" },
   wmClickExitLattice: { id: "prompt.wm.clickExitLattice", message: "Click to exit Lattice" },
   wmExitLattice: { id: "prompt.wm.exitLattice", message: "Exit Lattice" },
+  wmClickExitBoss: { id: "prompt.wm.clickExitBoss", message: "Click to exit Boss Mode" },
+  wmExitBoss: { id: "prompt.wm.exitBoss", message: "Exit Boss Mode" },
+  wmBossUnavailableBp: {
+    id: "prompt.wm.bossUnavailableBp",
+    message: "Boss Mode is unavailable while a Blueprint is equipped",
+  },
+  wmBossUnavailablePlan: {
+    id: "prompt.wm.bossUnavailablePlan",
+    message: "Boss Mode is unavailable while Plan is active",
+  },
+  wmBossUnavailableLattice: {
+    id: "prompt.wm.bossUnavailableLattice",
+    message: "Boss Mode is unavailable while Lattice is active",
+  },
+  wmBossUnavailableLl: {
+    id: "prompt.wm.bossUnavailableLl",
+    message: "Boss Mode is unavailable while Light Loop is active",
+  },
   wmLatticeUnavailableBp: {
     id: "prompt.wm.latticeUnavailableBp",
     message: "Lattice is unavailable while a Blueprint is equipped",
