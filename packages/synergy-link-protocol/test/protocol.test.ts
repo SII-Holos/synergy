@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { SynergyLinkSession } from "../src"
+import { SynergyLinkHost, SynergyLinkSession } from "../src"
 
 describe("synergy-link protocol", () => {
   test("session requests enforce the current version and strict envelope", () => {
@@ -18,5 +18,34 @@ describe("synergy-link protocol", () => {
     expect(() =>
       SynergyLinkSession.ExecuteRequest.parse({ ...request, payload: { ...request.payload, unexpected: true } }),
     ).toThrow()
+  })
+
+  test("host capabilities remain compatible when bash detach support is omitted", () => {
+    const hello = {
+      type: "synergy_link.host.hello",
+      linkID: "link_protocol_test",
+      hostSessionID: "host_protocol_test",
+      capabilities: {
+        platform: "linux",
+        arch: "x64",
+        runtime: "bun",
+        defaultShell: "sh",
+        supportedShells: ["sh"],
+        supportsPty: false,
+        supportsSendKeys: true,
+        supportsSoftKill: true,
+        supportsProcessGroups: true,
+        envCaseInsensitive: false,
+        lineEndings: "lf",
+      },
+    } as const
+
+    expect(SynergyLinkHost.Hello.parse(hello)).toEqual(hello)
+    expect(
+      SynergyLinkHost.Hello.parse({
+        ...hello,
+        capabilities: { ...hello.capabilities, supportsBashDetach: true },
+      }).capabilities.supportsBashDetach,
+    ).toBe(true)
   })
 })

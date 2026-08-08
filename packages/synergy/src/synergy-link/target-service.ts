@@ -115,6 +115,9 @@ export namespace SynergyLinkTargetService {
             SynergyLinkExecution.upsertSession({
               ...existingNewSession,
               targetID: id,
+              supportsBashDetach: probe.metadata.host
+                ? probe.metadata.host.capabilities.supportsBashDetach === true
+                : existingNewSession.supportsBashDetach === true,
               lastUsedAt: verifiedAt,
               lastVerifiedAt: verifiedAt,
             })

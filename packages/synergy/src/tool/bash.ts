@@ -46,7 +46,7 @@ const parameters = z
       .boolean()
       .optional()
       .describe(
-        "Remote-only: detach the command from the Synergy Link session lifecycle. The process is spawned without the session owner marker, so it survives session close and cleanup; the caller is responsible for managing it. Ignored for local execution.",
+        "Remote-only: detach the command from the Synergy Link session lifecycle when the connected host explicitly reports support. The process is spawned without the session owner marker, so it survives session close and cleanup; the caller is responsible for managing it. Unsupported hosts reject detach=true, and the field is never sent to hosts that do not advertise support. Ignored for local execution.",
       ),
   })
   .strict()

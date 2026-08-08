@@ -86,6 +86,7 @@ export namespace Platform {
       supportsSendKeys: true,
       supportsSoftKill: process.platform !== "win32",
       supportsProcessGroups: process.platform !== "win32",
+      supportsBashDetach: process.platform !== "win32",
       envCaseInsensitive: process.platform === "win32",
       lineEndings: process.platform === "win32" ? "crlf" : "lf",
     }
