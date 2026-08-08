@@ -220,8 +220,29 @@ describe("detectDetachedDaemonRisk", () => {
       expect(detectDetachedDaemonRisk(command, "win32")).toBeUndefined()
     }
   })
-  test("keeps Windows-only launchers available on other platforms", () => {
-    expect(detectDetachedDaemonRisk('start "" /b long-running.exe', "linux")).toBeUndefined()
-    expect(detectDetachedDaemonRisk("powershell -EncodedCommand ZQBjAGgAbwAgAG8AawA=", "darwin")).toBeUndefined()
+  test("allows POSIX detached daemon launch patterns on non-Windows platforms", () => {
+    const commands = [
+      "tmux new-session -d -s link-test",
+      "screen -dmS link-test sleep 30",
+      "nohup sleep 30",
+      "setsid sleep 30",
+      "sleep 30; disown",
+      "daemonize sleep 30",
+      "sleep 30 &",
+      'start "" /b long-running.exe',
+      "powershell -EncodedCommand ZQBjAGgAbwAgAG8AawA=",
+    ]
+
+    for (const command of commands) {
+      expect(detectDetachedDaemonRisk(command, "linux")).toBeUndefined()
+      expect(detectDetachedDaemonRisk(command, "darwin")).toBeUndefined()
+    }
+  })
+
+  test("keeps the Windows-only guard on Windows while POSIX patterns pass", () => {
+    expect(detectDetachedDaemonRisk('start "" /b long-running.exe', "win32")?.kind).toBe("windows_cmd_start")
+    expect(detectDetachedDaemonRisk("nohup sleep 30", "win32")).toBeUndefined()
+    expect(detectDetachedDaemonRisk("setsid sleep 30", "win32")).toBeUndefined()
+    expect(detectDetachedDaemonRisk("sleep 30 &", "win32")).toBeUndefined()
   })
 })

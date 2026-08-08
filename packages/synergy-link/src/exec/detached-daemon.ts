@@ -4,13 +4,6 @@ import process from "node:process"
 
 export type DetachedDaemonRisk = {
   kind:
-    | "tmux_detached"
-    | "nohup"
-    | "setsid"
-    | "disown"
-    | "daemonize"
-    | "screen_detached"
-    | "shell_background"
     | "windows_cmd_start"
     | "windows_dynamic_command"
     | "windows_command_too_complex"
@@ -30,58 +23,22 @@ export type DetachedDaemonDetectionOptions = {
   windowsResolution?: WindowsCommandResolution
 }
 
-const commandBoundary = String.raw`(?:^|(?:&&|\|\||[;|\n\r(])\s*)`
-const checks: Array<{ kind: DetachedDaemonRisk["kind"]; pattern: string; regex: RegExp }> = [
-  {
-    kind: "tmux_detached",
-    pattern: "tmux new-session -d",
-    regex: new RegExp(`${commandBoundary}tmux\\s+(?:new-session|new)\\b(?=[\\s\\S]*?(?:^|\\s)-d(?:\\s|$))`),
-  },
-  {
-    kind: "screen_detached",
-    pattern: "screen -dm",
-    regex: new RegExp(`${commandBoundary}screen\\s+(?:-dm\\S*|-d\\s+-m)(?:\\s|$)`),
-  },
-  {
-    kind: "nohup",
-    pattern: "nohup",
-    regex: new RegExp(`${commandBoundary}nohup(?:\\s|$)`),
-  },
-  {
-    kind: "setsid",
-    pattern: "setsid",
-    regex: new RegExp(`${commandBoundary}setsid(?:\\s|$)`),
-  },
-  {
-    kind: "disown",
-    pattern: "disown",
-    regex: new RegExp(`${commandBoundary}disown(?:\\s|$)`),
-  },
-  {
-    kind: "daemonize",
-    pattern: "daemonize",
-    regex: new RegExp(`${commandBoundary}daemonize(?:\\s|$)`),
-  },
-]
-
 export function detectDetachedDaemonRisk(
   command: string,
   platform = process.platform,
   options?: DetachedDaemonDetectionOptions,
 ): DetachedDaemonRisk | undefined {
-  if (platform === "win32" && command.length > maxWindowsCommandChars) return windowsCommandTooComplexRisk()
-  const unquoted = maskQuotedShellText(command)
-  for (const check of checks) {
-    if (check.regex.test(unquoted)) return { kind: check.kind, pattern: check.pattern }
-  }
-  if (platform === "win32") {
-    const windowsResolution =
-      options?.windowsResolution ??
-      (platform === process.platform ? { workdir: process.cwd(), env: process.env } : undefined)
-    const windowsRisk = detectWindowsDetachedDaemonRisk(command, windowsResolution)
-    if (windowsRisk) return windowsRisk
-  }
-  if (hasTopLevelBackgroundOperator(unquoted)) return { kind: "shell_background", pattern: "&" }
+  // POSIX hosts allow detached launches (nohup, setsid, tmux, shell `&`):
+  // every launched process inherits the session owner marker, so cleanup can
+  // rediscover and terminate marked descendant process groups even after a
+  // wrapper exits. Only Windows cannot safely recover a detached descendant
+  // after its launcher exits, so the guard applies there only.
+  if (platform !== "win32") return undefined
+  if (command.length > maxWindowsCommandChars) return windowsCommandTooComplexRisk()
+  const windowsResolution =
+    options?.windowsResolution ??
+    (platform === process.platform ? { workdir: process.cwd(), env: process.env } : undefined)
+  return detectWindowsDetachedDaemonRisk(command, windowsResolution)
 }
 
 export function detachedDaemonBlockMessage(risk: DetachedDaemonRisk) {
@@ -777,24 +734,4 @@ function stripOuterQuotes(value: string): string {
   const quote = value[0]
   if ((quote === "'" || quote === '"') && value.at(-1) === quote) return value.slice(1, -1)
   return value
-}
-
-function hasTopLevelBackgroundOperator(command: string): boolean {
-  for (let index = 0; index < command.length; index += 1) {
-    if (command[index] !== "&") continue
-    const previous = command[index - 1]
-    const next = command[index + 1]
-    if (
-      previous === "&" ||
-      previous === ">" ||
-      previous === "|" ||
-      next === "&" ||
-      next === ">" ||
-      /\d/.test(next ?? "")
-    ) {
-      continue
-    }
-    return true
-  }
-  return false
 }
