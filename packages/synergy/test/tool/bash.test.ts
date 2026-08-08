@@ -975,11 +975,13 @@ describe("tool.bash workspace boundary enforcement", () => {
 })
 
 describe("tool.bash remote execution", () => {
-  test("uses a verified remote session and never falls back locally", async () => {
+  test("omits detach when an older remote host does not report support", async () => {
     const actions: Array<{ action: string; sessionID?: string }> = []
+    let forwarded: SynergyLinkBash.ExecutePayload | undefined
     SynergyLinkExecution.setClient({
       executeBash: async (_linkID, payload, options): Promise<SynergyLinkBash.Result> => {
         expect(options?.sessionID).toBe("session_remote_bash")
+        forwarded = payload
         return {
           title: "Executed",
           metadata: { exit: 0, backend: "remote", output: "remote-output" },
@@ -1006,6 +1008,7 @@ describe("tool.bash remote execution", () => {
       status: "opened",
       openedAt: Date.now() - 60_000,
       lastUsedAt: Date.now() - 60_000,
+      supportsBashDetach: false,
     })
     try {
       const bash = await BashTool.init()
@@ -1015,12 +1018,101 @@ describe("tool.bash remote execution", () => {
           description: "Echo remote",
           linkID: "link_remote_bash",
           yieldSeconds: 30,
+          detach: false,
         },
         ctx,
       )
 
       expect(result.output).toBe("remote-output")
+      expect(forwarded).not.toHaveProperty("detach")
       expect(actions).toEqual([{ action: "heartbeat", sessionID: "session_remote_bash" }])
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("rejects detach when the remote host does not report support", async () => {
+    let dispatched = false
+    SynergyLinkExecution.setClient({
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        dispatched = true
+        throw new Error("unexpected bash execution")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("unexpected session verification")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_remote_bash",
+      targetAgentID: "agent_remote_bash",
+      sourceAgent: "build",
+      sessionID: "session_remote_bash",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+      lastVerifiedAt: Date.now(),
+      supportsBashDetach: false,
+    })
+    try {
+      const bash = await BashTool.init()
+      await expect(
+        bash.execute(
+          {
+            command: "echo remote",
+            description: "Echo remote",
+            linkID: "link_remote_bash",
+            detach: true,
+          },
+          ctx,
+        ),
+      ).rejects.toThrow("does not report support for detached bash execution")
+      expect(dispatched).toBe(false)
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("sends detach when the remote host explicitly reports support", async () => {
+    let forwarded: SynergyLinkBash.ExecutePayload | undefined
+    SynergyLinkExecution.setClient({
+      executeBash: async (_linkID, payload): Promise<SynergyLinkBash.Result> => {
+        forwarded = payload
+        return { title: "Executed", metadata: { exit: 0, backend: "remote" }, output: "remote-output" }
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("unexpected session verification")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_remote_bash",
+      targetAgentID: "agent_remote_bash",
+      sourceAgent: "build",
+      sessionID: "session_remote_bash",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+      lastVerifiedAt: Date.now(),
+      supportsBashDetach: true,
+    })
+    try {
+      const bash = await BashTool.init()
+      await bash.execute(
+        {
+          command: "echo remote",
+          description: "Echo remote",
+          linkID: "link_remote_bash",
+          detach: true,
+        },
+        ctx,
+      )
+
+      expect(forwarded?.detach).toBe(true)
     } finally {
       SynergyLinkExecution.setClient(null)
     }

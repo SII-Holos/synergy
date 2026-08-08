@@ -297,6 +297,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         sourceAgent: ctx.agent,
         sessionID,
         status: "opened",
+        supportsBashDetach: opened.metadata.host?.capabilities.supportsBashDetach === true,
         label: params.label,
         openedAt: Date.now(),
         lastUsedAt: Date.now(),

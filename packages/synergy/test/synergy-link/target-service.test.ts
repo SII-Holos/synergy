@@ -358,6 +358,7 @@ describe("Synergy Link target service relink", () => {
       status: "opened",
       openedAt: Date.now(),
       lastUsedAt: Date.now(),
+      supportsBashDetach: true,
     })
 
     await SynergyLinkTargetService.update(target.id, {
@@ -378,6 +379,7 @@ describe("Synergy Link target service relink", () => {
       sessionID: "session_reused",
       targetID: target.id,
       lastVerifiedAt: expect.any(Number),
+      supportsBashDetach: false,
     })
   })
   test("clears an invalid reused session and opens a fresh relink verification session", async () => {

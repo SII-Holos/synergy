@@ -1077,6 +1077,7 @@ export type SynergyLinkHostObservation = {
     supportsSendKeys: boolean
     supportsSoftKill: boolean
     supportsProcessGroups: boolean
+    supportsBashDetach?: boolean
     envCaseInsensitive: boolean
     lineEndings: "lf" | "crlf"
   }
