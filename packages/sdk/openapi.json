@@ -19287,6 +19287,70 @@
         ]
       }
     },
+    "/api/registry/refresh": {
+      "post": {
+        "operationId": "registry.refresh",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Force refresh the official plugin registry cache",
+        "description": "Re-fetch the official plugin registry index immediately, bypassing the cache TTL.",
+        "responses": {
+          "200": {
+            "description": "Registry refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "refreshedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["refreshedAt"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.registry.refresh({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/registry/{id}": {
       "get": {
         "operationId": "registry.plugins.get",

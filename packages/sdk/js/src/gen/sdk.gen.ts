@@ -434,6 +434,8 @@ import type {
   RegistryPluginsVersionsErrors,
   RegistryPluginsVersionsResponses,
   RegistryPublishInput,
+  RegistryRefreshErrors,
+  RegistryRefreshResponses,
   RewardsInfo,
   RuntimeReloadErrors,
   RuntimeReloadResponses,
@@ -10569,6 +10571,36 @@ export class Api extends HeyApiClient {
 }
 
 export class Registry extends HeyApiClient {
+  /**
+   * Force refresh the official plugin registry cache
+   *
+   * Re-fetch the official plugin registry index immediately, bypassing the cache TTL.
+   */
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RegistryRefreshResponses, RegistryRefreshErrors, ThrowOnError>({
+      url: "/api/registry/refresh",
+      ...options,
+      ...params,
+    })
+  }
+
   plugins = new Plugins({ client: this.client })
 }
 

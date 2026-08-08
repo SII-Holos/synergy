@@ -24,6 +24,8 @@ Registry identity, generated manifest ID, approval ID, lockfile key, signature p
 
 When an official registry read cannot reach its upstream source and no cached data can satisfy the request, the server returns a structured `503 Service Unavailable` response. The Marketplace keeps installed or cached plugin details usable when possible, shows a registry-unavailable state instead of a generic application error, and offers an explicit retry action.
 
+The Marketplace header offers a manual refresh action that re-fetches the official registry index immediately, bypassing the hourly cache TTL, and drops cached entry details so the next detail view is fresh. When the refresh cannot reach the upstream registry, the previous cached data stays intact and the action reports an error instead of clearing the list.
+
 ## Publish Flow
 
 ```bash

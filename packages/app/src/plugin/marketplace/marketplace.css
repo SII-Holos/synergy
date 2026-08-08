@@ -106,6 +106,33 @@
   color: var(--icon-base);
 }
 
+.plugin-marketplace-refresh {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  color: var(--icon-weak);
+  background: var(--plugin-input-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 24%, transparent);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.plugin-marketplace-refresh:hover:not(:disabled) {
+  background: var(--plugin-control-bg-hover);
+  color: var(--icon-base);
+}
+
+.plugin-marketplace-refresh:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .plugin-marketplace-body {
   display: flex;
   flex-direction: column;
