@@ -422,16 +422,16 @@ describe("synergy-link host hardening", () => {
     }
   })
 
-  test("blocks Windows detached daemon launch patterns before remote execution", async () => {
+  test("blocks tmux/screen detached launchers on every platform before remote execution", async () => {
     const host = createHost()
     try {
       const sessionID = await openSession(host)
-      const commands = ['start "" /b long-running.exe', "Start-Process long-running.exe"]
+      const commands = ["tmux new-session -d -s link-test", "screen -dmS link-test sleep 30"]
 
       for (const [index, command] of commands.entries()) {
         const response = await execute(host, sessionID, `req_detached_${index}`, command)
-        expect(response.ok).toBe(process.platform !== "win32")
-        if (!response.ok && process.platform === "win32") {
+        expect(response.ok).toBe(false)
+        if (!response.ok) {
           expect(response.error.code).toBe("invalid_request")
           expect(response.error.message).toContain("Blocked direct detached daemon launch pattern")
         }
@@ -441,18 +441,34 @@ describe("synergy-link host hardening", () => {
     }
   })
 
-  test("allows POSIX detached daemon launch patterns (session-owned cleanup still reaps them)", async () => {
+  test("blocks Windows detached launchers on Windows and allows them elsewhere", async () => {
     const host = createHost()
     try {
       const sessionID = await openSession(host)
-      const commands = [
-        "nohup sleep 0.1",
-        "setsid sleep 0.1",
-        "sleep 0.1 &",
-        "tmux new-session -d -s link-test",
-        "screen -dmS link-test sleep 0.1",
-        "sleep 0.1; disown",
-      ]
+      const commands = ['start "" /b long-running.exe', "Start-Process long-running.exe"]
+
+      for (const [index, command] of commands.entries()) {
+        const response = await execute(host, sessionID, `req_windows_detached_${index}`, command)
+        if (process.platform === "win32") {
+          expect(response.ok).toBe(false)
+          if (!response.ok) {
+            expect(response.error.code).toBe("invalid_request")
+            expect(response.error.message).toContain("Blocked direct detached daemon launch pattern")
+          }
+        } else {
+          expect(response.ok).toBe(true)
+        }
+      }
+    } finally {
+      await host.rpc.processRegistry.reset()
+    }
+  })
+
+  test("allows marker-safe POSIX detached daemon launch patterns (session-owned cleanup still reaps them)", async () => {
+    const host = createHost()
+    try {
+      const sessionID = await openSession(host)
+      const commands = ["nohup sleep 0.1", "setsid sleep 0.1", "sleep 0.1 &", "sleep 0.1; disown"]
 
       for (const [index, command] of commands.entries()) {
         const response = await execute(host, sessionID, `req_posix_detached_${index}`, command)

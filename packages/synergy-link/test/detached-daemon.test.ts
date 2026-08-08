@@ -220,29 +220,35 @@ describe("detectDetachedDaemonRisk", () => {
       expect(detectDetachedDaemonRisk(command, "win32")).toBeUndefined()
     }
   })
-  test("allows POSIX detached daemon launch patterns on non-Windows platforms", () => {
-    const commands = [
-      "tmux new-session -d -s link-test",
-      "screen -dmS link-test sleep 30",
-      "nohup sleep 30",
-      "setsid sleep 30",
-      "sleep 30; disown",
-      "daemonize sleep 30",
-      "sleep 30 &",
-      'start "" /b long-running.exe',
-      "powershell -EncodedCommand ZQBjAGgAbwAgAG8AawA=",
-    ]
+  test("blocks tmux/screen detached launchers on every platform (marker does not propagate)", () => {
+    const commands = ["tmux new-session -d -s link-test", "screen -dmS link-test sleep 30"]
+    for (const command of commands) {
+      expect(detectDetachedDaemonRisk(command, "linux")).toBeDefined()
+      expect(detectDetachedDaemonRisk(command, "darwin")).toBeDefined()
+      expect(detectDetachedDaemonRisk(command, "win32")).toBeDefined()
+    }
+    expect(detectDetachedDaemonRisk("tmux new-session -d -s link-test", "linux")?.kind).toBe("tmux_detached")
+    expect(detectDetachedDaemonRisk("screen -dmS link-test sleep 30", "linux")?.kind).toBe("screen_detached")
+  })
 
+  test("allows marker-safe POSIX detachers on non-Windows platforms", () => {
+    const commands = ["nohup sleep 30", "setsid sleep 30", "sleep 30; disown", "daemonize sleep 30", "sleep 30 &"]
     for (const command of commands) {
       expect(detectDetachedDaemonRisk(command, "linux")).toBeUndefined()
       expect(detectDetachedDaemonRisk(command, "darwin")).toBeUndefined()
     }
   })
 
-  test("keeps the Windows-only guard on Windows while POSIX patterns pass", () => {
-    expect(detectDetachedDaemonRisk('start "" /b long-running.exe', "win32")?.kind).toBe("windows_cmd_start")
-    expect(detectDetachedDaemonRisk("nohup sleep 30", "win32")).toBeUndefined()
-    expect(detectDetachedDaemonRisk("setsid sleep 30", "win32")).toBeUndefined()
-    expect(detectDetachedDaemonRisk("sleep 30 &", "win32")).toBeUndefined()
+  test("keeps marker-safe POSIX detachers blocked on Windows (killOwnedByMarkers is a no-op)", () => {
+    const commands = [
+      ["nohup sleep 30", "nohup"],
+      ["setsid sleep 30", "setsid"],
+      ["sleep 30; disown", "disown"],
+      ["daemonize sleep 30", "daemonize"],
+      ["sleep 30 &", "shell_background"],
+    ] as const
+    for (const [command, expectedKind] of commands) {
+      expect(detectDetachedDaemonRisk(command, "win32")?.kind).toBe(expectedKind)
+    }
   })
 })
