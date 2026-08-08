@@ -6041,6 +6041,18 @@ msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.button"
+msgstr "刷新插件"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.failed"
+msgstr "插件目录刷新失败"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.updated"
+msgstr "插件目录已更新"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.registryUnavailable.description"
 msgstr "Synergy 无法连接到此插件注册表。请检查网络连接后重试。"
 
