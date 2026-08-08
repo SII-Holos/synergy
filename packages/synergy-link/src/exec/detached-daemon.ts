@@ -31,24 +31,23 @@ export type DetachedDaemonDetectionOptions = {
 }
 
 const commandBoundary = String.raw`(?:^|(?:&&|\|\||[;|\n\r(])\s*)`
-// tmux/screen are blocked on every platform: `tmux new-session -d` connects to
-// a possibly pre-existing tmux server, which spawns the new process without the
-// session owner marker, so session cleanup cannot attribute or reap the job.
-const tmuxCheck = {
-  kind: "tmux_detached",
-  pattern: "tmux new-session -d",
-  regex: new RegExp(`${commandBoundary}tmux\\s+(?:new-session|new)\\b(?=[\\s\\S]*?(?:^|\\s)-d(?:\\s|$))`),
-} as const
-const screenCheck = {
-  kind: "screen_detached",
-  pattern: "screen -dm",
-  regex: new RegExp(`${commandBoundary}screen\\s+(?:-dm\\S*|-d\\s+-m)(?:\\s|$)`),
-} as const
-// The remaining launchers (nohup, setsid, disown, daemonize, shell `&`) are
-// marker-safe: the child inherits SYNERGY_LINK_PROCESS_OWNER and session cleanup
-// reaps it on POSIX. Windows cannot rediscover a detached descendant after its
-// launcher exits (killOwnedByMarkers is a no-op there), so they stay blocked.
-const posixOnlyChecks: Array<{ kind: DetachedDaemonRisk["kind"]; pattern: string; regex: RegExp }> = [
+// These launchers are rejected only on Windows (killOwnedByMarkers is a no-op
+// there, so a detached descendant cannot be recovered after its launcher
+// exits). POSIX hosts allow every detached launcher: session cleanup reaps
+// marker-inheriting descendants (nohup, setsid, disown, daemonize, shell `&`),
+// while tmux/screen launches through a possibly pre-existing server are not
+// marker-attributed and are owned by the caller.
+const detachedLauncherChecks: Array<{ kind: DetachedDaemonRisk["kind"]; pattern: string; regex: RegExp }> = [
+  {
+    kind: "tmux_detached",
+    pattern: "tmux new-session -d",
+    regex: new RegExp(`${commandBoundary}tmux\\s+(?:new-session|new)\\b(?=[\\s\\S]*?(?:^|\\s)-d(?:\\s|$))`),
+  },
+  {
+    kind: "screen_detached",
+    pattern: "screen -dm",
+    regex: new RegExp(`${commandBoundary}screen\\s+(?:-dm\\S*|-d\\s+-m)(?:\\s|$)`),
+  },
   { kind: "nohup", pattern: "nohup", regex: new RegExp(`${commandBoundary}nohup(?:\\s|$)`) },
   { kind: "setsid", pattern: "setsid", regex: new RegExp(`${commandBoundary}setsid(?:\\s|$)`) },
   { kind: "disown", pattern: "disown", regex: new RegExp(`${commandBoundary}disown(?:\\s|$)`) },
@@ -60,22 +59,17 @@ export function detectDetachedDaemonRisk(
   platform = process.platform,
   options?: DetachedDaemonDetectionOptions,
 ): DetachedDaemonRisk | undefined {
+  if (platform !== "win32") return undefined
   const unquoted = maskQuotedShellText(command)
-  if (tmuxCheck.regex.test(unquoted)) return { kind: tmuxCheck.kind, pattern: tmuxCheck.pattern }
-  if (screenCheck.regex.test(unquoted)) return { kind: screenCheck.kind, pattern: screenCheck.pattern }
-
-  if (platform === "win32") {
-    if (command.length > maxWindowsCommandChars) return windowsCommandTooComplexRisk()
-    for (const check of posixOnlyChecks) {
-      if (check.regex.test(unquoted)) return { kind: check.kind, pattern: check.pattern }
-    }
-    if (hasTopLevelBackgroundOperator(unquoted)) return { kind: "shell_background", pattern: "&" }
-    const windowsResolution =
-      options?.windowsResolution ??
-      (platform === process.platform ? { workdir: process.cwd(), env: process.env } : undefined)
-    return detectWindowsDetachedDaemonRisk(command, windowsResolution)
+  if (command.length > maxWindowsCommandChars) return windowsCommandTooComplexRisk()
+  for (const check of detachedLauncherChecks) {
+    if (check.regex.test(unquoted)) return { kind: check.kind, pattern: check.pattern }
   }
-  return undefined
+  if (hasTopLevelBackgroundOperator(unquoted)) return { kind: "shell_background", pattern: "&" }
+  const windowsResolution =
+    options?.windowsResolution ??
+    (platform === process.platform ? { workdir: process.cwd(), env: process.env } : undefined)
+  return detectWindowsDetachedDaemonRisk(command, windowsResolution)
 }
 
 export function detachedDaemonBlockMessage(risk: DetachedDaemonRisk) {

@@ -220,15 +220,13 @@ describe("detectDetachedDaemonRisk", () => {
       expect(detectDetachedDaemonRisk(command, "win32")).toBeUndefined()
     }
   })
-  test("blocks tmux/screen detached launchers on every platform (marker does not propagate)", () => {
+  test("allows tmux/screen detached launchers on POSIX, blocks them on Windows", () => {
     const commands = ["tmux new-session -d -s link-test", "screen -dmS link-test sleep 30"]
     for (const command of commands) {
-      expect(detectDetachedDaemonRisk(command, "linux")).toBeDefined()
-      expect(detectDetachedDaemonRisk(command, "darwin")).toBeDefined()
+      expect(detectDetachedDaemonRisk(command, "linux")).toBeUndefined()
+      expect(detectDetachedDaemonRisk(command, "darwin")).toBeUndefined()
       expect(detectDetachedDaemonRisk(command, "win32")).toBeDefined()
     }
-    expect(detectDetachedDaemonRisk("tmux new-session -d -s link-test", "linux")?.kind).toBe("tmux_detached")
-    expect(detectDetachedDaemonRisk("screen -dmS link-test sleep 30", "linux")?.kind).toBe("screen_detached")
   })
 
   test("allows marker-safe POSIX detachers on non-Windows platforms", () => {
@@ -239,8 +237,10 @@ describe("detectDetachedDaemonRisk", () => {
     }
   })
 
-  test("keeps marker-safe POSIX detachers blocked on Windows (killOwnedByMarkers is a no-op)", () => {
+  test("keeps all detached launchers blocked on Windows (killOwnedByMarkers is a no-op)", () => {
     const commands = [
+      ["tmux new-session -d -s link-test", "tmux_detached"],
+      ["screen -dmS link-test sleep 30", "screen_detached"],
       ["nohup sleep 30", "nohup"],
       ["setsid sleep 30", "setsid"],
       ["sleep 30; disown", "disown"],

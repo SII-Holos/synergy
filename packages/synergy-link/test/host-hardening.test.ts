@@ -422,25 +422,6 @@ describe("synergy-link host hardening", () => {
     }
   })
 
-  test("blocks tmux/screen detached launchers on every platform before remote execution", async () => {
-    const host = createHost()
-    try {
-      const sessionID = await openSession(host)
-      const commands = ["tmux new-session -d -s link-test", "screen -dmS link-test sleep 30"]
-
-      for (const [index, command] of commands.entries()) {
-        const response = await execute(host, sessionID, `req_detached_${index}`, command)
-        expect(response.ok).toBe(false)
-        if (!response.ok) {
-          expect(response.error.code).toBe("invalid_request")
-          expect(response.error.message).toContain("Blocked direct detached daemon launch pattern")
-        }
-      }
-    } finally {
-      await host.rpc.processRegistry.reset()
-    }
-  })
-
   test("blocks Windows detached launchers on Windows and allows them elsewhere", async () => {
     const host = createHost()
     try {
