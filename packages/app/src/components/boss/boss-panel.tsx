@@ -1,12 +1,12 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useLingui } from "@lingui/solid"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { useConfirm } from "@/components/dialog"
-import { useLocale } from "@/context/locale"
 import type { SDKContext } from "@/context/sdk"
-import { flattenTree, idleWorkers, renderTreeText, type BossTreeNodeVM } from "./boss-panel-model"
+import { directIdleWorkers, flattenTree, renderTreeText, type BossTreeNodeVM } from "./boss-panel-model"
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
@@ -54,6 +54,20 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
     setLoading(true)
     setLoadError(undefined)
     void refreshTree(sessionID, token)
+  })
+
+  // Keep the panel live: refresh when sessions or messages change while the
+  // panel is open so worker starts, completions, reports, and descendant
+  // spawns update the tree without manual reloads.
+  createEffect(() => {
+    const sessionID = props.sessionID
+    const unsubs = [
+      props.sdk.event.on("session.updated", () => void refreshTree(sessionID)),
+      props.sdk.event.on("message.updated", () => void refreshTree(sessionID)),
+    ]
+    onCleanup(() => {
+      for (const unsub of unsubs) unsub()
+    })
   })
 
   const rows = createMemo(() => (tree() ? flattenTree(tree()!) : []))
@@ -131,11 +145,16 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
     })
   }
 
-  const copyTree = () => {
+  const copyTree = async () => {
     const current = tree()
     if (!current) return
-    navigator.clipboard.writeText(renderTreeText(current)).catch(() => undefined)
-    showToast({ type: "info", title: _({ id: "app.boss.copy.title", message: "Tree copied" }) })
+    const result = await copyTextToClipboard(renderTreeText(current), {
+      label: _({ id: "app.boss.copy.title", message: "Tree copied" }),
+      failureDescription: _({ id: "app.boss.copy.failed", message: "Failed to copy the Boss tree." }),
+    })
+    if (result.ok) {
+      showToast({ type: "info", title: _({ id: "app.boss.copy.title", message: "Tree copied" }) })
+    }
   }
 
   return (
@@ -195,7 +214,9 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
           <option value="" disabled>
             {_({ id: "app.boss.assign.selectWorker", message: "Select worker…" })}
           </option>
-          <For each={idleWorkers(tree() ?? { sessionID: "", title: "", role: "boss", status: "idle", children: [] })}>
+          <For
+            each={directIdleWorkers(tree() ?? { sessionID: "", title: "", role: "boss", status: "idle", children: [] })}
+          >
             {(worker) => (
               <option value={worker.sessionID}>
                 {worker.title} ({worker.workerRole ?? "worker"})
@@ -220,15 +241,25 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
       <Show
         when={!loading() && tree()}
         fallback={
-          <div class="flex items-center justify-center py-8">
-            <Spinner />
-          </div>
+          <Show when={loading() && !loadError()} fallback={<div />}>
+            <div class="flex items-center justify-center py-8">
+              <Spinner />
+            </div>
+          </Show>
         }
       >
         <div class="flex flex-col gap-1">
           <For each={rows()}>
             {(row) => {
               const node = row.node
+              const statusLabel =
+                node.status === "running"
+                  ? _({ id: "app.boss.status.running", message: "Running" })
+                  : node.status === "queued"
+                    ? _({ id: "app.boss.status.queued", message: "Queued" })
+                    : node.status === "archived"
+                      ? _({ id: "app.boss.status.archived", message: "Archived" })
+                      : _({ id: "app.boss.status.idle", message: "Idle" })
               return (
                 <div
                   class="flex items-center gap-2 rounded px-2 py-1 hover:bg-surface-raised-stronger"
@@ -238,7 +269,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
                     class="size-1.5 shrink-0 rounded-full"
                     classList={{
                       "bg-icon-success-base": node.status === "running",
-                      "bg-icon-warning-base": node.status === "idle",
+                      "bg-icon-warning-base": node.status === "idle" || node.status === "queued",
                       "bg-text-weaker": node.status === "archived",
                     }}
                   />
@@ -255,6 +286,9 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
                         </span>
                       </>
                     )}
+                  </span>
+                  <span class="shrink-0 text-11-regular text-text-weak" aria-label={statusLabel}>
+                    {statusLabel}
                   </span>
                   <Show when={node.status !== "archived" && node.role === "worker"}>
                     <button

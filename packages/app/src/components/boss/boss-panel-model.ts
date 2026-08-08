@@ -3,7 +3,7 @@
  * Kept dependency-free so it can be unit tested without a server or SDK.
  */
 
-export type BossStatus = "running" | "idle" | "archived"
+export type BossStatus = "running" | "queued" | "idle" | "archived"
 
 export interface BossTreeNodeVM {
   sessionID: string
@@ -28,11 +28,13 @@ export function workerCount(node: BossTreeNodeVM): number {
   return count
 }
 
-export function idleWorkers(node: BossTreeNodeVM): BossTreeNodeVM[] {
-  const out: BossTreeNodeVM[] = []
-  if (node.role === "worker" && node.status === "idle") out.push(node)
-  for (const child of node.children) out.push(...idleWorkers(child))
-  return out
+/**
+ * Direct idle children of the given node. The assign route is called with the
+ * panel's root as the caller and BossService only accepts direct children, so
+ * nested workers are intentionally excluded from the assignment dropdown.
+ */
+export function directIdleWorkers(node: BossTreeNodeVM): BossTreeNodeVM[] {
+  return node.children.filter((child) => child.role === "worker" && child.status === "idle")
 }
 
 export function renderTreeText(node: BossTreeNodeVM): string {

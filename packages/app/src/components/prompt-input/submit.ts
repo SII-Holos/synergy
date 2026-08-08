@@ -91,6 +91,7 @@ type PromptSubmitInput = {
   clearPendingLightLoop: () => void
   pendingBoss: Accessor<boolean>
   clearPendingBoss: () => void
+  onBossEnabled: () => void
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   setBlueprintLoading: Setter<boolean>
@@ -636,7 +637,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       const fallbackSession = session
       session = await client.workflow.session
         .set({ id: sessionID, workflowSetInput: { kind: "boss" } })
-        .then((x) => x.data ?? fallbackSession)
+        .then((x) => {
+          input.onBossEnabled()
+          return x.data ?? fallbackSession
+        })
         .catch(async (err) => {
           const message = errorMessage(err)
           showToast({

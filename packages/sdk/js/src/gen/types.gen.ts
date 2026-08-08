@@ -4212,6 +4212,7 @@ export type SessionWorkflowInfo =
       role: "boss" | "worker"
       workerRole?: string
       rootID?: string
+      instructions?: string
     }
 
 export type Session = {
@@ -7114,7 +7115,7 @@ export type BossTreeNode = {
   role: "boss" | "worker"
   workerRole?: string
   agent?: string
-  status: "running" | "idle" | "archived"
+  status: "running" | "queued" | "idle" | "archived"
   currentTask?: {
     taskID: string
     taskTitle?: string

@@ -855,6 +855,10 @@ msgid "app.boss.cancel.success"
 msgstr "工作已取消"
 
 #. js-lingui-explicit-id
+msgid "app.boss.copy.failed"
+msgstr "复制 Boss 树失败。"
+
+#. js-lingui-explicit-id
 msgid "app.boss.copy.title"
 msgstr "树已复制"
 
@@ -905,6 +909,22 @@ msgstr "Worker 角色（例如 code）"
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.success"
 msgstr "Worker 已创建"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.archived"
+msgstr "已归档"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.idle"
+msgstr "空闲"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.queued"
+msgstr "排队中"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.running"
+msgstr "运行中"
 
 #. js-lingui-explicit-id
 msgid "app.boss.workspace.sessionRequired"

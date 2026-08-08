@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
+  directIdleWorkers,
   flattenTree,
-  idleWorkers,
   renderTreeText,
   workerCount,
   type BossTreeNodeVM,
@@ -50,8 +50,28 @@ describe("boss-panel-model", () => {
     expect(workerCount(leaf)).toBe(1)
   })
 
-  test("idleWorkers returns only idle worker nodes", () => {
-    expect(idleWorkers(tree).map((node) => node.sessionID)).toEqual(["ses_worker"])
+  test("directIdleWorkers returns only direct idle worker children", () => {
+    const parentWithNested: BossTreeNodeVM = {
+      sessionID: "ses_parent",
+      title: "Boss · parent",
+      role: "worker",
+      workerRole: "parent",
+      status: "idle",
+      children: [
+        {
+          sessionID: "ses_grandchild",
+          title: "Boss · lint",
+          role: "worker",
+          workerRole: "lint",
+          status: "idle",
+          children: [],
+        },
+      ],
+    }
+    expect(directIdleWorkers(tree).map((node) => node.sessionID)).toEqual(["ses_worker"])
+    // The nested worker is a direct child of parentWithNested; its own idle
+    // grandchild is one level deeper and must not appear in the direct list.
+    expect(directIdleWorkers(parentWithNested).map((node) => node.sessionID)).toEqual(["ses_grandchild"])
   })
 
   test("renderTreeText includes roles, status, and current task", () => {

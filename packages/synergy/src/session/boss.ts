@@ -1,6 +1,7 @@
 import z from "zod"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
+import { AgentDelegation } from "../agent/delegation"
 import { Session } from "./index"
 import { SessionInbox } from "./inbox"
 import { SessionManager } from "./manager"
@@ -36,7 +37,7 @@ export namespace BossService {
     role: "boss" | "worker"
     workerRole?: string
     agent?: string
-    status: "running" | "idle" | "archived"
+    status: "running" | "queued" | "idle" | "archived"
     currentTask?: {
       taskID: string
       taskTitle?: string
@@ -52,7 +53,7 @@ export namespace BossService {
         role: z.enum(["boss", "worker"]),
         workerRole: z.string().optional(),
         agent: z.string().optional(),
-        status: z.enum(["running", "idle", "archived"]),
+        status: z.enum(["running", "queued", "idle", "archived"]),
         currentTask: z
           .object({
             taskID: z.string(),
@@ -136,7 +137,8 @@ export namespace BossService {
   /**
    * Spawn a persistent specialist worker as a direct child of the caller.
    * The worker is a normal session with `workflow.kind === "boss"` and an
-   * unattended interaction; its standing role label is carried in workerRole.
+   * unattended interaction; its standing role label is carried in workerRole
+   * and optional standing instructions are persisted in workflow.instructions.
    */
   export async function spawn(
     callerID: string,
@@ -151,13 +153,23 @@ export namespace BossService {
     const agent = input.agent?.trim() || "synergy"
     const agentInfo = await Agent.get(agent).catch(() => undefined)
     if (!agentInfo) throw new BossError("unknown_agent", `Unknown agent "${agent}"`)
+    if (agentInfo.hidden || !AgentDelegation.isVisibleToCaller(agentInfo, caller.agentOverride ?? "synergy")) {
+      throw new BossError("agent_not_delegatable", `Agent "${agent}" is not delegatable from this session`)
+    }
 
+    const instructions = input.instructions?.trim()
     return Session.create({
       parentID: caller.id,
       title: `${caller.title} · ${role}`,
       agentOverride: agent,
       interaction: SessionInteraction.unattended("boss"),
-      workflow: { kind: "boss", role: "worker", workerRole: role, rootID },
+      workflow: {
+        kind: "boss",
+        role: "worker",
+        workerRole: role,
+        rootID,
+        ...(instructions ? { instructions } : {}),
+      },
     })
   }
 
@@ -198,6 +210,8 @@ export namespace BossService {
   /**
    * A worker reports its outcome to its parent. Only workers may call this;
    * the report is delivered as a steer message to the parent and wakes it.
+   * The parent must still be an active member of the same boss tree, and the
+   * report carries the originating taskID so the parent can correlate it.
    */
   export async function report(
     callerID: string,
@@ -209,7 +223,12 @@ export namespace BossService {
     }
     const parentID = caller.parentID
     if (!parentID) throw new BossError("no_parent", `Worker ${callerID} has no parent to report to`)
-    const parent = await requireSession(parentID)
+    const parent = await requireBoss(parentID)
+    const callerRoot = bossRootID(caller)
+    const parentRoot = bossRootID(parent)
+    if (!callerRoot || callerRoot !== parentRoot) {
+      throw new BossError("tree_mismatch", `Worker ${callerID} is no longer in the same active boss tree as its parent`)
+    }
     if (!input.summary.trim()) throw new BossError("invalid_summary", "summary is required")
 
     const status = input.status ?? "completed"
@@ -220,6 +239,7 @@ export namespace BossService {
       ...(refs.length > 0 ? ["", "References:", ...refs.map((ref) => `- ${ref}`)] : []),
     ].join("\n")
     const reportID = Identifier.ascending("message")
+    const currentTask = await latestAssignedTask(caller.id)
     const result = await SessionInbox.deliver({
       sessionID: parent.id,
       mode: "steer",
@@ -228,7 +248,11 @@ export namespace BossService {
         origin: { type: "system", detail: "boss_report" },
         visible: true,
         parts: [{ type: "text", text }],
-        metadata: bossMetadata(caller.id, parent.id, { reportID, status }),
+        metadata: bossMetadata(caller.id, parent.id, {
+          reportID,
+          status,
+          ...(currentTask ? { taskID: currentTask.taskID } : {}),
+        }),
         summary: { title: `Report from ${caller.title}` },
       },
     })
@@ -238,7 +262,8 @@ export namespace BossService {
 
   /**
    * Cancel a task (or all tasks) assigned to a direct child worker:
-   * interrupt a running turn and remove matching pending inbox items.
+   * interrupt a running turn only when it belongs to the requested task
+   * (or when no taskID is given), and remove matching pending inbox items.
    */
   export async function cancel(
     callerID: string,
@@ -249,8 +274,11 @@ export namespace BossService {
     let cancelled = false
 
     if (SessionManager.isRunning(target.id)) {
-      SessionInvoke.cancel(target.id)
-      cancelled = true
+      const runningTask = await latestAssignedTask(target.id)
+      if (!input.taskID || runningTask?.taskID === input.taskID) {
+        SessionInvoke.cancel(target.id)
+        cancelled = true
+      }
     }
 
     const items = await SessionInbox.list(target.id)
@@ -264,7 +292,21 @@ export namespace BossService {
     return { cancelled }
   }
 
-  /** Derive the most recent assigned task from pending inbox items, then message history. */
+  /** The most recently assigned task, from message history (materialized tasks). */
+  async function latestAssignedTask(sessionID: string): Promise<{ taskID: string; taskTitle?: string } | undefined> {
+    const messages = await Session.messages({ sessionID, limit: 20 }).catch(() => [])
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const info = messages[index].info
+      if (info.role !== "user") continue
+      const boss = bossMetadataOf({ metadata: info.metadata })
+      if (boss && typeof boss.taskID === "string") {
+        return { taskID: boss.taskID, taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined }
+      }
+    }
+    return undefined
+  }
+
+  /** Derive the current task from pending inbox items, then message history. */
   async function currentTask(sessionID: string): Promise<{ taskID: string; taskTitle?: string } | undefined> {
     const items = await SessionInbox.list(sessionID).catch(() => [])
     for (let index = items.length - 1; index >= 0; index--) {
@@ -273,17 +315,7 @@ export namespace BossService {
         return { taskID: boss.taskID, taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined }
       }
     }
-
-    const messages = await Session.messages({ sessionID, limit: 20 }).catch(() => [])
-    for (let index = messages.length - 1; index >= 0; index--) {
-      const info = messages[index].info
-      if (info.role !== "user") continue
-      const boss = bossMetadataOf(info.metadata as Record<string, unknown> | undefined)
-      if (boss && typeof boss.taskID === "string") {
-        return { taskID: boss.taskID, taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined }
-      }
-    }
-    return undefined
+    return latestAssignedTask(sessionID)
   }
 
   /** Recursively derive the caller's subtree, skipping archived children. */
@@ -295,24 +327,28 @@ export namespace BossService {
 
   async function buildNode(session: Session.Info, remainingDepth: number): Promise<BossTreeNode> {
     const task = await currentTask(session.id)
+    const hasQueuedTask = await SessionInbox.hasRunnableItem(session.id, { allowSteer: false }).catch(() => false)
     const node: BossTreeNode = {
       sessionID: session.id,
       title: session.title,
       role: session.workflow?.kind === "boss" ? session.workflow.role : "worker",
       workerRole: session.workflow?.kind === "boss" ? session.workflow.workerRole : undefined,
       agent: session.agentOverride,
-      status: session.time.archived ? "archived" : SessionManager.isRunning(session.id) ? "running" : "idle",
+      status: session.time.archived
+        ? "archived"
+        : SessionManager.isRunning(session.id)
+          ? "running"
+          : hasQueuedTask
+            ? "queued"
+            : "idle",
       currentTask: task,
       children: [],
     }
     if (remainingDepth <= 0 || session.time.archived) return node
 
     const children = await Session.children(session.id)
-    for (const child of children) {
-      if (child.time.archived) continue
-      if (child.workflow?.kind !== "boss") continue
-      node.children.push(await buildNode(child, remainingDepth - 1))
-    }
+    const bossChildren = children.filter((child) => !child.time.archived && child.workflow?.kind === "boss")
+    node.children = await Promise.all(bossChildren.map((child) => buildNode(child, remainingDepth - 1)))
     return node
   }
 }

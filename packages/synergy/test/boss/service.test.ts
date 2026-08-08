@@ -189,4 +189,102 @@ describe("BossService", () => {
       await expect(BossService.status(plain.id)).rejects.toThrow("not part of a Boss Mode tree")
     })
   })
+
+  test("spawn persists standing instructions in the worker workflow", async () => {
+    await withScope(async () => {
+      const boss = await Session.create({})
+      await SessionWorkflowService.enableBoss(boss.id)
+      const worker = await BossService.spawn(boss.id, {
+        role: "code",
+        instructions: "Always use the project formatter before finishing.",
+      })
+      const stored = await Session.get(worker.id)
+      expect(stored.workflow?.kind).toBe("boss")
+      if (stored.workflow?.kind !== "boss") return
+      expect(stored.workflow.instructions).toBe("Always use the project formatter before finishing.")
+    })
+  })
+
+  test("spawn rejects agents that are hidden or not visible to the caller", async () => {
+    await withScope(async () => {
+      const { boss } = await bossAndWorker()
+      // Hidden internal subagents must not be spawnable as workers.
+      await expect(BossService.spawn(boss.id, { role: "code", agent: "requirements-engineer" })).rejects.toThrow(
+        "not delegatable",
+      )
+    })
+  })
+
+  test("status reports queued for workers with pending inbox tasks", async () => {
+    await withScope(async () => {
+      const { boss, worker } = await bossAndWorker()
+      // Enqueue a task without waking the worker. BossService.assign wakes the
+      // worker (which makes it busy); queued is the state where runnable work
+      // exists but the runtime has not picked it up yet (e.g. after recovery).
+      await SessionInbox.deliver({
+        sessionID: worker.id,
+        mode: "task",
+        message: {
+          role: "user",
+          agent: worker.agentOverride,
+          origin: { type: "system", detail: "boss_assign" },
+          visible: true,
+          parts: [{ type: "text", text: "do it" }],
+          metadata: { boss: { from: boss.id, to: worker.id, taskID: "t-1", taskTitle: "do it" } },
+        },
+      })
+      const tree = await BossService.status(boss.id)
+      expect(tree.children[0].status).toBe("queued")
+    })
+  })
+
+  test("cancel with a non-running taskID leaves the running turn alone", async () => {
+    await withScope(async () => {
+      const { boss, worker } = await bossAndWorker()
+      // Materialize task A as the running assignment and queue task B.
+      await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-a", task: "A" })
+      const items = await SessionInbox.list(worker.id)
+      const stored = await SessionInbox.getStored(worker.id, items[0].id)
+      await SessionInbox.materializeItem(stored)
+      await SessionInbox.commitReady(
+        worker.id,
+        items.map((item) => item.id),
+      )
+      await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-b", task: "B" })
+
+      // Cancelling task-b removes the queued item without touching task-a.
+      const result = await BossService.cancel(boss.id, { sessionID: worker.id, taskID: "task-b" })
+      expect(result.cancelled).toBe(true)
+      expect(await SessionInbox.list(worker.id)).toHaveLength(0)
+    })
+  })
+
+  test("report rejects when the parent left the boss tree", async () => {
+    await withScope(async () => {
+      const { boss, worker } = await bossAndWorker()
+      await SessionWorkflowService.setNone(boss.id)
+      await expect(BossService.report(worker.id, { summary: "late report" })).rejects.toThrow(
+        "not part of a Boss Mode tree",
+      )
+    })
+  })
+
+  test("report carries the originating taskID in metadata", async () => {
+    await withScope(async () => {
+      const { boss, worker } = await bossAndWorker()
+      await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-1", task: "Do it" })
+      const items = await SessionInbox.list(worker.id)
+      const stored = await SessionInbox.getStored(worker.id, items[0].id)
+      await SessionInbox.materializeItem(stored)
+      await SessionInbox.commitReady(
+        worker.id,
+        items.map((item) => item.id),
+      )
+
+      await BossService.report(worker.id, { summary: "Done" })
+      const bossItems = await SessionInbox.list(boss.id)
+      const report = bossItems[0].message?.metadata?.boss as Record<string, unknown> | undefined
+      expect(report?.taskID).toBe("task-1")
+    })
+  })
 })

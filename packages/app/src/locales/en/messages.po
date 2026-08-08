@@ -855,6 +855,10 @@ msgid "app.boss.cancel.success"
 msgstr "Work cancelled"
 
 #. js-lingui-explicit-id
+msgid "app.boss.copy.failed"
+msgstr "Failed to copy the Boss tree."
+
+#. js-lingui-explicit-id
 msgid "app.boss.copy.title"
 msgstr "Tree copied"
 
@@ -905,6 +909,22 @@ msgstr "Worker role (e.g. code)"
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.success"
 msgstr "Worker spawned"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.archived"
+msgstr "Archived"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.idle"
+msgstr "Idle"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.queued"
+msgstr "Queued"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.running"
+msgstr "Running"
 
 #. js-lingui-explicit-id
 msgid "app.boss.workspace.sessionRequired"

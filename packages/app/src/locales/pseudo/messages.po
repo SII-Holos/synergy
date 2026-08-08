@@ -855,6 +855,10 @@ msgid "app.boss.cancel.success"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.boss.copy.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.boss.copy.title"
 msgstr ""
 
@@ -904,6 +908,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.success"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.archived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.queued"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.running"
 msgstr ""
 
 #. js-lingui-explicit-id

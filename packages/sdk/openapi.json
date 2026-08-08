@@ -31337,6 +31337,9 @@
               },
               "rootID": {
                 "type": "string"
+              },
+              "instructions": {
+                "type": "string"
               }
             },
             "required": ["kind", "role"]
@@ -39727,7 +39730,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["running", "idle", "archived"]
+            "enum": ["running", "queued", "idle", "archived"]
           },
           "currentTask": {
             "type": "object",

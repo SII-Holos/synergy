@@ -24,10 +24,17 @@ export const BossStatusTool = Tool.define("boss_status", {
   async execute(params, ctx) {
     const tree = await BossService.status(ctx.sessionID, { depth: params.depth })
     const lines = renderTree(tree, "")
+    const workerCount = countWorkers(tree)
     return {
-      title: `Boss tree (${tree.children.length} workers)`,
-      metadata: { rootSessionID: tree.sessionID, workerCount: tree.children.length },
+      title: `Boss tree (${workerCount} workers)`,
+      metadata: { rootSessionID: tree.sessionID, workerCount },
       output: lines.join("\n"),
     }
   },
 })
+
+function countWorkers(node: BossService.BossTreeNode): number {
+  let count = node.role === "worker" ? 1 : 0
+  for (const child of node.children) count += countWorkers(child)
+  return count
+}

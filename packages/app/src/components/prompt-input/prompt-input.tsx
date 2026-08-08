@@ -236,6 +236,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
   const bossActive = createMemo(() => (params.id ? activeWorkflow()?.kind === "boss" : !!pendingBoss()))
+  // Only the root boss may exit Boss Mode; opening an idle worker must not
+  // offer the workflow chip's "exit" action (that would orphan the subtree).
+  const bossRootActive = createMemo(() => {
+    if (!params.id) return !!pendingBoss()
+    const workflow = activeWorkflow()
+    return workflow?.kind === "boss" && workflow.role === "boss"
+  })
   const sessionScopeDirectory = createMemo(() => {
     const scope = info()?.scope
     if (!scope || typeof scope !== "object") return undefined
@@ -1732,6 +1739,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     clearPendingBoss: () => {
       setPendingBoss(false)
     },
+    onBossEnabled: () => void workbench.openPanel("boss", { reuseExisting: true }),
     localArmedLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
@@ -2064,7 +2072,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     onCancel={cancelLattice}
                   />
                 </Show>
-                <Show when={bossActive()}>
+                <Show when={bossRootActive()}>
                   <WorkflowChip
                     label={i18n._(PI.cancelBossLabel)}
                     ariaLabel={i18n._(PI.cancelBoss)}

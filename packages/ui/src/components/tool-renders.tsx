@@ -2,6 +2,7 @@ import { useLingui } from "@lingui/solid"
 import { BasicTool } from "./basic-tool"
 import { ToolRegistry } from "./message-part"
 import { getLatticeToolPresentation } from "./tool/classifier"
+import { getSemanticIcon } from "./semantic-icon"
 import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
 
 const PATHWAY_STEPS_DESCRIPTOR = { id: "tool.label.pathwaySteps", message: "{count} steps" }
@@ -68,7 +69,7 @@ for (const name of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "
         <BasicTool
           {...props}
           trigger={{
-            icon: "workflow",
+            icon: getSemanticIcon("prompt.boss"),
             title: TOOL_TITLE_DESC[name],
             subtitle: props.input.role || props.input.sessionID || props.input.taskID || props.input.status || "",
             tags:

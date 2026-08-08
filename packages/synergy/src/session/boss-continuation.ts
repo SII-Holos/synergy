@@ -70,7 +70,11 @@ function hasReported(messages: MessageV2.WithParts[], taskUserID: string): boole
     const assistant = message.info as MessageV2.Assistant
     if (assistant.parentID !== taskUserID && assistant.rootID !== taskUserID) continue
     if (assistant.error) continue
-    if (message.parts.some((part) => part.type === "tool" && part.tool === BOSS_REPORT_TOOL)) return true
+    const report = message.parts.find(
+      (part): part is Extract<MessageV2.Part, { type: "tool" }> =>
+        part.type === "tool" && part.tool === BOSS_REPORT_TOOL,
+    )
+    if (report && report.state.status === "completed") return true
   }
   return false
 }

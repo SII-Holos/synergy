@@ -28,7 +28,7 @@ describe("Boss Mode prompt builders", () => {
       expect(text).toContain("boss_status")
       expect(text).toContain("boss_cancel")
       expect(text).toContain("boss_report")
-      expect(text).toContain("Do not implement tasks yourself")
+      expect(text).toContain("Answer simple requests directly when they do not need a worker")
       expect(text).toContain("ask the human")
     })
   })

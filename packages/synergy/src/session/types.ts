@@ -132,6 +132,7 @@ export const WorkflowInfo = z
       role: z.enum(["boss", "worker"]),
       workerRole: z.string().optional(),
       rootID: z.string().optional(),
+      instructions: z.string().optional(),
     }),
   ])
   .meta({ ref: "SessionWorkflowInfo" })
