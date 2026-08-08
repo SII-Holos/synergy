@@ -27,6 +27,7 @@ beforeAll(async () => {
   const markedContextPath = path.resolve(import.meta.dir, "../../src/context/marked.tsx")
   const resourceOpenContextPath = path.resolve(import.meta.dir, "../../src/context/resource-open.tsx")
   const i18nPath = path.resolve(import.meta.dir, "../../src/testing/i18n.tsx")
+  const messageSlotsPath = path.resolve(import.meta.dir, "../../src/components/message-slots.tsx")
   const pluginThemePath = path.resolve(import.meta.dir, "../../../plugin/src/theme/index.ts")
   const entry = path.join(fixtureDirectory, "main.tsx")
 
@@ -43,10 +44,12 @@ beforeAll(async () => {
       import { ResourceOpenProvider } from ${JSON.stringify(resourceOpenContextPath)}
       import { SessionTurn } from ${JSON.stringify(sessionTurnPath)}
       import { setupI18n } from ${JSON.stringify(i18nPath)}
+      import { setExternalMessageSlotLookup } from ${JSON.stringify(messageSlotsPath)}
 
       const sessionID = "session-activity-switch"
       const rootID = "user-activity-switch"
       const assistantID = "assistant-activity-switch"
+      const secondAssistantID = "assistant-activity-switch-second"
       const rootMessage = {
         id: rootID,
         sessionID,
@@ -74,6 +77,11 @@ beforeAll(async () => {
         time: { created: 1, completed: 2 },
         finish: "stop",
       }
+      const secondAssistantMessage = {
+        ...assistantMessage,
+        id: secondAssistantID,
+        time: { created: 3, completed: 4 },
+      }
       const toolPart = {
         id: "tool-activity-switch",
         sessionID,
@@ -90,6 +98,12 @@ beforeAll(async () => {
           time: { start: 1, end: 2 },
         },
       }
+      const secondToolPart = {
+        ...toolPart,
+        id: "tool-activity-switch-second",
+        messageID: secondAssistantID,
+        callID: "call-activity-switch-second",
+      }
       const answerPart = {
         id: "answer-activity-switch",
         sessionID,
@@ -102,8 +116,12 @@ beforeAll(async () => {
         session_status: { [sessionID]: { type: "idle" } },
         session_diff: { [sessionID]: [] },
         permission: { [sessionID]: [] },
-        message: { [sessionID]: [rootMessage, assistantMessage] },
-        part: { [rootID]: [], [assistantID]: [toolPart, answerPart] },
+        message: { [sessionID]: [rootMessage, assistantMessage, secondAssistantMessage] },
+        part: {
+          [rootID]: [],
+          [assistantID]: [toolPart, answerPart],
+          [secondAssistantID]: [secondToolPart],
+        },
       }
       const resourceController = {
         open: () => false,
@@ -113,6 +131,12 @@ beforeAll(async () => {
       }
       const EmptyDiff = () => null
       const [mode, setMode] = createSignal("minimal")
+      const SlotProbe = (props) => <span data-test-slot={props.slot} data-test-message={props.messageId} />
+      setExternalMessageSlotLookup((slot) =>
+        ["message.before", "message.actions", "message.after"].includes(slot)
+          ? [{ id: "probe-" + slot, component: SlotProbe }]
+          : [],
+      )
 
       render(
         () => (
@@ -126,7 +150,7 @@ beforeAll(async () => {
                         sessionID={sessionID}
                         messageID={rootID}
                         rootMessage={rootMessage}
-                        messages={[rootMessage, assistantMessage]}
+                        messages={[rootMessage, assistantMessage, secondAssistantMessage]}
                         lastUserMessageID={rootID}
                         activityDisplay={mode()}
                       >
@@ -230,13 +254,25 @@ describe("SessionTurn activity display switching", () => {
     expect(document.querySelector('[data-component="minimal-activity-summary"]')).not.toBeNull()
     expect(answer?.textContent).toContain("Representative answer survives mode switches.")
 
+    expect(
+      document.querySelector(`[data-test-slot="message.before"][data-test-message="assistant-activity-switch-second"]`),
+    ).not.toBeNull()
+    expect(
+      document.querySelector(
+        `[data-test-slot="message.actions"][data-test-message="assistant-activity-switch-second"]`,
+      ),
+    ).not.toBeNull()
+    expect(
+      document.querySelector(`[data-test-slot="message.after"][data-test-message="assistant-activity-switch-second"]`),
+    ).not.toBeNull()
+
     harness.setMode("full")
     await waitForUpdate()
 
     expect(document.querySelector('[data-component="session-turn"]')).toBe(turn)
     expect(document.querySelector("#activity-switch-sentinel")).toBe(sentinel)
     expect(turn?.getAttribute("data-activity-display")).toBe("full")
-    expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="tool"]')).not.toBeNull()
+    expect(document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool"]')).toHaveLength(2)
     expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="text"]')).toBe(answer)
     expect(document.querySelectorAll('[data-slot="session-turn-timeline-item"]')).toHaveLength(4)
   })

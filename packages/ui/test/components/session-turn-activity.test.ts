@@ -8,6 +8,7 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import type { ActivityTimelineItem } from "../../src/components/session-turn-activity"
 import type { SessionTurnTimelineItem } from "../../src/components/session-turn"
+import { getSemanticIcon } from "../../src/components/semantic-icon"
 
 const Empty = () => null
 
@@ -185,7 +186,7 @@ function attachment(id: string, messageID = "assistant-a"): PartType {
   } as PartType
 }
 
-function resolveToolInfo(tool: string, input: Record<string, unknown>) {
+function resolveToolInfo(tool: string, input: Record<string, unknown>, _metadata?: Record<string, unknown>) {
   return {
     icon: "activity" as const,
     title: tool,
@@ -201,6 +202,12 @@ function project(input: {
   working?: boolean
   permissions?: PermissionRequest[]
   message?: AssistantMessage
+  resolveInfo?: (
+    tool: string,
+    input: Record<string, unknown>,
+    metadata: Record<string, unknown>,
+  ) => ReturnType<typeof resolveToolInfo>
+  isToolRenderBoundary?: (tool: string) => boolean
 }) {
   const message = input.message ?? assistant()
   const partsByMessage = { [message.id]: input.parts }
@@ -211,7 +218,8 @@ function project(input: {
     sourceItems: source,
     visibleItems: visible,
     permissions: input.permissions ?? [],
-    resolveToolInfo,
+    resolveToolInfo: input.resolveInfo ?? resolveToolInfo,
+    isToolRenderBoundary: input.isToolRenderBoundary,
   })
 }
 
@@ -277,6 +285,16 @@ describe("session turn activity projection", () => {
     expect(activityItemStableKey(activities(firstItems)[4]!)).not.toBe(
       activityItemStableKey(activities(secondItems)[0]!),
     )
+  })
+
+  test("preserves tools with dedicated renderers as passthrough boundaries", () => {
+    const items = project({
+      parts: [tool({ id: "read-a" }), tool({ id: "plugin", tool: "plugin_owned_tool" }), tool({ id: "read-b" })],
+      isToolRenderBoundary: (name) => name === "plugin_owned_tool",
+    })
+
+    expect(activities(items).map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-a"], ["read-b"]])
+    expect(items.some((item) => item.kind === "passthrough" && item.item.part?.id === "plugin")).toBe(true)
   })
 
   test("computes boundaries before completed reasoning is hidden so group keys stay stable", () => {
@@ -457,6 +475,41 @@ describe("session turn activity projection", () => {
     expect(failed.steps[1]?.preview).toBeUndefined()
   })
 
+  test("isolates tool info failures to the affected activity step", () => {
+    const items = project({
+      parts: [tool({ id: "broken", tool: "fixture_broken" }), tool({ id: "read-ok" })],
+      resolveInfo: (name, input, metadata) => {
+        if (name === "fixture_broken") throw new Error("Malformed plugin payload")
+        return resolveToolInfo(name, input, metadata)
+      },
+    })
+
+    expect(activities(items).flatMap((group) => group.steps.map((step) => step.part.id))).toEqual(["broken", "read-ok"])
+    expect(activities(items)[0]?.steps[0]).toMatchObject({
+      icon: getSemanticIcon("performance.tools"),
+      title: "fixture_broken",
+    })
+  })
+
+  test("keeps hidden tool failures available for explicit receipts", () => {
+    const hiddenFailure = tool({ id: "hidden-error", tool: "openai_image_gen", status: "error" })
+    hiddenFailure.state.metadata = { display: { toolCard: "hidden" } }
+
+    const groups = activities(project({ parts: [hiddenFailure] }))
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ state: "error", receipt: true })
+    expect(groups[0]?.steps[0]?.part.id).toBe("hidden-error")
+  })
+
+  test("uses the end of long command output for command-tail previews", () => {
+    const output = `${"setup output ".repeat(40)}FINAL RESULT: 42`
+    const preview = activities(project({ parts: [tool({ id: "shell", tool: "bash", output })] }))[0]?.steps[0]?.preview
+
+    expect(preview?.kind).toBe("command-tail")
+    expect(preview?.kind === "command-tail" ? preview.text : "").toEndWith("FINAL RESULT: 42")
+  })
+
   test("filters hidden attachments from activity previews", () => {
     const completed = tool({ id: "attachments", output: "" })
     if (completed.state.status === "completed") {
@@ -566,6 +619,32 @@ describe("minimal activity projection", () => {
     expect(summary?.kind === "activity-summary" ? summary.facts : []).toEqual([{ family: "inspect-local", count: 1 }])
     expect(receipts.map((item) => item.group.steps[0]?.part.id)).toEqual(["card"])
     expect(receipts[0]?.group).toMatchObject({ family: "produce", receipt: true })
+  })
+
+  test("keeps stateful Inspire actions as explicit external-action receipts", () => {
+    const projected = project({
+      parts: [tool({ id: "read" }), tool({ id: "submit", tool: "inspire_submit" })],
+    })
+    const minimal = projectMinimalActivityItems(projected, "root-user", false)
+    const receipts = minimal.filter((item) => item.kind === "activity-receipt")
+
+    expect(receipts.map((item) => item.group.steps[0]?.part.id)).toEqual(["submit"])
+    expect(receipts[0]?.group).toMatchObject({ family: "external-action", receipt: true })
+  })
+
+  test("preserves logical boundaries for later tool-only assistant messages", () => {
+    const first = assistant("assistant-a")
+    const second = assistant("assistant-b")
+    const projected = [
+      ...project({ message: first, parts: [tool({ id: "read-a", messageID: first.id })] }),
+      ...project({ message: second, parts: [tool({ id: "read-b", messageID: second.id })] }),
+    ]
+    const minimal = projectMinimalActivityItems(projected, "root-user", false)
+
+    expect(minimal.filter((item) => item.kind === "activity-summary")).toHaveLength(1)
+    expect(minimal.find((item) => item.kind === "activity-boundary")).toMatchObject({
+      message: { id: second.id },
+    })
   })
 
   test("uses existing timeline keys for passthrough items", () => {

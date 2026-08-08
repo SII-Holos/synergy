@@ -2064,7 +2064,7 @@ PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
   const part = () => props.part as ToolPart
-  if (isToolCardHidden(part())) return null
+  if (isToolCardHidden(part()) && part().state.status !== "error") return null
 
   const permission = createMemo(() => {
     const next = data.store.permission?.[props.message.sessionID]?.[0]

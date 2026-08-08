@@ -3,6 +3,7 @@ import type { AssistantMessage, AttachmentPart, PermissionRequest, ToolPart } fr
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import type { IconName } from "./icon"
+import { getSemanticIcon } from "./semantic-icon"
 import { timelineItemStableKey, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
 import { classifyTool, type SemanticCategory } from "./tool/classifier"
 
@@ -83,6 +84,12 @@ export type ActivityReceiptItem = {
   group: ActivityGroupItem
 }
 
+export type ActivityMessageBoundaryItem = {
+  kind: "activity-boundary"
+  key: string
+  message: AssistantMessage
+}
+
 export type ActivityPassthroughItem = {
   kind: "passthrough"
   item: SessionTurnTimelineItem
@@ -93,6 +100,7 @@ export type ActivityTimelineItem =
   | ActivityGroupItem
   | ActivitySummaryItem
   | ActivityReceiptItem
+  | ActivityMessageBoundaryItem
   | ActivityPassthroughItem
 
 const ACTIVITY_FAMILIES = new Set<ActivityFamily>([
@@ -135,6 +143,14 @@ const EXTERNAL_ACTION_TOOLS = new Set([
   "calendar_create",
   "calendar_update",
   "calendar_delete",
+])
+const EXTERNAL_COMPUTE_ACTION_TOOLS = new Set([
+  "inspire_submit",
+  "inspire_submit_hpc",
+  "inspire_stop",
+  "inspire_image_push",
+  "inspire_inference",
+  "inspire_notebook",
 ])
 
 const PRODUCTION_COMMUNICATION_TOOLS = new Set([
@@ -265,7 +281,7 @@ function familyForCategory(
   category: SemanticCategory,
   metadata: Record<string, unknown>,
 ): ActivityFamily {
-  if (EXTERNAL_ACTION_TOOLS.has(tool)) return "external-action"
+  if (EXTERNAL_ACTION_TOOLS.has(tool) || EXTERNAL_COMPUTE_ACTION_TOOLS.has(tool)) return "external-action"
   if (PRODUCTION_COMMUNICATION_TOOLS.has(tool)) return "produce"
   if (COORDINATION_RECEIPT_TOOLS.has(tool)) return "coordination"
   const override = metadataFamily(metadata)
@@ -313,6 +329,12 @@ function truncate(value: string, limit = PREVIEW_LIMIT): string {
   return `${text.slice(0, limit - 1)}…`
 }
 
+function truncateTail(value: string, limit = PREVIEW_LIMIT): string {
+  const text = value.trim()
+  if (text.length <= limit) return text
+  return `…${text.slice(-(limit - 1))}`
+}
+
 function jsonFallback(value: unknown): string | undefined {
   if (value == null) return undefined
   try {
@@ -336,7 +358,7 @@ function previewForStep(
   if (part.state.status === "error") return undefined
 
   if (part.state.status === "completed") {
-    const output = truncate(part.state.output)
+    const output = family === "execute" ? truncateTail(part.state.output) : truncate(part.state.output)
     if (output) {
       if (family === "execute") return { kind: "command-tail", text: output }
       if (family === "inspect-local" || family === "research-web") return { kind: "search-hits", text: output }
@@ -389,10 +411,16 @@ function isVisible(item: SessionTurnTimelineItem, visibleIdentities: ReadonlySet
   return visibleIdentities.has(timelineItemIdentity(item))
 }
 
-function isOrdinaryTool(item: SessionTurnTimelineItem): item is Extract<SessionTurnTimelineItem, { kind: "part" }> & {
-  part: ToolPart
-} {
-  return item.kind === "part" && item.part.type === "tool" && !RENDER_BOUNDARY_TOOLS.has(item.part.tool)
+function isOrdinaryTool(
+  item: SessionTurnTimelineItem,
+  isToolRenderBoundary: (tool: string) => boolean,
+): item is Extract<SessionTurnTimelineItem, { kind: "part" }> & { part: ToolPart } {
+  return (
+    item.kind === "part" &&
+    item.part.type === "tool" &&
+    !RENDER_BOUNDARY_TOOLS.has(item.part.tool) &&
+    !isToolRenderBoundary(item.part.tool)
+  )
 }
 
 function hasStableInput(part: ToolPart): boolean {
@@ -411,7 +439,12 @@ function makeStep(
   const classified = classifyTool(part.tool, input, metadata)
   const family = familyForCategory(part.tool, classified.category, metadata)
   const scope = scopeForTool(part, input, metadata)
-  const info = resolveToolInfo(part.tool, input, metadata)
+  let info: ReturnType<ActivityToolInfoResolver>
+  try {
+    info = resolveToolInfo(part.tool, input, metadata)
+  } catch {
+    info = { icon: getSemanticIcon("performance.tools"), title: part.tool, subtitle: scope.label }
+  }
   const permission = permissionForStep(message.id, part, permissions)
   return {
     part,
@@ -451,6 +484,7 @@ export function projectAssistantActivityItems(input: {
   visibleItems: readonly SessionTurnTimelineItem[]
   permissions: readonly PermissionRequest[]
   resolveToolInfo: ActivityToolInfoResolver
+  isToolRenderBoundary?: (tool: string) => boolean
 }): ActivityTimelineItem[] {
   const result: ActivityTimelineItem[] = []
   const visibleByIdentity = new Map(input.visibleItems.map((item) => [timelineItemIdentity(item), item]))
@@ -465,7 +499,7 @@ export function projectAssistantActivityItems(input: {
   }
 
   for (const source of input.sourceItems) {
-    if (!isOrdinaryTool(source)) {
+    if (!isOrdinaryTool(source, input.isToolRenderBoundary ?? (() => false))) {
       flush()
       const visible = visibleByIdentity.get(timelineItemIdentity(source))
       if (visible) result.push({ kind: "passthrough", item: visible, message: input.message })
@@ -519,7 +553,11 @@ export function isActivityTimelineItem(value: ActivityTimelineItem | unknown): v
   if (!value || typeof value !== "object") return false
   const kind = (value as { kind?: unknown }).kind
   return (
-    kind === "activity-group" || kind === "activity-summary" || kind === "activity-receipt" || kind === "passthrough"
+    kind === "activity-group" ||
+    kind === "activity-summary" ||
+    kind === "activity-receipt" ||
+    kind === "activity-boundary" ||
+    kind === "passthrough"
   )
 }
 
@@ -583,17 +621,25 @@ export function projectMinimalActivityItems<T>(
     completed,
   }
   let inserted = false
+  const preservedMessages = new Set<string>()
   const result: (ActivityTimelineItem | T)[] = []
   for (const item of items) {
     if (!isActivityTimelineItem(item) || item.kind !== "activity-group") {
       result.push(item)
+      if (isActivityTimelineItem(item)) preservedMessages.add(item.message.id)
       continue
     }
     if (!inserted && !item.receipt) {
       result.push(summary)
+      preservedMessages.add(summary.message.id)
       inserted = true
+    } else if (!item.receipt && !preservedMessages.has(item.message.id)) {
+      result.push({ kind: "activity-boundary", key: `activity-boundary:${item.message.id}`, message: item.message })
+      preservedMessages.add(item.message.id)
     }
-    result.push(...explicitReceipts(item))
+    const receipts = explicitReceipts(item)
+    result.push(...receipts)
+    if (receipts.length > 0) preservedMessages.add(item.message.id)
   }
   return result
 }

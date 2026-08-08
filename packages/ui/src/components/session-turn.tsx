@@ -50,6 +50,7 @@ import {
   type ActivityTimelineItem,
 } from "./session-turn-activity"
 import { timelineItemStableKey, timelineVisualKind, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
+import { externalLoadNotify, externalLookup, resolveExternalToolRenderer } from "./tool-registry-lazy"
 export { timelineItemStableKey, timelineVisualKind } from "./session-turn-timeline-item"
 export type { SessionTurnTimelineItem, SessionTurnTimelineVisualKind } from "./session-turn-timeline-item"
 
@@ -247,6 +248,7 @@ export function timelineKindForPart(part: PartType, _working: boolean): SessionT
   if (part.type !== "tool") return undefined
   if (isActiveMediaGenerationToolPart(part)) return "media-pending"
   if (isToolCardHidden(part)) {
+    if (part.state.status === "error") return "part"
     if (part.state.status !== "completed") return undefined
     return visibleAttachmentParts(part.state.attachments).length > 0 ? "tool-attachments" : undefined
   }
@@ -513,6 +515,10 @@ function displayItemStableKey(item: SessionTurnDisplayItem): string {
   if (item.kind === "non-root-user") return `non-root-user:${item.message.id}`
   if (isActivityTimelineItem(item)) return activityItemStableKey(item)
   return timelineItemStableKey(item)
+}
+
+function isActivityBoundaryDisplayItem(item: SessionTurnDisplayItem): boolean {
+  return isActivityTimelineItem(item) && item.kind === "activity-boundary"
 }
 
 function displayItemVisualKind(item: SessionTurnDisplayItem) {
@@ -803,6 +809,14 @@ export function SessionTurn(
     }),
   )
 
+  const isToolRenderBoundary = (tool: string) => {
+    try {
+      return !!resolveExternalToolRenderer(tool, { externalLookup, externalLoadNotify })
+    } catch {
+      return true
+    }
+  }
+
   const projectAssistantMessage = (item: AssistantMessage): SessionTurnAssistantDisplayItem[] => {
     const visibleItems = collectSessionTurnTimelineItems([item], data.store.part, working())
     if (activityDisplay() === "full") return visibleItems
@@ -814,6 +828,7 @@ export function SessionTurn(
       visibleItems,
       permissions: permissions(),
       resolveToolInfo: getToolInfo,
+      isToolRenderBoundary,
     })
   }
 
@@ -1115,6 +1130,7 @@ export function SessionTurn(
                                     <div
                                       data-slot="session-turn-timeline-item"
                                       data-kind={displayItemVisualKind(current())}
+                                      hidden={isActivityBoundaryDisplayItem(current())}
                                     >
                                       <TimelineDisplay
                                         item={current()}
