@@ -1,5 +1,11 @@
 import { describe, expect, mock, test } from "bun:test"
-import type { AssistantMessage, Part as PartType, PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  AssistantMessage,
+  AttachmentPart,
+  Part as PartType,
+  PermissionRequest,
+  ToolPart,
+} from "@ericsanchezok/synergy-sdk/client"
 import type { ActivityTimelineItem } from "../../src/components/session-turn-activity"
 import type { SessionTurnTimelineItem } from "../../src/components/session-turn"
 
@@ -353,6 +359,35 @@ describe("session turn activity projection", () => {
     expect(refined).toMatchObject({ family: "browser", receipt: false })
   })
 
+  test("does not expose raw input JSON for protected activity families", () => {
+    const groups = activities(
+      project({
+        parts: [
+          tool({
+            id: "email",
+            tool: "email_send",
+            status: "running",
+            args: { body: "private email body" },
+          }),
+          tool({
+            id: "card",
+            tool: "response_card",
+            status: "running",
+            args: { content: "private card content" },
+          }),
+          tool({
+            id: "dag-write",
+            tool: "dagwrite",
+            status: "running",
+            args: { nodes: [{ id: "private-node" }] },
+          }),
+        ],
+      }),
+    )
+
+    expect(groups.map((group) => group.steps[0]?.preview)).toEqual([undefined, undefined, undefined])
+  })
+
   test("scans the complete permission array by messageID and callID without changing group identity", () => {
     const parts = [tool({ id: "read-a", status: "running" }), tool({ id: "read-b", status: "running" })]
     const baseline = activities(project({ parts }))[0]!
@@ -381,6 +416,35 @@ describe("session turn activity projection", () => {
     expect(waiting.steps[1]?.permission?.id).toBe("matching")
   })
 
+  test("shows hidden coordination tools when approval or failure requires a receipt", () => {
+    const permissions = [
+      {
+        id: "permission",
+        sessionID: "session",
+        permission: "dagread",
+        patterns: [],
+        metadata: {},
+        tool: { messageID: "assistant-a", callID: "call-dag-waiting" },
+      },
+    ] as PermissionRequest[]
+    const groups = activities(
+      project({
+        permissions,
+        parts: [
+          tool({ id: "dag-success", tool: "dagread" }),
+          tool({ id: "dag-waiting", tool: "dagread", status: "running" }),
+          tool({ id: "dag-error", tool: "dagread", status: "error" }),
+        ],
+      }),
+    )
+
+    expect(groups.map((group) => group.steps[0]?.part.id)).toEqual(["dag-waiting", "dag-error"])
+    expect(groups.map((group) => ({ receipt: group.receipt, state: group.state }))).toEqual([
+      { receipt: true, state: "waiting-approval" },
+      { receipt: true, state: "error" },
+    ])
+  })
+
   test("promotes errors without splitting the existing group or changing its key", () => {
     const runningParts = [tool({ id: "read-a", status: "running" }), tool({ id: "read-b", status: "running" })]
     const failedParts = [tool({ id: "read-a", status: "completed" }), tool({ id: "read-b", status: "error" })]
@@ -391,6 +455,21 @@ describe("session turn activity projection", () => {
     expect(failed.state).toBe("error")
     expect(failed.steps[1]?.error).toBe("Operation failed")
     expect(failed.steps[1]?.preview).toBeUndefined()
+  })
+
+  test("filters hidden attachments from activity previews", () => {
+    const completed = tool({ id: "attachments", output: "" })
+    if (completed.state.status === "completed") {
+      completed.state.attachments = [
+        attachment("visible") as AttachmentPart,
+        { ...attachment("hidden"), presentation: { hidden: true } } as AttachmentPart,
+      ]
+    }
+
+    const preview = activities(project({ parts: [completed] }))[0]?.steps[0]?.preview
+
+    expect(preview?.kind).toBe("attachments")
+    expect(preview?.kind === "attachments" ? preview.files.map((file) => file.id) : []).toEqual(["visible"])
   })
 
   test("preserves media and promoted tool attachments on the existing timeline path", () => {
@@ -473,6 +552,20 @@ describe("minimal activity projection", () => {
     expect(minimal.findIndex((item) => item.kind === "passthrough" && item.item.part?.id === "boundary")).toBeLessThan(
       minimal.findIndex((item) => item.kind === "activity-receipt" && item.group.steps[0]?.part.id === "read-waiting"),
     )
+  })
+
+  test("keeps production communication as a detailed receipt instead of a family count", () => {
+    const projected = project({
+      parts: [tool({ id: "read" }), tool({ id: "card", tool: "response_card" })],
+    })
+    const minimal = projectMinimalActivityItems(projected, "root-user", false)
+    const summary = minimal.find((item) => item.kind === "activity-summary")
+    const receipts = minimal.filter((item) => item.kind === "activity-receipt")
+
+    expect(summary?.kind === "activity-summary" ? summary.total : 0).toBe(1)
+    expect(summary?.kind === "activity-summary" ? summary.facts : []).toEqual([{ family: "inspect-local", count: 1 }])
+    expect(receipts.map((item) => item.group.steps[0]?.part.id)).toEqual(["card"])
+    expect(receipts[0]?.group).toMatchObject({ family: "produce", receipt: true })
   })
 
   test("uses existing timeline keys for passthrough items", () => {

@@ -1,6 +1,7 @@
 import type { MessageDescriptor } from "@lingui/core"
 import type { AssistantMessage, AttachmentPart, PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
+import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import type { IconName } from "./icon"
 import { timelineItemStableKey, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
 import { classifyTool, type SemanticCategory } from "./tool/classifier"
@@ -328,7 +329,8 @@ function previewForStep(
   input: Record<string, unknown>,
 ): ActivityStepPreview | undefined {
   if (part.state.status === "completed" && part.state.attachments?.length) {
-    return { kind: "attachments", files: part.state.attachments }
+    const files = part.state.attachments.filter((file) => !resolveAttachmentPresentation(file).hidden)
+    if (files.length > 0) return { kind: "attachments", files }
   }
 
   if (part.state.status === "error") return undefined
@@ -344,6 +346,7 @@ function previewForStep(
     }
   }
 
+  if (family === "external-action" || family === "produce" || family === "coordination") return undefined
   const fallback = jsonFallback(input)
   return fallback ? { kind: "json-fallback", text: fallback } : undefined
 }
@@ -469,7 +472,9 @@ export function projectAssistantActivityItems(input: {
       continue
     }
 
-    if (HIDDEN_COORDINATION_TOOLS.has(source.part.tool)) {
+    const permission = permissionForStep(input.message.id, source.part, input.permissions)
+    const requiredHiddenReceipt = permission || source.part.state.status === "error"
+    if (HIDDEN_COORDINATION_TOOLS.has(source.part.tool) && !requiredHiddenReceipt) {
       flush()
       continue
     }
@@ -479,12 +484,16 @@ export function projectAssistantActivityItems(input: {
       continue
     }
 
-    if (!hasStableInput(source.part)) {
+    if (!hasStableInput(source.part) && !requiredHiddenReceipt) {
       flush()
       continue
     }
     const step = makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)
-    const receipt = step.family === "external-action" || COORDINATION_RECEIPT_TOOLS.has(source.part.tool)
+    const receipt =
+      step.family === "external-action" ||
+      PRODUCTION_COMMUNICATION_TOOLS.has(source.part.tool) ||
+      COORDINATION_RECEIPT_TOOLS.has(source.part.tool) ||
+      HIDDEN_COORDINATION_TOOLS.has(source.part.tool)
     const canMerge =
       !receipt &&
       pendingGroup &&
