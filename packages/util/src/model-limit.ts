@@ -15,7 +15,7 @@ export namespace ModelLimit {
     }
   }
 
-  export const OUTPUT_TOKEN_MAX = 32_000
+  export const OUTPUT_TOKEN_MAX = 384_000
 
   /**
    * Compute actual input tokens from a usage breakdown.
