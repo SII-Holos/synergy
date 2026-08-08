@@ -17521,6 +17521,36 @@ export type RegistryPluginsSearchResponses = {
 
 export type RegistryPluginsSearchResponse = RegistryPluginsSearchResponses[keyof RegistryPluginsSearchResponses]
 
+export type RegistryRefreshData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/registry/refresh"
+}
+
+export type RegistryRefreshErrors = {
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
+}
+
+export type RegistryRefreshError = RegistryRefreshErrors[keyof RegistryRefreshErrors]
+
+export type RegistryRefreshResponses = {
+  /**
+   * Registry refreshed
+   */
+  200: {
+    refreshedAt: string | null
+  }
+}
+
+export type RegistryRefreshResponse = RegistryRefreshResponses[keyof RegistryRefreshResponses]
+
 export type RegistryPluginsGetData = {
   body?: never
   path: {

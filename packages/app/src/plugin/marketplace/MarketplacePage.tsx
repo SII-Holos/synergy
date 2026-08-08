@@ -10,6 +10,7 @@ import { AppPanel } from "@/components/app-panel"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocale } from "@/context/locale"
 
 import { VerifiedBadge } from "./VerifiedBadge"
@@ -107,6 +108,31 @@ export function MarketplacePage(props: MarketplacePageProps) {
     await Promise.all([refetchInstalledPlugins(), refetchSearchResults()])
   }
 
+  const [refreshing, setRefreshing] = createSignal(false)
+
+  async function handleRefresh() {
+    if (refreshing()) return
+    setRefreshing(true)
+    try {
+      const res = await globalSDK.client.registry.refresh()
+      if (res.data?.refreshedAt) {
+        showToast({
+          type: "info",
+          title: _(pluginMarketplace.refreshUpdated),
+        })
+      }
+      await refreshMarketplace()
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: _(pluginMarketplace.refreshFailed),
+        description: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   function openPlugin(
     pluginId: string,
     options: { source?: RegistrySource; closeToMarketplace?: boolean; installedPlugin?: InstalledPlugin } = {},
@@ -171,6 +197,16 @@ export function MarketplacePage(props: MarketplacePageProps) {
                   </button>
                 </Show>
               </div>
+              <button
+                type="button"
+                class="plugin-marketplace-refresh"
+                aria-label={_(pluginMarketplace.refreshButton)}
+                title={_(pluginMarketplace.refreshButton)}
+                disabled={refreshing()}
+                onClick={() => void handleRefresh()}
+              >
+                <Icon name="refresh-ccw" size="small" class={refreshing() ? "animate-spin" : ""} />
+              </button>
             </div>
           </div>
         </AppPanel.Header>

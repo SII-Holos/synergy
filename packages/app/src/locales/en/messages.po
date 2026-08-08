@@ -6041,6 +6041,18 @@ msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.button"
+msgstr "Refresh plugins"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.failed"
+msgstr "Plugin catalog refresh failed"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.updated"
+msgstr "Plugin catalog updated"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.registryUnavailable.description"
 msgstr "Synergy couldn't reach this plugin registry. Check your connection and try again."
 

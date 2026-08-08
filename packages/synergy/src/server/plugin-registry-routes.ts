@@ -412,6 +412,36 @@ export const RegistryRoute = new Hono()
     },
   )
 
+  // POST /refresh — Force-refresh the official registry cache immediately
+  .post(
+    "/refresh",
+    describeRoute({
+      summary: "Force refresh the official plugin registry cache",
+      description: "Re-fetch the official plugin registry index immediately, bypassing the cache TTL.",
+      operationId: "registry.refresh",
+      responses: {
+        200: {
+          description: "Registry refreshed",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ refreshedAt: z.string().nullable() })),
+            },
+          },
+        },
+        ...errors(503),
+      },
+    }),
+    async (c) => {
+      try {
+        const result = await PluginMarketplaceRegistry.refreshNow()
+        return c.json(result)
+      } catch (error) {
+        log.warn("official plugin registry refresh failed", { error })
+        return c.json({ message: OFFICIAL_REGISTRY_UNAVAILABLE_MESSAGE }, 503)
+      }
+    },
+  )
+
   // GET /:id — Get full plugin entry with latest version
   .get(
     "/:id",
