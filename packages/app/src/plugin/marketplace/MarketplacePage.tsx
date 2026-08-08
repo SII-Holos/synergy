@@ -205,7 +205,11 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 disabled={refreshing()}
                 onClick={() => void handleRefresh()}
               >
-                <Icon name="refresh-ccw" size="small" class={refreshing() ? "animate-spin" : ""} />
+                <Icon
+                  name={getSemanticIcon("action.refresh")}
+                  size="small"
+                  class={refreshing() ? "animate-spin" : ""}
+                />
               </button>
             </div>
           </div>
