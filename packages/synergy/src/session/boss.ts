@@ -7,6 +7,7 @@ import { SessionInbox } from "./inbox"
 import { SessionManager } from "./manager"
 import { SessionInvoke } from "./invoke"
 import { SessionInteraction } from "./interaction"
+import { bossAssignmentMetadata } from "./boss-message"
 
 /**
  * BossService — stateless orchestration for the Boss Mode workflow
@@ -115,13 +116,6 @@ export namespace BossService {
 
   function bossMetadata(from: string, to: string, extra: Record<string, unknown>): Record<string, unknown> {
     return { boss: { from, to, ...extra } }
-  }
-
-  function bossMetadataOf(
-    message: { metadata?: Record<string, unknown> } | undefined,
-  ): Record<string, unknown> | undefined {
-    const boss = message?.metadata?.boss
-    return boss && typeof boss === "object" ? (boss as Record<string, unknown>) : undefined
   }
 
   function buildTaskText(input: { task: string; context?: string; acceptance?: string[] }): string {
@@ -239,7 +233,7 @@ export namespace BossService {
       ...(refs.length > 0 ? ["", "References:", ...refs.map((ref) => `- ${ref}`)] : []),
     ].join("\n")
     const reportID = Identifier.ascending("message")
-    const currentTask = await latestAssignedTask(caller.id)
+    const currentTask = await latestAssignedTask(caller)
     const result = await SessionInbox.deliver({
       sessionID: parent.id,
       mode: "steer",
@@ -274,7 +268,7 @@ export namespace BossService {
     let cancelled = false
 
     if (SessionManager.isRunning(target.id)) {
-      const runningTask = await latestAssignedTask(target.id)
+      const runningTask = await latestAssignedTask(target)
       if (!input.taskID || runningTask?.taskID === input.taskID) {
         SessionInvoke.cancel(target.id)
         cancelled = true
@@ -283,8 +277,8 @@ export namespace BossService {
 
     const items = await SessionInbox.list(target.id)
     for (const item of items) {
-      const boss = bossMetadataOf(item.message)
-      if (!boss || boss.from !== caller.id) continue
+      const boss = bossAssignmentMetadata(item.message, target)
+      if (!boss) continue
       if (input.taskID && boss.taskID !== input.taskID) continue
       await SessionInbox.remove({ sessionID: target.id, itemID: item.id })
       cancelled = true
@@ -293,29 +287,37 @@ export namespace BossService {
   }
 
   /** The most recently assigned task, from message history (materialized tasks). */
-  async function latestAssignedTask(sessionID: string): Promise<{ taskID: string; taskTitle?: string } | undefined> {
-    const messages = await Session.messages({ sessionID, limit: 20 }).catch(() => [])
+  async function latestAssignedTask(
+    session: Pick<Session.Info, "id" | "parentID">,
+  ): Promise<{ taskID: string; taskTitle?: string } | undefined> {
+    const messages = await Session.messages({ sessionID: session.id, limit: 20 }).catch(() => [])
     for (let index = messages.length - 1; index >= 0; index--) {
       const info = messages[index].info
       if (info.role !== "user") continue
-      const boss = bossMetadataOf({ metadata: info.metadata })
-      if (boss && typeof boss.taskID === "string") {
-        return { taskID: boss.taskID, taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined }
+      const boss = bossAssignmentMetadata(info, session, { requireRoot: true })
+      if (boss) {
+        return {
+          taskID: boss.taskID,
+          taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined,
+        }
       }
     }
     return undefined
   }
 
   /** Derive the current task from pending inbox items, then message history. */
-  async function currentTask(sessionID: string): Promise<{ taskID: string; taskTitle?: string } | undefined> {
-    const items = await SessionInbox.list(sessionID).catch(() => [])
+  async function currentTask(session: Session.Info): Promise<{ taskID: string; taskTitle?: string } | undefined> {
+    const items = await SessionInbox.list(session.id).catch(() => [])
     for (let index = items.length - 1; index >= 0; index--) {
-      const boss = bossMetadataOf(items[index].message)
-      if (boss && typeof boss.taskID === "string") {
-        return { taskID: boss.taskID, taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined }
+      const boss = bossAssignmentMetadata(items[index].message, session)
+      if (boss) {
+        return {
+          taskID: boss.taskID,
+          taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined,
+        }
       }
     }
-    return latestAssignedTask(sessionID)
+    return latestAssignedTask(session)
   }
 
   /** Recursively derive the caller's subtree, skipping archived children. */
@@ -326,7 +328,7 @@ export namespace BossService {
   }
 
   async function buildNode(session: Session.Info, remainingDepth: number): Promise<BossTreeNode> {
-    const task = await currentTask(session.id)
+    const task = await currentTask(session)
     const hasQueuedTask = await SessionInbox.hasRunnableItem(session.id, { allowSteer: false }).catch(() => false)
     const node: BossTreeNode = {
       sessionID: session.id,

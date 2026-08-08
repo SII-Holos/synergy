@@ -2,10 +2,9 @@ import { MessageV2 } from "./message-v2"
 import { Session } from "./index"
 import { ContinuationKernel } from "./continuation-kernel"
 import { SessionInbox } from "./inbox"
+import { bossAssignmentMetadata } from "./boss-message"
 
 const BOSS_REPORT_TOOL = "boss_report"
-const BOSS_METADATA_TASK_ID = "taskID"
-const BOSS_METADATA_FROM = "from"
 
 /**
  * BossContinuationPolicy — idle wake-up for boss workers. When a worker has an
@@ -29,7 +28,7 @@ export const BossContinuationPolicy: ContinuationKernel.Policy = {
     if (await SessionInbox.hasRunnableItem(gate.sessionID, { allowSteer: false })) return undefined
 
     const messages = await Session.messages({ sessionID: gate.sessionID, limit: 50 }).catch(() => [])
-    const latestTask = latestTaskUserMessage(messages)
+    const latestTask = latestTaskUserMessage(messages, gate.session)
     if (!latestTask) return undefined
     if (hasReported(messages, latestTask.info.id)) return undefined
 
@@ -53,12 +52,14 @@ export const BossContinuationPolicy: ContinuationKernel.Policy = {
   },
 }
 
-function latestTaskUserMessage(messages: MessageV2.WithParts[]): MessageV2.WithParts | undefined {
+function latestTaskUserMessage(
+  messages: MessageV2.WithParts[],
+  session: Pick<Session.Info, "id" | "parentID">,
+): MessageV2.WithParts | undefined {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index]
     if (message.info.role !== "user") continue
-    const boss = bossMetadata(message)
-    if (boss && typeof boss[BOSS_METADATA_TASK_ID] === "string") return message
+    if (bossAssignmentMetadata(message.info, session, { requireRoot: true })) return message
   }
   return undefined
 }
@@ -77,9 +78,4 @@ function hasReported(messages: MessageV2.WithParts[], taskUserID: string): boole
     if (report && report.state.status === "completed") return true
   }
   return false
-}
-
-function bossMetadata(message: MessageV2.WithParts): Record<string, unknown> | undefined {
-  const boss = message.info.metadata?.boss
-  return boss && typeof boss === "object" ? (boss as Record<string, unknown>) : undefined
 }

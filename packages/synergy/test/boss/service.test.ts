@@ -287,4 +287,39 @@ describe("BossService", () => {
       expect(report?.taskID).toBe("task-1")
     })
   })
+
+  test("status keeps a worker assignment after a child report is materialized", async () => {
+    await withScope(async () => {
+      const { boss, worker } = await bossAndWorker()
+      await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-1", task: "Do it" })
+      const workerItems = await SessionInbox.list(worker.id)
+      const workerTask = await SessionInbox.getStored(worker.id, workerItems[0].id)
+      const taskMessage = await SessionInbox.materializeItem(workerTask)
+      await SessionInbox.commitReady(
+        worker.id,
+        workerItems.map((item) => item.id),
+      )
+
+      const child = await BossService.spawn(worker.id, { role: "test" })
+      await BossService.assign(worker.id, { sessionID: child.id, taskID: "child-task", task: "Check it" })
+      const childItems = await SessionInbox.list(child.id)
+      const childTask = await SessionInbox.getStored(child.id, childItems[0].id)
+      await SessionInbox.materializeItem(childTask)
+      await SessionInbox.commitReady(
+        child.id,
+        childItems.map((item) => item.id),
+      )
+      await BossService.report(child.id, { summary: "Checked", status: "completed" })
+      const reportItems = await SessionInbox.list(worker.id)
+      const report = await SessionInbox.getStored(worker.id, reportItems[0].id)
+      await SessionInbox.materializeItem(report, taskMessage!.info.id, { guiding: true })
+      await SessionInbox.commitReady(
+        worker.id,
+        reportItems.map((item) => item.id),
+      )
+
+      const tree = await BossService.status(boss.id)
+      expect(tree.children[0].currentTask).toEqual({ taskID: "task-1", taskTitle: "Do it" })
+    })
+  })
 })

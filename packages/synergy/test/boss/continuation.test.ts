@@ -69,6 +69,36 @@ async function terminalAssistant(workerID: string, parentID: string): Promise<st
   return assistant.id
 }
 
+async function completedBossReport(workerID: string, assistantID: string): Promise<void> {
+  const now = Date.now()
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    sessionID: workerID,
+    messageID: assistantID,
+    type: "tool",
+    callID: Identifier.ascending("tool"),
+    tool: "boss_report",
+    state: {
+      status: "completed",
+      input: { summary: "Done", status: "completed" },
+      output: "Report delivered",
+      title: "Report to parent",
+      metadata: {},
+      time: { start: now, end: now },
+    },
+  })
+}
+
+async function materializeFirstInboxItem(sessionID: string, rootID?: string): Promise<void> {
+  const items = await SessionInbox.list(sessionID)
+  const stored = await SessionInbox.getStored(sessionID, items[0].id)
+  await SessionInbox.materializeItem(stored, rootID, rootID ? { guiding: true } : undefined)
+  await SessionInbox.commitReady(
+    sessionID,
+    items.map((item) => item.id),
+  )
+}
+
 async function gateFor(sessionID: string, terminalMessageID: string) {
   const session = await Session.get(sessionID)
   return {
@@ -94,6 +124,29 @@ describe("BossContinuationPolicy", () => {
       expect(proposal.message.metadata?.source).toBe("boss_continuation")
       const text = proposal.message.parts.find((part) => part.type === "text")
       expect(text?.type === "text" ? (text as { text: string }).text : "").toContain("boss_report")
+    })
+  })
+
+  test("child reports do not restart a worker that already reported its own task", async () => {
+    await withScope(async () => {
+      const { boss, worker } = await bossAndWorker()
+      const taskUserID = await assignedTaskMaterialized(worker.id, boss.id)
+      const reportedAssistantID = await terminalAssistant(worker.id, taskUserID)
+      await completedBossReport(worker.id, reportedAssistantID)
+
+      const child = await BossService.spawn(worker.id, { role: "test" })
+      await BossService.assign(worker.id, {
+        sessionID: child.id,
+        taskID: "child-task",
+        task: "Check the widget",
+      })
+      await materializeFirstInboxItem(child.id)
+      await BossService.report(child.id, { summary: "Widget checked", status: "completed" })
+      await materializeFirstInboxItem(worker.id, taskUserID)
+      const terminalMessageID = await terminalAssistant(worker.id, taskUserID)
+
+      const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, terminalMessageID))
+      expect(proposal).toBeUndefined()
     })
   })
 
