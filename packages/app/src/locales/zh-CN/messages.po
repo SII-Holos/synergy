@@ -867,16 +867,52 @@ msgid "app.boss.genericFailed"
 msgstr "Boss 操作失败。"
 
 #. js-lingui-explicit-id
+msgid "app.boss.panel.agent"
+msgstr "Agent"
+
+#. js-lingui-explicit-id
 msgid "app.boss.panel.cancel"
 msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.children"
+msgstr "子节点"
 
 #. js-lingui-explicit-id
 msgid "app.boss.panel.copyTree"
 msgstr "复制树"
 
 #. js-lingui-explicit-id
+msgid "app.boss.panel.currentTask"
+msgstr "当前任务"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.depth"
+msgstr "第 {depth} 层工作节点"
+
+#. js-lingui-explicit-id
 msgid "app.boss.panel.loadFailed"
 msgstr "加载 Boss 树失败。"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.noTask"
+msgstr "当前没有分配任务。"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.notAvailable"
+msgstr "暂无"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.openSession"
+msgstr "打开会话"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.orchestrator"
+msgstr "协调器"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.reportsTo"
+msgstr "上级节点"
 
 #. js-lingui-explicit-id
 msgid "app.boss.panel.spawn"
@@ -885,6 +921,14 @@ msgstr "创建 worker"
 #. js-lingui-explicit-id
 msgid "app.boss.panel.title"
 msgstr "Boss 模式"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.workerCount"
+msgstr "{count, plural, other {# 个 Worker}}"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentLabel"
+msgstr "Agent"
 
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.agentPlaceholder"
@@ -901,6 +945,10 @@ msgstr "创建"
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.failed"
 msgstr "创建 worker 失败"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.roleLabel"
+msgstr "Worker 角色"
 
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.rolePlaceholder"

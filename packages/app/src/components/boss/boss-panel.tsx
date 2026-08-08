@@ -1,26 +1,51 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { DagGraph, type DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { useLingui } from "@lingui/solid"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useLingui } from "@lingui/solid"
 import { useConfirm } from "@/components/dialog"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import type { SDKContext } from "@/context/sdk"
-import { directIdleWorkers, flattenTree, renderTreeText, type BossTreeNodeVM } from "./boss-panel-model"
+import {
+  bossNodeLabel,
+  bossTreePath,
+  bossTreeToDagNodes,
+  directIdleWorkers,
+  flattenTree,
+  renderTreeText,
+  workerCount,
+  type BossStatus,
+  type BossTreeNodeVM,
+} from "./boss-panel-model"
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+function statusClasses(status: BossStatus): string {
+  if (status === "running")
+    return "bg-icon-success-base/12 text-icon-success-base ring-1 ring-inset ring-icon-success-base/15"
+  if (status === "queued")
+    return "bg-icon-warning-base/14 text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/15"
+  return "bg-surface-inset-base text-text-weak ring-1 ring-inset ring-border-base/40"
+}
+
 export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
   const { _ } = useLingui()
   const confirm = useConfirm()
+  const navigateToSession = useNavigateToSession()
 
   const [tree, setTree] = createSignal<BossTreeNodeVM | null>(null)
+  const [selectedSessionID, setSelectedSessionID] = createSignal(props.sessionID)
   const [loading, setLoading] = createSignal(true)
   const [loadError, setLoadError] = createSignal<string>()
   const [busy, setBusy] = createSignal(false)
   const [spawnOpen, setSpawnOpen] = createSignal(false)
+  const [assignOpen, setAssignOpen] = createSignal(false)
   const [spawnRole, setSpawnRole] = createSignal("code")
   const [spawnAgent, setSpawnAgent] = createSignal("synergy")
   const [assignTarget, setAssignTarget] = createSignal<string>()
@@ -33,7 +58,9 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
       const node = result.data?.tree
       if (!node) throw new Error("Boss tree returned no data")
       if (token === generation) {
-        setTree(node as BossTreeNodeVM)
+        const nextTree = node as BossTreeNodeVM
+        setTree(nextTree)
+        if (!bossTreePath(nextTree, selectedSessionID())) setSelectedSessionID(nextTree.sessionID)
         setLoadError(undefined)
       }
     } catch (error) {
@@ -51,14 +78,12 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
     const sessionID = props.sessionID
     const token = ++generation
     setTree(null)
+    setSelectedSessionID(sessionID)
     setLoading(true)
     setLoadError(undefined)
     void refreshTree(sessionID, token)
   })
 
-  // Keep the panel live: refresh when sessions or messages change while the
-  // panel is open so worker starts, completions, reports, and descendant
-  // spawns update the tree without manual reloads.
   createEffect(() => {
     const sessionID = props.sessionID
     const unsubs = [
@@ -70,7 +95,36 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
     })
   })
 
-  const rows = createMemo(() => (tree() ? flattenTree(tree()!) : []))
+  const dagNodes = createMemo(() => {
+    const current = tree()
+    return current ? bossTreeToDagNodes(current) : []
+  })
+  const nodesByID = createMemo(() => {
+    const current = tree()
+    return new Map(current ? flattenTree(current).map(({ node }) => [node.sessionID, node] as const) : [])
+  })
+  const selectedPath = createMemo(() => {
+    const current = tree()
+    return current ? bossTreePath(current, selectedSessionID()) : undefined
+  })
+  const selectedNode = createMemo(() => selectedPath()?.at(-1))
+  const selectedParent = createMemo(() => selectedPath()?.at(-2))
+  const directIdle = createMemo(() => {
+    const current = tree()
+    return current ? directIdleWorkers(current) : []
+  })
+
+  createEffect(() => {
+    const target = assignTarget()
+    if (target && !directIdle().some((worker) => worker.sessionID === target)) setAssignTarget(undefined)
+  })
+
+  const statusLabel = (status: BossStatus) => {
+    if (status === "running") return _({ id: "app.boss.status.running", message: "Running" })
+    if (status === "queued") return _({ id: "app.boss.status.queued", message: "Queued" })
+    if (status === "archived") return _({ id: "app.boss.status.archived", message: "Archived" })
+    return _({ id: "app.boss.status.idle", message: "Idle" })
+  }
 
   const invoke = async (action: () => Promise<unknown>, successTitle: string, failureTitle: string) => {
     if (busy()) return
@@ -120,6 +174,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
       _({ id: "app.boss.assign.failed", message: "Failed to assign task" }),
     )
     setAssignTaskText("")
+    setAssignOpen(false)
   }
 
   const cancelWorker = (sessionID: string) => {
@@ -152,46 +207,87 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
       label: _({ id: "app.boss.copy.title", message: "Tree copied" }),
       failureDescription: _({ id: "app.boss.copy.failed", message: "Failed to copy the Boss tree." }),
     })
-    if (result.ok) {
-      showToast({ type: "info", title: _({ id: "app.boss.copy.title", message: "Tree copied" }) })
-    }
+    if (result.ok) showToast({ type: "info", title: _({ id: "app.boss.copy.title", message: "Tree copied" }) })
   }
 
+  const openSelectedSession = () => {
+    const node = selectedNode()
+    if (!node) return
+    navigateToSession(node.sessionID)
+  }
+
+  const dagStatusLabel = (node: DagNode) => statusLabel(nodesByID().get(node.id)?.status ?? "idle")
+  const dagNodeAriaLabel = (node: DagNode) => `${node.content}, ${dagStatusLabel(node)}`
+
   return (
-    <div class="flex size-full flex-col gap-3 overflow-auto p-3 text-12-regular text-text-base">
-      <div class="flex items-center justify-between gap-2">
-        <span class="text-13-medium text-text-strong">{_({ id: "app.boss.panel.title", message: "Boss Mode" })}</span>
-        <div class="flex items-center gap-1.5">
-          <Button size="small" variant="ghost" disabled={loading()} onClick={copyTree}>
-            {_({ id: "app.boss.panel.copyTree", message: "Copy tree" })}
-          </Button>
-          <Button size="small" disabled={loading() || busy()} onClick={() => setSpawnOpen(true)}>
+    <div class="@container flex size-full min-h-0 flex-col overflow-hidden text-12-regular text-text-base">
+      <header class="flex shrink-0 items-center justify-between gap-3 border-b border-border-weak-base px-3 py-2.5">
+        <div class="flex min-w-0 items-center gap-2">
+          <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-raised-stronger-non-alpha text-icon-warning-base">
+            <Icon name={getSemanticIcon("prompt.boss")} size="small" />
+          </span>
+          <div class="min-w-0">
+            <div class="truncate text-13-medium text-text-strong">
+              {_({ id: "app.boss.panel.title", message: "Boss Mode" })}
+            </div>
+            <Show when={tree()}>
+              {(current) => (
+                <div class="text-10-regular text-text-weaker">
+                  {_({
+                    id: "app.boss.panel.workerCount",
+                    message: "{count, plural, one {# worker} other {# workers}}",
+                    values: { count: workerCount(current()) },
+                  })}
+                </div>
+              )}
+            </Show>
+          </div>
+        </div>
+        <div class="flex shrink-0 items-center gap-1">
+          <Button
+            size="small"
+            variant="ghost"
+            icon={getSemanticIcon("action.copy")}
+            disabled={loading()}
+            aria-label={_({ id: "app.boss.panel.copyTree", message: "Copy tree" })}
+            title={_({ id: "app.boss.panel.copyTree", message: "Copy tree" })}
+            onClick={copyTree}
+          />
+          <Button size="small" disabled={loading() || busy()} onClick={() => setSpawnOpen((value) => !value)}>
             {_({ id: "app.boss.panel.spawn", message: "Spawn worker" })}
           </Button>
         </div>
-      </div>
+      </header>
 
       <Show when={loadError()}>
-        <div class="rounded-lg bg-surface-raised-stronger p-3 text-12-regular text-text-on-critical-base">
+        <div class="m-3 rounded-lg bg-surface-critical-weak p-3 text-12-regular text-text-on-critical-base">
           {loadError()}
         </div>
       </Show>
 
       <Show when={spawnOpen()}>
-        <div class="flex flex-col gap-2 rounded-lg bg-surface-raised-stronger p-3">
-          <input
-            class="bg-transparent border-b border-border-interactive-base outline-none text-12-regular"
-            placeholder={_({ id: "app.boss.spawn.rolePlaceholder", message: "Worker role (e.g. code)" })}
-            value={spawnRole()}
-            onInput={(e) => setSpawnRole(e.currentTarget.value)}
-          />
-          <input
-            class="bg-transparent border-b border-border-interactive-base outline-none text-12-regular"
-            placeholder={_({ id: "app.boss.spawn.agentPlaceholder", message: "Agent (e.g. synergy)" })}
-            value={spawnAgent()}
-            onInput={(e) => setSpawnAgent(e.currentTarget.value)}
-          />
-          <div class="flex justify-end gap-1.5">
+        <div class="shrink-0 border-b border-border-weak-base bg-surface-raised-base px-3 py-3">
+          <div class="grid gap-2 @md:grid-cols-2">
+            <label class="flex flex-col gap-1 text-10-medium text-text-weak">
+              {_({ id: "app.boss.spawn.roleLabel", message: "Worker role" })}
+              <input
+                class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-12-regular text-text-strong outline-none focus:border-border-interactive-base"
+                placeholder={_({ id: "app.boss.spawn.rolePlaceholder", message: "Worker role (e.g. code)" })}
+                value={spawnRole()}
+                onInput={(event) => setSpawnRole(event.currentTarget.value)}
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-10-medium text-text-weak">
+              {_({ id: "app.boss.spawn.agentLabel", message: "Agent" })}
+              <input
+                class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-12-regular text-text-strong outline-none focus:border-border-interactive-base"
+                placeholder={_({ id: "app.boss.spawn.agentPlaceholder", message: "Agent (e.g. synergy)" })}
+                value={spawnAgent()}
+                onInput={(event) => setSpawnAgent(event.currentTarget.value)}
+              />
+            </label>
+          </div>
+          <div class="mt-2 flex justify-end gap-1.5">
             <Button size="small" variant="ghost" onClick={() => setSpawnOpen(false)}>
               {_({ id: "app.boss.spawn.cancel", message: "Cancel" })}
             </Button>
@@ -202,107 +298,182 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
         </div>
       </Show>
 
-      <div class="flex flex-col gap-1.5 rounded-lg bg-surface-raised-stronger p-3">
-        <span class="text-12-regular text-text-weak">
-          {_({ id: "app.boss.assign.label", message: "Assign a task to an idle worker" })}
-        </span>
-        <select
-          class="bg-transparent border-b border-border-interactive-base outline-none text-12-regular"
-          value={assignTarget() ?? ""}
-          onChange={(e) => setAssignTarget(e.currentTarget.value)}
-        >
-          <option value="" disabled>
-            {_({ id: "app.boss.assign.selectWorker", message: "Select worker…" })}
-          </option>
-          <For
-            each={directIdleWorkers(tree() ?? { sessionID: "", title: "", role: "boss", status: "idle", children: [] })}
-          >
-            {(worker) => (
-              <option value={worker.sessionID}>
-                {worker.title} ({worker.workerRole ?? "worker"})
-              </option>
-            )}
-          </For>
-        </select>
-        <textarea
-          class="bg-transparent border-b border-border-interactive-base outline-none text-12-regular resize-none"
-          rows={2}
-          placeholder={_({ id: "app.boss.assign.taskPlaceholder", message: "Task description…" })}
-          value={assignTaskText()}
-          onInput={(e) => setAssignTaskText(e.currentTarget.value)}
-        />
-        <div class="flex justify-end">
-          <Button size="small" disabled={!assignTarget() || !assignTaskText().trim() || busy()} onClick={assignTask}>
-            {_({ id: "app.boss.assign.submit", message: "Assign" })}
-          </Button>
-        </div>
-      </div>
-
       <Show
-        when={!loading() && tree()}
+        when={!loading() && tree() && dagNodes().length > 0}
         fallback={
-          <Show when={loading() && !loadError()} fallback={<div />}>
-            <div class="flex items-center justify-center py-8">
+          <Show when={loading() && !loadError()}>
+            <div class="flex flex-1 items-center justify-center py-8">
               <Spinner />
             </div>
           </Show>
         }
       >
-        <div class="flex flex-col gap-1">
-          <For each={rows()}>
-            {(row) => {
-              const node = row.node
-              const statusLabel =
-                node.status === "running"
-                  ? _({ id: "app.boss.status.running", message: "Running" })
-                  : node.status === "queued"
-                    ? _({ id: "app.boss.status.queued", message: "Queued" })
-                    : node.status === "archived"
-                      ? _({ id: "app.boss.status.archived", message: "Archived" })
-                      : _({ id: "app.boss.status.idle", message: "Idle" })
-              return (
-                <div
-                  class="flex items-center gap-2 rounded px-2 py-1 hover:bg-surface-raised-stronger"
-                  style={{ "padding-left": `${8 + row.depth * 16}px` }}
-                >
-                  <span
-                    class="size-1.5 shrink-0 rounded-full"
-                    classList={{
-                      "bg-icon-success-base": node.status === "running",
-                      "bg-icon-warning-base": node.status === "idle" || node.status === "queued",
-                      "bg-text-weaker": node.status === "archived",
-                    }}
-                  />
-                  <span class="min-w-0 flex-1 truncate">
-                    {node.role === "boss" ? (
-                      <span class="text-12-medium text-text-strong">{node.title}</span>
-                    ) : (
-                      <>
-                        <span class="text-12-regular">{node.title}</span>
-                        <span class="text-11-regular text-text-weak">
-                          {" "}
-                          · {node.workerRole ?? "worker"}
-                          {node.currentTask ? ` · ${node.currentTask.taskTitle ?? node.currentTask.taskID}` : ""}
+        <div class="grid min-h-0 flex-1 grid-rows-[minmax(300px,1fr)_auto] overflow-auto">
+          <section class="min-h-0 overflow-hidden border-b border-border-weak-base bg-surface-base">
+            <DagGraph
+              nodes={dagNodes()}
+              variant="panel"
+              showStats={false}
+              enableInspector={false}
+              selectedNodeId={selectedSessionID()}
+              onSelectNode={(node) => setSelectedSessionID(node.id)}
+              getStatusLabel={dagStatusLabel}
+              getNodeAriaLabel={dagNodeAriaLabel}
+            />
+          </section>
+
+          <aside class="max-h-[42vh] overflow-auto bg-surface-raised-stronger-non-alpha px-4 py-4">
+            <Show when={selectedNode()}>
+              {(nodeAccessor) => {
+                const node = () => nodeAccessor()
+                return (
+                  <div>
+                    <div class="flex flex-wrap items-center gap-1 text-9-regular text-text-weaker">
+                      <For each={selectedPath()}>
+                        {(part, index) => (
+                          <>
+                            <Show when={index() > 0}>
+                              <span aria-hidden="true">/</span>
+                            </Show>
+                            <span class="max-w-40 truncate">{bossNodeLabel(part)}</span>
+                          </>
+                        )}
+                      </For>
+                    </div>
+
+                    <div class="mt-3 grid gap-4 @xl:grid-cols-[minmax(180px,0.7fr)_minmax(220px,0.8fr)_minmax(260px,1.5fr)_auto] @xl:items-start">
+                      <div class="flex min-w-0 items-start gap-3">
+                        <span
+                          class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-raised-base text-11-semibold text-text-strong"
+                          classList={{ "text-icon-warning-base": node().role === "boss" }}
+                        >
+                          {node().role === "boss" ? (
+                            <Icon name={getSemanticIcon("prompt.boss")} size="normal" />
+                          ) : (
+                            bossNodeLabel(node())
+                              .split(/[\s_-]+/)
+                              .filter(Boolean)
+                              .slice(0, 2)
+                              .map((part) => part[0]?.toUpperCase())
+                              .join("")
+                          )}
                         </span>
-                      </>
-                    )}
-                  </span>
-                  <span class="shrink-0 text-11-regular text-text-weak" aria-label={statusLabel}>
-                    {statusLabel}
-                  </span>
-                  <Show when={node.status !== "archived" && node.role === "worker"}>
-                    <button
-                      type="button"
-                      class="text-11-regular text-text-weak hover:text-text-on-critical-base"
-                      onClick={() => cancelWorker(node.sessionID)}
+                        <div class="min-w-0 flex-1">
+                          <span
+                            class={`inline-flex rounded-full px-2 py-0.5 text-9-medium ${statusClasses(node().status)}`}
+                          >
+                            {statusLabel(node().status)}
+                          </span>
+                          <h2 class="mt-1 truncate text-16-medium text-text-strong">{bossNodeLabel(node())}</h2>
+                          <div class="mt-0.5 text-10-regular text-text-weaker">
+                            {node().role === "boss"
+                              ? _({ id: "app.boss.panel.orchestrator", message: "Orchestrator" })
+                              : _({
+                                  id: "app.boss.panel.depth",
+                                  message: "Worker at depth {depth}",
+                                  values: { depth: selectedPath()!.length - 1 },
+                                })}
+                          </div>
+                        </div>
+                      </div>
+
+                      <dl class="grid grid-cols-[76px_minmax(0,1fr)] gap-x-3 gap-y-2 text-11-regular">
+                        <dt class="text-text-weaker">{_({ id: "app.boss.panel.agent", message: "Agent" })}</dt>
+                        <dd class="truncate text-text-strong">
+                          {node().agent || _({ id: "app.boss.panel.notAvailable", message: "Not available" })}
+                        </dd>
+                        <Show when={selectedParent()}>
+                          {(parent) => (
+                            <>
+                              <dt class="text-text-weaker">
+                                {_({ id: "app.boss.panel.reportsTo", message: "Reports to" })}
+                              </dt>
+                              <dd class="truncate text-text-strong">{bossNodeLabel(parent())}</dd>
+                            </>
+                          )}
+                        </Show>
+                        <dt class="text-text-weaker">{_({ id: "app.boss.panel.children", message: "Children" })}</dt>
+                        <dd class="text-text-strong">{node().children.length}</dd>
+                      </dl>
+
+                      <div class="min-w-0">
+                        <div class="text-10-medium text-text-weak">
+                          {_({ id: "app.boss.panel.currentTask", message: "Current task" })}
+                        </div>
+                        <div class="mt-1 max-h-24 overflow-auto text-11-regular leading-relaxed text-text-base">
+                          {node().currentTask?.taskTitle ||
+                            node().currentTask?.taskID ||
+                            _({ id: "app.boss.panel.noTask", message: "No task is currently assigned." })}
+                        </div>
+                      </div>
+
+                      <div class="flex flex-wrap items-center gap-1.5 @xl:justify-end">
+                        <Button
+                          size="small"
+                          variant="primary"
+                          icon={getSemanticIcon("action.open")}
+                          onClick={openSelectedSession}
+                        >
+                          {_({ id: "app.boss.panel.openSession", message: "Open session" })}
+                        </Button>
+                        <Show when={node().role === "worker" && node().status !== "archived"}>
+                          <Button
+                            size="small"
+                            variant="ghost"
+                            disabled={busy()}
+                            onClick={() => cancelWorker(node().sessionID)}
+                          >
+                            {_({ id: "app.boss.panel.cancel", message: "Cancel" })}
+                          </Button>
+                        </Show>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }}
+            </Show>
+
+            <Show when={directIdle().length > 0}>
+              <div class="mt-4 border-t border-border-weak-base pt-3">
+                <Button size="small" variant="ghost" onClick={() => setAssignOpen((value) => !value)}>
+                  {_({ id: "app.boss.assign.label", message: "Assign a task to an idle worker" })}
+                </Button>
+                <Show when={assignOpen()}>
+                  <div class="mt-2 grid gap-2 @md:grid-cols-[minmax(160px,0.7fr)_minmax(240px,1.5fr)_auto]">
+                    <select
+                      class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-11-regular text-text-strong outline-none focus:border-border-interactive-base"
+                      value={assignTarget() ?? ""}
+                      onChange={(event) => setAssignTarget(event.currentTarget.value)}
                     >
-                      {_({ id: "app.boss.panel.cancel", message: "Cancel" })}
-                    </button>
-                  </Show>
-                </div>
-              )
-            }}
-          </For>
+                      <option value="" disabled>
+                        {_({ id: "app.boss.assign.selectWorker", message: "Select worker…" })}
+                      </option>
+                      <For each={directIdle()}>
+                        {(worker) => (
+                          <option value={worker.sessionID}>
+                            {bossNodeLabel(worker)} ({worker.workerRole ?? "worker"})
+                          </option>
+                        )}
+                      </For>
+                    </select>
+                    <textarea
+                      class="min-h-8 resize-none rounded-lg border border-border-base bg-surface-base px-2 py-1.5 text-11-regular text-text-strong outline-none placeholder:text-text-weaker focus:border-border-interactive-base"
+                      placeholder={_({ id: "app.boss.assign.taskPlaceholder", message: "Task description…" })}
+                      value={assignTaskText()}
+                      onInput={(event) => setAssignTaskText(event.currentTarget.value)}
+                    />
+                    <Button
+                      size="small"
+                      disabled={!assignTarget() || !assignTaskText().trim() || busy()}
+                      onClick={assignTask}
+                    >
+                      {_({ id: "app.boss.assign.submit", message: "Assign" })}
+                    </Button>
+                  </div>
+                </Show>
+              </div>
+            </Show>
+          </aside>
         </div>
       </Show>
     </div>

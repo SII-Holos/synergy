@@ -1,3 +1,5 @@
+import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
+
 /**
  * Boss panel view model — pure functions over the BossService tree shape.
  * Kept dependency-free so it can be unit tested without a server or SDK.
@@ -20,6 +22,45 @@ export function flattenTree(node: BossTreeNodeVM, depth = 0): { node: BossTreeNo
   const out: { node: BossTreeNodeVM; depth: number }[] = [{ node, depth }]
   for (const child of node.children) out.push(...flattenTree(child, depth + 1))
   return out
+}
+
+export function bossNodeLabel(node: BossTreeNodeVM): string {
+  if (node.role === "boss") return node.title
+  return node.workerRole || node.title
+}
+
+function dagStatus(status: BossStatus): DagNode["status"] {
+  if (status === "running") return "running"
+  return "pending"
+}
+
+export function bossTreeToDagNodes(root: BossTreeNodeVM): DagNode[] {
+  const nodes: DagNode[] = []
+
+  const visit = (node: BossTreeNodeVM, parentSessionID?: string) => {
+    nodes.push({
+      id: node.sessionID,
+      content: bossNodeLabel(node),
+      status: dagStatus(node.status),
+      deps: parentSessionID ? [parentSessionID] : [],
+      assign: node.agent,
+      task_id: node.currentTask?.taskID,
+      session_id: node.sessionID,
+    })
+    for (const child of node.children) visit(child, node.sessionID)
+  }
+
+  visit(root)
+  return nodes
+}
+
+export function bossTreePath(node: BossTreeNodeVM, sessionID: string): BossTreeNodeVM[] | undefined {
+  if (node.sessionID === sessionID) return [node]
+  for (const child of node.children) {
+    const path = bossTreePath(child, sessionID)
+    if (path) return [node, ...path]
+  }
+  return undefined
 }
 
 export function workerCount(node: BossTreeNodeVM): number {

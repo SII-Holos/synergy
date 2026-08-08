@@ -867,7 +867,15 @@ msgid "app.boss.genericFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.boss.panel.agent"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.boss.panel.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.children"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -875,7 +883,35 @@ msgid "app.boss.panel.copyTree"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.boss.panel.currentTask"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.depth"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.boss.panel.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.noTask"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.notAvailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.openSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.orchestrator"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.reportsTo"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -884,6 +920,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.boss.panel.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.workerCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentLabel"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -900,6 +944,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.boss.spawn.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.roleLabel"
 msgstr ""
 
 #. js-lingui-explicit-id
