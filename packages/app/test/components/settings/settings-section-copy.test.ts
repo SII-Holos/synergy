@@ -48,7 +48,7 @@ describe("settings section localization", () => {
       rowLabels: [
         "Color Scheme",
         "界面语言",
-        "Activity Display",
+        "Activity display",
         "Snapshot",
         "Product Updates",
         "Notifications",

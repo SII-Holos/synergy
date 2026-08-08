@@ -13655,7 +13655,7 @@ msgstr "General"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.row.activityDisplay"
-msgstr "Activity Display"
+msgstr "Activity display"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.row.colorScheme"

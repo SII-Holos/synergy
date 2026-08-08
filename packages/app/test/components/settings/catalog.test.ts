@@ -97,7 +97,7 @@ describe("settings catalog", () => {
     expect(FIELD_SAVE_STRATEGY.cortex).toBe("background")
     expect(FIELD_SAVE_STRATEGY.activityDisplay).toBe("background")
     const general = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "general")!
-    expect(general.rowLabels).toContain("Activity Display")
+    expect(general.rowLabels).toContain("Activity display")
     expect(general.keywords).toContain("activity")
     expect(FIELD_SAVE_STRATEGY.execution).toBe("background")
     for (const role of MODEL_ROLES) {

@@ -124,7 +124,7 @@ const BUILTIN_SETTINGS_COPY = {
     rowLabels: [
       { id: "settings.catalog.general.row.colorScheme", message: "Color Scheme" },
       { id: "settings.catalog.general.row.interfaceLanguage", message: "Interface Language" },
-      { id: "settings.catalog.general.row.activityDisplay", message: "Activity Display" },
+      { id: "settings.catalog.general.row.activityDisplay", message: "Activity display" },
       { id: "settings.catalog.general.row.snapshot", message: "Snapshot" },
       { id: "settings.catalog.general.row.productUpdates", message: "Product Updates" },
       { id: "settings.catalog.general.row.notifications", message: "Notifications" },
