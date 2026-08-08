@@ -331,6 +331,25 @@ describe("ProviderTransform.maxOutputTokens", () => {
       expect(result).toBe(OUTPUT_TOKEN_MAX)
     })
   })
+
+  describe("shared-context headroom", () => {
+    test("reserves input headroom when output limit equals context", () => {
+      const modelLimit = 262144
+      const context = 262144
+      const result = ProviderTransform.maxOutputTokens("@ai-sdk/openai", {}, modelLimit, OUTPUT_TOKEN_MAX, context)
+      expect(result).toBe(context - ModelLimit.OUTPUT_TOKEN_HEADROOM)
+    })
+
+    test("keeps full output cap when output is below context", () => {
+      const result = ProviderTransform.maxOutputTokens("@ai-sdk/openai", {}, 384000, OUTPUT_TOKEN_MAX, 1000000)
+      expect(result).toBe(384000)
+    })
+
+    test("keeps model output when below context", () => {
+      const result = ProviderTransform.maxOutputTokens("@ai-sdk/openai", {}, 8192, OUTPUT_TOKEN_MAX, 200000)
+      expect(result).toBe(8192)
+    })
+  })
 })
 
 describe("ProviderTransform.schema - gemini array items", () => {
