@@ -4,8 +4,8 @@ import { createSignal } from "solid-js"
 import { usePlatform } from "@/context/platform"
 import { DialogSelectDirectory } from "./dialog-select-directory"
 import {
-  normalizeServerBrowserDirectoryResult,
   pickProjectDirectoriesWithRuntime,
+  pickServerDirectoryWithDialog,
   type PickProjectDirectoriesOptions,
   type PickProjectDirectoriesResult,
 } from "./project-directory-picker-model"
@@ -18,21 +18,18 @@ export function useProjectDirectoryPicker(): {
   const [pending, setPending] = createSignal(false)
 
   async function pickServer(options: PickProjectDirectoriesOptions): Promise<PickProjectDirectoriesResult | null> {
-    return await new Promise<PickProjectDirectoriesResult | null>((resolve) => {
-      dialog.show(
-        () => (
-          <DialogSelectDirectory
-            title={options.title}
-            multiple={options.multiple}
-            onSelect={(result) => {
-              const directoryPaths = normalizeServerBrowserDirectoryResult(result)
-              resolve(directoryPaths ? { directoryPaths, source: "server-browser" } : null)
-            }}
-          />
-        ),
-        () => resolve(null),
-      )
-    })
+    return pickServerDirectoryWithDialog(dialog.push, options, (onSelect) => (
+      // Push (not show) so the server browser stacks above an already-open
+      // dialog (e.g. the project edit dialog) instead of closing it and
+      // losing unsaved edits. With no active dialog, push behaves like show.
+      <DialogSelectDirectory
+        title={options.title}
+        multiple={options.multiple}
+        onSelect={(result) => {
+          onSelect(result)
+        }}
+      />
+    ))
   }
 
   async function pickProjectDirectories(

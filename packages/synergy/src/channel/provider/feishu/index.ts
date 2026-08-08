@@ -1274,6 +1274,10 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
   isActive(): boolean {
     return false
   }
+
+  ownsTerminalDelivery(): boolean {
+    return true
+  }
 }
 
 // Expose card action registration globally so plugins can register handlers
