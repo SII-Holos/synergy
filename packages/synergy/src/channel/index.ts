@@ -19,7 +19,7 @@ import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke } from "../session/invoke"
 
 import { ChannelCommand } from "./command"
-import { resolveChannelAccountInvocation } from "./model-selection"
+import { resolveChannelAccountInvocation, resolveChannelAccountAgent } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
 import { ManagedProjectOwnership } from "./managed-project-ownership"
@@ -624,9 +624,19 @@ export namespace Channel {
     const createStreamingSession = conversation.createStreamingSession?.bind(conversation)
     const replyToMessageId = ctx.replyToMessageId ?? ctx.rootId ?? ctx.messageId
 
+    // Providers may resolve a per-message Scope (e.g. a dedicated checkout
+    // directory for a GitHub pull request thread). The account-level Scope
+    // stays the fallback.
+    const conversationScope =
+      (await provider.resolveConversationScope?.({
+        accountId: ctx.accountId,
+        accountConfig,
+        message: ctx,
+      })) ?? scope
+
     // --- Acceptance phase (awaited by the provider lane) ---
     return ScopeContext.provide({
-      scope,
+      scope: conversationScope,
       fn: async () => {
         try {
           if (!replyMessage || !addReaction || !createStreamingSession) {
@@ -648,7 +658,7 @@ export namespace Channel {
           })
 
           const cmdResult = await ChannelCommand.execute(
-            ctx.text,
+            ctx.commandText ?? ctx.text,
             {
               channelType: ctx.channelType,
               accountId: ctx.accountId,
@@ -662,7 +672,7 @@ export namespace Channel {
               wasMentioned: ctx.wasMentioned,
               mentions: ctx.mentions,
             },
-            scope,
+            conversationScope,
           )
 
           if (cmdResult.action === "handled") {
@@ -695,8 +705,11 @@ export namespace Channel {
             createdAt: Date.now(),
           })
           const session = await Session.getOrCreateForEndpoint(endpoint, {
-            scope,
+            scope: conversationScope,
             interaction: ChannelInteraction.forType(ctx.channelType),
+            ...(provider.defaultAgent
+              ? { agentOverride: resolveChannelAccountAgent(accountConfig) ?? provider.defaultAgent }
+              : {}),
           })
           const sessionID = session.id
           const accountInvocation = resolveChannelAccountInvocation({
@@ -766,6 +779,19 @@ export namespace Channel {
                   messageId: replyToMessageId,
                   scopeKey: ctx.scopeKey,
                 })
+              }
+
+              // A foreground streaming session that owns the terminal delivery
+              // (e.g. Feishu cards post the final text in close()) must not be
+              // re-delivered by the outbound bridge: register the root so the
+              // bridge skips it. Sessions that do not own delivery (e.g.
+              // GitHub, whose streaming session is a no-op and relies on the
+              // bridge for comments) are never registered, so the bridge
+              // posts the reply. Queued (busy/recovered) roots are never
+              // registered and keep the bridge as their delivery path.
+              const ownsTerminalDelivery = streaming.ownsTerminalDelivery?.() === true
+              if (ownsTerminalDelivery) {
+                ChannelOutbound.beginForeground(sessionID, delivery.messageID)
               }
 
               const assistantTranscript = new Map<string, string>()
@@ -848,6 +874,17 @@ export namespace Channel {
                 // degraded fallback so the user still receives tool outputs.
                 const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
                 await streaming.close(responseText || fallbackText, hasError)
+                if (result.info.role === "assistant" && ownsTerminalDelivery) {
+                  // The streaming session already delivered this root's terminal
+                  // reply. Persist the sent marker so any later message update
+                  // (context usage, metadata merge) never re-triggers the
+                  // outbound bridge after the foreground registration ends.
+                  await Session.mergeMessageMetadata({
+                    sessionID,
+                    messageID: result.info.id,
+                    metadata: { channelOutboundSent: true },
+                  }).catch((err) => log.warn("failed to mark channel reply as sent", { sessionID, error: err }))
+                }
                 const rootID =
                   result.info.role === "assistant" ? (result.info.rootID ?? result.info.parentID) : result.info.id
                 const taskMessages = await loadChannelTaskMessages({ sessionID, rootID, terminal: result })
@@ -908,6 +945,7 @@ export namespace Channel {
                     log.warn("streaming card error finalization failed", { sessionID, error: closeError }),
                   )
               } finally {
+                ChannelOutbound.endForeground(sessionID, delivery.messageID)
                 unsubMessage()
                 unsubPart()
               }
@@ -949,6 +987,7 @@ export namespace Channel {
         })
       },
       isActive: () => false,
+      ownsTerminalDelivery: () => true,
     }
   }
 

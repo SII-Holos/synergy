@@ -79,3 +79,29 @@ export async function pickProjectDirectoriesWithRuntime(
     runtime.setPending(false)
   }
 }
+
+export type ServerBrowserDialogOpen<T> = (element: () => T, onClose?: () => void) => void
+
+/**
+ * Open the server directory browser through a dialog host and resolve with
+ * the picked directories. The host is expected to push (stack) the dialog
+ * above any already-open dialog instead of replacing it, so an edit dialog
+ * underneath keeps its unsaved state. Rendering stays with the caller so the
+ * model stays free of JSX and the wiring is unit-testable.
+ */
+export function pickServerDirectoryWithDialog<T>(
+  open: ServerBrowserDialogOpen<T>,
+  options: PickProjectDirectoriesOptions,
+  render: (onSelect: (result: { directory: string | string[] } | null) => void) => T,
+): Promise<PickProjectDirectoriesResult | null> {
+  return new Promise<PickProjectDirectoriesResult | null>((resolve) => {
+    open(
+      () =>
+        render((result) => {
+          const directoryPaths = normalizeServerBrowserDirectoryResult(result)
+          resolve(directoryPaths ? { directoryPaths, source: "server-browser" } : null)
+        }),
+      () => resolve(null),
+    )
+  })
+}

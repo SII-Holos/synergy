@@ -55,6 +55,7 @@ export const UI_DEFAULTS = {
   memoryTopK: "3" as string,
   embeddingSource: "huggingface" as LocalEmbeddingSource,
   embeddingRemoteHost: "" as string,
+  embeddingCacheDir: "" as string,
   experienceSimThreshold: "0.7" as string,
   experienceTopK: "8" as string,
   experienceEpsilon: "0.1" as string,
@@ -195,9 +196,23 @@ export type AccountToggle = {
   variant: string
 }
 
+export type GithubAccountToggle = {
+  key: string
+  enabled: boolean
+  repositories: string
+  workspaceDir: string
+  workspaceTtlHours: string
+  pollingIntervalMs: string
+  autoReview: boolean
+  autoRespond: boolean
+  /** Optional GitHub handle users @-mention; empty = resolve from the App slug. */
+  mention: string
+}
+
 export type ChannelSettings = {
   feishuAccounts: AccountToggle[]
   clarusAccounts: BasicAccountToggle[]
+  githubAccounts: GithubAccountToggle[]
 }
 
 export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
@@ -305,6 +320,7 @@ export type LibrarySettingsStore = {
   experienceEpsilon: string
   embeddingSource: LocalEmbeddingSource
   embeddingRemoteHost: string
+  embeddingCacheDir: string
 }
 
 export type ProvidersStore = {
@@ -402,6 +418,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       experienceEpsilon: UI_DEFAULTS.experienceEpsilon,
       embeddingSource: UI_DEFAULTS.embeddingSource,
       embeddingRemoteHost: UI_DEFAULTS.embeddingRemoteHost,
+      embeddingCacheDir: UI_DEFAULTS.embeddingCacheDir,
     },
     safety: {
       controlProfile: UI_DEFAULTS.controlProfile,
@@ -449,6 +466,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
     channels: {
       feishuAccounts: [],
       clarusAccounts: [],
+      githubAccounts: [],
     },
     roleVariant: {},
   }

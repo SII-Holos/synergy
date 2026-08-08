@@ -4,13 +4,17 @@ import z from "zod"
 import { Asset } from "@/asset/asset"
 import { Identifier } from "@/id/id"
 import { CodexProvider } from "@/provider/codex"
+import { ProviderAuthRecoveryError } from "@/provider/auth-recovery-error"
 import { ScopeContext } from "@/scope/context"
 import type { MessageV2 } from "@/session/message-v2"
 import type { Tool } from "./tool"
 
 export const OPENAI_IMAGE_MODEL = "gpt-image-2"
 export const OPENAI_IMAGE_OUTPUT_MIME = "image/png"
-export const OPENAI_IMAGE_REQUEST_TIMEOUT_MS = 180_000
+export const OPENAI_IMAGE_REQUEST_TIMEOUT_MS = 600_000
+export const OPENAI_IMAGE_MAX_ATTEMPTS = 3
+const OPENAI_IMAGE_RETRY_INITIAL_DELAY_MS = 2_000
+const OPENAI_IMAGE_RETRY_MAX_DELAY_MS = 30_000
 
 const IMAGE_SIZE_ERROR =
   'Use "auto" or WIDTHxHEIGHT where both sides are positive multiples of 16, longest side is <= 3840, total pixels are 655360..8294400, and aspect ratio is <= 3:1.'
@@ -148,6 +152,79 @@ export function normalizeCodexAuthError(error: unknown): Error {
     return new Error("OpenAI Codex is not connected. Run synergy auth login and choose OpenAI Codex.", { cause: error })
   }
   return error instanceof Error ? error : new Error(String(error))
+}
+export async function codexImageFetch(
+  url: string,
+  init: RequestInit,
+  ctx: Pick<Tool.Context, "abort">,
+): Promise<Response> {
+  if (ctx.abort.aborted) throw new DOMException("Aborted", "AbortError")
+
+  for (let attempt = 0; attempt < OPENAI_IMAGE_MAX_ATTEMPTS; attempt++) {
+    let response: Response | undefined
+    let error: unknown
+    try {
+      response = await CodexProvider.codexFetch(url, {
+        ...init,
+        signal: AbortSignal.any([ctx.abort, AbortSignal.timeout(OPENAI_IMAGE_REQUEST_TIMEOUT_MS)]),
+      })
+    } catch (caught) {
+      error = caught
+    }
+
+    if (response) {
+      if (response.ok || !isRetryableImageStatus(response.status) || attempt === OPENAI_IMAGE_MAX_ATTEMPTS - 1) {
+        return response
+      }
+      const retryAfter = retryAfterSeconds(response.headers)
+      if (retryAfter !== undefined) {
+        const delayMs = retryAfter * 1000
+        if (delayMs > OPENAI_IMAGE_RETRY_MAX_DELAY_MS) {
+          // Retrying after the cap would sleep past the auth cooldown and surface a
+          // misleading credential rejection, so surface the rate limit as-is.
+          return response
+        }
+        await sleep(delayMs, ctx.abort)
+      } else {
+        await sleep(backoffDelayMs(attempt), ctx.abort)
+      }
+    } else if (!isRetryableImageError(error) || attempt === OPENAI_IMAGE_MAX_ATTEMPTS - 1) {
+      throw normalizeCodexAuthError(error)
+    } else {
+      await sleep(backoffDelayMs(attempt), ctx.abort)
+    }
+  }
+
+  throw new Error(`Codex image request failed after ${OPENAI_IMAGE_MAX_ATTEMPTS} attempts.`)
+}
+
+function isRetryableImageStatus(status: number): boolean {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504
+}
+
+function isRetryableImageError(error: unknown): boolean {
+  if (CodexProvider.AuthError.isInstance(error)) return false
+  if (ProviderAuthRecoveryError.isInstance(error)) return false
+  if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) return false
+  return true
+}
+function backoffDelayMs(attempt: number): number {
+  return Math.min(OPENAI_IMAGE_RETRY_INITIAL_DELAY_MS * 2 ** attempt, OPENAI_IMAGE_RETRY_MAX_DELAY_MS)
+}
+
+async function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError")
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeout)
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
 }
 
 export async function readInputImageDataURL(

@@ -17,6 +17,9 @@ Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before 
 - Read entities by stable key so reactive consumers subscribe only to the row they use.
 - Preserve composer resolution layers: explicit draft → session default → fallback. A derived/historical value must not write back into the user's draft; an explicit selector choice persists through `modelOverride`.
 - Preserve `seq`/`epoch` watermarks, reconnect replay, fail-open resync, unsequenced streaming deltas, write-behind behavior, and LRU protection of the active session. Do not add per-event REST refetches.
+- Keep the event queue visibility-aware: hidden pages relax to a 1 s cadence and merge streaming deltas per part (server checkpoints converge), visible pages return to 16 ms with per-delta telemetry; never drop sequenced state events.
+- Keep the rendered turn tree bounded: while pinned at the bottom in latest mode, `turnStart` auto-advances (trim from the top, re-pin the scroller after layout) so the DOM does not grow with session length; parts stay fine-grained store reads and must not move into the turn projection.
+- Reconcile single messages into the sorted window incrementally (binary-search insertion) rather than re-merging and re-sorting the whole window; window order and eviction semantics stay canonical.
 
 Use generated SDK methods for internal HTTP APIs. Add OpenAPI metadata and regenerate the SDK when a required route is missing. Keep raw browser APIs for WebSocket/EventSource/WebRTC, external URLs, local file/blob operations, downloads/uploads without an SDK contract, and platform fetch injection.
 

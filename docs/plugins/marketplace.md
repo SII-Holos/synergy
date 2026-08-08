@@ -24,6 +24,8 @@ Registry identity, generated manifest ID, approval ID, lockfile key, signature p
 
 When an official registry read cannot reach its upstream source and no cached data can satisfy the request, the server returns a structured `503 Service Unavailable` response. The Marketplace keeps installed or cached plugin details usable when possible, shows a registry-unavailable state instead of a generic application error, and offers an explicit retry action.
 
+The Marketplace header offers a manual refresh action that re-fetches the official registry index immediately, bypassing the hourly cache TTL, and drops cached entry details so the next detail view is fresh. When the refresh cannot reach the upstream registry, the previous cached data stays intact and the action reports an error instead of clearing the list.
+
 ## Publish Flow
 
 ```bash
@@ -54,6 +56,8 @@ Installation follows this order:
 6. update the plugin config domain, lockfile, approval record, and incompatible-package record under the installation lock;
 7. reload and verify exactly one plugin registration;
 8. commit staged artifacts and remove rollback state.
+
+`synergy plugin update <id>` resolves the requested canonical plugin from the lockfile before loading its candidate manifest. An unrelated unresolved or incompatible configured plugin therefore cannot block a targeted update; updating every plugin remains responsible for the complete configured set.
 
 Any failure restores the previous config, lockfile, approvals, incompatible records, artifact directory, and runtime view. Configured approval uses the same transaction and rollback path as install/update. Registry approval completes install or update through the existing upsert transaction. Upgrade lifecycle failure leaves the previous version active.
 

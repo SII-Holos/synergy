@@ -239,9 +239,6 @@ export const SendCommand = cmd({
 
       const events = await sdk.event.subscribe()
       let errorMsg: string | undefined
-      // Created when a Light Loop is enabled; aborted when a session error
-      // ends the attempt so the wait loop stops before the workflow resolves.
-      let lightLoopSignal: AbortController | undefined
       const eventProcessor = (async () => {
         for await (const event of events.stream) {
           if (event.type === "message.part.updated") {
@@ -284,10 +281,11 @@ export const SendCommand = cmd({
             const error = props.error as Record<string, unknown>
             const err = errorMessage(error) ?? String(error.name)
             errorMsg = errorMsg ? errorMsg + EOL + err : err
-            // An errored assistant is ineligible for workflow continuation and
-            // the Light Loop stays active; stop waiting so the CLI can cancel
-            // and exit as soon as the failure is observed.
-            lightLoopSignal?.abort()
+            // The server converts a terminal executor error into the durable
+            // "failed" Light Loop status, so the wait loop observes it through
+            // the workflow state instead of aborting here. Non-fatal errors
+            // (e.g. an attachment read failure) must not kill a recoverable
+            // loop, so the event is only reported, never used to cancel.
             if (outputJsonEvent("error", { error: props.error })) continue
             UI.error(err)
           }
@@ -360,7 +358,6 @@ export const SendCommand = cmd({
         if (setResult.error) {
           throw new Error(errorMessage(setResult.error) ?? "Failed to enable Light Loop workflow")
         }
-        lightLoopSignal = new AbortController()
       }
 
       if (args.command) {
@@ -380,13 +377,16 @@ export const SendCommand = cmd({
           // the workflow enable) also bounds the first executor turn. The
           // blocking prompt route would otherwise hold this call open for the
           // whole first turn, making the timeout unreachable.
-          await sdk.session.promptAsync({
+          const promptResult = await sdk.session.promptAsync({
             sessionID,
             agent: resolvedAgent,
             model: modelParam,
             variant: args.variant,
             parts: promptParts,
           })
+          if (promptResult.error) {
+            throw new Error(errorMessage(promptResult.error) ?? "Failed to submit Light Loop prompt")
+          }
         } else {
           await sdk.session.prompt({
             sessionID,
@@ -405,12 +405,10 @@ export const SendCommand = cmd({
         // cleared by approval, or is replaced by another workflow.
         const outcome = await waitForLightLoopFinish(sdk, sessionID, {
           startedAt: lightLoopStartedAt,
-          signal: lightLoopSignal?.signal,
         })
 
         const terminalFailure = outcome.status !== undefined && outcome.status !== "completed"
-        const cancelledByError = outcome.aborted && errorMsg !== undefined
-        if (terminalFailure || outcome.timedOut || cancelledByError || outcome.replaced) {
+        if (terminalFailure || outcome.timedOut || outcome.replaced || outcome.clearedWithoutRecord) {
           // Stop the host-owned workflow before exiting so a later benchmark
           // attempt is not contaminated by a still-running loop (with
           // --attach) or a durable active workflow resumed on next startup.
@@ -428,6 +426,7 @@ export const SendCommand = cmd({
               timedOut: outcome.timedOut,
               aborted: outcome.aborted,
               replaced: outcome.replaced,
+              clearedWithoutRecord: outcome.clearedWithoutRecord,
             }) + EOL,
           )
         }
@@ -442,6 +441,10 @@ export const SendCommand = cmd({
         }
         if (outcome.replaced) {
           UI.error("Light Loop workflow was replaced by another workflow")
+          process.exit(1)
+        }
+        if (outcome.clearedWithoutRecord) {
+          UI.error("Light Loop workflow was cleared without a terminal record")
           process.exit(1)
         }
         if (terminalFailure) {

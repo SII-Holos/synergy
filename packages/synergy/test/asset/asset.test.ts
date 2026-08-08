@@ -32,6 +32,13 @@ describe("Asset", () => {
       expect(Asset.generateId(Buffer.from("x"), "text/x-python")).toEndWith(".py")
     })
 
+    test("normalizes mime parameters before mapping to extension", () => {
+      expect(Asset.generateId(Buffer.from("x"), "text/html;charset=utf-8")).toEndWith(".html")
+      expect(Asset.generateId(Buffer.from("x"), "text/html; charset=utf-8")).toEndWith(".html")
+      expect(Asset.generateId(Buffer.from("x"), "application/json; charset=utf-8")).toEndWith(".json")
+      expect(Asset.generateId(Buffer.from("x"), "text/plain; charset=utf-8")).toEndWith(".txt")
+    })
+
     test("falls back to filename extension when mime is unknown", () => {
       expect(Asset.generateId(Buffer.from("x"), "application/unknown", "readme.md")).toEndWith(".md")
       expect(Asset.generateId(Buffer.from("x"), "application/unknown", "data.rs")).toEndWith(".rs")

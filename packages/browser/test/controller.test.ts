@@ -303,6 +303,128 @@ describe("CdpPageController", () => {
       params: { enabled: true, maxTouchPoints: 5 },
     })
   })
+
+  test("settles networkquiet actions and returns a snapshot by default", async () => {
+    const transport = new FakeTransport()
+    const controller = new CdpPageController({ pageId: "page-1", transport })
+    const result = await controller.execute({
+      type: "action",
+      action: {
+        type: "click",
+        target: { kind: "role", role: "button", name: "Continue with Holos" },
+        settleMode: "networkquiet",
+        settleTimeoutMs: 2_000,
+      },
+    })
+
+    expect(result.type).toBe("action")
+    if (result.type !== "action") throw new Error("expected action result")
+    expect(result.action).toBe("click")
+    expect(result.settled).toBe(true)
+    expect(result.settleReason).toBe("networkquiet")
+    expect(result.snapshot).toBeDefined()
+  })
+
+  test("returns settled:false after the settle budget without failing the action", async () => {
+    const transport = new FakeTransport()
+    const controller = new CdpPageController({ pageId: "page-1", transport })
+    transport.emit("Page.frameStartedLoading", { frameId: "main-frame" })
+    const result = await controller.execute({
+      type: "action",
+      action: {
+        type: "click",
+        target: { kind: "role", role: "button", name: "Continue with Holos" },
+        settleMode: "networkquiet",
+        settleTimeoutMs: 1_000,
+      },
+    })
+
+    expect(result).toMatchObject({
+      type: "action",
+      action: "click",
+      settled: false,
+      settleReason: "timeout",
+    })
+  })
+
+  test("settleMode load waits for the main frame load lifecycle", async () => {
+    const transport = new FakeTransport()
+    const controller = new CdpPageController({ pageId: "page-1", transport })
+    transport.emit("Page.lifecycleEvent", { frameId: "main-frame", name: "load" })
+    const result = await controller.execute({
+      type: "action",
+      action: {
+        type: "click",
+        target: { kind: "role", role: "button", name: "Continue with Holos" },
+        settleMode: "load",
+        settleTimeoutMs: 2_000,
+      },
+    })
+
+    expect(result).toMatchObject({
+      type: "action",
+      action: "click",
+      settled: true,
+      settleReason: "load",
+    })
+  })
+
+  test("settleMode none skips settling", async () => {
+    const transport = new FakeTransport()
+    const controller = new CdpPageController({ pageId: "page-1", transport })
+    const result = await controller.execute({
+      type: "action",
+      action: {
+        type: "click",
+        target: { kind: "role", role: "button", name: "Continue with Holos" },
+        settleMode: "none",
+      },
+    })
+
+    expect(result).toMatchObject({
+      type: "action",
+      action: "click",
+      settled: true,
+      settleReason: "none",
+      settleElapsedMs: 0,
+    })
+  })
+
+  test("navigation settles and returns a snapshot by default", async () => {
+    const transport = new FakeTransport()
+    const controller = new CdpPageController({ pageId: "page-1", transport })
+    setTimeout(() => transport.emit("Page.frameStoppedLoading", {}), 10)
+    const result = await controller.execute({
+      type: "navigate",
+      url: "https://example.com/",
+      source: "agent",
+      settleMode: "networkquiet",
+      settleTimeoutMs: 2_000,
+    })
+
+    expect(result.type).toBe("navigation")
+    if (result.type !== "navigation") throw new Error("expected navigation result")
+    expect(result.settled).toBe(true)
+    expect(result.settleReason).toBe("networkquiet")
+    expect(result.snapshot).toBeDefined()
+  })
+
+  test("wait returns elapsed time and current page state", async () => {
+    const transport = new FakeTransport()
+    const controller = new CdpPageController({ pageId: "page-1", transport })
+    transport.emit("Page.lifecycleEvent", { frameId: "main-frame", name: "load" })
+    const result = await controller.execute({
+      type: "wait",
+      condition: { type: "load", state: "load" },
+      timeoutMs: 1_000,
+    })
+
+    expect(result.type).toBe("wait")
+    if (result.type !== "wait") throw new Error("expected wait result")
+    expect(result.matched).toBe(true)
+    expect(result.elapsedMs).toBeGreaterThanOrEqual(0)
+    expect(result.page).toMatchObject({ id: "page-1" })
+  })
 })
 
 function assertStorageDenied(): never {

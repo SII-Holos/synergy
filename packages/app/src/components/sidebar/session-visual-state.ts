@@ -150,8 +150,9 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
   }
   if (entry.category === "channel") {
+    const githubChannel = entry.channelType === "github"
     return {
-      icon: getSemanticIcon("channels.main"),
+      icon: githubChannel ? getSemanticIcon("github.main") : getSemanticIcon("channels.main"),
       label: unread
         ? { id: "session.state.channel.unread", message: "Channel session; response ready" }
         : { id: "session.state.channel", message: "Channel session" },

@@ -113,6 +113,7 @@ import type {
   ChannelStopResponses,
   CommandListResponses,
   Config as Config2,
+  ConfigDiagnosticsResponses,
   ConfigDomainGetErrors,
   ConfigDomainGetResponses,
   ConfigDomainImportApplyInput,
@@ -156,7 +157,6 @@ import type {
   ExperienceListSort,
   ExperimentalResourceListResponses,
   FormatterStatusResponses,
-  GithubConfiguredResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
@@ -423,6 +423,8 @@ import type {
   RegistryPluginsVersionsErrors,
   RegistryPluginsVersionsResponses,
   RegistryPublishInput,
+  RegistryRefreshErrors,
+  RegistryRefreshResponses,
   RewardsInfo,
   RuntimeReloadErrors,
   RuntimeReloadResponses,
@@ -558,6 +560,9 @@ import type {
   WorkspaceFilesStatErrors,
   WorkspaceFilesStatResponses,
   WorkspaceFilesStatusResponses,
+  WorkspaceFilesWriteErrors,
+  WorkspaceFilesWriteResponses,
+  WorkspaceFileWriteFileInput,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -1447,6 +1452,45 @@ export class Files extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * Write workspace file
+   *
+   * Write content to an existing workspace file with optional optimistic concurrency control.
+   */
+  public write<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      workspaceFileWriteFileInput?: WorkspaceFileWriteFileInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "workspaceFileWriteFileInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceFilesWriteResponses, WorkspaceFilesWriteErrors, ThrowOnError>(
+      {
+        url: "/workspace/files/write",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
   }
 }
 
@@ -4744,20 +4788,6 @@ export class SynergyLink extends HeyApiClient {
   }
 }
 
-export class Github extends HeyApiClient {
-  /**
-   * Check whether the GitHub App is configured
-   *
-   * Reports whether both required GitHub App environment variables are present without exposing them.
-   */
-  public configured<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<GithubConfiguredResponses, unknown, ThrowOnError>({
-      url: "/github/configured",
-      ...options,
-    })
-  }
-}
-
 export class Runtime extends HeyApiClient {
   /**
    * Reload runtime state
@@ -5071,6 +5101,7 @@ export class Scope extends HeyApiClient {
       }
       pinned?: number | null
       archived?: number | null
+      sandboxes?: Array<string>
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5094,6 +5125,7 @@ export class Scope extends HeyApiClient {
             { in: "body", key: "icon" },
             { in: "body", key: "pinned" },
             { in: "body", key: "archived" },
+            { in: "body", key: "sandboxes" },
           ],
         },
       ],
@@ -5517,7 +5549,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
     },
@@ -5563,7 +5594,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -5616,7 +5646,6 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
-        | "github"
       directory?: string
       scopeID?: string
     },
@@ -5811,6 +5840,36 @@ export class Config extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ConfigGlobalResponses, unknown, ThrowOnError>({
       url: "/config/global",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get config diagnostics
+   *
+   * Return recent configuration loading issues (syntax errors, unknown keys, quarantined files). Empty when configuration loaded cleanly.
+   */
+  public diagnostics<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigDiagnosticsResponses, unknown, ThrowOnError>({
+      url: "/config/diagnostics",
       ...options,
       ...params,
     })
@@ -10332,6 +10391,36 @@ export class Api extends HeyApiClient {
 }
 
 export class Registry extends HeyApiClient {
+  /**
+   * Force refresh the official plugin registry cache
+   *
+   * Re-fetch the official plugin registry index immediately, bypassing the cache TTL.
+   */
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RegistryRefreshResponses, RegistryRefreshErrors, ThrowOnError>({
+      url: "/api/registry/refresh",
+      ...options,
+      ...params,
+    })
+  }
+
   plugins = new Plugins({ client: this.client })
 }
 
@@ -11250,8 +11339,6 @@ export class SynergyClient extends HeyApiClient {
   holos = new Holos({ client: this.client })
 
   synergyLink = new SynergyLink({ client: this.client })
-
-  github = new Github({ client: this.client })
 
   agenda = new Agenda({ client: this.client })
 

@@ -688,6 +688,9 @@ export function SessionTurn(
   props: ParentProps<{
     sessionID: string
     messageID: string
+    rootMessage: UserMessage
+    messages: SessionTurnDisplayMessage[]
+    compactionParentIDs?: Set<string>
     lastUserMessageID?: string
     onUserInteracted?: () => void
     onRewind?: () => void
@@ -703,36 +706,15 @@ export function SessionTurn(
   const data = useData()
   const { _ } = useLingui()
 
-  const emptyMessages: MessageType[] = []
   const emptyParts: PartType[] = []
   const emptyAssistant: AssistantMessage[] = []
   const emptyDisplayMessages: SessionTurnDisplayMessage[] = []
   const emptyDisplayItems: SessionTurnDisplayItem[] = []
   const emptyPermissions: PermissionRequest[] = []
 
-  const allMessages = createMemo(() => data.store.message[props.sessionID] ?? emptyMessages)
-  const compactionParentIDs = createMemo(() => collectCompactionParentIDs(allMessages()))
-
-  const messageIndex = createMemo(() => {
-    const messages = allMessages()
-    const index = findMessageIndex(messages, props.messageID)
-    if (index === -1) return -1
-
-    const msg = messages[index]
-    if (msg.role !== "user") return -1
-
-    return index
-  })
-
-  const message = createMemo(() => {
-    const index = messageIndex()
-    if (index < 0) return undefined
-
-    const msg = allMessages()[index]
-    if (!msg || msg.role !== "user") return undefined
-
-    return msg
-  })
+  const emptyCompactionParentIDs = new Set<string>()
+  const message = createMemo(() => props.rootMessage)
+  const compactionParentIDs = createMemo(() => props.compactionParentIDs ?? emptyCompactionParentIDs)
 
   const specialUserMessageRenderer = createMemo(() => {
     const msg = message()
@@ -740,18 +722,7 @@ export function SessionTurn(
     return getSpecialUserMessageRenderer(msg)
   })
 
-  const lastUserMessageID = createMemo(() => {
-    if (props.lastUserMessageID) return props.lastUserMessageID
-
-    const messages = allMessages()
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      if (msg?.role === "user") return msg.id
-    }
-    return undefined
-  })
-
-  const isLastUserMessage = createMemo(() => props.messageID === lastUserMessageID())
+  const isLastUserMessage = createMemo(() => props.messageID === props.lastUserMessageID)
 
   const parts = createMemo(() => {
     const msg = message()
@@ -759,15 +730,7 @@ export function SessionTurn(
     return data.store.part[msg.id] ?? emptyParts
   })
 
-  const turnMessages = createMemo(
-    () => {
-      const msg = message()
-      if (!msg) return emptyDisplayMessages
-      return collectMessagesForTurnLifecycle(allMessages(), msg.id)
-    },
-    emptyDisplayMessages,
-    { equals: same },
-  )
+  const turnMessages = createMemo(() => props.messages, emptyDisplayMessages, { equals: same })
 
   const displayMessages = createMemo(() => filterMessagesForTurnDisplay(turnMessages()), emptyDisplayMessages, {
     equals: same,
@@ -813,8 +776,6 @@ export function SessionTurn(
     const assistantPart = msgParts[0]
     if (assistantPart?.type === "tool" && assistantPart.tool === "bash") return assistantPart
   })
-
-  const isShellMode = createMemo(() => !!shellModePart())
 
   const working = createMemo(() =>
     resolveTurnWorking({
@@ -1039,8 +1000,8 @@ export function SessionTurn(
                 class={props.classes?.container}
               >
                 <Switch>
-                  <Match when={isShellMode()}>
-                    <Part part={shellModePart()!} message={msg()} defaultOpen />
+                  <Match when={shellModePart()}>
+                    {(shellPart) => <Part part={shellPart()} message={msg()} defaultOpen />}
                   </Match>
                   <Match when={true}>
                     <Show when={showUserChrome()}>{renderMessageSlot("message.before-user")}</Show>

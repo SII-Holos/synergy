@@ -2,6 +2,7 @@ import { For, Show, createMemo, onMount } from "solid-js"
 import type { Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
+import type { SessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
@@ -24,6 +25,7 @@ export function SessionConversation(props: {
   sessionID: string
   paramsDir: string
   timeline: Accessor<Message[]>
+  turnProjection: Accessor<SessionTurnProjection>
   pendingTimeline?: Accessor<SessionInboxItem[]>
   sessionTransition?: Accessor<SessionTransitionProgress | null>
   sessionTransitionActions?: Accessor<SessionTransitionActions | undefined>
@@ -61,6 +63,8 @@ export function SessionConversation(props: {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
+  const lastTimelineID = createMemo(() => props.timeline()?.at(-1)?.id)
+  const turnProjection = props.turnProjection
   return (
     <ConversationViewport
       scrolledUp={props.scrolledUp()}
@@ -132,12 +136,13 @@ export function SessionConversation(props: {
         </div>
       </Show>
       <For each={props.timeline()}>
-        {(msg, index) => {
+        {(msg) => {
           onMount(() => {
             navMark({ dir: props.paramsDir, to: props.sessionID, name: "session:first-turn-mounted" })
           })
 
-          const isLast = () => index() === (props.timeline()?.length ?? 0) - 1
+          const isLast = () => msg.id === lastTimelineID()
+          const turnMessages = () => turnProjection().turnMessagesFor(msg as UserMessage)
 
           if (msg.role === "assistant") {
             const assistantMsg = msg as AssistantMessage
@@ -193,6 +198,9 @@ export function SessionConversation(props: {
               <SessionTurn
                 sessionID={props.sessionID}
                 messageID={msg.id}
+                rootMessage={msg}
+                messages={turnMessages()}
+                compactionParentIDs={turnProjection().compactionParentIDs}
                 lastUserMessageID={props.lastUserMessage()?.id}
                 onRewind={messageAllowsCanonicalActions(msg) ? () => props.onRewind?.(msg as UserMessage) : undefined}
                 rollbackActive={props.rollbackActive}

@@ -2,4 +2,4 @@ research
 dist
 gen
 app.log
-packages/synergy/test/.tmp-lockfile-*/
+test/.tmp-lockfile-*/

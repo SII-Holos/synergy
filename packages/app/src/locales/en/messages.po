@@ -743,6 +743,10 @@ msgid "app.attachment.action.download"
 msgstr "Download"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.action.openInBrowser"
+msgstr "Open in browser"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.action.viewSourceFile"
 msgstr "View source in Files"
 
@@ -1057,6 +1061,18 @@ msgstr "Panels"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.viewport"
 msgstr "Viewport"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recovering"
+msgstr "Recovering the native browser…"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryFailed"
+msgstr "Native browser recovery failed"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.native.recoveryHint"
+msgstr "Synergy will keep retrying the local browser. You can retry now without switching to a remote stream."
 
 #. ── Address bar ──
 msgid "app.browser.nav.back"
@@ -1794,6 +1810,30 @@ msgid "app.dialog.scope.directory"
 msgstr "Directory"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAdd"
+msgstr "Add folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersAddTitle"
+msgstr "Add project folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersHint"
+msgstr "Additional folders trusted automatically by the control profile, sandbox, and file tools."
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersLabel"
+msgstr "Project folders"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersMain"
+msgstr "Main folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
+msgid "app.dialog.scope.foldersRemove"
+msgstr "Remove folder"
+
+#. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.scope.id"
 msgstr "ID"
 
@@ -2191,6 +2231,14 @@ msgid "app.file.action.close"
 msgstr "Close"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.dismiss"
+msgstr "Dismiss"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.action.overwrite"
+msgstr "Overwrite"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.retry"
 msgstr "Retry"
 
@@ -2251,8 +2299,44 @@ msgid "app.file.mode.source"
 msgstr "Source"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflict"
+msgstr "File changed on disk"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveConflictOverwrite"
+msgstr "The file was modified elsewhere since it was loaded. Overwrite it with your changes?"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saved"
+msgstr "File saved"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveDenied"
+msgstr "This file cannot be edited"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toast.saveFailed"
+msgstr "Failed to save file"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.addToContext"
 msgstr "Add to context"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.discard"
+msgstr "Discard"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.edit"
+msgstr "Edit"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.save"
+msgstr "Save"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.saving"
+msgstr "Saving…"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.toggleFileTree"
@@ -3301,6 +3385,10 @@ msgid "app.library.experience.filter.all"
 msgstr "All experiences"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.filter.aria"
+msgstr "Filter experiences"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.filter.currentScope"
 msgstr "Current scope"
 
@@ -3360,6 +3448,10 @@ msgstr "Showing all {total} experiences"
 msgid "app.library.experience.showingOf"
 msgstr "Showing {shown} of {total} experiences"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.sort.aria"
+msgstr "Sort experiences"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.stat.confidence"
 msgstr "C"
@@ -3413,8 +3505,16 @@ msgid "app.library.memory.empty.none"
 msgstr "No memories yet"
 
 #. js-lingui-explicit-id
+msgid "app.library.memory.filter.aria"
+msgstr "Filter memories by category"
+
+#. js-lingui-explicit-id
 msgid "app.library.memory.similarityPercent"
 msgstr "{pct}%"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.sort.aria"
+msgstr "Sort memories"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.updated"
@@ -3647,6 +3747,10 @@ msgstr "Downloaded \"{name}\" as a ZIP archive"
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
 msgstr "All skills"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.filter.aria"
+msgstr "Filter skills"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.builtin"
@@ -5937,6 +6041,18 @@ msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.button"
+msgstr "Refresh plugins"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.failed"
+msgstr "Plugin catalog refresh failed"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.updated"
+msgstr "Plugin catalog updated"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.registryUnavailable.description"
 msgstr "Synergy couldn't reach this plugin registry. Check your connection and try again."
 
@@ -6811,6 +6927,10 @@ msgstr "Download diagnostics"
 msgid "app.sidebar.channel.feishu"
 msgstr "Feishu"
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.github"
+msgstr "GitHub"
+
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
 msgstr "Other"
@@ -7014,10 +7134,6 @@ msgstr "Background"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.channel"
 msgstr "Channel"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.section.github"
-msgstr "GitHub"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.home"
@@ -8248,6 +8364,78 @@ msgstr "Error"
 #. js-lingui-explicit-id
 msgid "brand.logo.alt"
 msgstr "Holos"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.assets"
+msgstr "{count, plural, one {# asset} other {# assets}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.console"
+msgstr "{count} console"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.loading"
+msgstr "loading"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.requests"
+msgstr "{count, plural, one {# request} other {# requests}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.settled"
+msgstr "settled"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.timeout"
+msgstr "timeout"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "browser.label.unsettled"
+msgstr "unsettled"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.condition"
+msgstr "Condition"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elapsed"
+msgstr "Elapsed"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.elements"
+msgstr "Elements"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.milliseconds"
+msgstr "{count} ms"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-reason"
+msgstr "Settle reason"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.settle-time"
+msgstr "Settle time"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.target"
+msgstr "Target"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.timeout"
+msgstr "Timeout"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.title"
+msgstr "Title"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.url"
+msgstr "URL"
+
+#. ── Browser tool summaries ──────────────────────────────────────────
+msgid "browser.summary.value-length"
+msgstr "Value length"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"
@@ -13214,6 +13402,10 @@ msgid "settings.archivedSessions.select.visible"
 msgstr "Select visible"
 
 #. js-lingui-explicit-id
+msgid "settings.archivedSessions.sort.aria"
+msgstr "Sort archived sessions"
+
+#. js-lingui-explicit-id
 msgid "settings.archivedSessions.sort.newest"
 msgstr "Archive time: newest"
 
@@ -13275,7 +13467,7 @@ msgstr "Channels"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.searchTerms"
-msgstr "channel | feishu | messaging"
+msgstr "channel | feishu | github | messaging"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.codeChecks.description"
@@ -13814,6 +14006,90 @@ msgid "settings.channels.feishu.title"
 msgstr "Feishu"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespond"
+msgstr "Auto-respond to mentions"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoRespondDescription"
+msgstr "Respond to @mentions of the bot handle and questions in issues and pull requests."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReview"
+msgstr "Auto-review pull requests"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.autoReviewDescription"
+msgstr "Automatically review newly opened and updated pull requests."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.description"
+msgstr "Enable or disable existing GitHub channel accounts. Configure watched repositories, workspace directory, and review behavior."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.empty"
+msgstr "No GitHub accounts configured yet."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.enabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mention"
+msgstr "Mention handle"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.mentionDescription"
+msgstr "GitHub handle users @-mention to summon the bot. Leave empty to resolve automatically from the GitHub App."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMs"
+msgstr "Polling interval (ms)"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingIntervalMsDescription"
+msgstr "Interval between GitHub API polls in milliseconds."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.pollingPlaceholder"
+msgstr "300000"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositories"
+msgstr "Repositories"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesDescription"
+msgstr "Comma-separated owner/repo pairs to watch and respond to."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.repositoriesPlaceholder"
+msgstr "owner/repo, owner/repo"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.title"
+msgstr "GitHub"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDir"
+msgstr "Workspace directory"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirDescription"
+msgstr "Directory under which per-repository checkouts are created."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceDirPlaceholder"
+msgstr "/path/to/workspace"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHours"
+msgstr "Checkout retention (hours)"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.github.workspaceTtlHoursDescription"
+msgstr "Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered."
+
+#. js-lingui-explicit-id
 msgid "settings.channels.page.description"
 msgstr "Messaging and task channel accounts."
 
@@ -14226,6 +14502,54 @@ msgid "settings.general.colorScheme.system.description"
 msgstr "Follow this device"
 
 #. js-lingui-explicit-id
+msgid "settings.general.font.applied"
+msgstr "Applied"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.apply"
+msgstr "Apply"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.check"
+msgstr "Check"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.checking"
+msgstr "Loading..."
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.default"
+msgstr "Using default"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.denied"
+msgstr "Font access was denied; using default"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.description"
+msgstr "Check loads the fonts installed on this device, then pick one and Apply it."
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.ready"
+msgstr "Select a font, then Apply"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.reset"
+msgstr "Use default"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.select.placeholder"
+msgstr "Select a font"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.title"
+msgstr "Interface font"
+
+#. js-lingui-explicit-id
+msgid "settings.general.font.unsupported"
+msgstr "This browser cannot scan local fonts; using default"
+
+#. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "Choose the language used by Synergy controls and accessibility labels"
 
@@ -14244,6 +14568,14 @@ msgstr "Follow System"
 #. js-lingui-explicit-id
 msgid "settings.general.language.title"
 msgstr "Interface language"
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.description"
+msgstr "Used for code, terminals, diffs, and other monospaced content."
+
+#. js-lingui-explicit-id
+msgid "settings.general.monoFont.title"
+msgstr "Monospace font"
 
 #. js-lingui-explicit-id
 msgid "settings.general.notifications.description"
@@ -14648,6 +14980,18 @@ msgstr "Retry"
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.button.starting"
 msgstr "Starting…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.desc"
+msgstr "Where Synergy stores the downloaded local model files. Leave empty for the default (~/.synergy/data/embedding/models)."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.label"
+msgstr "Local embedding model cache directory"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.cacheDir.title"
+msgstr "Model cache directory"
 
 #. js-lingui-explicit-id
 msgid "settings.library.embedding.currentModel.title"
@@ -15756,6 +16100,22 @@ msgstr "Unsaved"
 #. js-lingui-explicit-id
 msgid "settings.panel.close.label"
 msgstr "Close settings"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.description"
+msgstr "One or more config files could not be loaded and were set aside. Fix the file and rename it back to continue using those settings."
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.detail"
+msgstr "{path}: {error}"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.quarantined"
+msgstr "Moved to {path}"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.configDiagnostics.title"
+msgstr "Configuration issues found"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.configFile.opened"
@@ -17652,6 +18012,10 @@ msgstr "Search files"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.generate-image"
 msgstr "Generate Image"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.github-deliver-fix"
+msgstr "Deliver GitHub Fix as PR"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.glob"

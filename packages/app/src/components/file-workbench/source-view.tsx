@@ -10,6 +10,12 @@ import { textSelectionController } from "@/context/text-selection"
 
 type Monaco = typeof import("monaco-editor")
 let monacoPromise: Promise<Monaco> | undefined
+const FONT_CHANGE_EVENT = "synergy:font-change"
+
+function getConfiguredMonoFontFamily(): string {
+  if (typeof document === "undefined") return "monospace"
+  return getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono").trim() || "monospace"
+}
 
 function loadMonaco() {
   if (monacoPromise) return monacoPromise
@@ -92,7 +98,18 @@ function defineSourceTheme(monaco: Monaco, tokens: ResolvedTheme, mode: "light" 
   return theme
 }
 
-export function FileSourceView(props: { path: string; content: string }) {
+export type FileSourceViewApi = {
+  getContent: () => string
+  applyContent: (content: string) => void
+}
+
+export function FileSourceView(props: {
+  path: string
+  content: string
+  editable?: boolean
+  onDirtyChange?: (dirty: boolean) => void
+  onRegister?: (api: FileSourceViewApi) => void
+}) {
   const file = useFile()
   const sdk = useSDK()
   const theme = useTheme()
@@ -102,9 +119,17 @@ export function FileSourceView(props: { path: string; content: string }) {
   let monacoInstance: Monaco | undefined
   let editor: import("monaco-editor").editor.IStandaloneCodeEditor | undefined
   let disposed = false
-  let currentContent = props.content
+  let handleFontChange: ((event: Event) => void) | undefined
+  let baseline = props.content
+  const [dirty, setDirty] = createSignal(false)
 
   onMount(() => {
+    handleFontChange = (event: Event) => {
+      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+      if (kind === "mono") editor?.updateOptions({ fontFamily: getConfiguredMonoFontFamily() })
+    }
+    document.addEventListener(FONT_CHANGE_EVENT, handleFontChange)
+
     void loadMonaco().then((monaco) => {
       if (disposed) return
       monacoInstance = monaco
@@ -121,13 +146,12 @@ export function FileSourceView(props: { path: string; content: string }) {
         if (cached.model.getValue() !== props.content) cached.model.setValue(props.content)
       }
 
-      const style = getComputedStyle(host)
       const sourceTheme = defineSourceTheme(monaco, theme.tokens(), theme.mode())
       editor = monaco.editor.create(host, {
         model: cached.model,
         theme: sourceTheme,
-        readOnly: true,
-        domReadOnly: true,
+        readOnly: !props.editable,
+        domReadOnly: !props.editable,
         minimap: { enabled: false },
         automaticLayout: true,
         folding: true,
@@ -139,7 +163,7 @@ export function FileSourceView(props: { path: string; content: string }) {
         wordWrap: "off",
         quickSuggestions: false,
         suggest: { showWords: false },
-        fontFamily: style.getPropertyValue("--font-mono").trim() || "monospace",
+        fontFamily: getConfiguredMonoFontFamily(),
         fontSize: 14,
         lineHeight: 22,
         padding: { top: 12, bottom: 18 },
@@ -187,18 +211,46 @@ export function FileSourceView(props: { path: string; content: string }) {
         })
       })
       editor.onDidBlurEditorText(() => textSelectionController.update(undefined))
+      const modelRef = cached.model
+      modelRef.onDidChangeContent(() => {
+        const next = modelRef.getValue() !== baseline
+        setDirty(next)
+        props.onDirtyChange?.(next)
+      })
+      props.onRegister?.({
+        getContent: () => modelRef.getValue(),
+        applyContent: (content: string) => {
+          baseline = content
+          const state = editor?.saveViewState()
+          modelRef.setValue(content)
+          setDirty(false)
+          props.onDirtyChange?.(false)
+          if (state) editor?.restoreViewState(state)
+        },
+      })
       pruneFileSourceModels(key)
       setLoading(false)
     })
   })
 
   createEffect(() => {
-    if (props.content === currentContent) return
-    currentContent = props.content
+    // Read `props.editable` unconditionally: when `editor` is still undefined the
+    // optional chain below short-circuits, and Solid must still track the prop so
+    // the effect re-runs once Monaco exists and the edit toggle changes.
+    const editable = props.editable
+    editor?.updateOptions({ readOnly: !editable, domReadOnly: !editable })
+  })
+
+  createEffect(() => {
+    if (props.content === baseline) return
+    baseline = props.content
     const model = editor?.getModel()
     if (!model || model.getValue() === props.content) return
+    if (dirty()) return
     const state = editor?.saveViewState()
     model.setValue(props.content)
+    setDirty(false)
+    props.onDirtyChange?.(false)
     if (state) editor?.restoreViewState(state)
   })
 
@@ -211,6 +263,7 @@ export function FileSourceView(props: { path: string; content: string }) {
 
   onCleanup(() => {
     disposed = true
+    if (handleFontChange) document.removeEventListener(FONT_CHANGE_EVENT, handleFontChange)
     textSelectionController.update(undefined)
     editor?.dispose()
   })

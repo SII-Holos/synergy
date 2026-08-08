@@ -1,6 +1,7 @@
 import z from "zod"
 import type { ChannelHost } from "./host"
 import type { Question } from "@/question"
+import type { Scope } from "@/scope"
 
 export const ChannelTarget = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("chat"), chatId: z.string() }),
@@ -269,6 +270,13 @@ export const MessageContext = z
     senderId: z.string(),
     senderName: z.string().optional(),
     text: z.string(),
+    /**
+     * Raw command text used for slash-command parsing, when it differs from
+     * `text` (which may be a decorated prompt). Providers that wrap the user
+     * content (e.g. GitHub comments embedded in an event prompt) set this to
+     * the original content so `@mention`-prefixed slash commands parse.
+     */
+    commandText: z.string().optional(),
     messageId: z.string(),
     timestamp: z.number(),
     wasMentioned: z.boolean().optional(),
@@ -303,6 +311,16 @@ export interface StreamingSession {
   updateToolProgress(progress: StreamingToolProgress[]): Promise<void>
   close(finalText?: string, error?: boolean): Promise<void>
   isActive(): boolean
+  /**
+   * Whether this streaming session delivers the terminal reply itself in
+   * `close()` (e.g. Feishu cards post the final text). When true, the channel
+   * core registers the root as foreground-delivered and persists
+   * `channelOutboundSent`, so the outbound bridge skips it. Providers whose
+   * streaming session is a no-op (e.g. GitHub, which relies on the outbound
+   * bridge for comments) must leave this false — otherwise the bridge is
+   * suppressed and the reply is never posted.
+   */
+  ownsTerminalDelivery?(): boolean
 }
 
 export type ProviderLifecycle = "self_connected" | "borrowed_transport"
@@ -337,8 +355,28 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   readonly type: string
   readonly lifecycle: ProviderLifecycle
   readonly conversation?: ConversationCapabilities
+  /**
+   * Default agent used for sessions created from this provider's inbound
+   * messages. When set, the channel core passes it as the agent override
+   * (an account-level `agent` config still wins). When unset, the default
+   * agent resolution applies.
+   */
+  readonly defaultAgent?: string
 
   waitForTransport?(input: { accountId: string; signal: AbortSignal }): Promise<void>
+
+  /**
+   * Resolve the Scope that owns the Session for an inbound conversation
+   * message. Providers may return a per-chat Scope (e.g. a managed checkout
+   * directory for a GitHub issue thread) instead of the account-level Scope
+   * chosen by `resolveAccountScope`. Returning `undefined` keeps the account
+   * Scope.
+   */
+  resolveConversationScope?(input: {
+    accountId: string
+    accountConfig: TAccountConfig
+    message: MessageContext
+  }): Promise<Scope | undefined>
 
   connect(input: {
     accountId: string

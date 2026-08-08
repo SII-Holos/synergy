@@ -9,6 +9,108 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+describe("Bus.subscribeGlobal", () => {
+  test("delivers events published from a different scope", async () => {
+    await using tmpA = await tmpdir({ git: true })
+    await using tmpB = await tmpdir({ git: true })
+    const scopeA = await tmpA.scope()
+    const scopeB = await tmpB.scope()
+
+    const CrossScope = BusEvent.define("test.cross.scope", z.object({ value: z.string() }))
+    const received: string[] = []
+    let dispose: (() => void) | undefined
+
+    // Subscribe globally inside scope A; keep the returned unsubscriber.
+    await ScopeContext.provide({
+      scope: scopeA,
+      fn: () => {
+        const unsubscribe = Bus.subscribeGlobal(CrossScope, (event) => {
+          received.push(event.properties.value)
+        })
+        return () => unsubscribe()
+      },
+    }).then((fn) => {
+      dispose = fn
+    })
+
+    // Publish from scope B while the subscription is still active.
+    await ScopeContext.provide({
+      scope: scopeB,
+      fn: async () => {
+        await Bus.publish(CrossScope, { value: "from-b" })
+      },
+    })
+
+    expect(received).toEqual(["from-b"])
+    dispose?.()
+  })
+
+  test("a scoped subscription does not receive events from another scope", async () => {
+    await using tmpA = await tmpdir({ git: true })
+    await using tmpB = await tmpdir({ git: true })
+    const scopeA = await tmpA.scope()
+    const scopeB = await tmpB.scope()
+
+    const ScopedOnly = BusEvent.define("test.scoped.only", z.object({ value: z.string() }))
+    const received: string[] = []
+
+    await ScopeContext.provide({
+      scope: scopeA,
+      fn: () => {
+        const unsubscribe = Bus.subscribe(ScopedOnly, (event) => {
+          received.push(event.properties.value)
+        })
+        return async () => unsubscribe()
+      },
+    }).then((dispose) => dispose?.())
+
+    await ScopeContext.provide({
+      scope: scopeB,
+      fn: async () => {
+        await Bus.publish(ScopedOnly, { value: "from-b" })
+      },
+    })
+
+    expect(received).toEqual([])
+  })
+
+  test("unsubscribe stops global delivery", async () => {
+    await using tmpA = await tmpdir({ git: true })
+    await using tmpB = await tmpdir({ git: true })
+    const scopeA = await tmpA.scope()
+    const scopeB = await tmpB.scope()
+
+    const CrossScope2 = BusEvent.define("test.cross.scope2", z.object({ value: z.string() }))
+    const received: string[] = []
+
+    let dispose: (() => void) | undefined
+    await ScopeContext.provide({
+      scope: scopeA,
+      fn: () => {
+        const unsubscribe = Bus.subscribeGlobal(CrossScope2, (event) => {
+          received.push(event.properties.value)
+        })
+        return () => {
+          unsubscribe()
+          return undefined
+        }
+      },
+    }).then((fn) => {
+      dispose = fn
+    })
+    dispose?.()
+
+    await ScopeContext.provide({
+      scope: scopeB,
+      fn: async () => {
+        await Bus.publish(CrossScope2, { value: "should-not-arrive" })
+      },
+    })
+
+    expect(received).toEqual([])
+  })
+})
+
 describe("Bus.publish", () => {
   test("does not await subscribers for streaming events", async () => {
     await using tmp = await tmpdir({ git: true })

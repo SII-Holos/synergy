@@ -474,6 +474,7 @@ export namespace PluginMarketplaceRegistry {
   }
 
   const pendingRefreshes = new Map<string, Promise<z.infer<typeof RemoteRegistry>>>()
+  const pendingForcedRefreshes = new Map<string, Promise<{ refreshedAt: string | null }>>()
 
   async function backgroundRefreshRegistry(config: Awaited<ReturnType<typeof currentConfig>>) {
     const cachedPath = registryCachePath(config.registryUrl)
@@ -525,6 +526,37 @@ export namespace PluginMarketplaceRegistry {
     const cachedPath = registryCachePath(config.registryUrl)
     if (await isFresh(cachedPath, config.cacheTtlMs)) return
     await backgroundRefreshRegistry(config)
+  }
+
+  /**
+   * Force-refresh the remote registry cache immediately, bypassing the TTL.
+   * On success the registry.json cache is rewritten and the entry cache is
+   * dropped so detail reads re-fetch fresh entries; on failure the old caches
+   * are preserved and the error propagates to the caller.
+   */
+  export async function refreshNow(
+    inputConfig?: Awaited<ReturnType<typeof currentConfig>>,
+  ): Promise<{ refreshedAt: string | null }> {
+    const config = inputConfig ?? (await currentConfig())
+    if (!config.enabled) return { refreshedAt: null }
+    const cachedPath = registryCachePath(config.registryUrl)
+    const key = cachedPath
+    const existing = pendingForcedRefreshes.get(key)
+    if (existing) return existing
+    const promise = (async () => {
+      try {
+        const registry = await fetchJson(config.registryUrl, RemoteRegistry, config.requestTimeoutMs)
+        await writeJsonFile(cachedPath, registry)
+        const entriesRoot = cachePaths(config.registryUrl).entries
+        await fs.rm(entriesRoot, { recursive: true, force: true })
+        await fs.mkdir(entriesRoot, { recursive: true })
+        return { refreshedAt: new Date().toISOString() }
+      } finally {
+        pendingForcedRefreshes.delete(key)
+      }
+    })()
+    pendingForcedRefreshes.set(key, promise)
+    return promise
   }
 
   export async function searchOfficial(input: { q?: string; offset?: number; limit?: number } = {}) {

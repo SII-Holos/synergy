@@ -5,6 +5,7 @@ import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
 import { PromptCachePolicy } from "./prompt-cache-policy"
 import { supportsImageMediaType } from "./image-capability"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 const BEDROCK_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -747,6 +748,10 @@ export namespace ProviderTransform {
         return {
           ["gateway" as string]: options,
         }
+      case "@ai-sdk/xai":
+        return {
+          ["xai" as string]: options,
+        }
       case "@openrouter/ai-sdk-provider":
         return {
           ["openrouter" as string]: options,
@@ -763,8 +768,15 @@ export namespace ProviderTransform {
     options: Record<string, any>,
     modelLimit: number,
     globalLimit: number,
+    contextLimit?: number,
   ): number {
-    const modelCap = modelLimit || globalLimit
+    let modelCap = modelLimit || globalLimit
+    // Shared-context models (catalog output limit equals the context window)
+    // enforce input + output together at request time. Reserve input headroom
+    // so a raised default output cap cannot reject every nonempty prompt.
+    if (contextLimit && contextLimit > 0 && modelCap >= contextLimit) {
+      modelCap = Math.max(contextLimit - ModelLimit.OUTPUT_TOKEN_HEADROOM, 1)
+    }
     const standardLimit = Math.min(modelCap, globalLimit)
 
     if (npm === "@ai-sdk/anthropic") {
@@ -772,7 +784,7 @@ export namespace ProviderTransform {
       const budgetTokens = typeof thinking?.["budgetTokens"] === "number" ? thinking["budgetTokens"] : 0
       const enabled = thinking?.["type"] === "enabled"
       if (enabled && budgetTokens > 0) {
-        // Return text tokens so that text + thinking <= model cap, preferring 32k text when possible.
+        // Return text tokens so that text + thinking <= model cap, preferring the standard text limit when possible.
         if (budgetTokens + standardLimit <= modelCap) {
           return standardLimit
         }

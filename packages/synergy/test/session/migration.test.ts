@@ -113,6 +113,90 @@ describe("session migrations", () => {
     expect(stored.variant).toBe("high")
   })
 
+  test("keeps migrating sibling roots when a legacy root references a missing model", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        model: "test-provider/test-model",
+        provider: {
+          "test-provider": {
+            name: "Test Provider",
+            npm: "@ai-sdk/openai-compatible",
+            env: [],
+            models: {
+              "test-model": {
+                name: "Test Model",
+                tool_call: true,
+                limit: { context: 128_000, output: 4_096 },
+                variants: { high: { reasoningEffort: "high" } },
+              },
+            },
+            options: { apiKey: "test-key" },
+          },
+        },
+        agent: {
+          variant_agent: {
+            model: "test-provider/test-model",
+            mode: "primary",
+            defaultVariant: "high",
+          },
+        },
+      } as any,
+    })
+    const scope = await tmp.scope()
+    const { ghostID, validID } = await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const created = await Session.create({})
+        const ghostID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: ghostID,
+          sessionID: created.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "variant_agent",
+          // References a provider/model that is not in the current config, so
+          // resolveLegacyRoot hits Provider.ModelNotFoundError. The migration
+          // must skip it and keep backfilling the sibling root below.
+          model: { providerID: "removed-provider", modelID: "removed-model" },
+          isRoot: true,
+          rootID: ghostID,
+          origin: { type: "user" },
+        } satisfies MessageV2.User)
+        const validID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: validID,
+          sessionID: created.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "variant_agent",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          isRoot: true,
+          rootID: validID,
+          origin: { type: "user" },
+        } satisfies MessageV2.User)
+        return { ghostID, validID }
+      },
+    })
+
+    const migration = migrations.find((entry) => entry.id === "20260726-session-root-variant")
+    expect(migration).toBeDefined()
+    await migration!.up(() => {})
+
+    const scopeID = Identifier.asScopeID(scope.id)
+    const sessionID = Identifier.asSessionID(
+      await Storage.scan(StoragePath.sessionsRoot(scopeID)).then((ids) => ids[0]!),
+    )
+    const ghost = await Storage.read<MessageV2.User>(
+      StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(ghostID)),
+    )
+    const valid = await Storage.read<MessageV2.User>(
+      StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(validID)),
+    )
+    expect(ghost.variant).toBeUndefined()
+    expect(valid.variant).toBe("high")
+  })
+
   test("rebuilds legacy Channel nav entries with provider metadata", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()

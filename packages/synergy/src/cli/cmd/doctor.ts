@@ -50,14 +50,41 @@ export const DoctorCommand = cmd({
 })
 
 async function printInstallationChecks() {
-  const method = await Installation.method()
+  const inspection = await Installation.inspect()
+  const method = inspection.current
   const realExecPath = await fs.realpath(process.execPath).catch(() => process.execPath)
   const context = { platform: process.platform, execPath: process.execPath, realExecPath, env: process.env }
 
   console.log(`\nInstallation:`)
-  console.log(`  Method: ${method}`)
+  console.log(`  Current method: ${method}`)
   console.log(`  Executable: ${process.execPath}`)
   console.log(`  Real executable: ${realExecPath}`)
+
+  if (inspection.installations.length === 0) {
+    console.log(`  ⚠️ No supported Synergy installation was detected.`)
+    process.exitCode = 1
+  } else {
+    console.log(`  Installed channels:`)
+    for (const installation of inspection.installations) {
+      const icon = installation.status === "ok" ? (installation.current ? "✅" : "•") : "⚠️"
+      const version = installation.version ?? "version probe failed"
+      const executable = installation.executable ? ` — ${installation.executable}` : ""
+      const flags = [installation.current ? "current" : "", installation.pathFirst ? "PATH first" : ""]
+        .filter(Boolean)
+        .join(", ")
+      console.log(`    ${icon} ${installation.method}: ${version}${executable}${flags ? ` (${flags})` : ""}`)
+    }
+  }
+
+  if (inspection.conflict) {
+    process.exitCode = 1
+    console.log(`  ⚠️ Multiple Synergy installation channels were found.`)
+    console.log(`     Keep one channel, or run synergy uninstall --installation-only --method <method>.`)
+  }
+  if (inspection.installations.some((installation) => installation.status === "failed")) {
+    process.exitCode = 1
+    console.log(`  ⚠️ One or more installed versions could not be verified.`)
+  }
 
   if (method === "desktop") {
     console.log(`  Updates: Desktop updates are managed from the Synergy app.`)
@@ -74,7 +101,7 @@ async function printInstallationChecks() {
     if (versionStatus.metadataPath) console.log(`     Metadata: ${versionStatus.metadataPath}`)
   }
 
-  const candidates = await DesktopInstallation.pathCandidates(context)
+  const candidates = inspection.path
   if (candidates.length === 0) {
     console.log(`  ⚠️ PATH: no synergy command found on PATH`)
     return
@@ -87,7 +114,7 @@ async function printInstallationChecks() {
     console.log(`    ${icon} ${candidate.path}${candidate.isCurrent ? " (current)" : ""}`)
   })
 
-  if (method === "desktop" && !candidates[0]?.isCurrent) {
-    console.log(`  ⚠️ PATH conflict: the first synergy command is not this Desktop-managed CLI.`)
+  if (!candidates[0]?.isCurrent) {
+    console.log(`  ⚠️ PATH conflict: the first synergy command is not the current CLI.`)
   }
 }

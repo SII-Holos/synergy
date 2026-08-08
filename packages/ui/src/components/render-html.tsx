@@ -71,7 +71,7 @@ const BASE_STYLE = `
     padding: 16px;
     background: transparent;
     color: var(--render-text-base);
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--render-font-family-sans, Inter, ui-sans-serif, system-ui, sans-serif);
     font-size: 13px;
     line-height: 1.55;
     overflow: auto;
@@ -139,7 +139,7 @@ const BASE_STYLE = `
     background: var(--render-surface-inset-base);
     color: var(--render-text-strong);
     border: 1px solid var(--render-border-weak-base);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--render-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
     font-size: 0.94em;
   }
 
@@ -188,7 +188,13 @@ function readThemeCss() {
   const computed = window.getComputedStyle(root)
   const mode = root.dataset.colorScheme === "dark" ? "dark" : "light"
   const fallback = RENDER_FALLBACK_THEMES[mode]
-  const lines = [`--render-color-scheme: ${mode};`]
+  const sans = computed.getPropertyValue("--font-family-sans").trim() || '"Inter", sans-serif'
+  const mono = computed.getPropertyValue("--font-family-mono").trim() || '"IBM Plex Mono", monospace'
+  const lines = [
+    `--render-color-scheme: ${mode};`,
+    `--render-font-family-sans: ${sans};`,
+    `--render-font-family-mono: ${mono};`,
+  ]
 
   for (const name of THEME_VARIABLES) {
     const value = computed.getPropertyValue(`--${name}`).trim() || fallback[name]
@@ -200,7 +206,11 @@ function readThemeCss() {
 
 function fallbackThemeCss(mode: "light" | "dark") {
   const fallback = RENDER_FALLBACK_THEMES[mode]
-  const lines = [`--render-color-scheme: ${mode};`]
+  const lines = [
+    `--render-color-scheme: ${mode};`,
+    '--render-font-family-sans: "Inter", sans-serif;',
+    '--render-font-family-mono: "IBM Plex Mono", monospace;',
+  ]
   for (const name of THEME_VARIABLES) lines.push(`--render-${name}: ${fallback[name]};`)
   return `:root {\n${lines.map((line) => `  ${line}`).join("\n")}\n}`
 }
@@ -273,8 +283,13 @@ export function RenderHtml(props: { html: string }) {
 
   onMount(() => {
     const handleThemeChange = () => setThemeVersion((version) => version + 1)
+    const handleFontChange = () => setThemeVersion((version) => version + 1)
     document.addEventListener(THEME_CHANGE_EVENT, handleThemeChange)
-    onCleanup(() => document.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange))
+    document.addEventListener("synergy:font-change", handleFontChange)
+    onCleanup(() => {
+      document.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange)
+      document.removeEventListener("synergy:font-change", handleFontChange)
+    })
   })
 
   onCleanup(() => {

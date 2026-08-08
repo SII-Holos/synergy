@@ -1764,7 +1764,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           "overflow-hidden": true,
           "border border-border-base": !store.dragging,
           "border border-icon-info-active border-dashed": store.dragging,
-          "max-md:border-t max-md:border-x-0 max-md:border-b-0 max-md:shadow-none": true,
           [props.class ?? ""]: !!props.class,
         }}
         style={{ "z-index": 1 }}

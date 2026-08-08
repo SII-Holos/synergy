@@ -8,6 +8,7 @@ import { buildPluginProject } from "../src/commands/build"
 import { publishGeneration } from "../src/commands/dev"
 import { packPluginProject } from "../src/commands/pack"
 import { registryEntry } from "../src/lib/market-entry"
+import { sha256File } from "../src/lib/crypto"
 
 describe("plugin build and dev generations", () => {
   test("copies declared runtime assets and includes their content in the generation", async () => {
@@ -544,6 +545,68 @@ await signPluginTarball(process.argv[2])
         expect.objectContaining({ key: "shell.execute", title: "Run declared setup commands" }),
       ])
       expect(JSON.stringify(entry)).not.toContain('"risk"')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("extracts imported CSS into a sibling stylesheet asset of the UI bundle", async () => {
+    const root = fs.mkdtempSync(path.join(import.meta.dir, "ui-css-fixture-"))
+    try {
+      fs.mkdirSync(path.join(root, "src"), { recursive: true })
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ name: "ui-css-fixture", version: "1.0.0", type: "module", source: "./src/index.ts" }),
+      )
+      fs.writeFileSync(
+        path.join(root, "src", "index.ts"),
+        `
+import { definePlugin, workbenchPanel } from "@ericsanchezok/synergy-plugin"
+export default definePlugin({
+  id: "ui-css-fixture",
+  version: "1.0.0",
+  description: "UI CSS build fixture",
+  contributions: [
+    workbenchPanel({
+      id: "panel",
+      label: "Panel",
+      surface: "side",
+      cardinality: "singleton",
+      component: { source: "src/panel.tsx" },
+    }),
+  ],
+})
+`,
+      )
+      fs.writeFileSync(
+        path.join(root, "src", "panel.tsx"),
+        `
+import "./panel.css"
+export default function Panel() {
+  return <div class="ui-css-fixture-panel">styled</div>
+}
+`,
+      )
+      fs.writeFileSync(path.join(root, "src", "panel.css"), ".ui-css-fixture-panel { color: rgb(1, 2, 3); }\n")
+
+      expect(await buildPluginProject(root)).toBe(true)
+      const jsPath = path.join(root, "dist", "ui", "index.js")
+      const cssPath = path.join(root, "dist", "ui", "index.css")
+      expect(fs.existsSync(jsPath)).toBe(true)
+      expect(fs.existsSync(cssPath)).toBe(true)
+      const source = fs.readFileSync(jsPath, "utf8")
+      expect(source).not.toContain("panel.css")
+      expect(source).not.toContain("<style")
+      expect(fs.readFileSync(cssPath, "utf8")).toContain(".ui-css-fixture-panel")
+
+      const manifest = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
+      expect(manifest.artifacts.ui?.entry).toBe("ui/index.js")
+      expect(manifest.artifacts.ui?.sha256).toBe(sha256File(jsPath))
+
+      fs.writeFileSync(path.join(root, "src", "panel.css"), ".ui-css-fixture-panel { color: rgb(9, 8, 7); }\n")
+      expect(await buildPluginProject(root)).toBe(true)
+      const second = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
+      expect(second.artifacts.generation).not.toBe(manifest.artifacts.generation)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

@@ -107,6 +107,20 @@ function routeState(c: {
     remote: !nativePresentation,
     requested: requestedPresentation,
   })
+  if (requestedPresentation === "native" && !presentation) {
+    throw new BrowserProtocolError({
+      code: nativePresentation ? "browser_native_host_unavailable" : "browser_native_ticket_required",
+      message: nativePresentation
+        ? "The Desktop Browser Host is not ready for native presentation."
+        : "A valid native Browser presentation ticket is required.",
+      retryable: true,
+      suggestedAction: "Retry native Browser recovery.",
+    })
+  }
+  // WebRTC is on-demand: the Host process is started by the control path when
+  // the first interactive command arrives, so an explicit WebRTC request must
+  // not fail here while the capability is still coming up. Only managed-local
+  // native presentation is strict at route time.
   return { directory, owner, presentation, requestedPresentation, nativePresentation }
 }
 

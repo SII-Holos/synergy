@@ -83,6 +83,7 @@ const kinds: PluginManifestContribution["kind"][] = [
   "ui.settings",
   "ui.theme",
   "ui.icon",
+  "lifecycle.install",
   "lifecycle.upgrade",
   "lifecycle.uninstall",
 ]

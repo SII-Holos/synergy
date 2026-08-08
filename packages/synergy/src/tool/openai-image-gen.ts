@@ -3,11 +3,10 @@ import { CodexProvider } from "@/provider/codex"
 import { Tool } from "./tool"
 import {
   buildOpenAIImageResult,
+  codexImageFetch,
   decodeImageData,
   extractImageData,
-  normalizeCodexAuthError,
   OPENAI_IMAGE_MODEL,
-  OPENAI_IMAGE_REQUEST_TIMEOUT_MS,
   openAIImageBackgroundParameter,
   openAIImageGenerationDisplay,
   openAIImageQualityParameter,
@@ -55,10 +54,10 @@ export const OpenAIImageGenTool = Tool.define(
     parameters: Parameters,
     async execute(params, ctx) {
       const outputPath = resolveImagePath(params.output_path)
-      let response: Response
 
-      try {
-        response = await CodexProvider.codexFetch(`${CodexProvider.runtimeBaseURL()}/images/generations`, {
+      const response = await codexImageFetch(
+        `${CodexProvider.runtimeBaseURL()}/images/generations`,
+        {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -71,11 +70,9 @@ export const OpenAIImageGenTool = Tool.define(
             quality: params.quality,
             size: params.size,
           }),
-          signal: AbortSignal.any([ctx.abort, AbortSignal.timeout(OPENAI_IMAGE_REQUEST_TIMEOUT_MS)]),
-        })
-      } catch (error) {
-        throw normalizeCodexAuthError(error)
-      }
+        },
+        ctx,
+      )
 
       const payload = await parseImageResponse(response, "generation")
       const buffer = decodeImageData(extractImageData(payload, "generation"), "generation")

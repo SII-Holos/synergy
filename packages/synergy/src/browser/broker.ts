@@ -187,6 +187,16 @@ export namespace BrowserBroker {
         connection.socket.close(1008, "Browser Host event page does not match its envelope")
         return
       }
+      if (message.event.type === "host.status") {
+        const preference = preferences.get(message.ownerKey)
+        if (preference) {
+          BrowserEvent.publish(preference.owner, {
+            type: "host.status",
+            pageId: message.pageId,
+            status: message.event.status,
+          })
+        }
+      }
       for (const listener of eventListeners.get(key) ?? []) listener(message.event)
       return
     }
@@ -413,7 +423,14 @@ function requestTimeout(
   const command = message.command
   if (command.type === "evaluate") return Math.min(125_000, (command.timeoutMs ?? 30_000) + 5_000)
   if (command.type === "wait") return command.timeoutMs + 5_000
-  if (command.type === "action") return (command.action.timeoutMs ?? 5_000) + 5_000
+  if (command.type === "action") {
+    const settleMs = command.action.settleTimeoutMs ?? 30_000
+    return (command.action.timeoutMs ?? 5_000) + settleMs + 5_000
+  }
+  if (command.type === "navigate" || command.type === "history" || command.type === "reload") {
+    const settleMs = command.settleTimeoutMs ?? 30_000
+    return settleMs + 10_000
+  }
   return 35_000
 }
 

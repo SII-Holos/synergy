@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Config } from "../../src/config/config"
@@ -207,5 +207,25 @@ describe.serial("Holos Clarus Channel account migration", () => {
     expect(status.pending).toEqual([])
     expect(second.upToDateDomains).toBe(1)
     expect((await Config.globalResolved()).channel?.clarus?.accounts.agent_existing).toEqual({ enabled: false })
+  })
+
+  test("skips provisioning when the Holos account store is temporarily unavailable", async () => {
+    await seedFeishuChannel()
+    await HolosAccounts.saveAndActivateAccount("agent_existing", "secret_existing")
+
+    const accountsPath = Global.Path.authHolosAccounts
+    const realReadFile = fs.readFile
+    using _read = spyOn(fs, "readFile").mockImplementation((async (file: string) => {
+      if (file === accountsPath) {
+        throw Object.assign(new Error("injected EPERM"), { code: "EPERM" })
+      }
+      return realReadFile(file)
+    }) as unknown as typeof fs.readFile)
+
+    await runMigration()
+
+    const config = await Config.globalResolved()
+    expect(config.channel?.clarus).toBeUndefined()
+    expectFeishuChannel(config)
   })
 })

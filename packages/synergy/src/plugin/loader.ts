@@ -18,6 +18,7 @@ import * as Lockfile from "./lockfile"
 import { stopForPlugin } from "./mcp"
 import { pluginContributionAdapters } from "./contribution-registry"
 import { getApproval, readApprovals, verifyApproval, type PluginApprovalRecord } from "./consent/approval-store"
+import { resolvePluginRuntimeLimits } from "./runtime-limits"
 import { IncompatiblePluginStore, type IncompatiblePluginRecord } from "./incompatible-store"
 import type { PluginLockfile } from "./lockfile-schema"
 
@@ -33,6 +34,8 @@ export interface LoadedPlugin {
   spec: string
   enabledScopes: Set<string>
   contributionHealth: Map<string, { state: "healthy" | "degraded"; lastError?: string; updatedAt: number }>
+  /** Install lifecycle delivery result, populated by delivery/retry; not loaded from the lockfile at catalog load. */
+  installLifecycle?: { status: "pending" | "completed" | "failed" | "skipped"; error?: string }
 }
 
 export type PluginAgentEntry = PluginAgent & {
@@ -264,6 +267,7 @@ export async function reloadDevelopmentGeneration(input: {
       manifest: resolved.manifest,
       pluginDir: resolved.pluginDir,
       entryPath: resolved.entryPath,
+      limits: await resolvePluginRuntimeLimits(),
     })
   }
   const registered = registerResolved(current.spec, resolved)
@@ -387,6 +391,7 @@ export async function ensureRuntime(plugin: LoadedPlugin) {
     manifest: plugin.manifest,
     pluginDir: plugin.pluginDir,
     entryPath: plugin.entryPath,
+    limits: await resolvePluginRuntimeLimits(),
   })
 }
 

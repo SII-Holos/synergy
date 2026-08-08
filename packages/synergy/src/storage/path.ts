@@ -243,17 +243,6 @@ export namespace StoragePath {
   export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
   export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
 
-  export const githubDeliveriesRoot = () => ["github", "deliveries"]
-  export const githubDelivery = (deliveryGuid: string) => [...githubDeliveriesRoot(), encodeURIComponent(deliveryGuid)]
-  export const githubRuntimeState = () => ["github", "runtime"]
-  export const githubPollState = (repository: string) => ["github", "poll-state", encodeURIComponent(repository)]
-  export const githubCiState = (repository: string, workflowName: string) => [
-    "github",
-    "ci",
-    encodeURIComponent(repository),
-    encodeURIComponent(workflowName),
-  ]
-
   export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
   export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]
   export const clarusProviderAccountRoot = (accountHash: string) => [
@@ -291,6 +280,31 @@ export namespace StoragePath {
   export const clarusProviderExtensionOutbox = (accountHash: string, recordHash: string) => [
     ...clarusProviderExtensionOutboxRoot(accountHash),
     recordHash,
+  ]
+
+  export const githubChannelAccountRoot = (accountHash: string) => [
+    "channel",
+    "providers",
+    "github",
+    "accounts",
+    accountHash,
+  ]
+  export const githubChannelAccountsRoot = () => ["channel", "providers", "github", "accounts"]
+  export const githubChannelPollState = (accountHash: string, repository: string) => [
+    ...githubChannelAccountRoot(accountHash),
+    "poll-state",
+    encodeURIComponent(repository),
+  ]
+  export const githubChannelWorkspaceIndexRoot = (accountHash: string) => [
+    ...githubChannelAccountRoot(accountHash),
+    "workspaces",
+    "index",
+  ]
+  export const githubChannelWorkspaceIndexEntry = (accountHash: string, workspaceHash: string) => [
+    ...githubChannelAccountRoot(accountHash),
+    "workspaces",
+    "index",
+    workspaceHash,
   ]
 
   // Stats

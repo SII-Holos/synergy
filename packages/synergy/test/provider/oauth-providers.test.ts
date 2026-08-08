@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import { Global } from "../../src/global"
 import { Auth } from "../../src/provider/api-key"
+import { GrokProvider } from "../../src/provider/grok"
 import { AnthropicOAuthProvider } from "../../src/provider/anthropic-oauth"
 import { CopilotProvider } from "../../src/provider/copilot"
 import { ProviderCatalog } from "../../src/provider/catalog"
@@ -39,6 +40,7 @@ function asFetch(fn: (input: RequestInfo | URL, init?: RequestInit) => Promise<R
 async function reset() {
   globalThis.fetch = originalFetch
   for (const provider of [
+    GrokProvider.PROVIDER_ID,
     AnthropicOAuthProvider.PROVIDER_ID,
     CopilotProvider.PROVIDER_ID,
     CopilotProvider.ENTERPRISE_PROVIDER_ID,

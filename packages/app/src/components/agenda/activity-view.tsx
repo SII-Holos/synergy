@@ -7,6 +7,7 @@ import { agendaRunDotTone, agendaStatusTone, formatAgendaDuration } from "./shar
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import { A } from "./agenda-i18n"
+import "./activity-view.css"
 
 export type AgendaActivityGroup = {
   agendaID: string
@@ -128,6 +129,7 @@ function ActivityGroupCard(props: {
       <div
         role="button"
         tabindex={0}
+        aria-expanded={expanded()}
         class="flex w-full items-center gap-2 px-3.5 py-3 text-left transition-colors hover:bg-surface-raised-base-hover"
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={(e) => {
@@ -175,13 +177,20 @@ function ActivityGroupCard(props: {
         </button>
       </div>
 
-      <Show when={expanded()}>
-        <div class="flex flex-col gap-1.5 px-2.5 pb-2.5">
-          <For each={props.group.entries}>
-            {(entry) => <ActivityRunRow entry={entry} onNavigate={props.onNavigate} />}
-          </For>
+      <div
+        class="activity-group-content"
+        classList={{ "is-open": expanded() }}
+        aria-hidden={!expanded()}
+        inert={!expanded()}
+      >
+        <div class="activity-group-content-inner">
+          <div class="flex flex-col gap-1.5 px-2.5 pb-2.5">
+            <For each={props.group.entries}>
+              {(entry) => <ActivityRunRow entry={entry} onNavigate={props.onNavigate} />}
+            </For>
+          </div>
         </div>
-      </Show>
+      </div>
     </div>
   )
 }
