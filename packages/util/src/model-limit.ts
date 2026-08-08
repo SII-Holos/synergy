@@ -15,7 +15,15 @@ export namespace ModelLimit {
     }
   }
 
-  export const OUTPUT_TOKEN_MAX = 32_000
+  export const OUTPUT_TOKEN_MAX = 384_000
+
+  /**
+   * Reserved input headroom for shared-context models whose catalog output
+   * limit equals the context window. Those providers enforce input + output
+   * together at request time, so a default output cap of the full window
+   * would reject any nonempty prompt.
+   */
+  export const OUTPUT_TOKEN_HEADROOM = 32_000
 
   /**
    * Compute actual input tokens from a usage breakdown.
