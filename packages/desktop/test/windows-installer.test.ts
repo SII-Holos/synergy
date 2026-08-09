@@ -131,7 +131,7 @@ describe("Windows installer", () => {
       } finally {
         await sibling.cleanup()
         await uninstall(installDir)
-        await fs.rm(temporaryDirectory, { recursive: true, force: true })
+        await fs.rm(temporaryDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
         await fs.rm(installerInclude.directory, { recursive: true, force: true })
       }
     },
