@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
 import { pathToFileURL } from "url"
 import { Asset } from "../../src/asset/asset"
 import { Bus } from "../../src/bus"
@@ -311,6 +312,94 @@ describe("session root variants", () => {
 })
 
 describe("session input attachment extraction", () => {
+  test("materializes a binary file attachment at its durable asset path", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const bytes = Buffer.from([0, 1, 2, 3, 4])
+        const filepath = `${tmp.path}/trace.bin`
+        await Bun.write(filepath, bytes)
+
+        try {
+          const created = await createUserMessage({
+            sessionID: session.id,
+            model: primaryModel,
+            parts: [
+              { type: "text", text: "Please inspect this binary" },
+              {
+                type: "attachment",
+                url: pathToFileURL(filepath).href,
+                filename: "trace.bin",
+                mime: "application/octet-stream",
+                model: { mode: "summary", summary: "trace.bin (application/octet-stream)" },
+              },
+            ],
+          })
+
+          const attachment = created.parts.find((part): part is MessageV2.AttachmentPart => part.type === "attachment")
+          expect(attachment?.url.startsWith("asset://")).toBe(true)
+          const assetPath = attachment ? Asset.resolvePath(attachment.url.slice("asset://".length)) : undefined
+          expect(attachment?.localPath).toBe(assetPath)
+          expect(attachment?.localPath).not.toBe(filepath)
+          const modelInput = JSON.stringify(MessageV2.toModelMessage([created]))
+          expect(modelInput).toContain(assetPath!)
+          expect(modelInput).not.toContain(filepath)
+
+          await fs.unlink(filepath)
+          expect(await Bun.file(attachment!.localPath!).exists()).toBe(true)
+          expect(Buffer.from(await Bun.file(attachment!.localPath!).arrayBuffer())).toEqual(bytes)
+        } finally {
+          await Session.remove(session.id)
+        }
+      },
+    })
+  })
+
+  test("preserves the source path for a provider-file attachment", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const filepath = `${tmp.path}/reference.png`
+        await Bun.write(filepath, Buffer.from([137, 80, 78, 71]))
+
+        try {
+          const created = await createUserMessage({
+            sessionID: session.id,
+            model: primaryModel,
+            parts: [
+              { type: "text", text: "Please inspect this image" },
+              {
+                type: "attachment",
+                url: pathToFileURL(filepath).href,
+                filename: "reference.png",
+                mime: "image/png",
+              },
+            ],
+          })
+
+          const attachment = created.parts.find((part): part is MessageV2.AttachmentPart => part.type === "attachment")
+          expect(attachment?.model?.mode).toBe("provider-file")
+          expect(attachment?.localPath).toBe(filepath)
+          expect(
+            created.parts.some(
+              (part) =>
+                part.type === "text" &&
+                part.origin === "system" &&
+                part.text ===
+                  `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
+            ),
+          ).toBe(true)
+        } finally {
+          await Session.remove(session.id)
+        }
+      },
+    })
+  })
+
   test("preserves a file attachment when document extraction fails", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

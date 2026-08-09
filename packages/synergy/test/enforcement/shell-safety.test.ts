@@ -107,6 +107,159 @@ describe("ShellSafety shell builtins", () => {
   })
 })
 
+describe("ShellSafety directory changes", () => {
+  const { ShellSafety } = require("../../src/enforcement/shell-safety")
+
+  test("extracts statically resolved directory targets", () => {
+    expect(ShellSafety.analyzeDirectoryChanges("cd -L ../..")).toEqual({ targets: ["../.."], opaque: false })
+    expect(ShellSafety.analyzeDirectoryChanges("pushd ~/repo")).toEqual({ targets: ["~/repo"], opaque: false })
+    expect(ShellSafety.analyzeDirectoryChanges("cd ./packages && touch changed.txt")).toEqual({
+      targets: ["./packages"],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("env --chdir=../.. pwd")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+  })
+
+  test("recurses into shell payloads, control structures, substitutions, traps, and wrappers", () => {
+    for (const command of [
+      "{ cd ../..; } && touch changed.txt",
+      "if cd ../..; then touch changed.txt; fi",
+      "bash -c 'cd ../.. && touch changed.txt'",
+      "eval 'cd ../.. && touch changed.txt'",
+      'touch "$(cd ../..; pwd)/changed.txt"',
+      'touch "`cd ../..; pwd`/changed.txt"',
+      "trap 'cd ../..; touch changed.txt' EXIT",
+      "env -S \"bash -c 'cd ../.. && touch changed.txt'\"",
+      "nice -n 10 bash -c 'cd ../.. && touch changed.txt'",
+      "sudo -u nobody bash -c 'cd ../.. && touch changed.txt'",
+      "cd ../..\ntouch changed.txt",
+      "ksh -c 'cd ../.. && touch changed.txt'",
+      "tcsh -c 'cd ../.. && touch changed.txt'",
+      "csh -c 'cd ../.. && touch changed.txt'",
+      "fish -c 'cd ../.. && touch changed.txt'",
+      "nu -c 'cd ../.. && touch changed.txt'",
+      "rc -c 'cd ../.. && touch changed.txt'",
+      "es -c 'cd ../.. && touch changed.txt'",
+      "nice -n 10 ksh -c 'cd ../.. && touch changed.txt'",
+      "exec ksh -c 'cd ../.. && touch changed.txt'",
+      "command ksh -c 'cd ../.. && touch changed.txt'",
+      "env -S \"ksh -c 'cd ../.. && touch changed.txt'\"",
+      "bash -c $'cd ../.. && touch changed.txt'",
+      "printf '../..' | xargs -I{} sh -c 'cd {} && touch changed.txt'",
+      "c'd' ../.. && touch changed.txt",
+      "x=cd; $x ../.. && touch changed.txt",
+      "$'\\x63\\x64' ../.. && touch changed.txt",
+      "$'\\143\\144' ../.. && touch changed.txt",
+      "bash -c $'\\x63\\x64 ../.. && touch changed.txt'",
+      "bash -c $'\\143\\144 ../.. && touch changed.txt'",
+      "bash -c \"$'\\x63\\x64 ../.. && touch changed.txt'\"",
+      "bash -c \"$'\\143\\144 ../.. && touch changed.txt'\"",
+      "eval \"$'\\x63\\x64 ../.. && touch changed.txt'\"",
+      "trap \"$'\\x63\\x64 ../.. && touch changed.txt'\" EXIT",
+      "if true; then bash -c \"$'\\x63\\x64 ../.. && touch changed.txt'\"; fi",
+      'bash -c "bash -c \\"$\'\\x63\\x64 ../.. && touch changed.txt\'\\""',
+      "ash -c 'cd ../.. && touch changed.txt'",
+      "mksh -c 'cd ../.. && touch changed.txt'",
+      "yash -c 'cd ../.. && touch changed.txt'",
+      "busybox sh -c 'cd ../.. && touch changed.txt'",
+      "busybox ash -c 'cd ../.. && touch changed.txt'",
+      'php -r \'chdir("../.."); touch("changed.txt")\'',
+      "pwsh -Command 'cd ../..; New-Item changed.txt'",
+      'deno eval \'Deno.chdir("../.."); Deno.writeTextFileSync("changed.txt", "changed")\'',
+      'pypy -c \'import os; os.chdir("../.."); open("changed.txt", "w").close()\'',
+      "awk 'BEGIN{system(\"cd ../.. && touch changed.txt\")}'",
+      "/usr/local/bin/mksh -lc 'cd ../.. && touch changed.txt'",
+      "/bin/yash -xc 'cd ../.. && touch changed.txt'",
+      "toybox /bin/sh -c 'cd ../.. && touch changed.txt'",
+      "busybox -- ash -c 'cd ../.. && touch changed.txt'",
+      'php -n -r \'chdir("../.."); touch("changed.txt")\'',
+      "\"C:/Program Files/PowerShell/7/pwsh.exe\" -Command 'cd ../..; New-Item changed.txt'",
+      "powershell.exe -EncodedCommand ZQBjAGgAbwAgAHQAZQBzAHQA",
+      "deno --quiet eval --ext ts 'Deno.chdir(\"../..\")'",
+      "pypy3.10 -c 'import os; os.chdir(\"../..\")'",
+      "gawk 'BEGIN{system(\"cd ../.. && touch changed.txt\")}'",
+      "env -C $'\\x2e\\x2e' touch changed.txt",
+      "if true; then f() { env -C ../.. touch changed.txt; }; fi; f",
+      "case x in x) bash -c 'cd ../.. && touch changed.txt';; esac",
+    ]) {
+      const analysis = ShellSafety.analyzeDirectoryChanges(command)
+      expect(analysis.opaque || analysis.targets.length > 0).toBe(true)
+    }
+  })
+
+  test("marks function definitions and CDPATH-dependent targets opaque", () => {
+    for (const command of [
+      "f() { command cd ../..; }; f; touch changed.txt",
+      "f() { builtin cd ../..; }; f; touch changed.txt",
+      "f() { eval 'cd ../..'; }; f; touch changed.txt",
+      "f() { bash -c 'cd ../..'; }; f; touch changed.txt",
+      "f() { env -C ../.. touch changed.txt; }; f",
+      "function f { command cd ../..; }; f; touch changed.txt",
+      "f() { cmd=cd; $cmd ../..; }; f; touch changed.txt",
+      "CDPATH=/Users/test/synergy cd node_modules && touch changed.txt",
+      "cd node_modules && touch changed.txt",
+    ]) {
+      expect(ShellSafety.analyzeDirectoryChanges(command).opaque).toBe(true)
+    }
+  })
+
+  test("marks inline interpreter payloads opaque without affecting ordinary script invocation", () => {
+    for (const command of [
+      "python3 -c 'import os; os.chdir(\"../..\")'",
+      "ruby -e 'Dir.chdir(\"../..\")'",
+      "perl -e 'chdir(\"../..\")'",
+      "node --eval='process.chdir(\"../..\")'",
+      "php -r 'echo 1'",
+      "pwsh -Command 'Write-Output ok'",
+      "deno eval 'console.log(1)'",
+      "awk 'BEGIN{system(\"pwd\")}'",
+    ]) {
+      expect(ShellSafety.analyzeDirectoryChanges(command)).toEqual({ targets: [], opaque: true })
+    }
+    for (const command of [
+      "python3 script.py",
+      "ruby script.rb",
+      "node script.js",
+      "php script.php",
+      "pwsh -File script.ps1",
+      "deno run script.ts",
+      "pypy script.py",
+      "awk '{print $1}' input.txt",
+      "busybox ls",
+      "ssh -c aes256-gcm user@example.com",
+      "mosh --ssh='ssh -p 2222' user@example.com",
+    ]) {
+      expect(ShellSafety.analyzeDirectoryChanges(command)).toEqual({ targets: [], opaque: false })
+    }
+  })
+
+  test("marks dynamic and stack-dependent changes opaque without matching inert text", () => {
+    for (const command of ["cd", "cd $target", "pushd +1", "popd"]) {
+      expect(ShellSafety.analyzeDirectoryChanges(command).opaque).toBe(true)
+    }
+    for (const command of [
+      "echo 'cd ../..'",
+      "bash -c 'pwd'",
+      "trap 'echo done' EXIT",
+      "env -S \"bash -c 'pwd'\"",
+      "nice -n 10 bash -c 'pwd'",
+      "sudo -u nobody bash -c 'pwd'",
+      "ksh -c 'pwd'",
+      "tcsh -c 'pwd'",
+      "csh -c 'pwd'",
+      "fish -c 'pwd'",
+      "bash -c $'pwd'",
+      "echo \"$'\\x63\\x64'\"",
+      "printf '.' | xargs -I{} sh -c 'pwd'",
+    ]) {
+      expect(ShellSafety.analyzeDirectoryChanges(command)).toEqual({ targets: [], opaque: false })
+    }
+  })
+})
+
 // ------------------------------------------------------------------
 // 3. Language interpreters — must NOT be shell_read
 // ------------------------------------------------------------------
@@ -293,6 +446,9 @@ describe("ShellSafety classifyBashRisk", () => {
     expect(ShellSafety.classifyBashRisk("grep pattern file.ts")).toBe("shell_read")
     expect(ShellSafety.classifyBashRisk("head -10 myfile")).toBe("shell_read")
     expect(ShellSafety.classifyBashRisk("wc -l input.txt")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk('file "/tmp/trace.bin"')).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk('file --brief "/tmp/trace.bin"')).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("file -c")).toBe("shell_read")
   })
 
   test("non-read-only non-hardline commands return shell or remote publish/write", () => {
@@ -305,6 +461,10 @@ describe("ShellSafety classifyBashRisk", () => {
     expect(ShellSafety.classifyBashRisk("git push origin feature")).toBe("shell_remote_publish")
     expect(ShellSafety.classifyBashRisk("rm file.txt")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("python3 -c 'print(1)'")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("echo inspected > /tmp/result.txt")).toBe("shell")
+    expect(ShellSafety.classifyBashRisk('file "/tmp/trace.bin"; echo inspected')).toBe("shell")
+    expect(ShellSafety.classifyBashRisk('file --compile --magic-file "/tmp/custom.magic"')).toBe("shell")
+    expect(ShellSafety.classifyBashRisk("file -C")).toBe("shell")
     expect(ShellSafety.classifyBashRisk("ssh user@host")).toBe("shell")
   })
 

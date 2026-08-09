@@ -478,6 +478,292 @@ describe("EnforcementGate shell classification", () => {
     expect(external.nonBypassable).toBe(false)
     expect(external.paths).toContain("/etc/passwd")
   })
+  test("compound attachment inspection keeps external paths read-only", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const attachmentPath of [
+      "/Users/test/synergy/downloads/trace.bin",
+      "/Users/test/.synergy/data/assets/0123456789abcdef.bin",
+    ]) {
+      const envelope = gate.evaluate("bash", {
+        command: `file "${attachmentPath}"; echo inspected`,
+      })
+
+      expect(envelope.decision).toBe("allow")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(false)
+      expect(
+        envelope.capabilities.some(
+          (cap) =>
+            (cap.class === "file_read" || cap.class === "file_external_read") && cap.paths?.includes(attachmentPath),
+        ),
+      ).toBe(true)
+    }
+  })
+
+  test("executing an external attachment as a script remains an external write boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "python3 /Users/test/.synergy/data/assets/0123456789abcdef.py",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+  })
+  test("piping an external attachment into an interpreter remains an external execution boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+    const attachmentPath = "/Users/test/.synergy/data/assets/0123456789abcdef.py"
+
+    for (const interpreter of ["python3", "node"]) {
+      const envelope = gate.evaluate("bash", {
+        command: `cat "${attachmentPath}" | ${interpreter}`,
+      })
+
+      expect(envelope.decision).toBe("deny")
+      expect(
+        envelope.capabilities.some((cap) => cap.class === "file_external_write" && cap.paths?.includes(attachmentPath)),
+      ).toBe(true)
+    }
+  })
+
+  test("changing to the original checkout keeps later relative writes outside the workspace boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "cd /Users/test/synergy && touch changed.txt",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+  })
+
+  test("changing to an external directory keeps derived outputs outside the workspace boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "cd /Users/test/.synergy/data/assets && file -C",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+  })
+  test("alternate cd spellings keep later relative writes outside the workspace boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const command of [
+      '"cd" /Users/test/synergy && touch changed.txt',
+      "\\cd /Users/test/synergy && touch changed.txt",
+      "cd && touch changed.txt",
+      "target=/Users/test/synergy; cd $target && touch changed.txt",
+      "cd -L ../.. && touch changed.txt",
+      "cd -P ~/repo && touch changed.txt",
+      "cd -- ../.. && touch changed.txt",
+      "cd /Users/test/synergy/.synergy/worktrees/feature-x/../.. && touch changed.txt",
+    ]) {
+      const envelope = gate.evaluate("bash", { command })
+
+      expect(envelope.decision).toBe("deny")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+    }
+  })
+
+  test("hidden directory state changes cannot escape the workspace boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const command of [
+      "{ cd ../..; } && touch changed.txt",
+      "(cd ../.. && touch changed.txt)",
+      "if cd ../..; then touch changed.txt; fi",
+      "pushd ../.. && touch changed.txt",
+      "env -C ../.. touch changed.txt",
+      "env --chdir=../.. touch changed.txt",
+      "bash -c 'cd ../.. && touch changed.txt'",
+      "eval 'cd ../.. && touch changed.txt'",
+      'touch "$(cd ../..; pwd)/changed.txt"',
+      'touch "`cd ../..; pwd`/changed.txt"',
+      "trap 'cd ../..; touch changed.txt' EXIT",
+      "env -S \"bash -c 'cd ../.. && touch changed.txt'\"",
+      "nice -n 10 bash -c 'cd ../.. && touch changed.txt'",
+      "sudo -u nobody bash -c 'cd ../.. && touch changed.txt'",
+      "cd ../..\ntouch changed.txt",
+      "ksh -c 'cd ../.. && touch changed.txt'",
+      "tcsh -c 'cd ../.. && touch changed.txt'",
+      "csh -c 'cd ../.. && touch changed.txt'",
+      "nu -c 'cd ../.. && touch changed.txt'",
+      "rc -c 'cd ../.. && touch changed.txt'",
+      "es -c 'cd ../.. && touch changed.txt'",
+      "fish -c 'cd ../.. && touch changed.txt'",
+      "nice -n 10 ksh -c 'cd ../.. && touch changed.txt'",
+      "exec ksh -c 'cd ../.. && touch changed.txt'",
+      "command ksh -c 'cd ../.. && touch changed.txt'",
+      "env -S \"ksh -c 'cd ../.. && touch changed.txt'\"",
+      "/bin/sh -c 'cd ../.. && touch changed.txt'",
+      "bash -c $'cd ../.. && touch changed.txt'",
+      "bash -c $'cd ../..\\ntouch changed.txt'",
+      "printf '../..' | xargs -I{} sh -c 'cd {} && touch changed.txt'",
+      "c'd' ../.. && touch changed.txt",
+      "x=cd; $x ../.. && touch changed.txt",
+      'python3 -c \'import os; os.chdir("../.."); open("changed.txt", "w").close()\'',
+      'ruby -e \'Dir.chdir("../.."); File.write("changed.txt", "changed")\'',
+      'node -e \'process.chdir("../.."); require("fs").writeFileSync("changed.txt", "changed")\'',
+      "f() { command cd ../..; }; f; touch changed.txt",
+      "f() { builtin cd ../..; }; f; touch changed.txt",
+      "f() { eval 'cd ../..'; }; f; touch changed.txt",
+      "f() { bash -c 'cd ../..'; }; f; touch changed.txt",
+      "f() { env -C ../.. touch changed.txt; }; f",
+      "function f { command cd ../..; }; f; touch changed.txt",
+      "f() { cmd=cd; $cmd ../..; }; f; touch changed.txt",
+      "CDPATH=/Users/test/synergy cd node_modules && touch changed.txt",
+      "cd node_modules && touch changed.txt",
+      "$'\\x63\\x64' ../.. && touch changed.txt",
+      "$'\\143\\144' ../.. && touch changed.txt",
+      "bash -c $'\\x63\\x64 ../.. && touch changed.txt'",
+      "bash -c $'\\143\\144 ../.. && touch changed.txt'",
+      "bash -c \"$'\\x63\\x64 ../.. && touch changed.txt'\"",
+      "bash -c \"$'\\143\\144 ../.. && touch changed.txt'\"",
+      "eval \"$'\\x63\\x64 ../.. && touch changed.txt'\"",
+      "trap \"$'\\x63\\x64 ../.. && touch changed.txt'\" EXIT",
+      "if true; then bash -c \"$'\\x63\\x64 ../.. && touch changed.txt'\"; fi",
+      'bash -c "bash -c \\"$\'\\x63\\x64 ../.. && touch changed.txt\'\\""',
+      "ash -c 'cd ../.. && touch changed.txt'",
+      "mksh -c 'cd ../.. && touch changed.txt'",
+      "yash -c 'cd ../.. && touch changed.txt'",
+      "busybox sh -c 'cd ../.. && touch changed.txt'",
+      "busybox ash -c 'cd ../.. && touch changed.txt'",
+      'php -r \'chdir("../.."); touch("changed.txt")\'',
+      "pwsh -Command 'cd ../..; New-Item changed.txt'",
+      'deno eval \'Deno.chdir("../.."); Deno.writeTextFileSync("changed.txt", "changed")\'',
+      'pypy -c \'import os; os.chdir("../.."); open("changed.txt", "w").close()\'',
+      "awk 'BEGIN{system(\"cd ../.. && touch changed.txt\")}'",
+      "/usr/local/bin/mksh -lc 'cd ../.. && touch changed.txt'",
+      "toybox /bin/sh -c 'cd ../.. && touch changed.txt'",
+      'php -n -r \'chdir("../.."); touch("changed.txt")\'',
+      "\"C:/Program Files/PowerShell/7/pwsh.exe\" -Command 'cd ../..; New-Item changed.txt'",
+      "deno --quiet eval --ext ts 'Deno.chdir(\"../..\")'",
+      "pypy3.10 -c 'import os; os.chdir(\"../..\")'",
+      "gawk 'BEGIN{system(\"cd ../.. && touch changed.txt\")}'",
+      "env -C $'\\x2e\\x2e' touch changed.txt",
+      "if true; then f() { env -C ../.. touch changed.txt; }; fi; f",
+      "case x in x) bash -c 'cd ../.. && touch changed.txt';; esac",
+    ]) {
+      const envelope = gate.evaluate("bash", { command })
+
+      expect(envelope.decision).toBe("deny")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+    }
+  })
+
+  test("non-executed cd text and workspace-local env chdir stay allowed", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const command of [
+      "echo 'cd ../..'",
+      "echo \"$'\\x63\\x64'\"",
+      "env -C . pwd",
+      "bash -c 'pwd'",
+      "python3 script.py",
+      "php script.php",
+      "pwsh -File script.ps1",
+      "deno run script.ts",
+      "pypy script.py",
+      "awk '{print $1}' input.txt",
+      "busybox ls",
+      "ssh -c aes256-gcm user@example.com",
+    ]) {
+      const envelope = gate.evaluate("bash", { command })
+
+      expect(envelope.decision).toBe("allow")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(false)
+    }
+  })
+
+  test("write-capable commands treat an external workdir as an external write boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const command of ["file -C", "sh ./attachment.sh"]) {
+      const envelope = gate.evaluate("bash", {
+        command,
+        workdir: "/Users/test/synergy",
+      })
+
+      expect(envelope.decision).toBe("deny")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+    }
+  })
+
+  test("compiling an external magic database remains an external write boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+    const magicPath = "/Users/test/.synergy/data/assets/custom.magic"
+
+    const envelope = gate.evaluate("bash", {
+      command: `file --compile --magic-file "${magicPath}"`,
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(
+      envelope.capabilities.some((cap) => cap.class === "file_external_write" && cap.paths?.includes(magicPath)),
+    ).toBe(true)
+  })
 })
 
 describe("EnforcementGate Synergy Link classification", () => {

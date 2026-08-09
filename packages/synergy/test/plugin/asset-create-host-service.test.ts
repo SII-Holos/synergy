@@ -190,7 +190,7 @@ describe("plugin asset.create Host Service", () => {
       expect(attachment.messageID).not.toBe("plugin-message")
       expect(attachment.id).not.toBe("plugin-part")
       expect(attachment.url).not.toBe("https://plugin.invalid/selected.svg")
-      expect(attachment.localPath).toBeUndefined()
+      expect(attachment.localPath).toBe(Asset.resolvePath(attachment.url.slice("asset://".length)))
       expect(attachment.url).toStartWith("asset://")
       expect(after.filter((file) => !before.includes(file))).toEqual([attachment.url.slice("asset://".length)])
       expect(await (await Asset.read(attachment.url.slice("asset://".length)))?.text()).toBe(svg)

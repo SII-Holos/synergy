@@ -1,4 +1,4 @@
-import { lexCompoundCommands } from "./shell-command"
+import { lexCompoundCommands, stripWrappers } from "./shell-command"
 
 const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "jq", "true"])
 
@@ -622,21 +622,65 @@ function stripAllowedRedirects(command: string): string {
 }
 
 function shellWords(segment: string): string[] {
-  const words = segment.match(/"[^"]*"|'[^']*'|[^\s]+/g) ?? []
-  return words.map((word) => word.replace(/^['"]|['"]$/g, ""))
+  const words: string[] = []
+  let current = ""
+  let started = false
+  let quote: "'" | '"' | undefined
+
+  for (let index = 0; index < segment.length; index++) {
+    const char = segment[index]
+    if (quote) {
+      if (char === quote) {
+        quote = undefined
+        continue
+      }
+      if (char === "\\" && quote === '"' && index + 1 < segment.length) {
+        current += segment[++index]
+        continue
+      }
+      current += char
+      continue
+    }
+    if (/\s/.test(char)) {
+      if (started) words.push(current)
+      current = ""
+      started = false
+      continue
+    }
+    if (char === "$" && (segment[index + 1] === "'" || segment[index + 1] === '"')) {
+      quote = segment[++index] as "'" | '"'
+      started = true
+      continue
+    }
+    if (char === "'" || char === '"') {
+      quote = char
+      started = true
+      continue
+    }
+    current += char
+    started = true
+  }
+  if (started) words.push(current)
+  return words
 }
 
-function commandName(words: string[]): string | undefined {
+function simpleCommandParts(segment: string): { name?: string; args: string[] } {
+  const words = shellWords(normalizeCommand(segment))
   let index = 0
   while (words[index]?.includes("=") && !words[index]?.startsWith("-")) index++
-  return words[index]
+  while (words[index] === "command" || words[index] === "builtin") {
+    index++
+    if (words[index] === "--") index++
+  }
+  return { name: words[index], args: words.slice(index + 1) }
 }
 
 function isSafeSimpleCommand(segment: string): boolean {
-  const words = shellWords(segment)
-  if (words.length === 0) return true
-  const name = commandName(words)
+  const { name, args } = simpleCommandParts(segment)
   if (!name || name === "cd") return true
+  if (name === "file") {
+    return !args.some((word) => word === "--compile" || /^-[^-]*C/.test(word))
+  }
   return SAFE_COMMANDS.has(name)
 }
 
@@ -722,6 +766,530 @@ function checkHardline(command: string): boolean {
   return false
 }
 
+export interface DirectoryChangeAnalysis {
+  targets: string[]
+  opaque: boolean
+}
+
+const DIRECTORY_CHANGE_MAX_DEPTH = 4
+const SHELL_PAYLOAD_COMMANDS = new Set(["fish", "nu", "rc", "es"])
+const SHELL_COMMAND_EXCLUSIONS = new Set(["ssh", "mosh"])
+const MULTICALL_COMMANDS = new Set(["busybox", "toybox"])
+const INLINE_EVAL_COMMANDS = new Set([
+  "node",
+  "nodejs",
+  "ruby",
+  "perl",
+  "bun",
+  "lua",
+  "luajit",
+  "groovy",
+  "swift",
+  "r",
+  "rscript",
+])
+const DIRECTORY_WRAPPER_COMMANDS = new Set(["exec", "nice", "nohup", "sudo", "time", "timeout", "xargs"])
+
+const WRAPPER_VALUE_OPTIONS: Record<string, Set<string>> = {
+  nice: new Set(["-n", "--adjustment"]),
+  sudo: new Set([
+    "-C",
+    "--close-from",
+    "-D",
+    "--chdir",
+    "-g",
+    "--group",
+    "-h",
+    "--host",
+    "-p",
+    "--prompt",
+    "-R",
+    "--chroot",
+    "-T",
+    "--command-timeout",
+    "-u",
+    "--user",
+  ]),
+  time: new Set(["-f", "--format", "-o", "--output"]),
+  timeout: new Set(["-k", "--kill-after", "-s", "--signal"]),
+  xargs: new Set([
+    "-a",
+    "--arg-file",
+    "-E",
+    "--eof",
+    "-I",
+    "--replace",
+    "-L",
+    "--max-lines",
+    "-n",
+    "--max-args",
+    "-P",
+    "--max-procs",
+    "-s",
+    "--max-chars",
+  ]),
+}
+
+function mergeDirectoryChangeAnalysis(
+  target: DirectoryChangeAnalysis,
+  source: DirectoryChangeAnalysis,
+): DirectoryChangeAnalysis {
+  target.targets.push(...source.targets.filter((path) => !target.targets.includes(path)))
+  target.opaque ||= source.opaque
+  return target
+}
+
+function dynamicDirectoryTarget(target: string | undefined): boolean {
+  return !target || target === "-" || target.includes("$") || target.includes("`")
+}
+
+function cdpathDependentDirectoryTarget(target: string | undefined): boolean {
+  return Boolean(target && !target.startsWith("/") && !target.startsWith("~") && !target.startsWith("."))
+}
+function hasEscapedAnsiCQuote(command: string): boolean {
+  let quote: "'" | '"' | undefined
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]
+    if (char === "\\" && quote !== "'") {
+      index++
+      continue
+    }
+    if (quote) {
+      if (char === quote) quote = undefined
+      continue
+    }
+    if (char === '"' || (char === "'" && command[index - 1] !== "$")) {
+      quote = char
+      continue
+    }
+    if (char !== "$" || command[index + 1] !== "'") continue
+    for (index += 2; index < command.length; index++) {
+      if (command[index] === "'") break
+      if (command[index] === "\\" && index + 1 < command.length) return true
+    }
+  }
+  return false
+}
+
+function hasReparsedEscapedAnsiCQuote(command: string): boolean {
+  const compound = lexCompoundCommands(command)
+  const segments = compound.segments.length > 0 ? compound.segments : [command]
+  return segments.some((segment) => {
+    if (!hasAnsiCEscapeSyntax(segment)) return false
+    const text = unquotedShellText(segment)
+    return (
+      /(?:^|[^A-Za-z0-9_])(?:[^\s;&|()]+\/)?(?!(?:ssh|mosh)(?:\.exe)?\b)(?:[A-Za-z0-9_.-]*sh|fish|nu|rc|es)(?:\.exe)?\b[^;&|]*\s-[^-]*c\b/.test(
+        text,
+      ) ||
+      /\b(?:eval|trap)\b/.test(text) ||
+      /\benv\b[^;&|]*(?:\s-S\b|--split-string)/.test(text)
+    )
+  })
+}
+
+function hasAnsiCEscapeSyntax(command: string): boolean {
+  for (let start = command.indexOf("$'"); start !== -1; start = command.indexOf("$'", start + 2)) {
+    for (let index = start + 2; index < command.length; index++) {
+      if (command[index] === "'") break
+      if (command[index] === "\\" && index + 1 < command.length) return true
+    }
+  }
+  return false
+}
+
+function hasFunctionDefinition(command: string): boolean {
+  const name = "[A-Za-z_][A-Za-z0-9_.:-]*"
+  const prefix = "(?:^|[;&|(){}\\n]|\\b(?:if|then|elif|else|do|while|until)\\b\\s+)"
+  return new RegExp(`${prefix}\\s*(?:function\\s+${name}(?:\\s*\\(\\s*\\))?|${name}\\s*\\(\\s*\\))\\s*\\{`).test(
+    unquotedShellText(command),
+  )
+}
+
+function commandBasename(name: string): string {
+  return (name.split(/[\\/]/).pop() || name).toLowerCase().replace(/\.exe$/, "")
+}
+
+function dynamicCommandName(name: string): boolean {
+  return name.includes("$") || name.includes("`")
+}
+
+function isShellPayloadCommand(name: string): boolean {
+  return SHELL_PAYLOAD_COMMANDS.has(name) || (name.endsWith("sh") && !SHELL_COMMAND_EXCLUSIONS.has(name))
+}
+
+function hasOpaqueCaseDirectorySyntax(command: string): boolean {
+  const text = unquotedShellText(command)
+  if (!/\bcase\b[\s\S]*\bin\b/.test(text)) return false
+  return (
+    /\b(?:cd|pushd|popd|eval|trap)\b/.test(text) ||
+    /\benv\b[\s\S]*(?:\s-C\b|--chdir|\s-S\b|--split-string)/.test(text) ||
+    /\b(?:(?!(?:ssh|mosh)\b)[A-Za-z0-9_.-]*sh|fish|nu|rc|es)\b[\s\S]*\s-[^-]*c\b/.test(text) ||
+    /\b(?:busybox|toybox)\b[\s\S]*\b(?:(?!(?:ssh|mosh)\b)[A-Za-z0-9_.-]*sh|fish|nu|rc|es)\b[\s\S]*\s-[^-]*c\b/.test(
+      text,
+    ) ||
+    /\b(?:python|pypy)(?:\d+(?:\.\d+)*)?\b[\s\S]*\s-[^-]*c\b/.test(text) ||
+    /\b(?:node|nodejs|ruby|perl|bun|lua|luajit|groovy|swift|r|rscript)\b[\s\S]*(?:\s-[^-]*e\b|\s--eval\b|\s--print\b)/.test(
+      text,
+    ) ||
+    /\bphp\b[\s\S]*(?:\s-[^-]*[rBRE]\b|\s--(?:run|process-begin|process-code|process-end)\b)/.test(text) ||
+    /\b(?:pwsh|powershell)(?:\.exe)?\b[\s\S]*\s-(?:c|command|commandwithargs|e|ec|enc|encodedcommand)\b/i.test(text) ||
+    /\bdeno\b[\s\S]*\beval\b/.test(text) ||
+    /\b(?:awk|gawk|mawk|nawk)\b[\s\S]*\bsystem\s*\(/.test(text)
+  )
+}
+
+function hasInlineInterpreterPayload(name: string, args: string[]): boolean {
+  if (/^(?:python|pypy)(?:\d+(?:\.\d+)*)?$/.test(name)) {
+    return args.some((word) => /^-[^-]*c/.test(word))
+  }
+  if (INLINE_EVAL_COMMANDS.has(name)) {
+    return args.some((word) => {
+      const lower = word.toLowerCase()
+      return (
+        /^-[^-]*e/.test(lower) ||
+        lower === "--eval" ||
+        lower.startsWith("--eval=") ||
+        ((name === "node" || name === "nodejs" || name === "bun") &&
+          (lower === "--print" || lower.startsWith("--print=") || /^-[^-]*p/.test(lower)))
+      )
+    })
+  }
+  if (name === "php") {
+    return args.some(
+      (word) =>
+        /^-[^-]*[rBRE]/.test(word) ||
+        /^--(?:run|process-begin|process-code|process-end)(?:=|$)/.test(word.toLowerCase()),
+    )
+  }
+  if (name === "pwsh" || name === "powershell") {
+    return args.some((word) => {
+      const option = word.split("=", 1)[0]?.toLowerCase()
+      return ["-c", "-command", "-commandwithargs", "-e", "-ec", "-enc", "-encodedcommand"].includes(option)
+    })
+  }
+  if (name === "deno") return args.includes("eval")
+  if (/^(?:awk|gawk|mawk|nawk)$/.test(name)) return args.some((word) => /\bsystem\s*\(/.test(word))
+  return false
+}
+
+function multicallCommandParts(args: string[]): { name?: string; args: string[] } {
+  let index = 0
+  while (args[index]?.startsWith("-")) {
+    if (args[index++] === "--") break
+  }
+  return { name: args[index], args: args.slice(index + 1) }
+}
+
+function xargsReplacementToken(args: string[]): string | undefined {
+  for (let index = 0; index < args.length; index++) {
+    const word = args[index]
+    if (word === "-I" || word === "--replace") return args[index + 1] ?? "{}"
+    if (word.startsWith("-I") && word.length > 2) return word.slice(2)
+    if (word.startsWith("--replace=")) return word.slice("--replace=".length) || "{}"
+  }
+}
+
+function positionalDirectoryTarget(args: string[]): string | undefined {
+  let index = 0
+  while (args[index]?.startsWith("-") && args[index] !== "-") {
+    if (args[index++] === "--") break
+  }
+  return args[index]
+}
+
+function envDirectoryChange(args: string[]): { target?: string; commandIndex: number; opaque: boolean } {
+  let target: string | undefined
+  let opaque = false
+  let index = 0
+  while (index < args.length) {
+    const word = args[index]
+    if (!word) break
+    if (word === "--") return { target, commandIndex: index + 1, opaque }
+    if (word.includes("=") && !word.startsWith("-")) {
+      index++
+      continue
+    }
+    if (word === "-C" || word === "--chdir") {
+      target = args[index + 1]
+      opaque ||= dynamicDirectoryTarget(target)
+      index += 2
+      continue
+    }
+    if (word.startsWith("--chdir=")) {
+      target = word.slice("--chdir=".length)
+      opaque ||= dynamicDirectoryTarget(target)
+      index++
+      continue
+    }
+    if (word.startsWith("-C") && word.length > 2) {
+      target = word.slice(2)
+      opaque ||= dynamicDirectoryTarget(target)
+      index++
+      continue
+    }
+    if (word === "-u" || word === "--unset") {
+      index += 2
+      continue
+    }
+    if (word.startsWith("-")) {
+      index++
+      continue
+    }
+    break
+  }
+  return { target, commandIndex: index, opaque }
+}
+
+function shellPayload(args: string[]): string | undefined {
+  const flagIndex = args.findIndex((word) => /^-[^-]*c/.test(word))
+  return flagIndex === -1 ? undefined : args[flagIndex + 1]
+}
+
+function wrapperCommandParts(name: string, args: string[]): { name?: string; args: string[] } {
+  const valueOptions = WRAPPER_VALUE_OPTIONS[name] ?? new Set<string>()
+  let index = 0
+  while (index < args.length) {
+    const word = args[index]
+    if (!word) break
+    if (word === "--") {
+      index++
+      break
+    }
+    if (valueOptions.has(word)) {
+      index += 2
+      continue
+    }
+    if (word.startsWith("-")) {
+      index++
+      continue
+    }
+    break
+  }
+  if (name === "timeout" && index < args.length) index++
+  while (args[index]?.includes("=") && !args[index]?.startsWith("-")) index++
+  return { name: args[index], args: args.slice(index + 1) }
+}
+
+function trapPayload(args: string[]): string | undefined {
+  const payloadArgs = args[0] === "--" ? args.slice(1) : args
+  if (payloadArgs.length < 2 || payloadArgs[0]?.startsWith("-")) return undefined
+  return payloadArgs[0]
+}
+
+function controlCommandSegment(segment: string): string {
+  let current = segment.trim()
+  current = current.replace(/^case\b[\s\S]*?\bin\b\s*[^()]*\)\s*/, "")
+  current = current.replace(/^[^(){};&|]+\)\s*/, "")
+  current = current.replace(/^[({]+\s*/, "")
+  while (/^(?:if|then|elif|else|do|while|until|!)\b/.test(current)) {
+    current = current.replace(/^(?:if|then|elif|else|do|while|until|!)\b\s*/, "")
+  }
+  return current.replace(/(?:\)+|\s+}+)$/, "").trim()
+}
+
+function unquotedShellText(command: string): string {
+  let result = ""
+  let quote: "'" | '"' | undefined
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]
+    if (char === "\\" && quote !== "'") {
+      result += quote ? "  " : command.slice(index, index + 2)
+      index++
+      continue
+    }
+    if ((char === "'" || char === '"') && (!quote || quote === char)) {
+      quote = quote ? undefined : char
+      result += " "
+      continue
+    }
+    result += quote ? " " : char
+  }
+  return result
+}
+
+function commandSubstitutionPayloads(command: string): string[] {
+  const payloads: string[] = []
+  let quote: "'" | '"' | undefined
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]
+    if (char === "\\" && quote !== "'") {
+      index++
+      continue
+    }
+    if ((char === "'" || char === '"') && (!quote || quote === char)) {
+      quote = quote ? undefined : char
+      continue
+    }
+    if (quote !== "'" && char === "`") {
+      const start = index + 1
+      for (let cursor = start; cursor < command.length; cursor++) {
+        if (command[cursor] === "\\") {
+          cursor++
+          continue
+        }
+        if (command[cursor] !== "`") continue
+        payloads.push(command.slice(start, cursor))
+        index = cursor
+        break
+      }
+      continue
+    }
+    if (quote === "'" || char !== "$" || command[index + 1] !== "(" || command[index + 2] === "(") continue
+
+    const start = index + 2
+    let depth = 1
+    let innerQuote: "'" | '"' | undefined
+    for (let cursor = start; cursor < command.length; cursor++) {
+      const inner = command[cursor]
+      if (inner === "\\" && innerQuote !== "'") {
+        cursor++
+        continue
+      }
+      if ((inner === "'" || inner === '"') && (!innerQuote || innerQuote === inner)) {
+        innerQuote = innerQuote ? undefined : inner
+        continue
+      }
+      if (innerQuote) continue
+      if (inner === "(") depth++
+      if (inner !== ")" || --depth !== 0) continue
+      payloads.push(command.slice(start, cursor))
+      index = cursor
+      break
+    }
+  }
+  return payloads
+}
+
+function analyzeDirectoryCommandParts(
+  name: string | undefined,
+  args: string[],
+  depth: number,
+): DirectoryChangeAnalysis {
+  const result: DirectoryChangeAnalysis = { targets: [], opaque: false }
+  if (!name) return result
+  if (dynamicCommandName(name)) return { targets: [], opaque: true }
+
+  const command = commandBasename(name)
+  if (depth > DIRECTORY_CHANGE_MAX_DEPTH) {
+    return {
+      targets: [],
+      opaque:
+        command === "cd" ||
+        command === "pushd" ||
+        command === "popd" ||
+        command === "env" ||
+        command === "eval" ||
+        command === "trap" ||
+        isShellPayloadCommand(command) ||
+        hasInlineInterpreterPayload(command, args) ||
+        MULTICALL_COMMANDS.has(command) ||
+        DIRECTORY_WRAPPER_COMMANDS.has(command),
+    }
+  }
+  if (command === "cd" || command === "pushd") {
+    const target = positionalDirectoryTarget(args)
+    if (
+      dynamicDirectoryTarget(target) ||
+      cdpathDependentDirectoryTarget(target) ||
+      (command === "pushd" && /^[+-]\d+$/.test(target ?? ""))
+    ) {
+      result.opaque = true
+    } else {
+      result.targets.push(target!)
+    }
+    return result
+  }
+  if (command === "popd") {
+    result.opaque = true
+    return result
+  }
+  if (command === "env") {
+    const env = envDirectoryChange(args)
+    if (env.target && !dynamicDirectoryTarget(env.target)) result.targets.push(env.target)
+    result.opaque ||= env.opaque
+    const expanded = expandEnvSplitString([command, ...args], 0)
+    if (expanded) {
+      mergeDirectoryChangeAnalysis(result, analyzeDirectoryCommandParts(expanded[0], expanded.slice(1), depth + 1))
+    } else if (env.commandIndex < args.length) {
+      mergeDirectoryChangeAnalysis(
+        result,
+        analyzeDirectoryCommandParts(args[env.commandIndex], args.slice(env.commandIndex + 1), depth + 1),
+      )
+    }
+    return result
+  }
+  if (MULTICALL_COMMANDS.has(command)) {
+    const applet = multicallCommandParts(args)
+    mergeDirectoryChangeAnalysis(result, analyzeDirectoryCommandParts(applet.name, applet.args, depth + 1))
+    return result
+  }
+  if (hasInlineInterpreterPayload(command, args)) return { targets: [], opaque: true }
+  if (isShellPayloadCommand(command)) {
+    const payload = shellPayload(args)
+    if (payload) mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, depth + 1))
+    return result
+  }
+  if (command === "eval" && args.length > 0) {
+    mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(args.join(" "), depth + 1))
+  }
+  if (command === "trap") {
+    const payload = trapPayload(args)
+    if (payload) mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, depth + 1))
+    return result
+  }
+  if (DIRECTORY_WRAPPER_COMMANDS.has(command)) {
+    const replacement = command === "xargs" ? xargsReplacementToken(args) : undefined
+    const wrapped = wrapperCommandParts(command, args)
+    const wrappedAnalysis = analyzeDirectoryCommandParts(wrapped.name, wrapped.args, depth + 1)
+    if (replacement && wrappedAnalysis.targets.some((target) => target.includes(replacement))) {
+      wrappedAnalysis.opaque = true
+    }
+    mergeDirectoryChangeAnalysis(result, wrappedAnalysis)
+    return result
+  }
+  return result
+}
+
+function analyzeDirectoryChangesRecursive(command: string, depth: number): DirectoryChangeAnalysis {
+  const result: DirectoryChangeAnalysis = { targets: [], opaque: false }
+  if (hasEscapedAnsiCQuote(command) || hasReparsedEscapedAnsiCQuote(command)) result.opaque = true
+
+  const normalized = normalizeCommand(command)
+  const potentialChange = /\b(?:cd|pushd|popd)\b|\benv\b[^\n]*(?:\s-C\b|--chdir)/.test(unquotedShellText(normalized))
+  if (depth > DIRECTORY_CHANGE_MAX_DEPTH) return { targets: [], opaque: potentialChange || result.opaque }
+  if (normalized.includes("\n") && potentialChange) result.opaque = true
+  if (hasFunctionDefinition(normalized) || hasOpaqueCaseDirectorySyntax(normalized)) result.opaque = true
+
+  for (const payload of commandSubstitutionPayloads(normalized)) {
+    mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, depth + 1))
+  }
+
+  const compound = lexCompoundCommands(normalized)
+  const segments = compound.segments.length > 0 ? compound.segments : [normalized]
+  for (const segment of segments) {
+    const controlled = controlCommandSegment(segment)
+    const parsed = simpleCommandParts(controlled)
+    const direct = analyzeDirectoryCommandParts(parsed.name, parsed.args, depth)
+    mergeDirectoryChangeAnalysis(result, direct)
+
+    if (direct.targets.length === 0 && !direct.opaque) {
+      const stripped = stripWrappers(controlled)
+      if (stripped !== controlled) {
+        const wrapped = simpleCommandParts(stripped)
+        mergeDirectoryChangeAnalysis(result, analyzeDirectoryCommandParts(wrapped.name, wrapped.args, depth))
+      }
+    }
+
+    // Conservative backstop for cwd-changing builtins hidden behind shell grammar
+    // that the simple-command path cannot resolve without a full shell parser.
+    const hidden = unquotedShellText(segment)
+    if (/(?:^|[({)]|\b(?:if|then|elif|else|do|while|until)\b)\s*(?:cd|pushd|popd)\b/.test(hidden)) {
+      if (direct.targets.length === 0 && !direct.opaque) result.opaque = true
+    }
+  }
+  return result
+}
+
 export type BashRisk =
   | "shell_read"
   | "shell"
@@ -732,14 +1300,19 @@ export type BashRisk =
   | "shell_hardline"
 export namespace ShellSafety {
   export function isReadOnly(command: string): boolean {
-    const padded = " " + normalizeCommand(command).toLowerCase() + " "
+    const padded = " " + normalizeCommand(command) + " "
     const normalized = stripAllowedRedirects(padded)
-    if (UNSAFE_SHELL_TOKENS.some((token) => normalized.includes(token))) return false
+    const lower = normalized.toLowerCase()
+    if (UNSAFE_SHELL_TOKENS.some((token) => lower.includes(token))) return false
 
     const segments = lexCompoundCommands(normalized.trim()).segments
 
     if (segments.length === 0) return true
     return segments.every(isSafeSimpleCommand)
+  }
+
+  export function analyzeDirectoryChanges(command: string): DirectoryChangeAnalysis {
+    return analyzeDirectoryChangesRecursive(command, 0)
   }
 
   export function capability(command: string): "shell_read" | "shell" {

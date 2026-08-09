@@ -186,10 +186,11 @@ export namespace Attachment {
       !Array.isArray(input.metadata.attachment)
         ? input.metadata.attachment
         : {}
-    const url =
+    const assetID =
       model.mode === "provider-file"
-        ? dataUrl(input.mime, input.bytes)
-        : `asset://${await Asset.write(Buffer.from(input.bytes), input.mime, input.filename)}`
+        ? undefined
+        : await Asset.write(Buffer.from(input.bytes), input.mime, input.filename)
+    const url = assetID ? `asset://${assetID}` : dataUrl(input.mime, input.bytes)
     return {
       id: input.id ?? Identifier.ascending("part"),
       sessionID: input.sessionID,
@@ -198,7 +199,7 @@ export namespace Attachment {
       url,
       mime: input.mime,
       filename: input.filename,
-      localPath: input.localPath,
+      localPath: assetID ? Asset.resolvePath(assetID) : input.localPath,
       source: input.source,
       presentation: input.presentation ?? fallbackPolicy.presentation,
       model,
