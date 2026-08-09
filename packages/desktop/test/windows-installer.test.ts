@@ -97,8 +97,10 @@ async function spawnSiblingProcess(directory: string) {
 async function uninstall(installDir: string) {
   const uninstaller = path.join(installDir, "Uninstall synergy-desktop.exe")
   if (await Bun.file(uninstaller).exists()) {
-    // NSIS requires the unquoted _?= path last to run the real uninstall synchronously.
-    await run([uninstaller, "/S", `_?=${installDir}`], {}, 120_000, true)
+    const externalUninstaller = path.join(path.dirname(installDir), "uninstaller.exe")
+    await fs.copyFile(uninstaller, externalUninstaller)
+    // Keep the running copy outside $INSTDIR so Windows can remove the installed uninstaller.
+    await run([externalUninstaller, "/S", `_?=${installDir}`], {}, 120_000, true)
   }
 }
 
