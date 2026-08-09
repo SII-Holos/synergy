@@ -16,6 +16,7 @@ import type {
   ActivityFamily,
   ActivityGroupItem,
   ActivityGroupState,
+  ActivityReasoningSummaryItem,
   ActivityReceiptItem,
   ActivityStepProjection,
   ActivitySummaryItem,
@@ -210,6 +211,38 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
   )
 }
 
+export function ActivityReasoningSummary(props: { item: ActivityReasoningSummaryItem }) {
+  const { _ } = useLingui()
+  const terminal = createMemo(() => props.item.state === "stable" || props.item.state === "fallback")
+  const thinkingText = createMemo(() => _({ id: "activity.trace.reasoning.thinking", message: "Thinking…" }))
+  const reasoningText = createMemo(() => _({ id: "activity.trace.reasoning.fallback", message: "Reasoning" }))
+  const text = createMemo(() => {
+    const stored = props.item.text?.trim()
+    if (stored) return stored
+    return props.item.state === "pending" ? thinkingText() : reasoningText()
+  })
+
+  return (
+    <div
+      data-component="reasoning-summary"
+      data-summary-state={props.item.state}
+      data-summary-source={props.item.source}
+      role={terminal() ? "status" : undefined}
+      aria-live={terminal() ? "polite" : "off"}
+    >
+      <span data-slot="reasoning-summary-leading" aria-hidden="true">
+        <Show
+          when={props.item.state === "pending"}
+          fallback={<Icon name={getSemanticIcon("performance.trace")} size="small" />}
+        >
+          <Spinner />
+        </Show>
+      </span>
+      <span data-slot="reasoning-summary-text">{text()}</span>
+    </div>
+  )
+}
+
 export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: string }) {
   const { _ } = useLingui()
   const [open, setOpen] = createSignal(false)
@@ -227,9 +260,18 @@ export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: stri
             <Icon name={familyIcon(props.group.family)} size="small" />
           </span>
           <span data-slot="activity-trace-copy">
-            <span data-slot="activity-trace-title">{familyLabel()}</span>
-            <Show when={props.group.scopeLabel}>
-              {(scope) => <span data-slot="activity-trace-scope">{scope()}</span>}
+            <span data-slot="activity-trace-heading">
+              <span data-slot="activity-trace-title">{familyLabel()}</span>
+              <Show when={props.group.scopeLabel}>
+                {(scope) => <span data-slot="activity-trace-scope">{scope()}</span>}
+              </Show>
+            </span>
+            <Show when={props.group.summary?.text}>
+              {(summary) => (
+                <span data-slot="activity-trace-summary" data-summary-state={props.group.summary?.state}>
+                  {summary()}
+                </span>
+              )}
             </Show>
           </span>
           <span data-slot="activity-trace-meta">
@@ -308,6 +350,13 @@ export function MinimalActivitySummary(props: { item: ActivitySummaryItem }) {
           </>
         )}
       </For>
+      <Show when={props.item.now?.text}>
+        {(now) => (
+          <span data-slot="minimal-activity-now" aria-hidden="true">
+            {now()}
+          </span>
+        )}
+      </Show>
     </div>
   )
 }

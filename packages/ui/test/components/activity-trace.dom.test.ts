@@ -50,7 +50,7 @@ beforeAll(async () => {
       import { render } from "solid-js/web"
       import { I18nProvider } from "@lingui/solid"
       import { setupI18n } from ${JSON.stringify(i18nPath)}
-      import { ActivityTrace, AnimatedActivityCount, MinimalActivitySummary } from ${JSON.stringify(componentPath)}
+      import { ActivityReasoningSummary, ActivityTrace, AnimatedActivityCount, MinimalActivitySummary } from ${JSON.stringify(componentPath)}
 
       const [countValue, setCountValue] = createSignal(9)
       const [countIdentity, setCountIdentity] = createSignal("turn-a")
@@ -76,6 +76,7 @@ beforeAll(async () => {
           { part: { id: "p2" }, family: "modify-files", scopeKey: "scope-a", icon: "file-pen", title: "Add tests", state: "done" },
         ],
         receipt: false,
+        summary: { state: "stable", text: "Updated the activity presentation" },
       }
 
       const i18n = setupI18n()
@@ -94,9 +95,24 @@ beforeAll(async () => {
                 total: 9,
                 facts: [{ family: "modify-files", count: 3 }],
                 completed: summaryCompleted(),
+                now: { text: "Verifying compressed activity", source: "reasoning", updatedAt: 10 },
               }}
             />
             <ActivityTrace group={group} serverUrl="http://localhost" />
+            <div id="reasoning-summary-host">
+              <ActivityReasoningSummary
+                item={{ kind: "activity-reasoning-summary", key: "reasoning-pending", message: group.message, partID: "rp", state: "pending" }}
+              />
+              <ActivityReasoningSummary
+                item={{ kind: "activity-reasoning-summary", key: "reasoning-live", message: group.message, partID: "rl", state: "live", text: "Tracing the message flow", source: "nano" }}
+              />
+              <ActivityReasoningSummary
+                item={{ kind: "activity-reasoning-summary", key: "reasoning-stable", message: group.message, partID: "rs", state: "stable", text: "Mapped the message flow", source: "nano" }}
+              />
+              <ActivityReasoningSummary
+                item={{ kind: "activity-reasoning-summary", key: "reasoning-fallback", message: group.message, partID: "rf", state: "fallback" }}
+              />
+            </div>
           </I18nProvider>
         ),
         root,
@@ -292,6 +308,43 @@ describe("MinimalActivitySummary DOM behavior", () => {
     await wait(0)
     expect(summaryRoot().hasAttribute("role")).toBe(false)
     expect(summaryRoot().getAttribute("aria-live")).toBe("off")
+  })
+})
+
+describe("Activity summary DOM behavior", () => {
+  function reasoning(state: string): HTMLElement {
+    return document.querySelector(`[data-component="reasoning-summary"][data-summary-state="${state}"]`) as HTMLElement
+  }
+
+  test("keeps pending and live updates silent while announcing terminal summaries", () => {
+    expect(reasoning("pending").textContent).toContain("Thinking…")
+    expect(reasoning("pending").querySelector('[data-component="spinner"]')).not.toBeNull()
+    expect(reasoning("pending").getAttribute("aria-live")).toBe("off")
+    expect(reasoning("pending").hasAttribute("role")).toBe(false)
+
+    expect(reasoning("live").textContent).toContain("Tracing the message flow")
+    expect(reasoning("live").getAttribute("aria-live")).toBe("off")
+    expect(reasoning("live").hasAttribute("role")).toBe(false)
+
+    expect(reasoning("stable").textContent).toContain("Mapped the message flow")
+    expect(reasoning("stable").getAttribute("data-summary-source")).toBe("nano")
+    expect(reasoning("stable").getAttribute("role")).toBe("status")
+    expect(reasoning("stable").getAttribute("aria-live")).toBe("polite")
+
+    expect(reasoning("fallback").textContent).toContain("Reasoning")
+    expect(reasoning("fallback").querySelector('[data-component="spinner"]')).toBeNull()
+    expect(reasoning("fallback").getAttribute("role")).toBe("status")
+    expect(reasoning("fallback").getAttribute("aria-live")).toBe("polite")
+  })
+
+  test("renders group and minimal summaries in their stable slots", () => {
+    const groupSummary = document.querySelector('[data-slot="activity-trace-summary"]')
+    expect(groupSummary?.textContent).toBe("Updated the activity presentation")
+    expect(groupSummary?.getAttribute("data-summary-state")).toBe("stable")
+
+    const now = document.querySelector('[data-slot="minimal-activity-now"]')
+    expect(now?.textContent).toBe("Verifying compressed activity")
+    expect(now?.getAttribute("aria-hidden")).toBe("true")
   })
 })
 

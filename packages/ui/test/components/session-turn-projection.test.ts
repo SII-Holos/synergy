@@ -63,6 +63,7 @@ mock.module("../../src/components/clipboard", () => ({
   }),
 }))
 mock.module("../../src/components/activity-trace", () => ({
+  ActivityReasoningSummary: Empty,
   ActivityReceipt: Empty,
   ActivityTrace: Empty,
   MinimalActivitySummary: Empty,

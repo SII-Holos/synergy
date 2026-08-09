@@ -54,6 +54,14 @@ msgid "activity.trace.family.research-web"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "activity.trace.reasoning.fallback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "activity.trace.reasoning.thinking"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "activity.trace.status.done"
 msgstr ""
 

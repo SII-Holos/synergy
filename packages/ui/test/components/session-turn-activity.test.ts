@@ -70,6 +70,7 @@ mock.module("../../src/components/clipboard", () => ({
   }),
 }))
 mock.module("../../src/components/activity-trace", () => ({
+  ActivityReasoningSummary: Empty,
   ActivityReceipt: Empty,
   ActivityTrace: Empty,
   MinimalActivitySummary: Empty,
@@ -307,12 +308,71 @@ describe("session turn activity projection", () => {
     expect(completed.some((item) => item.kind === "passthrough" && item.item.part?.id === "thinking")).toBe(false)
   })
 
-  test("preserves reasoning-only content when completion promotes it to a visible part", () => {
+  test("replaces completed reasoning-only content with a deterministic fallback summary", () => {
     const completed = project({ parts: [reasoning("thinking")], working: false })
 
     expect(completed).toHaveLength(1)
-    expect(completed[0]).toMatchObject({ kind: "passthrough", item: { kind: "part" } })
-    expect(completed[0]?.kind === "passthrough" ? completed[0].item.part?.id : undefined).toBe("thinking")
+    expect(completed[0]).toMatchObject({
+      kind: "activity-reasoning-summary",
+      key: "activity-reasoning:assistant-a:thinking",
+      partID: "thinking",
+      state: "fallback",
+    })
+    expect(JSON.stringify(completed)).not.toContain('"text":"Thinking"')
+  })
+
+  test("replaces streaming reasoning with a pending summary without retaining raw text", () => {
+    const streaming = project({ parts: [reasoning("thinking")], working: true })
+
+    expect(streaming).toHaveLength(1)
+    expect(streaming[0]).toMatchObject({
+      kind: "activity-reasoning-summary",
+      key: "activity-reasoning:assistant-a:thinking",
+      partID: "thinking",
+      state: "pending",
+    })
+    expect(JSON.stringify(streaming)).not.toContain('"text":"Thinking"')
+  })
+
+  test("projects live reasoning and group summaries from assistant metadata", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 2,
+        reasoning: {
+          thinking: {
+            state: "live",
+            text: "Locating the activity rendering boundary",
+            updatedAt: 10,
+          },
+        },
+        groups: {
+          "activity:assistant-a:inspect-local::read-a": {
+            state: "stable",
+            text: "Checked the relevant UI entry points",
+            updatedAt: 11,
+          },
+        },
+      },
+    }
+    const projected = project({
+      message,
+      parts: [reasoning("thinking"), tool({ id: "read-a" })],
+      working: true,
+    })
+
+    expect(projected[0]).toMatchObject({
+      kind: "activity-reasoning-summary",
+      state: "live",
+      text: "Locating the activity rendering boundary",
+    })
+    expect(activities(projected)[0]).toMatchObject({
+      summary: {
+        state: "stable",
+        text: "Checked the relevant UI entry points",
+      },
+    })
   })
 
   test("caps a group at 24 steps and gives continuation groups their own first-part key", () => {
@@ -565,6 +625,52 @@ describe("minimal activity projection", () => {
     ])
   })
 
+  test("adds the latest bounded activity summary as the minimal now line", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 1,
+        now: {
+          text: "Verifying the compressed activity trace",
+          source: "reasoning",
+          updatedAt: 10,
+        },
+      },
+    }
+    const projected = project({ message, parts: [tool({ id: "read-a" })] })
+    const minimal = projectMinimalActivityItems(projected, "root-user", false)
+    const summary = minimal.find((item) => item.kind === "activity-summary")
+
+    expect(summary).toMatchObject({
+      kind: "activity-summary",
+      now: {
+        text: "Verifying the compressed activity trace",
+        source: "reasoning",
+      },
+    })
+  })
+  test("drops reasoning summary items while preserving the minimal now line", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 1,
+        now: {
+          text: "Verifying the compressed activity trace",
+          source: "reasoning",
+          updatedAt: 10,
+        },
+      },
+    }
+    const projected = project({ message, parts: [reasoning("thinking"), tool({ id: "read-a" })], working: true })
+    const minimal = projectMinimalActivityItems(projected, "root-user", false)
+
+    expect(minimal.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
+    expect(minimal.find((item) => item.kind === "activity-summary")).toMatchObject({
+      now: { text: "Verifying the compressed activity trace", source: "reasoning" },
+    })
+  })
   test("renders no summary without ordinary activity", () => {
     const message = assistant()
     const full = collectSessionTurnTimelineItems([message], { [message.id]: [text("answer")] }, false)

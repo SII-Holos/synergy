@@ -39,7 +39,7 @@ import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
 import { createCopyController } from "./clipboard"
 import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
-import { ActivityReceipt, ActivityTrace, MinimalActivitySummary } from "./activity-trace"
+import { ActivityReasoningSummary, ActivityReceipt, ActivityTrace, MinimalActivitySummary } from "./activity-trace"
 import {
   activityItemStableKey,
   isActivityTimelineItem,
@@ -533,6 +533,7 @@ function displayItemVisualKind(item: SessionTurnDisplayItem) {
 
 function isReasoningDisplayItem(item: SessionTurnDisplayItem): boolean {
   if (!isAssistantTimelineDisplayItem(item)) return false
+  if (isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary") return true
   return displayItemTimelineItem(item)?.kind === "reasoning"
 }
 
@@ -589,6 +590,10 @@ function TimelineDisplay(props: {
     const item = props.item
     return isActivityTimelineItem(item) && item.kind === "activity-summary" ? item : undefined
   })
+  const activityReasoning = createMemo(() => {
+    const item = props.item
+    return isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary" ? item : undefined
+  })
   const activityReceipt = createMemo(() => {
     const item = props.item
     return isActivityTimelineItem(item) && item.kind === "activity-receipt" ? item : undefined
@@ -606,6 +611,7 @@ function TimelineDisplay(props: {
     <Switch>
       <Match when={activityGroup()}>{(item) => <ActivityTrace group={item()} serverUrl={props.serverUrl} />}</Match>
       <Match when={activitySummary()}>{(item) => <MinimalActivitySummary item={item()} />}</Match>
+      <Match when={activityReasoning()}>{(item) => <ActivityReasoningSummary item={item()} />}</Match>
       <Match when={activityReceipt()}>{(item) => <ActivityReceipt item={item()} serverUrl={props.serverUrl} />}</Match>
       <Match when={guidedUser()}>
         {(item) => (

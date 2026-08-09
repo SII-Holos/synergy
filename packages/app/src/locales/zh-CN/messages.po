@@ -54,6 +54,14 @@ msgid "activity.trace.family.research-web"
 msgstr "已调研"
 
 #. js-lingui-explicit-id
+msgid "activity.trace.reasoning.fallback"
+msgstr "推理过程"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.reasoning.thinking"
+msgstr "思考中…"
+
+#. js-lingui-explicit-id
 msgid "activity.trace.status.done"
 msgstr "完成"
 

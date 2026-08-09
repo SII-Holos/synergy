@@ -282,6 +282,16 @@ The original part order is the transcript order. Frontends must not regroup text
 
 Tool output and metadata are bounded before persistence. Streaming text and reasoning writes use write-behind, while discrete and terminal writes remain immediate; see [Frontend data sync](frontend-data-sync.md).
 
+### Derived activity summaries
+
+Assistant messages may persist bounded presentation-only summaries under `metadata.activity`. This derived object has schema version `v: 1`, a per-message monotonic `seq`, optional reasoning entries keyed by reasoning part ID, optional Activity Trace group entries keyed by the shared deterministic group key, and an optional latest `now` line. Summary states are `live`, `stable`, or `fallback`; pending presentation is derived locally and is never persisted.
+
+`ActivitySummary` observes the existing part and message events without awaiting model work in the streaming path. For `balanced` and `minimal`, it submits bounded, sessionless calls to the hidden `activity-summary` agent using the `nano` model role, a deny-all permission profile, no retries, and a fixed timeout. Reasoning input is limited to a head/tail excerpt. Tool-group prompts contain only the deterministic family, step count, and tool names; they never include tool inputs, outputs, paths, URLs, raw errors, permission rationale, or secrets. `full` mode does not invoke this operation.
+
+Writes go through `Session.updateActivityMetadata`, which compares the expected `seq` inside the owning message-info storage update, merges reasoning and group maps, advances the sequence, updates `SessionMessageCache`, and publishes the canonical assistant message through the existing `message.updated` event. Stale writers are discarded. No new route, SDK contract, part type, or event is involved.
+
+Activity summaries never rewrite message parts and never enter model-context projection. Provider failure, timeout, cancellation, empty output, or unavailable nano configuration fails soft: a terminal reasoning entry either preserves the latest live text as stable `partial-live` or becomes `fallback`; deterministic Activity Trace projection and the session loop continue independently. Because the metadata is additive derived state, existing messages require no migration or historical backfill.
+
 ### Assets and attachments
 
 Attachments are durable parts with separate model and presentation policies. Model policy can provide a summary, extracted content, a provider-managed file, or no model input. Presentation policy can select image/video/audio/thumbnail/file rendering, size, crop, or hidden state.

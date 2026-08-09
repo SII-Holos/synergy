@@ -1,26 +1,26 @@
 import type { MessageDescriptor } from "@lingui/core"
 import type { AssistantMessage, AttachmentPart, PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk/client"
+import {
+  ACTIVITY_FAMILY_ORDER,
+  ActivityDerivedMetadataSchema,
+  activityFamilyForTool,
+  activityGroupKey,
+  activityScopeForTool,
+  isActivityReceiptTool,
+  MAX_ACTIVITY_GROUP_STEPS,
+  resolveActivityDisplay,
+  type ActivityDerivedMetadata,
+  type ActivityDisplayMode,
+  type ActivityFamily,
+  type ActivitySummaryState,
+} from "@ericsanchezok/synergy-util/activity"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import type { IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { timelineItemStableKey, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
-import { classifyTool, type SemanticCategory } from "./tool/classifier"
-
-export type ActivityDisplayMode = "full" | "balanced" | "minimal"
-
-export type ActivityFamily =
-  | "inspect-local"
-  | "research-web"
-  | "modify-files"
-  | "execute"
-  | "browser"
-  | "delegate"
-  | "produce"
-  | "external-action"
-  | "coordination"
-  | "generic"
-
+export { resolveActivityDisplay }
+export type { ActivityDisplayMode, ActivityFamily }
 export type ActivityGroupState = "running" | "error" | "waiting-approval" | "done"
 
 export type ActivityStepPreview =
@@ -61,6 +61,20 @@ export type ActivityGroupItem = {
   state: ActivityGroupState
   steps: ActivityStepProjection[]
   receipt: boolean
+  summary?: ActivityTextSummary
+}
+
+export type ActivityTextSummary = {
+  state: ActivitySummaryState | "pending"
+  text?: string
+  source?: "nano" | "partial-live"
+}
+
+export type ActivityReasoningSummaryItem = ActivityTextSummary & {
+  kind: "activity-reasoning-summary"
+  key: string
+  message: AssistantMessage
+  partID: string
 }
 
 export type ActivitySummaryFact = {
@@ -75,6 +89,7 @@ export type ActivitySummaryItem = {
   total: number
   facts: ActivitySummaryFact[]
   completed: boolean
+  now?: NonNullable<ActivityDerivedMetadata["now"]>
 }
 
 export type ActivityReceiptItem = {
@@ -98,91 +113,15 @@ export type ActivityPassthroughItem = {
 
 export type ActivityTimelineItem =
   | ActivityGroupItem
+  | ActivityReasoningSummaryItem
   | ActivitySummaryItem
   | ActivityReceiptItem
   | ActivityMessageBoundaryItem
   | ActivityPassthroughItem
 
-const ACTIVITY_FAMILIES = new Set<ActivityFamily>([
-  "inspect-local",
-  "research-web",
-  "modify-files",
-  "execute",
-  "browser",
-  "delegate",
-  "produce",
-  "external-action",
-  "coordination",
-  "generic",
-])
-
-export const ACTIVITY_FAMILY_ORDER: readonly ActivityFamily[] = [
-  "inspect-local",
-  "research-web",
-  "modify-files",
-  "execute",
-  "browser",
-  "delegate",
-  "produce",
-  "external-action",
-  "coordination",
-  "generic",
-]
-
-const EXTERNAL_ACTION_TOOLS = new Set([
-  "email_send",
-  "email_mark_read",
-  "session_send",
-  "clarus_submit_task_result",
-  "clarus_extend_task",
-  "github_deliver_fix",
-  "question",
-  "agenda_schedule",
-  "agenda_update",
-  "agenda_cancel",
-  "calendar_create",
-  "calendar_update",
-  "calendar_delete",
-])
-const EXTERNAL_COMPUTE_ACTION_TOOLS = new Set([
-  "inspire_submit",
-  "inspire_submit_hpc",
-  "inspire_stop",
-  "inspire_image_push",
-  "inspire_inference",
-  "inspire_notebook",
-])
-
-const PRODUCTION_COMMUNICATION_TOOLS = new Set([
-  "attach",
-  "response_card",
-  "openai_image_gen",
-  "openai_image_edit",
-  "generate_image",
-  "edit_image",
-])
-
-const RENDER_BOUNDARY_TOOLS = new Set(["render", "diagram"])
-const COORDINATION_RECEIPT_TOOLS = new Set([
-  "dagwrite",
-  "dagpatch",
-  "session_control",
-  "agenda_trigger",
-  "task_cancel",
-  "loop_stop",
-  "light_loop_approve",
-  "light_loop_reject",
-  "blueprint_loop_approve",
-  "blueprint_loop_reject",
-  "blueprint_loop_stop",
-])
-const HIDDEN_COORDINATION_TOOLS = new Set(["dagread"])
-const MAX_GROUP_STEPS = 24
 const PREVIEW_LIMIT = 360
-
-export function resolveActivityDisplay(value: unknown): ActivityDisplayMode {
-  return value === "full" || value === "minimal" || value === "balanced" ? value : "balanced"
-}
+const RENDER_BOUNDARY_TOOLS = new Set(["render", "diagram"])
+const HIDDEN_COORDINATION_TOOLS = new Set(["dagread"])
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
@@ -197,129 +136,6 @@ function parsedInput(part: ToolPart): Record<string, unknown> {
     return record(parsePartialJson(part.state.raw))
   } catch {
     return {}
-  }
-}
-
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value !== "string") continue
-    const text = value.trim()
-    if (text) return text
-  }
-  return undefined
-}
-
-function pathScope(value: string): string {
-  const normalized = value.replaceAll("\\", "/").replace(/\/+$/, "")
-  const slash = normalized.lastIndexOf("/")
-  if (slash <= 0) return normalized
-  return normalized.slice(0, slash)
-}
-
-function urlScope(value: string): string | undefined {
-  try {
-    const parsed = new URL(value)
-    return parsed.origin
-  } catch {
-    return undefined
-  }
-}
-
-function scopeForTool(part: ToolPart, input: Record<string, unknown>, metadata: Record<string, unknown>) {
-  const explicit = firstString(metadata.activityScope, metadata.scopeKey)
-  if (explicit) return { key: `scope:${explicit}`, label: explicit }
-
-  const file = firstString(
-    input.filePath,
-    input.file_path,
-    input.outputPath,
-    input.output_path,
-    input.filename,
-    input.path,
-    metadata.filePath,
-    metadata.path,
-  )
-  if (file) {
-    const scope = pathScope(file)
-    return { key: `path:${scope}`, label: scope }
-  }
-
-  const url = firstString(input.url, input.href, input.endpoint, metadata.url, metadata.href)
-  if (url) {
-    const origin = urlScope(url)
-    if (origin) return { key: `url:${origin}`, label: origin }
-  }
-
-  const page = firstString(input.pageID, input.pageId, input.targetID, metadata.pageID, metadata.targetID)
-  if (page) return { key: `page:${page}`, label: page }
-
-  const task = firstString(
-    input.task_id,
-    input.taskID,
-    input.session_id,
-    input.sessionID,
-    input.id,
-    metadata.task_id,
-    metadata.taskID,
-  )
-  if (task) return { key: `task:${task}`, label: task }
-
-  const artifact = firstString(input.name, input.title, input.outputItem, metadata.name, metadata.title)
-  if (artifact) return { key: `artifact:${artifact}`, label: artifact }
-
-  return { key: "", label: undefined }
-}
-
-function metadataFamily(metadata: Record<string, unknown>): ActivityFamily | undefined {
-  const display = record(metadata.display)
-  const value = firstString(metadata.activityFamily, display.activityFamily)
-  return value && ACTIVITY_FAMILIES.has(value as ActivityFamily) ? (value as ActivityFamily) : undefined
-}
-
-function familyForCategory(
-  tool: string,
-  category: SemanticCategory,
-  metadata: Record<string, unknown>,
-): ActivityFamily {
-  if (EXTERNAL_ACTION_TOOLS.has(tool) || EXTERNAL_COMPUTE_ACTION_TOOLS.has(tool)) return "external-action"
-  if (PRODUCTION_COMMUNICATION_TOOLS.has(tool)) return "produce"
-  if (COORDINATION_RECEIPT_TOOLS.has(tool)) return "coordination"
-  const override = metadataFamily(metadata)
-  if (override) return override
-
-  switch (category) {
-    case "file-read":
-    case "search":
-    case "memory":
-      return "inspect-local"
-    case "web":
-    case "research":
-      return "research-web"
-    case "file-write":
-      return "modify-files"
-    case "shell":
-      return "execute"
-    case "browser":
-      return "browser"
-    case "task":
-      return "delegate"
-    case "analyze":
-    case "note":
-    case "blueprint":
-      return "produce"
-    case "communication":
-      return "external-action"
-    case "dag":
-    case "schedule":
-    case "session":
-    case "session-control":
-    case "network":
-    case "config":
-    case "skill":
-    case "community":
-      return "coordination"
-    case "generic":
-      return "generic"
   }
 }
 
@@ -436,9 +252,8 @@ function makeStep(
 ): ActivityStepProjection {
   const input = parsedInput(part)
   const metadata = record(part.state.metadata)
-  const classified = classifyTool(part.tool, input, metadata)
-  const family = familyForCategory(part.tool, classified.category, metadata)
-  const scope = scopeForTool(part, input, metadata)
+  const family = activityFamilyForTool(part.tool, input, metadata)
+  const scope = activityScopeForTool(input, metadata)
   let info: ReturnType<ActivityToolInfoResolver>
   try {
     info = resolveToolInfo(part.tool, input, metadata)
@@ -460,14 +275,33 @@ function makeStep(
   }
 }
 
-function groupKey(messageID: string, family: ActivityFamily, scopeKey: string, firstPartID: string): string {
-  return `activity:${messageID}:${family}:${scopeKey}:${firstPartID}`
+function activityMetadata(message: AssistantMessage): ActivityDerivedMetadata | undefined {
+  const parsed = ActivityDerivedMetadataSchema.safeParse(message.metadata?.activity)
+  return parsed.success ? parsed.data : undefined
+}
+
+function reasoningSummary(
+  message: AssistantMessage,
+  partID: string,
+  terminal: boolean,
+  metadata: ActivityDerivedMetadata | undefined,
+): ActivityReasoningSummaryItem {
+  const stored = metadata?.reasoning?.[partID]
+  return {
+    kind: "activity-reasoning-summary",
+    key: `activity-reasoning:${message.id}:${partID}`,
+    message,
+    partID,
+    state: stored?.state ?? (terminal ? "fallback" : "pending"),
+    text: stored?.text,
+    source: stored?.source,
+  }
 }
 
 function makeGroup(message: AssistantMessage, step: ActivityStepProjection, receipt: boolean): ActivityGroupItem {
   return {
     kind: "activity-group",
-    key: groupKey(message.id, step.family, step.scopeKey, step.part.id),
+    key: activityGroupKey(message.id, step.family, step.scopeKey, step.part.id),
     message,
     family: step.family,
     scopeKey: step.scopeKey,
@@ -489,11 +323,14 @@ export function projectAssistantActivityItems(input: {
   const result: ActivityTimelineItem[] = []
   const visibleByIdentity = new Map(input.visibleItems.map((item) => [timelineItemIdentity(item), item]))
   const visibleIdentities = new Set(visibleByIdentity.keys())
+  const metadata = activityMetadata(input.message)
   let pendingGroup: ActivityGroupItem | undefined
 
   const flush = () => {
     if (!pendingGroup) return
     pendingGroup.state = groupState(pendingGroup.steps)
+    const stored = metadata?.groups?.[pendingGroup.key]
+    if (stored?.text) pendingGroup.summary = { state: stored.state, text: stored.text }
     result.push(pendingGroup)
     pendingGroup = undefined
   }
@@ -502,7 +339,12 @@ export function projectAssistantActivityItems(input: {
     if (!isOrdinaryTool(source, input.isToolRenderBoundary ?? (() => false))) {
       flush()
       const visible = visibleByIdentity.get(timelineItemIdentity(source))
-      if (visible) result.push({ kind: "passthrough", item: visible, message: input.message })
+      if (!visible) continue
+      if (source.kind === "reasoning") {
+        result.push(reasoningSummary(input.message, source.part.id, visible.kind === "part", metadata))
+        continue
+      }
+      result.push({ kind: "passthrough", item: visible, message: input.message })
       continue
     }
 
@@ -523,16 +365,12 @@ export function projectAssistantActivityItems(input: {
       continue
     }
     const step = makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)
-    const receipt =
-      step.family === "external-action" ||
-      PRODUCTION_COMMUNICATION_TOOLS.has(source.part.tool) ||
-      COORDINATION_RECEIPT_TOOLS.has(source.part.tool) ||
-      HIDDEN_COORDINATION_TOOLS.has(source.part.tool)
+    const receipt = isActivityReceiptTool(source.part.tool, step.family)
     const canMerge =
       !receipt &&
       pendingGroup &&
       !pendingGroup.receipt &&
-      pendingGroup.steps.length < MAX_GROUP_STEPS &&
+      pendingGroup.steps.length < MAX_ACTIVITY_GROUP_STEPS &&
       pendingGroup.family === step.family &&
       pendingGroup.scopeKey === step.scopeKey
 
@@ -554,6 +392,7 @@ export function isActivityTimelineItem(value: ActivityTimelineItem | unknown): v
   const kind = (value as { kind?: unknown }).kind
   return (
     kind === "activity-group" ||
+    kind === "activity-reasoning-summary" ||
     kind === "activity-summary" ||
     kind === "activity-receipt" ||
     kind === "activity-boundary" ||
@@ -565,7 +404,7 @@ function receiptForGroup(group: ActivityGroupItem, step?: ActivityStepProjection
   const receiptGroup = step
     ? {
         ...group,
-        key: groupKey(group.message.id, group.family, group.scopeKey, step.part.id),
+        key: activityGroupKey(group.message.id, group.family, group.scopeKey, step.part.id),
         state: step.state,
         steps: [step],
       }
@@ -595,10 +434,13 @@ export function projectMinimalActivityItems<T>(
       isActivityTimelineItem(item) && item.kind === "activity-group" && !item.receipt,
   )
   if (groups.length === 0) {
-    return items.flatMap((item) => {
-      if (!isActivityTimelineItem(item) || item.kind !== "activity-group") return [item]
-      return explicitReceipts(item)
-    })
+    const result: (ActivityTimelineItem | T)[] = []
+    for (const item of items) {
+      if (isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary") continue
+      if (isActivityTimelineItem(item) && item.kind === "activity-group") result.push(...explicitReceipts(item))
+      else result.push(item)
+    }
+    return result
   }
 
   const counts = new Map<ActivityFamily, number>()
@@ -611,6 +453,12 @@ export function projectMinimalActivityItems<T>(
     const count = counts.get(family) ?? 0
     return count > 0 ? [{ family, count }] : []
   }).slice(0, 3)
+  const now = items.reduce<NonNullable<ActivityDerivedMetadata["now"]> | undefined>((latest, item) => {
+    if (!isActivityTimelineItem(item)) return latest
+    const candidate = activityMetadata(item.message)?.now
+    if (!candidate) return latest
+    return !latest || candidate.updatedAt > latest.updatedAt ? candidate : latest
+  }, undefined)
   const first = groups[0]
   const summary: ActivitySummaryItem = {
     kind: "activity-summary",
@@ -619,11 +467,13 @@ export function projectMinimalActivityItems<T>(
     total,
     facts,
     completed,
+    now,
   }
   let inserted = false
   const preservedMessages = new Set<string>()
   const result: (ActivityTimelineItem | T)[] = []
   for (const item of items) {
+    if (isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary") continue
     if (!isActivityTimelineItem(item) || item.kind !== "activity-group") {
       result.push(item)
       if (isActivityTimelineItem(item)) preservedMessages.add(item.message.id)

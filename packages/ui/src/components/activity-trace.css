@@ -1,5 +1,6 @@
 [data-component="activity-trace"],
 [data-component="activity-receipt"],
+[data-component="reasoning-summary"],
 [data-component="minimal-activity-summary"] {
   width: 100%;
   max-width: min(54rem, 100%);
@@ -50,6 +51,14 @@
   [data-slot="activity-trace-copy"] {
     display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+    gap: 1px;
+  }
+
+  [data-slot="activity-trace-heading"] {
+    display: flex;
     align-items: baseline;
     min-width: 0;
     gap: 7px;
@@ -65,6 +74,15 @@
     min-width: 0;
     overflow: hidden;
     color: var(--text-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-slot="activity-trace-summary"] {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-subtle);
+    font-size: var(--font-size-x-small);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -175,6 +193,35 @@
   }
 }
 
+[data-component="reasoning-summary"] {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 30px;
+  gap: 7px;
+  padding: 2px;
+
+  [data-slot="reasoning-summary-leading"] {
+    display: grid;
+    flex: 0 0 20px;
+    place-items: center;
+    color: var(--icon-weak-base);
+  }
+
+  [data-slot="reasoning-summary-text"] {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-component="spinner"] {
+    width: 12px;
+    height: 12px;
+  }
+}
+
 [data-component="activity-receipt"] {
   display: flex;
   align-items: center;
@@ -237,6 +284,15 @@
   [data-slot="minimal-activity-separator"] {
     margin-inline: 2px;
     color: var(--text-subtle);
+  }
+  [data-slot="minimal-activity-now"] {
+    flex: 1 1 100%;
+    min-width: 0;
+    margin-inline-start: 24px;
+    overflow: hidden;
+    color: var(--text-weak);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -314,7 +370,8 @@
     animation: none !important;
   }
 
-  [data-component="activity-trace"] [data-component="spinner"] rect {
+  [data-component="activity-trace"] [data-component="spinner"] rect,
+  [data-component="reasoning-summary"] [data-component="spinner"] rect {
     animation: none !important;
   }
 }

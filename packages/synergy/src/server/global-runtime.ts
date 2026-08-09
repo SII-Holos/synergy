@@ -15,6 +15,7 @@ import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
+import { ActivitySummary } from "@/session/activity-summary"
 import { LatticeRuntime } from "@/lattice/runtime"
 import { Embedding } from "@/vector/embedding"
 import { AgentTurn } from "@/session/agent-turn"
@@ -116,6 +117,7 @@ export namespace GlobalRuntime {
             log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
           })
           await LatticeRuntime.init()
+          ActivitySummary.init()
           await SessionInvoke.resumePending({ scopeID: Scope.home().id })
           await ResponseCardRuntime.pruneExpired().catch((error) => {
             log.warn("response-card expired registration cleanup failed", { error })
