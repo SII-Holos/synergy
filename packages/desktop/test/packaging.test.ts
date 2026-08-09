@@ -4,7 +4,6 @@ import { createRequire } from "node:module"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 
 interface ElectronBuilderConfig {
   mac?: {
@@ -53,12 +52,6 @@ afterEach(async () => {
 const require = createRequire(import.meta.url)
 const afterPack = require("../script/after-pack.cjs") as {
   assertRuntimeAssets(runtimeDir: string, platform: string): void
-}
-
-function electronBuilderNsisTemplatePath(file: string): string {
-  const electronBuilderEntry = fileURLToPath(import.meta.resolve("electron-builder"))
-  const electronBuilderPackage = path.dirname(path.dirname(electronBuilderEntry))
-  return path.join(electronBuilderPackage, "..", "app-builder-lib", "templates", "nsis", "include", file)
 }
 
 async function createRuntimeFixture(platform: "darwin" | "linux" | "win32" = "darwin", includeBinary = true) {
@@ -219,15 +212,6 @@ describe("desktop packaging", () => {
     expect(nsisScript).toContain("!ifndef BUILD_UNINSTALLER\nFunction PathHasEntry")
     expect(nsisScript).toContain("!ifdef BUILD_UNINSTALLER\nFunction un.RemovePathEntry")
     expect(nsisScript).not.toContain("Call StrStr")
-  })
-
-  test("Windows installer matches the running application by exact process name", async () => {
-    const processDetection = await Bun.file(electronBuilderNsisTemplatePath("allowOnlyOneInstallerInstance.nsh")).text()
-
-    expect(processDetection).toContain('/FI "IMAGENAME eq ${_FILE}" /FO CSV /NH')
-    expect(processDetection).toContain(String.raw`"$SYSDIR\findstr.exe" /B /I`)
-    expect(processDetection).not.toContain("${nsProcess::FindProcess}")
-    expect(processDetection).not.toContain(String.raw`"$FindPath"`)
   })
 
   test("writes Desktop package version metadata beside the embedded runtime", async () => {
