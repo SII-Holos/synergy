@@ -366,6 +366,44 @@ describe("PolicyWorkerPool", () => {
     }
   })
 
+  test("keeps the default Policy startup circuit within its ten-second readiness bound", async () => {
+    let spawned = 0
+    const delays: number[] = []
+    const pool = new PolicyWorkerPool(
+      {
+        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+        size: 1,
+        timeoutMs: 100,
+        heartbeatTimeoutMs: 10_000,
+      },
+      (options) => {
+        spawned++
+        const host = fakeProcess(options, "unready", { killed: false })
+        queueMicrotask(() => options.onExit(1, null))
+        return host
+      },
+      {
+        sleep(ms) {
+          delays.push(ms)
+          return Promise.resolve()
+        },
+      },
+    )
+
+    try {
+      pool.start()
+      for (let i = 0; i < 30 && spawned < 6; i++) await Bun.sleep(1)
+
+      expect(delays).toEqual([250, 500, 1_000, 2_000, 4_000])
+      expect(delays.reduce((total, delay) => total + delay, 0)).toBe(7_750)
+      await expect(pool.run(classificationInput())).rejects.toThrow(
+        "Policy worker failed to start after 6 consecutive attempts",
+      )
+    } finally {
+      await pool.stop()
+    }
+  })
+
   test("rejects queue overflow and replaces only the worker owned by an aborted request", async () => {
     const states = [{ killed: false }, { killed: false }]
     let spawned = 0
