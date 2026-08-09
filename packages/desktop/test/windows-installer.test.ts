@@ -7,12 +7,18 @@ import path from "node:path"
 const desktopDir = path.resolve(import.meta.dir, "..")
 const packageJson = (await Bun.file(path.join(desktopDir, "package.json")).json()) as { version: string }
 
-async function run(command: string[], env: Record<string, string> = {}, timeoutMs = 300_000) {
+async function run(
+  command: string[],
+  env: Record<string, string> = {},
+  timeoutMs = 300_000,
+  windowsVerbatimArguments = false,
+) {
   const child = Bun.spawn(command, {
     cwd: desktopDir,
     env: { ...process.env, ...env },
     stdout: "pipe",
     stderr: "pipe",
+    windowsVerbatimArguments,
   })
   let timedOut = false
   const timeout = setTimeout(() => {
@@ -91,7 +97,8 @@ async function spawnSiblingProcess(directory: string) {
 async function uninstall(installDir: string) {
   const uninstaller = path.join(installDir, "Uninstall synergy-desktop.exe")
   if (await Bun.file(uninstaller).exists()) {
-    await run([uninstaller, "/S"], {}, 120_000)
+    // NSIS requires the unquoted _?= path last to run the real uninstall synchronously.
+    await run([uninstaller, "/S", `_?=${installDir}`], {}, 120_000, true)
   }
 }
 
