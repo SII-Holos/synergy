@@ -12,9 +12,11 @@ function Root(props: ParentProps<{ class?: string }>) {
   )
 }
 
-function Nav(props: ParentProps) {
+function Nav(props: ParentProps<{ class?: string }>) {
   return (
-    <div class="shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-background-base">
+    <div
+      class={`shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-background-base ${props.class ?? ""}`}
+    >
       {props.children}
     </div>
   )
