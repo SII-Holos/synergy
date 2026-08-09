@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from "@lingui/core"
-import type { AssistantMessage, AttachmentPart, PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk/client"
+import type { AssistantMessage, PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import {
   ACTIVITY_FAMILY_ORDER,
   ActivityDerivedMetadataSchema,
@@ -7,6 +7,7 @@ import {
   activityGroupKey,
   activityScopeForTool,
   isActivityReceiptTool,
+  isActivityGroupableTool,
   MAX_ACTIVITY_GROUP_STEPS,
   resolveActivityDisplay,
   type ActivityDerivedMetadata,
@@ -15,22 +16,12 @@ import {
   type ActivitySummaryState,
 } from "@ericsanchezok/synergy-util/activity"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import type { IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { timelineItemStableKey, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
 export { resolveActivityDisplay }
 export type { ActivityDisplayMode, ActivityFamily }
 export type ActivityGroupState = "running" | "error" | "waiting-approval" | "done"
-
-export type ActivityStepPreview =
-  | { kind: "output-text"; text: string }
-  | { kind: "command-tail"; text: string }
-  | { kind: "search-hits"; text: string }
-  | { kind: "diff-excerpt"; text: string }
-  | { kind: "attachments"; files: AttachmentPart[] }
-  | { kind: "task-summary"; text: string }
-  | { kind: "json-fallback"; text: string }
 
 export type ActivityStepProjection = {
   part: ToolPart
@@ -40,9 +31,6 @@ export type ActivityStepProjection = {
   title: string | MessageDescriptor
   subtitle?: string
   state: ActivityGroupState
-  permission?: PermissionRequest
-  error?: string
-  preview?: ActivityStepPreview
 }
 
 export type ActivityToolInfoResolver = (
@@ -119,9 +107,6 @@ export type ActivityTimelineItem =
   | ActivityMessageBoundaryItem
   | ActivityPassthroughItem
 
-const PREVIEW_LIMIT = 360
-const RENDER_BOUNDARY_TOOLS = new Set(["render", "diagram"])
-
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
   return value as Record<string, unknown>
@@ -136,56 +121,6 @@ function parsedInput(part: ToolPart): Record<string, unknown> {
   } catch {
     return {}
   }
-}
-
-function truncate(value: string, limit = PREVIEW_LIMIT): string {
-  const text = value.trim()
-  if (text.length <= limit) return text
-  return `${text.slice(0, limit - 1)}…`
-}
-
-function truncateTail(value: string, limit = PREVIEW_LIMIT): string {
-  const text = value.trim()
-  if (text.length <= limit) return text
-  return `…${text.slice(-(limit - 1))}`
-}
-
-function jsonFallback(value: unknown): string | undefined {
-  if (value == null) return undefined
-  try {
-    const text = JSON.stringify(value, null, 2)
-    return text ? truncate(text) : undefined
-  } catch {
-    return undefined
-  }
-}
-
-function previewForStep(
-  part: ToolPart,
-  family: ActivityFamily,
-  input: Record<string, unknown>,
-): ActivityStepPreview | undefined {
-  if (part.state.status === "completed" && part.state.attachments?.length) {
-    const files = part.state.attachments.filter((file) => !resolveAttachmentPresentation(file).hidden)
-    if (files.length > 0) return { kind: "attachments", files }
-  }
-
-  if (part.state.status === "error") return undefined
-
-  if (part.state.status === "completed") {
-    const output = family === "execute" ? truncateTail(part.state.output) : truncate(part.state.output)
-    if (output) {
-      if (family === "execute") return { kind: "command-tail", text: output }
-      if (family === "inspect-local" || family === "research-web") return { kind: "search-hits", text: output }
-      if (family === "modify-files") return { kind: "diff-excerpt", text: output }
-      if (family === "delegate") return { kind: "task-summary", text: output }
-      return { kind: "output-text", text: output }
-    }
-  }
-
-  if (family === "external-action" || family === "produce" || family === "coordination") return undefined
-  const fallback = jsonFallback(input)
-  return fallback ? { kind: "json-fallback", text: fallback } : undefined
 }
 
 function permissionForStep(
@@ -230,10 +165,10 @@ function isOrdinaryTool(
   item: SessionTurnTimelineItem,
   isToolRenderBoundary: (tool: string) => boolean,
 ): item is Extract<SessionTurnTimelineItem, { kind: "part" }> & { part: ToolPart } {
+  if (item.kind !== "part" || item.part.type !== "tool") return false
+  const metadata = record(item.part.state.metadata)
   return (
-    item.kind === "part" &&
-    item.part.type === "tool" &&
-    !RENDER_BOUNDARY_TOOLS.has(item.part.tool) &&
+    (item.part.state.status === "error" || isActivityGroupableTool(item.part.tool, metadata)) &&
     !isToolRenderBoundary(item.part.tool)
   )
 }
@@ -268,9 +203,6 @@ function makeStep(
     title: info.title,
     subtitle: info.subtitle ?? scope.label,
     state: stepState(part, permission),
-    permission,
-    error: part.state.status === "error" ? part.state.error : undefined,
-    preview: previewForStep(part, family, input),
   }
 }
 
@@ -297,10 +229,15 @@ function reasoningSummary(
   }
 }
 
-function makeGroup(message: AssistantMessage, step: ActivityStepProjection, receipt: boolean): ActivityGroupItem {
+function makeGroup(
+  message: AssistantMessage,
+  step: ActivityStepProjection,
+  receipt: boolean,
+  persistedKey?: string,
+): ActivityGroupItem {
   return {
     kind: "activity-group",
-    key: activityGroupKey(message.id, step.family, step.scopeKey, step.part.id),
+    key: persistedKey ?? activityGroupKey(message.id, step.family, step.scopeKey, step.part.id),
     message,
     family: step.family,
     scopeKey: step.scopeKey,
@@ -320,22 +257,38 @@ export function projectAssistantActivityItems(input: {
   isToolRenderBoundary?: (tool: string) => boolean
 }): ActivityTimelineItem[] {
   const result: ActivityTimelineItem[] = []
+  const isRenderBoundary = input.isToolRenderBoundary ?? (() => false)
   const visibleByIdentity = new Map(input.visibleItems.map((item) => [timelineItemIdentity(item), item]))
   const visibleIdentities = new Set(visibleByIdentity.keys())
   const metadata = activityMetadata(input.message)
+  const ordinaryPartIDs = new Set(
+    input.sourceItems.flatMap((item) => (isOrdinaryTool(item, isRenderBoundary) ? [item.part.id] : [])),
+  )
+  const persistedGroupByPartID = new Map<string, string>()
+  const validPersistedGroupKeys = new Set<string>()
+  for (const [key, group] of Object.entries(metadata?.groups ?? {})) {
+    const partIDs = group.signature?.split(":").filter(Boolean) ?? []
+    if (partIDs.length === 0 || partIDs.some((partID) => !ordinaryPartIDs.has(partID))) continue
+    validPersistedGroupKeys.add(key)
+    for (const partID of partIDs) persistedGroupByPartID.set(partID, key)
+  }
   let pendingGroup: ActivityGroupItem | undefined
+  let pendingPersistedKey: string | undefined
 
   const flush = () => {
     if (!pendingGroup) return
     pendingGroup.state = groupState(pendingGroup.steps)
     const stored = metadata?.groups?.[pendingGroup.key]
-    if (stored?.text) pendingGroup.summary = { state: stored.state, text: stored.text }
+    const validStored =
+      stored && (!stored.signature || validPersistedGroupKeys.has(pendingGroup.key)) ? stored : undefined
+    if (validStored?.text) pendingGroup.summary = { state: validStored.state, text: validStored.text }
     result.push(pendingGroup)
     pendingGroup = undefined
+    pendingPersistedKey = undefined
   }
 
   for (const source of input.sourceItems) {
-    if (!isOrdinaryTool(source, input.isToolRenderBoundary ?? (() => false))) {
+    if (!isOrdinaryTool(source, isRenderBoundary)) {
       flush()
       const visible = visibleByIdentity.get(timelineItemIdentity(source))
       if (!visible) continue
@@ -359,13 +312,15 @@ export function projectAssistantActivityItems(input: {
     }
     const step = makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)
     const receipt = isActivityReceiptTool(source.part.tool, step.family)
+    const persistedKey = receipt ? undefined : persistedGroupByPartID.get(step.part.id)
     const canMerge =
       !receipt &&
       pendingGroup &&
       !pendingGroup.receipt &&
       pendingGroup.steps.length < MAX_ACTIVITY_GROUP_STEPS &&
-      pendingGroup.family === step.family &&
-      pendingGroup.scopeKey === step.scopeKey
+      (persistedKey
+        ? pendingPersistedKey === persistedKey
+        : !pendingPersistedKey && pendingGroup.family === step.family && pendingGroup.scopeKey === step.scopeKey)
 
     if (canMerge && pendingGroup) {
       pendingGroup.steps.push(step)
@@ -374,7 +329,8 @@ export function projectAssistantActivityItems(input: {
     }
 
     flush()
-    pendingGroup = makeGroup(input.message, step, receipt)
+    pendingGroup = makeGroup(input.message, step, receipt, persistedKey)
+    pendingPersistedKey = persistedKey
   }
 
   flush()

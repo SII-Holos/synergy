@@ -335,9 +335,24 @@ const COORDINATION_RECEIPT_TOOLS = new Set([
   "blueprint_loop_stop",
 ])
 
+const ACTIVITY_PRESENTATION_BOUNDARY_TOOLS = new Set(["render", "diagram"])
+
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
   return value as Record<string, unknown>
+}
+
+export function toolDisplayMetadata(metadata: unknown): Record<string, unknown> | undefined {
+  const display = record(record(metadata).display)
+  return Object.keys(display).length > 0 ? display : undefined
+}
+
+export function toolDisplayPolicy(metadata: unknown): { toolCardHidden: boolean; mediaGeneration: boolean } {
+  const display = toolDisplayMetadata(metadata)
+  return {
+    toolCardHidden: display?.toolCard === "hidden",
+    mediaGeneration: display?.kind === "media-generation",
+  }
 }
 
 function firstString(...values: unknown[]): string | undefined {
@@ -346,6 +361,12 @@ function firstString(...values: unknown[]): string | undefined {
     const text = value.trim()
     if (text) return text
   }
+}
+
+export function isActivityGroupableTool(tool: string, metadata: Record<string, unknown> = {}): boolean {
+  if (ACTIVITY_PRESENTATION_BOUNDARY_TOOLS.has(tool)) return false
+  const policy = toolDisplayPolicy(metadata)
+  return !policy.toolCardHidden && !policy.mediaGeneration
 }
 
 export function resolveActivityDisplay(value: unknown): ActivityDisplayMode {

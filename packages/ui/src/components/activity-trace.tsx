@@ -6,13 +6,12 @@ import {
   reduceActivityCountTransition,
   type ActivityCountTransition,
 } from "./activity-count-transition"
-import { AttachmentGallery } from "./attachment-card"
 import { Collapsible } from "./collapsible"
 import { specializedActivityDetail } from "./activity-specialized-detail-model"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
-import { ToolTextOutput } from "./tool-output-text"
+import { ToolResultBody } from "./tool-result-body"
 import type {
   ActivityFamily,
   ActivityGroupItem,
@@ -162,41 +161,6 @@ function ActivityState(props: { state: ActivityGroupState; label: string }) {
   )
 }
 
-function ActivityStepPreviewDisplay(props: { step: ActivityStepProjection; serverUrl: string }) {
-  const detail = createMemo(() => specializedActivityDetail(props.step))
-  const preview = () => props.step.preview
-  return (
-    <Show
-      when={detail()}
-      fallback={
-        <Show when={preview()}>
-          {(value) => (
-            <Show
-              when={value().kind === "attachments"}
-              fallback={
-                <ToolTextOutput
-                  text={
-                    (value() as Exclude<NonNullable<ActivityStepProjection["preview"]>, { kind: "attachments" }>).text
-                  }
-                />
-              }
-            >
-              <AttachmentGallery
-                files={
-                  (value() as Extract<NonNullable<ActivityStepProjection["preview"]>, { kind: "attachments" }>).files
-                }
-                serverUrl={props.serverUrl}
-              />
-            </Show>
-          )}
-        </Show>
-      }
-    >
-      {(value) => <ActivitySpecializedDetail detail={value()} />}
-    </Show>
-  )
-}
-
 function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }) {
   const { _ } = useLingui()
   const title = createMemo(() => localize(props.step.title, _))
@@ -215,14 +179,13 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
         </div>
         <ActivityState state={props.step.state} label={stateLabel()} />
       </div>
-      <Show when={props.step.error}>
-        {(error) => (
-          <div data-slot="activity-step-notice" data-state="error">
-            {error()}
-          </div>
-        )}
-      </Show>
-      <ActivityStepPreviewDisplay step={props.step} serverUrl={props.serverUrl} />
+      <ToolResultBody
+        part={props.step.part}
+        serverUrl={props.serverUrl}
+        sessionId={props.step.part.sessionID}
+        messageId={props.step.part.messageID}
+        resultOnly
+      />
     </li>
   )
 }
@@ -259,6 +222,22 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
   )
 }
 
+function ActivityTraceMarker(props: { state: ActivityGroupState; label: string }) {
+  return (
+    <span
+      role="img"
+      data-slot="activity-trace-marker"
+      data-state={props.state}
+      data-motion={props.state === "running" ? "breathing" : "static"}
+      aria-label={props.label}
+    >
+      <Show when={props.state !== "running"}>
+        <Icon name={stateIcon(props.state)} size="small" />
+      </Show>
+    </span>
+  )
+}
+
 export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: string }) {
   const { _ } = useLingui()
   const [open, setOpen] = createSignal(false)
@@ -270,11 +249,10 @@ export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: stri
 
   return (
     <div data-component="activity-trace" data-family={props.group.family} data-state={props.group.state}>
+      <span data-slot="activity-trace-connector" aria-hidden="true" />
       <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
         <Collapsible.Trigger data-slot="activity-trace-trigger" type="button">
-          <span data-slot="activity-trace-leading" aria-hidden="true">
-            <Icon name={familyIcon(props.group.family)} size="small" />
-          </span>
+          <ActivityTraceMarker state={props.group.state} label={stateLabel()} />
           <span data-slot="activity-trace-copy">
             <span data-slot="activity-trace-heading">
               <span data-slot="activity-trace-title">{familyLabel()}</span>
@@ -292,7 +270,6 @@ export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: stri
           </span>
           <span data-slot="activity-trace-meta">
             <span>{stepCount()}</span>
-            <ActivityState state={props.group.state} label={stateLabel()} />
             <Icon
               name={open() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand")}
               size="small"

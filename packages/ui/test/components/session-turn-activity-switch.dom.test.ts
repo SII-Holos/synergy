@@ -119,7 +119,7 @@ beforeAll(async () => {
         message: { [sessionID]: [rootMessage, assistantMessage, secondAssistantMessage] },
         part: {
           [rootID]: [],
-          [assistantID]: [toolPart, answerPart],
+          [assistantID]: [answerPart, toolPart],
           [secondAssistantID]: [secondToolPart],
         },
       }
@@ -265,6 +265,16 @@ describe("SessionTurn activity display switching", () => {
     expect(
       document.querySelector(`[data-test-slot="message.after"][data-test-message="assistant-activity-switch-second"]`),
     ).not.toBeNull()
+
+    harness.setMode("balanced")
+    await waitForUpdate()
+
+    const activityGroups = document.querySelectorAll(
+      '[data-slot="session-turn-timeline-item"][data-kind="activity-group"]',
+    )
+    expect(activityGroups).toHaveLength(2)
+    expect(activityGroups[0]?.hasAttribute("data-activity-continues")).toBe(true)
+    expect(activityGroups[1]?.hasAttribute("data-activity-follows")).toBe(true)
 
     harness.setMode("full")
     await waitForUpdate()

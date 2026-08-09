@@ -16,6 +16,7 @@ interface ActivityDomHarness {
   resetCount: (identity: string, value: number) => void
   setCountValue: (value: number) => void
   setSummaryCompleted: (completed: boolean) => void
+  setRailState: (state: "running" | "done") => void
 }
 
 let fixtureDirectory: string
@@ -41,6 +42,9 @@ beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".activity-trace-dom-fixture-"))
   const componentPath = path.resolve(import.meta.dir, "../../src/components/activity-trace.tsx")
   const i18nPath = path.resolve(import.meta.dir, "../../src/testing/i18n.tsx")
+  const toolRendersPath = path.resolve(import.meta.dir, "../../src/components/tool-renders.tsx")
+  const codeContextPath = path.resolve(import.meta.dir, "../../src/context/code.tsx")
+  const dataContextPath = path.resolve(import.meta.dir, "../../src/context/data.tsx")
   const entry = path.join(fixtureDirectory, "main.tsx")
 
   await Bun.write(
@@ -50,11 +54,15 @@ beforeAll(async () => {
       import { render } from "solid-js/web"
       import { I18nProvider } from "@lingui/solid"
       import { setupI18n } from ${JSON.stringify(i18nPath)}
+      import { CodeComponentProvider } from ${JSON.stringify(codeContextPath)}
+      import { DataProvider } from ${JSON.stringify(dataContextPath)}
+      import ${JSON.stringify(toolRendersPath)}
       import { ActivityReasoningSummary, ActivityReceipt, ActivityTrace, AnimatedActivityCount, MinimalActivitySummary } from ${JSON.stringify(componentPath)}
 
       const [countValue, setCountValue] = createSignal(9)
       const [countIdentity, setCountIdentity] = createSignal("turn-a")
       const [summaryCompleted, setSummaryCompleted] = createSignal(false)
+      const [railState, setRailState] = createSignal<"running" | "done">("running")
 
       const resetCount = (identity: string, value: number) => {
         batch(() => {
@@ -109,6 +117,54 @@ beforeAll(async () => {
         receipt: false,
         summary: { state: "stable", text: "Updated the activity presentation" },
       }
+      const railGroup = (state: "running" | "done", key: string) => ({
+        ...group,
+        key,
+        state,
+        scopeKey: key,
+        scopeLabel: key,
+        steps: [{ ...group.steps[1], part: { ...group.steps[1].part, id: key }, scopeKey: key, state }],
+        summary: { state: state === "done" ? "stable" : "live", text: state === "done" ? "Finished rail work" : "Working through rail steps" },
+      })
+      const viewFileGroup = {
+        ...group,
+        key: "group-view-file",
+        family: "inspect-local",
+        scopeKey: "activity-trace.tsx",
+        scopeLabel: "activity-trace.tsx",
+        state: "done",
+        steps: [
+          {
+            part: {
+              id: "view-file",
+              tool: "view_file",
+              state: {
+                status: "completed",
+                input: { filePath: "/workspace/packages/ui/src/components/activity-trace.tsx" },
+                output: "[activity-trace.tsx#TEST]\\n1:const parity = true",
+                metadata: {
+                  filepath: "/workspace/packages/ui/src/components/activity-trace.tsx",
+                  content: "const parity = true",
+                  tag: "TEST",
+                  totalLines: 1,
+                  offset: 0,
+                  limit: 1,
+                  ranges: [],
+                },
+              },
+            },
+            family: "inspect-local",
+            scopeKey: "activity-trace.tsx",
+            icon: "glasses",
+            title: "View activity-trace.tsx",
+            state: "done",
+          },
+        ],
+        summary: { state: "stable", text: "Read the Activity Trace source" },
+      }
+      function CodeFixture(props: { file: { contents: string } }) {
+        return <pre data-component="code-fixture">{props.file.contents}</pre>
+      }
       const dagReceipt = {
         kind: "activity-receipt",
         key: "receipt-dag",
@@ -147,40 +203,65 @@ beforeAll(async () => {
       }
 
       const i18n = setupI18n()
+      const data = {
+        session: [],
+        session_status: {},
+        session_diff: {},
+        permission: {},
+        message: {},
+        part: {},
+      }
       const root = document.querySelector("#root")!
       render(
         () => (
           <I18nProvider i18n={i18n}>
-            <div id="count-host">
-              <AnimatedActivityCount value={countValue()} identity={countIdentity()} />
-            </div>
-            <MinimalActivitySummary
-              item={{
-                kind: "activity-summary",
-                key: "summary-a",
-                message: { id: "m1", sessionID: "s", role: "assistant", time: { created: 1 } },
-                total: 9,
-                facts: [{ family: "modify-files", count: 3 }],
-                completed: summaryCompleted(),
-                now: { text: "Verifying compressed activity", source: "reasoning", updatedAt: 10 },
-              }}
-            />
-            <ActivityTrace group={group} serverUrl="http://localhost" />
-            <ActivityReceipt item={dagReceipt} serverUrl="http://localhost" />
-            <div id="reasoning-summary-host">
-              <ActivityReasoningSummary
-                item={{ kind: "activity-reasoning-summary", key: "reasoning-pending", message: group.message, partID: "rp", state: "pending" }}
+            <DataProvider data={data} directory="/workspace" serverUrl="http://localhost">
+            <CodeComponentProvider component={CodeFixture}>
+              <div id="count-host">
+                <AnimatedActivityCount value={countValue()} identity={countIdentity()} />
+              </div>
+              <MinimalActivitySummary
+                item={{
+                  kind: "activity-summary",
+                  key: "summary-a",
+                  message: { id: "m1", sessionID: "s", role: "assistant", time: { created: 1 } },
+                  total: 9,
+                  facts: [{ family: "modify-files", count: 3 }],
+                  completed: summaryCompleted(),
+                  now: { text: "Verifying compressed activity", source: "reasoning", updatedAt: 10 },
+                }}
               />
-              <ActivityReasoningSummary
-                item={{ kind: "activity-reasoning-summary", key: "reasoning-live", message: group.message, partID: "rl", state: "live", text: "Tracing the message flow", source: "nano" }}
-              />
-              <ActivityReasoningSummary
-                item={{ kind: "activity-reasoning-summary", key: "reasoning-stable", message: group.message, partID: "rs", state: "stable", text: "Mapped the message flow", source: "nano" }}
-              />
-              <ActivityReasoningSummary
-                item={{ kind: "activity-reasoning-summary", key: "reasoning-fallback", message: group.message, partID: "rf", state: "fallback" }}
-              />
-            </div>
+              <div id="activity-main-host">
+                <ActivityTrace group={group} serverUrl="http://localhost" />
+              </div>
+              <div id="activity-rail-host">
+                <div data-slot="session-turn-timeline-item" data-kind="activity-group" data-activity-continues="">
+                  <ActivityTrace group={railGroup(railState(), "rail-running")} serverUrl="http://localhost" />
+                </div>
+                <div data-slot="session-turn-timeline-item" data-kind="activity-group">
+                  <ActivityTrace group={railGroup("done", "rail-done")} serverUrl="http://localhost" />
+                </div>
+              </div>
+              <div id="view-file-host">
+                <ActivityTrace group={viewFileGroup} serverUrl="http://localhost" />
+              </div>
+              <ActivityReceipt item={dagReceipt} serverUrl="http://localhost" />
+              <div id="reasoning-summary-host">
+                <ActivityReasoningSummary
+                  item={{ kind: "activity-reasoning-summary", key: "reasoning-pending", message: group.message, partID: "rp", state: "pending" }}
+                />
+                <ActivityReasoningSummary
+                  item={{ kind: "activity-reasoning-summary", key: "reasoning-live", message: group.message, partID: "rl", state: "live", text: "Tracing the message flow", source: "nano" }}
+                />
+                <ActivityReasoningSummary
+                  item={{ kind: "activity-reasoning-summary", key: "reasoning-stable", message: group.message, partID: "rs", state: "stable", text: "Mapped the message flow", source: "nano" }}
+                />
+                <ActivityReasoningSummary
+                  item={{ kind: "activity-reasoning-summary", key: "reasoning-fallback", message: group.message, partID: "rf", state: "fallback" }}
+                />
+              </div>
+            </CodeComponentProvider>
+            </DataProvider>
           </I18nProvider>
         ),
         root,
@@ -190,6 +271,7 @@ beforeAll(async () => {
         resetCount: (identity: string, value: number) => resetCount(identity, value),
         setCountValue: (value: number) => setCountValue(value),
         setSummaryCompleted: (completed: boolean) => setSummaryCompleted(completed),
+        setRailState: (state: "running" | "done") => setRailState(state),
       }
     `,
   )
@@ -426,7 +508,7 @@ describe("Activity summary DOM behavior", () => {
 
 describe("ActivityTrace DOM behavior", () => {
   function trigger(): HTMLButtonElement {
-    return document.querySelector('[data-slot="activity-trace-trigger"]') as HTMLButtonElement
+    return document.querySelector('#activity-main-host [data-slot="activity-trace-trigger"]') as HTMLButtonElement
   }
 
   test("trigger is a keyboard-accessible button that toggles the step list", async () => {
@@ -470,6 +552,42 @@ describe("ActivityTrace DOM behavior", () => {
 
     trigger().click()
     await wait(0)
+  })
+  test("renders the connected Plan A progress rail and transitions its marker to a completed check", async () => {
+    const rail = document.querySelector("#activity-rail-host") as HTMLElement
+    const traces = rail.querySelectorAll('[data-component="activity-trace"]')
+    expect(traces).toHaveLength(2)
+
+    const first = traces[0] as HTMLElement
+    const marker = first.querySelector('[data-slot="activity-trace-marker"]') as HTMLElement
+    expect(marker.getAttribute("role")).toBe("img")
+    expect(first.querySelector('[data-slot="activity-trace-connector"]')).not.toBeNull()
+    expect(marker.getAttribute("data-state")).toBe("running")
+    expect(marker.getAttribute("data-motion")).toBe("breathing")
+    expect(marker.getAttribute("aria-label")).toBe("Running")
+    expect(marker.querySelector('[data-component="spinner"]')).toBeNull()
+
+    harness.setRailState("done")
+    await wait(0)
+
+    expect(marker.getAttribute("data-state")).toBe("done")
+    expect(marker.getAttribute("data-motion")).toBe("static")
+    expect(marker.getAttribute("aria-label")).toBe("Done")
+    expect(marker.querySelector('[data-component="icon"]')).not.toBeNull()
+  })
+
+  test("renders view_file through the Full-mode renderer body without a nested tool card", async () => {
+    const viewHost = document.querySelector("#view-file-host") as HTMLElement
+    const viewTrigger = viewHost.querySelector('[data-slot="activity-trace-trigger"]') as HTMLButtonElement
+    viewTrigger.click()
+    await wait(0)
+
+    expect(viewHost.querySelector('[data-component="tool-result-body"]')).not.toBeNull()
+    expect(viewHost.querySelector('[data-component="anchored-summary"]')).not.toBeNull()
+    expect(viewHost.querySelector('[data-component="view-content"]')).not.toBeNull()
+    expect(viewHost.querySelector('[data-component="code-fixture"]')?.textContent).toBe("const parity = true")
+    expect(viewHost.querySelector('[data-component="tool-output-text"]')).toBeNull()
+    expect(viewHost.querySelector('[data-component="collapsible"][data-variant="tool"]')).toBeNull()
   })
 })
 

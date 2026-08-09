@@ -11,6 +11,9 @@
 }
 
 [data-component="activity-trace"] {
+  position: relative;
+  padding-inline-start: 37px;
+
   [data-component="collapsible"] {
     width: 100%;
   }
@@ -20,9 +23,9 @@
     align-items: center;
     width: 100%;
     min-width: 0;
-    min-height: 36px;
+    min-height: 38px;
     gap: 8px;
-    padding: 4px 2px;
+    padding: 5px 2px;
     border: 0;
     color: inherit;
     background: transparent;
@@ -41,11 +44,63 @@
     }
   }
 
-  [data-slot="activity-trace-leading"] {
+  [data-slot="activity-trace-marker"] {
+    position: absolute;
+    z-index: 1;
+    top: 8px;
+    left: 0;
     display: grid;
-    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
     place-items: center;
+    border: 1px solid var(--border-weak-base);
+    border-radius: 999px;
     color: var(--icon-weak-base);
+    background: var(--background-weak);
+    transform-origin: center;
+  }
+
+  [data-slot="activity-trace-marker"][data-state="running"] {
+    border-color: var(--border-selected);
+    background: var(--surface-base-active);
+  }
+
+  [data-slot="activity-trace-marker"][data-state="done"] {
+    border-color: color-mix(in srgb, var(--icon-success-base) 34%, var(--border-weak-base));
+    color: var(--icon-success-base);
+    background: var(--surface-success-weak);
+  }
+
+  [data-slot="activity-trace-marker"][data-state="waiting-approval"] {
+    color: var(--icon-warning-base);
+  }
+
+  [data-slot="activity-trace-marker"][data-state="error"] {
+    color: var(--icon-critical-base);
+  }
+
+  [data-slot="activity-trace-marker"][data-motion="breathing"] {
+    animation: activity-trace-breathe 1.6s var(--motion-ease-standard) infinite;
+  }
+
+  [data-slot="activity-trace-connector"] {
+    display: none;
+    position: absolute;
+    z-index: 0;
+    top: 30px;
+    bottom: -10px;
+    left: 11px;
+    width: 1px;
+    background: var(--border-weak-base);
+  }
+
+  [data-component="tool-result-body"] {
+    min-width: 0;
+    margin: 6px 0 0 26px;
+  }
+
+  [data-component="tool-result-body"] > :first-child {
+    margin-top: 0;
   }
 
   [data-slot="activity-trace-copy"] {
@@ -101,9 +156,8 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    margin: 2px 0 4px 11px;
-    padding: 0 0 0 18px;
-    border-inline-start: 1px solid var(--border-weak-base);
+    margin: 2px 0 4px;
+    padding: 0;
     list-style: none;
   }
 
@@ -147,31 +201,9 @@
     white-space: nowrap;
   }
 
-  [data-slot="activity-step-notice"] {
-    margin: 5px 0 0 26px;
-    color: var(--text-weak);
-    font-size: var(--font-size-x-small);
-  }
-
-  [data-slot="activity-step-notice"][data-state="error"] {
-    color: var(--text-critical-base);
-  }
-
-  [data-component="tool-output-text"],
   [data-component="attachment-gallery"],
   [data-slot="activity-specialized-detail"] {
     margin: 6px 0 0 26px;
-  }
-
-  [data-component="tool-output-text"] {
-    max-height: 8rem;
-    overflow: auto;
-    padding: 7px 9px;
-    border-radius: var(--radius-sm);
-    color: var(--text-weak);
-    background: var(--background-weak);
-    font-size: var(--font-size-x-small);
-    white-space: pre-wrap;
   }
 }
 
@@ -190,7 +222,7 @@
   }
 
   &[data-state="error"] {
-    color: var(--text-critical-base);
+    color: var(--text-on-critical-base);
   }
 }
 
@@ -361,6 +393,18 @@
   }
 }
 
+@keyframes activity-trace-breathe {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(0.78);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes activity-count-out {
   from {
     opacity: 1;
@@ -385,7 +429,6 @@
 
 @media (max-width: 420px) {
   [data-component="activity-trace"] {
-    [data-slot="activity-trace-meta"] [data-slot="activity-state"] span,
     [data-slot="activity-step-row"] [data-slot="activity-state"] span {
       display: none;
     }
@@ -398,10 +441,33 @@
   }
 }
 
+[data-slot="session-turn-timeline-item"][data-activity-continues] {
+  margin-bottom: 0;
+
+  [data-slot="activity-trace-connector"] {
+    display: block;
+  }
+}
+
+[data-slot="session-turn-timeline-item"][data-activity-continues]
+  + [data-slot="session-turn-timeline-item"][data-kind="activity-group"] {
+  margin-top: 0;
+}
+
+[data-slot="session-turn-timeline-item"][data-kind="activity-group"][data-activity-follows] {
+  margin-top: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-component="animated-activity-count"] [data-slot="activity-count-old"],
   [data-component="animated-activity-count"] [data-slot="activity-count-new"] {
     animation: none !important;
+  }
+
+  [data-component="activity-trace"] [data-slot="activity-trace-marker"][data-motion="breathing"] {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
   }
 
   [data-component="activity-trace"] [data-component="spinner"] rect,

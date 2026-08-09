@@ -531,6 +531,26 @@ function displayItemVisualKind(item: SessionTurnDisplayItem) {
   return timelineVisualKind(item)
 }
 
+function adjacentActivityGroup(
+  keys: readonly string[],
+  map: ReadonlyMap<string, SessionTurnDisplayItem>,
+  index: number,
+  direction: -1 | 1,
+): boolean {
+  const current = map.get(keys[index])
+  if (!current || !isActivityTimelineItem(current) || current.kind !== "activity-group") return false
+  for (
+    let adjacentIndex = index + direction;
+    adjacentIndex >= 0 && adjacentIndex < keys.length;
+    adjacentIndex += direction
+  ) {
+    const adjacent = map.get(keys[adjacentIndex])
+    if (!adjacent || isActivityBoundaryDisplayItem(adjacent)) continue
+    return isActivityTimelineItem(adjacent) && adjacent.kind === "activity-group"
+  }
+  return false
+}
+
 function isReasoningDisplayItem(item: SessionTurnDisplayItem): boolean {
   if (!isAssistantTimelineDisplayItem(item)) return false
   if (isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary") return true
@@ -1116,6 +1136,15 @@ export function SessionTurn(
                               const current = item()
                               return current ? timelineMessageBoundaries().get(current.message.id) : undefined
                             }
+                            const activityFollows = () =>
+                              adjacentActivityGroup(
+                                timelineItemSnapshot().keys,
+                                timelineItemSnapshot().map,
+                                index(),
+                                -1,
+                              )
+                            const activityContinues = () =>
+                              adjacentActivityGroup(timelineItemSnapshot().keys, timelineItemSnapshot().map, index(), 1)
                             return (
                               <Show when={item()}>
                                 {(current) => (
@@ -1136,6 +1165,8 @@ export function SessionTurn(
                                     <div
                                       data-slot="session-turn-timeline-item"
                                       data-kind={displayItemVisualKind(current())}
+                                      data-activity-continues={activityContinues() ? "" : undefined}
+                                      data-activity-follows={activityFollows() ? "" : undefined}
                                       hidden={isActivityBoundaryDisplayItem(current())}
                                     >
                                       <TimelineDisplay

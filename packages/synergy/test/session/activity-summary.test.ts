@@ -58,6 +58,43 @@ async function storedAssistant(sessionID: string, messageID: string) {
   return messages.find((message) => message.info.id === messageID)?.info as MessageV2.Assistant | undefined
 }
 
+async function addRunningRead(sessionID: string, messageID: string, id: string) {
+  await Session.updatePart({
+    id,
+    messageID,
+    sessionID,
+    type: "tool",
+    callID: `call-${id}`,
+    tool: "read",
+    state: {
+      status: "running",
+      input: { filePath: `/workspace/${id}.ts` },
+      title: id,
+      metadata: {},
+      time: { start: 1 },
+    },
+  })
+}
+
+async function addCompletedRead(sessionID: string, messageID: string, id: string) {
+  await Session.updatePart({
+    id,
+    messageID,
+    sessionID,
+    type: "tool",
+    callID: `call-${id}`,
+    tool: "read",
+    state: {
+      status: "completed",
+      input: { filePath: `/workspace/${id}.ts` },
+      output: "done",
+      title: id,
+      metadata: {},
+      time: { start: 1, end: 2 },
+    },
+  })
+}
+
 describe("ActivitySummary", () => {
   test("applies assistant activity metadata only when the expected sequence is current", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -243,7 +280,12 @@ describe("ActivitySummary", () => {
         const prompts: string[] = []
         ;(AgentCall.text as typeof AgentCall.text) = mock(async (input: AgentCall.TextInput) => {
           prompts.push(String(input.messages[0]?.content))
-          return { text: "Inspected the relevant files", model: {} as never }
+          return {
+            text: JSON.stringify({
+              groups: [{ steps: [0, 0], summary: "Inspected the relevant files" }],
+            }),
+            model: {} as never,
+          }
         })
         ActivitySummary.init()
         const { session, assistant } = await createTurn(tmp.path)
@@ -286,6 +328,71 @@ describe("ActivitySummary", () => {
     })
   })
 
+  test("keeps dedicated presentation tools out of the nano grouping manifest", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        const prompts: string[] = []
+        ;(AgentCall.text as typeof AgentCall.text) = mock(async (input: AgentCall.TextInput) => {
+          prompts.push(String(input.messages[0]?.content))
+          return {
+            text: JSON.stringify({
+              groups: [
+                { steps: [0, 0], summary: "Inspected the first file" },
+                { steps: [1, 1], summary: "Inspected the second file" },
+              ],
+            }),
+            model: {} as never,
+          }
+        })
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+        for (const [id, tool, metadata] of [
+          ["read-before", "read", {}],
+          ["hidden-card", "plugin_tool", { display: { toolCard: "hidden" } }],
+          ["render-preview", "render", {}],
+          ["read-after", "read", {}],
+        ] as const) {
+          await Session.updatePart({
+            id,
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "tool",
+            callID: `call-${id}`,
+            tool,
+            state: {
+              status: "completed",
+              input: { filePath: `${tmp.path}/src/${id}.ts` },
+              output: "done",
+              title: id,
+              metadata,
+              time: { start: 1, end: 2 },
+            },
+          })
+        }
+        await Session.updatePart({
+          id: "answer-boundaries",
+          messageID: assistant.id,
+          sessionID: session.id,
+          type: "text",
+          text: "Done",
+        })
+        await ActivitySummary.idle(session.id)
+
+        expect(prompts).toHaveLength(1)
+        expect(prompts[0]).not.toContain("plugin_tool")
+        expect(prompts[0]).not.toContain("render-preview")
+        const storedGroups = Object.values(
+          (await storedAssistant(session.id, assistant.id))?.metadata?.activity?.groups ?? {},
+        ) as { signature?: string }[]
+        const signatures = storedGroups.map((group) => group.signature)
+        expect(signatures.sort()).toEqual(["read-after", "read-before"])
+      },
+    })
+  })
+
   test("aggregates modified files across package subdirectories into one summary group", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -295,7 +402,12 @@ describe("ActivitySummary", () => {
         let calls = 0
         ;(AgentCall.text as typeof AgentCall.text) = mock(async () => {
           calls++
-          return { text: "Updated the UI package", model: {} as never }
+          return {
+            text: JSON.stringify({
+              groups: [{ steps: [0, 1], summary: "Updated the UI package" }],
+            }),
+            model: {} as never,
+          }
         })
         ActivitySummary.init()
         const { session, assistant } = await createTurn(tmp.path)
@@ -340,6 +452,311 @@ describe("ActivitySummary", () => {
     })
   })
 
+  test("uses nano segmentation to group adjacent mixed-family steps by shared intent", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        const prompts: string[] = []
+        ;(AgentCall.text as typeof AgentCall.text) = mock(async (input: AgentCall.TextInput) => {
+          prompts.push(String(input.messages[0]?.content))
+          return {
+            text: JSON.stringify({
+              groups: [{ steps: [0, 2], summary: "Implemented and verified the activity trace" }],
+            }),
+            model: {} as never,
+          }
+        })
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+        for (const [id, tool, input] of [
+          ["read-flow", "read", { filePath: `${tmp.path}/packages/ui/src/components/session-turn-activity.tsx` }],
+          [
+            "edit-flow",
+            "revise_file",
+            { filePath: `${tmp.path}/packages/ui/src/components/session-turn-activity.tsx` },
+          ],
+          [
+            "test-flow",
+            "bash",
+            {
+              command:
+                "PRIVATE_TOKEN=value /workspace/private/bin/bun test test/components/session-turn-activity.test.ts",
+            },
+          ],
+        ] as const) {
+          await Session.updatePart({
+            id,
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "tool",
+            callID: `call-${id}`,
+            tool,
+            state: {
+              status: "completed",
+              input,
+              output: "done",
+              title: id,
+              metadata: {},
+              time: { start: 1, end: 2 },
+            },
+          })
+        }
+        await Session.updatePart({
+          id: "answer-semantic",
+          messageID: assistant.id,
+          sessionID: session.id,
+          type: "text",
+          text: "Done",
+        })
+        await ActivitySummary.idle(session.id)
+
+        expect(prompts).toHaveLength(1)
+        expect(prompts[0]).toContain('"i":0')
+        expect(prompts[0]).toContain('"family":"inspect-local"')
+        expect(prompts[0]).toContain('"family":"modify-files"')
+        expect(prompts[0]).toContain('"family":"execute"')
+        expect(prompts[0]).not.toContain(tmp.path)
+        expect(prompts[0]).not.toContain("PRIVATE_TOKEN")
+        expect(prompts[0]).not.toContain("/workspace/private")
+        const groups = Object.values(
+          (await storedAssistant(session.id, assistant.id))?.metadata?.activity?.groups ?? {},
+        ) as { signature?: string; text?: string; state?: string }[]
+        expect(groups).toHaveLength(1)
+        expect(groups[0]).toMatchObject({
+          state: "stable",
+          text: "Implemented and verified the activity trace",
+        })
+        expect(groups[0]?.signature?.split(":").sort()).toEqual(["edit-flow", "read-flow", "test-flow"])
+      },
+    })
+  })
+
+  test("falls back for the whole tail when nano returns invalid semantic membership", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        ;(AgentCall.text as typeof AgentCall.text) = mock(async () => ({
+          text: JSON.stringify({
+            groups: [{ steps: [1, 1], summary: "Skipped the first step" }],
+          }),
+          model: {} as never,
+        }))
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+        for (const [id, tool, input] of [
+          ["read-invalid", "read", { filePath: `${tmp.path}/src/activity.ts` }],
+          ["test-invalid", "bash", { command: "bun test" }],
+        ] as const) {
+          await Session.updatePart({
+            id,
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "tool",
+            callID: `call-${id}`,
+            tool,
+            state: {
+              status: "completed",
+              input,
+              output: "done",
+              title: id,
+              metadata: {},
+              time: { start: 1, end: 2 },
+            },
+          })
+        }
+        await Session.updatePart({
+          id: "answer-invalid",
+          messageID: assistant.id,
+          sessionID: session.id,
+          type: "text",
+          text: "Done",
+        })
+        await ActivitySummary.idle(session.id)
+
+        const groups = Object.values(
+          (await storedAssistant(session.id, assistant.id))?.metadata?.activity?.groups ?? {},
+        ) as { state?: string; text?: string }[]
+        expect(groups).toHaveLength(2)
+        expect(groups.every((group) => group.state === "fallback" && group.text === undefined)).toBe(true)
+      },
+    })
+  })
+
+  test("sends only uncovered tool steps when a later tail settles", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        const prompts: string[] = []
+        ;(AgentCall.text as typeof AgentCall.text) = mock(async (input: AgentCall.TextInput) => {
+          prompts.push(String(input.messages[0]?.content))
+          return {
+            text: JSON.stringify({
+              groups: [
+                { steps: [0, 0], summary: prompts.length === 1 ? "Inspected the first file" : "Inspected the tail" },
+              ],
+            }),
+            model: {} as never,
+          }
+        })
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+
+        await addCompletedRead(session.id, assistant.id, "read-covered")
+        await Session.updatePart({
+          id: "boundary-first",
+          messageID: assistant.id,
+          sessionID: session.id,
+          type: "text",
+          text: "First phase complete",
+        })
+        await ActivitySummary.idle(session.id)
+
+        await addCompletedRead(session.id, assistant.id, "read-tail")
+        await Session.updatePart({
+          id: "boundary-tail",
+          messageID: assistant.id,
+          sessionID: session.id,
+          type: "text",
+          text: "Tail complete",
+        })
+        await ActivitySummary.idle(session.id)
+
+        expect(prompts).toHaveLength(2)
+        expect(prompts[1]).toContain("read-tail")
+        expect(prompts[1]).not.toContain("read-covered")
+        const signatures = (
+          Object.values((await storedAssistant(session.id, assistant.id))?.metadata?.activity?.groups ?? {}) as {
+            signature?: string
+          }[]
+        ).map((group) => group.signature)
+        expect(signatures.sort()).toEqual(["read-covered", "read-tail"])
+      },
+    })
+  })
+
+  test("rejects nano membership that crosses a hard boundary", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        let calls = 0
+        ;(AgentCall.text as typeof AgentCall.text) = mock(async () => {
+          calls++
+          return {
+            text: JSON.stringify({ groups: [{ steps: [0, 1], summary: "Inspected both files" }] }),
+            model: {} as never,
+          }
+        })
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+        const errorPartID = Identifier.ascending("part")
+        const afterPartID = Identifier.ascending("part")
+        await addRunningRead(session.id, assistant.id, errorPartID)
+        await addRunningRead(session.id, assistant.id, afterPartID)
+        await Session.updatePart({
+          id: errorPartID,
+          messageID: assistant.id,
+          sessionID: session.id,
+          type: "tool",
+          callID: `call-${errorPartID}`,
+          tool: "read",
+          state: {
+            status: "error",
+            input: { filePath: "/workspace/read-error-boundary.ts" },
+            error: "failed",
+            metadata: {},
+            time: { start: 1, end: 2 },
+          },
+        })
+        await addCompletedRead(session.id, assistant.id, afterPartID)
+        await Bus.publish(SessionEvent.Idle, { sessionID: session.id })
+        await ActivitySummary.idle(session.id)
+
+        const groups = Object.values(
+          (await storedAssistant(session.id, assistant.id))?.metadata?.activity?.groups ?? {},
+        ) as { signature?: string; state?: string; text?: string }[]
+        expect(calls).toBe(1)
+        expect(groups).toHaveLength(2)
+        expect(groups.every((group) => group.state === "fallback" && group.text === undefined)).toBe(true)
+        expect(groups.map((group) => group.signature).sort()).toEqual([afterPartID, errorPartID].sort())
+      },
+    })
+  })
+
+  test("rejects nano groups larger than 24 steps", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        let calls = 0
+        ;(AgentCall.text as typeof AgentCall.text) = mock(async () => {
+          calls++
+          return {
+            text: JSON.stringify({ groups: [{ steps: [0, 24], summary: "Inspected every file" }] }),
+            model: {} as never,
+          }
+        })
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+        const ids = Array.from({ length: 25 }, (_, index) => `read-limit-${index}`)
+        for (const id of ids) await addRunningRead(session.id, assistant.id, id)
+        for (const id of ids) await addCompletedRead(session.id, assistant.id, id)
+        await Bus.publish(SessionEvent.Idle, { sessionID: session.id })
+        await ActivitySummary.idle(session.id)
+
+        const groups = Object.values(
+          (await storedAssistant(session.id, assistant.id))?.metadata?.activity?.groups ?? {},
+        ) as { signature?: string; state?: string; text?: string }[]
+        expect(calls).toBe(1)
+        expect(groups).toHaveLength(2)
+        expect(groups.every((group) => group.state === "fallback" && group.text === undefined)).toBe(true)
+        expect(groups.map((group) => group.signature?.split(":").length).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([
+          1, 24,
+        ])
+      },
+    })
+  })
+
+  test("falls back without invoking nano when a tool manifest exceeds 48 steps", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        let calls = 0
+        ;(AgentCall.text as typeof AgentCall.text) = mock(async () => {
+          calls++
+          return { text: "Should not run", model: {} as never }
+        })
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+        const ids = Array.from({ length: 49 }, (_, index) => `read-manifest-${index}`)
+        for (const id of ids) await addRunningRead(session.id, assistant.id, id)
+        for (const id of ids) await addCompletedRead(session.id, assistant.id, id)
+        await Bus.publish(SessionEvent.Idle, { sessionID: session.id })
+        await ActivitySummary.idle(session.id)
+
+        const groups = Object.values(
+          (await storedAssistant(session.id, assistant.id))?.metadata?.activity?.groups ?? {},
+        ) as { signature?: string; state?: string; text?: string }[]
+        expect(calls).toBe(0)
+        expect(groups).toHaveLength(3)
+        expect(groups.every((group) => group.state === "fallback" && group.text === undefined)).toBe(true)
+        expect(groups.map((group) => group.signature?.split(":").length).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([
+          1, 24, 24,
+        ])
+      },
+    })
+  })
+
   test("commits every tool group from one flush in a single metadata update", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -349,7 +766,15 @@ describe("ActivitySummary", () => {
         let calls = 0
         ;(AgentCall.text as typeof AgentCall.text) = mock(async () => {
           calls++
-          return { text: `Activity ${calls}`, model: {} as never }
+          return {
+            text: JSON.stringify({
+              groups: [
+                { steps: [0, 0], summary: "Inspected the input" },
+                { steps: [1, 1], summary: "Ran the tests" },
+              ],
+            }),
+            model: {} as never,
+          }
         })
         ActivitySummary.init()
         const { session, assistant } = await createTurn(tmp.path)
@@ -395,7 +820,7 @@ describe("ActivitySummary", () => {
         await ActivitySummary.idle(session.id)
 
         const activity = (await storedAssistant(session.id, assistant.id))?.metadata?.activity
-        expect(calls).toBe(2)
+        expect(calls).toBe(1)
         expect(Object.keys(activity?.groups ?? {})).toHaveLength(2)
         expect(activity?.seq).toBe(1)
       },

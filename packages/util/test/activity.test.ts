@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { activityScopeForTool } from "../src/activity"
+import { activityScopeForTool, isActivityGroupableTool, toolDisplayPolicy } from "../src/activity"
 
 describe("activityScopeForTool", () => {
   test("groups modified files by package or top-level workspace directory", () => {
@@ -37,6 +37,20 @@ describe("activityScopeForTool", () => {
     expect(activityScopeForTool({ filePath: "/workspace/packages/ui/src/activity.tsx" })).toEqual({
       key: "path:/workspace/packages/ui/src",
       label: "/workspace/packages/ui/src",
+    })
+  })
+})
+
+describe("isActivityGroupableTool", () => {
+  test("keeps dedicated, hidden, and media presentation tools outside semantic groups", () => {
+    expect(isActivityGroupableTool("read", {})).toBe(true)
+    expect(isActivityGroupableTool("render", {})).toBe(false)
+    expect(isActivityGroupableTool("diagram", {})).toBe(false)
+    expect(isActivityGroupableTool("plugin_tool", { display: { toolCard: "hidden" } })).toBe(false)
+    expect(isActivityGroupableTool("plugin_tool", { display: { kind: "media-generation" } })).toBe(false)
+    expect(toolDisplayPolicy({ display: { toolCard: "hidden", kind: "media-generation" } })).toEqual({
+      toolCardHidden: true,
+      mediaGeneration: true,
     })
   })
 })

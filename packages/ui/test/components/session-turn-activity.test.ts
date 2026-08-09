@@ -398,6 +398,109 @@ describe("session turn activity projection", () => {
     })
   })
 
+  test("uses persisted semantic membership across tool families", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 1,
+        groups: {
+          "activity:assistant-a:inspect-local:path:/workspace:read-flow": {
+            state: "stable",
+            signature: "read-flow:edit-flow:test-flow",
+            text: "Implemented and verified the activity trace",
+            updatedAt: 10,
+          },
+        },
+      },
+    }
+    const groups = activities(
+      project({
+        message,
+        parts: [
+          tool({ id: "read-flow", tool: "read", args: { filePath: "/workspace/src/activity.ts" } }),
+          tool({ id: "edit-flow", tool: "revise_file", args: { filePath: "/workspace/src/activity.ts" } }),
+          tool({ id: "test-flow", tool: "bash", args: { command: "bun test" } }),
+        ],
+      }),
+    )
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.steps.map((step) => step.part.id)).toEqual(["read-flow", "edit-flow", "test-flow"])
+    expect(groups[0]).toMatchObject({
+      key: "activity:assistant-a:inspect-local:path:/workspace:read-flow",
+      family: "inspect-local",
+      summary: { state: "stable", text: "Implemented and verified the activity trace" },
+    })
+  })
+
+  test("ignores persisted semantic membership that crosses a presentation boundary", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 1,
+        groups: {
+          "activity:assistant-a:inspect-local::read-before": {
+            state: "stable",
+            signature: "read-before:plugin-card:read-after",
+            text: "Invalid legacy group",
+            updatedAt: 10,
+          },
+        },
+      },
+    }
+    const groups = activities(
+      project({
+        message,
+        parts: [
+          tool({ id: "read-before" }),
+          tool({ id: "plugin-card", tool: "plugin_owned_tool" }),
+          tool({ id: "read-after" }),
+        ],
+        isToolRenderBoundary: (name) => name === "plugin_owned_tool",
+      }),
+    )
+
+    expect(groups.map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-before"], ["read-after"]])
+    expect(groups.every((group) => group.summary === undefined)).toBe(true)
+  })
+
+  test("does not merge an unsettled streaming tail into a persisted semantic group", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 1,
+        groups: {
+          "activity:assistant-a:inspect-local:path:/workspace:read-flow": {
+            state: "stable",
+            signature: "read-flow:edit-flow:test-flow",
+            text: "Implemented and verified the activity trace",
+            updatedAt: 10,
+          },
+        },
+      },
+    }
+    const groups = activities(
+      project({
+        message,
+        parts: [
+          tool({ id: "read-flow", tool: "read", args: { filePath: "/workspace/src/activity.ts" } }),
+          tool({ id: "edit-flow", tool: "revise_file", args: { filePath: "/workspace/src/activity.ts" } }),
+          tool({ id: "test-flow", tool: "bash", args: { command: "bun test" } }),
+          tool({ id: "read-tail", tool: "read", args: { filePath: "/workspace/src/next.ts" } }),
+        ],
+      }),
+    )
+
+    expect(groups.map((group) => group.steps.map((step) => step.part.id))).toEqual([
+      ["read-flow", "edit-flow", "test-flow"],
+      ["read-tail"],
+    ])
+    expect(groups[1]?.summary).toBeUndefined()
+  })
+
   test("caps a group at 24 steps and gives continuation groups their own first-part key", () => {
     const items = project({ parts: Array.from({ length: 25 }, (_, index) => tool({ id: `read-${index}` })) })
     const groups = activities(items)
@@ -464,35 +567,6 @@ describe("session turn activity projection", () => {
     expect(refined).toMatchObject({ family: "browser", receipt: false })
   })
 
-  test("does not expose raw input JSON for protected activity families", () => {
-    const groups = activities(
-      project({
-        parts: [
-          tool({
-            id: "email",
-            tool: "email_send",
-            status: "running",
-            args: { body: "private email body" },
-          }),
-          tool({
-            id: "card",
-            tool: "response_card",
-            status: "running",
-            args: { content: "private card content" },
-          }),
-          tool({
-            id: "dag-write",
-            tool: "dagwrite",
-            status: "running",
-            args: { nodes: [{ id: "private-node" }] },
-          }),
-        ],
-      }),
-    )
-
-    expect(groups.map((group) => group.steps[0]?.preview)).toEqual([undefined, undefined, undefined])
-  })
-
   test("scans the complete permission array by messageID and callID without changing group identity", () => {
     const parts = [tool({ id: "read-a", status: "running" }), tool({ id: "read-b", status: "running" })]
     const baseline = activities(project({ parts }))[0]!
@@ -518,7 +592,7 @@ describe("session turn activity projection", () => {
 
     expect(activityItemStableKey(waiting)).toBe(activityItemStableKey(baseline))
     expect(waiting.state).toBe("waiting-approval")
-    expect(waiting.steps[1]?.permission?.id).toBe("matching")
+    expect(waiting.steps.map((step) => step.state)).toEqual(["running", "waiting-approval"])
   })
 
   test("keeps successful, waiting, and failed DAG reads as coordination receipts", () => {
@@ -559,8 +633,7 @@ describe("session turn activity projection", () => {
 
     expect(activityItemStableKey(failed)).toBe(activityItemStableKey(running))
     expect(failed.state).toBe("error")
-    expect(failed.steps[1]?.error).toBe("Operation failed")
-    expect(failed.steps[1]?.preview).toBeUndefined()
+    expect(failed.steps[1]?.part.state.status).toBe("error")
   })
 
   test("isolates tool info failures to the affected activity step", () => {
@@ -588,29 +661,6 @@ describe("session turn activity projection", () => {
     expect(groups).toHaveLength(1)
     expect(groups[0]).toMatchObject({ state: "error", receipt: true })
     expect(groups[0]?.steps[0]?.part.id).toBe("hidden-error")
-  })
-
-  test("uses the end of long command output for command-tail previews", () => {
-    const output = `${"setup output ".repeat(40)}FINAL RESULT: 42`
-    const preview = activities(project({ parts: [tool({ id: "shell", tool: "bash", output })] }))[0]?.steps[0]?.preview
-
-    expect(preview?.kind).toBe("command-tail")
-    expect(preview?.kind === "command-tail" ? preview.text : "").toEndWith("FINAL RESULT: 42")
-  })
-
-  test("filters hidden attachments from activity previews", () => {
-    const completed = tool({ id: "attachments", output: "" })
-    if (completed.state.status === "completed") {
-      completed.state.attachments = [
-        attachment("visible") as AttachmentPart,
-        { ...attachment("hidden"), presentation: { hidden: true } } as AttachmentPart,
-      ]
-    }
-
-    const preview = activities(project({ parts: [completed] }))[0]?.steps[0]?.preview
-
-    expect(preview?.kind).toBe("attachments")
-    expect(preview?.kind === "attachments" ? preview.files.map((file) => file.id) : []).toEqual(["visible"])
   })
 
   test("preserves media and promoted tool attachments on the existing timeline path", () => {
