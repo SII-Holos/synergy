@@ -46,7 +46,7 @@ async function createFallbackInstallerInclude() {
   await fs.mkdir(releaseDir, { recursive: true })
   const directory = await fs.mkdtemp(path.join(releaseDir, "windows-installer-test-"))
   const includePath = path.join(directory, "installer.nsh")
-  const productionInclude = path.join(desktopDir, "build", "installer.nsh").replaceAll("\\", "/")
+  const productionInclude = path.join(desktopDir, "build", "installer.nsh")
   await Bun.write(
     includePath,
     [
