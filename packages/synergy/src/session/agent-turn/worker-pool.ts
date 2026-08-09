@@ -55,12 +55,26 @@ export interface AgentWorkerSupervisorOptions {
   sleep(ms: number): Promise<void>
 }
 
-const DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS: AgentWorkerSupervisorOptions = {
-  startupBackoffBaseMs: 250,
-  startupBackoffMaxMs: 4_000,
-  maxConsecutiveStartupFailures: 5,
-  sleep: Bun.sleep,
+const DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_BASE_MS = 250
+const DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_TARGET_MS = 5 * 60_000
+const DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_MAX_MS =
+  DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_BASE_MS *
+  2 **
+    Math.floor(Math.log2(DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_TARGET_MS / DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_BASE_MS))
+
+function startupBackoffDelayMs(failure: number, baseMs: number, maxMs: number): number {
+  return Math.min(maxMs, baseMs * 2 ** (failure - 1))
 }
+
+function countStartupBackoffsThroughMaximum(baseMs: number, maxMs: number): number {
+  return Math.max(1, Math.ceil(Math.log2(maxMs / baseMs)) + 1)
+}
+
+const DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS = {
+  startupBackoffBaseMs: DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_BASE_MS,
+  startupBackoffMaxMs: DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_MAX_MS,
+  sleep: Bun.sleep,
+} satisfies Omit<AgentWorkerSupervisorOptions, "maxConsecutiveStartupFailures">
 
 interface PoolTask {
   requestId: string
@@ -214,7 +228,13 @@ export class AgentWorkerPool {
     private readonly spawn: (options: SpawnAgentWorkerProcessOptions) => AgentWorkerProcess = spawnAgentWorkerProcess,
     supervisor: Partial<AgentWorkerSupervisorOptions> = {},
   ) {
-    this.supervisor = { ...DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS, ...supervisor }
+    const mergedSupervisor = { ...DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS, ...supervisor }
+    this.supervisor = {
+      ...mergedSupervisor,
+      maxConsecutiveStartupFailures:
+        supervisor.maxConsecutiveStartupFailures ??
+        countStartupBackoffsThroughMaximum(mergedSupervisor.startupBackoffBaseMs, mergedSupervisor.startupBackoffMaxMs),
+    }
     if (!Number.isInteger(options.size) || options.size <= 0) {
       throw new Error("Agent worker pool size must be a positive integer")
     }
@@ -694,9 +714,10 @@ export class AgentWorkerPool {
       this.openStartupCircuit(cause)
       return
     }
-    const delayMs = Math.min(
+    const delayMs = startupBackoffDelayMs(
+      failures,
+      this.supervisor.startupBackoffBaseMs,
       this.supervisor.startupBackoffMaxMs,
-      this.supervisor.startupBackoffBaseMs * 2 ** (failures - 1),
     )
     const generation = ++this.startupRetryGeneration
     this.startupRetryPending = true

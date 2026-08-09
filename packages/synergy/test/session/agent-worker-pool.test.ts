@@ -394,6 +394,33 @@ describe("AgentWorkerPool", () => {
     }
   })
 
+  test("continues exponential startup backoff to a roughly five-minute delay before opening the default circuit", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    const pool = new AgentWorkerPool(options, fake.spawn, {
+      sleep(ms) {
+        delays.push(ms)
+        return Promise.resolve()
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        fake.workers[attempt].exit(1)
+        await Bun.sleep(0)
+      }
+
+      expect(delays).toEqual([250, 500, 1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 64_000, 128_000, 256_000])
+      expect(delays.reduce((total, delay) => total + delay, 0)).toBe(511_750)
+      expect(await turn).toMatchObject({
+        message: "Agent worker failed to start after 12 consecutive attempts",
+      })
+    } finally {
+      await pool.stop()
+    }
+  })
+
   test("reschedules startup backoff from the latest concurrent failure", async () => {
     const fake = fakeWorkers()
     const delays: number[] = []
