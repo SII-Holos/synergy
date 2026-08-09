@@ -239,6 +239,10 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     return this.state !== null && this.phase === "active"
   }
 
+  ownsTerminalDelivery(): boolean {
+    return true
+  }
+
   private async startCard(): Promise<void> {
     if (this.state) return
 

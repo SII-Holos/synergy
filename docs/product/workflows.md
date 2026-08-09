@@ -1,10 +1,10 @@
 # Workflows
 
-This document covers session-local workflow modes. Plan, Light Loop, and Lattice are owned by one session, while BlueprintLoop has a separate execution lifecycle bound to a session.
+This document covers session-local workflow modes. Plan, Light Loop, Lattice, and Boss Mode are owned by one session, while BlueprintLoop has a separate execution lifecycle bound to a session.
 
 Synergy workflows change how a session should continue beyond a single model response. They are durable session modes with explicit completion rules, not prompt labels.
 
-Only one of Plan, Light Loop, or Lattice can be active on a session at a time. BlueprintLoop is the execution lifecycle for a Blueprint and can either be started by the user or owned by a Lattice step.
+Only one of Plan, Light Loop, Lattice, or Boss Mode can be active on a session at a time. BlueprintLoop is the execution lifecycle for a Blueprint and can either be started by the user or owned by a Lattice step.
 
 ## Choosing a Workflow
 
@@ -14,6 +14,7 @@ Only one of Plan, Light Loop, or Lattice can be active on a session at a time. B
 | Execute an authored Blueprint with independent review                          | BlueprintLoop |
 | Keep working on one bounded task until an independent reviewer accepts it      | Light Loop    |
 | Decompose a larger goal into an ordered sequence of planned and reviewed steps | Lattice       |
+| Coordinate a tree of persistent specialist workers from one boss session       | Boss Mode     |
 
 Normal chat remains the right choice when the work does not need a durable outer loop.
 
@@ -78,9 +79,31 @@ The Pathway remains adaptive. After every successful step, a run with future wor
 
 Run status is separate from work state. An active run can be paused, a paused run can be resumed, and cancellation is irreversible. An optional model-call budget also pauses the run when exhausted; explicitly resuming that pause grants exactly one additional model call. Starting a later run for the same session does not overwrite completed, failed, or cancelled Lattice history.
 
+## Boss Mode
+
+Boss Mode turns one session into the root boss of a worker tree. The boss session is the human's only entry point: you talk to the boss, the boss spawns specialist workers, assigns them tasks, and summarizes their reports back to you. Workers are persistent child sessions that work unattended and can spawn their own workers, so the tree can grow several levels deep.
+
+### Enabling Boss Mode
+
+Pick Boss from the workflow selector in the composer. The session must be idle, and the option is blocked while Plan, Light Loop, Lattice, or an active BlueprintLoop occupies the session. Enabling Boss Mode opens the Boss panel and marks the session as the tree root.
+
+While Boss Mode is active, the composer shows its workflow chip. You can leave Boss Mode from the same selector when the session is idle; worker sessions and their history remain, and workers stop receiving new work once the root is gone.
+
+### Spawning workers
+
+In the Boss panel, use Spawn worker and give the worker a specialist role label (for example `code`, `review`, or `research`) and optionally a specific agent. The worker appears as a direct child of the boss session. A worker can spawn its own workers in turn.
+
+### Assigning and cancelling tasks
+
+Select an idle direct child worker in the panel and assign a task. The assignment is delivered to the worker's inbox and wakes it; the worker works unattended and reports back to its parent through `boss_report`. Cancel interrupts a running turn and removes that worker's pending assignments.
+
+### After a restart
+
+Boss Mode needs no manual recovery. Assigned tasks live in each worker's inbox, so after the runtime restarts, workers with pending tasks resume through the normal boot wake path, and the next turn refreshes the tree overview automatically.
+
 ## Shared Continuation
 
-BlueprintLoop, Lattice, and Light Loop share one session drive. Every completion, Agenda wake, workflow resume, or active-turn release asks that drive to arbitrate instead of independently starting another model call.
+BlueprintLoop, Lattice, Light Loop, and Boss Mode share one session drive. Every completion, Agenda wake, workflow resume, or active-turn release asks that drive to arbitrate instead of independently starting another model call.
 
 When the session becomes idle, persisted Inbox work goes first. If no runnable Inbox item exists, the shared workflow gate acts only when:
 
@@ -93,6 +116,6 @@ Only wake-capable Agenda items with `autoDone === true` hold that final wait. Or
 
 While a one-shot Agenda watch owns the next wake, stop tools (`loop_stop`, `blueprint_loop_stop`) refuse to run and show the cancellation commands needed to clear it. The wait ignores `nextRunAt`, so an overdue or just-fired watch continues to hold until it is cancelled, paused, removed, made silent or non-waking, or automatically completed. After automatic completion, the Agenda result is persisted before ordinary continuation resumes.
 
-If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Light Loop. Workflow continuations use stable Inbox delivery identities, so concurrent wake requests and restart recovery do not create duplicate continuation messages. Explicit Lattice resume and startup repair also enter through durable Inbox work before the shared drive; they do not bypass Inbox ordering or invoke the model directly.
+If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Boss Mode, then Light Loop. Workflow continuations use stable Inbox delivery identities, so concurrent wake requests and restart recovery do not create duplicate continuation messages. Explicit Lattice resume and startup repair also enter through durable Inbox work before the shared drive; they do not bypass Inbox ordering or invoke the model directly.
 
-This ordering gives the innermost execution loop control while a Lattice step is running, then returns control to the Pathway after the BlueprintLoop reaches a reviewed terminal state.
+This ordering gives the innermost execution loop control while a Lattice step is running, then returns control to the Pathway after the BlueprintLoop reaches a reviewed terminal state. Boss Mode continuation applies only to workers with an assigned task that has not reported; the root boss session remains human-driven.

@@ -311,6 +311,16 @@ export interface StreamingSession {
   updateToolProgress(progress: StreamingToolProgress[]): Promise<void>
   close(finalText?: string, error?: boolean): Promise<void>
   isActive(): boolean
+  /**
+   * Whether this streaming session delivers the terminal reply itself in
+   * `close()` (e.g. Feishu cards post the final text). When true, the channel
+   * core registers the root as foreground-delivered and persists
+   * `channelOutboundSent`, so the outbound bridge skips it. Providers whose
+   * streaming session is a no-op (e.g. GitHub, which relies on the outbound
+   * bridge for comments) must leave this false — otherwise the bridge is
+   * suppressed and the reply is never posted.
+   */
+  ownsTerminalDelivery?(): boolean
 }
 
 export type ProviderLifecycle = "self_connected" | "borrowed_transport"

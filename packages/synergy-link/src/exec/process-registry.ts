@@ -30,6 +30,7 @@ interface ProcessRecord {
   exitSignal?: NodeJS.Signals | number | null
   exited: boolean
   backgrounded: boolean
+  detached: boolean
 }
 
 interface FinishedRecord {
@@ -83,22 +84,25 @@ export class ProcessRegistry {
     lease: ExecutionLease,
   ): Promise<SynergyLinkBash.Result> {
     this.#host.assertLink(linkID)
+    const detached = request.detach === true
     const workdir = Platform.resolveWorkdir(request.workdir)
-    const detachedRisk = detectDetachedDaemonRisk(request.command, process.platform, {
-      windowsResolution: {
-        workdir,
-        env: process.env,
-      },
-    })
-    if (detachedRisk) {
-      SynergyLinkLog.warn("bash.detached_daemon.blocked", {
-        risk: detachedRisk,
-        sessionID: lease.sessionID,
-        callerAgentID: lease.callerAgentID,
+    if (!detached) {
+      const detachedRisk = detectDetachedDaemonRisk(request.command, process.platform, {
+        windowsResolution: {
+          workdir,
+          env: process.env,
+        },
       })
-      throw {
-        code: "invalid_request" as const,
-        message: detachedDaemonBlockMessage(detachedRisk),
+      if (detachedRisk) {
+        SynergyLinkLog.warn("bash.detached_daemon.blocked", {
+          risk: detachedRisk,
+          sessionID: lease.sessionID,
+          callerAgentID: lease.callerAgentID,
+        })
+        throw {
+          code: "invalid_request" as const,
+          message: detachedDaemonBlockMessage(detachedRisk),
+        }
       }
     }
     const launched = this.#launchShellProcess({
@@ -106,6 +110,7 @@ export class ProcessRegistry {
       description: request.description,
       workdir,
       lease,
+      detach: detached,
     })
 
     if (request.background) {
@@ -213,11 +218,13 @@ export class ProcessRegistry {
     const sessionKey = sessionLeaseKey(session)
     const ownerMarkers = new Set([
       ...(this.#sessionOwnerMarkers.get(sessionKey) ?? []),
-      ...running.map((record) => record.ownerMarker),
+      ...running.filter((record) => !record.detached).map((record) => record.ownerMarker),
     ])
     await Promise.all([
       Platform.killOwnedByMarkers(ownerMarkers),
-      ...running.map((record) => Platform.killTree(record.child, () => record.exited)),
+      ...running
+        .filter((record) => !record.detached)
+        .map((record) => Platform.killTree(record.child, () => record.exited)),
     ])
     this.#sessionOwnerMarkers.delete(sessionKey)
     for (const record of running) this.#running.delete(record.processId)
@@ -228,6 +235,7 @@ export class ProcessRegistry {
       sessionID: session.sessionID,
       callerAgentID: session.remoteAgentID,
       runningProcessCount: running.length,
+      detachedProcessCount: running.filter((record) => record.detached).length,
     })
   }
 
@@ -235,11 +243,13 @@ export class ProcessRegistry {
     const running = [...this.#running.values()]
     const ownerMarkers = new Set([
       ...[...this.#sessionOwnerMarkers.values()].flatMap((markers) => [...markers]),
-      ...running.map((record) => record.ownerMarker),
+      ...running.filter((record) => !record.detached).map((record) => record.ownerMarker),
     ])
     await Promise.all([
       Platform.killOwnedByMarkers(ownerMarkers),
-      ...running.map((record) => Platform.killTree(record.child, () => record.exited)),
+      ...running
+        .filter((record) => !record.detached)
+        .map((record) => Platform.killTree(record.child, () => record.exited)),
     ])
     this.#running.clear()
     this.#finished.clear()
@@ -251,15 +261,22 @@ export class ProcessRegistry {
     }
   }
 
-  #launchShellProcess(input: { command: string; description?: string; workdir: string; lease: ExecutionLease }) {
+  #launchShellProcess(input: {
+    command: string
+    description?: string
+    workdir: string
+    lease: ExecutionLease
+    detach?: boolean
+  }) {
     const launch = Platform.resolveShellLaunch(input.command)
     const processId = crypto.randomUUID()
     const ownerMarker = processId
+    const detached = input.detach === true
     const options: SpawnOptions = {
       cwd: input.workdir,
       env: Platform.normalizeEnv({
         ...process.env,
-        [SYNERGY_LINK_PROCESS_OWNER_ENV]: ownerMarker,
+        ...(detached ? {} : { [SYNERGY_LINK_PROCESS_OWNER_ENV]: ownerMarker }),
       }),
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
@@ -281,6 +298,7 @@ export class ProcessRegistry {
       truncated: false,
       exited: false,
       backgrounded: false,
+      detached,
     }
 
     const append = (chunk?: Uint8Array | string | null) => {
@@ -309,10 +327,12 @@ export class ProcessRegistry {
     })
 
     this.#running.set(processId, record)
-    const sessionKey = leaseKey(input.lease)
-    const ownerMarkers = this.#sessionOwnerMarkers.get(sessionKey) ?? new Set<string>()
-    ownerMarkers.add(ownerMarker)
-    this.#sessionOwnerMarkers.set(sessionKey, ownerMarkers)
+    if (!detached) {
+      const sessionKey = leaseKey(input.lease)
+      const ownerMarkers = this.#sessionOwnerMarkers.get(sessionKey) ?? new Set<string>()
+      ownerMarkers.add(ownerMarker)
+      this.#sessionOwnerMarkers.set(sessionKey, ownerMarkers)
+    }
     this.#startSweeper()
     return { record }
   }
@@ -661,7 +681,11 @@ export class ProcessRegistry {
     record.tail = record.output.slice(-TAIL_CHARS)
     this.#running.delete(record.processId)
 
-    if (record.backgrounded) {
+    // Detached processes live outside the session lifecycle entirely: they
+    // carry no owner marker and are not tracked in finished history, so a
+    // later session cleanup cannot kill them and they do not resurface in
+    // process listings.
+    if (record.backgrounded && !record.detached) {
       this.#finished.set(record.processId, {
         ownerMarker: record.ownerMarker,
         processId: record.processId,
