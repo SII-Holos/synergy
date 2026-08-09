@@ -18,12 +18,14 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { appShell, sidebar } from "@/locales/messages"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { SettingsDialog } from "@/components/settings"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 import { MobileDrawerAddProjectButton, MobileDrawerRecent, MobileDrawerSettingsButton } from "./mobile-drawer-root"
+import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
 
 export function MobileDrawer() {
   const layout = useLayout()
@@ -196,6 +198,12 @@ function ScopeListView(props: {
     return _(appShell.browser)
   }
 
+  const translateRecentCopy = (descriptor: MessageDescriptor) => _(descriptor)
+  const recentUnreadLabel = (entry: NavEntry) => {
+    if (!entry.completionNotice.unread) return undefined
+    return translateRecentCopy(resolveSessionVisualState(undefined, entry).label)
+  }
+
   const resolveEntryRouteDirectory = (entry: NavEntry) => {
     if (entry.scopeID === "home" || entry.scopeType === "home") return "home"
     return globalSync.data.scope.find((scope) => scope.id === entry.scopeID)?.worktree ?? entry.scopeID
@@ -266,6 +274,7 @@ function ScopeListView(props: {
         untitledLabel={_(sidebar.untitled)}
         entries={layout.nav.recentEntries()}
         currentSessionID={params.id}
+        unreadLabel={recentUnreadLabel}
         hasMore={layout.nav.hasMoreRecent()}
         onSelect={selectRecentSession}
         onLoadMore={() => void layout.nav.loadMoreNav("__recent__")}

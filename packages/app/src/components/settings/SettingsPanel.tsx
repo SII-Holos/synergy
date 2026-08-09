@@ -56,7 +56,11 @@ import { useSettingsSave } from "./hooks/useSettingsSave"
 import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
 import { createSettingsComponentLoader } from "./settings-component-loader"
-import { createSettingsMobileNavigationState, reduceSettingsMobileNavigation } from "./settings-mobile-navigation"
+import {
+  createSettingsMobileNavigationState,
+  reduceSettingsMobileNavigation,
+  restoreSettingsMobileListFocus,
+} from "./settings-mobile-navigation"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { rollbackFailedLocalePatch } from "./panels/locale-preference-change"
 import { ModelsPanel } from "./panels/ModelsPanel"
@@ -227,12 +231,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
     filterSettingsSections(getSettingsSections(), initialDeveloperMode).map((section) => section.id),
     isDesktop(),
   )
+  let settingsNavigation: HTMLDivElement | undefined
   const [navigation, setNavigation] = createSignal(initialNavigation)
   const activeTab = () => navigation().activeTab
   const mobileDetailOpen = () => navigation().detailOpen
   const setActiveTab = (id: string) =>
     setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "select", id }))
-  const showMobileSectionList = () => setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "back" }))
+  const showMobileSectionList = () => {
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "back" }))
+    restoreSettingsMobileListFocus(settingsNavigation)
+  }
   const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
   const [search, setSearch] = createSignal("")
   const [initialized, setInitialized] = createSignal(false)
@@ -861,6 +869,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       {ready() ? (
         <AppPanel.Root class="settings-panel-root">
           <AppPanel.Nav
+            ref={(element) => (settingsNavigation = element)}
             class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
           >
             <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">

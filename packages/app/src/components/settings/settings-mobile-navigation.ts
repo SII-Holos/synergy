@@ -52,3 +52,15 @@ export function reduceSettingsMobileNavigation(
     detailOpen: false,
   }
 }
+
+export function restoreSettingsMobileListFocus(
+  navigation: HTMLElement | undefined,
+  schedule: (callback: () => void) => void = queueMicrotask,
+) {
+  const focusTarget = () =>
+    navigation?.querySelector<HTMLButtonElement>('button[aria-current="page"]') ??
+    navigation?.querySelector<HTMLInputElement>("input")
+  if (!focusTarget()) return false
+  schedule(() => focusTarget()?.focus())
+  return true
+}

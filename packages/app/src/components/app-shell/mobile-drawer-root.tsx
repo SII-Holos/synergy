@@ -32,6 +32,7 @@ export function MobileDrawerRecent(props: {
   untitledLabel: string
   entries: NavEntry[]
   currentSessionID?: string
+  unreadLabel: (entry: NavEntry) => string | undefined
   hasMore: boolean
   onSelect: (entry: NavEntry) => void
   onLoadMore: () => void
@@ -71,6 +72,7 @@ export function MobileDrawerRecent(props: {
                     </Show>
                   </span>
                   <span class="min-w-0 flex-1 truncate text-13-medium">{entry.title || props.untitledLabel}</span>
+                  <Show when={props.unreadLabel(entry)}>{(label) => <span class="sr-only">{label()}</span>}</Show>
                 </button>
               )
             }}

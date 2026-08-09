@@ -53,7 +53,7 @@ beforeAll(async () => {
           document.querySelector("#actions")!,
         )
 
-        const entry = (id: string, title: string) => ({
+        const entry = (id: string, title: string, unread = false) => ({
           id,
           scopeID: "home",
           scopeType: "home",
@@ -62,7 +62,7 @@ beforeAll(async () => {
           lastActivityAt: 1,
           pinned: 0,
           archived: false,
-          completionNotice: { unread: false, unreadCount: 0 },
+          completionNotice: { unread, unreadCount: unread ? 1 : 0 },
         })
 
         render(
@@ -72,8 +72,10 @@ beforeAll(async () => {
               emptyLabel: "No recent sessions",
               loadMoreLabel: "Load more",
               untitledLabel: "Untitled",
-              entries: [entry("ses_recent", "Recent session"), entry("ses_other", "Other session")],
+              entries: [entry("ses_recent", "Recent session", true), entry("ses_other", "Other session")],
               currentSessionID: "ses_recent",
+              unreadLabel: (value) =>
+                value.completionNotice.unread ? "Home session; response ready" : undefined,
               hasMore: true,
               onSelect: (value) => selected.push(value.id),
               onLoadMore: () => loadMoreCalls++,
@@ -89,6 +91,7 @@ beforeAll(async () => {
               loadMoreLabel: "Load more",
               untitledLabel: "Untitled",
               entries: [],
+              unreadLabel: () => undefined,
               hasMore: false,
               onSelect: () => {},
               onLoadMore: () => {},
@@ -149,6 +152,7 @@ describe("mobile drawer root navigation", () => {
       await expect(recent.getByText("Recent session").count()).resolves.toBe(1)
       await expect(recent.getByText("Other session").count()).resolves.toBe(1)
       expect(await recent.locator('[data-session-id="ses_recent"]').getAttribute("aria-current")).toBe("page")
+      await expect(recent.getByRole("button", { name: /Recent session.*response ready/ }).count()).resolves.toBe(1)
 
       await recent.locator('[data-session-id="ses_other"]').click()
       await recent.locator('[data-action="load-more-recent"]').click()
