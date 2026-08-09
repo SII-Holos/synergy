@@ -56,7 +56,7 @@ The sync layer has:
 - one global store for paths, project list, providers, provider auth, and global Agenda data;
 - one lazily created store per home/project Scope;
 - message arrays keyed by session ID (window, not full transcript);
-- `messageWindow` metadata keyed by session ID (cursor, hasMore, total, mode, pendingLatest);
+- `messageWindow` metadata keyed by session ID (cursor, hasMore, total, mode, pendingLatest, tailMissingLatest);
 - `latestContextMessage` keyed by session ID, holding the latest eligible assistant snapshot independently of the visible message window;
 - part arrays keyed by message ID;
 - per-session buckets for status, diffs, todo, DAG, inbox, permissions, questions, and Plan Blueprint offers;
@@ -100,10 +100,12 @@ type MessageWindowMetadata = {
   mode: "latest" | "history"
   pendingLatest: boolean
   pendingLatestIds: string[]
+  tailMissingLatest: boolean
 }
 ```
 
 The `messages` array in the store contains only the visible window messages, not the full transcript.
+`tailMissingLatest` records that a history prepend cap-evicted newest overflow, so the bounded window's tail no longer reaches the true latest messages. Latest page applies and latest-mode reconciles clear it; history prepends, in-place reconciles, and removals preserve it.
 
 ### Page size and cap
 
@@ -140,15 +142,15 @@ Each asynchronous latest-page request also captures a per-session projection rev
 When the user requests older messages via "Load earlier", the frontend switches to history mode (`mode: "history"`):
 
 - The existing window messages are preserved; older fetched messages are prepended.
-- The combined set is capped at 500 by dropping the newest overflow (not the just-loaded older messages).
-- A subsequent `message.updated` event for a message not already in the window sets `pendingLatest: true` instead of inserting it. The metadata retains the exact unseen IDs in `pendingLatestIds`, so duplicate updates do not add state and a matching `message.removed` clears only that notice without decrementing the window total for a message it never counted.
+- The combined set is capped at 500 by dropping the newest overflow (not the just-loaded older messages). If the cap cuts inside a logical root turn, the whole partial trailing turn is dropped so the kept tail is complete and stays at or under the cap.
+- A subsequent `message.updated` event for a message not already in the window sets `pendingLatest: true` instead of inserting it. The metadata retains the exact unseen IDs in `pendingLatestIds`, so duplicate updates do not add state and a matching `message.removed` clears only that notice without decrementing the window total for a message it never counted. A prepend that cap-evicts messages filters any of their IDs out of `pendingLatestIds`: they are no longer unseen arrivals but are gone from the window, so the tail gap is tracked by `tailMissingLatest` instead.
 - `total` excludes those suppressed live arrivals while history mode remains active. Older-page totals are reduced by the count of remaining `pendingLatestIds` so suppressed live arrivals do not inflate the displayed total; returning to latest replaces the metadata with the server total and clears the pending IDs.
 
 History page responses are intentionally applied without snapshot-version ordering because they extend the existing window rather than replace it. Applying a history page invalidates the `message` resource revision so a concurrent latest-page response cannot subsequently overwrite the prepended window.
 
 ### Return to latest
 
-"Return to latest" refetches `messagePage()` without a cursor, resetting `mode` to `"latest"` and clearing `pendingLatest`. The UI force-scrolls to the bottom. Stale-cursor errors during `loadMore` also automatically trigger this recovery: the frontend catches `SessionMessagePageCursorStaleError` and refetches latest.
+"Return to latest" refetches `messagePage()` without a cursor, resetting `mode` to `"latest"` and clearing `pendingLatest`. The UI force-scrolls to the bottom. Stale-cursor errors during `loadMore` also automatically trigger this recovery: the frontend catches `SessionMessagePageCursorStaleError` and refetches latest. Heading from a scrolled-up history view back to the local bottom reuses the same recovery when the window has a tail gap (`tailMissingLatest`) or unseen arrivals are pending and no history load is in flight; gap-less history keeps the previous scroll behavior.
 
 ### Scroll anchor
 
@@ -386,7 +388,7 @@ The frontend:
 1. applies one Solid batch that deletes stale parts and diff state, deletes inbox state only if no newer inbox event arrived while the fetch was in flight, and preserves live part buckets changed during the request;
 1. reconciles the retained messages, unchanged authoritative parts, message window metadata, and latest Context projection atomically.
 
-Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`, `pendingLatestIds`) is replaced atomically in the same batch. Newer Message state supersedes and retries the whole stale swap, newer Inbox state preserves only the inbox bucket, newer per-message part state preserves that live bucket, and a newer Context projection revision preserves the newer usage record.
+Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`, `pendingLatestIds`, `tailMissingLatest`) is replaced atomically in the same batch. Newer Message state supersedes and retries the whole stale swap, newer Inbox state preserves only the inbox bucket, newer per-message part state preserves that live bucket, and a newer Context projection revision preserves the newer usage record.
 
 ## Message Bucket Eviction
 
@@ -438,6 +440,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 - Composer fallback resolution never writes upward into user intent.
 - The frontend message window is a viewport, not the full transcript. `messages()` and `messagePage()` serve different consumers.
 - Latest mode keeps the newest messages and evicts oldest; history mode preserves the existing window and caps newest overflow.
+- `tailMissingLatest` marks a history window whose newest overflow was cap-evicted; history prepends, reconciles, and removals preserve it, latest page applies clear it, and bottom-return recovery re-fetches latest only in history mode when it is set or unseen arrivals are pending and no history load is in flight.
 - Only a loaded session message bucket — both `messages[sessionID]` and `messageWindow[sessionID]` present — forms an authoritative visible window. Incoming `message.updated` events for an unloaded or evicted session advance resource freshness and the `latestContextMessage` projection but must not create a message window from empty state. The window is established by `messagePage` when the user enters the session.
 - `messageWindow` metadata and messages are evicted together by the message-bucket LRU.
 - Latest Context usage is sync-owned and independent of history viewport suppression; authoritative latest pages seed it and bucket eviction removes it.

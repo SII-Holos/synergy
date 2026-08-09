@@ -1070,6 +1070,7 @@ function createGlobalSync() {
           mode: metadata?.mode ?? "latest",
           pendingLatest: metadata?.pendingLatest ?? false,
           pendingLatestIds: metadata?.pendingLatestIds ?? [],
+          tailMissingLatest: metadata?.tailMissingLatest ?? false,
         },
       })
       const partActions = new Map(
@@ -1347,6 +1348,7 @@ function createGlobalSync() {
                 mode: result.window.mode,
                 pendingLatest: result.window.pendingLatest,
                 pendingLatestIds: result.window.pendingLatestIds,
+                tailMissingLatest: result.window.tailMissingLatest,
               }),
             )
           })
@@ -1373,6 +1375,7 @@ function createGlobalSync() {
             mode: metadata.mode,
             pendingLatest: metadata.pendingLatest,
             pendingLatestIds: metadata.pendingLatestIds,
+            tailMissingLatest: metadata.tailMissingLatest,
           }
           const pending = current.pendingLatestIds.includes(messageID)
           const result = removeMessageFromWindow(current, messageID)

@@ -13,6 +13,11 @@ export type MessageWindowState<T extends MessageRef = MessageRef> = {
   mode: "latest" | "history"
   pendingLatest: boolean
   pendingLatestIds: string[]
+  // True when the bounded window's tail no longer reaches the true latest
+  // messages (newest overflow was evicted by a history prepend). Cleared by
+  // any latest page apply/reconcile; preserved by history prepends,
+  // reconciles, and removals.
+  tailMissingLatest: boolean
 }
 
 export type MessageWindowMetadata = {
@@ -22,6 +27,7 @@ export type MessageWindowMetadata = {
   mode: MessageWindowState["mode"]
   pendingLatest: boolean
   pendingLatestIds: string[]
+  tailMissingLatest: boolean
 }
 
 export type MessageWindowResult<T extends MessageRef> = {
@@ -96,9 +102,18 @@ export function applyLatestPage<T extends MessageRef>(
       mode: "latest",
       pendingLatest: false,
       pendingLatestIds: [],
+      tailMissingLatest: false,
     },
     droppedIds,
   }
+}
+
+function capHistoryMessages<T extends MessageRef>(messages: T[], cap: number): T[] {
+  if (messages.length <= cap) return messages
+  const kept = messages.slice(0, cap)
+  const overflowRootIDs = new Set(messages.slice(cap).flatMap((message) => (message.rootID ? [message.rootID] : [])))
+  if (overflowRootIDs.size === 0) return kept
+  return kept.filter((message) => !message.rootID || !overflowRootIDs.has(message.rootID))
 }
 
 export function prependOlderPage<T extends MessageRef>(
@@ -107,17 +122,23 @@ export function prependOlderPage<T extends MessageRef>(
   cap = DEFAULT_CAP,
 ): MessageWindowResult<T> {
   const messages = mergeMessages([current.messages, older])
-  const kept = messages.slice(0, cap)
+  const kept = capHistoryMessages(messages, cap)
   const keptIds = new Set(kept.map((message) => message.id))
-  const pendingLatestIds = current.pendingLatestIds.filter((id) => !keptIds.has(id))
+  const droppedIds = messages.filter((message) => !keptIds.has(message.id)).map((message) => message.id)
+  const evictedIds = new Set(droppedIds)
+  // Pending arrivals are the newest messages; when the cap evicts them they no
+  // longer belong to the pending set — the tail gap is tracked by
+  // tailMissingLatest instead.
+  const pendingLatestIds = current.pendingLatestIds.filter((id) => !keptIds.has(id) && !evictedIds.has(id))
   return {
     window: {
       messages: kept,
       mode: "history",
       pendingLatest: pendingLatestIds.length > 0,
       pendingLatestIds,
+      tailMissingLatest: current.tailMissingLatest || droppedIds.length > 0,
     },
-    droppedIds: messages.slice(kept.length).map((message) => message.id),
+    droppedIds,
   }
 }
 
@@ -163,6 +184,7 @@ export function reconcileMessage<T extends MessageRef>(
       mode: "latest",
       pendingLatest: false,
       pendingLatestIds: [],
+      tailMissingLatest: false,
     },
     droppedIds: messages.filter((item) => !keptIDs.has(item.id)).map((item) => item.id),
   }
@@ -181,6 +203,7 @@ export function reconcileLoadedMessage<T extends MessageRef>(
       mode: metadata.mode,
       pendingLatest: metadata.pendingLatest,
       pendingLatestIds: metadata.pendingLatestIds,
+      tailMissingLatest: metadata.tailMissingLatest,
     },
     message,
     cap,

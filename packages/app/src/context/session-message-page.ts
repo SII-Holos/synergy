@@ -35,7 +35,13 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
 }): MessagePageApplyPlan<M, P> {
   const items = input.page.items.filter((item) => !!item?.info?.id)
   const referencedRoots = input.page.referencedRoots.filter((item) => !!item?.info?.id)
-  const current = input.current ?? { messages: [], mode: "latest", pendingLatest: false, pendingLatestIds: [] }
+  const current = input.current ?? {
+    messages: [],
+    mode: "latest",
+    pendingLatest: false,
+    pendingLatestIds: [],
+    tailMissingLatest: false,
+  }
   let result =
     input.mode === "history"
       ? prependOlderPage(
@@ -88,6 +94,7 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
       mode: result.window.mode,
       pendingLatest: result.window.pendingLatest,
       pendingLatestIds: result.window.pendingLatestIds,
+      tailMissingLatest: result.window.tailMissingLatest,
     },
     parts,
     latestContextMessage:

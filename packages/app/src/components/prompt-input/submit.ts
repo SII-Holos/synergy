@@ -971,6 +971,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         mode: metadata?.mode ?? "latest",
         pendingLatest: metadata?.pendingLatest ?? false,
         pendingLatestIds: metadata?.pendingLatestIds ?? [],
+        tailMissingLatest: metadata?.tailMissingLatest ?? false,
       }
       const existing = current.messages.some((message) => message.id === messageID)
       const result = reconcileMessage(current, optimisticMessage)
@@ -991,6 +992,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             mode: result.window.mode,
             pendingLatest: result.window.pendingLatest,
             pendingLatestIds: result.window.pendingLatestIds,
+            tailMissingLatest: result.window.tailMissingLatest,
           }
           if (visible) {
             draft.part[messageID] = optimisticParts
@@ -1013,6 +1015,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           mode: metadata?.mode ?? "latest",
           pendingLatest: metadata?.pendingLatest ?? false,
           pendingLatestIds: metadata?.pendingLatestIds ?? [],
+          tailMissingLatest: metadata?.tailMissingLatest ?? false,
         },
         optimisticParts: syncStore.part[messageID],
         canonicalParts: syncStore.part[canonicalID],
@@ -1048,6 +1051,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         mode: metadata?.mode ?? "latest",
         pendingLatest: metadata?.pendingLatest ?? false,
         pendingLatestIds: metadata?.pendingLatestIds ?? [],
+        tailMissingLatest: metadata?.tailMissingLatest ?? false,
       }
       const pending = current.pendingLatestIds.includes(messageID)
       const result = removeMessageFromWindow(current, messageID)
