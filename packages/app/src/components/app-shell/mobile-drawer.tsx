@@ -3,7 +3,7 @@ import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
-import { useLayout, type LocalScope, SESSION_PAGE_SIZE } from "@/context/layout"
+import { useLayout, type LocalScope, type NavEntry, SESSION_PAGE_SIZE } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
@@ -18,8 +18,14 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
-import { appShell } from "@/locales/messages"
+import { appShell, sidebar } from "@/locales/messages"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { SettingsDialog } from "@/components/settings"
+import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
+import { MobileDrawerAddProjectButton, MobileDrawerRecent, MobileDrawerSettingsButton } from "./mobile-drawer-root"
+import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
 
 export function MobileDrawer() {
   const layout = useLayout()
@@ -181,6 +187,8 @@ function ScopeListView(props: {
   const params = useParams()
   const workbench = useWorkbenchPanels()
   const { _ } = useLingui()
+  const dialog = useDialog()
+  const { pickProjectDirectories } = useProjectDirectoryPicker()
   const toolLabel = (id: DrawerToolID) => {
     if (id === "agenda") return _(appShell.agenda)
     if (id === "library") return _(appShell.library)
@@ -188,6 +196,41 @@ function ScopeListView(props: {
     if (id === "plugins") return _(appShell.plugins)
     if (id === "notes") return _(appShell.notes)
     return _(appShell.browser)
+  }
+
+  const translateRecentCopy = (descriptor: MessageDescriptor) => _(descriptor)
+  const recentUnreadLabel = (entry: NavEntry) => {
+    if (!entry.completionNotice.unread) return undefined
+    return translateRecentCopy(resolveSessionVisualState(undefined, entry).label)
+  }
+
+  const resolveEntryRouteDirectory = (entry: NavEntry) => {
+    if (entry.scopeID === "home" || entry.scopeType === "home") return "home"
+    return globalSync.data.scope.find((scope) => scope.id === entry.scopeID)?.worktree ?? entry.scopeID
+  }
+
+  const selectRecentSession = (entry: NavEntry) => {
+    navigate(`/${base64Encode(resolveEntryRouteDirectory(entry))}/session/${entry.id}`)
+    props.onClose()
+  }
+
+  const addProjects = async () => {
+    const result = await pickProjectDirectories({
+      title: _(sidebar.addProjectDialogTitle),
+      multiple: true,
+    })
+    if (!result) return
+    await Promise.all(result.directoryPaths.map((directory) => layout.scopes.open(directory)))
+  }
+
+  const openProjectPicker = () => {
+    props.onClose()
+    void addProjects()
+  }
+
+  const openSettings = () => {
+    props.onClose()
+    dialog.show(() => <SettingsDialog initialTab="general" />)
   }
 
   const scopes = createMemo(() => {
@@ -217,6 +260,25 @@ function ScopeListView(props: {
         <Icon name={getSemanticIcon("navigation.home")} size="normal" class="shrink-0" />
         <span class="text-14-medium">{_(appShell.home)}</span>
       </button>
+
+      <div class="px-2 py-1">
+        <MobileDrawerAddProjectButton label={_(sidebar.addProject)} onClick={openProjectPicker} />
+      </div>
+
+      <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
+
+      <MobileDrawerRecent
+        label={_(sidebar.recent)}
+        emptyLabel={_(sidebar.noRecentSessions)}
+        loadMoreLabel={_(sidebar.loadMore)}
+        untitledLabel={_(sidebar.untitled)}
+        entries={layout.nav.recentEntries()}
+        currentSessionID={params.id}
+        unreadLabel={recentUnreadLabel}
+        hasMore={layout.nav.hasMoreRecent()}
+        onSelect={selectRecentSession}
+        onLoadMore={() => void layout.nav.loadMoreNav("__recent__")}
+      />
 
       <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
 
@@ -309,6 +371,11 @@ function ScopeListView(props: {
             )
           }}
         </For>
+      </div>
+
+      <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
+      <div class="px-2 pb-1">
+        <MobileDrawerSettingsButton label={_(sidebar.settings)} onClick={openSettings} />
       </div>
     </div>
   )

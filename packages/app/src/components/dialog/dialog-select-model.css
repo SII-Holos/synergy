@@ -1,0 +1,20 @@
+.model-selector-popover {
+  display: flex;
+  width: 28rem;
+  height: 24rem;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .model-selector-popover {
+    width: calc(100vw - 1rem);
+    height: min(22rem, calc(100dvh - 2rem));
+  }
+
+  .model-selector-popover-footer-action {
+    min-height: 2.75rem;
+  }
+}

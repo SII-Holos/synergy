@@ -8,6 +8,7 @@ import { SettingsDialog } from "@/components/settings"
 import { QuickSwitcherList } from "@/components/provider/model-manager"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import "./dialog-select-model.css"
 
 export const ModelSelectorPopover: Component<{
   provider?: string
@@ -17,14 +18,18 @@ export const ModelSelectorPopover: Component<{
   const { _ } = useLingui()
 
   return (
-    <ToolbarSelectorPopover trigger={props.children} title={_(dialog.selectModel)} contentClass="w-[28rem] h-96">
+    <ToolbarSelectorPopover
+      trigger={props.children}
+      title={_(dialog.selectModel)}
+      contentClass="model-selector-popover"
+    >
       {(close) => (
         <div class="flex h-full min-h-0 flex-col p-1">
           <QuickSwitcherList provider={props.provider} onSelect={close} />
           <div class="px-2 pb-2 pt-1 flex items-center justify-between gap-2">
             <Button
               variant="ghost"
-              class="h-7 px-2.5 text-12-medium text-text-base"
+              class="model-selector-popover-footer-action h-7 px-2.5 text-12-medium text-text-base"
               onClick={() => {
                 close()
                 dialogContext.show(() => <SettingsDialog initialTab="models" />)
@@ -34,7 +39,7 @@ export const ModelSelectorPopover: Component<{
             </Button>
             <Button
               variant="ghost"
-              class="h-7 px-2.5 text-12-medium text-text-weak"
+              class="model-selector-popover-footer-action h-7 px-2.5 text-12-medium text-text-weak"
               onClick={() => {
                 close()
                 dialogContext.show(() => <SettingsDialog initialTab="providers" />)
