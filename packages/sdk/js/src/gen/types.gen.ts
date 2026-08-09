@@ -1077,6 +1077,7 @@ export type SynergyLinkHostObservation = {
     supportsSendKeys: boolean
     supportsSoftKill: boolean
     supportsProcessGroups: boolean
+    supportsBashDetach?: boolean
     envCaseInsensitive: boolean
     lineEndings: "lf" | "crlf"
   }
@@ -4211,6 +4212,13 @@ export type SessionWorkflowInfo =
       runID: string
       mode: "auto" | "collaborative"
     }
+  | {
+      kind: "boss"
+      role: "boss" | "worker"
+      workerRole?: string
+      rootID?: string
+      instructions?: string
+    }
 
 export type Session = {
   id: string
@@ -7095,12 +7103,97 @@ export type WorkflowSetInput =
        */
       goal?: string
     }
+  | {
+      kind: "boss"
+    }
 
 export type LightloopUpdateInput = {
   /**
    * Updated instructions for the active Light Loop
    */
   instructions: string
+}
+
+export type BossTreeNode = {
+  sessionID: string
+  title: string
+  role: "boss" | "worker"
+  workerRole?: string
+  agent?: string
+  status: "running" | "queued" | "idle" | "archived"
+  currentTask?: {
+    taskID: string
+    taskTitle?: string
+  }
+  children: Array<BossTreeNode>
+}
+
+export type BossTreeResponse = {
+  tree: BossTreeNode
+}
+
+export type BossErrorResponse = {
+  message: string
+  code: string
+}
+
+export type BossWorkerCreateInput = {
+  /**
+   * Worker role label
+   */
+  role: string
+  /**
+   * Agent to run the worker
+   */
+  agent?: string
+  /**
+   * Standing instructions for the worker
+   */
+  instructions?: string
+}
+
+export type BossWorkerAssignResult = {
+  itemID: string
+  messageID: string
+  created: boolean
+}
+
+export type BossWorkerAssignInput = {
+  /**
+   * Worker session ID
+   */
+  sessionID: string
+  /**
+   * Task ID
+   */
+  taskID: string
+  /**
+   * Task description
+   */
+  task: string
+  /**
+   * Additional context
+   */
+  context?: string
+  /**
+   * Acceptance criteria
+   */
+  acceptance?: Array<string>
+}
+
+export type BossWorkerCancelResult = {
+  cancelled: boolean
+}
+
+export type BossWorkerCancelInput = {
+  /**
+   * Worker session ID
+   */
+  sessionID: string
+  /**
+   * Task ID to cancel; all tasks when omitted
+   */
+  taskID?: string
 }
 
 export type AssetInfo = {
@@ -16029,6 +16122,186 @@ export type WorkflowSessionGetLightloopTerminalResponses = {
 export type WorkflowSessionGetLightloopTerminalResponse =
   WorkflowSessionGetLightloopTerminalResponses[keyof WorkflowSessionGetLightloopTerminalResponses]
 
+export type BossSessionTreeData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/boss/session/{id}/tree"
+}
+
+export type BossSessionTreeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+  /**
+   * Internal server error
+   */
+  500: BossErrorResponse
+}
+
+export type BossSessionTreeError = BossSessionTreeErrors[keyof BossSessionTreeErrors]
+
+export type BossSessionTreeResponses = {
+  /**
+   * Boss Mode tree
+   */
+  200: BossTreeResponse
+}
+
+export type BossSessionTreeResponse = BossSessionTreeResponses[keyof BossSessionTreeResponses]
+
+export type BossSessionWorkerCreateData = {
+  body?: BossWorkerCreateInput
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/boss/session/{id}/worker"
+}
+
+export type BossSessionWorkerCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+  /**
+   * Internal server error
+   */
+  500: BossErrorResponse
+}
+
+export type BossSessionWorkerCreateError = BossSessionWorkerCreateErrors[keyof BossSessionWorkerCreateErrors]
+
+export type BossSessionWorkerCreateResponses = {
+  /**
+   * Created worker session
+   */
+  200: Session
+}
+
+export type BossSessionWorkerCreateResponse = BossSessionWorkerCreateResponses[keyof BossSessionWorkerCreateResponses]
+
+export type BossSessionWorkerAssignData = {
+  body?: BossWorkerAssignInput
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/boss/session/{id}/assign"
+}
+
+export type BossSessionWorkerAssignErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+  /**
+   * Internal server error
+   */
+  500: BossErrorResponse
+}
+
+export type BossSessionWorkerAssignError = BossSessionWorkerAssignErrors[keyof BossSessionWorkerAssignErrors]
+
+export type BossSessionWorkerAssignResponses = {
+  /**
+   * Assignment result
+   */
+  200: BossWorkerAssignResult
+}
+
+export type BossSessionWorkerAssignResponse = BossSessionWorkerAssignResponses[keyof BossSessionWorkerAssignResponses]
+
+export type BossSessionWorkerCancelData = {
+  body?: BossWorkerCancelInput
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/boss/session/{id}/cancel"
+}
+
+export type BossSessionWorkerCancelErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+  /**
+   * Internal server error
+   */
+  500: BossErrorResponse
+}
+
+export type BossSessionWorkerCancelError = BossSessionWorkerCancelErrors[keyof BossSessionWorkerCancelErrors]
+
+export type BossSessionWorkerCancelResponses = {
+  /**
+   * Cancellation result
+   */
+  200: BossWorkerCancelResult
+}
+
+export type BossSessionWorkerCancelResponse = BossSessionWorkerCancelResponses[keyof BossSessionWorkerCancelResponses]
+
 export type AssetUploadData = {
   body?: {
     file: unknown
@@ -17524,6 +17797,36 @@ export type RegistryPluginsSearchResponses = {
 }
 
 export type RegistryPluginsSearchResponse = RegistryPluginsSearchResponses[keyof RegistryPluginsSearchResponses]
+
+export type RegistryRefreshData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/registry/refresh"
+}
+
+export type RegistryRefreshErrors = {
+  /**
+   * Service unavailable
+   */
+  503: ServiceUnavailableError
+}
+
+export type RegistryRefreshError = RegistryRefreshErrors[keyof RegistryRefreshErrors]
+
+export type RegistryRefreshResponses = {
+  /**
+   * Registry refreshed
+   */
+  200: {
+    refreshedAt: string | null
+  }
+}
+
+export type RegistryRefreshResponse = RegistryRefreshResponses[keyof RegistryRefreshResponses]
 
 export type RegistryPluginsGetData = {
   body?: never

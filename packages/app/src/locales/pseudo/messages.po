@@ -882,6 +882,178 @@ msgstr ""
 msgid "app.attachment.unsupported"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.boss.assign.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.selectWorker"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.submit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.success"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.taskPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirmDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirmTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.success"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.copy.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.copy.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.genericFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.agent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.children"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.copyTree"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.currentTask"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.depth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.noTask"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.notAvailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.openSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.orchestrator"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.reportsTo"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.spawn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.workerCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.roleLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.rolePlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.success"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.archived"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.queued"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.boss.workspace.sessionRequired"
+msgstr ""
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr ""
@@ -4813,6 +4985,10 @@ msgid "app.panel.attachment"
 msgstr ""
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.boss"
+msgstr ""
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr ""
 
@@ -6114,6 +6290,18 @@ msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.pluginApi.label"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.button"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.failed"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.updated"
 msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
@@ -9300,6 +9488,20 @@ msgstr ""
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.bossActive"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.cancelBoss"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.cancelLattice"
 msgstr ""
 
@@ -9559,6 +9761,20 @@ msgstr ""
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.waiting"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.cancelBoss"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.cancelBoss.label"
 msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
@@ -10502,6 +10718,13 @@ msgstr ""
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.failedEnableBoss"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.failedEnableLattice"
 msgstr ""
 
@@ -10727,7 +10950,49 @@ msgstr ""
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableBp"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableLattice"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableLl"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailablePlan"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.clickExitBoss"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.clickExitLattice"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.exitBoss"
 msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
@@ -10774,6 +11039,20 @@ msgstr ""
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.stopSessionBeforeWorkflow"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.workflow.boss"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.workflow.bossDesc"
 msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
@@ -17955,6 +18234,26 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.blueprints"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-assign"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-cancel"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-report"
+msgstr ""
+
+#. Boss Mode
+msgid "tool.title.boss-spawn"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-status"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

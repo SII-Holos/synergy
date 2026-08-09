@@ -75,6 +75,13 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   session_approve_permission: d("tool.title.approve-permission", "Allow operation"),
   session_deny_permission: d("tool.title.deny-permission", "Deny operation"),
 
+  // Boss Mode
+  boss_spawn: d("tool.title.boss-spawn", "Spawn worker"),
+  boss_assign: d("tool.title.boss-assign", "Assign task"),
+  boss_report: d("tool.title.boss-report", "Report result"),
+  boss_status: d("tool.title.boss-status", "View worker tree"),
+  boss_cancel: d("tool.title.boss-cancel", "Cancel task"),
+
   // Knowledge / memory / notes
   memory_search: d("tool.title.memory-search", "Search memories"),
   memory_get: d("tool.title.memory-get", "Read memory"),

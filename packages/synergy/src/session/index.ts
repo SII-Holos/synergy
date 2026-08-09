@@ -381,6 +381,7 @@ export namespace Session {
     interaction?: SessionInteraction.Info
     cortex?: CortexDelegationInfoType
     superplan?: SuperPlanSessionInfoType
+    workflow?: Info["workflow"]
     workspace?: import("./types").Workspace
     forkedFrom?: Info["forkedFrom"]
     completionNotice?: {
@@ -433,6 +434,7 @@ export namespace Session {
       agenda: input?.agenda,
       cortex: input?.cortex,
       superplan: input?.superplan,
+      workflow: input?.workflow,
       workspace,
       completionNotice,
       time: {

@@ -19,6 +19,7 @@ export namespace SynergyLinkHost {
     supportsSendKeys: z.boolean(),
     supportsSoftKill: z.boolean(),
     supportsProcessGroups: z.boolean(),
+    supportsBashDetach: z.boolean().optional(),
     envCaseInsensitive: z.boolean(),
     lineEndings: z.enum(["lf", "crlf"]),
   })
