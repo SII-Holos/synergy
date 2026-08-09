@@ -418,7 +418,7 @@ export namespace ActivitySummary {
     }
   }
 
-  function projectGroups(messageID: string, parts: MessageV2.Part[]): Group[] {
+  function projectGroups(messageID: string, workspaceRoot: string, parts: MessageV2.Part[]): Group[] {
     const result: Group[] = []
     let pending: Group | undefined
     const flush = () => {
@@ -434,7 +434,7 @@ export namespace ActivitySummary {
       }
       if (part.state.status !== "completed" && part.state.status !== "error") continue
       const family = activityFamilyForTool(part.tool, part.state.input, part.state.metadata ?? {})
-      const scope = activityScopeForTool(part.state.input, part.state.metadata ?? {})
+      const scope = activityScopeForTool(part.state.input, part.state.metadata ?? {}, { family, workspaceRoot })
       if (isActivityReceiptTool(part.tool, family)) {
         flush()
         continue
@@ -468,7 +468,7 @@ export namespace ActivitySummary {
     const previousGroups = parsed.success ? parsed.data.groups : undefined
     const groups: NonNullable<ActivityPatch["groups"]> = {}
     let now: ActivityDerivedMetadata["now"]
-    for (const group of projectGroups(job.messageID, message.parts)) {
+    for (const group of projectGroups(job.messageID, message.info.path.root, message.parts)) {
       const signature = group.partIDs.join(":")
       if (previousGroups?.[group.key]?.signature === signature) continue
       const content = [

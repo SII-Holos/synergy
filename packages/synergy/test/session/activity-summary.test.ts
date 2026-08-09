@@ -286,6 +286,60 @@ describe("ActivitySummary", () => {
     })
   })
 
+  test("aggregates modified files across package subdirectories into one summary group", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        let calls = 0
+        ;(AgentCall.text as typeof AgentCall.text) = mock(async () => {
+          calls++
+          return { text: "Updated the UI package", model: {} as never }
+        })
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+        for (const [id, tool, filePath] of [
+          ["save-source", "save_file", `${tmp.path}/packages/ui/src/components/activity-trace.tsx`],
+          ["revise-test", "revise_file", `${tmp.path}/packages/ui/test/components/activity-trace.dom.test.ts`],
+        ] as const) {
+          await Session.updatePart({
+            id,
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "tool",
+            callID: `call-${id}`,
+            tool,
+            state: {
+              status: "completed",
+              input: { filePath },
+              output: "done",
+              title: id,
+              metadata: {},
+              time: { start: 1, end: 2 },
+            },
+          })
+        }
+        await Session.updatePart({
+          id: "answer-package",
+          messageID: assistant.id,
+          sessionID: session.id,
+          type: "text",
+          text: "Done",
+        })
+        await ActivitySummary.idle(session.id)
+
+        const groups = Object.values(
+          (await storedAssistant(session.id, assistant.id))?.metadata?.activity?.groups ?? {},
+        ) as { signature?: string; text?: string }[]
+        expect(calls).toBe(1)
+        expect(groups).toHaveLength(1)
+        expect(groups[0]).toMatchObject({ text: "Updated the UI package" })
+        expect(groups[0]?.signature?.split(":").sort()).toEqual(["revise-test", "save-source"])
+      },
+    })
+  })
+
   test("commits every tool group from one flush in a single metadata update", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

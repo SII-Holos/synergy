@@ -1,6 +1,6 @@
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, lazy, on, onCleanup, Show } from "solid-js"
 import {
   finishActivityCountTransition,
   reduceActivityCountTransition,
@@ -8,6 +8,7 @@ import {
 } from "./activity-count-transition"
 import { AttachmentGallery } from "./attachment-card"
 import { Collapsible } from "./collapsible"
+import { specializedActivityDetail } from "./activity-specialized-detail-model"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
@@ -24,6 +25,9 @@ import type {
 import "./activity-trace.css"
 
 const TRANSITION_MS = 160
+const ActivitySpecializedDetail = lazy(() =>
+  import("./activity-specialized-detail").then((module) => ({ default: module.ActivitySpecializedDetail })),
+)
 
 function d(id: string, message: string): MessageDescriptor {
   return { id, message }
@@ -159,24 +163,36 @@ function ActivityState(props: { state: ActivityGroupState; label: string }) {
 }
 
 function ActivityStepPreviewDisplay(props: { step: ActivityStepProjection; serverUrl: string }) {
+  const detail = createMemo(() => specializedActivityDetail(props.step))
   const preview = () => props.step.preview
   return (
-    <Show when={preview()}>
-      {(value) => (
-        <Show
-          when={value().kind === "attachments"}
-          fallback={
-            <ToolTextOutput
-              text={(value() as Exclude<NonNullable<ActivityStepProjection["preview"]>, { kind: "attachments" }>).text}
-            />
-          }
-        >
-          <AttachmentGallery
-            files={(value() as Extract<NonNullable<ActivityStepProjection["preview"]>, { kind: "attachments" }>).files}
-            serverUrl={props.serverUrl}
-          />
+    <Show
+      when={detail()}
+      fallback={
+        <Show when={preview()}>
+          {(value) => (
+            <Show
+              when={value().kind === "attachments"}
+              fallback={
+                <ToolTextOutput
+                  text={
+                    (value() as Exclude<NonNullable<ActivityStepProjection["preview"]>, { kind: "attachments" }>).text
+                  }
+                />
+              }
+            >
+              <AttachmentGallery
+                files={
+                  (value() as Extract<NonNullable<ActivityStepProjection["preview"]>, { kind: "attachments" }>).files
+                }
+                serverUrl={props.serverUrl}
+              />
+            </Show>
+          )}
         </Show>
-      )}
+      }
+    >
+      {(value) => <ActivitySpecializedDetail detail={value()} />}
     </Show>
   )
 }
@@ -293,9 +309,42 @@ export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: stri
   )
 }
 
+function ActivityReceiptRow(props: {
+  group: ActivityGroupItem
+  step: ActivityStepProjection | undefined
+  title: string
+  stateLabel: string
+  expandable?: boolean
+  open?: boolean
+}) {
+  return (
+    <div data-slot="activity-receipt-row">
+      <span data-slot="activity-receipt-icon" aria-hidden="true">
+        <Icon name={familyIcon(props.group.family)} size="small" />
+      </span>
+      <span data-slot="activity-receipt-title">{props.title}</span>
+      <Show when={props.step?.subtitle}>
+        {(subtitle) => <span data-slot="activity-receipt-scope">{subtitle()}</span>}
+      </Show>
+      <ActivityState state={props.group.state} label={props.stateLabel} />
+      <Show when={props.expandable}>
+        <Icon
+          name={props.open ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand")}
+          size="small"
+        />
+      </Show>
+    </div>
+  )
+}
+
 export function ActivityReceipt(props: { item: ActivityReceiptItem; serverUrl: string }) {
   const { _ } = useLingui()
+  const [open, setOpen] = createSignal(false)
   const step = createMemo(() => props.item.group.steps[0])
+  const detail = createMemo(() => {
+    const value = step()
+    return value ? specializedActivityDetail(value) : undefined
+  })
   const title = createMemo(() => {
     const value = step()
     return value ? localize(value.title, _) : _(ACTIVITY_TRACE_DESC.family[props.item.group.family])
@@ -303,12 +352,30 @@ export function ActivityReceipt(props: { item: ActivityReceiptItem; serverUrl: s
   const stateLabel = createMemo(() => _(stateDescriptor(props.item.group.state)))
   return (
     <div data-component="activity-receipt" data-state={props.item.group.state}>
-      <span data-slot="activity-receipt-icon" aria-hidden="true">
-        <Icon name={familyIcon(props.item.group.family)} size="small" />
-      </span>
-      <span data-slot="activity-receipt-title">{title()}</span>
-      <Show when={step()?.subtitle}>{(subtitle) => <span data-slot="activity-receipt-scope">{subtitle()}</span>}</Show>
-      <ActivityState state={props.item.group.state} label={stateLabel()} />
+      <Show
+        when={detail()}
+        fallback={
+          <ActivityReceiptRow group={props.item.group} step={step()} title={title()} stateLabel={stateLabel()} />
+        }
+      >
+        {(value) => (
+          <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
+            <Collapsible.Trigger data-slot="activity-receipt-trigger" type="button">
+              <ActivityReceiptRow
+                group={props.item.group}
+                step={step()}
+                title={title()}
+                stateLabel={stateLabel()}
+                expandable
+                open={open()}
+              />
+            </Collapsible.Trigger>
+            <Collapsible.Content>
+              <ActivitySpecializedDetail detail={value()} />
+            </Collapsible.Content>
+          </Collapsible>
+        )}
+      </Show>
     </div>
   )
 }

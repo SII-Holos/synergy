@@ -50,7 +50,7 @@ beforeAll(async () => {
       import { render } from "solid-js/web"
       import { I18nProvider } from "@lingui/solid"
       import { setupI18n } from ${JSON.stringify(i18nPath)}
-      import { ActivityReasoningSummary, ActivityTrace, AnimatedActivityCount, MinimalActivitySummary } from ${JSON.stringify(componentPath)}
+      import { ActivityReasoningSummary, ActivityReceipt, ActivityTrace, AnimatedActivityCount, MinimalActivitySummary } from ${JSON.stringify(componentPath)}
 
       const [countValue, setCountValue] = createSignal(9)
       const [countIdentity, setCountIdentity] = createSignal("turn-a")
@@ -63,20 +63,87 @@ beforeAll(async () => {
         })
       }
 
+      const message = { id: "m1", sessionID: "s", role: "assistant", time: { created: 1 } }
       const group = {
         kind: "activity-group",
         key: "group-a",
-        message: { id: "m1", sessionID: "s", role: "assistant", time: { created: 1 } },
+        message,
         family: "modify-files",
         scopeKey: "scope-a",
-        scopeLabel: "src/components",
+        scopeLabel: "packages/ui",
         state: "waiting-approval",
         steps: [
-          { part: { id: "p1" }, family: "modify-files", scopeKey: "scope-a", icon: "file-pen", title: "Edit activity-trace", state: "waiting-approval" },
-          { part: { id: "p2" }, family: "modify-files", scopeKey: "scope-a", icon: "file-pen", title: "Add tests", state: "done" },
+          {
+            part: {
+              id: "p1",
+              tool: "save_file",
+              state: {
+                status: "completed",
+                input: { filePath: "/workspace/packages/ui/src/components/activity-trace.tsx" },
+                output: "saved",
+                metadata: {
+                  filediff: {
+                    file: "packages/ui/src/components/activity-trace.tsx",
+                    additions: 2,
+                    deletions: 1,
+                    preview: "old activity trace\\nnew activity trace",
+                  },
+                },
+              },
+            },
+            family: "modify-files",
+            scopeKey: "scope-a",
+            icon: "file-pen",
+            title: "Edit activity-trace",
+            state: "waiting-approval",
+          },
+          {
+            part: { id: "p2", tool: "revise_file", state: { status: "completed", input: {}, output: "saved", metadata: {} } },
+            family: "modify-files",
+            scopeKey: "scope-a",
+            icon: "file-pen",
+            title: "Add tests",
+            state: "done",
+          },
         ],
         receipt: false,
         summary: { state: "stable", text: "Updated the activity presentation" },
+      }
+      const dagReceipt = {
+        kind: "activity-receipt",
+        key: "receipt-dag",
+        message,
+        group: {
+          kind: "activity-group",
+          key: "group-dag",
+          message,
+          family: "coordination",
+          scopeKey: "",
+          state: "done",
+          steps: [
+            {
+              part: {
+                id: "dag-read",
+                tool: "dagread",
+                state: {
+                  status: "completed",
+                  input: {},
+                  output: "",
+                  metadata: {
+                    nodes: [{ id: "inspect", content: "Inspect activity projection", status: "completed", deps: [] }],
+                    ready: [],
+                  },
+                },
+              },
+              family: "coordination",
+              scopeKey: "",
+              icon: "list-checks",
+              title: "Read DAG",
+              state: "done",
+            },
+          ],
+          receipt: true,
+        },
       }
 
       const i18n = setupI18n()
@@ -99,6 +166,7 @@ beforeAll(async () => {
               }}
             />
             <ActivityTrace group={group} serverUrl="http://localhost" />
+            <ActivityReceipt item={dagReceipt} serverUrl="http://localhost" />
             <div id="reasoning-summary-host">
               <ActivityReasoningSummary
                 item={{ kind: "activity-reasoning-summary", key: "reasoning-pending", message: group.message, partID: "rp", state: "pending" }}
@@ -130,6 +198,7 @@ beforeAll(async () => {
     configFile: false,
     logLevel: "silent",
     plugins: [solidPlugin()],
+    worker: { format: "es" },
     build: {
       outDir: path.join(fixtureDirectory, "dist"),
       emptyOutDir: true,
@@ -167,6 +236,11 @@ beforeAll(async () => {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia
+  window.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
 
   Object.assign(globalThis, {
     window,
@@ -175,9 +249,11 @@ beforeAll(async () => {
     Node: window.Node,
     Element: window.Element,
     HTMLElement: window.HTMLElement,
+    HTMLHeadElement: window.HTMLHeadElement,
     SVGElement: window.SVGElement,
     customElements: window.customElements,
     MutationObserver: window.MutationObserver,
+    ResizeObserver: window.ResizeObserver,
     getComputedStyle: window.getComputedStyle.bind(window),
     requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0),
     cancelAnimationFrame: (id: number) => clearTimeout(id),
@@ -383,5 +459,34 @@ describe("ActivityTrace DOM behavior", () => {
 
     trigger().click()
     await wait(0)
+  })
+
+  test("renders the file diff leaf component when a file step expands", async () => {
+    trigger().click()
+    await wait(0)
+
+    const fileStep = document.querySelector('[data-slot="activity-step"]')
+    expect(fileStep?.querySelector('[data-component="diff-preview"], [data-component="diff-patch"]')).not.toBeNull()
+
+    trigger().click()
+    await wait(0)
+  })
+})
+
+describe("ActivityReceipt DOM behavior", () => {
+  function trigger(): HTMLButtonElement {
+    return document.querySelector('[data-slot="activity-receipt-trigger"]') as HTMLButtonElement
+  }
+
+  test("expands a DAG receipt into the DAG graph leaf component", async () => {
+    expect(trigger().tagName).toBe("BUTTON")
+    expect(trigger().getAttribute("aria-expanded")).toBe("false")
+    expect(document.querySelector('[data-component="activity-receipt"] [data-component="dag-graph"]')).toBeNull()
+
+    trigger().click()
+    await wait(0)
+
+    expect(trigger().getAttribute("aria-expanded")).toBe("true")
+    expect(document.querySelector('[data-component="activity-receipt"] [data-component="dag-graph"]')).not.toBeNull()
   })
 })

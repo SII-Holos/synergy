@@ -121,7 +121,6 @@ export type ActivityTimelineItem =
 
 const PREVIEW_LIMIT = 360
 const RENDER_BOUNDARY_TOOLS = new Set(["render", "diagram"])
-const HIDDEN_COORDINATION_TOOLS = new Set(["dagread"])
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
@@ -253,7 +252,7 @@ function makeStep(
   const input = parsedInput(part)
   const metadata = record(part.state.metadata)
   const family = activityFamilyForTool(part.tool, input, metadata)
-  const scope = activityScopeForTool(input, metadata)
+  const scope = activityScopeForTool(input, metadata, { family, workspaceRoot: message.path.root })
   let info: ReturnType<ActivityToolInfoResolver>
   try {
     info = resolveToolInfo(part.tool, input, metadata)
@@ -348,19 +347,13 @@ export function projectAssistantActivityItems(input: {
       continue
     }
 
-    const permission = permissionForStep(input.message.id, source.part, input.permissions)
-    const requiredHiddenReceipt = permission || source.part.state.status === "error"
-    if (HIDDEN_COORDINATION_TOOLS.has(source.part.tool) && !requiredHiddenReceipt) {
-      flush()
-      continue
-    }
-
     if (!isVisible(source, visibleIdentities)) {
       flush()
       continue
     }
 
-    if (!hasStableInput(source.part) && !requiredHiddenReceipt) {
+    const permission = permissionForStep(input.message.id, source.part, input.permissions)
+    if (!hasStableInput(source.part) && !permission && source.part.state.status !== "error") {
       flush()
       continue
     }

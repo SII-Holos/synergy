@@ -256,6 +256,29 @@ describe("session turn activity projection", () => {
     expect(groups[2]).toMatchObject({ family: "modify-files" })
   })
 
+  test("aggregates adjacent file changes across package subdirectories", () => {
+    const groups = activities(
+      project({
+        parts: [
+          tool({
+            id: "save-source",
+            tool: "save_file",
+            args: { filePath: "/workspace/packages/ui/src/components/activity-trace.tsx" },
+          }),
+          tool({
+            id: "revise-test",
+            tool: "revise_file",
+            args: { filePath: "/workspace/packages/ui/test/components/activity-trace.dom.test.ts" },
+          }),
+        ],
+      }),
+    )
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ family: "modify-files", scopeKey: "path:/workspace/packages/ui" })
+    expect(groups[0]?.steps.map((step) => step.part.id)).toEqual(["save-source", "revise-test"])
+  })
+
   test("keeps reasoning, text, attachments, render previews, and message identity as hard boundaries", () => {
     const first = assistant("assistant-a")
     const second = assistant("assistant-b")
@@ -384,13 +407,14 @@ describe("session turn activity projection", () => {
     expect(activityItemStableKey(groups[1]!)).toEndWith(":read-24")
   })
 
-  test("hides dagread, keeps DAG mutations as low-emphasis coordination receipts, and never merges external actions", () => {
+  test("keeps DAG reads and mutations as expandable coordination receipts and never merges external actions", () => {
+    const nodes = [{ id: "inspect", content: "Inspect activity projection", status: "completed", deps: [] }]
     const items = project({
       parts: [
         tool({ id: "read-a" }),
-        tool({ id: "dag-read", tool: "dagread" }),
+        tool({ id: "dag-read", tool: "dagread", metadata: { nodes, ready: [] } }),
         tool({ id: "read-b" }),
-        tool({ id: "dag-write", tool: "dagwrite" }),
+        tool({ id: "dag-write", tool: "dagwrite", metadata: { nodes, ready: [] } }),
         tool({ id: "email-a", tool: "email_send" }),
         tool({ id: "email-b", tool: "email_send" }),
       ],
@@ -399,14 +423,17 @@ describe("session turn activity projection", () => {
 
     expect(groups.map((group) => group.steps.map((step) => step.part.id))).toEqual([
       ["read-a"],
+      ["dag-read"],
       ["read-b"],
       ["dag-write"],
       ["email-a"],
       ["email-b"],
     ])
-    expect(groups[2]).toMatchObject({ family: "coordination", receipt: true })
-    expect(groups[3]).toMatchObject({ family: "external-action", receipt: true })
+    expect(groups[1]).toMatchObject({ family: "coordination", receipt: true })
+    expect(groups[1]?.steps[0]?.part.state.metadata).toEqual({ nodes, ready: [] })
+    expect(groups[3]).toMatchObject({ family: "coordination", receipt: true })
     expect(groups[4]).toMatchObject({ family: "external-action", receipt: true })
+    expect(groups[5]).toMatchObject({ family: "external-action", receipt: true })
   })
 
   test("keeps protected receipt families authoritative while allowing metadata to refine unknown tools", () => {
@@ -494,7 +521,7 @@ describe("session turn activity projection", () => {
     expect(waiting.steps[1]?.permission?.id).toBe("matching")
   })
 
-  test("shows hidden coordination tools when approval or failure requires a receipt", () => {
+  test("keeps successful, waiting, and failed DAG reads as coordination receipts", () => {
     const permissions = [
       {
         id: "permission",
@@ -516,8 +543,9 @@ describe("session turn activity projection", () => {
       }),
     )
 
-    expect(groups.map((group) => group.steps[0]?.part.id)).toEqual(["dag-waiting", "dag-error"])
+    expect(groups.map((group) => group.steps[0]?.part.id)).toEqual(["dag-success", "dag-waiting", "dag-error"])
     expect(groups.map((group) => ({ receipt: group.receipt, state: group.state }))).toEqual([
+      { receipt: true, state: "done" },
       { receipt: true, state: "waiting-approval" },
       { receipt: true, state: "error" },
     ])

@@ -427,11 +427,32 @@ export function activityFamilyForTool(
   }
 }
 
+function normalizedPath(value: string): string {
+  return value.replaceAll("\\", "/").replace(/\/+$/, "")
+}
+
 function pathScope(value: string): string {
-  const normalized = value.replaceAll("\\", "/").replace(/\/+$/, "")
+  const normalized = normalizedPath(value)
   const slash = normalized.lastIndexOf("/")
   if (slash <= 0) return normalized
   return normalized.slice(0, slash)
+}
+
+function fileActivityScope(
+  value: string,
+  workspaceRoot: string | undefined,
+  family: ActivityFamily | undefined,
+): string {
+  if (family !== "modify-files" || !workspaceRoot) return pathScope(value)
+  const file = normalizedPath(value)
+  const root = normalizedPath(workspaceRoot)
+  if (file !== root && !file.startsWith(`${root}/`)) return pathScope(file)
+  const relative = file.slice(root.length).replace(/^\/+/, "")
+  const segments = relative.split("/").filter(Boolean)
+  if (segments.length === 0) return root
+  if (segments.length === 1) return root
+  const depth = segments[0] === "packages" && segments[1] ? 2 : 1
+  return `${root}/${segments.slice(0, depth).join("/")}`
 }
 
 function urlScope(value: string): string | undefined {
@@ -445,6 +466,7 @@ function urlScope(value: string): string | undefined {
 export function activityScopeForTool(
   input: Record<string, unknown> = {},
   metadata: Record<string, unknown> = {},
+  options: { family?: ActivityFamily; workspaceRoot?: string } = {},
 ): { key: string; label?: string } {
   const explicit = firstString(metadata.activityScope, metadata.scopeKey)
   if (explicit) return { key: `scope:${explicit}`, label: explicit }
@@ -460,7 +482,7 @@ export function activityScopeForTool(
     metadata.path,
   )
   if (file) {
-    const scope = pathScope(file)
+    const scope = fileActivityScope(file, options.workspaceRoot, options.family)
     return { key: `path:${scope}`, label: scope }
   }
 
