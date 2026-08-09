@@ -38,8 +38,31 @@ await import("../../../src/components/tool-renders")
 
 describe("Lattice tool renderers", () => {
   test("registers the complete v2 tool surface and no legacy patch renderer", () => {
-    expect([...registrations.keys()].toSorted()).toEqual(["lattice_submit", "pathway_read", "pathway_write"])
+    expect([...registrations.keys()].toSorted()).toEqual([
+      "boss_assign",
+      "boss_cancel",
+      "boss_report",
+      "boss_spawn",
+      "boss_status",
+      "lattice_submit",
+      "pathway_read",
+      "pathway_write",
+    ])
     expect(registrations.has("pathway_patch")).toBe(false)
+  })
+
+  test("registers boss tool renderers with the crown glyph", () => {
+    registrations.get("boss_status")?.({
+      tool: "boss_status",
+      input: {},
+      metadata: { workerCount: 3 },
+    })
+    expect(capturedTrigger).toEqual({
+      icon: "crown",
+      title: { id: "tool.title.boss-status", message: "View worker tree" },
+      subtitle: "",
+      tags: [{ label: "3" }],
+    })
   })
 
   test("renders semantic approval copy and localized source metadata", () => {

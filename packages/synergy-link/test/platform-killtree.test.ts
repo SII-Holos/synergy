@@ -23,6 +23,12 @@ afterEach(async () => {
   roots.clear()
 })
 
+describe("Platform.detectCapabilities", () => {
+  test("reports bash detach support only on POSIX hosts", () => {
+    expect(Platform.detectCapabilities().supportsBashDetach).toBe(process.platform !== "win32")
+  })
+})
+
 describe("Platform.killTree", () => {
   test.skipIf(process.platform === "win32")(
     "reaps an owner-marked detached descendant after its tracked launcher exits",

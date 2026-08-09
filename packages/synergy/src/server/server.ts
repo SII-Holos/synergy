@@ -75,6 +75,7 @@ import { BrowserHostBrokerProcess } from "../browser/host-broker-process"
 import { BlueprintRoute } from "./blueprint"
 import { LatticeRoute } from "./lattice"
 import { WorkflowRoute } from "./workflow"
+import { BossRoute } from "./boss"
 import { RuntimeReload } from "../runtime/reload"
 import { ObservabilityRoute } from "./observability-route"
 import { PerformanceRoute } from "./performance-route"
@@ -240,6 +241,8 @@ export namespace Server {
       pathname.startsWith("/lattice/") ||
       pathname === "/workflow" ||
       pathname.startsWith("/workflow/") ||
+      pathname === "/boss" ||
+      pathname.startsWith("/boss/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||
@@ -1212,6 +1215,7 @@ export namespace Server {
         .route("/blueprint", BlueprintRoute)
         .route("/lattice", LatticeRoute)
         .route("/workflow", WorkflowRoute)
+        .route("/boss", BossRoute)
         .route("/asset", AssetRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)

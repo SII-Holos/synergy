@@ -9,6 +9,7 @@ import { panels as P } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
 import { createContextWorkbenchPanel } from "./context-panel-entry"
 import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
+import { createBossWorkbenchPanel } from "./boss-panel-entry"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const terminal = useTerminal()
   const file = useFile()
@@ -43,6 +44,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         title: () => i18n._(P.review),
       }),
       registerWorkbenchPanel(createLatticeWorkbenchPanel(i18n._(P.lattice))),
+      registerWorkbenchPanel(createBossWorkbenchPanel(i18n._(P.boss))),
       registerWorkbenchPanel({
         id: "attachment",
         label: i18n._(P.attachment),

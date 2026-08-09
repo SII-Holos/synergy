@@ -157,6 +157,7 @@ describe("tool.connect", () => {
               supportsSendKeys: true,
               supportsSoftKill: true,
               supportsProcessGroups: true,
+              supportsBashDetach: true,
               envCaseInsensitive: false,
               lineEndings: "lf",
             },
@@ -173,6 +174,7 @@ describe("tool.connect", () => {
         expect.objectContaining({ targetID: target.id, status: "opened", sessionID: "session_remote_builder" }),
       )
       expect(SynergyLinkExecution.getSession("link_remote_builder")?.targetID).toBe(target.id)
+      expect(SynergyLinkExecution.getSession("link_remote_builder")?.supportsBashDetach).toBe(true)
       expect((await SynergyLinkTargetStore.require(target.id)).host?.capabilities.platform).toBe("darwin")
     } finally {
       SynergyLinkExecution.setClient(null)

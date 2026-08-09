@@ -14,6 +14,7 @@ export namespace SynergyLinkExecution {
     sessionID: SynergyLinkIdentity.SessionID
     status: "opened" | "closed"
     label?: string
+    supportsBashDetach?: boolean
     openedAt: number
     lastUsedAt: number
     lastAttemptAt?: number
@@ -167,6 +168,9 @@ export namespace SynergyLinkExecution {
       if (result.metadata.status === "alive") {
         session.lastVerifiedAt = Date.now()
         session.lastUsedAt = Date.now()
+        if (result.metadata.host) {
+          session.supportsBashDetach = result.metadata.host.capabilities.supportsBashDetach === true
+        }
         return { kind: "verified", session }
       }
       if (result.metadata.status === "closed") {

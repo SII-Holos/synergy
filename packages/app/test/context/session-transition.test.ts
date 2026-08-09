@@ -121,6 +121,7 @@ describe("session transition state", () => {
         plan: false,
         lattice: null,
         lightLoop: false,
+        boss: false,
         blueprintSlot: null,
         agent: "synergy",
         model: { providerID: "provider", modelID: "model" },

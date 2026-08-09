@@ -1,0 +1,5 @@
+Assign a task to a direct-child worker session in the Boss Mode tree.
+
+The task is delivered as an inbox message to the worker; the worker processes it and reports back through boss_report. Assigning the same taskID to the same worker twice is idempotent — it is only delivered once.
+
+Keep taskID stable across retries so a duplicated call never double-delivers.

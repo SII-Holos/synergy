@@ -78,7 +78,7 @@ import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import { resolvePromptSubmitIntent, shouldAllowPromptSubmit } from "@/components/prompt-input/submit-intent"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
+import { resolveBossWorkflowMenuState, resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
 import {
   blueprintRequestErrorMessage,
   isTerminalBlueprintLoopStatus,
@@ -218,6 +218,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     maxModelCalls: number
   } | null>(null)
   const [pendingLightLoop, setPendingLightLoop] = createSignal(false)
+  const [pendingBoss, setPendingBoss] = createSignal(false)
   const storedLightLoop = createMemo(() =>
     params.id ? isActiveLightLoopWorkflow(activeWorkflow()) || pendingLightLoop() : pendingLightLoop(),
   )
@@ -234,6 +235,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
+  const bossActive = createMemo(() => (params.id ? activeWorkflow()?.kind === "boss" : !!pendingBoss()))
+  // Only the root boss may exit Boss Mode; opening an idle worker must not
+  // offer the workflow chip's "exit" action (that would orphan the subtree).
+  const bossRootActive = createMemo(() => {
+    if (!params.id) return !!pendingBoss()
+    const workflow = activeWorkflow()
+    return workflow?.kind === "boss" && workflow.role === "boss"
+  })
   const sessionScopeDirectory = createMemo(() => {
     const scope = info()?.scope
     if (!scope || typeof scope !== "object") return undefined
@@ -251,6 +260,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           setPendingPlan(false)
           setPendingLattice(null)
           setPendingLightLoop(false)
+          setPendingBoss(false)
         }
       },
     ),
@@ -494,12 +504,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       activeLoopID: params.id ? info()?.blueprint?.loopID : undefined,
     })
   })
-  const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | undefined>(() => {
+  const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | "boss" | undefined>(() => {
     const workflow = activeWorkflow()?.kind
     if (workflow) return workflow
     if (pendingPlan()) return "plan"
     if (pendingLightLoop()) return "lightloop"
     if (pendingLattice()) return "lattice"
+    if (pendingBoss()) return "boss"
   })
 
   const promptText = createMemo(() => inlineText(prompt.current()))
@@ -603,7 +614,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const togglePlan = async () => {
-    if (blueprintModeLocked() || latticeActive() || lightLoopActive()) return
+    if (blueprintModeLocked() || latticeActive() || lightLoopActive() || bossActive()) return
     await setPlan(!storedPlan())
   }
 
@@ -708,7 +719,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const openLatticeDialog = (event?: Event) => {
-    if (blueprintModeLocked() || planActive() || lightLoopActive()) {
+    if (blueprintModeLocked() || planActive() || lightLoopActive() || bossActive()) {
       event?.preventDefault()
       return
     }
@@ -738,7 +749,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const selectPlanFromMenu = (event?: Event) => {
-    if (blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive()) {
+    if (blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive() || bossActive()) {
       event?.preventDefault()
       return
     }
@@ -770,11 +781,54 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const selectLightLoopFromMenu = (event?: Event) => {
-    if (blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive()) {
+    if (blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive() || bossActive()) {
       event?.preventDefault()
       return
     }
     void setLightLoop(true)
+  }
+
+  const setBoss = async (active: boolean, title?: string) => {
+    if (!params.id) {
+      setPendingBoss(active)
+      if (active) {
+        setPendingPlan(false)
+        setPendingLattice(null)
+        setPendingLightLoop(false)
+      }
+      return true
+    }
+    try {
+      await sdk.client.workflow.session.set({
+        id: params.id,
+        workflowSetInput: { kind: active ? "boss" : "none" },
+      })
+      if (active) await workbench.openPanel("boss", { reuseExisting: true })
+      return true
+    } catch (err) {
+      showToast({
+        type: "error",
+        title: title ?? i18n._(PI.submitFailedEnableBoss),
+        description: err instanceof Error ? err.message : i18n._(PI.blueprintUnknownError),
+      })
+      return false
+    }
+  }
+
+  const selectBossFromMenu = (event?: Event) => {
+    const state = resolveBossWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      bossActive: bossActive(),
+      planActive: planActive(),
+      latticeActive: latticeActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
+    if (state.action === "none") {
+      event?.preventDefault()
+      return
+    }
+    void setBoss(state.action === "enable")
   }
 
   const cancelLightLoop = async () => {
@@ -855,6 +909,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       lightLoopActive: lightLoopActive(),
       working: working(),
     })
+    const bossMenuState = resolveBossWorkflowMenuState({
+      blueprintModeLocked: blueprintModeLocked(),
+      bossActive: bossActive(),
+      planActive: planActive(),
+      latticeActive: latticeActive(),
+      lightLoopActive: lightLoopActive(),
+      working: working(),
+    })
 
     return [
       {
@@ -883,7 +945,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               : i18n._(PI.workflowLightLoopDesc),
             icon: getSemanticIcon("prompt.lightLoop"),
             selected: lightLoopActive(),
-            ariaDisabled: blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive(),
+            ariaDisabled: blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive() || bossActive(),
             title: blueprintModeLocked()
               ? i18n._(PI.workflowUnavailableBlueprint)
               : lightLoopActive()
@@ -901,7 +963,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             classList: {
               "bg-workbench-selected-bg": lightLoopActive(),
               "text-text-base": lightLoopActive(),
-              "opacity-60": blueprintModeLocked() || planActive() || latticeActive(),
+              "opacity-60": blueprintModeLocked() || planActive() || latticeActive() || bossActive(),
             },
             onSelect: selectLightLoopFromMenu,
           },
@@ -911,7 +973,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             description: planActive() ? i18n._(PI.workflowPlanDesc) : i18n._(PI.workflowPlanDescAlt),
             icon: getSemanticIcon("prompt.plan"),
             selected: planActive(),
-            ariaDisabled: blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive(),
+            ariaDisabled: blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive() || bossActive(),
             title: blueprintModeLocked()
               ? i18n._(PI.workflowPlanUnavailableBp)
               : planActive()
@@ -927,11 +989,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               : blueprintModeLocked()
                 ? "text-icon-weak-base"
                 : "text-icon-base",
-            labelClass: blueprintModeLocked() || latticeActive() || lightLoopActive() ? "text-text-weak" : undefined,
+            labelClass:
+              blueprintModeLocked() || latticeActive() || lightLoopActive() || bossActive()
+                ? "text-text-weak"
+                : undefined,
             classList: {
               "bg-workbench-selected-bg": planActive(),
               "text-text-base": planActive(),
-              "opacity-60": blueprintModeLocked() || latticeActive() || lightLoopActive(),
+              "opacity-60": blueprintModeLocked() || latticeActive() || lightLoopActive() || bossActive(),
             },
             onSelect: selectPlanFromMenu,
           },
@@ -954,6 +1019,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               "opacity-60": latticeMenuState.ariaDisabled,
             },
             onSelect: selectLatticeFromMenu,
+          },
+          {
+            id: "boss-mode",
+            label: i18n._(PI.workflowBoss),
+            description: translateDescriptor(bossMenuState.description, i18n),
+            icon: getSemanticIcon("prompt.boss"),
+            selected: bossActive(),
+            ariaDisabled: bossMenuState.ariaDisabled,
+            title: bossMenuState.title ? translateDescriptor(bossMenuState.title, i18n) : undefined,
+            iconClass: bossActive()
+              ? "text-icon-base"
+              : blueprintModeLocked()
+                ? "text-icon-weak-base"
+                : "text-icon-base",
+            classList: {
+              "bg-workbench-selected-bg": bossActive(),
+              "text-text-base": bossActive(),
+              "opacity-60": bossMenuState.ariaDisabled,
+            },
+            onSelect: selectBossFromMenu,
           },
         ],
       },
@@ -1414,6 +1499,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       clearPendingWorkflows: () => {
         setPendingPlan(false)
         setPendingLightLoop(false)
+        setPendingBoss(false)
       },
       setLocalArmedLoop,
       setStore,
@@ -1649,6 +1735,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     clearPendingLightLoop: () => {
       setPendingLightLoop(false)
     },
+    pendingBoss,
+    clearPendingBoss: () => {
+      setPendingBoss(false)
+    },
+    onBossEnabled: () => void workbench.openPanel("boss", { reuseExisting: true }),
     localArmedLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
@@ -1683,6 +1774,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setPlan: setPendingPlan,
       setLattice: setPendingLattice,
       setLightLoop: setPendingLightLoop,
+      setBoss: setPendingBoss,
       setBlueprintSlot: setLocalArmedLoop,
       setAgent: local.agent.set,
       setModel: (model) => local.model.set(model),
@@ -1978,6 +2070,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     icon={getSemanticIcon("prompt.lattice")}
                     working={working}
                     onCancel={cancelLattice}
+                  />
+                </Show>
+                <Show when={bossRootActive()}>
+                  <WorkflowChip
+                    label={i18n._(PI.cancelBossLabel)}
+                    ariaLabel={i18n._(PI.cancelBoss)}
+                    tooltip={i18n._(PI.cancelBoss)}
+                    icon={getSemanticIcon("prompt.boss")}
+                    working={working}
+                    onCancel={() => void setBoss(false)}
                   />
                 </Show>
                 <ComposerSlotOutlet slot="composer.add-menu" sessionId={params.id} class="contents" />

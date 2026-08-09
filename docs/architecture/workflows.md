@@ -1,12 +1,13 @@
 # Workflow Runtime
 
-This document defines session-local workflow execution. A session's workflow field stores one active kind—`plan`, `lightloop`, or `lattice`—while BlueprintLoop keeps a separate execution record bound to that session. This contract does not define cross-session orchestration.
+This document defines session-local workflow execution. A session's workflow field stores one active kind—`plan`, `lightloop`, `lattice`, or `boss`—while BlueprintLoop keeps a separate execution record bound to that session. Workflow state is session-local; Boss Mode is the exception that spans sessions, deriving its worker tree from the session parent chain rather than a shared execution record.
 
 These workflows provide durable orchestration above the ordinary serial LLM loop.
 
 ## Mutual Exclusion and Ownership
 
 Enabling or switching any workflow, plus ordinary workflow disabling, requires an idle session. Light Loop has dedicated instruction-update and cancellation operations: its instructions can change only while no completion review is pending, and cancellation aborts active session work plus descendant reviewer tasks before clearing the workflow. Plan and Light Loop cannot be enabled while another workflow or active BlueprintLoop exists. Lattice can resume its own run but refuses a live user-owned BlueprintLoop.
+Boss Mode follows the same rule: it cannot be enabled while another workflow or an active BlueprintLoop exists, and it requires an idle session.
 
 A user-owned BlueprintLoop can replace Plan or Light Loop after the session is idle. It cannot replace an active Lattice workflow. A BlueprintLoop with `source: "lattice"` is valid only while Lattice owns the session.
 
@@ -14,9 +15,9 @@ Disabling a pristine Lattice Run cancels it so a later enable starts a new Run. 
 
 ## User-Message Projection
 
-Workflow instructions are projected into model context without rewriting the stored user text. Root, user-origin messages receive compact workflow metadata when they are created. During context assembly, the first user text part is wrapped with the agent-specific Plan, Lattice, or Light Loop contract.
+Workflow instructions are projected into model context without rewriting the stored user text. Root, user-origin messages receive compact workflow metadata when they are created. During context assembly, the first user text part is wrapped with the agent-specific Plan, Lattice, Light Loop, or Boss contract.
 
-System control messages, non-root messages, and messages from continuation sources are not wrapped again. This keeps the durable transcript faithful to what the user wrote while making the active contract explicit to the model.
+System control messages, non-root messages, and messages from continuation sources are not wrapped again; `boss_report` deliveries are control messages and stay unwrapped. This keeps the durable transcript faithful to what the user wrote while making the active contract explicit to the model.
 
 ## Plan Enforcement
 
@@ -99,6 +100,20 @@ Each Scope runtime subscribes to loop events before reconciling persisted Runs a
 
 Model calls are accumulated and flushed at turn and lifecycle boundaries. A positive limit is checked before another Lattice continuation and pauses the Run when exhausted. Explicitly resuming a budget-paused Run extends the visible cap by exactly one call, so each additional call requires a fresh user decision. This is a soft operational budget: a hard process failure can lose the final in-memory increment. Lattice event files are idempotent, best-effort audit output; Run, Step, Blueprint binding, and BlueprintLoop records are canonical recovery state.
 
+## Boss Mode
+
+Boss Mode is a session workflow (`kind: "boss"`) that coordinates work across a tree of persistent worker sessions. The session that enables it becomes the root boss and the human's only instruction entry point. Each worker is an ordinary session created as a direct child of its caller with `role: "worker"`, a standing `workerRole` label, the tree `rootID`, and an unattended interaction; workers can spawn their own workers, so the tree has arbitrary depth.
+
+Boss Mode has no task ledger, state machine, or event log: assignments and reports are `SessionInbox` messages, so message history is the ledger, and the tree is derived read-only from the session parent chain. This contrasts with Lattice, which persists an explicit Run machine, and with BlueprintLoop's separate execution record. Routing decisions belong to the boss agent; `BossService` only enforces tree membership and performs the delivery mechanics.
+
+Enabling Boss Mode requires an idle session with no active workflow and no BlueprintLoop, and it is mutually exclusive with Plan, Light Loop, and Lattice. Disabling it clears only the root projection; worker sessions and their history remain, and workers fall dormant once the root is gone.
+
+Workers are created with `boss_spawn` (a role label and an optional agent) and receive tasks through `boss_assign`, which uses `SessionInbox.deliverUnique` with delivery key `boss:<callerID>:<taskID>` so re-assignment is idempotent. A worker reports to its direct parent with `boss_report`, which delivers a steer-mode message and wakes the parent. `boss_cancel` interrupts a running turn and removes matching pending assignments; `boss_status` derives the caller's subtree with per-node status, agent, and most recent task. All five tools and the server routes funnel through the single `BossService` guard: a caller must be a boss-tree member, and a target must be the caller's direct child in the same tree.
+
+`BossContinuationPolicy` (priority `40`) owns idle continuation. The root session never receives a continuation proposal and stays human-driven; a worker whose assigned task has not reported is nudged to continue or report, and workers fall dormant when the root is disabled or archived. There is no separate Boss recovery flow: after a process restart, workers holding runnable inbox items resume through the ordinary boot wake path, and the next turn re-injects the tree overview so the model can rebuild its view with `boss_status`.
+
+The model prompt is injected at the workflow context layer: the root receives `<boss-context>` plus a live `<boss-tree>` overview, and workers receive `<boss-worker-context>`. `WorkflowUserWrapper` supports Boss Mode for message projection, and `boss_report` deliveries are never wrapped again.
+
 ## Continuation Drive
 
 `SessionDrive` is the single session-level arbitration entry point. Cortex completion, Agenda delivery or wait release, Lattice resume, and `SessionManager.release` all request the drive instead of delivering workflow continuations independently. Requests are serialized per session: each arbitration is queued after the previous request settles, so reentrant requests are not lost and processing wakes happen outside the tracked arbitration promise.
@@ -111,11 +126,13 @@ Policies run in descending priority:
 
 1. BlueprintLoop (`100`)
 2. Lattice (`50`)
-3. Light Loop (`25`)
+3. Boss (`40`)
+4. Light Loop (`25`)
 
 The first policy that returns a proposal wins. Per-session, per-policy deduplication normally keys the decision to the terminal assistant message. A policy that reconciles multiple durable workflow revisions against the same terminal parent turn supplies a revision key derived from that workflow state and bound task identity. Inbox delivery keys make persistence idempotent across concurrent requests and restart recovery. Persisted Lattice lifecycle effects such as explicit resume and startup repair may materialize their own unique Inbox entry before requesting the drive; they still use the same Inbox-first ordering and never invoke the model loop directly.
 
 BlueprintLoop normally continues a `running` bound loop, but an unbound stop intent is handled first by preparing, binding, and starting its reviewer. Lattice reconciles semantic actions and persisted effects, then proposes ordinary state continuation only after a successful terminal turn. Light Loop similarly handles an unbound stop intent before proposing its ordinary task check.
+Boss Mode proposes continuation only for workers with an un-reported assigned task; the root session stays human-driven.
 
 ### Agenda Wait Ownership
 
@@ -135,6 +152,7 @@ Pending stop intents suppress Agenda wake guidance and are re-driven through `Se
 - Blueprint writes occur only in Plan or Lattice.
 - Executors request completion; independent reviewer sessions decide it.
 - Lattice owns work-state transitions and only the exact BlueprintLoop bound to its current attempt can advance its Pathway.
+- Boss Mode derives its tree from the session parent chain; assignments and reports are the ledger, and only tree members can act through `BossService`.
 - One shared drive serializes Inbox work and workflow proposals, and the shared gate prevents continuation while child work, an incomplete or erroring turn, or a one-shot Agenda wait is still active.
 
 ## SuperPlan Storage Substrate
