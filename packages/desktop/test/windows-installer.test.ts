@@ -7,6 +7,17 @@ import path from "node:path"
 const desktopDir = path.resolve(import.meta.dir, "..")
 const packageJson = (await Bun.file(path.join(desktopDir, "package.json")).json()) as { version: string }
 
+class CommandExitError extends Error {
+  constructor(
+    readonly exitCode: number,
+    command: string[],
+    stdout: string,
+    stderr: string,
+  ) {
+    super(`${command.join(" ")} exited with ${exitCode}\n${stdout}\n${stderr}`)
+  }
+}
+
 async function run(
   command: string[],
   env: Record<string, string> = {},
@@ -33,9 +44,7 @@ async function run(
   if (timedOut) {
     throw new Error(`${command.join(" ")} timed out after ${timeoutMs} ms\n${stdout}\n${stderr}`)
   }
-  if (exitCode !== 0) {
-    throw new Error(`${command.join(" ")} exited with ${exitCode}\n${stdout}\n${stderr}`)
-  }
+  if (exitCode !== 0) throw new CommandExitError(exitCode, command, stdout, stderr)
 }
 
 function isProcessRunning(pid: number) {
@@ -96,11 +105,22 @@ async function spawnSiblingProcess(directory: string) {
 
 async function uninstall(installDir: string) {
   const uninstaller = path.join(installDir, "Uninstall synergy-desktop.exe")
-  if (await Bun.file(uninstaller).exists()) {
-    const externalUninstaller = path.join(path.dirname(installDir), "uninstaller.exe")
-    await fs.copyFile(uninstaller, externalUninstaller)
-    // Keep the running copy outside $INSTDIR so Windows can remove the installed uninstaller.
-    await run([externalUninstaller, "/S", `_?=${installDir}`], {}, 120_000, true)
+  expect(await Bun.file(uninstaller).exists()).toBe(true)
+
+  const externalUninstaller = path.join(path.dirname(installDir), "uninstaller.exe")
+  await fs.copyFile(uninstaller, externalUninstaller)
+  expect(await Bun.file(externalUninstaller).exists()).toBe(true)
+
+  // Match electron-builder's uninstallOldVersion invocation and bounded retry cadence.
+  const command = [externalUninstaller, "/S", "/KEEP_APP_DATA", "/currentuser", "--updated", `_?=${installDir}`]
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await run(command, {}, 120_000, true)
+      return
+    } catch (error) {
+      if (!(error instanceof CommandExitError) || error.exitCode !== 2 || attempt === 5) throw error
+      await Bun.sleep(1_000)
+    }
   }
 }
 
@@ -137,11 +157,16 @@ describe("Windows installer", () => {
 
         sibling.assertAlive()
         expect(await Bun.file(path.join(installDir, "synergy-desktop.exe")).exists()).toBe(true)
+
+        await uninstall(installDir)
+        await expect(fs.stat(installDir)).rejects.toHaveProperty("code", "ENOENT")
+        sibling.assertAlive()
       } finally {
         await sibling.cleanup()
-        await uninstall(installDir)
-        await fs.rm(temporaryDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
-        await fs.rm(installerInclude.directory, { recursive: true, force: true })
+        await Promise.all([
+          fs.rm(temporaryDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }),
+          fs.rm(installerInclude.directory, { recursive: true, force: true }),
+        ])
       }
     },
     600_000,
