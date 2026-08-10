@@ -340,6 +340,7 @@ export namespace SessionInvoke {
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
     let emergencyCompactionTriggered = false
+    let hardOverflowCompactionRootID: string | undefined
     let session = await Session.get(sessionID)
     SessionManager.assertExecutionContext(session, "session loop")
     let scopeID = (session.scope as Scope).id
@@ -905,10 +906,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         if (!promptPlan) break
 
         const calibration = buildCalibration(msgs)
+        const requestedMaxOutputTokens = maxOutputTokensByMessage.get(R.id)
         const promptDecideTimer = log.time("promptBudgeter.decide")
         let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
           calibration,
+          maxOutputTokens: requestedMaxOutputTokens,
         }).catch(async (error) => {
           await completeAssistantWithError({ sessionID, processor, model, error })
           return undefined
@@ -916,17 +919,23 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         promptDecideTimer.stop()
         if (!promptDecision) break
 
-        if (
+        const shouldInjectCompaction =
           !jobCtx.compactionAutoDisabled &&
+          hardOverflowCompactionRootID !== R.id &&
           !SessionCompaction.hasPendingCompaction(RParts!, msgs, R.id) &&
-          promptDecision.shouldCompact
-        ) {
+          (promptDecision.shouldCompact || promptDecision.contextExceeded)
+        if (shouldInjectCompaction) {
           log.info("prompt budget exceeded, injecting compaction", {
             sessionID,
             total: promptDecision.measure.total,
             soft: promptDecision.budget.soft,
             usable: promptDecision.budget.usable,
+            inputEnvelope: promptDecision.budget.inputEnvelope,
+            output: promptDecision.budget.output,
+            margin: promptDecision.budget.margin,
+            contextExceeded: promptDecision.contextExceeded,
           })
+          if (promptDecision.contextExceeded) hardOverflowCompactionRootID = R.id
           await Session.updatePart({
             id: Identifier.ascending("part"),
             messageID: R.id,
@@ -942,6 +951,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           promptPlan = undefined
           promptDecision = undefined
           continue
+        }
+
+        if (promptDecision.contextExceeded) {
+          await completeAssistantWithError({
+            sessionID,
+            processor,
+            model,
+            error: new PromptBudgeter.ContextBudgetExceededError(),
+          })
+          break
         }
 
         const toolResolveTimer = log.time("toolResolver.resolve")
@@ -1093,7 +1112,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           activeToolIDs: resolvedTools.activeToolIDs,
           model,
           contextUsageProvenance,
-          maxOutputTokens: maxOutputTokensByMessage.get(R.id),
+          maxOutputTokens: promptDecision.maxOutputTokens,
           memoryTurn,
         }
         memoryTurn.trackOwner("stream.input", streamInput, requestBytes)
@@ -1153,6 +1172,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             })
           }
         }
+        hardOverflowCompactionRootID = undefined
 
         let postRequestedStop = false
         {

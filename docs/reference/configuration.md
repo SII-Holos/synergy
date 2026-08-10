@@ -446,6 +446,30 @@ The global Runtime domain controls the process-wide Cortex subagent maximum:
 
 The configured value is the scheduler maximum. Memory pressure temporarily lowers new-task admission to four tasks, or two under critical pressure; running tasks are not cancelled. The scheduler uses the shared session memory classification, with earlier ArrayBuffer pressure thresholds at 1 GiB and 2 GiB. Settings and the Cortex concurrency status API report both the configured maximum and the effective pressure-capped limit. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed maximum instead of editing it.
 
+## Compaction
+
+Compaction settings are owned by the Runtime domain (`120-runtime.jsonc`):
+
+```jsonc
+{
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "overflowThreshold": 0.85,
+    "maxHistoryImages": 8,
+  },
+}
+```
+
+| Field                          | Required | Default | Description                                                                                 |
+| ------------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------- |
+| `compaction.auto`              | no       | `true`  | Enable automatic compaction when the measured prompt crosses the soft budget                |
+| `compaction.prune`             | no       | `true`  | Enable pruning of old tool outputs                                                          |
+| `compaction.overflowThreshold` | no       | `0.85`  | Fraction of the input envelope that triggers auto-compaction; constrained to `0.5`–`1`      |
+| `compaction.maxHistoryImages`  | no       | `8`     | Maximum historical images sent as base64 per request; older images become text placeholders |
+
+The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the usable input for models with an explicit input limit, and `context - output - margin` for shared-context models only when reserving output and margin leaves a positive remainder; fully shared or near-window output declarations otherwise use the model's usable input. The margin is `min(32000, max(2048, ceil(context * 0.05)))`. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. When automatic compaction is enabled, a prompt with no response space receives one root-scoped compaction attempt before Synergy stops locally with an actionable error; when automatic compaction is disabled, it stops immediately. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
+
 ## GitHub Channel
 
 The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.

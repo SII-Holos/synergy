@@ -60,7 +60,7 @@ One model step performs the following work:
 4. Resolve tool definitions, system context, Cortex context, Library recall, environment context, and Agenda reminders in parallel where independent.
 5. Project workflow-wrapped messages without mutating stored user text.
 6. Build and measure the provider prompt.
-7. Trigger compaction instead of calling the model if the prompt crosses the configured soft budget.
+7. Trigger compaction instead of calling the model if the prompt crosses the configured soft budget or leaves no response space.
 8. Resolve a serializable model-facing tool catalog separately from Control Plane execution callbacks.
 9. Queue the provider turn on `AgentTurn`, consume its bounded event frames, and persist one assistant message.
 10. Release the Agent worker, dispatch generation-aware ToolTasks, authorize each operation in the Control Plane before physical execution, and settle results.
@@ -198,7 +198,14 @@ The post-job captures only session, root-message, and terminal-revision identifi
 - tool names, descriptions, schemas, and protocol overhead
 - bounded estimates for historical image/file parts
 
-The usable input budget accounts for context and reserved model output. Automatic compaction defaults to a soft threshold of 85% of usable input and can be configured.
+The budget derives from the model's declared limits. For a context `C`, an effective requested output `O` bounded by the model's configured output and the global output maximum, and no explicit separate input limit, Synergy reserves the requested output plus a safety margin only when that reservation leaves a positive input envelope:
+
+- `margin = min(32000, max(2048, ceil(C * 0.05)))`
+- `inputEnvelope = C - O - margin` when the configured output is smaller than `C` and the result is positive
+
+Models with an explicit input limit (for example 400k context / 272k input / 128k output) keep the input-based envelope instead. Fully shared windows and near-window output declarations that cannot leave positive input after the margin use the model's usable input rather than deriving a zero or negative compaction threshold. The soft compaction threshold is `floor(inputEnvelope * overflowThreshold)`, defaulting to 85% and configurable through `compaction.overflowThreshold` (see [Configuration](../reference/configuration.md#compaction)).
+
+Before each provider call, the per-request maximum output is clamped to the configured output and to the context remaining after the measured input and margin, so a long prompt cannot push the request past the window. An explicit per-request output limit remains effective when context metadata is unavailable. If no response space remains, automatic compaction runs first when enabled; Synergy permits one hard-overflow recovery attempt for the root before the next provider turn, then records a local actionable error instead of repeatedly compacting or sending a guaranteed-to-fail provider request.
 
 After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider.
 
@@ -220,10 +227,11 @@ Compaction establishes a new model-context boundary while preserving durable his
 
 Compaction can be requested explicitly or injected automatically when:
 
-- prompt measurement crosses the configured soft budget; or
+- prompt measurement crosses the configured soft budget;
+- prompt measurement leaves no space for a model response; or
 - the provider returns a recognized context-length error.
 
-The request is a `compaction` part attached to root `R`. Pending requests are counted against completed compaction summaries for that same root, so a long task can compact more than once without endlessly reprocessing one request.
+The request is a `compaction` part attached to root `R`. Pending requests are counted against completed compaction summaries for that same root, so a long task can compact more than once without endlessly reprocessing one request. A measured hard overflow receives at most one automatic compaction attempt for that root before the next provider turn; if the compacted prompt still leaves no response space, the loop terminates locally with the actionable context-budget error.
 
 ### Summary generation
 
@@ -231,7 +239,7 @@ The compaction job:
 
 1. resolves the dedicated `compaction` agent and its available model, falling back to the root model;
 2. projects the current effective history with no tools;
-3. trims oldest summary input if even the compaction model cannot accept the full history, advancing the cut past any tool results whose assistant tool calls were omitted;
+3. trims oldest summary input so the history, compaction prompt, a bounded summary output, and tokenizer margin fit the compaction model's context window, advancing the cut past any tool results whose assistant tool calls were omitted; the summarization call requests at most 32,000 output tokens (the model's configured output when smaller), and that output budget plus the margin is what the history trim reserves;
 4. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
 5. asks only for a structured continuation summary;
 6. records provider or processor failures as terminal `failed` attempts with a sanitized serialized error, `visible = true`, and `includeInContext = false`; provider response headers and bodies are not retained on this visible audit record, while empty output becomes `empty` and stays hidden outside model context;
