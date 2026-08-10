@@ -385,7 +385,8 @@ describe("tool.openai_image_gen", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
       fetchCalls++
       if (fetchCalls === 1) return jsonResponse({ error: { message: "boom" } }, { status: 500 })
       return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
@@ -415,7 +416,10 @@ describe("tool.openai_image_gen", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
+    globalThis.fetch = asFetch(async (input) => {
+      // Count only the image-generation endpoint so concurrent tests in the
+      // same shard (which share globalThis.fetch) cannot pollute the count.
+      if (!String(input).includes("/images/")) return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
       fetchCalls++
       return jsonResponse({ error: { message: "boom" } }, { status: 500 })
     })
@@ -510,7 +514,8 @@ describe("tool.openai_image_gen", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
       fetchCalls++
       if (fetchCalls === 1) throw new TypeError("fetch failed")
       return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })

@@ -10,6 +10,12 @@ export namespace SynergyLinkBash {
       workdir: z.string().optional(),
       background: z.boolean().optional(),
       yieldSeconds: z.number().optional(),
+      detach: z
+        .boolean()
+        .optional()
+        .describe(
+          "Detach the command from the session lifecycle: spawn without the session owner marker, skip detached-daemon pre-spawn checks, and let the process survive session close.",
+        ),
     })
     .strict()
   export type ExecutePayload = z.infer<typeof ExecutePayload>

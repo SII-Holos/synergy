@@ -28,7 +28,7 @@ type PromptAttachmentsInput = {
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   activeLoopID: Accessor<string | undefined>
   working: Accessor<boolean>
-  workflowKind: Accessor<"plan" | "lightloop" | "lattice" | undefined>
+  workflowKind: Accessor<"plan" | "lightloop" | "lattice" | "boss" | undefined>
   clearPendingWorkflows: () => void
   setStore: SetStoreFunction<PromptInputStore>
 }
@@ -186,11 +186,11 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
           })
           return
         }
-        if (workflowKind === "lattice") {
+        if (workflowKind === "lattice" || workflowKind === "boss") {
           showToast({
             type: "warning",
-            title: i18n._(PI.attachLatticeActive),
-            description: i18n._(PI.attachCancelLattice),
+            title: workflowKind === "lattice" ? i18n._(PI.attachLatticeActive) : i18n._(PI.attachBossActive),
+            description: workflowKind === "lattice" ? i18n._(PI.attachCancelLattice) : i18n._(PI.attachCancelBoss),
           })
           return
         }

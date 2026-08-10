@@ -38,6 +38,7 @@ export const panels = {
   context: { id: "app.panel.context", message: "Context" },
   review: { id: "app.panel.review", message: "Review" },
   lattice: { id: "app.panel.lattice", message: "Lattice" },
+  boss: { id: "app.panel.boss", message: "Boss" },
   attachment: { id: "app.panel.attachment", message: "Attachment" },
   files: { id: "app.panel.files", message: "Files" },
   openFile: { id: "app.panel.files.openFile", message: "Open file" },
@@ -1343,6 +1344,9 @@ export const pluginMarketplace = {
     message: "Synergy couldn't reach this plugin registry. Check your connection and try again.",
   },
   retry: { id: "app.plugin.marketplace.registryUnavailable.retry", message: "Retry" },
+  refreshButton: { id: "app.plugin.marketplace.refresh.button", message: "Refresh plugins" },
+  refreshUpdated: { id: "app.plugin.marketplace.refresh.updated", message: "Plugin catalog updated" },
+  refreshFailed: { id: "app.plugin.marketplace.refresh.failed", message: "Plugin catalog refresh failed" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin permission groups ──────────────────────────────────────────────────
