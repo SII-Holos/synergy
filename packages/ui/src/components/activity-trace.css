@@ -11,19 +11,6 @@
 }
 
 [data-component="activity-trace"] {
-  position: relative;
-  padding-inline-start: 37px;
-
-  [data-slot="activity-trace-header"] {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    min-width: 0;
-    min-height: 38px;
-    gap: 8px;
-    padding: 5px 2px;
-  }
-
   [data-slot="activity-step-trigger"] {
     position: relative;
     display: flex;
@@ -51,147 +38,26 @@
     }
   }
 
-  [data-slot="activity-trace-marker"] {
-    position: absolute;
-    z-index: 1;
-    top: 8px;
-    left: 0;
-    display: grid;
-    width: 22px;
-    height: 22px;
-    place-items: center;
-    border: 1px solid var(--border-weak-base);
-    border-radius: 999px;
-    color: var(--icon-weak-base);
-    background: var(--background-weak);
-    transform-origin: center;
-  }
-
-  [data-slot="activity-trace-marker"][data-state="running"] {
-    border-color: var(--border-selected);
-    background: var(--surface-base-active);
-  }
-
-  [data-slot="activity-trace-marker"][data-state="done"] {
-    border-color: color-mix(in srgb, var(--icon-success-base) 34%, var(--border-weak-base));
-    color: var(--icon-success-base);
-    background: var(--surface-success-weak);
-  }
-
-  [data-slot="activity-trace-marker"][data-state="waiting-approval"] {
-    color: var(--icon-warning-base);
-  }
-
-  [data-slot="activity-trace-marker"][data-state="error"] {
-    color: var(--icon-critical-base);
-  }
-
-  [data-slot="activity-trace-marker"][data-motion="breathing"] {
-    animation: activity-trace-breathe 1.6s var(--motion-ease-standard) infinite;
-  }
-
-  [data-slot="activity-trace-connector"] {
-    display: none;
-    position: absolute;
-    z-index: 0;
-    top: 30px;
-    bottom: -10px;
-    left: 11px;
-    width: 1px;
-    background: var(--border-weak-base);
-  }
-
   [data-component="tool-result-body"] {
     min-width: 0;
-    margin: 6px 0 0 54px;
+    margin: 6px 0 0 26px;
   }
 
   [data-component="tool-result-body"] > :first-child {
     margin-top: 0;
   }
 
-  [data-slot="activity-trace-copy"] {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    align-items: stretch;
-    min-width: 0;
-    gap: 1px;
-  }
-
-  [data-slot="activity-trace-heading"] {
-    display: flex;
-    align-items: baseline;
-    min-width: 0;
-    gap: 7px;
-  }
-
-  [data-slot="activity-trace-title"] {
-    flex: 0 0 auto;
-    color: var(--text-base);
-    font-weight: var(--font-weight-medium);
-  }
-
-  [data-slot="activity-trace-scope"] {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--text-subtle);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  [data-slot="activity-trace-meta"] {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-subtle);
-    font-size: var(--font-size-x-small);
-    font-variant-numeric: tabular-nums;
-  }
-
   [data-slot="activity-step-list"] {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    margin: 0 0 6px;
+    margin: 0;
     padding: 0;
-    padding-inline-start: 12px;
     list-style: none;
   }
 
   [data-slot="activity-step"] {
-    position: relative;
     min-width: 0;
-
-    &::before {
-      position: absolute;
-      top: 0;
-      bottom: -2px;
-      inset-inline-start: 14px;
-      width: 1px;
-      background: var(--border-weak-base);
-      content: "";
-    }
-
-    &:last-child::before {
-      bottom: auto;
-      height: 16px;
-    }
-  }
-
-  [data-slot="activity-step-branch"] {
-    position: relative;
-    flex: 0 0 22px;
-
-    &::before {
-      position: absolute;
-      top: 50%;
-      inset-inline-start: 2px;
-      width: 18px;
-      border-bottom: 1px solid var(--border-weak-base);
-      content: "";
-    }
   }
 
   [data-slot="activity-step-icon"] {
@@ -230,7 +96,7 @@
 
   [data-component="attachment-gallery"],
   [data-slot="activity-specialized-detail"] {
-    margin: 6px 0 0 54px;
+    margin: 6px 0 0 26px;
   }
 }
 
@@ -420,18 +286,6 @@
   }
 }
 
-@keyframes activity-trace-breathe {
-  0%,
-  100% {
-    opacity: 0.7;
-    transform: scale(0.78);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 @keyframes activity-count-out {
   from {
     opacity: 1;
@@ -468,33 +322,10 @@
   }
 }
 
-[data-slot="session-turn-timeline-item"][data-activity-continues] {
-  margin-bottom: 0;
-
-  [data-slot="activity-trace-connector"] {
-    display: block;
-  }
-}
-
-[data-slot="session-turn-timeline-item"][data-activity-continues]
-  + [data-slot="session-turn-timeline-item"][data-kind="activity-group"] {
-  margin-top: 0;
-}
-
-[data-slot="session-turn-timeline-item"][data-kind="activity-group"][data-activity-follows] {
-  margin-top: 0;
-}
-
 @media (prefers-reduced-motion: reduce) {
   [data-component="animated-activity-count"] [data-slot="activity-count-old"],
   [data-component="animated-activity-count"] [data-slot="activity-count-new"] {
     animation: none !important;
-  }
-
-  [data-component="activity-trace"] [data-slot="activity-trace-marker"][data-motion="breathing"] {
-    animation: none !important;
-    opacity: 1;
-    transform: none;
   }
 
   [data-component="activity-trace"] [data-component="spinner"] rect,

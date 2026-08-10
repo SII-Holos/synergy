@@ -45,7 +45,6 @@ export type ActivityGroupItem = {
   message: AssistantMessage
   family: ActivityFamily
   scopeKey: string
-  scopeLabel?: string
   state: ActivityGroupState
   steps: ActivityStepProjection[]
   receipt: boolean
@@ -241,7 +240,6 @@ function makeGroup(
     message,
     family: step.family,
     scopeKey: step.scopeKey,
-    scopeLabel: step.subtitle,
     state: step.state,
     steps: [step],
     receipt,

@@ -77,10 +77,6 @@ msgstr "运行中"
 msgid "activity.trace.status.waiting-approval"
 msgstr "等待批准"
 
-#. js-lingui-explicit-id
-msgid "activity.trace.steps"
-msgstr "{count, plural, one {# 步} other {# 步}}"
-
 #. ── Anchored-tool chip labels ──────────────────────────────────────
 msgid "anchored-chip.conflict"
 msgstr "冲突"

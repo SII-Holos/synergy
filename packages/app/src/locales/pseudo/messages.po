@@ -77,10 +77,6 @@ msgstr ""
 msgid "activity.trace.status.waiting-approval"
 msgstr ""
 
-#. js-lingui-explicit-id
-msgid "activity.trace.steps"
-msgstr ""
-
 #. ── Anchored-tool chip labels ──────────────────────────────────────
 msgid "anchored-chip.conflict"
 msgstr ""

@@ -78,7 +78,6 @@ beforeAll(async () => {
         message,
         family: "modify-files",
         scopeKey: "scope-a",
-        scopeLabel: "packages/ui",
         state: "waiting-approval",
         steps: [
           {
@@ -126,7 +125,6 @@ beforeAll(async () => {
         key,
         state,
         scopeKey: key,
-        scopeLabel: key,
         steps: [{ ...group.steps[1], part: { ...group.steps[1].part, id: key }, scopeKey: key, state }],
         topic: { state: state === "done" ? "stable" : "live", text: state === "done" ? "Finished rail work" : "Working through rail steps" },
       })
@@ -135,7 +133,6 @@ beforeAll(async () => {
         key: "group-view-file",
         family: "inspect-local",
         scopeKey: "activity-trace.tsx",
-        scopeLabel: "activity-trace.tsx",
         state: "done",
         steps: [
           {
@@ -499,9 +496,8 @@ describe("Activity summary DOM behavior", () => {
     expect(reasoning("fallback").getAttribute("aria-live")).toBe("polite")
   })
 
-  test("renders nano topics and minimal summaries in their stable slots", () => {
-    const topic = document.querySelector('#activity-main-host [data-slot="activity-trace-title"]')
-    expect(topic?.textContent).toBe("Updated the activity presentation")
+  test("renders minimal summaries without a nano topic parent row", () => {
+    expect(document.querySelector('#activity-main-host [data-slot="activity-trace-title"]')).toBeNull()
     const now = document.querySelector('[data-slot="minimal-activity-now"]')
     expect(now?.textContent).toBe("Verifying compressed activity")
     expect(now?.getAttribute("aria-hidden")).toBe("true")
@@ -513,13 +509,15 @@ describe("ActivityTrace DOM behavior", () => {
     return host.querySelectorAll('[data-slot="activity-step-trigger"]')
   }
 
-  test("renders one nano topic with indented heterogeneous child activity rows", () => {
+  test("renders heterogeneous tool rows without outer group chrome", () => {
     const host = document.querySelector("#activity-main-host") as HTMLElement
-    const topic = host.querySelector('[data-slot="activity-trace-title"]')
     const list = host.querySelector('[data-slot="activity-step-list"]')
     const steps = list?.querySelectorAll('[data-slot="activity-step"]')
 
-    expect(topic?.textContent).toBe("Updated the activity presentation")
+    expect(host.querySelector('[data-slot="activity-trace-header"]')).toBeNull()
+    expect(host.querySelector('[data-slot="activity-trace-marker"]')).toBeNull()
+    expect(host.querySelector('[data-slot="activity-trace-connector"]')).toBeNull()
+    expect(host.querySelector('[data-slot="activity-trace-title"]')).toBeNull()
     expect(list).not.toBeNull()
     expect(steps).toHaveLength(2)
     expect(Array.from(steps ?? []).map((step) => step.getAttribute("data-family"))).toEqual([
@@ -529,7 +527,7 @@ describe("ActivityTrace DOM behavior", () => {
     expect(
       Array.from(list?.querySelectorAll('[data-slot="activity-step-family"]') ?? []).map((item) => item.textContent),
     ).toEqual(["Changed", "Researched"])
-    expect(list?.querySelectorAll('[data-slot="activity-step-branch"]')).toHaveLength(2)
+    expect(list?.querySelector('[data-slot="activity-step-branch"]')).toBeNull()
   })
 
   test("each child activity is a keyboard-accessible result toggle", async () => {
@@ -567,27 +565,27 @@ describe("ActivityTrace DOM behavior", () => {
     firstTrigger.click()
     await wait(0)
   })
-  test("renders the connected Plan A progress rail and transitions its marker to a completed check", async () => {
+  test("updates flat tool state without rendering a progress rail or checkbox", async () => {
     const rail = document.querySelector("#activity-rail-host") as HTMLElement
     const traces = rail.querySelectorAll('[data-component="activity-trace"]')
     expect(traces).toHaveLength(2)
 
     const first = traces[0] as HTMLElement
-    const marker = first.querySelector('[data-slot="activity-trace-marker"]') as HTMLElement
-    expect(marker.getAttribute("role")).toBe("img")
-    expect(first.querySelector('[data-slot="activity-trace-connector"]')).not.toBeNull()
-    expect(marker.getAttribute("data-state")).toBe("running")
-    expect(marker.getAttribute("data-motion")).toBe("breathing")
-    expect(marker.getAttribute("aria-label")).toBe("Running")
-    expect(marker.querySelector('[data-component="spinner"]')).toBeNull()
+    const firstStep = first.querySelector('[data-slot="activity-step"]') as HTMLElement
+    expect(first.querySelector('[data-slot="activity-trace-header"]')).toBeNull()
+    expect(first.querySelector('[data-slot="activity-trace-marker"]')).toBeNull()
+    expect(first.querySelector('[data-slot="activity-trace-connector"]')).toBeNull()
+    expect(firstStep.getAttribute("data-state")).toBe("running")
+    expect(firstStep.textContent).toContain("Running")
 
     harness.setRailState("done")
     await wait(0)
 
-    expect(marker.getAttribute("data-state")).toBe("done")
-    expect(marker.getAttribute("data-motion")).toBe("static")
-    expect(marker.getAttribute("aria-label")).toBe("Done")
-    expect(marker.querySelector('[data-component="icon"]')).not.toBeNull()
+    const updatedStep = rail.querySelector(
+      '[data-component="activity-trace"] [data-slot="activity-step"]',
+    ) as HTMLElement
+    expect(updatedStep.getAttribute("data-state")).toBe("done")
+    expect(updatedStep.textContent).toContain("Done")
   })
 
   test("renders view_file through the Full-mode renderer body without a nested tool card", async () => {

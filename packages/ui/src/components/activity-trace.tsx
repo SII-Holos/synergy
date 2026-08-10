@@ -35,7 +35,6 @@ function d(id: string, message: string): MessageDescriptor {
 export const ACTIVITY_TRACE_DESC = {
   activity: d("activity.trace.activity", "Activity"),
   actions: d("activity.trace.actions", "{count, plural, one {# action} other {# actions}}"),
-  stepCount: d("activity.trace.steps", "{count, plural, one {# step} other {# steps}}"),
   status: {
     running: d("activity.trace.status.running", "Running"),
     done: d("activity.trace.status.done", "Done"),
@@ -196,7 +195,6 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
     <li data-slot="activity-step" data-family={props.step.family} data-state={props.step.state}>
       <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
         <Collapsible.Trigger data-slot="activity-step-trigger" type="button">
-          <span data-slot="activity-step-branch" aria-hidden="true" />
           <span data-slot="activity-step-icon" aria-hidden="true">
             <Icon name={props.step.icon} size="small" />
           </span>
@@ -259,47 +257,9 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
   )
 }
 
-function ActivityTraceMarker(props: { state: ActivityGroupState; label: string }) {
-  return (
-    <span
-      role="img"
-      data-slot="activity-trace-marker"
-      data-state={props.state}
-      data-motion={props.state === "running" ? "breathing" : "static"}
-      aria-label={props.label}
-    >
-      <Show when={props.state !== "running"}>
-        <Icon name={stateIcon(props.state)} size="small" />
-      </Show>
-    </span>
-  )
-}
-
 export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: string }) {
-  const { _ } = useLingui()
-  const familyLabel = createMemo(() => _(ACTIVITY_TRACE_DESC.family[props.group.family]))
-  const topicTitle = createMemo(() => props.group.topic?.text?.trim() || familyLabel())
-  const stepCount = createMemo(() =>
-    _({ ...ACTIVITY_TRACE_DESC.stepCount, values: { count: props.group.steps.length } }),
-  )
-  const stateLabel = createMemo(() => _(stateDescriptor(props.group.state)))
-  const hasTopic = createMemo(() => Boolean(props.group.topic?.text?.trim()))
-
   return (
-    <div data-component="activity-trace" data-family={props.group.family} data-state={props.group.state}>
-      <span data-slot="activity-trace-connector" aria-hidden="true" />
-      <div data-slot="activity-trace-header">
-        <ActivityTraceMarker state={props.group.state} label={stateLabel()} />
-        <span data-slot="activity-trace-copy">
-          <span data-slot="activity-trace-heading">
-            <span data-slot="activity-trace-title">{topicTitle()}</span>
-            <Show when={!hasTopic() && props.group.scopeLabel}>
-              {(scope) => <span data-slot="activity-trace-scope">{scope()}</span>}
-            </Show>
-          </span>
-        </span>
-        <span data-slot="activity-trace-meta">{stepCount()}</span>
-      </div>
+    <div data-component="activity-trace">
       <ol data-slot="activity-step-list">
         <For each={props.group.steps}>{(step) => <ActivityStep step={step} serverUrl={props.serverUrl} />}</For>
       </ol>

@@ -272,7 +272,12 @@ describe("SessionTurn activity display switching", () => {
     const activityGroups = document.querySelectorAll(
       '[data-slot="session-turn-timeline-item"][data-kind="activity-group"]',
     )
+    const activityRows = document.querySelectorAll('[data-kind="activity-group"] [data-slot="activity-step"]')
     expect(activityGroups).toHaveLength(2)
+    expect(activityRows).toHaveLength(2)
+    expect(document.querySelector('[data-slot="activity-trace-header"]')).toBeNull()
+    expect(document.querySelector('[data-slot="activity-trace-marker"]')).toBeNull()
+    expect(document.querySelector('[data-slot="activity-trace-connector"]')).toBeNull()
     expect(activityGroups[0]?.hasAttribute("data-activity-continues")).toBe(true)
     expect(activityGroups[1]?.hasAttribute("data-activity-follows")).toBe(true)
 

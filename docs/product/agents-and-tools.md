@@ -49,7 +49,7 @@ Synergy assembles tools from built-ins, plugins, MCP servers, and turn-specific 
 
 Exposure is not permission. Tool taxonomy, effective arguments, Scope/workspace, protected paths, external effects, and active profile determine whether a call is allowed, denied, or can ask.
 
-Tools return ordered message parts with text output, structured metadata, and optional attachments. Product UI preserves their durable transcript order; in Balanced activity display, one nano-model-decided topic owns the parent progress marker and the original heterogeneous tool calls remain as one-level-indented, independently expandable child rows. This presentation never erases or rewrites the underlying tool calls.
+Tools return ordered message parts with text output, structured metadata, and optional attachments. Product UI preserves their durable transcript order; in Balanced activity display, nano-model summaries guide internal semantic grouping while the original heterogeneous tool calls render as flat, independently expandable rows with their own family action and state. There is no visible topic parent, progress marker, step count, or connector, and this presentation never erases or rewrites the underlying tool calls.
 
 Current first-party families cover workspace read/write/search, shell and persistent processes, LSP and diagnostics, Web research, Browser interaction, attachments and media rendering, sessions and delegation, todo/DAG/workflow state, Agenda, Library, Notes, email, worktrees, and Synergy maintenance. Most large families are grouped or searchable rather than permanently occupying every model prompt.
 

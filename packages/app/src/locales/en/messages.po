@@ -77,10 +77,6 @@ msgstr "Running"
 msgid "activity.trace.status.waiting-approval"
 msgstr "Waiting for approval"
 
-#. js-lingui-explicit-id
-msgid "activity.trace.steps"
-msgstr "{count, plural, one {# step} other {# steps}}"
-
 #. ── Anchored-tool chip labels ──────────────────────────────────────
 msgid "anchored-chip.conflict"
 msgstr "conflict"
