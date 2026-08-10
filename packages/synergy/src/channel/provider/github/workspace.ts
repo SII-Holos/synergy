@@ -135,31 +135,38 @@ export namespace GithubChannelWorkspace {
 
     const credential = buildCredentialCommand({ token: input.token, args: [] })
 
+    // Run git with the credential helper as a plain argv array so static
+    // analysis (knip) recognizes the subcommand; template interpolation of
+    // the credential args would otherwise hide `clone`/`fetch`/`pull` behind
+    // a dynamic token and trip the unlisted-binaries check.
+    const runGit = async (args: string[], options?: { cwd?: string }): Promise<number> => {
+      const proc = Bun.spawn(["git", ...credential.args, ...args], {
+        ...(options?.cwd ? { cwd: options.cwd } : {}),
+        env: credential.env,
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+      return proc.exited
+    }
+
     if (!(await fs.stat(gitDir).catch(() => undefined))) {
       log.info("cloning repository workspace", { repository: input.repository, directory })
-      await $`git ${credential.args} clone --no-checkout ${repoUrl} ${directory}`.env(credential.env).quiet().nothrow()
-      if (!(await fs.stat(gitDir).catch(() => undefined))) {
+      const cloneExit = await runGit(["clone", "--no-checkout", repoUrl, directory])
+      if (cloneExit !== 0 || !(await fs.stat(gitDir).catch(() => undefined))) {
         throw new Error(`GithubChannelWorkspaceError: clone failed for ${input.repository}`)
       }
       if (input.defaultBranch) {
-        await $`git ${credential.args} checkout ${input.defaultBranch}`
-          .cwd(directory)
-          .env(credential.env)
-          .quiet()
-          .nothrow()
+        await runGit(["checkout", input.defaultBranch], { cwd: directory })
       }
     } else {
-      await $`git ${credential.args} fetch origin --prune`.cwd(directory).env(credential.env).quiet().nothrow()
+      await runGit(["fetch", "origin", "--prune"], { cwd: directory })
     }
 
     if (input.pullNumber && branch) {
       const fetchRef = `pull/${input.pullNumber}/head:refs/remotes/origin/${branch}`
-      const fetched = await $`git ${credential.args} fetch origin ${fetchRef}`
-        .cwd(directory)
-        .env(credential.env)
-        .quiet()
-        .nothrow()
-      if (fetched.exitCode === 0) {
+      const fetched = await runGit(["fetch", "origin", fetchRef], { cwd: directory })
+      if (fetched === 0) {
         await $`git checkout ${branch}`.cwd(directory).quiet().nothrow()
         await $`git reset --hard origin/${branch}`.cwd(directory).quiet().nothrow()
       } else {
@@ -170,11 +177,7 @@ export namespace GithubChannelWorkspace {
       }
     } else if (input.defaultBranch) {
       await $`git checkout ${input.defaultBranch}`.cwd(directory).quiet().nothrow()
-      await $`git ${credential.args} pull --ff-only origin ${input.defaultBranch}`
-        .cwd(directory)
-        .env(credential.env)
-        .quiet()
-        .nothrow()
+      await runGit(["pull", "--ff-only", "origin", input.defaultBranch], { cwd: directory })
     }
 
     const { scope } = await Scope.fromDirectory(directory, { persist: true })
