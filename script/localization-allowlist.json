@@ -374,5 +374,61 @@
     "occurrence": 1,
     "category": "brand",
     "reason": "Third-party service name shown as a download-source option label."
+  },
+  {
+    "path": "packages/ui/src/components/activity-trace.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "stateDescriptor(props.step.state)",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve the runtime descriptor lookup, but stateDescriptor returns a static Lingui MessageDescriptor whose ID is extracted by i18n-extract."
+  },
+  {
+    "path": "packages/ui/src/components/activity-trace.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "ACTIVITY_TRACE_DESC.family[props.item.group.family]",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve the dynamic property lookup into the descriptor object, but every ACTIVITY_TRACE_DESC.family entry is a static Lingui MessageDescriptor with an extracted ID."
+  },
+  {
+    "path": "packages/ui/src/components/activity-trace.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "stateDescriptor(props.item.group.state)",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve the runtime descriptor lookup, but stateDescriptor returns a static Lingui MessageDescriptor whose ID is extracted by i18n-extract."
+  },
+  {
+    "path": "packages/ui/src/components/activity-trace.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "{ ...ACTIVITY_TRACE_DESC.actions, values: { count: props.item.total } }",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve the spread of the descriptor object, but the base descriptor is a static Lingui MessageDescriptor whose ID is extracted by i18n-extract."
+  },
+  {
+    "path": "packages/ui/src/components/activity-trace.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "ACTIVITY_TRACE_DESC.family[fact.family]",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve the dynamic property lookup into the descriptor object, but every ACTIVITY_TRACE_DESC.family entry is a static Lingui MessageDescriptor with an extracted ID."
+  },
+  {
+    "path": "packages/ui/src/components/activity-trace.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "ACTIVITY_TRACE_DESC.activity",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve the descriptor object exported from this module, but ACTIVITY_TRACE_DESC entries are static Lingui MessageDescriptors with extracted IDs."
+  },
+  {
+    "path": "packages/ui/src/components/activity-trace.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "ACTIVITY_TRACE_DESC.family[fact.family]",
+    "occurrence": 2,
+    "category": "code",
+    "reason": "The checker cannot resolve the dynamic property lookup into the descriptor object, but every ACTIVITY_TRACE_DESC.family entry is a static Lingui MessageDescriptor with an extracted ID."
   }
 ]

@@ -95,6 +95,10 @@ describe("settings catalog", () => {
     expect(FIELD_SAVE_STRATEGY.email).toBe("explicit")
     expect(FIELD_SAVE_STRATEGY.default_agent).toBe("explicit")
     expect(FIELD_SAVE_STRATEGY.cortex).toBe("background")
+    expect(FIELD_SAVE_STRATEGY.activityDisplay).toBe("background")
+    const general = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "general")!
+    expect(general.rowLabels).toContain("Activity display")
+    expect(general.keywords).toContain("activity")
     expect(FIELD_SAVE_STRATEGY.execution).toBe("background")
     for (const role of MODEL_ROLES) {
       expect(FIELD_SAVE_STRATEGY[role.key]).toBe("explicit")

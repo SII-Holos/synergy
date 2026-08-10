@@ -1,4 +1,15 @@
-import { createEffect, createMemo, createSignal, Match, Show, Switch, type JSX } from "solid-js"
+import {
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  Match,
+  Show,
+  Switch,
+  useContext,
+  type JSX,
+  type ParentProps,
+} from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { I18n, MessageDescriptor } from "@lingui/core"
 import { Collapsible } from "./collapsible"
@@ -53,6 +64,12 @@ export interface BasicToolProps {
   onSubtitleClick?: () => void
 }
 
+const ToolResultPresentationContext = createContext(false)
+
+export function ToolResultPresentationProvider(props: ParentProps) {
+  return <ToolResultPresentationContext.Provider value>{props.children}</ToolResultPresentationContext.Provider>
+}
+
 /** Returns ToolTriggerProps from any trigger shape, or undefined for raw JSX. */
 function fromTrigger(
   trigger: Trigger | undefined,
@@ -100,6 +117,7 @@ function fromTrigger(
 }
 
 export function BasicTool(props: BasicToolProps) {
+  const resultOnly = useContext(ToolResultPresentationContext)
   const { _ } = useLingui()
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
   const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
@@ -126,6 +144,8 @@ export function BasicTool(props: BasicToolProps) {
     if (!trigger) return undefined
     return typeof trigger === "function" ? (trigger as unknown as () => JSX.Element)() : (trigger as JSX.Element)
   })
+
+  if (resultOnly) return <>{props.children}</>
 
   return (
     <Collapsible open={open()} onOpenChange={setOpen} variant="tool" data-tool-status={props.status ?? "completed"}>

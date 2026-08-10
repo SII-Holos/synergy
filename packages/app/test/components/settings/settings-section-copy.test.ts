@@ -45,7 +45,15 @@ describe("settings section localization", () => {
       group: "核心",
       description: "外观、行为与通知偏好。",
       keywords: ["外观 | 语言"],
-      rowLabels: ["Color Scheme", "界面语言", "Snapshot", "Product Updates", "Notifications", "Toast Duration"],
+      rowLabels: [
+        "Color Scheme",
+        "界面语言",
+        "Activity display",
+        "Snapshot",
+        "Product Updates",
+        "Notifications",
+        "Toast Duration",
+      ],
     })
   })
 

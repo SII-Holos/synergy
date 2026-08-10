@@ -3511,6 +3511,10 @@ export type Config = {
    * Theme name to use for the interface
    */
   theme?: string
+  /**
+   * How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)
+   */
+  activityDisplay?: "full" | "balanced" | "minimal"
   keybinds?: KeybindsConfig
   logLevel?: LogLevel
   server?: ServerConfig

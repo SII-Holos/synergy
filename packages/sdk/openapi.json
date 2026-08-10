@@ -25172,6 +25172,9 @@
               "supportsProcessGroups": {
                 "type": "boolean"
               },
+              "supportsBashDetach": {
+                "type": "boolean"
+              },
               "envCaseInsensitive": {
                 "type": "boolean"
               },
@@ -29734,6 +29737,11 @@
           "theme": {
             "description": "Theme name to use for the interface",
             "type": "string"
+          },
+          "activityDisplay": {
+            "description": "How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)",
+            "type": "string",
+            "enum": ["full", "balanced", "minimal"]
           },
           "keybinds": {
             "$ref": "#/components/schemas/KeybindsConfig"

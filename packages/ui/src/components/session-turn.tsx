@@ -22,7 +22,7 @@ import {
   TURN_DIFF_PENDING_DELAY_MS,
   type TurnDiffPanelState,
 } from "./turn-change-summary-panel-model"
-import { Message, Part } from "./message-part"
+import { Message, Part, getToolInfo } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
 import { resolveAttachmentPresentation } from "./attachment-card-utils"
@@ -39,6 +39,21 @@ import { getSpecialUserMessageRenderer } from "./special-user-message"
 import { CompactionCard } from "./compaction-card"
 import { createCopyController } from "./clipboard"
 import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
+import { ActivityReasoningSummary, ActivityReceipt, ActivityTrace, MinimalActivitySummary } from "./activity-trace"
+import {
+  activityItemStableKey,
+  isActivityTimelineItem,
+  projectAssistantActivityItems,
+  projectBalancedReasoningItems,
+  projectMinimalActivityItems,
+  resolveActivityDisplay,
+  type ActivityDisplayMode,
+  type ActivityTimelineItem,
+} from "./session-turn-activity"
+import { timelineItemStableKey, timelineVisualKind, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
+import { externalLoadNotify, externalLookup, resolveExternalToolRenderer } from "./tool-registry-lazy"
+export { timelineItemStableKey, timelineVisualKind } from "./session-turn-timeline-item"
+export type { SessionTurnTimelineItem, SessionTurnTimelineVisualKind } from "./session-turn-timeline-item"
 
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (a === b) return true
@@ -46,43 +61,6 @@ function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (a.length !== b.length) return false
   return a.every((x, i) => x === b[i])
 }
-
-export type SessionTurnTimelineItem =
-  | {
-      kind: "part"
-      message: AssistantMessage
-      part: TextPart | ToolPart | AttachmentPart | PartType
-    }
-  | {
-      kind: "reasoning"
-      message: AssistantMessage
-      part: ReasoningPart
-    }
-  | {
-      kind: "media-pending"
-      message: AssistantMessage
-      part: ToolPart
-    }
-  | {
-      kind: "tool-attachments"
-      message: AssistantMessage
-      part: ToolPart
-      files: AttachmentPart[]
-    }
-  | {
-      kind: "compaction"
-      message: MessageType
-      part?: PartType
-    }
-
-export type SessionTurnTimelineVisualKind =
-  | "text"
-  | "reasoning"
-  | "tool"
-  | "attachment"
-  | "media-pending"
-  | "tool-attachments"
-  | "compaction"
 
 export type TurnCompletionStats = {
   duration: string
@@ -271,24 +249,11 @@ export function timelineKindForPart(part: PartType, _working: boolean): SessionT
   if (part.type !== "tool") return undefined
   if (isActiveMediaGenerationToolPart(part)) return "media-pending"
   if (isToolCardHidden(part)) {
+    if (part.state.status === "error") return "part"
     if (part.state.status !== "completed") return undefined
     return visibleAttachmentParts(part.state.attachments).length > 0 ? "tool-attachments" : undefined
   }
   return "part"
-}
-
-export function timelineVisualKind(item: SessionTurnTimelineItem): SessionTurnTimelineVisualKind {
-  if (item.kind === "compaction") return "compaction"
-  if (item.kind !== "part") return item.kind
-  if (item.part.type === "tool") return "tool"
-  if (item.part.type === "attachment") return "attachment"
-  if (item.part.type === "compaction_recovery") return "compaction"
-  return "text"
-}
-
-export function timelineItemStableKey(item: SessionTurnTimelineItem): string {
-  if (item.kind === "compaction") return `compaction:${item.message.id}`
-  return `${timelineVisualKind(item)}:${item.message.id}:${item.part.id}`
 }
 
 export function collectSessionTurnTimelineItems(
@@ -497,7 +462,7 @@ export function shouldShowProviderPrelude(input: {
   working: boolean
   hasError: boolean
   latestAssistant?: AssistantMessage
-  latestAssistantTimelineItems: readonly SessionTurnTimelineItem[]
+  latestAssistantTimelineItems: readonly (SessionTurnTimelineItem | ActivityTimelineItem)[]
 }): boolean {
   if (!input.working || input.hasError) return false
   if (!input.latestAssistant) return true
@@ -521,8 +486,10 @@ function isToolTimelineItem(item: SessionTurnTimelineItem): boolean {
   return kind === "tool" || kind === "media-pending" || kind === "tool-attachments"
 }
 
+type SessionTurnAssistantDisplayItem = SessionTurnTimelineItem | ActivityTimelineItem
+
 type SessionTurnDisplayItem =
-  | SessionTurnTimelineItem
+  | SessionTurnAssistantDisplayItem
   | {
       kind: "guided-user"
       message: UserMessage
@@ -535,22 +502,74 @@ type SessionTurnDisplayItem =
       originLabel: string
     }
 
-function isAssistantTimelineDisplayItem(item: SessionTurnDisplayItem): item is SessionTurnTimelineItem {
+function isAssistantTimelineDisplayItem(item: SessionTurnDisplayItem): item is SessionTurnAssistantDisplayItem {
   return item.kind !== "guided-user" && item.kind !== "non-root-user"
+}
+
+function displayItemTimelineItem(item: SessionTurnAssistantDisplayItem): SessionTurnTimelineItem | undefined {
+  if (!isActivityTimelineItem(item)) return item
+  return item.kind === "passthrough" ? item.item : undefined
 }
 
 function displayItemStableKey(item: SessionTurnDisplayItem): string {
   if (item.kind === "guided-user") return `guided-user:${item.message.id}`
   if (item.kind === "non-root-user") return `non-root-user:${item.message.id}`
+  if (isActivityTimelineItem(item)) return activityItemStableKey(item)
   return timelineItemStableKey(item)
 }
 
-function displayItemVisualKind(
-  item: SessionTurnDisplayItem,
-): SessionTurnTimelineVisualKind | "guided-user" | "non-root-user" {
+function isActivityBoundaryDisplayItem(item: SessionTurnDisplayItem): boolean {
+  return isActivityTimelineItem(item) && item.kind === "activity-boundary"
+}
+
+function displayItemVisualKind(item: SessionTurnDisplayItem) {
   if (item.kind === "guided-user") return "guided-user"
   if (item.kind === "non-root-user") return "non-root-user"
+  if (isActivityTimelineItem(item)) {
+    if (item.kind === "passthrough") return timelineVisualKind(item.item)
+    return item.kind
+  }
   return timelineVisualKind(item)
+}
+
+function adjacentActivityGroup(
+  keys: readonly string[],
+  map: ReadonlyMap<string, SessionTurnDisplayItem>,
+  index: number,
+  direction: -1 | 1,
+): boolean {
+  const current = map.get(keys[index])
+  if (!current || !isActivityTimelineItem(current) || current.kind !== "activity-group") return false
+  for (
+    let adjacentIndex = index + direction;
+    adjacentIndex >= 0 && adjacentIndex < keys.length;
+    adjacentIndex += direction
+  ) {
+    const adjacent = map.get(keys[adjacentIndex])
+    if (!adjacent || isActivityBoundaryDisplayItem(adjacent)) continue
+    return isActivityTimelineItem(adjacent) && adjacent.kind === "activity-group"
+  }
+  return false
+}
+
+function isReasoningDisplayItem(item: SessionTurnDisplayItem): boolean {
+  if (!isAssistantTimelineDisplayItem(item)) return false
+  if (isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary") return true
+  return displayItemTimelineItem(item)?.kind === "reasoning"
+}
+
+function isToolRegionDisplayItem(item: SessionTurnDisplayItem): boolean {
+  if (!isAssistantTimelineDisplayItem(item)) return false
+  if (isActivityTimelineItem(item)) {
+    return item.kind === "activity-group" || item.kind === "activity-summary" || item.kind === "activity-receipt"
+  }
+  return isToolTimelineItem(item)
+}
+
+function isCompactionDisplayItem(item: SessionTurnDisplayItem): boolean {
+  if (!isAssistantTimelineDisplayItem(item)) return false
+  const timelineItem = displayItemTimelineItem(item)
+  return timelineItem ? timelineVisualKind(timelineItem) === "compaction" : false
 }
 
 function originIconToken(origin: { type: string; label?: string; detail?: string } | undefined): SemanticIconTokenName {
@@ -584,39 +603,69 @@ function TimelineDisplay(props: {
   onRewind?: () => void
 }) {
   const { _ } = useLingui()
-  if (props.item.kind === "guided-user") {
-    // A user's own mid-run message: same right-aligned bubble as a root turn,
-    // sharing the reserved rewind gutter so both flush to the same edge. Steer
-    // messages are intentionally not rewindable, so no button is rendered.
-    return (
-      <div data-slot="session-turn-rewind-wrapper" data-align="right">
-        <Message message={props.item.message} parts={props.item.parts} userVariant="turn-bubble" />
-      </div>
-    )
-  }
-  if (props.item.kind === "non-root-user") {
-    return (
-      <div data-slot="session-turn-rewind-wrapper">
-        <div data-slot="session-turn-chip" data-origin={props.item.message.origin?.type ?? "guided"}>
-          <Icon name={getSemanticIcon(originIconToken(props.item.message.origin))} size="small" />
-          <span data-slot="session-turn-chip-label">{props.item.originLabel}</span>
-        </div>
-        <button
-          type="button"
-          data-slot="session-turn-rewind-button"
-          onClick={(e) => {
-            e.stopPropagation()
-            props.onRewind?.()
-          }}
-          title={_(SESSION_TURN_DESC.rewindTitle)}
-        >
-          <Icon name={getSemanticIcon("session.rewind")} size="small" />
-          <span>{_(SESSION_TURN_DESC.rewind)}</span>
-        </button>
-      </div>
-    )
-  }
-  return <TimelineItemDisplay item={props.item} serverUrl={props.serverUrl} />
+  const activityGroup = createMemo(() => {
+    const item = props.item
+    return isActivityTimelineItem(item) && item.kind === "activity-group" ? item : undefined
+  })
+  const activitySummary = createMemo(() => {
+    const item = props.item
+    return isActivityTimelineItem(item) && item.kind === "activity-summary" ? item : undefined
+  })
+  const activityReasoning = createMemo(() => {
+    const item = props.item
+    return isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary" ? item : undefined
+  })
+  const activityReceipt = createMemo(() => {
+    const item = props.item
+    return isActivityTimelineItem(item) && item.kind === "activity-receipt" ? item : undefined
+  })
+  const guidedUser = createMemo(() => (props.item.kind === "guided-user" ? props.item : undefined))
+  const nonRootUser = createMemo(() => (props.item.kind === "non-root-user" ? props.item : undefined))
+  const timelineItem = createMemo(() => {
+    const item = props.item
+    if (item.kind === "guided-user" || item.kind === "non-root-user") return undefined
+    if (!isActivityTimelineItem(item)) return item
+    return item.kind === "passthrough" ? item.item : undefined
+  })
+
+  return (
+    <Switch>
+      <Match when={activityGroup()}>{(item) => <ActivityTrace group={item()} serverUrl={props.serverUrl} />}</Match>
+      <Match when={activitySummary()}>{(item) => <MinimalActivitySummary item={item()} />}</Match>
+      <Match when={activityReasoning()}>{(item) => <ActivityReasoningSummary item={item()} />}</Match>
+      <Match when={activityReceipt()}>{(item) => <ActivityReceipt item={item()} serverUrl={props.serverUrl} />}</Match>
+      <Match when={guidedUser()}>
+        {(item) => (
+          <div data-slot="session-turn-rewind-wrapper" data-align="right">
+            <Message message={item().message} parts={item().parts} userVariant="turn-bubble" />
+          </div>
+        )}
+      </Match>
+      <Match when={nonRootUser()}>
+        {(item) => (
+          <div data-slot="session-turn-rewind-wrapper">
+            <div data-slot="session-turn-chip" data-origin={item().message.origin?.type ?? "guided"}>
+              <Icon name={getSemanticIcon(originIconToken(item().message.origin))} size="small" />
+              <span data-slot="session-turn-chip-label">{item().originLabel}</span>
+            </div>
+            <button
+              type="button"
+              data-slot="session-turn-rewind-button"
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onRewind?.()
+              }}
+              title={_(SESSION_TURN_DESC.rewindTitle)}
+            >
+              <Icon name={getSemanticIcon("session.rewind")} size="small" />
+              <span>{_(SESSION_TURN_DESC.rewind)}</span>
+            </button>
+          </div>
+        )}
+      </Match>
+      <Match when={timelineItem()}>{(item) => <TimelineItemDisplay item={item()} serverUrl={props.serverUrl} />}</Match>
+    </Switch>
+  )
 }
 
 function ProviderPrelude(props: {
@@ -696,6 +745,7 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
+    activityDisplay?: ActivityDisplayMode
     classes?: {
       root?: string
       content?: string
@@ -705,6 +755,7 @@ export function SessionTurn(
 ) {
   const data = useData()
   const { _ } = useLingui()
+  const activityDisplay = createMemo(() => resolveActivityDisplay(props.activityDisplay))
 
   const emptyParts: PartType[] = []
   const emptyAssistant: AssistantMessage[] = []
@@ -785,6 +836,29 @@ export function SessionTurn(
     }),
   )
 
+  const isToolRenderBoundary = (tool: string) => {
+    try {
+      return !!resolveExternalToolRenderer(tool, { externalLookup, externalLoadNotify })
+    } catch {
+      return true
+    }
+  }
+
+  const projectAssistantMessage = (item: AssistantMessage): SessionTurnAssistantDisplayItem[] => {
+    const visibleItems = collectSessionTurnTimelineItems([item], data.store.part, working())
+    if (activityDisplay() === "full") return visibleItems
+
+    const sourceItems = collectSessionTurnTimelineItems([item], data.store.part, true)
+    return projectAssistantActivityItems({
+      message: item,
+      sourceItems,
+      visibleItems,
+      permissions: permissions(),
+      resolveToolInfo: getToolInfo,
+      isToolRenderBoundary,
+    })
+  }
+
   const timelineItems = createMemo(
     () => {
       const result: SessionTurnDisplayItem[] = []
@@ -816,7 +890,29 @@ export function SessionTurn(
           }
           continue
         }
-        result.push(...collectSessionTurnTimelineItems([item], data.store.part, working()))
+        result.push(...projectAssistantMessage(item))
+      }
+      if (activityDisplay() === "minimal") {
+        return projectMinimalActivityItems(result, msg?.id ?? props.messageID, !working()) as SessionTurnDisplayItem[]
+      }
+      if (activityDisplay() === "balanced") {
+        const assistants = display.filter(
+          (item): item is AssistantMessage =>
+            item.role === "assistant" && !isCompactionAssistant(item as AssistantMessage),
+        )
+        const frontier = assistants.reduce<{ message: AssistantMessage; partID: string } | undefined>(
+          (latest, assistant) => {
+            const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
+              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
+            )
+            return reasoningPart ? { message: assistant, partID: reasoningPart.id } : latest
+          },
+          undefined,
+        )
+        return projectBalancedReasoningItems(result, msg?.id ?? props.messageID, working(), {
+          anchorMessage: assistants[0],
+          frontier,
+        }) as SessionTurnDisplayItem[]
       }
       return result
     },
@@ -832,9 +928,7 @@ export function SessionTurn(
     })
     return result
   })
-  const hasCompactionEvent = createMemo(() =>
-    timelineItems().some((item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "compaction"),
-  )
+  const hasCompactionEvent = createMemo(() => timelineItems().some(isCompactionDisplayItem))
   const showUserChrome = createMemo(() => shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()))
   const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
   const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
@@ -867,24 +961,30 @@ export function SessionTurn(
   const latestAssistantTimelineItems = createMemo(() => {
     const latest = lastAssistantMessage()
     if (!latest) return []
-    return collectSessionTurnTimelineItems([latest], data.store.part, working())
+    const selected = projectAssistantMessage(latest)
+    if (activityDisplay() !== "minimal") return selected
+    return projectMinimalActivityItems(selected, message()?.id ?? props.messageID, !working())
   })
-  const timelineItemMap = createMemo(() => {
-    const result = new Map<string, SessionTurnDisplayItem>()
-    for (const item of timelineItems()) result.set(displayItemStableKey(item), item)
-    return result
-  })
-  const timelineItemKeys = createMemo(() => timelineItems().map(displayItemStableKey))
+  const emptyTimelineItemSnapshot = {
+    keys: [] as string[],
+    map: new Map<string, SessionTurnDisplayItem>(),
+  }
+  const timelineItemSnapshot = createMemo(() => {
+    const keys: string[] = []
+    const map = new Map<string, SessionTurnDisplayItem>()
+    for (const item of timelineItems()) {
+      const key = displayItemStableKey(item)
+      keys.push(key)
+      map.set(key, item)
+    }
+    return { keys, map }
+  }, emptyTimelineItemSnapshot)
   const timelineSlotIndexes = createMemo(() => {
     const items = timelineItems()
-    const firstReasoning = items.findIndex(
-      (item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "reasoning",
-    )
-    const lastReasoning = items.findLastIndex(
-      (item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "reasoning",
-    )
-    const firstTool = items.findIndex((item) => isAssistantTimelineDisplayItem(item) && isToolTimelineItem(item))
-    const lastTool = items.findLastIndex((item) => isAssistantTimelineDisplayItem(item) && isToolTimelineItem(item))
+    const firstReasoning = items.findIndex(isReasoningDisplayItem)
+    const lastReasoning = items.findLastIndex(isReasoningDisplayItem)
+    const firstTool = items.findIndex(isToolRegionDisplayItem)
+    const lastTool = items.findLastIndex(isToolRegionDisplayItem)
     return { firstReasoning, lastReasoning, firstTool, lastTool }
   })
 
@@ -983,7 +1083,7 @@ export function SessionTurn(
   )
 
   return (
-    <div data-component="session-turn" class={props.classes?.root}>
+    <div data-component="session-turn" data-activity-display={activityDisplay()} class={props.classes?.root}>
       <div
         ref={autoScroll.scrollRef}
         onScroll={autoScroll.handleScroll}
@@ -1049,13 +1149,22 @@ export function SessionTurn(
                       }
                     >
                       <div data-slot="session-turn-timeline">
-                        <For each={timelineItemKeys()}>
+                        <For each={timelineItemSnapshot().keys}>
                           {(key, index) => {
-                            const item = () => timelineItemMap().get(key)
+                            const item = () => timelineItemSnapshot().map.get(key)
                             const boundary = () => {
                               const current = item()
                               return current ? timelineMessageBoundaries().get(current.message.id) : undefined
                             }
+                            const activityFollows = () =>
+                              adjacentActivityGroup(
+                                timelineItemSnapshot().keys,
+                                timelineItemSnapshot().map,
+                                index(),
+                                -1,
+                              )
+                            const activityContinues = () =>
+                              adjacentActivityGroup(timelineItemSnapshot().keys, timelineItemSnapshot().map, index(), 1)
                             return (
                               <Show when={item()}>
                                 {(current) => (
@@ -1076,6 +1185,9 @@ export function SessionTurn(
                                     <div
                                       data-slot="session-turn-timeline-item"
                                       data-kind={displayItemVisualKind(current())}
+                                      data-activity-continues={activityContinues() ? "" : undefined}
+                                      data-activity-follows={activityFollows() ? "" : undefined}
+                                      hidden={isActivityBoundaryDisplayItem(current())}
                                     >
                                       <TimelineDisplay
                                         item={current()}

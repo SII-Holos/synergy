@@ -144,6 +144,8 @@ CANCELLED
 RUNTIME_ERROR
 ```
 
+`TIMEOUT` is reserved for the plugin runtime manager's own invocation deadline. An upstream abort remains `CANCELLED` even when its reason is a `TimeoutError`; the host forwards that abort to the active handler without treating the runtime as hung or stopping its generation.
+
 Long-running domain work returns a plugin-owned handle and reports changes through declared events. Synergy does not create a generic plugin Job or business-data store.
 
 ## Events

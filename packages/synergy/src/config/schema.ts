@@ -1391,6 +1391,12 @@ export const Info = z
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
     locale: z.enum(["system", "en", "zh-CN"]).optional().describe("UI locale (system = follow OS, default: system)"),
     theme: z.string().optional().describe("Theme name to use for the interface"),
+    activityDisplay: z
+      .enum(["full", "balanced", "minimal"])
+      .optional()
+      .describe(
+        "How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)",
+      ),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),
     server: Server.optional().describe("Server configuration for synergy serve and web commands"),
