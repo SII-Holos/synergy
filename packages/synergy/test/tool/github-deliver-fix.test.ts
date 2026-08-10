@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { Channel } from "../../src/channel"
-import { GithubProvider, assertNotBaseBranch } from "../../src/channel/provider/github"
+import { GithubProvider, assertNotBaseBranch, resolveCanonicalBranch } from "../../src/channel/provider/github"
 import { GithubDeliverFixTool } from "../../src/tool/github-deliver-fix"
 import { ToolRegistry } from "../../src/tool/registry"
 import type { Tool } from "../../src/tool/tool"
@@ -139,4 +139,20 @@ test("github_deliver_fix surfaces GITHUB_DELIVERY_BASE_BRANCH when the provider 
       }
     },
   })
+})
+
+test("resolveCanonicalBranch resolves HEAD and branch names, rejects missing refs", async () => {
+  await using tmp = await tmpdir({ git: true })
+
+  // HEAD on the initial branch resolves to that branch's canonical ref.
+  const head = await resolveCanonicalBranch(tmp.path, "HEAD")
+  expect(head).toBeDefined()
+  expect(head?.startsWith("refs/heads/")).toBe(true)
+
+  // An explicit branch name resolves to the same canonical ref.
+  const branch = head!.replace(/^refs\/heads\//, "")
+  expect(await resolveCanonicalBranch(tmp.path, branch)).toBe(head)
+
+  // Missing refs are not local branches.
+  expect(await resolveCanonicalBranch(tmp.path, "definitely-missing")).toBeUndefined()
 })

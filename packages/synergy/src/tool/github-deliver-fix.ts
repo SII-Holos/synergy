@@ -36,12 +36,15 @@ export const GithubDeliverFixTool = Tool.define(
         throw toolError("GITHUB_PROVIDER_UNAVAILABLE", "The GitHub Channel provider is unavailable")
       }
       try {
-        const result = await provider.deliverFix({
-          sessionID: ctx.sessionID,
-          branch: params.branch,
-          title: params.title,
-          body: params.body,
-        })
+        const result = await provider.deliverFix(
+          {
+            sessionID: ctx.sessionID,
+            branch: params.branch,
+            title: params.title,
+            body: params.body,
+          },
+          ctx.abort,
+        )
         return {
           title: "GitHub fix delivered as pull request",
           output: `Pull request #${result.pullNumber} is ready: ${result.pullRequestURL}`,

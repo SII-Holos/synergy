@@ -137,20 +137,28 @@ export namespace GithubChannelWorkspace {
 
     if (!(await fs.stat(gitDir).catch(() => undefined))) {
       log.info("cloning repository workspace", { repository: input.repository, directory })
-      await $`git clone --no-checkout ${repoUrl} ${directory}`.env(credential.env).quiet().nothrow()
+      await $`git ${credential.args} clone --no-checkout ${repoUrl} ${directory}`.env(credential.env).quiet().nothrow()
       if (!(await fs.stat(gitDir).catch(() => undefined))) {
         throw new Error(`GithubChannelWorkspaceError: clone failed for ${input.repository}`)
       }
       if (input.defaultBranch) {
-        await $`git checkout ${input.defaultBranch}`.cwd(directory).env(credential.env).quiet().nothrow()
+        await $`git ${credential.args} checkout ${input.defaultBranch}`
+          .cwd(directory)
+          .env(credential.env)
+          .quiet()
+          .nothrow()
       }
     } else {
-      await $`git fetch origin --prune`.cwd(directory).env(credential.env).quiet().nothrow()
+      await $`git ${credential.args} fetch origin --prune`.cwd(directory).env(credential.env).quiet().nothrow()
     }
 
     if (input.pullNumber && branch) {
       const fetchRef = `pull/${input.pullNumber}/head:refs/remotes/origin/${branch}`
-      const fetched = await $`git fetch origin ${fetchRef}`.cwd(directory).env(credential.env).quiet().nothrow()
+      const fetched = await $`git ${credential.args} fetch origin ${fetchRef}`
+        .cwd(directory)
+        .env(credential.env)
+        .quiet()
+        .nothrow()
       if (fetched.exitCode === 0) {
         await $`git checkout ${branch}`.cwd(directory).quiet().nothrow()
         await $`git reset --hard origin/${branch}`.cwd(directory).quiet().nothrow()
@@ -162,7 +170,11 @@ export namespace GithubChannelWorkspace {
       }
     } else if (input.defaultBranch) {
       await $`git checkout ${input.defaultBranch}`.cwd(directory).quiet().nothrow()
-      await $`git pull --ff-only origin ${input.defaultBranch}`.cwd(directory).env(credential.env).quiet().nothrow()
+      await $`git ${credential.args} pull --ff-only origin ${input.defaultBranch}`
+        .cwd(directory)
+        .env(credential.env)
+        .quiet()
+        .nothrow()
     }
 
     const { scope } = await Scope.fromDirectory(directory, { persist: true })
