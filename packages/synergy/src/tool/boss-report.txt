@@ -1,0 +1,8 @@
+Report a worker's outcome to its parent in the Boss Mode tree.
+
+Only workers may call this. The report is delivered to the parent session (the boss or an intermediate worker), which wakes and decides the next step.
+
+Status values:
+- completed — the task is done
+- blocked — the worker cannot proceed without help
+- needs_input — the worker needs clarification or a decision

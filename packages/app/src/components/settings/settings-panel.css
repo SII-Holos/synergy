@@ -150,6 +150,16 @@
   background: var(--settings-canvas-bg);
 }
 
+.settings-panel-mobile-detail-header {
+  display: none;
+}
+
+.settings-panel-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .settings-panel-loading {
   height: 100%;
   min-height: 240px;
@@ -169,6 +179,87 @@
   [data-component="dialog"] [data-slot="dialog-container"]:has(.settings-dialog-panel) {
     width: min(calc(100vw - 16px), 100vw);
     height: min(calc(100dvh - 16px), 100dvh);
+  }
+}
+
+@media (max-width: 767px) {
+  .settings-panel-root {
+    width: 100%;
+  }
+
+  .settings-panel-navigation {
+    width: 100%;
+    flex: 1 1 auto;
+    border-right: 0;
+  }
+
+  .settings-panel-navigation-header {
+    padding-right: 56px;
+  }
+
+  .settings-panel-navigation button {
+    min-height: 44px;
+  }
+
+  .settings-panel-content {
+    width: 100%;
+  }
+
+  .settings-panel-mobile-hidden {
+    display: none;
+  }
+
+  .settings-panel-mobile-detail-header {
+    display: flex;
+    min-height: 56px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 56px 6px 8px;
+    border-bottom: 1px solid color-mix(in oklch, var(--border-weaker-base) 70%, transparent);
+  }
+
+  .settings-panel-mobile-back,
+  .settings-panel-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .settings-panel-close {
+    top: 6px;
+    right: 6px;
+  }
+
+  .settings-panel-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .settings-panel-footer-status {
+    width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+  }
+
+  .settings-panel-footer-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  .settings-panel-footer-actions button,
+  .settings-dev-toggle {
+    min-height: 44px;
+  }
+
+  .settings-panel-footer-actions button {
+    width: 100%;
+  }
+
+  .settings-panel-content .ds-content-inner {
+    padding: 20px 16px 24px;
   }
 }
 

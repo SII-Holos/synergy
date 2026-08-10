@@ -2,6 +2,7 @@ import { availableParallelism } from "os"
 import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { ObservabilityMetrics } from "@/observability/metrics"
+import { exponentialBackoffDelayMs, largestExponentialBackoffStepMs } from "@/util/exponential-backoff"
 import type { LLM } from "../llm"
 import type { ToolCatalog } from "../tool-catalog"
 import type { ContextUsage } from "../context-usage"
@@ -51,14 +52,31 @@ export interface AgentWorkerPoolOptions {
 export interface AgentWorkerSupervisorOptions {
   startupBackoffBaseMs: number
   startupBackoffMaxMs: number
+  startupRetryWindowMs: number
   maxConsecutiveStartupFailures: number
+  now(): number
+  schedule(ms: number, callback: () => void): () => void
   sleep(ms: number): Promise<void>
 }
 
+const DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_BASE_MS = 250
+const DEFAULT_AGENT_WORKER_STARTUP_RETRY_WINDOW_MS = 5 * 60_000
+const DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_MAX_MS = largestExponentialBackoffStepMs(
+  DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_BASE_MS,
+  DEFAULT_AGENT_WORKER_STARTUP_RETRY_WINDOW_MS,
+)
+
 const DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS: AgentWorkerSupervisorOptions = {
-  startupBackoffBaseMs: 250,
-  startupBackoffMaxMs: 4_000,
-  maxConsecutiveStartupFailures: 5,
+  startupBackoffBaseMs: DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_BASE_MS,
+  startupBackoffMaxMs: DEFAULT_AGENT_WORKER_STARTUP_BACKOFF_MAX_MS,
+  startupRetryWindowMs: DEFAULT_AGENT_WORKER_STARTUP_RETRY_WINDOW_MS,
+  maxConsecutiveStartupFailures: Number.POSITIVE_INFINITY,
+  now: Date.now,
+  schedule(ms, callback) {
+    const timer = setTimeout(callback, ms)
+    timer.unref()
+    return () => clearTimeout(timer)
+  },
   sleep: Bun.sleep,
 }
 
@@ -195,6 +213,9 @@ export class AgentWorkerPool {
   private startupRetryGeneration = 0
   private startupCircuitError: Error | undefined
   private startupRetryPending = false
+  private startupRetryDeadlineAt: number | undefined
+  private cancelStartupRetryDeadline: (() => void) | undefined
+  private lastStartupFailureCause: unknown
   private targetSize: number
   private rebalancing = false
   private rebalancePending = false
@@ -364,6 +385,7 @@ export class AgentWorkerPool {
     if (this.stopping) return
     this.stopping = true
     clearInterval(this.healthTimer)
+    this.clearStartupRetryWindow()
     this.startupRetryGeneration++
     const error = new Error("Agent worker pool stopped")
     for (const task of this.queue.splice(0)) {
@@ -478,7 +500,7 @@ export class AgentWorkerPool {
       worker.lastHeartbeatAt = Date.now()
       worker.idleSince = Date.now()
       this.recordWorkerMemory(worker, message.memory, "ready")
-      this.consecutiveStartupFailures = 0
+      this.resetStartupFailures()
       this.startupCircuitError = undefined
       this.ensureWorkers()
       this.drain()
@@ -690,23 +712,30 @@ export class AgentWorkerPool {
   private handleStartupFailure(cause: unknown): void {
     if (this.stopping || this.startupCircuitError) return
     const failures = ++this.consecutiveStartupFailures
-    if (failures > this.supervisor.maxConsecutiveStartupFailures) {
+    this.lastStartupFailureCause = cause
+    const now = this.supervisor.now()
+    const deadlineAt = this.startupRetryDeadlineAt ?? this.startStartupRetryWindow(now)
+    if (failures > this.supervisor.maxConsecutiveStartupFailures || now >= deadlineAt) {
       this.openStartupCircuit(cause)
       return
     }
     const delayMs = Math.min(
-      this.supervisor.startupBackoffMaxMs,
-      this.supervisor.startupBackoffBaseMs * 2 ** (failures - 1),
+      exponentialBackoffDelayMs(failures, this.supervisor.startupBackoffBaseMs, this.supervisor.startupBackoffMaxMs),
+      deadlineAt - now,
     )
     const generation = ++this.startupRetryGeneration
     this.startupRetryPending = true
-    this.log.warn("agent worker failed to start; retrying", { failures, delayMs, cause })
+    this.log.warn("agent worker failed to start; retrying", { failures, delayMs, deadlineAt, cause })
     void this.supervisor
       .sleep(delayMs)
       .then(() => {
         if (generation !== this.startupRetryGeneration) return
         this.startupRetryPending = false
         if (this.stopping || this.startupCircuitError) return
+        if (this.supervisor.now() >= deadlineAt) {
+          this.openStartupCircuit(this.lastStartupFailureCause)
+          return
+        }
         this.ensureWorkers()
         this.drain()
       })
@@ -718,12 +747,37 @@ export class AgentWorkerPool {
       })
   }
 
+  private startStartupRetryWindow(now: number): number {
+    const deadlineAt = now + this.supervisor.startupRetryWindowMs
+    this.startupRetryDeadlineAt = deadlineAt
+    this.cancelStartupRetryDeadline = this.supervisor.schedule(this.supervisor.startupRetryWindowMs, () => {
+      if (this.stopping || this.startupCircuitError || this.startupRetryDeadlineAt !== deadlineAt) return
+      this.openStartupCircuit(this.lastStartupFailureCause)
+    })
+    return deadlineAt
+  }
+
+  private resetStartupFailures(): void {
+    this.consecutiveStartupFailures = 0
+    this.startupRetryGeneration++
+    this.startupRetryPending = false
+    this.clearStartupRetryWindow()
+  }
+
+  private clearStartupRetryWindow(): void {
+    this.cancelStartupRetryDeadline?.()
+    this.cancelStartupRetryDeadline = undefined
+    this.startupRetryDeadlineAt = undefined
+    this.lastStartupFailureCause = undefined
+  }
+
   private openStartupCircuit(cause: unknown): void {
     const attempts = this.consecutiveStartupFailures
     const error = new Error(`Agent worker failed to start after ${attempts} consecutive attempts`, { cause })
     this.startupCircuitError = error
     this.startupRetryPending = false
     this.startupRetryGeneration++
+    this.clearStartupRetryWindow()
     this.log.error("agent worker startup circuit opened", { attempts, cause })
     ObservabilityMetrics.record({
       name: "agent.worker.startup_circuit_open",

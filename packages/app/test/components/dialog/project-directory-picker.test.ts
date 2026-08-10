@@ -4,6 +4,7 @@ import {
   normalizePickedDirectories,
   normalizeServerBrowserDirectoryResult,
   pickProjectDirectoriesWithRuntime,
+  pickServerDirectoryWithDialog,
   type ProjectDirectoryPickerRuntime,
 } from "../../../src/components/dialog/project-directory-picker-model"
 import type { DesktopServerStatus, Platform } from "@/context/platform"
@@ -168,5 +169,64 @@ describe("project directory picker", () => {
     ).resolves.toBeNull()
     expect(pending.serverBrowserOpenCount()).toBe(0)
     expect(pending.pending()).toBe(true)
+  })
+})
+
+describe("pickServerDirectoryWithDialog", () => {
+  function host() {
+    let onClose: (() => void) | undefined
+    let onSelect: ((result: { directory: string | string[] } | null) => void) | undefined
+    const open = (element: () => unknown, close?: () => void) => {
+      onClose = close
+      onSelect = undefined
+      element()
+    }
+    const render = (select: (result: { directory: string | string[] } | null) => void) => {
+      onSelect = select
+      return "element"
+    }
+    return {
+      open,
+      render,
+      select: (result: { directory: string | string[] } | null) => onSelect?.(result),
+      close: () => onClose?.(),
+    }
+  }
+
+  test("resolves picked directories from the rendered dialog", async () => {
+    const h = host()
+    const promise = pickServerDirectoryWithDialog(h.open, { title: "Add folder", multiple: true }, h.render)
+    h.select({ directory: ["/repo/docs", "/repo/src"] })
+    await expect(promise).resolves.toEqual({
+      directoryPaths: ["/repo/docs", "/repo/src"],
+      source: "server-browser",
+    })
+  })
+
+  test("resolves a single directory as a one-element list", async () => {
+    const h = host()
+    const promise = pickServerDirectoryWithDialog(h.open, { title: "Add folder", multiple: false }, h.render)
+    h.select({ directory: "/repo" })
+    await expect(promise).resolves.toEqual({ directoryPaths: ["/repo"], source: "server-browser" })
+  })
+
+  test("resolves null on cancel or empty selection", async () => {
+    const canceled = host()
+    const canceledPromise = pickServerDirectoryWithDialog(
+      canceled.open,
+      { title: "Add folder", multiple: true },
+      canceled.render,
+    )
+    canceled.close()
+    await expect(canceledPromise).resolves.toBeNull()
+
+    const empty = host()
+    const emptyPromise = pickServerDirectoryWithDialog(
+      empty.open,
+      { title: "Add folder", multiple: true },
+      empty.render,
+    )
+    empty.select(null)
+    await expect(emptyPromise).resolves.toBeNull()
   })
 })

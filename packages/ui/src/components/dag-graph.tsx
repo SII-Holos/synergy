@@ -233,6 +233,10 @@ export function DagGraph(props: {
   focusNodeId?: string
   onViewportInteraction?: () => void
   onOpenSession?: (sessionID: string) => void
+  showStats?: boolean
+  enableInspector?: boolean
+  getStatusLabel?: (node: DagNode) => string
+  getNodeAriaLabel?: (node: DagNode) => string
   /* When true, the graph ignores container width changes and suppresses
      auto-focus. Use during parent animations (e.g. panel expand/collapse) so
      the ResizeObserver storm doesn't thrash layout + focus every frame. */
@@ -415,7 +419,7 @@ export function DagGraph(props: {
   }
 
   function handleNodePointerEnter(node: DagNode, event: PointerEvent) {
-    if (inspectorIsPinned()) return
+    if (props.enableInspector === false || inspectorIsPinned()) return
     clearInspectorTimer()
     setHoveredNodeId(node.id)
     updateInspectorPosition(event)
@@ -481,27 +485,29 @@ export function DagGraph(props: {
     >
       <Show when={layout()?.laid.length}>
         <div data-slot="dag-graph-toolbar">
-          <div data-slot="dag-graph-stats">
-            <span data-slot="dag-graph-stat" data-kind="done">
-              {counts().completed} {_(DAG_CHROME_DESC.done)}
-            </span>
-            <span data-slot="dag-graph-stat" data-kind="running">
-              {counts().running} {_(DAG_CHROME_DESC.running)}
-            </span>
-            <span data-slot="dag-graph-stat" data-kind="pending">
-              {counts().pending} {_(DAG_CHROME_DESC.pending)}
-            </span>
-            <Show when={counts().blocked > 0}>
-              <span data-slot="dag-graph-stat" data-kind="blocked">
-                {counts().blocked} {_(DAG_CHROME_DESC.blocked)}
+          <Show when={props.showStats !== false}>
+            <div data-slot="dag-graph-stats">
+              <span data-slot="dag-graph-stat" data-kind="done">
+                {counts().completed} {_(DAG_CHROME_DESC.done)}
               </span>
-            </Show>
-            <Show when={counts().failed > 0}>
-              <span data-slot="dag-graph-stat" data-kind="failed">
-                {counts().failed} {_(DAG_CHROME_DESC.failed)}
+              <span data-slot="dag-graph-stat" data-kind="running">
+                {counts().running} {_(DAG_CHROME_DESC.running)}
               </span>
-            </Show>
-          </div>
+              <span data-slot="dag-graph-stat" data-kind="pending">
+                {counts().pending} {_(DAG_CHROME_DESC.pending)}
+              </span>
+              <Show when={counts().blocked > 0}>
+                <span data-slot="dag-graph-stat" data-kind="blocked">
+                  {counts().blocked} {_(DAG_CHROME_DESC.blocked)}
+                </span>
+              </Show>
+              <Show when={counts().failed > 0}>
+                <span data-slot="dag-graph-stat" data-kind="failed">
+                  {counts().failed} {_(DAG_CHROME_DESC.failed)}
+                </span>
+              </Show>
+            </div>
+          </Show>
           <div data-slot="dag-graph-controls">
             <button type="button" onClick={focusActiveNodes}>
               {_(DAG_CHROME_DESC.focus)}
@@ -582,7 +588,8 @@ export function DagGraph(props: {
                   data-hovering={hoveredNodeId() === ln.node.id ? "true" : undefined}
                   tabIndex={0}
                   role="button"
-                  aria-label={`DAG node: ${ln.node.content}`}
+                  aria-label={props.getNodeAriaLabel?.(ln.node) ?? `DAG node: ${ln.node.content}`}
+                  aria-pressed={props.selectedNodeId === ln.node.id}
                   onPointerEnter={(event) => handleNodePointerEnter(ln.node, event)}
                   onPointerMove={handleNodePointerMove}
                   onPointerLeave={handleNodePointerLeave}
@@ -601,7 +608,9 @@ export function DagGraph(props: {
                 >
                   <div data-slot="dag-graph-card-header">
                     <span data-slot="dag-graph-status-dot" />
-                    <span data-slot="dag-graph-status-label">{statusLabel(ln.node.status, linguiI18n())}</span>
+                    <span data-slot="dag-graph-status-label">
+                      {props.getStatusLabel?.(ln.node) ?? statusLabel(ln.node.status, linguiI18n())}
+                    </span>
                     <Show when={nodeBadges(ln.node, _).length > 0}>
                       <div data-slot="dag-graph-node-badges" aria-label={_(DAG_CHROME_DESC.nodeMetadata)}>
                         <For each={nodeBadges(ln.node, _)}>
@@ -640,94 +649,96 @@ export function DagGraph(props: {
             </For>
           </div>
         </div>
-        <Portal>
-          <Show keyed when={inspectorNode()}>
-            {(node) => (
-              <div
-                data-slot="dag-node-preview"
-                style={{
-                  left: `${inspectorPosition().x}px`,
-                  top: `${inspectorPosition().y}px`,
-                }}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div data-slot="dag-node-preview-header">
-                  <span data-slot="dag-node-preview-status" data-status={node.status}>
-                    {statusLabel(node.status, linguiI18n())}
-                  </span>
-                  <Show keyed when={node.assign}>
-                    {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}
-                  </Show>
-                  {node.session_id && props.onOpenSession ? (
+        <Show when={props.enableInspector !== false}>
+          <Portal>
+            <Show keyed when={inspectorNode()}>
+              {(node) => (
+                <div
+                  data-slot="dag-node-preview"
+                  style={{
+                    left: `${inspectorPosition().x}px`,
+                    top: `${inspectorPosition().y}px`,
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div data-slot="dag-node-preview-header">
+                    <span data-slot="dag-node-preview-status" data-status={node.status}>
+                      {props.getStatusLabel?.(node) ?? statusLabel(node.status, linguiI18n())}
+                    </span>
+                    <Show keyed when={node.assign}>
+                      {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}
+                    </Show>
+                    {node.session_id && props.onOpenSession ? (
+                      <button
+                        type="button"
+                        data-slot="dag-node-preview-open-session"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          props.onOpenSession?.(node.session_id!)
+                        }}
+                      >
+                        <Icon name={getSemanticIcon("action.open")} size="small" />
+                        {_(DAG_CHROME_DESC.openSession)}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      data-slot="dag-node-preview-open-session"
+                      data-slot="dag-node-preview-close"
+                      aria-label={_(DAG_CHROME_DESC.closeDetails)}
+                      onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.stopPropagation()
-                        props.onOpenSession?.(node.session_id!)
+                        closeNodeInspector()
                       }}
                     >
-                      <Icon name={getSemanticIcon("action.open")} size="small" />
-                      {_(DAG_CHROME_DESC.openSession)}
+                      <Icon name={getSemanticIcon("action.close")} size="small" />
                     </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    data-slot="dag-node-preview-close"
-                    aria-label={_(DAG_CHROME_DESC.closeDetails)}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      closeNodeInspector()
-                    }}
-                  >
-                    <Icon name={getSemanticIcon("action.close")} size="small" />
-                  </button>
-                </div>
-                <div data-slot="dag-node-preview-title">{node.content}</div>
-                <div data-slot="dag-node-preview-meta">
-                  <Show keyed when={node.task_id}>
-                    {(taskID) => (
-                      <span title={taskID}>
-                        {_(DAG_CHROME_DESC.task)}: {displayIdentifier(taskID)}
-                      </span>
-                    )}
-                  </Show>
-                  <Show keyed when={node.session_id}>
-                    {(sessionID) => (
-                      <span title={sessionID}>
-                        {_(DAG_CHROME_DESC.session)}: {displayIdentifier(sessionID)}
-                      </span>
-                    )}
-                  </Show>
-                  <Show keyed when={node.worktree}>
-                    {(worktree) => (
+                  </div>
+                  <div data-slot="dag-node-preview-title">{node.content}</div>
+                  <div data-slot="dag-node-preview-meta">
+                    <Show keyed when={node.task_id}>
+                      {(taskID) => (
+                        <span title={taskID}>
+                          {_(DAG_CHROME_DESC.task)}: {displayIdentifier(taskID)}
+                        </span>
+                      )}
+                    </Show>
+                    <Show keyed when={node.session_id}>
+                      {(sessionID) => (
+                        <span title={sessionID}>
+                          {_(DAG_CHROME_DESC.session)}: {displayIdentifier(sessionID)}
+                        </span>
+                      )}
+                    </Show>
+                    <Show keyed when={node.worktree}>
+                      {(worktree) => (
+                        <span>
+                          {_(DAG_CHROME_DESC.worktree)}: {worktree}
+                        </span>
+                      )}
+                    </Show>
+                    <Show when={node.deps.length > 0}>
                       <span>
-                        {_(DAG_CHROME_DESC.worktree)}: {worktree}
+                        {_(DAG_CHROME_DESC.deps)}: {node.deps.join(", ")}
                       </span>
+                    </Show>
+                  </div>
+                  <Show keyed when={node.memo}>
+                    {(memo) => <div data-slot="dag-node-preview-note">{memo}</div>}
+                  </Show>
+                  <Show keyed when={node.result}>
+                    {(result) => (
+                      <div data-slot="dag-node-preview-result">
+                        <Markdown text={result} cacheKey={`dag-node-result-${node.id}`} />
+                      </div>
                     )}
                   </Show>
-                  <Show when={node.deps.length > 0}>
-                    <span>
-                      {_(DAG_CHROME_DESC.deps)}: {node.deps.join(", ")}
-                    </span>
-                  </Show>
                 </div>
-                <Show keyed when={node.memo}>
-                  {(memo) => <div data-slot="dag-node-preview-note">{memo}</div>}
-                </Show>
-                <Show keyed when={node.result}>
-                  {(result) => (
-                    <div data-slot="dag-node-preview-result">
-                      <Markdown text={result} cacheKey={`dag-node-result-${node.id}`} />
-                    </div>
-                  )}
-                </Show>
-              </div>
-            )}
-          </Show>
-        </Portal>
+              )}
+            </Show>
+          </Portal>
+        </Show>
         <div data-slot="dag-graph-hint">{_(DAG_CHROME_DESC.hint)}</div>
       </Show>
     </div>

@@ -128,3 +128,82 @@ describe("PATCH /scope/:scopeID sandboxes", () => {
     expect(resp.status).toBe(404)
   })
 })
+
+function patchScopeByDirectory(scopeID: string, directory: string, body: Record<string, unknown>) {
+  const query = directory ? `?directory=${encodeURIComponent(directory)}` : ""
+  return Server.App().request(`/scope/${encodeURIComponent(scopeID)}${query}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+}
+
+describe("PATCH /scope/:scopeID directory resolution", () => {
+  test("resolves an unknown scopeID via ?directory= and persists the project", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const folder = path.join(tmp.path, "docs")
+    mkdirSync(folder)
+
+    const resp = await patchScopeByDirectory("unknown_scope_id", tmp.path, { sandboxes: [folder] })
+    expect(resp.status).toBe(200)
+    const patched = await resp.json()
+    expect(patched.worktree).toBe(tmp.path)
+    expect(patched.sandboxes).toContain(folder)
+
+    const getResp = await Server.App().request("/scope")
+    expect(getResp.status).toBe(200)
+    const scopes = await getResp.json()
+    const created = scopes.find((s: Scope.Project) => s.worktree === tmp.path)
+    expect(created).toBeDefined()
+    expect(created.sandboxes).toContain(folder)
+  })
+
+  test("returns 404 with a readable error when ?directory= does not resolve to a project", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const missing = path.join(tmp.path, "does-not-exist")
+    const resp = await patchScopeByDirectory("unknown_scope_id", missing, { name: "renamed" })
+    expect(resp.status).toBe(404)
+    const body = await resp.json()
+    expect(body.name).toBe("ScopeNotFound")
+    expect(body.data.message).toBe("Scope not found")
+  })
+
+  test("returns 404 when ?directory= points to a file instead of a directory", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const filePath = path.join(tmp.path, "README.md")
+    await Bun.write(filePath, "# test")
+    const resp = await patchScopeByDirectory("unknown_scope_id", filePath, { name: "renamed" })
+    expect(resp.status).toBe(404)
+    const body = await resp.json()
+    expect(body.name).toBe("ScopeNotFound")
+    expect(body.data.message).toBe("Scope not found")
+  })
+
+  test("prefers an existing scopeID over ?directory=", async () => {
+    await using tmp1 = await tmpdir({ git: true })
+    await using tmp2 = await tmpdir({ git: true })
+    const scope = await tmp1.scope()
+
+    const resp = await patchScopeByDirectory(scope.id, tmp2.path, { name: "renamed" })
+    expect(resp.status).toBe(200)
+    const patched = await resp.json()
+    expect(patched.id).toBe(scope.id)
+    expect(patched.name).toBe("renamed")
+
+    // The scoped middleware resolves ?directory= independently, so tmp2 may
+    // appear as a persisted project — but the update must NOT have targeted it.
+    const getResp = await Server.App().request("/scope")
+    const scopes = await getResp.json()
+    const other = scopes.find((s: Scope.Project) => s.worktree === tmp2.path)
+    expect(other?.name ?? undefined).toBeUndefined()
+  })
+
+  test("updates name only via ?directory= when scopeID is unknown", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const resp = await patchScopeByDirectory("unknown_scope_id", tmp.path, { name: "renamed" })
+    expect(resp.status).toBe(200)
+    const patched = await resp.json()
+    expect(patched.name).toBe("renamed")
+    expect(patched.worktree).toBe(tmp.path)
+  })
+})

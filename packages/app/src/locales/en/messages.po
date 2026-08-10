@@ -806,6 +806,178 @@ msgstr "This attachment is no longer available in the conversation."
 msgid "app.attachment.unsupported"
 msgstr "Preview is not available for this file type."
 
+#. js-lingui-explicit-id
+msgid "app.boss.assign.failed"
+msgstr "Failed to assign task"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.label"
+msgstr "Assign a task to an idle worker"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.selectWorker"
+msgstr "Select worker…"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.submit"
+msgstr "Assign"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.success"
+msgstr "Task assigned"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.taskPlaceholder"
+msgstr "Task description…"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.cancel"
+msgstr "Keep"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirm"
+msgstr "Cancel work"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirmDescription"
+msgstr "Pending tasks will be removed and a running turn will be interrupted."
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirmTitle"
+msgstr "Cancel this worker's work?"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.failed"
+msgstr "Failed to cancel work"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.success"
+msgstr "Work cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.boss.copy.failed"
+msgstr "Failed to copy the Boss tree."
+
+#. js-lingui-explicit-id
+msgid "app.boss.copy.title"
+msgstr "Tree copied"
+
+#. js-lingui-explicit-id
+msgid "app.boss.genericFailed"
+msgstr "The Boss action failed."
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.agent"
+msgstr "Agent"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.children"
+msgstr "Children"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.copyTree"
+msgstr "Copy tree"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.currentTask"
+msgstr "Current task"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.depth"
+msgstr "Worker at depth {depth}"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.loadFailed"
+msgstr "Failed to load the Boss tree."
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.noTask"
+msgstr "No task is currently assigned."
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.notAvailable"
+msgstr "Not available"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.openSession"
+msgstr "Open session"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.orchestrator"
+msgstr "Orchestrator"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.reportsTo"
+msgstr "Reports to"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.spawn"
+msgstr "Spawn worker"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.title"
+msgstr "Boss Mode"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.workerCount"
+msgstr "{count, plural, one {# worker} other {# workers}}"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentLabel"
+msgstr "Agent"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentPlaceholder"
+msgstr "Agent (e.g. synergy)"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.create"
+msgstr "Create"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.failed"
+msgstr "Failed to spawn worker"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.roleLabel"
+msgstr "Worker role"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.rolePlaceholder"
+msgstr "Worker role (e.g. code)"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.success"
+msgstr "Worker spawned"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.archived"
+msgstr "Archived"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.idle"
+msgstr "Idle"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.queued"
+msgstr "Queued"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "app.boss.workspace.sessionRequired"
+msgstr "Open a Session to use Boss Mode."
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr "Cancel"
@@ -4737,6 +4909,10 @@ msgid "app.panel.attachment"
 msgstr "Attachment"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.boss"
+msgstr "Boss"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "Browser"
 
@@ -6039,6 +6215,18 @@ msgstr "plugin"
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.button"
+msgstr "Refresh plugins"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.failed"
+msgstr "Plugin catalog refresh failed"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.updated"
+msgstr "Plugin catalog updated"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.registryUnavailable.description"
@@ -9224,6 +9412,20 @@ msgstr "Add"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.bossActive"
+msgstr "Boss Mode is active"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.cancelBoss"
+msgstr "Exit Boss Mode before equipping a user Blueprint."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.cancelLattice"
 msgstr "Cancel Lattice before equipping a user Blueprint."
 
@@ -9484,6 +9686,20 @@ msgstr "Blueprint running"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.waiting"
 msgstr "Blueprint waiting"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.cancelBoss"
+msgstr "Exit Boss Mode"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.cancelBoss.label"
+msgstr "Boss"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10426,6 +10642,13 @@ msgstr "Failed to send command"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.failedEnableBoss"
+msgstr "Failed to enable Boss Mode"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.failedEnableLattice"
 msgstr "Failed to enable Lattice"
 
@@ -10651,8 +10874,50 @@ msgstr "Isolated checkout"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableBp"
+msgstr "Boss Mode is unavailable while a Blueprint is equipped"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableLattice"
+msgstr "Boss Mode is unavailable while Lattice is active"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableLl"
+msgstr "Boss Mode is unavailable while Light Loop is active"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailablePlan"
+msgstr "Boss Mode is unavailable while Plan is active"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.clickExitBoss"
+msgstr "Click to exit Boss Mode"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.clickExitLattice"
 msgstr "Click to exit Lattice"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.exitBoss"
+msgstr "Exit Boss Mode"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10699,6 +10964,20 @@ msgstr "Run a goal as a recursive Blueprint"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.stopSessionBeforeWorkflow"
 msgstr "Stop the session before changing workflow modes."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.workflow.boss"
+msgstr "Boss"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.workflow.bossDesc"
+msgstr "Delegate to a worker tree"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -16066,6 +16345,10 @@ msgid "settings.panel.action.saving"
 msgstr "Saving..."
 
 #. js-lingui-explicit-id
+msgid "settings.panel.back.label"
+msgstr "Back"
+
+#. js-lingui-explicit-id
 msgid "settings.panel.badge.developer"
 msgstr "Dev"
 
@@ -17856,6 +18139,26 @@ msgstr "Search Blueprints"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.blueprints"
 msgstr "View Blueprints"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-assign"
+msgstr "Assign task"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-cancel"
+msgstr "Cancel task"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-report"
+msgstr "Report result"
+
+#. Boss Mode
+msgid "tool.title.boss-spawn"
+msgstr "Spawn worker"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-status"
+msgstr "View worker tree"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.cancel-agenda"

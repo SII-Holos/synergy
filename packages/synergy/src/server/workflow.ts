@@ -35,6 +35,11 @@ const WorkflowSetInput = z
         goal: z.string().optional().meta({ description: "High-level goal for the Lattice run" }),
       })
       .strict(),
+    z
+      .object({
+        kind: z.literal("boss"),
+      })
+      .strict(),
   ])
   .meta({ ref: "WorkflowSetInput" })
 

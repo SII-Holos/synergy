@@ -39,6 +39,7 @@ synergy-dev
 synergy-dev/
 dev-home/
 .dev-home/
+.dev-home-*/
 logs/
 
 ref/

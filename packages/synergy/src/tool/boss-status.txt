@@ -1,0 +1,5 @@
+Show the current Boss Mode worker tree under the calling session.
+
+The tree is derived live from the session parent chain: each node shows the session title, role (boss/worker), specialist role, agent, status (running/idle/archived), and the most recent assigned task.
+
+Use this to decide where to assign work, which workers are idle, and to rebuild your mental model after a restart or context compaction.

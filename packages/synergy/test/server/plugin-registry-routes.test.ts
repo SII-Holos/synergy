@@ -636,4 +636,248 @@ describe("plugin registry routes v2", () => {
       },
     })
   })
+
+  test("manual refresh bypasses TTL and drops entry cache", async () => {
+    const stub = startOfficialRegistryStub("1.0.0")
+    const registryUrl = stub.url
+    const previousDomain = await Config.domainGet("plugins")
+    cleanRegistry()
+    await writeOfficialRegistryCache(registryUrl, 2)
+
+    try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          pluginMarketplace: {
+            ...PLUGIN_MARKETPLACE_DEFAULTS,
+            enabled: true,
+            registryUrl,
+          },
+        },
+        { mode: "replace-domain" },
+      )
+      await Config.reload("global")
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const config = await PluginMarketplaceRegistry.currentConfig()
+          expect(config.enabled).toBe(true)
+
+          // A fresh cache serves the old version without touching the network.
+          const before = await PluginMarketplaceRegistry.searchOfficial()
+          expect(before.total).toBe(1)
+          expect(before.plugins[0].latestVersion).toBe("1.0.0")
+          expect(stub.requestCount).toBe(0)
+
+          // The remote registry publishes a new version; force refresh picks it up.
+          stub.setLatestVersion("2.0.0")
+          const app = Server.App()
+          const refreshRes = await app.request("/api/registry/refresh", { method: "POST" })
+          expect(refreshRes.status).toBe(200)
+          const refreshBody = await refreshRes.json()
+          expect(refreshBody.refreshedAt).toBeTruthy()
+
+          // The registry index cache was rewritten and the entry cache was dropped.
+          const marketRoot = PluginMarketplaceRegistry.cachePaths(registryUrl)
+          expect(fs.readdirSync(marketRoot.entries)).toEqual([])
+
+          const after = await PluginMarketplaceRegistry.searchOfficial()
+          expect(after.plugins[0].latestVersion).toBe("2.0.0")
+
+          // The detail route re-fetches the fresh entry after the cache drop.
+          const detailRes = await app.request("/api/registry/official-test-plugin?source=official")
+          expect(detailRes.status).toBe(200)
+          const detail = await detailRes.json()
+          expect(detail.versions[0].version).toBe("2.0.0")
+        },
+      })
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Config.reload("global")
+      await stub.stop()
+    }
+  })
+
+  test("manual refresh returns 503 and preserves stale cache when registry is unreachable", async () => {
+    const registryUrl = "http://127.0.0.1:1/registry.json"
+    const previousDomain = await Config.domainGet("plugins")
+    cleanRegistry()
+    await writeOfficialRegistryCache(registryUrl, 2)
+
+    try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          pluginMarketplace: {
+            ...PLUGIN_MARKETPLACE_DEFAULTS,
+            enabled: true,
+            registryUrl,
+            requestTimeoutMs: 50,
+          },
+        },
+        { mode: "replace-domain" },
+      )
+      await Config.reload("global")
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const app = Server.App()
+          const refreshRes = await app.request("/api/registry/refresh", { method: "POST" })
+          expect(refreshRes.status).toBe(503)
+          expect(await refreshRes.json()).toEqual({ message: "Official plugin registry temporarily unavailable" })
+
+          // The old registry cache remains intact and still serves the stale list.
+          const cachedPath = PluginMarketplaceRegistry.cachePaths(registryUrl).registry
+          expect(fs.existsSync(cachedPath)).toBe(true)
+
+          const searchRes = await app.request("/api/registry/search?source=official")
+          expect(searchRes.status).toBe(200)
+          const body = await searchRes.json()
+          expect(body.total).toBe(1)
+          expect(body.plugins[0].latestVersion).toBe("1.0.0")
+        },
+      })
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Config.reload("global")
+    }
+  })
+
+  test("concurrent manual refreshes are deduplicated", async () => {
+    const stub = startOfficialRegistryStub("1.0.0")
+    const registryUrl = stub.url
+    const previousDomain = await Config.domainGet("plugins")
+    cleanRegistry()
+
+    try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          pluginMarketplace: {
+            ...PLUGIN_MARKETPLACE_DEFAULTS,
+            enabled: true,
+            registryUrl,
+          },
+        },
+        { mode: "replace-domain" },
+      )
+      await Config.reload("global")
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const app = Server.App()
+          const [first, second] = await Promise.all([
+            app.request("/api/registry/refresh", { method: "POST" }),
+            app.request("/api/registry/refresh", { method: "POST" }),
+          ])
+          expect(first.status).toBe(200)
+          expect(second.status).toBe(200)
+          expect(stub.requestCount).toBe(1)
+        },
+      })
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Config.reload("global")
+      await stub.stop()
+    }
+  })
 })
+
+function startOfficialRegistryStub(initialLatestVersion: string) {
+  let latestVersion = initialLatestVersion
+  let requestCount = 0
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      requestCount += 1
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/registry.json")) {
+        return Response.json({
+          schemaVersion: 2,
+          updatedAt: "2026-06-26T00:00:00.000Z",
+          plugins: [
+            {
+              id: "official-test-plugin",
+              name: "official-test-plugin",
+              description: "Official cached plugin",
+              repo: "https://github.com/SII-Holos/official-test-plugin",
+              entry: "plugins/official-test-plugin.json",
+              author: { name: "SII Holos" },
+              verified: true,
+              official: true,
+              keywords: ["synergy-plugin", "official"],
+              latestVersion,
+              updatedAt: "2026-06-26T00:00:00.000Z",
+              runtimeMode: "process",
+              tools: ["greet"],
+              uiSurfaces: ["toolRenderers"],
+            },
+          ],
+        })
+      }
+      if (url.pathname.endsWith("/plugins/official-test-plugin.json")) {
+        return Response.json({
+          schemaVersion: 2,
+          id: "official-test-plugin",
+          name: "official-test-plugin",
+          description: "Official cached plugin",
+          repo: "https://github.com/SII-Holos/official-test-plugin",
+          author: { name: "SII Holos" },
+          verified: true,
+          official: true,
+          keywords: ["synergy-plugin", "official"],
+          compatibility: { synergy: ">=2.4.3" },
+          versions: [
+            {
+              version: latestVersion,
+              apiVersion: "4.0",
+              compatibility: { synergy: ">=2.4.3" },
+              downloadUrl: `https://github.com/SII-Holos/official-test-plugin/releases/download/v${latestVersion}/official-test-plugin-${latestVersion}.synergy-plugin.tgz`,
+              signatureUrl: `https://github.com/SII-Holos/official-test-plugin/releases/download/v${latestVersion}/official-test-plugin-${latestVersion}.synergy-plugin.tgz.sig`,
+              signature: {
+                algorithm: "ed25519",
+                signer: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              },
+              integrity: "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              manifestHash: "manifest-hash",
+              permissionsHash: "permissions-hash",
+              runtimeMode: "process",
+              featuresSummary: [{ key: "tool:greet", title: "Greeting", description: "Adds a greeting tool." }],
+              permissionsSummary: [
+                {
+                  key: "file_read",
+                  description: "Read workspace files",
+                  category: "files",
+                  title: "Read workspace files",
+                },
+              ],
+              tools: ["greet"],
+              uiSurfaces: ["toolRenderers"],
+              publishedAt: "2026-06-26T00:00:00.000Z",
+            },
+          ],
+          yankedVersions: [],
+        })
+      }
+      return new Response("Not found", { status: 404 })
+    },
+  })
+  return {
+    url: `http://127.0.0.1:${server.port}/registry.json`,
+    setLatestVersion(version: string) {
+      latestVersion = version
+    },
+    get requestCount() {
+      return requestCount
+    },
+    async stop() {
+      await server.stop(true)
+    },
+  }
+}
