@@ -29,6 +29,7 @@ const window = (messages: MessageRef[], overrides?: Partial<MessageWindowState>)
   mode: "latest",
   pendingLatest: false,
   pendingLatestIds: [],
+  tailMissingLatest: false,
   ...overrides,
 })
 
@@ -39,6 +40,7 @@ const metadata = (overrides?: Partial<MessageWindowMetadata>): MessageWindowMeta
   mode: "latest",
   pendingLatest: false,
   pendingLatestIds: [],
+  tailMissingLatest: false,
   ...overrides,
 })
 
@@ -187,6 +189,17 @@ describe("loaded message window events", () => {
     const result = reconcileLoadedMessage([msg("existing", 1)], metadata({ total: 1 }), msg("event", 2))
 
     expect(result?.window.messages.map((message) => message.id)).toEqual(["existing", "event"])
+  })
+
+  test("preserves a history tail gap while reconciling a loaded message", () => {
+    const result = reconcileLoadedMessage(
+      [msg("existing", 1)],
+      metadata({ mode: "history", total: 1, tailMissingLatest: true }),
+      msg("existing", 2),
+    )
+
+    expect(result?.window.mode).toBe("history")
+    expect(result?.window.tailMissingLatest).toBe(true)
   })
 })
 
@@ -344,6 +357,166 @@ describe("removeMessageFromWindow", () => {
     expect(result.messages).toEqual([])
     expect(result.pendingLatest).toBe(true)
     expect(result.pendingLatestIds).toEqual(["new"])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// tailMissingLatest — bounded history window no longer reaches true latest
+// ---------------------------------------------------------------------------
+
+describe("tailMissingLatest semantics", () => {
+  test("repeated history prepends: second prepend evicts newest overflow and marks the tail gap", () => {
+    const cap = 500
+    const latest = Array.from({ length: 200 }, (_, i) => msg(`m${400 + i}`, 400 + i))
+    const older1 = Array.from({ length: 200 }, (_, i) => msg(`m${200 + i}`, 200 + i))
+    const older2 = Array.from({ length: 200 }, (_, i) => msg(`m${i}`, i))
+
+    const first = prependOlderPage(window(latest, { mode: "history" }), older1, cap)
+    expect(first.window.messages).toHaveLength(400)
+    expect(first.window.tailMissingLatest).toBe(false)
+    expect(first.droppedIds).toEqual([])
+
+    const second = prependOlderPage(first.window, older2, cap)
+    // Combined 600 > cap 500: keep the oldest 500, evict the newest 100.
+    expect(second.window.messages).toHaveLength(500)
+    expect(second.window.messages[0].id).toBe("m0")
+    expect(second.window.messages.at(-1)!.id).toBe("m499")
+    expect(second.droppedIds).toHaveLength(100)
+    expect(second.droppedIds[0]).toBe("m500")
+    expect(second.window.tailMissingLatest).toBe(true)
+  })
+
+  test("latest page apply clears the tail gap", () => {
+    const result = applyLatestPage([msg("a", 1), msg("b", 2), msg("c", 3)])
+    expect(result.window.mode).toBe("latest")
+    expect(result.window.tailMissingLatest).toBe(false)
+  })
+
+  test("latest-mode reconcile resets the tail gap", () => {
+    const w = window([msg("a", 1)], { mode: "latest", tailMissingLatest: true })
+    const result = reconcileMessage(w, msg("b", 2))
+    expect(result.window.mode).toBe("latest")
+    expect(result.window.tailMissingLatest).toBe(false)
+  })
+
+  test("history-mode reconcile preserves the tail gap", () => {
+    const w = window([msg("a", 1), msg("b", 2)], { mode: "history", tailMissingLatest: true })
+    const updated = reconcileMessage(w, msg("a", 3))
+    expect(updated.window.mode).toBe("history")
+    expect(updated.window.tailMissingLatest).toBe(true)
+    const pending = reconcileMessage(updated.window, msg("z", 99))
+    expect(pending.window.tailMissingLatest).toBe(true)
+    expect(pending.window.pendingLatest).toBe(true)
+  })
+
+  test("remove preserves the tail gap", () => {
+    const w = window([msg("a", 1)], { mode: "history", tailMissingLatest: true })
+    const result = removeMessageFromWindow(w, "a")
+    expect(result.tailMissingLatest).toBe(true)
+  })
+
+  test("prepend without eviction preserves an existing tail gap", () => {
+    const w = window([msg("b", 2)], { mode: "history", tailMissingLatest: true })
+    const result = prependOlderPage(w, [msg("a", 1)])
+    expect(result.window.messages.map((m) => m.id)).toEqual(["a", "b"])
+    expect(result.window.tailMissingLatest).toBe(true)
+  })
+
+  test("prepend never mixes evicted newest overflow into pendingLatestIds", () => {
+    const cap = 2
+    const w = window([msg("c", 3), msg("d", 4)], {
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["d", "e"],
+      tailMissingLatest: false,
+    })
+    const result = prependOlderPage(w, [msg("a", 1), msg("b", 2)], cap)
+    // Combined a,b,c,d = 4, cap 2 → keep a,b; c,d evicted. d was pending and
+    // got evicted, so it leaves the pending set; unseen e stays pending.
+    expect(result.window.messages.map((m) => m.id)).toEqual(["a", "b"])
+    expect(result.window.pendingLatestIds).toEqual(["e"])
+    expect(result.window.pendingLatest).toBe(true)
+    expect(result.window.tailMissingLatest).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Turn-aware history cap — never leave a partial tail turn at the boundary
+// ---------------------------------------------------------------------------
+
+describe("turn-aware history cap", () => {
+  test("cap inside a root turn drops the whole partial tail turn", () => {
+    const cap = 5
+    const current = window(
+      [
+        { ...msg("root-1", 2), rootID: "root-1" },
+        { ...msg("root-1-a", 3), rootID: "root-1" },
+        { ...msg("root-1-b", 4), rootID: "root-1" },
+        { ...msg("root-1-c", 5), rootID: "root-1" },
+      ],
+      { mode: "history" },
+    )
+    const older = [
+      { ...msg("root-0", 0), rootID: "root-0" },
+      { ...msg("root-0-a", 1), rootID: "root-0" },
+    ]
+    const result = prependOlderPage(current, older, cap)
+    // Cap would land inside root-1's turn; the partial tail turn is dropped.
+    expect(result.window.messages.map((m) => m.id)).toEqual(["root-0", "root-0-a"])
+    expect(result.window.messages.length).toBeLessThanOrEqual(cap)
+    expect(result.droppedIds).toEqual(["root-1", "root-1-a", "root-1-b", "root-1-c"])
+    expect(result.window.tailMissingLatest).toBe(true)
+  })
+
+  test("cap on a root boundary keeps exactly cap messages", () => {
+    const cap = 4
+    const current = window(
+      [
+        { ...msg("root-1", 2), rootID: "root-1" },
+        { ...msg("root-1-a", 3), rootID: "root-1" },
+        { ...msg("root-2", 4), rootID: "root-2" },
+        { ...msg("root-2-a", 5), rootID: "root-2" },
+      ],
+      { mode: "history" },
+    )
+    const older = [
+      { ...msg("root-0", 0), rootID: "root-0" },
+      { ...msg("root-0-a", 1), rootID: "root-0" },
+    ]
+    const result = prependOlderPage(current, older, cap)
+    expect(result.window.messages.map((m) => m.id)).toEqual(["root-0", "root-0-a", "root-1", "root-1-a"])
+    expect(result.window.messages).toHaveLength(cap)
+    expect(result.droppedIds).toEqual(["root-2", "root-2-a"])
+  })
+
+  test("cap drops every kept member of a turn that continues past the boundary", () => {
+    const cap = 6
+    const current = window(
+      [
+        { ...msg("root-1", 2), rootID: "root-1" },
+        { ...msg("root-1-a", 3), rootID: "root-1" },
+        { ...msg("root-2", 4), rootID: "root-2" },
+        { ...msg("root-2-a", 5), rootID: "root-2" },
+        { ...msg("root-1-late", 6), rootID: "root-1" },
+      ],
+      { mode: "history" },
+    )
+    const older = [
+      { ...msg("root-0", 0), rootID: "root-0" },
+      { ...msg("root-0-a", 1), rootID: "root-0" },
+    ]
+    const result = prependOlderPage(current, older, cap)
+    expect(result.window.messages.map((m) => m.id)).toEqual(["root-0", "root-0-a", "root-2", "root-2-a"])
+    expect(result.droppedIds).toEqual(["root-1", "root-1-a", "root-1-late"])
+    expect(result.window.tailMissingLatest).toBe(true)
+  })
+
+  test("cap without rootID metadata keeps the plain newest-overflow slice", () => {
+    const cap = 3
+    const current = window([msg("c", 3), msg("d", 4)], { mode: "history" })
+    const result = prependOlderPage(current, [msg("a", 1), msg("b", 2)], cap)
+    expect(result.window.messages.map((m) => m.id)).toEqual(["a", "b", "c"])
+    expect(result.droppedIds).toEqual(["d"])
   })
 })
 

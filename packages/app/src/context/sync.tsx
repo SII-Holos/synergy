@@ -147,6 +147,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           mode: currentMetadata?.mode ?? "latest",
           pendingLatest: currentMetadata?.pendingLatest ?? false,
           pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
+          tailMissingLatest: currentMetadata?.tailMissingLatest ?? false,
         }
         const plan = planMessagePageApply({ page, current, mode: input?.mode })
         const partActions = new Map(
@@ -483,6 +484,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           },
           pendingLatest(sessionID: string) {
             return store.messageWindow[sessionID]?.pendingLatest ?? false
+          },
+          tailMissingLatest(sessionID: string) {
+            return store.messageWindow[sessionID]?.tailMissingLatest ?? false
           },
           async loadMore(sessionID: string, count = chunk) {
             if (this.loading(sessionID)) return

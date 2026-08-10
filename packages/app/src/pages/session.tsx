@@ -96,6 +96,7 @@ import {
   adjustTrimScrollTop,
   computeTurnTrim,
   selectPrependAnchor,
+  shouldRecoverToLatest,
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
@@ -509,6 +510,11 @@ function SessionPageContent() {
     const id = params.id
     if (!id) return false
     return sync.session.history.pendingLatest(id)
+  })
+  const historyTailMissingLatest = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return sync.session.history.tailMissingLatest(id)
   })
   // ── Root message derivation layer ───────────────────────────────────
   // Replaces old isSessionIdentityAnchor / isGuidedContextUserMessage / synthetic metadata
@@ -1087,6 +1093,30 @@ function SessionPageContent() {
       })
     }
   }
+
+  // When the bounded history window no longer reaches the true latest
+  // (cap-evicted tail or unseen arrivals) and the user heads back to the
+  // local bottom, recover through the existing return-to-latest path.
+  // The transition from scrolled-up to bottom keeps load-earlier-at-bottom
+  // from auto-jumping; gap-less history preserves the old scroll behavior.
+  createEffect(
+    on(scrolledUp, (up, prev) => {
+      if (up || prev === undefined) return
+      const id = params.id
+      if (!id) return
+      if (
+        !shouldRecoverToLatest({
+          mode: historyMode(),
+          tailMissingLatest: historyTailMissingLatest(),
+          pendingLatest: historyPendingLatest(),
+          historyLoading: historyLoading(),
+        })
+      ) {
+        return
+      }
+      void returnToLatestMessages()
+    }),
+  )
 
   const turnInit = 20
   const turnBatch = 20

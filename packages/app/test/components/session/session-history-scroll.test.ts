@@ -4,6 +4,7 @@ import {
   adjustTrimScrollTop,
   computeTurnTrim,
   selectPrependAnchor,
+  shouldRecoverToLatest,
 } from "../../../src/components/session/session-history-scroll"
 
 describe("session history prepend scroll", () => {
@@ -99,5 +100,62 @@ describe("computeTurnTrim (turnStart auto-advance guard)", () => {
 
   test("trims when distanceFromBottom is inside the pinned threshold", () => {
     expect(computeTurnTrim({ ...base, distanceFromBottom: 9 })).toEqual({ trim: true, nextTurnStart: 20 })
+  })
+})
+
+describe("shouldRecoverToLatest (bounded-window bottom recovery)", () => {
+  test("recovers when history has a tail gap and is not loading", () => {
+    expect(
+      shouldRecoverToLatest({
+        mode: "history",
+        tailMissingLatest: true,
+        pendingLatest: false,
+        historyLoading: false,
+      }),
+    ).toBe(true)
+  })
+
+  test("recovers when history has pending latest and is not loading", () => {
+    expect(
+      shouldRecoverToLatest({
+        mode: "history",
+        tailMissingLatest: false,
+        pendingLatest: true,
+        historyLoading: false,
+      }),
+    ).toBe(true)
+  })
+
+  test("does not recover for gap-less history", () => {
+    expect(
+      shouldRecoverToLatest({
+        mode: "history",
+        tailMissingLatest: false,
+        pendingLatest: false,
+        historyLoading: false,
+      }),
+    ).toBe(false)
+  })
+
+  test("does not recover in latest mode", () => {
+    expect(
+      shouldRecoverToLatest({
+        mode: "latest",
+        tailMissingLatest: true,
+        pendingLatest: false,
+        historyLoading: false,
+      }),
+    ).toBe(false)
+  })
+
+  test("does not recover while history is loading", () => {
+    expect(
+      shouldRecoverToLatest({
+        mode: "history",
+        tailMissingLatest: true,
+        pendingLatest: true,
+        historyLoading: true,
+      }),
+    ).toBe(false)
   })
 })
