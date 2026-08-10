@@ -5,6 +5,7 @@ import { Identifier } from "../id/id"
 import { Installation } from "../global/installation"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { ActivityDerivedMetadataSchema, type ActivityDerivedMetadata } from "@ericsanchezok/synergy-util/activity"
 
 import { Bus } from "../bus"
 import { Storage } from "../storage/storage"
@@ -1157,6 +1158,51 @@ export namespace Session {
     })
     return canonical as MessageV2.Assistant
   }
+
+  const ActivityMetadataPatch = ActivityDerivedMetadataSchema.omit({ v: true, seq: true }).partial()
+
+  export const updateActivityMetadata = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      messageID: Identifier.schema("message"),
+      expectedSeq: z.number().int().nonnegative(),
+      patch: ActivityMetadataPatch,
+    }),
+    async (input) => {
+      const session = await SessionManager.requireSession(input.sessionID)
+      const scopeID = asScopeID((session.scope as Scope).id)
+      let applied = false
+      const result = await Storage.update<MessageV2.Info>(
+        StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
+        (draft) => {
+          if (draft.role !== "assistant")
+            throw new Error("Activity metadata can only be attached to assistant messages")
+          const parsed = ActivityDerivedMetadataSchema.safeParse(draft.metadata?.activity)
+          const current = parsed.success ? parsed.data : undefined
+          const currentSeq = current?.seq ?? 0
+          if (currentSeq !== input.expectedSeq) return
+          const next: ActivityDerivedMetadata = ActivityDerivedMetadataSchema.parse({
+            ...current,
+            ...input.patch,
+            reasoning: input.patch.reasoning ? { ...current?.reasoning, ...input.patch.reasoning } : current?.reasoning,
+            groups: input.patch.groups ? { ...current?.groups, ...input.patch.groups } : current?.groups,
+            v: 1,
+            seq: currentSeq + 1,
+          })
+          draft.metadata = {
+            ...draft.metadata,
+            activity: next,
+          }
+          applied = true
+        },
+      )
+      if (!applied) return
+      const canonical = MessageV2.canonicalMessage(result) as MessageV2.Assistant
+      SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
+      void Bus.publish(MessageV2.Event.Updated, { info: canonical })
+      return canonical
+    },
+  )
 
   export const mergeMessageMetadata = fn(
     z.object({

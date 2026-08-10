@@ -1,5 +1,6 @@
 import fs from "fs/promises"
 import path from "path"
+import { SYSTEMD_SERVER_SHUTDOWN_TIMEOUT_SECONDS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import { DaemonPaths } from "./paths"
 import type { DaemonService } from "./service"
 
@@ -93,7 +94,7 @@ RestartSec=2
 KillMode=control-group
 OOMPolicy=continue
 TimeoutStartSec=30
-TimeoutStopSec=30
+TimeoutStopSec=${SYSTEMD_SERVER_SHUTDOWN_TIMEOUT_SECONDS}
 SuccessExitStatus=0 143
 StandardOutput=append:${spec.logFile}
 StandardError=append:${spec.logFile}

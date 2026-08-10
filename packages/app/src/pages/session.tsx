@@ -100,6 +100,7 @@ import {
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
+import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
@@ -527,6 +528,7 @@ function SessionPageContent() {
   )
   const visibleRoots = createMemo(() => rootMessages().filter((m) => m.visible !== false), emptyUserMessages)
   const turnProjection = createMemo(() => buildSessionTurnProjection(messages()))
+  const activityDisplay = createMemo(() => resolveActivityDisplay(sync.data.config.activityDisplay))
   const lastRoot = createMemo(() => rootMessages().at(-1))
   // visibleRoots for navigation/timeline (deprecated old names kept for compatibility)
   const visibleUserMessages = visibleRoots
@@ -1405,6 +1407,7 @@ function SessionPageContent() {
                           paramsDir={params.dir!}
                           timeline={timeline}
                           turnProjection={turnProjection}
+                          activityDisplay={activityDisplay}
                           pendingTimeline={pendingTimeline}
                           sessionTransition={visibleSessionTransition}
                           sessionTransitionActions={visibleSessionTransitionActions}

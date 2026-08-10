@@ -273,4 +273,18 @@ describe("OpenAPI spec generation", () => {
     const relink = schemas.SynergyLinkTargetPatchRelink as { required?: string[] } | undefined
     expect(relink?.required).toEqual(expect.arrayContaining(["kind", "targetAgentID", "linkID"]))
   })
+
+  test("documents runtime shutdown for every API operation", async () => {
+    const spec = await Server.openapi()
+    const methods = ["get", "put", "post", "delete", "patch"] as const
+
+    for (const [path, item] of Object.entries(spec.paths)) {
+      for (const method of methods) {
+        const operation = item?.[method]
+        if (!operation) continue
+        const shutdownResponse = JSON.stringify(operation.responses?.["503"])
+        expect(shutdownResponse, `${method.toUpperCase()} ${path}`).toContain("RuntimeShuttingDownError")
+      }
+    }
+  })
 })

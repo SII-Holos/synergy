@@ -29,6 +29,10 @@ export namespace AgentTurn {
     }
   }
 
+  export function closeAdmission(): void {
+    accepting = false
+  }
+
   export function resize(size = DEFAULT_AGENT_WORKER_POOL_OPTIONS.size): void {
     if (!Number.isInteger(size) || size <= 0) {
       throw new Error("Agent worker pool size must be a positive integer")
@@ -148,8 +152,8 @@ export namespace AgentTurn {
   }
 
   export async function stop(): Promise<void> {
+    closeAdmission()
     if (stopPromise) return stopPromise
-    accepting = false
     const current = pool
     stopPromise = (async () => {
       await current?.stop()

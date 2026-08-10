@@ -5,6 +5,78 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#. js-lingui-explicit-id
+msgid "activity.trace.actions"
+msgstr "{count, plural, one {# 个操作} other {# 个操作}}"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.activity"
+msgstr "活动"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.browser"
+msgstr "已浏览"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.coordination"
+msgstr "已协调"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.delegate"
+msgstr "已委派"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.execute"
+msgstr "已执行"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.external-action"
+msgstr "外部操作"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.generic"
+msgstr "已处理"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.inspect-local"
+msgstr "已检查"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.modify-files"
+msgstr "已修改"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.produce"
+msgstr "已生成"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.research-web"
+msgstr "已调研"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.reasoning.fallback"
+msgstr "推理过程"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.reasoning.thinking"
+msgstr "思考中…"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.done"
+msgstr "完成"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.error"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.waiting-approval"
+msgstr "等待批准"
+
 #. ── Anchored-tool chip labels ──────────────────────────────────────
 msgid "anchored-chip.conflict"
 msgstr "冲突"
@@ -13865,6 +13937,10 @@ msgid "settings.catalog.general.label"
 msgstr "通用"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.activityDisplay"
+msgstr "活动显示"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.colorScheme"
 msgstr "配色方案"
 
@@ -13890,7 +13966,7 @@ msgstr "提示时长"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 产品更新 | 提示 | 通知"
+msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 产品更新 | 提示 | 通知"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -14731,6 +14807,26 @@ msgstr "开启"
 #. js-lingui-explicit-id
 msgid "settings.email.state.paused"
 msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.balanced"
+msgstr "平衡"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.description"
+msgstr "选择 Synergy 在界面中显示的活动详情程度"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.full"
+msgstr "完整"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.minimal"
+msgstr "精简"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.title"
+msgstr "活动显示"
 
 #. js-lingui-explicit-id
 msgid "settings.general.appearance.title"

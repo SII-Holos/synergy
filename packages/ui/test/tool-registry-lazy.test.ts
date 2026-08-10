@@ -1,10 +1,11 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test"
 import {
-  resolveToolRenderer,
-  setExternalToolLookup,
-  setExternalFallbackLookup,
   notifyExternalToolLoaded,
   registerTool,
+  resolveExternalToolRenderer,
+  resolveToolRenderer,
+  setExternalFallbackLookup,
+  setExternalToolLookup,
   type ToolComponent,
 } from "../src/components/tool-registry-lazy"
 
@@ -152,6 +153,23 @@ describe("resolveToolRenderer", () => {
     expect((resolveToolRenderer("plugin_beta", registry, { externalLookup }) as any).__id).toBe("beta")
     expect((resolveToolRenderer("plugin_gamma", registry, { externalLookup }) as any).__id).toBe("gamma")
     expect(resolveToolRenderer("plugin_delta", registry, { externalLookup })).toBeUndefined()
+  })
+})
+
+describe("resolveExternalToolRenderer", () => {
+  test("ignores built-in renderer membership when checking plugin boundaries", () => {
+    registerTool({ name: "read", render: makeRenderer("builtin_read") })
+
+    expect(resolveExternalToolRenderer("read", {})).toBeUndefined()
+  })
+
+  test("subscribes to lazy loads and returns only external renderers", () => {
+    const renderer = makeRenderer("plugin_read")
+    const externalLookup = mock((name: string) => (name === "plugin_read" ? renderer : undefined))
+    const externalLoadNotify = mock(() => 1)
+
+    expect(resolveExternalToolRenderer("plugin_read", { externalLookup, externalLoadNotify })).toBe(renderer)
+    expect(externalLoadNotify).toHaveBeenCalled()
   })
 })
 

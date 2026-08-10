@@ -8,6 +8,7 @@ import { Plugin } from "@/plugin"
 import { Vcs } from "@/project/vcs"
 import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
+import { ActivitySummary } from "@/session/activity-summary"
 import { LatticeRuntime } from "@/lattice/runtime"
 import { Scope } from "."
 import { ScopeContext } from "./context"
@@ -43,6 +44,7 @@ export namespace ScopeRuntime {
               log.warn("session runtime recovery failed", { scopeID: scope.id, error })
             })
             await LatticeRuntime.init()
+            ActivitySummary.init()
             await SessionInvoke.resumePending({ scopeID: scope.id })
             Format.init()
             await LSP.init()

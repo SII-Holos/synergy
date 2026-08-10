@@ -35,6 +35,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -57,6 +67,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GlobalPaths"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -85,6 +105,16 @@
                   "items": {
                     "type": "string"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -165,6 +195,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -213,6 +253,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -779,6 +829,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -801,6 +861,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServerUpdateStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -836,6 +906,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServerUpdateForbiddenError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -884,6 +964,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -918,6 +1008,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -940,6 +1040,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerfDashboardSummary"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -970,6 +1080,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerformanceAnalysisView"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1004,6 +1124,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerformanceAnalysisView"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1042,6 +1172,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1074,6 +1214,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerfInflight"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1136,6 +1286,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1166,6 +1326,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1193,6 +1363,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerfTraceDetail"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1234,6 +1414,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1264,6 +1454,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -1284,6 +1484,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerfConfig"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1321,6 +1531,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -1348,6 +1568,16 @@
         "responses": {
           "200": {
             "description": "Performance event stream"
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1414,6 +1644,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -1436,6 +1676,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HolosLoginResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1487,6 +1737,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -1519,6 +1779,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1565,6 +1835,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -1600,6 +1880,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -1625,6 +1915,16 @@
                   "items": {
                     "$ref": "#/components/schemas/SynergyLinkTargetView"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1657,6 +1957,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1713,6 +2023,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1762,6 +2082,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1821,6 +2151,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1867,6 +2207,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -1997,6 +2347,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -2103,6 +2463,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -2191,6 +2561,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -2213,6 +2593,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PinnedResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -2265,6 +2655,16 @@
                     }
                   },
                   "required": ["message"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -2323,6 +2723,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -2361,6 +2771,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Scope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -2405,6 +2825,16 @@
                   "items": {
                     "$ref": "#/components/schemas/ScopeNavEntry"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -2484,6 +2914,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ManagedProjectArchiveError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -2601,6 +3041,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -2662,6 +3112,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -2703,6 +3163,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Pty"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -2752,6 +3222,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -2849,6 +3329,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -2903,6 +3393,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -2989,6 +3489,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -3048,6 +3558,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -3086,6 +3606,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Config"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -3135,6 +3665,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -3194,6 +3734,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -3235,6 +3785,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -3273,6 +3833,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ConfigInstructionsInfo"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -3325,6 +3895,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -3373,6 +3953,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -3414,6 +4004,16 @@
                   "items": {
                     "$ref": "#/components/schemas/ConfigDomainSummary"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -3491,6 +4091,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -3560,6 +4170,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -3656,6 +4276,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -3724,6 +4354,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ConfigImportSourceTooLargeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -3824,6 +4464,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -3892,6 +4542,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -3940,6 +4600,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -4015,6 +4685,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -4074,6 +4754,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -4115,6 +4805,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -4153,6 +4853,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SandboxReadiness"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -4204,6 +4914,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -4274,6 +4994,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -4315,6 +5045,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -4353,6 +5093,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Path"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -4407,6 +5157,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -4455,6 +5215,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Worktree"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -4524,6 +5294,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -4605,6 +5385,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -4666,6 +5456,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -4713,6 +5513,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VcsInfo"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -4802,6 +5612,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SessionNavResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -4922,6 +5742,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -4968,6 +5798,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -5064,6 +5904,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -5135,6 +5985,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -5203,6 +6063,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -5267,6 +6137,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -5441,6 +6321,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -5514,6 +6404,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -5584,6 +6484,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -5677,6 +6587,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -5744,6 +6664,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -5816,6 +6746,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -5941,6 +6881,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -6011,6 +6961,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -6091,6 +7051,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorktreeUnavailableError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -6261,6 +7231,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -6350,6 +7330,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -6432,6 +7422,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -6499,6 +7499,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -6623,6 +7633,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -6700,6 +7720,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -6877,6 +7907,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -6947,6 +7987,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -7041,6 +8091,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -7125,6 +8185,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -7213,6 +8283,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -7282,6 +8362,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -7423,6 +8513,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -7575,6 +8675,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -7672,6 +8782,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -7790,6 +8910,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -7883,6 +9013,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -7950,6 +9090,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -8030,6 +9180,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -8120,6 +9280,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -8205,6 +9375,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -8268,6 +9448,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -8309,6 +9499,16 @@
                   "items": {
                     "$ref": "#/components/schemas/QuestionRequest"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -8378,6 +9578,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -8469,6 +9679,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -8536,6 +9756,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -8609,6 +9839,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -8657,6 +9897,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -8734,6 +9984,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -8772,6 +10032,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CortexConcurrencyStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -8841,6 +10111,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -8970,6 +10250,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9039,6 +10329,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9083,6 +10383,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9121,6 +10431,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProviderListResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -9172,6 +10492,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -9244,6 +10574,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -9311,6 +10651,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9371,6 +10721,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9415,6 +10775,16 @@
                   "additionalProperties": {
                     "$ref": "#/components/schemas/AccountUsageSnapshot"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -9478,6 +10848,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9525,6 +10905,16 @@
                       "$ref": "#/components/schemas/ProviderAuthMethod"
                     }
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -9599,6 +10989,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -9637,6 +11037,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GitHubAuthStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -9688,6 +11098,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -9748,6 +11168,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -9824,6 +11254,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -9907,6 +11347,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -9964,6 +11414,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -10002,6 +11462,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RuntimeReloadResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -10086,6 +11556,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -10152,6 +11632,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -10223,6 +11713,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SkillArchiveLimitError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -10311,6 +11811,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SkillArchiveLimitError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -10424,6 +11934,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -10525,6 +12045,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -10581,6 +12111,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -10672,6 +12212,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -10710,6 +12260,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceFileStatusSummary"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -10794,6 +12354,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -10841,6 +12411,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EmbeddingStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -10945,6 +12525,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -10996,6 +12586,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -11119,6 +12719,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -11189,6 +12799,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -11244,6 +12864,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -11317,6 +12947,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -11382,6 +13022,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -11430,6 +13080,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -11491,6 +13151,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReencodeJobConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -11566,6 +13236,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -11624,6 +13304,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReencodeJobConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -11712,6 +13402,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -11794,6 +13494,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -11845,6 +13555,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -11930,6 +13650,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -12029,6 +13759,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -12087,6 +13827,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -12142,6 +13892,16 @@
                   "items": {
                     "$ref": "#/components/schemas/MemoryInfo"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -12243,6 +14003,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -12300,6 +14070,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -12366,6 +14146,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -12423,6 +14213,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -12486,6 +14286,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -12543,6 +14353,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -12606,6 +14426,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -12663,6 +14493,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -12736,6 +14576,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -12791,6 +14641,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -12862,6 +14722,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -12919,6 +14789,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -12980,6 +14860,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -13047,6 +14937,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -13108,6 +15008,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -13184,6 +15094,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -13232,6 +15152,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -13306,6 +15236,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -13373,6 +15313,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -13451,6 +15401,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NoteConflictError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -13541,6 +15501,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -13603,6 +15573,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -13686,6 +15666,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -13732,6 +15722,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -13814,6 +15814,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -13881,6 +15891,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -13954,6 +15974,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -14021,6 +16051,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -14110,6 +16150,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -14195,6 +16245,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -14265,6 +16325,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -14332,6 +16402,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -14413,6 +16493,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -14474,6 +16564,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -14554,6 +16654,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -14638,6 +16748,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -14728,6 +16848,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -14829,6 +16959,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -14934,6 +17074,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -15033,6 +17183,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LatticeInternalServerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -15137,6 +17297,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -15216,6 +17386,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -15292,6 +17472,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -15376,6 +17566,16 @@
                   },
                   "required": ["message"],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -15470,6 +17670,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -15558,6 +17768,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BossErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -15661,6 +17881,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -15761,6 +17991,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -15818,6 +18058,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -15886,6 +18136,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -15927,6 +18187,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -15965,6 +18235,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HolosState"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16019,6 +18299,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -16065,6 +18355,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16118,6 +18418,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -16156,6 +18466,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HolosAccountsListResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16217,6 +18537,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16295,6 +18625,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -16333,6 +18673,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HolosStatusResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16377,6 +18727,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Contact"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16426,6 +18786,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16506,6 +18876,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -16550,6 +18930,16 @@
               "application/json": {
                 "schema": {
                   "type": "boolean"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16612,6 +19002,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -16665,6 +19065,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HolosPresenceMap"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -16784,11 +19194,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -16890,11 +19307,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -16941,11 +19365,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -17033,6 +19464,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -17074,6 +19515,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -17112,6 +19563,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MailboxMessageList"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -17161,6 +19622,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MailboxMessageList"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -17293,6 +19764,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -17437,6 +19918,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -17578,6 +20069,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -17706,6 +20207,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -17851,6 +20362,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -17957,6 +20478,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -18021,6 +20552,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -18115,11 +20656,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -18188,6 +20736,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -18233,6 +20791,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -18302,6 +20870,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -18353,7 +20931,17 @@
           }
         },
         "responses": {
-          "200": {}
+          "200": {},
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
         },
         "x-codeSamples": [
           {
@@ -18392,6 +20980,16 @@
                   "items": {
                     "$ref": "#/components/schemas/PluginStatus"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -18445,6 +21043,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -18490,6 +21098,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -18597,6 +21215,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -18696,6 +21324,16 @@
                     }
                   },
                   "required": ["code", "message"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -18827,6 +21465,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -18922,6 +21570,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -19002,6 +21660,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -19060,6 +21728,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -19111,6 +21789,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -19159,6 +21847,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -19269,11 +21967,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -19333,11 +22038,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -19410,11 +22122,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -19490,11 +22209,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -19575,11 +22301,18 @@
             }
           },
           "503": {
-            "description": "Service unavailable",
+            "description": "Service unavailable or runtime shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -19646,6 +22379,16 @@
           },
           "501": {
             "description": "Download not yet implemented for this entry"
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -19694,6 +22437,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -19754,6 +22507,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -19836,6 +22599,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -19877,6 +22650,16 @@
                   "items": {
                     "$ref": "#/components/schemas/ModelRoleSummary"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -19924,6 +22707,16 @@
                   "additionalProperties": {
                     "$ref": "#/components/schemas/MCPStatus"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -19979,6 +22772,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -20083,6 +22886,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -20144,6 +22957,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -20213,6 +23036,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -20301,6 +23134,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -20349,6 +23192,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -20394,6 +23247,16 @@
               "application/json": {
                 "schema": {
                   "type": "boolean"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -20456,6 +23319,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -20512,6 +23385,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -20598,6 +23481,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -20657,6 +23550,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -20701,6 +23604,16 @@
                   "additionalProperties": {
                     "$ref": "#/components/schemas/ChannelStatus"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -20751,6 +23664,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -20795,6 +23718,16 @@
                   "additionalProperties": {
                     "$ref": "#/components/schemas/ChannelStatus"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -20861,6 +23794,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -20921,6 +23864,16 @@
                   "additionalProperties": {
                     "$ref": "#/components/schemas/ChannelStatus"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -20988,6 +23941,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -21026,6 +23989,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -21074,6 +24047,16 @@
                     }
                   },
                   "required": ["success"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -21161,6 +24144,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -21240,6 +24233,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -21287,6 +24290,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -21331,6 +24344,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -21372,6 +24395,16 @@
                   "items": {
                     "$ref": "#/components/schemas/FormatterStatus"
                   }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -21431,6 +24464,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -21504,6 +24547,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -21542,6 +24595,16 @@
               "text/event-stream": {
                 "schema": {
                   "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
                 }
               }
             }
@@ -25170,6 +28233,9 @@
                 "type": "boolean"
               },
               "supportsProcessGroups": {
+                "type": "boolean"
+              },
+              "supportsBashDetach": {
                 "type": "boolean"
               },
               "envCaseInsensitive": {
@@ -29734,6 +32800,11 @@
           "theme": {
             "description": "Theme name to use for the interface",
             "type": "string"
+          },
+          "activityDisplay": {
+            "description": "How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)",
+            "type": "string",
+            "enum": ["full", "balanced", "minimal"]
           },
           "keybinds": {
             "$ref": "#/components/schemas/KeybindsConfig"
@@ -40277,6 +43348,25 @@
           }
         },
         "required": ["message"]
+      },
+      "RuntimeShuttingDownError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "RuntimeShuttingDown"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "HolosSendResponse": {
         "type": "object",

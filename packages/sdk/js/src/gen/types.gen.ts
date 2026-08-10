@@ -3511,6 +3511,10 @@ export type Config = {
    * Theme name to use for the interface
    */
   theme?: string
+  /**
+   * How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)
+   */
+  activityDisplay?: "full" | "balanced" | "minimal"
   keybinds?: KeybindsConfig
   logLevel?: LogLevel
   server?: ServerConfig
@@ -7307,6 +7311,13 @@ export type ServiceUnavailableError = {
   message: string
 }
 
+export type RuntimeShuttingDownError = {
+  name: "RuntimeShuttingDown"
+  data: {
+    message: string
+  }
+}
+
 export type HolosSendResponse = {
   messageId: string
   sent: boolean
@@ -8852,6 +8863,15 @@ export type GlobalHealthData = {
   url: "/global/health"
 }
 
+export type GlobalHealthErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalHealthError = GlobalHealthErrors[keyof GlobalHealthErrors]
+
 export type GlobalHealthResponses = {
   /**
    * Health information
@@ -8875,6 +8895,15 @@ export type GlobalPathsGetData = {
   url: "/global/paths"
 }
 
+export type GlobalPathsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalPathsGetError = GlobalPathsGetErrors[keyof GlobalPathsGetErrors]
+
 export type GlobalPathsGetResponses = {
   /**
    * Global paths
@@ -8895,6 +8924,15 @@ export type GlobalFilesystemBrowseData = {
   }
   url: "/global/filesystem/browse"
 }
+
+export type GlobalFilesystemBrowseErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalFilesystemBrowseError = GlobalFilesystemBrowseErrors[keyof GlobalFilesystemBrowseErrors]
 
 export type GlobalFilesystemBrowseResponses = {
   /**
@@ -8922,6 +8960,10 @@ export type GlobalGitInitErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type GlobalGitInitError = GlobalGitInitErrors[keyof GlobalGitInitErrors]
@@ -8957,6 +8999,10 @@ export type GlobalStatsGetErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type GlobalStatsGetError = GlobalStatsGetErrors[keyof GlobalStatsGetErrors]
@@ -8976,6 +9022,15 @@ export type GlobalStatsProgressData = {
   query?: never
   url: "/global/stats/progress"
 }
+
+export type GlobalStatsProgressErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsProgressError = GlobalStatsProgressErrors[keyof GlobalStatsProgressErrors]
 
 export type GlobalStatsProgressResponses = {
   /**
@@ -9139,6 +9194,15 @@ export type GlobalUpdateStatusData = {
   url: "/global/update/status"
 }
 
+export type GlobalUpdateStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalUpdateStatusError = GlobalUpdateStatusErrors[keyof GlobalUpdateStatusErrors]
+
 export type GlobalUpdateStatusResponses = {
   /**
    * Server update status
@@ -9160,6 +9224,10 @@ export type GlobalUpdateCheckErrors = {
    * Forbidden
    */
   403: ServerUpdateForbiddenError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type GlobalUpdateCheckError = GlobalUpdateCheckErrors[keyof GlobalUpdateCheckErrors]
@@ -9189,6 +9257,10 @@ export type GlobalUpdateStartErrors = {
    * Forbidden
    */
   403: ServerUpdateForbiddenError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type GlobalUpdateStartError = GlobalUpdateStartErrors[keyof GlobalUpdateStartErrors]
@@ -9208,6 +9280,16 @@ export type ObservabilityDiagnosticsSummaryData = {
   query?: never
   url: "/global/diagnostics"
 }
+
+export type ObservabilityDiagnosticsSummaryErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ObservabilityDiagnosticsSummaryError =
+  ObservabilityDiagnosticsSummaryErrors[keyof ObservabilityDiagnosticsSummaryErrors]
 
 export type ObservabilityDiagnosticsSummaryResponses = {
   /**
@@ -9230,6 +9312,15 @@ export type PerformanceSummaryData = {
   url: "/global/performance/summary"
 }
 
+export type PerformanceSummaryErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceSummaryError = PerformanceSummaryErrors[keyof PerformanceSummaryErrors]
+
 export type PerformanceSummaryResponses = {
   /**
    * Performance summary
@@ -9245,6 +9336,15 @@ export type PerformanceAnalysisStartData = {
   query?: never
   url: "/global/performance/analysis"
 }
+
+export type PerformanceAnalysisStartErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceAnalysisStartError = PerformanceAnalysisStartErrors[keyof PerformanceAnalysisStartErrors]
 
 export type PerformanceAnalysisStartResponses = {
   /**
@@ -9265,6 +9365,15 @@ export type PerformanceAnalysisGetData = {
   url: "/global/performance/analysis/{sessionID}"
 }
 
+export type PerformanceAnalysisGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceAnalysisGetError = PerformanceAnalysisGetErrors[keyof PerformanceAnalysisGetErrors]
+
 export type PerformanceAnalysisGetResponses = {
   /**
    * Performance analysis state
@@ -9282,6 +9391,15 @@ export type PerformanceAnalysisCancelData = {
   query?: never
   url: "/global/performance/analysis/{sessionID}/cancel"
 }
+
+export type PerformanceAnalysisCancelErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceAnalysisCancelError = PerformanceAnalysisCancelErrors[keyof PerformanceAnalysisCancelErrors]
 
 export type PerformanceAnalysisCancelResponses = {
   /**
@@ -9304,6 +9422,15 @@ export type PerformanceInflightData = {
   }
   url: "/global/performance/inflight"
 }
+
+export type PerformanceInflightErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceInflightError = PerformanceInflightErrors[keyof PerformanceInflightErrors]
 
 export type PerformanceInflightResponses = {
   /**
@@ -9332,6 +9459,15 @@ export type PerformanceTimelineData = {
   }
   url: "/global/performance/timeline"
 }
+
+export type PerformanceTimelineErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceTimelineError = PerformanceTimelineErrors[keyof PerformanceTimelineErrors]
 
 export type PerformanceTimelineResponses = {
   /**
@@ -9369,6 +9505,15 @@ export type PerformanceTracesListData = {
   url: "/global/performance/traces"
 }
 
+export type PerformanceTracesListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceTracesListError = PerformanceTracesListErrors[keyof PerformanceTracesListErrors]
+
 export type PerformanceTracesListResponses = {
   /**
    * Performance traces
@@ -9390,6 +9535,15 @@ export type PerformanceTracesDetailData = {
   }
   url: "/global/performance/traces/{traceId}"
 }
+
+export type PerformanceTracesDetailErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceTracesDetailError = PerformanceTracesDetailErrors[keyof PerformanceTracesDetailErrors]
 
 export type PerformanceTracesDetailResponses = {
   /**
@@ -9416,6 +9570,15 @@ export type PerformanceIssuesListData = {
   url: "/global/performance/issues"
 }
 
+export type PerformanceIssuesListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceIssuesListError = PerformanceIssuesListErrors[keyof PerformanceIssuesListErrors]
+
 export type PerformanceIssuesListResponses = {
   /**
    * Performance issues
@@ -9431,6 +9594,16 @@ export type PerformancePerformanceConfigGetData = {
   query?: never
   url: "/global/performance/config"
 }
+
+export type PerformancePerformanceConfigGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformancePerformanceConfigGetError =
+  PerformancePerformanceConfigGetErrors[keyof PerformancePerformanceConfigGetErrors]
 
 export type PerformancePerformanceConfigGetResponses = {
   /**
@@ -9449,6 +9622,16 @@ export type PerformancePerformanceConfigUpdateData = {
   url: "/global/performance/config"
 }
 
+export type PerformancePerformanceConfigUpdateErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformancePerformanceConfigUpdateError =
+  PerformancePerformanceConfigUpdateErrors[keyof PerformancePerformanceConfigUpdateErrors]
+
 export type PerformancePerformanceConfigUpdateResponses = {
   /**
    * Validated performance config
@@ -9465,6 +9648,16 @@ export type PerformanceBrowserMetricsIngestData = {
   query?: never
   url: "/global/performance/browser-metrics"
 }
+
+export type PerformanceBrowserMetricsIngestErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceBrowserMetricsIngestError =
+  PerformanceBrowserMetricsIngestErrors[keyof PerformanceBrowserMetricsIngestErrors]
 
 export type PerformanceBrowserMetricsIngestResponses = {
   /**
@@ -9489,6 +9682,15 @@ export type PerformanceEventsStreamData = {
   url: "/global/performance/events"
 }
 
+export type PerformanceEventsStreamErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PerformanceEventsStreamError = PerformanceEventsStreamErrors[keyof PerformanceEventsStreamErrors]
+
 export type PerformanceEventsStreamResponses = {
   /**
    * Performance event stream
@@ -9502,6 +9704,15 @@ export type GlobalDisposeData = {
   query?: never
   url: "/global/dispose"
 }
+
+export type GlobalDisposeErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalDisposeError = GlobalDisposeErrors[keyof GlobalDisposeErrors]
 
 export type GlobalDisposeResponses = {
   /**
@@ -9523,6 +9734,15 @@ export type HolosLoginData = {
   url: "/holos/login"
 }
 
+export type HolosLoginErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosLoginError = HolosLoginErrors[keyof HolosLoginErrors]
+
 export type HolosLoginResponses = {
   /**
    * Login URL
@@ -9539,6 +9759,15 @@ export type HolosCallbackData = {
   url: "/holos/callback"
 }
 
+export type HolosCallbackErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosCallbackError = HolosCallbackErrors[keyof HolosCallbackErrors]
+
 export type HolosCallbackResponses = {
   /**
    * Login result HTML page
@@ -9554,6 +9783,15 @@ export type HolosLogoutData = {
   query?: never
   url: "/holos/credentials"
 }
+
+export type HolosLogoutErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosLogoutError = HolosLogoutErrors[keyof HolosLogoutErrors]
 
 export type HolosLogoutResponses = {
   /**
@@ -9579,6 +9817,10 @@ export type HolosCredentialsErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosCredentialsError = HolosCredentialsErrors[keyof HolosCredentialsErrors]
@@ -9604,6 +9846,10 @@ export type HolosReconnectErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosReconnectError = HolosReconnectErrors[keyof HolosReconnectErrors]
@@ -9623,6 +9869,15 @@ export type SynergyLinkTargetsData = {
   query?: never
   url: "/synergy-link/targets"
 }
+
+export type SynergyLinkTargetsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SynergyLinkTargetsError = SynergyLinkTargetsErrors[keyof SynergyLinkTargetsErrors]
 
 export type SynergyLinkTargetsResponses = {
   /**
@@ -9645,6 +9900,10 @@ export type SynergyLinkTargetCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SynergyLinkTargetCreateError = SynergyLinkTargetCreateErrors[keyof SynergyLinkTargetCreateErrors]
@@ -9672,6 +9931,10 @@ export type SynergyLinkTargetRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SynergyLinkTargetRemoveError = SynergyLinkTargetRemoveErrors[keyof SynergyLinkTargetRemoveErrors]
@@ -9703,6 +9966,10 @@ export type SynergyLinkTargetUpdateErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SynergyLinkTargetUpdateError = SynergyLinkTargetUpdateErrors[keyof SynergyLinkTargetUpdateErrors]
@@ -9734,6 +10001,10 @@ export type SynergyLinkTargetProbeErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SynergyLinkTargetProbeError = SynergyLinkTargetProbeErrors[keyof SynergyLinkTargetProbeErrors]
@@ -9759,6 +10030,10 @@ export type GlobalAgendaListErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type GlobalAgendaListError = GlobalAgendaListErrors[keyof GlobalAgendaListErrors]
@@ -9821,6 +10096,10 @@ export type GlobalSessionSearchErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type GlobalSessionSearchError = GlobalSessionSearchErrors[keyof GlobalSessionSearchErrors]
@@ -9880,6 +10159,15 @@ export type GlobalNavRecentData = {
   url: "/global/recent"
 }
 
+export type GlobalNavRecentErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalNavRecentError = GlobalNavRecentErrors[keyof GlobalNavRecentErrors]
+
 export type GlobalNavRecentResponses = {
   /**
    * Paginated recent sessions
@@ -9895,6 +10183,16 @@ export type GlobalNavAcknowledgeCompletionsData = {
   query?: never
   url: "/global/acknowledge-completions"
 }
+
+export type GlobalNavAcknowledgeCompletionsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalNavAcknowledgeCompletionsError =
+  GlobalNavAcknowledgeCompletionsErrors[keyof GlobalNavAcknowledgeCompletionsErrors]
 
 export type GlobalNavAcknowledgeCompletionsResponses = {
   /**
@@ -9914,6 +10212,15 @@ export type GlobalNavPinnedData = {
   }
   url: "/global/pinned"
 }
+
+export type GlobalNavPinnedErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalNavPinnedError = GlobalNavPinnedErrors[keyof GlobalNavPinnedErrors]
 
 export type GlobalNavPinnedResponses = {
   /**
@@ -9943,6 +10250,10 @@ export type AgendaWebhookErrors = {
   404: {
     message: string
   }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaWebhookError = AgendaWebhookErrors[keyof AgendaWebhookErrors]
@@ -9966,6 +10277,15 @@ export type ScopeListData = {
   url: "/scope"
 }
 
+export type ScopeListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ScopeListError = ScopeListErrors[keyof ScopeListErrors]
+
 export type ScopeListResponses = {
   /**
    * List of scopes
@@ -9985,6 +10305,15 @@ export type ScopeCurrentData = {
   url: "/scope/current"
 }
 
+export type ScopeCurrentErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ScopeCurrentError = ScopeCurrentErrors[keyof ScopeCurrentErrors]
+
 export type ScopeCurrentResponses = {
   /**
    * Current scope information
@@ -10003,6 +10332,15 @@ export type ScopeIndexData = {
   }
   url: "/scope/index"
 }
+
+export type ScopeIndexErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ScopeIndexError = ScopeIndexErrors[keyof ScopeIndexErrors]
 
 export type ScopeIndexResponses = {
   /**
@@ -10030,6 +10368,10 @@ export type ScopeRemoveErrors = {
    * Managed project archive conflict
    */
   409: ManagedProjectArchiveError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ScopeRemoveError = ScopeRemoveErrors[keyof ScopeRemoveErrors]
@@ -10079,6 +10421,10 @@ export type ScopeUpdateErrors = {
    * Managed project archive conflict
    */
   409: ManagedProjectArchiveError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ScopeUpdateError = ScopeUpdateErrors[keyof ScopeUpdateErrors]
@@ -10111,6 +10457,10 @@ export type ScopeBootstrapErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ScopeBootstrapError = ScopeBootstrapErrors[keyof ScopeBootstrapErrors]
@@ -10133,6 +10483,15 @@ export type PtyListData = {
   }
   url: "/pty"
 }
+
+export type PtyListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PtyListError = PtyListErrors[keyof PtyListErrors]
 
 export type PtyListResponses = {
   /**
@@ -10166,6 +10525,10 @@ export type PtyCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PtyCreateError = PtyCreateErrors[keyof PtyCreateErrors]
@@ -10196,6 +10559,10 @@ export type PtyRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PtyRemoveError = PtyRemoveErrors[keyof PtyRemoveErrors]
@@ -10226,6 +10593,10 @@ export type PtyGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PtyGetError = PtyGetErrors[keyof PtyGetErrors]
@@ -10262,6 +10633,10 @@ export type PtyUpdateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PtyUpdateError = PtyUpdateErrors[keyof PtyUpdateErrors]
@@ -10292,6 +10667,10 @@ export type PtyConnectErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PtyConnectError = PtyConnectErrors[keyof PtyConnectErrors]
@@ -10314,6 +10693,15 @@ export type ConfigGetData = {
   }
   url: "/config"
 }
+
+export type ConfigGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigGetError = ConfigGetErrors[keyof ConfigGetErrors]
 
 export type ConfigGetResponses = {
   /**
@@ -10341,6 +10729,10 @@ export type ConfigUpdateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ConfigUpdateError = ConfigUpdateErrors[keyof ConfigUpdateErrors]
@@ -10364,6 +10756,15 @@ export type ConfigGlobalData = {
   url: "/config/global"
 }
 
+export type ConfigGlobalErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigGlobalError = ConfigGlobalErrors[keyof ConfigGlobalErrors]
+
 export type ConfigGlobalResponses = {
   /**
    * Get global config info
@@ -10382,6 +10783,15 @@ export type ConfigDiagnosticsData = {
   }
   url: "/config/diagnostics"
 }
+
+export type ConfigDiagnosticsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigDiagnosticsError = ConfigDiagnosticsErrors[keyof ConfigDiagnosticsErrors]
 
 export type ConfigDiagnosticsResponses = {
   /**
@@ -10402,6 +10812,15 @@ export type ConfigInstructionsResetData = {
   url: "/config/instructions"
 }
 
+export type ConfigInstructionsResetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigInstructionsResetError = ConfigInstructionsResetErrors[keyof ConfigInstructionsResetErrors]
+
 export type ConfigInstructionsResetResponses = {
   /**
    * Reset effective global custom instructions
@@ -10420,6 +10839,15 @@ export type ConfigInstructionsGetData = {
   }
   url: "/config/instructions"
 }
+
+export type ConfigInstructionsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigInstructionsGetError = ConfigInstructionsGetErrors[keyof ConfigInstructionsGetErrors]
 
 export type ConfigInstructionsGetResponses = {
   /**
@@ -10445,6 +10873,10 @@ export type ConfigInstructionsUpdateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ConfigInstructionsUpdateError = ConfigInstructionsUpdateErrors[keyof ConfigInstructionsUpdateErrors]
@@ -10468,6 +10900,15 @@ export type ConfigDomainListData = {
   }
   url: "/config/domains"
 }
+
+export type ConfigDomainListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigDomainListError = ConfigDomainListErrors[keyof ConfigDomainListErrors]
 
 export type ConfigDomainListResponses = {
   /**
@@ -10508,6 +10949,10 @@ export type ConfigDomainGetErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ConfigDomainGetError = ConfigDomainGetErrors[keyof ConfigDomainGetErrors]
@@ -10551,6 +10996,10 @@ export type ConfigDomainUpdateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ConfigDomainUpdateError = ConfigDomainUpdateErrors[keyof ConfigDomainUpdateErrors]
@@ -10598,6 +11047,10 @@ export type ConfigDomainOpenErrors = {
    * Failed to open config domain file
    */
   500: ConfigDomainOpenError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ConfigDomainOpenError2 = ConfigDomainOpenErrors[keyof ConfigDomainOpenErrors]
@@ -10630,6 +11083,10 @@ export type ConfigImportPlanErrors = {
    * Config import request is too large
    */
   413: ConfigImportSourceTooLargeError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ConfigImportPlanError = ConfigImportPlanErrors[keyof ConfigImportPlanErrors]
@@ -10666,6 +11123,10 @@ export type ConfigImportApplyErrors = {
    * Config import request is too large
    */
   413: ConfigImportSourceTooLargeError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ConfigImportApplyError = ConfigImportApplyErrors[keyof ConfigImportApplyErrors]
@@ -10688,6 +11149,15 @@ export type ConfigProvidersData = {
   }
   url: "/config/providers"
 }
+
+export type ConfigProvidersErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigProvidersError = ConfigProvidersErrors[keyof ConfigProvidersErrors]
 
 export type ConfigProvidersResponses = {
   /**
@@ -10723,6 +11193,10 @@ export type RuntimeReloadErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type RuntimeReloadError = RuntimeReloadErrors[keyof RuntimeReloadErrors]
@@ -10745,6 +11219,15 @@ export type ControlProfileListData = {
   }
   url: "/control-profiles"
 }
+
+export type ControlProfileListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ControlProfileListError = ControlProfileListErrors[keyof ControlProfileListErrors]
 
 export type ControlProfileListResponses = {
   /**
@@ -10774,6 +11257,10 @@ export type ControlProfileEffectiveErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ControlProfileEffectiveError = ControlProfileEffectiveErrors[keyof ControlProfileEffectiveErrors]
@@ -10797,6 +11284,15 @@ export type SandboxStatusData = {
   url: "/sandbox/status"
 }
 
+export type SandboxStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SandboxStatusError = SandboxStatusErrors[keyof SandboxStatusErrors]
+
 export type SandboxStatusResponses = {
   /**
    * Sandbox status information
@@ -10815,6 +11311,15 @@ export type SandboxReadinessData = {
   }
   url: "/sandbox/readiness"
 }
+
+export type SandboxReadinessErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SandboxReadinessError = SandboxReadinessErrors[keyof SandboxReadinessErrors]
 
 export type SandboxReadinessResponses = {
   /**
@@ -10840,6 +11345,10 @@ export type ToolIdsErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ToolIdsError = ToolIdsErrors[keyof ToolIdsErrors]
@@ -10870,6 +11379,10 @@ export type ToolListErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ToolListError = ToolListErrors[keyof ToolListErrors]
@@ -10893,6 +11406,15 @@ export type ScopeRuntimeDisposeData = {
   url: "/scope/runtime/dispose"
 }
 
+export type ScopeRuntimeDisposeErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ScopeRuntimeDisposeError = ScopeRuntimeDisposeErrors[keyof ScopeRuntimeDisposeErrors]
+
 export type ScopeRuntimeDisposeResponses = {
   /**
    * Scope runtime disposed
@@ -10912,6 +11434,15 @@ export type PathGetData = {
   url: "/path"
 }
 
+export type PathGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PathGetError = PathGetErrors[keyof PathGetErrors]
+
 export type PathGetResponses = {
   /**
    * Path
@@ -10930,6 +11461,15 @@ export type WorktreeListData = {
   }
   url: "/experimental/worktree"
 }
+
+export type WorktreeListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorktreeListError = WorktreeListErrors[keyof WorktreeListErrors]
 
 export type WorktreeListResponses = {
   /**
@@ -10955,6 +11495,10 @@ export type WorktreeCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorktreeCreateError = WorktreeCreateErrors[keyof WorktreeCreateErrors]
@@ -10989,6 +11533,10 @@ export type WorktreeEnterErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorktreeEnterError = WorktreeEnterErrors[keyof WorktreeEnterErrors]
@@ -11023,6 +11571,10 @@ export type WorktreeLeaveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorktreeLeaveError = WorktreeLeaveErrors[keyof WorktreeLeaveErrors]
@@ -11055,6 +11607,10 @@ export type WorktreeRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorktreeRemoveError = WorktreeRemoveErrors[keyof WorktreeRemoveErrors]
@@ -11077,6 +11633,15 @@ export type VcsGetData = {
   }
   url: "/vcs"
 }
+
+export type VcsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
 
 export type VcsGetResponses = {
   /**
@@ -11102,6 +11667,15 @@ export type SessionIndexData = {
   }
   url: "/session/index"
 }
+
+export type SessionIndexErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionIndexError = SessionIndexErrors[keyof SessionIndexErrors]
 
 export type SessionIndexResponses = {
   /**
@@ -11150,6 +11724,15 @@ export type SessionListData = {
   url: "/session"
 }
 
+export type SessionListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionListError = SessionListErrors[keyof SessionListErrors]
+
 export type SessionListResponses = {
   /**
    * Paginated list of sessions
@@ -11188,6 +11771,10 @@ export type SessionCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionCreateError = SessionCreateErrors[keyof SessionCreateErrors]
@@ -11216,6 +11803,10 @@ export type SessionStatusErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionStatusError = SessionStatusErrors[keyof SessionStatusErrors]
@@ -11252,6 +11843,10 @@ export type SessionDeleteErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionDeleteError = SessionDeleteErrors[keyof SessionDeleteErrors]
@@ -11286,6 +11881,10 @@ export type SessionGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionGetError = SessionGetErrors[keyof SessionGetErrors]
@@ -11335,6 +11934,10 @@ export type SessionUpdateErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionUpdateError = SessionUpdateErrors[keyof SessionUpdateErrors]
@@ -11374,6 +11977,10 @@ export type SessionChildrenErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionChildrenError = SessionChildrenErrors[keyof SessionChildrenErrors]
@@ -11411,6 +12018,10 @@ export type SessionTodoErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionTodoError = SessionTodoErrors[keyof SessionTodoErrors]
@@ -11448,6 +12059,10 @@ export type SessionDagErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionDagError = SessionDagErrors[keyof SessionDagErrors]
@@ -11487,6 +12102,10 @@ export type SessionAgendaErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionAgendaError = SessionAgendaErrors[keyof SessionAgendaErrors]
@@ -11528,6 +12147,10 @@ export type SessionInitErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionInitError = SessionInitErrors[keyof SessionInitErrors]
@@ -11566,6 +12189,15 @@ export type SessionForkData = {
   url: "/session/{sessionID}/fork"
 }
 
+export type SessionForkErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionForkError = SessionForkErrors[keyof SessionForkErrors]
+
 export type SessionForkResponses = {
   /**
    * 200
@@ -11596,6 +12228,10 @@ export type SessionAbortErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionAbortError = SessionAbortErrors[keyof SessionAbortErrors]
@@ -11633,6 +12269,10 @@ export type SessionInboxErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionInboxError = SessionInboxErrors[keyof SessionInboxErrors]
@@ -11697,6 +12337,10 @@ export type SessionInputErrors = {
    * Session worktree unavailable
    */
   409: WorktreeUnavailableError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionInputError = SessionInputErrors[keyof SessionInputErrors]
@@ -11742,6 +12386,10 @@ export type SessionInboxRetryErrors = {
    * Session worktree unavailable
    */
   409: WorktreeUnavailableError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionInboxRetryError = SessionInboxRetryErrors[keyof SessionInboxRetryErrors]
@@ -11787,6 +12435,10 @@ export type SessionInboxGuideErrors = {
    * First task is locked until its root is ready
    */
   409: SessionInboxFirstTaskLockedError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionInboxGuideError = SessionInboxGuideErrors[keyof SessionInboxGuideErrors]
@@ -11832,6 +12484,10 @@ export type SessionInboxRemoveErrors = {
    * First task is locked until its root is ready
    */
   409: SessionInboxFirstTaskLockedError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionInboxRemoveError = SessionInboxRemoveErrors[keyof SessionInboxRemoveErrors]
@@ -11873,6 +12529,10 @@ export type SessionSummarizeErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionSummarizeError = SessionSummarizeErrors[keyof SessionSummarizeErrors]
@@ -11912,6 +12572,10 @@ export type SessionMessagesErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionMessagesError = SessionMessagesErrors[keyof SessionMessagesErrors]
@@ -11975,6 +12639,10 @@ export type SessionPromptErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionPromptError = SessionPromptErrors[keyof SessionPromptErrors]
@@ -12014,6 +12682,10 @@ export type SessionMessagePageErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionMessagePageError = SessionMessagePageErrors[keyof SessionMessagePageErrors]
@@ -12051,6 +12723,10 @@ export type SessionDiffErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionDiffError = SessionDiffErrors[keyof SessionDiffErrors]
@@ -12092,6 +12768,10 @@ export type SessionMessageErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionMessageError = SessionMessageErrors[keyof SessionMessageErrors]
@@ -12140,6 +12820,10 @@ export type PartDeleteErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PartDeleteError = PartDeleteErrors[keyof PartDeleteErrors]
@@ -12185,6 +12869,10 @@ export type PartUpdateErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PartUpdateError = PartUpdateErrors[keyof PartUpdateErrors]
@@ -12245,6 +12933,10 @@ export type SessionPromptAsyncErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionPromptAsyncError = SessionPromptAsyncErrors[keyof SessionPromptAsyncErrors]
@@ -12303,6 +12995,10 @@ export type SessionCommandErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionCommandError = SessionCommandErrors[keyof SessionCommandErrors]
@@ -12347,6 +13043,10 @@ export type SessionShellErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionShellError = SessionShellErrors[keyof SessionShellErrors]
@@ -12384,6 +13084,10 @@ export type SessionRollbackErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionRollbackError = SessionRollbackErrors[keyof SessionRollbackErrors]
@@ -12422,6 +13126,10 @@ export type SessionRollbackAckErrors = {
    * Rollback acknowledgment conflict
    */
   409: SessionRollbackAckConflictError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionRollbackAckError = SessionRollbackAckErrors[keyof SessionRollbackAckErrors]
@@ -12462,6 +13170,10 @@ export type SessionUnrollbackErrors = {
    * Conflict
    */
   409: NoteConflictError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionUnrollbackError = SessionUnrollbackErrors[keyof SessionUnrollbackErrors]
@@ -12505,6 +13217,10 @@ export type SessionFilesRestoreErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionFilesRestoreError = SessionFilesRestoreErrors[keyof SessionFilesRestoreErrors]
@@ -12533,6 +13249,10 @@ export type SessionVolatileBatchErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionVolatileBatchError = SessionVolatileBatchErrors[keyof SessionVolatileBatchErrors]
@@ -12570,6 +13290,10 @@ export type PermissionRespondErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PermissionRespondError = PermissionRespondErrors[keyof PermissionRespondErrors]
@@ -12607,6 +13331,10 @@ export type PermissionReplyErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PermissionReplyError = PermissionReplyErrors[keyof PermissionReplyErrors]
@@ -12630,6 +13358,15 @@ export type PermissionListData = {
   url: "/permission"
 }
 
+export type PermissionListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PermissionListError = PermissionListErrors[keyof PermissionListErrors]
+
 export type PermissionListResponses = {
   /**
    * List of pending permissions
@@ -12648,6 +13385,15 @@ export type QuestionListData = {
   }
   url: "/question"
 }
+
+export type QuestionListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type QuestionListError = QuestionListErrors[keyof QuestionListErrors]
 
 export type QuestionListResponses = {
   /**
@@ -12684,6 +13430,10 @@ export type QuestionReplyErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type QuestionReplyError = QuestionReplyErrors[keyof QuestionReplyErrors]
@@ -12718,6 +13468,10 @@ export type QuestionRejectErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type QuestionRejectError = QuestionRejectErrors[keyof QuestionRejectErrors]
@@ -12755,6 +13509,10 @@ export type SessionExportEstimateErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionExportEstimateError = SessionExportEstimateErrors[keyof SessionExportEstimateErrors]
@@ -12793,6 +13551,10 @@ export type SessionExportDownloadErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionExportDownloadError = SessionExportDownloadErrors[keyof SessionExportDownloadErrors]
@@ -12821,6 +13583,10 @@ export type SessionImportErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SessionImportError = SessionImportErrors[keyof SessionImportErrors]
@@ -12850,6 +13616,10 @@ export type CortexListErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type CortexListError = CortexListErrors[keyof CortexListErrors]
@@ -12872,6 +13642,15 @@ export type CortexConcurrencyData = {
   }
   url: "/cortex/tasks/concurrency"
 }
+
+export type CortexConcurrencyErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type CortexConcurrencyError = CortexConcurrencyErrors[keyof CortexConcurrencyErrors]
 
 export type CortexConcurrencyResponses = {
   /**
@@ -12903,6 +13682,10 @@ export type CortexGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type CortexGetError = CortexGetErrors[keyof CortexGetErrors]
@@ -12937,6 +13720,10 @@ export type CortexOutputErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type CortexOutputError = CortexOutputErrors[keyof CortexOutputErrors]
@@ -12989,6 +13776,10 @@ export type CortexCancelErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type CortexCancelError = CortexCancelErrors[keyof CortexCancelErrors]
@@ -13012,6 +13803,15 @@ export type CommandListData = {
   url: "/command"
 }
 
+export type CommandListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type CommandListError = CommandListErrors[keyof CommandListErrors]
+
 export type CommandListResponses = {
   /**
    * List of commands
@@ -13030,6 +13830,15 @@ export type ProviderListData = {
   }
   url: "/provider"
 }
+
+export type ProviderListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderListError = ProviderListErrors[keyof ProviderListErrors]
 
 export type ProviderListResponses = {
   /**
@@ -13055,6 +13864,10 @@ export type ProviderConnectionCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderConnectionCreateError = ProviderConnectionCreateErrors[keyof ProviderConnectionCreateErrors]
@@ -13086,6 +13899,10 @@ export type ProviderConnectionRemoveErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderConnectionRemoveError = ProviderConnectionRemoveErrors[keyof ProviderConnectionRemoveErrors]
@@ -13117,6 +13934,10 @@ export type ProviderConnectionUpdateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderConnectionUpdateError = ProviderConnectionUpdateErrors[keyof ProviderConnectionUpdateErrors]
@@ -13151,6 +13972,10 @@ export type ProviderModelsRefreshErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderModelsRefreshError = ProviderModelsRefreshErrors[keyof ProviderModelsRefreshErrors]
@@ -13173,6 +13998,15 @@ export type ProviderUsageListData = {
   }
   url: "/provider/usage"
 }
+
+export type ProviderUsageListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderUsageListError = ProviderUsageListErrors[keyof ProviderUsageListErrors]
 
 export type ProviderUsageListResponses = {
   /**
@@ -13205,6 +14039,10 @@ export type ProviderUsageGetErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderUsageGetError = ProviderUsageGetErrors[keyof ProviderUsageGetErrors]
@@ -13227,6 +14065,15 @@ export type ProviderAuthData = {
   }
   url: "/provider/auth"
 }
+
+export type ProviderAuthErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderAuthError2 = ProviderAuthErrors[keyof ProviderAuthErrors]
 
 export type ProviderAuthResponses = {
   /**
@@ -13263,6 +14110,10 @@ export type ProviderDisconnectErrors = {
    * Stored provider credentials cannot be disconnected in their current state
    */
   409: ProviderAuthDisconnectUnavailableError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderDisconnectError = ProviderDisconnectErrors[keyof ProviderDisconnectErrors]
@@ -13285,6 +14136,15 @@ export type ProviderAuthGithubStatusData = {
   }
   url: "/provider/auth/github/status"
 }
+
+export type ProviderAuthGithubStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderAuthGithubStatusError = ProviderAuthGithubStatusErrors[keyof ProviderAuthGithubStatusErrors]
 
 export type ProviderAuthGithubStatusResponses = {
   /**
@@ -13311,6 +14171,10 @@ export type ProviderAuthGithubLogoutErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderAuthGithubLogoutError = ProviderAuthGithubLogoutErrors[keyof ProviderAuthGithubLogoutErrors]
@@ -13350,6 +14214,10 @@ export type ProviderOauthAuthorizeErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderOauthAuthorizeError = ProviderOauthAuthorizeErrors[keyof ProviderOauthAuthorizeErrors]
@@ -13392,6 +14260,10 @@ export type ProviderOauthCallbackErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderOauthCallbackError = ProviderOauthCallbackErrors[keyof ProviderOauthCallbackErrors]
@@ -13430,6 +14302,10 @@ export type ProviderCredentialsImportCredentialsErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ProviderCredentialsImportCredentialsError =
@@ -13455,6 +14331,15 @@ export type SkillListData = {
   url: "/skill"
 }
 
+export type SkillListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SkillListError = SkillListErrors[keyof SkillListErrors]
+
 export type SkillListResponses = {
   /**
    * List of Skills
@@ -13473,6 +14358,15 @@ export type SkillReloadData = {
   }
   url: "/skill/reload"
 }
+
+export type SkillReloadErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SkillReloadError = SkillReloadErrors[keyof SkillReloadErrors]
 
 export type SkillReloadResponses = {
   /**
@@ -13501,6 +14395,10 @@ export type SkillExportErrors = {
    * Skill is not exportable or not strict-standard
    */
   400: SkillExportNotStandardError | SkillExportUnavailableError | SkillExportNotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SkillExportError = SkillExportErrors[keyof SkillExportErrors]
@@ -13535,6 +14433,10 @@ export type SkillRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SkillRemoveError = SkillRemoveErrors[keyof SkillRemoveErrors]
@@ -13574,6 +14476,10 @@ export type SkillImportErrors = {
    * Skill archive exceeds an import limit
    */
   413: SkillArchiveLimitError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SkillImportError = SkillImportErrors[keyof SkillImportErrors]
@@ -13613,6 +14519,10 @@ export type SkillImportUrlErrors = {
    * Downloaded Skill archive exceeds an import limit
    */
   413: SkillArchiveLimitError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type SkillImportUrlError = SkillImportUrlErrors[keyof SkillImportUrlErrors]
@@ -13646,6 +14556,10 @@ export type WorkspaceFilesChildrenErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorkspaceFilesChildrenError = WorkspaceFilesChildrenErrors[keyof WorkspaceFilesChildrenErrors]
@@ -13680,6 +14594,10 @@ export type WorkspaceFilesReadErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorkspaceFilesReadError = WorkspaceFilesReadErrors[keyof WorkspaceFilesReadErrors]
@@ -13709,6 +14627,10 @@ export type WorkspaceFilesStatErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorkspaceFilesStatError = WorkspaceFilesStatErrors[keyof WorkspaceFilesStatErrors]
@@ -13738,6 +14660,15 @@ export type WorkspaceFilesSearchData = {
   url: "/workspace/files/search"
 }
 
+export type WorkspaceFilesSearchErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesSearchError = WorkspaceFilesSearchErrors[keyof WorkspaceFilesSearchErrors]
+
 export type WorkspaceFilesSearchResponses = {
   /**
    * Workspace search response
@@ -13756,6 +14687,15 @@ export type WorkspaceFilesStatusData = {
   }
   url: "/workspace/files/status"
 }
+
+export type WorkspaceFilesStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesStatusError = WorkspaceFilesStatusErrors[keyof WorkspaceFilesStatusErrors]
 
 export type WorkspaceFilesStatusResponses = {
   /**
@@ -13793,6 +14733,10 @@ export type WorkspaceFilesWriteErrors = {
    * Conflict
    */
   409: WorkspaceFileWriteError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorkspaceFilesWriteError = WorkspaceFilesWriteErrors[keyof WorkspaceFilesWriteErrors]
@@ -13815,6 +14759,15 @@ export type LibraryEmbeddingStatusData = {
   }
   url: "/library/embedding/status"
 }
+
+export type LibraryEmbeddingStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type LibraryEmbeddingStatusError = LibraryEmbeddingStatusErrors[keyof LibraryEmbeddingStatusErrors]
 
 export type LibraryEmbeddingStatusResponses = {
   /**
@@ -13840,6 +14793,10 @@ export type LibraryEmbeddingDownloadErrors = {
    * A remote embedding service is configured
    */
   409: EmbeddingRemoteConfiguredError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryEmbeddingDownloadError = LibraryEmbeddingDownloadErrors[keyof LibraryEmbeddingDownloadErrors]
@@ -13897,6 +14854,10 @@ export type LibraryExperienceSearchErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceSearchError = LibraryExperienceSearchErrors[keyof LibraryExperienceSearchErrors]
@@ -13942,6 +14903,10 @@ export type LibraryExperiencePageErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperiencePageError = LibraryExperiencePageErrors[keyof LibraryExperiencePageErrors]
@@ -13975,6 +14940,10 @@ export type LibraryExperienceRemoveErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceRemoveError = LibraryExperienceRemoveErrors[keyof LibraryExperienceRemoveErrors]
@@ -14012,6 +14981,10 @@ export type LibraryExperienceGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceGetError = LibraryExperienceGetErrors[keyof LibraryExperienceGetErrors]
@@ -14055,6 +15028,10 @@ export type LibraryExperienceApplyRewardErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceApplyRewardError =
@@ -14083,6 +15060,15 @@ export type LibraryExperienceListData = {
   url: "/library/experience"
 }
 
+export type LibraryExperienceListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type LibraryExperienceListError = LibraryExperienceListErrors[keyof LibraryExperienceListErrors]
+
 export type LibraryExperienceListResponses = {
   /**
    * List of experiences
@@ -14107,6 +15093,10 @@ export type LibraryExperienceDetectErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceDetectError = LibraryExperienceDetectErrors[keyof LibraryExperienceDetectErrors]
@@ -14148,6 +15138,10 @@ export type LibraryExperienceStartReencodeJobErrors = {
    * A reencode job is already running
    */
   409: ReencodeJobConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceStartReencodeJobError =
@@ -14178,6 +15172,10 @@ export type LibraryExperienceGetReencodeJobErrors = {
    * No reencode job exists
    */
   404: ReencodeJobError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceGetReencodeJobError =
@@ -14212,6 +15210,10 @@ export type LibraryExperienceCancelReencodeJobErrors = {
    * The current job is not running
    */
   409: ReencodeJobConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceCancelReencodeJobError =
@@ -14251,6 +15253,10 @@ export type LibraryExperienceReencodeErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryExperienceReencodeError = LibraryExperienceReencodeErrors[keyof LibraryExperienceReencodeErrors]
@@ -14295,6 +15301,10 @@ export type LibraryStatsErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryStatsError = LibraryStatsErrors[keyof LibraryStatsErrors]
@@ -14340,6 +15350,10 @@ export type LibrarySearchErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibrarySearchError = LibrarySearchErrors[keyof LibrarySearchErrors]
@@ -14381,6 +15395,10 @@ export type LibraryResetErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryResetError = LibraryResetErrors[keyof LibraryResetErrors]
@@ -14414,6 +15432,10 @@ export type LibraryRemoveErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryRemoveError = LibraryRemoveErrors[keyof LibraryRemoveErrors]
@@ -14451,6 +15473,10 @@ export type LibraryGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LibraryGetError = LibraryGetErrors[keyof LibraryGetErrors]
@@ -14475,6 +15501,15 @@ export type LibraryListData = {
   }
   url: "/library"
 }
+
+export type LibraryListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type LibraryListError = LibraryListErrors[keyof LibraryListErrors]
 
 export type LibraryListResponses = {
   /**
@@ -14523,6 +15558,10 @@ export type AgendaActivityErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaActivityError = AgendaActivityErrors[keyof AgendaActivityErrors]
@@ -14556,6 +15595,10 @@ export type AgendaSessionsErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaSessionsError = AgendaSessionsErrors[keyof AgendaSessionsErrors]
@@ -14589,6 +15632,10 @@ export type AgendaRunsErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaRunsError = AgendaRunsErrors[keyof AgendaRunsErrors]
@@ -14622,6 +15669,10 @@ export type AgendaTriggerErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaTriggerError = AgendaTriggerErrors[keyof AgendaTriggerErrors]
@@ -14655,6 +15706,10 @@ export type AgendaActivateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaActivateError = AgendaActivateErrors[keyof AgendaActivateErrors]
@@ -14688,6 +15743,10 @@ export type AgendaPauseErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaPauseError = AgendaPauseErrors[keyof AgendaPauseErrors]
@@ -14721,6 +15780,10 @@ export type AgendaCompleteErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaCompleteError = AgendaCompleteErrors[keyof AgendaCompleteErrors]
@@ -14754,6 +15817,10 @@ export type AgendaCancelErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaCancelError = AgendaCancelErrors[keyof AgendaCancelErrors]
@@ -14787,6 +15854,10 @@ export type AgendaRemoveErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaRemoveError = AgendaRemoveErrors[keyof AgendaRemoveErrors]
@@ -14824,6 +15895,10 @@ export type AgendaGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaGetError = AgendaGetErrors[keyof AgendaGetErrors]
@@ -14861,6 +15936,10 @@ export type AgendaUpdateErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaUpdateError = AgendaUpdateErrors[keyof AgendaUpdateErrors]
@@ -14889,6 +15968,10 @@ export type AgendaListErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaListError = AgendaListErrors[keyof AgendaListErrors]
@@ -14917,6 +16000,10 @@ export type AgendaCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AgendaCreateError = AgendaCreateErrors[keyof AgendaCreateErrors]
@@ -14949,6 +16036,10 @@ export type NoteListMetaErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteListMetaError = NoteListMetaErrors[keyof NoteListMetaErrors]
@@ -14981,6 +16072,10 @@ export type NoteListAllErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteListAllError = NoteListAllErrors[keyof NoteListAllErrors]
@@ -15022,6 +16117,10 @@ export type NoteExportErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteExportError = NoteExportErrors[keyof NoteExportErrors]
@@ -15052,6 +16151,10 @@ export type NoteListErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteListError = NoteListErrors[keyof NoteListErrors]
@@ -15080,6 +16183,10 @@ export type NoteCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteCreateError = NoteCreateErrors[keyof NoteCreateErrors]
@@ -15121,6 +16228,10 @@ export type NoteRemoveErrors = {
    * Conflict
    */
   409: NoteConflictError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteRemoveError = NoteRemoveErrors[keyof NoteRemoveErrors]
@@ -15158,6 +16269,10 @@ export type NoteGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteGetError = NoteGetErrors[keyof NoteGetErrors]
@@ -15199,6 +16314,10 @@ export type NoteUpdateErrors = {
    * Conflict
    */
   409: NoteConflictError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteUpdateError = NoteUpdateErrors[keyof NoteUpdateErrors]
@@ -15236,6 +16355,10 @@ export type NoteBatchErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type NoteBatchError = NoteBatchErrors[keyof NoteBatchErrors]
@@ -15267,6 +16390,10 @@ export type BlueprintLoopListErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopListError = BlueprintLoopListErrors[keyof BlueprintLoopListErrors]
@@ -15295,6 +16422,10 @@ export type BlueprintLoopCreateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopCreateError = BlueprintLoopCreateErrors[keyof BlueprintLoopCreateErrors]
@@ -15332,6 +16463,10 @@ export type BlueprintLoopCompleteErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopCompleteError = BlueprintLoopCompleteErrors[keyof BlueprintLoopCompleteErrors]
@@ -15369,6 +16504,10 @@ export type BlueprintLoopCancelErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopCancelError = BlueprintLoopCancelErrors[keyof BlueprintLoopCancelErrors]
@@ -15406,6 +16545,10 @@ export type BlueprintLoopGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopGetError = BlueprintLoopGetErrors[keyof BlueprintLoopGetErrors]
@@ -15448,6 +16591,10 @@ export type BlueprintLoopBindErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopBindError = BlueprintLoopBindErrors[keyof BlueprintLoopBindErrors]
@@ -15490,6 +16637,10 @@ export type BlueprintLoopStartErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopStartError = BlueprintLoopStartErrors[keyof BlueprintLoopStartErrors]
@@ -15527,6 +16678,10 @@ export type BlueprintLoopWaitErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopWaitError = BlueprintLoopWaitErrors[keyof BlueprintLoopWaitErrors]
@@ -15564,6 +16719,10 @@ export type BlueprintLoopResumeErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopResumeError = BlueprintLoopResumeErrors[keyof BlueprintLoopResumeErrors]
@@ -15601,6 +16760,10 @@ export type BlueprintLoopActivityErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BlueprintLoopActivityError = BlueprintLoopActivityErrors[keyof BlueprintLoopActivityErrors]
@@ -15638,6 +16801,10 @@ export type LatticeSessionGetRunErrors = {
    * Internal server error
    */
   500: LatticeInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LatticeSessionGetRunError = LatticeSessionGetRunErrors[keyof LatticeSessionGetRunErrors]
@@ -15670,6 +16837,10 @@ export type LatticeRunListErrors = {
    * Internal server error
    */
   500: LatticeInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LatticeRunListError = LatticeRunListErrors[keyof LatticeRunListErrors]
@@ -15711,6 +16882,10 @@ export type LatticeRunGetErrors = {
    * Internal server error
    */
   500: LatticeInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LatticeRunGetError = LatticeRunGetErrors[keyof LatticeRunGetErrors]
@@ -15752,6 +16927,10 @@ export type LatticeRunEventsErrors = {
    * Internal server error
    */
   500: LatticeInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LatticeRunEventsError = LatticeRunEventsErrors[keyof LatticeRunEventsErrors]
@@ -15799,6 +16978,10 @@ export type LatticeRunPauseErrors = {
    * Internal server error
    */
   500: LatticeInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LatticeRunPauseError = LatticeRunPauseErrors[keyof LatticeRunPauseErrors]
@@ -15846,6 +17029,10 @@ export type LatticeRunResumeErrors = {
    * Internal server error
    */
   500: LatticeInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LatticeRunResumeError = LatticeRunResumeErrors[keyof LatticeRunResumeErrors]
@@ -15893,6 +17080,10 @@ export type LatticeRunCancelErrors = {
    * Internal server error
    */
   500: LatticeInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LatticeRunCancelError = LatticeRunCancelErrors[keyof LatticeRunCancelErrors]
@@ -15940,6 +17131,10 @@ export type LatticeRunApproveErrors = {
    * Internal server error
    */
   500: LatticeInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type LatticeRunApproveError = LatticeRunApproveErrors[keyof LatticeRunApproveErrors]
@@ -15985,6 +17180,10 @@ export type WorkflowSessionSetErrors = {
    * Internal server error
    */
   500: WorkflowInternalServerError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorkflowSessionSetError = WorkflowSessionSetErrors[keyof WorkflowSessionSetErrors]
@@ -16022,6 +17221,10 @@ export type WorkflowSessionUpdateLightloopErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorkflowSessionUpdateLightloopError =
@@ -16061,6 +17264,10 @@ export type WorkflowSessionCancelLightloopErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorkflowSessionCancelLightloopError =
@@ -16098,6 +17305,10 @@ export type WorkflowSessionGetLightloopTerminalErrors = {
   404: {
     message: string
   }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type WorkflowSessionGetLightloopTerminalError =
@@ -16150,6 +17361,10 @@ export type BossSessionTreeErrors = {
    * Internal server error
    */
   500: BossErrorResponse
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BossSessionTreeError = BossSessionTreeErrors[keyof BossSessionTreeErrors]
@@ -16195,6 +17410,10 @@ export type BossSessionWorkerCreateErrors = {
    * Internal server error
    */
   500: BossErrorResponse
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BossSessionWorkerCreateError = BossSessionWorkerCreateErrors[keyof BossSessionWorkerCreateErrors]
@@ -16240,6 +17459,10 @@ export type BossSessionWorkerAssignErrors = {
    * Internal server error
    */
   500: BossErrorResponse
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BossSessionWorkerAssignError = BossSessionWorkerAssignErrors[keyof BossSessionWorkerAssignErrors]
@@ -16285,6 +17508,10 @@ export type BossSessionWorkerCancelErrors = {
    * Internal server error
    */
   500: BossErrorResponse
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BossSessionWorkerCancelError = BossSessionWorkerCancelErrors[keyof BossSessionWorkerCancelErrors]
@@ -16315,6 +17542,10 @@ export type AssetUploadErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AssetUploadError = AssetUploadErrors[keyof AssetUploadErrors]
@@ -16345,6 +17576,10 @@ export type AssetGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AssetGetError = AssetGetErrors[keyof AssetGetErrors]
@@ -16366,6 +17601,15 @@ export type HolosCredentialsStatusData = {
   url: "/holos/credentials/status"
 }
 
+export type HolosCredentialsStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosCredentialsStatusError = HolosCredentialsStatusErrors[keyof HolosCredentialsStatusErrors]
+
 export type HolosCredentialsStatusResponses = {
   /**
    * Credential status
@@ -16384,6 +17628,15 @@ export type HolosStateData = {
   }
   url: "/holos/state"
 }
+
+export type HolosStateErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosStateError = HolosStateErrors[keyof HolosStateErrors]
 
 export type HolosStateResponses = {
   /**
@@ -16409,6 +17662,10 @@ export type HolosProfileGetErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosProfileGetError = HolosProfileGetErrors[keyof HolosProfileGetErrors]
@@ -16437,6 +17694,10 @@ export type HolosProfileUpdateErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosProfileUpdateError = HolosProfileUpdateErrors[keyof HolosProfileUpdateErrors]
@@ -16460,6 +17721,15 @@ export type HolosVerifyData = {
   url: "/holos/verify"
 }
 
+export type HolosVerifyErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosVerifyError = HolosVerifyErrors[keyof HolosVerifyErrors]
+
 export type HolosVerifyResponses = {
   /**
    * Credentials valid
@@ -16478,6 +17748,15 @@ export type HolosAccountsListData = {
   }
   url: "/holos/accounts"
 }
+
+export type HolosAccountsListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosAccountsListError = HolosAccountsListErrors[keyof HolosAccountsListErrors]
 
 export type HolosAccountsListResponses = {
   /**
@@ -16509,6 +17788,10 @@ export type HolosAccountsSwitchErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosAccountsSwitchError = HolosAccountsSwitchErrors[keyof HolosAccountsSwitchErrors]
@@ -16539,6 +17822,10 @@ export type HolosAccountsRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosAccountsRemoveError = HolosAccountsRemoveErrors[keyof HolosAccountsRemoveErrors]
@@ -16562,6 +17849,15 @@ export type HolosStatusData = {
   url: "/holos/status"
 }
 
+export type HolosStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosStatusError = HolosStatusErrors[keyof HolosStatusErrors]
+
 export type HolosStatusResponses = {
   /**
    * Connection status
@@ -16580,6 +17876,15 @@ export type HolosContactListData = {
   }
   url: "/holos/contact"
 }
+
+export type HolosContactListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosContactListError = HolosContactListErrors[keyof HolosContactListErrors]
 
 export type HolosContactListResponses = {
   /**
@@ -16608,6 +17913,10 @@ export type HolosContactAddErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosContactAddError = HolosContactAddErrors[keyof HolosContactAddErrors]
@@ -16632,6 +17941,15 @@ export type HolosContactRemoveData = {
   }
   url: "/holos/contact/{id}"
 }
+
+export type HolosContactRemoveErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosContactRemoveError = HolosContactRemoveErrors[keyof HolosContactRemoveErrors]
 
 export type HolosContactRemoveResponses = {
   /**
@@ -16659,6 +17977,10 @@ export type HolosContactGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosContactGetError = HolosContactGetErrors[keyof HolosContactGetErrors]
@@ -16691,6 +18013,10 @@ export type HolosContactToggleBlockErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosContactToggleBlockError = HolosContactToggleBlockErrors[keyof HolosContactToggleBlockErrors]
@@ -16713,6 +18039,15 @@ export type HolosPresenceData = {
   }
   url: "/holos/presence"
 }
+
+export type HolosPresenceErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosPresenceError = HolosPresenceErrors[keyof HolosPresenceErrors]
 
 export type HolosPresenceResponses = {
   /**
@@ -16738,9 +18073,9 @@ export type HolosAgentsListData = {
 
 export type HolosAgentsListErrors = {
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type HolosAgentsListError = HolosAgentsListErrors[keyof HolosAgentsListErrors]
@@ -16788,9 +18123,9 @@ export type HolosAgentsGetErrors = {
    */
   404: NotFoundError
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type HolosAgentsGetError = HolosAgentsGetErrors[keyof HolosAgentsGetErrors]
@@ -16839,9 +18174,9 @@ export type HolosSendData = {
 
 export type HolosSendErrors = {
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type HolosSendError = HolosSendErrors[keyof HolosSendErrors]
@@ -16872,6 +18207,10 @@ export type HolosSendRetryErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type HolosSendRetryError = HolosSendRetryErrors[keyof HolosSendRetryErrors]
@@ -16895,6 +18234,15 @@ export type HolosInboxListData = {
   url: "/holos/inbox"
 }
 
+export type HolosInboxListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosInboxListError = HolosInboxListErrors[keyof HolosInboxListErrors]
+
 export type HolosInboxListResponses = {
   /**
    * Inbox messages
@@ -16913,6 +18261,15 @@ export type HolosOutboxListData = {
   }
   url: "/holos/outbox"
 }
+
+export type HolosOutboxListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosOutboxListError = HolosOutboxListErrors[keyof HolosOutboxListErrors]
 
 export type HolosOutboxListResponses = {
   /**
@@ -16934,6 +18291,15 @@ export type HolosThreadGetData = {
   }
   url: "/holos/thread/{contactId}"
 }
+
+export type HolosThreadGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosThreadGetError = HolosThreadGetErrors[keyof HolosThreadGetErrors]
 
 export type HolosThreadGetResponses = {
   /**
@@ -16972,6 +18338,10 @@ export type BrowserCreateViewerTicketErrors = {
    * Browser request payload is too large
    */
   413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
@@ -17014,6 +18384,10 @@ export type BrowserCreateAnnotationErrors = {
    * Browser request payload is too large
    */
   413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
@@ -17055,6 +18429,10 @@ export type BrowserDiagnosticsErrors = {
    * Browser request payload is too large
    */
   413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
@@ -17092,6 +18470,10 @@ export type BrowserSessionErrors = {
    * Browser session error
    */
   500: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
@@ -17137,6 +18519,10 @@ export type BrowserControlErrors = {
    * Browser request payload is too large
    */
   413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
@@ -17159,6 +18545,15 @@ export type PluginListUiContributionsData = {
   }
   url: "/plugin/ui/contributions"
 }
+
+export type PluginListUiContributionsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PluginListUiContributionsError = PluginListUiContributionsErrors[keyof PluginListUiContributionsErrors]
 
 export type PluginListUiContributionsResponses = {
   /**
@@ -17203,6 +18598,10 @@ export type PluginServeAssetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PluginServeAssetError = PluginServeAssetErrors[keyof PluginServeAssetErrors]
@@ -17248,9 +18647,9 @@ export type PluginInvokeOperationErrors = {
    */
   409: NoteConflictError
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type PluginInvokeOperationError = PluginInvokeOperationErrors[keyof PluginInvokeOperationErrors]
@@ -17279,6 +18678,10 @@ export type PluginGetConfigErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PluginGetConfigError = PluginGetConfigErrors[keyof PluginGetConfigErrors]
@@ -17307,6 +18710,10 @@ export type PluginUpdateConfigErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PluginUpdateConfigError = PluginUpdateConfigErrors[keyof PluginUpdateConfigErrors]
@@ -17335,6 +18742,10 @@ export type PluginStatusErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PluginStatusError = PluginStatusErrors[keyof PluginStatusErrors]
@@ -17362,6 +18773,15 @@ export type PostPluginDevReloadData = {
   url: "/plugin/dev/reload"
 }
 
+export type PostPluginDevReloadErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PostPluginDevReloadError = PostPluginDevReloadErrors[keyof PostPluginDevReloadErrors]
+
 export type PostPluginDevReloadResponses = {
   200: unknown
 }
@@ -17375,6 +18795,15 @@ export type ApiPluginsListData = {
   }
   url: "/api/plugins"
 }
+
+export type ApiPluginsListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ApiPluginsListError = ApiPluginsListErrors[keyof ApiPluginsListErrors]
 
 export type ApiPluginsListResponses = {
   /**
@@ -17402,6 +18831,10 @@ export type ApiPluginsRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ApiPluginsRemoveError = ApiPluginsRemoveErrors[keyof ApiPluginsRemoveErrors]
@@ -17430,6 +18863,10 @@ export type ApiPluginsGetErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ApiPluginsGetError = ApiPluginsGetErrors[keyof ApiPluginsGetErrors]
@@ -17475,6 +18912,10 @@ export type ApiPluginsGetApprovalReviewErrors = {
     code: string
     message: string
   }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ApiPluginsGetApprovalReviewError =
@@ -17540,6 +18981,10 @@ export type ApiPluginsApproveErrors = {
     code: string
     message: string
   }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ApiPluginsApproveError = ApiPluginsApproveErrors[keyof ApiPluginsApproveErrors]
@@ -17583,6 +19028,10 @@ export type ApiPluginsInstallFromRegistryErrors = {
     code: string
     message: string
   }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ApiPluginsInstallFromRegistryError =
@@ -17625,6 +19074,10 @@ export type ApiPluginsUpdateFromRegistryErrors = {
     code: string
     message: string
   }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ApiPluginsUpdateFromRegistryError =
@@ -17654,6 +19107,10 @@ export type PluginRuntimeReloadErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PluginRuntimeReloadError = PluginRuntimeReloadErrors[keyof PluginRuntimeReloadErrors]
@@ -17684,6 +19141,10 @@ export type PluginRuntimeStartErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PluginRuntimeStartError = PluginRuntimeStartErrors[keyof PluginRuntimeStartErrors]
@@ -17714,6 +19175,10 @@ export type PluginRuntimeStopErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PluginRuntimeStopError = PluginRuntimeStopErrors[keyof PluginRuntimeStopErrors]
@@ -17742,6 +19207,10 @@ export type PluginRuntimeLogsErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type PluginRuntimeLogsError = PluginRuntimeLogsErrors[keyof PluginRuntimeLogsErrors]
@@ -17773,9 +19242,9 @@ export type RegistryPluginsSearchErrors = {
    */
   400: BadRequestError
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type RegistryPluginsSearchError = RegistryPluginsSearchErrors[keyof RegistryPluginsSearchErrors]
@@ -17806,9 +19275,9 @@ export type RegistryRefreshData = {
 
 export type RegistryRefreshErrors = {
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type RegistryRefreshError = RegistryRefreshErrors[keyof RegistryRefreshErrors]
@@ -17843,9 +19312,9 @@ export type RegistryPluginsGetErrors = {
    */
   404: NotFoundError
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type RegistryPluginsGetError = RegistryPluginsGetErrors[keyof RegistryPluginsGetErrors]
@@ -17878,9 +19347,9 @@ export type RegistryPluginsVersionsErrors = {
    */
   404: NotFoundError
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type RegistryPluginsVersionsError = RegistryPluginsVersionsErrors[keyof RegistryPluginsVersionsErrors]
@@ -17914,9 +19383,9 @@ export type RegistryPluginsVersionErrors = {
    */
   404: NotFoundError
   /**
-   * Service unavailable
+   * Service unavailable or runtime shutting down
    */
-  503: ServiceUnavailableError
+  503: ServiceUnavailableError | RuntimeShuttingDownError
 }
 
 export type RegistryPluginsVersionError = RegistryPluginsVersionErrors[keyof RegistryPluginsVersionErrors]
@@ -17952,6 +19421,10 @@ export type RegistryPluginsDownloadErrors = {
    * Download not yet implemented for this entry
    */
   501: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type RegistryPluginsDownloadError = RegistryPluginsDownloadErrors[keyof RegistryPluginsDownloadErrors]
@@ -17978,6 +19451,10 @@ export type RegistryPluginsPublishErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type RegistryPluginsPublishError = RegistryPluginsPublishErrors[keyof RegistryPluginsPublishErrors]
@@ -18025,6 +19502,10 @@ export type AppLogErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AppLogError = AppLogErrors[keyof AppLogErrors]
@@ -18048,6 +19529,15 @@ export type AppAgentsData = {
   url: "/agent"
 }
 
+export type AppAgentsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type AppAgentsError = AppAgentsErrors[keyof AppAgentsErrors]
+
 export type AppAgentsResponses = {
   /**
    * List of agents
@@ -18067,6 +19557,15 @@ export type AppAgentModelRolesData = {
   url: "/agent/model-roles"
 }
 
+export type AppAgentModelRolesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type AppAgentModelRolesError = AppAgentModelRolesErrors[keyof AppAgentModelRolesErrors]
+
 export type AppAgentModelRolesResponses = {
   /**
    * List of model role summaries
@@ -18085,6 +19584,15 @@ export type McpStatusData = {
   }
   url: "/mcp"
 }
+
+export type McpStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type McpStatusError = McpStatusErrors[keyof McpStatusErrors]
 
 export type McpStatusResponses = {
   /**
@@ -18115,6 +19623,10 @@ export type McpAddErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpAddError = McpAddErrors[keyof McpAddErrors]
@@ -18147,6 +19659,10 @@ export type McpAuthRemoveErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpAuthRemoveError = McpAuthRemoveErrors[keyof McpAuthRemoveErrors]
@@ -18183,6 +19699,10 @@ export type McpAuthStartErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpAuthStartError = McpAuthStartErrors[keyof McpAuthStartErrors]
@@ -18227,6 +19747,10 @@ export type McpAuthCallbackErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpAuthCallbackError = McpAuthCallbackErrors[keyof McpAuthCallbackErrors]
@@ -18261,6 +19785,10 @@ export type McpAuthAuthenticateErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpAuthAuthenticateError = McpAuthAuthenticateErrors[keyof McpAuthAuthenticateErrors]
@@ -18286,6 +19814,15 @@ export type McpConnectData = {
   url: "/mcp/{name}/connect"
 }
 
+export type McpConnectErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type McpConnectError = McpConnectErrors[keyof McpConnectErrors]
+
 export type McpConnectResponses = {
   /**
    * MCP server connected successfully
@@ -18306,6 +19843,15 @@ export type McpDisconnectData = {
   }
   url: "/mcp/{name}/disconnect"
 }
+
+export type McpDisconnectErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type McpDisconnectError = McpDisconnectErrors[keyof McpDisconnectErrors]
 
 export type McpDisconnectResponses = {
   /**
@@ -18333,6 +19879,10 @@ export type McpRestartErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpRestartError = McpRestartErrors[keyof McpRestartErrors]
@@ -18363,6 +19913,10 @@ export type McpRefreshErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpRefreshError = McpRefreshErrors[keyof McpRefreshErrors]
@@ -18393,6 +19947,10 @@ export type McpInspectErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpInspectError = McpInspectErrors[keyof McpInspectErrors]
@@ -18428,6 +19986,10 @@ export type McpTestErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type McpTestError = McpTestErrors[keyof McpTestErrors]
@@ -18451,6 +20013,15 @@ export type ChannelStatusData = {
   url: "/channel"
 }
 
+export type ChannelStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStatusError = ChannelStatusErrors[keyof ChannelStatusErrors]
+
 export type ChannelStatusResponses = {
   /**
    * Channel status
@@ -18472,6 +20043,15 @@ export type ChannelStartData = {
   url: "/channel/start"
 }
 
+export type ChannelStartErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStartError = ChannelStartErrors[keyof ChannelStartErrors]
+
 export type ChannelStartResponses = {
   /**
    * Channel status
@@ -18492,6 +20072,15 @@ export type ChannelStopData = {
   }
   url: "/channel/stop"
 }
+
+export type ChannelStopErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStopError = ChannelStopErrors[keyof ChannelStopErrors]
 
 export type ChannelStopResponses = {
   /**
@@ -18517,6 +20106,15 @@ export type ChannelStartOneData = {
   url: "/channel/{channelType}/{accountId}/start"
 }
 
+export type ChannelStartOneErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStartOneError = ChannelStartOneErrors[keyof ChannelStartOneErrors]
+
 export type ChannelStartOneResponses = {
   /**
    * Channel status
@@ -18540,6 +20138,15 @@ export type ChannelStopOneData = {
   }
   url: "/channel/{channelType}/{accountId}/stop"
 }
+
+export type ChannelStopOneErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStopOneError = ChannelStopOneErrors[keyof ChannelStopOneErrors]
 
 export type ChannelStopOneResponses = {
   /**
@@ -18565,6 +20172,15 @@ export type ChannelDisconnectData = {
   url: "/channel/{channelType}/{accountId}/disconnect"
 }
 
+export type ChannelDisconnectErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelDisconnectError = ChannelDisconnectErrors[keyof ChannelDisconnectErrors]
+
 export type ChannelDisconnectResponses = {
   /**
    * Channel disconnected
@@ -18586,6 +20202,15 @@ export type ChannelAppSessionData = {
   url: "/channel/app/session"
 }
 
+export type ChannelAppSessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelAppSessionError = ChannelAppSessionErrors[keyof ChannelAppSessionErrors]
+
 export type ChannelAppSessionResponses = {
   /**
    * App channel session
@@ -18604,6 +20229,15 @@ export type ChannelAppResetData = {
   }
   url: "/channel/app/reset"
 }
+
+export type ChannelAppResetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelAppResetError = ChannelAppResetErrors[keyof ChannelAppResetErrors]
 
 export type ChannelAppResetResponses = {
   /**
@@ -18638,6 +20272,10 @@ export type ChannelRefreshProjectsErrors = {
    * Refresh failed
    */
   500: ChannelRefreshError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type ChannelRefreshProjectsError = ChannelRefreshProjectsErrors[keyof ChannelRefreshProjectsErrors]
@@ -18666,6 +20304,15 @@ export type ChannelDownloadDiagnosticsData = {
   url: "/channel/{channelType}/{accountId}/diagnostics.ndjson"
 }
 
+export type ChannelDownloadDiagnosticsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelDownloadDiagnosticsError = ChannelDownloadDiagnosticsErrors[keyof ChannelDownloadDiagnosticsErrors]
+
 export type ChannelDownloadDiagnosticsResponses = {
   /**
    * NDJSON diagnostic stream
@@ -18693,6 +20340,15 @@ export type ExperimentalResourceListData = {
   url: "/experimental/resource"
 }
 
+export type ExperimentalResourceListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ExperimentalResourceListError = ExperimentalResourceListErrors[keyof ExperimentalResourceListErrors]
+
 export type ExperimentalResourceListResponses = {
   /**
    * MCP resources
@@ -18715,6 +20371,15 @@ export type LspStatusData = {
   url: "/lsp"
 }
 
+export type LspStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type LspStatusError = LspStatusErrors[keyof LspStatusErrors]
+
 export type LspStatusResponses = {
   /**
    * LSP server status
@@ -18733,6 +20398,15 @@ export type FormatterStatusData = {
   }
   url: "/formatter"
 }
+
+export type FormatterStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type FormatterStatusError = FormatterStatusErrors[keyof FormatterStatusErrors]
 
 export type FormatterStatusResponses = {
   /**
@@ -18760,6 +20434,10 @@ export type AuthSetErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type AuthSetError = AuthSetErrors[keyof AuthSetErrors]
@@ -18790,6 +20468,10 @@ export type EventReplayErrors = {
    * Bad request
    */
   400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
 }
 
 export type EventReplayError = EventReplayErrors[keyof EventReplayErrors]
@@ -18810,6 +20492,15 @@ export type EventSubscribeData = {
   }
   url: "/event"
 }
+
+export type EventSubscribeErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EventSubscribeError = EventSubscribeErrors[keyof EventSubscribeErrors]
 
 export type EventSubscribeResponses = {
   /**

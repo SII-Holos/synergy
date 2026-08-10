@@ -212,6 +212,33 @@ describe("desktop server manager", () => {
     expect(server.killedSignals).toEqual(["SIGKILL"])
   })
 
+  test("observes the Windows fallback kill within the remaining shutdown budget", async () => {
+    const server = new ChildProcessFixture()
+    const taskkills: ChildProcessFixture[] = []
+    server.kill = (signal?: NodeJS.Signals) => {
+      server.killedSignals.push(signal)
+      queueMicrotask(() => {
+        server.signalCode = signal ?? null
+        server.emit("exit", null, signal ?? null)
+      })
+      return true
+    }
+
+    const result = terminateServerProcess(server as unknown as ChildProcess, 100, {
+      platform: "win32",
+      spawnTaskkill: () => {
+        const taskkill = new ChildProcessFixture()
+        taskkills.push(taskkill)
+        queueMicrotask(() => taskkill.emit("error", new Error("taskkill unavailable")))
+        return taskkill as unknown as ChildProcess
+      },
+    })
+
+    await expect(result).resolves.toBe(true)
+    expect(taskkills).toHaveLength(2)
+    expect(server.killedSignals).toEqual(["SIGKILL"])
+  })
+
   test("cleans up both taskkill listeners when the taskkill wait times out", async () => {
     const server = new ChildProcessFixture() as unknown as ChildProcess
     const taskkill = new ChildProcessFixture()

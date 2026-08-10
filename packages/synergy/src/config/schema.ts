@@ -12,6 +12,7 @@ import {
   McpToolsConfig,
 } from "@ericsanchezok/synergy-plugin"
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
+import { MAX_EXECUTION_CANCEL_GRACE_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import { ModelsDev } from "../provider/models-schemas"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
@@ -1391,6 +1392,12 @@ export const Info = z
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
     locale: z.enum(["system", "en", "zh-CN"]).optional().describe("UI locale (system = follow OS, default: system)"),
     theme: z.string().optional().describe("Theme name to use for the interface"),
+    activityDisplay: z
+      .enum(["full", "balanced", "minimal"])
+      .optional()
+      .describe(
+        "How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)",
+      ),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),
     server: Server.optional().describe("Server configuration for synergy serve and web commands"),
@@ -1556,7 +1563,7 @@ export const Info = z
           .number()
           .int()
           .nonnegative()
-          .max(60_000)
+          .max(MAX_EXECUTION_CANCEL_GRACE_MS)
           .optional()
           .describe("Grace period before terminating an Agent worker that ignores cancellation (default: 5000)"),
         agentHeartbeatTimeoutMs: z
@@ -1654,7 +1661,7 @@ export const Info = z
           .number()
           .int()
           .nonnegative()
-          .max(60_000)
+          .max(MAX_EXECUTION_CANCEL_GRACE_MS)
           .optional()
           .describe("Grace period for active ToolTasks during runtime shutdown (default: 3000)"),
         toolExecutorConcurrency: z

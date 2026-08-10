@@ -26,6 +26,7 @@ import {
   TOAST_DURATION_STOPS,
   TOAST_TYPES,
   snapToastDuration,
+  type ActivityDisplay,
   type GeneralStore,
   type ToastType,
 } from "../types"
@@ -95,6 +96,14 @@ const copy = {
   },
   behaviorTitle: { id: "settings.general.behavior.title", message: "Behavior" },
   snapshotsTitle: { id: "settings.general.snapshots.title", message: "File snapshots" },
+  activityDisplayTitle: { id: "settings.general.activityDisplay.title", message: "Activity display" },
+  activityDisplayDescription: {
+    id: "settings.general.activityDisplay.description",
+    message: "Choose how much activity detail Synergy shows in the interface",
+  },
+  activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
+  activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
+  activityMinimal: { id: "settings.general.activityDisplay.minimal", message: "Minimal" },
   snapshotsDescription: {
     id: "settings.general.snapshots.description",
     message: "Keep restore points when Synergy edits files",
@@ -284,6 +293,21 @@ export function GeneralPanel(props: {
                 { value: "zh-CN", label: LANGUAGE_SELF_NAMES["zh-CN"] },
               ]}
               onChange={(value) => void setLocalePreference(value as LocalePreference)}
+            />
+          }
+        />
+        <SettingRow
+          title={_(copy.activityDisplayTitle)}
+          description={_(copy.activityDisplayDescription)}
+          trailing={
+            <SegmentPill
+              value={props.general.activityDisplay}
+              options={[
+                { value: "full", label: _(copy.activityFull) },
+                { value: "balanced", label: _(copy.activityBalanced) },
+                { value: "minimal", label: _(copy.activityMinimal) },
+              ]}
+              onChange={(value) => props.onGeneralChange("activityDisplay", value as ActivityDisplay)}
             />
           }
         />

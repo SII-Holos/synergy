@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { fileURLToPath } from "node:url"
+import { DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import type { DesktopChannel, DesktopServerMode } from "./identity.js"
 import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from "./shell-environment.js"
 
@@ -34,7 +35,7 @@ export interface DesktopServerManagerOptions {
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const HEALTH_PATH = "/global/health"
-const SHUTDOWN_TIMEOUT_MS = 5_000
+const SHUTDOWN_TIMEOUT_MS = DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS
 const HEALTH_TIMEOUT_MS = 30_000
 const HEALTH_POLL_INTERVAL_MS = 250
 const WINDOWS_TASKKILL_TIMEOUT_MS = 2_000
@@ -546,14 +547,15 @@ async function terminateWindowsProcessTree(
   if (!child.pid) return false
 
   const taskkillDeadline = Math.min(deadline, Date.now() + WINDOWS_TASKKILL_TIMEOUT_MS)
-  await runTaskkill(child.pid, taskkillDeadline, spawnTaskkill)
-  if (await waitForExit(exited, taskkillDeadline)) return true
+  const taskkillSucceeded = await runTaskkill(child.pid, taskkillDeadline, spawnTaskkill)
+  if (taskkillSucceeded && (await waitForExit(exited, taskkillDeadline))) return true
 
-  // A successful taskkill can race the ChildProcess exit event. Retry only when
-  // there is still time in the caller's single shutdown budget.
-  if (Date.now() < deadline) {
-    await runTaskkill(child.pid, Math.min(deadline, Date.now() + WINDOWS_TASKKILL_TIMEOUT_MS), spawnTaskkill)
-    if (await waitForExit(exited, deadline)) return true
+  // Retry a failed taskkill once while preserving the caller's single shutdown
+  // budget for the final process kill and exit observation.
+  if (!taskkillSucceeded && Date.now() < deadline) {
+    const retryDeadline = Math.min(deadline, Date.now() + WINDOWS_TASKKILL_TIMEOUT_MS)
+    const retrySucceeded = await runTaskkill(child.pid, retryDeadline, spawnTaskkill)
+    if (retrySucceeded && (await waitForExit(exited, retryDeadline))) return true
   }
 
   try {

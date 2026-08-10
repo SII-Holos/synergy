@@ -379,7 +379,7 @@ export class ToolTaskScheduler {
 }
 
 const defaultConcurrency = Math.max(4, Math.min(32, availableParallelism() * 2))
-const defaultOptions: ToolTaskSchedulerOptions = {
+export const DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS: ToolTaskSchedulerOptions = {
   maxConcurrent: defaultConcurrency,
   maxQueued: defaultConcurrency * 32,
   maxQueuedBytes: 128 * 1024 * 1024,
@@ -396,7 +396,7 @@ const defaultOptions: ToolTaskSchedulerOptions = {
 }
 
 export namespace ToolScheduler {
-  let options: ToolTaskSchedulerOptions = defaultOptions
+  let options: ToolTaskSchedulerOptions = DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS
   let scheduler: ToolTaskScheduler | undefined
   let accepting = true
   let stopPromise: Promise<void> | undefined
@@ -405,13 +405,17 @@ export namespace ToolScheduler {
     if (scheduler) throw new Error("Tool scheduler cannot be reconfigured after it has started")
     accepting = true
     options = {
-      ...defaultOptions,
+      ...DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS,
       ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
       executorConcurrency: {
-        ...defaultOptions.executorConcurrency,
+        ...DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS.executorConcurrency,
         ...input.executorConcurrency,
       },
     }
+  }
+
+  export function closeAdmission(): void {
+    accepting = false
   }
 
   export function dispatch(input: ToolTaskInput): Promise<ToolTaskResult> {
@@ -436,8 +440,8 @@ export namespace ToolScheduler {
   }
 
   export async function stop(): Promise<void> {
+    closeAdmission()
     if (stopPromise) return stopPromise
-    accepting = false
     const current = scheduler
     stopPromise = (async () => {
       try {
@@ -450,7 +454,6 @@ export namespace ToolScheduler {
       await stopPromise
     } finally {
       stopPromise = undefined
-      accepting = true
     }
   }
 }

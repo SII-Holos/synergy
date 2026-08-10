@@ -15,3 +15,30 @@ describe("GeneralPanel toast mute markup", () => {
     expect(source).toContain("nextMutedToasts")
   })
 })
+
+describe("GeneralPanel activity display markup", () => {
+  test("renders the activity display preference as a SegmentPill row in Appearance", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
+      "utf8",
+    )
+    expect(source).toContain("activityDisplayTitle")
+    expect(source).toContain("activityDisplayDescription")
+    expect(source).toContain("props.general.activityDisplay")
+    expect(source).toContain('value: "full"')
+    expect(source).toContain('value: "balanced"')
+    expect(source).toContain('value: "minimal"')
+  })
+
+  test("uses statically extractable Lingui descriptors for activity display copy", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
+      "utf8",
+    )
+    expect(source).toContain('activityDisplayTitle: { id: "settings.general.activityDisplay.title"')
+    expect(source).toContain('id: "settings.general.activityDisplay.description"')
+    expect(source).toContain('id: "settings.general.activityDisplay.full"')
+    expect(source).toContain('id: "settings.general.activityDisplay.balanced"')
+    expect(source).toContain('id: "settings.general.activityDisplay.minimal"')
+  })
+})
