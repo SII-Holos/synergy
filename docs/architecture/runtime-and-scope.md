@@ -32,7 +32,7 @@ The same runtime can be launched through several ownership surfaces:
 - Agenda and its built-in bootstrap items
 - the bounded Agent and Policy worker pools plus the ToolTask scheduler
 
-Stopping the global runtime first stops Agent, Policy, and tool admission, cancels or drains their owned work, and then stops Agenda, Channels, MCP, project Scope runtimes, and other process-owned resources.
+Shutdown admission closes as soon as the process receives its first termination signal: HTTP requests return `503 RuntimeShuttingDown`, and Agent, Policy, and tool admission remains closed while owned work is cancelled or drained. The runtime force-exit deadline is derived from the largest configured execution cancellation grace plus a settlement margin; Desktop's managed-server supervisor waits beyond the maximum supported runtime deadline before force-killing the process. Shutdown then stops Agenda, Channels, MCP, project Scope runtimes, and other process-owned resources before actively closing remaining HTTP, SSE, and WebSocket connections.
 
 Global services may still perform scoped work. They must enter the relevant `ScopeContext` before reading scoped configuration, storage, files, or session state.
 

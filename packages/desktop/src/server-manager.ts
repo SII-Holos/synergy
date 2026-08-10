@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { fileURLToPath } from "node:url"
+import { DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import type { DesktopChannel, DesktopServerMode } from "./identity.js"
 import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from "./shell-environment.js"
 
@@ -34,7 +35,7 @@ export interface DesktopServerManagerOptions {
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const HEALTH_PATH = "/global/health"
-const SHUTDOWN_TIMEOUT_MS = 5_000
+const SHUTDOWN_TIMEOUT_MS = DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS
 const HEALTH_TIMEOUT_MS = 30_000
 const HEALTH_POLL_INTERVAL_MS = 250
 const WINDOWS_TASKKILL_TIMEOUT_MS = 2_000

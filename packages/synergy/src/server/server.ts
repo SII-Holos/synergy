@@ -173,6 +173,15 @@ export namespace Server {
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
   let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
+  let _shuttingDown = false
+
+  export function beginShutdown(): void {
+    _shuttingDown = true
+  }
+
+  export function resumeRequests(): void {
+    _shuttingDown = false
+  }
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -403,6 +412,16 @@ export namespace Server {
           return c.json(new NamedError.Unknown({ message: "Internal server error" }).toObject(), {
             status: 500,
           })
+        })
+        .use(async (c, next) => {
+          if (!_shuttingDown) return next()
+          return c.json(
+            {
+              name: "RuntimeShuttingDown",
+              data: { message: "Synergy runtime is shutting down" },
+            },
+            503,
+          )
         })
         .use(async (c, next) => {
           const reqPath = c.req.path

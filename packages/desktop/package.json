@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@ericsanchezok/synergy-browser": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "electron-updater": "6.6.8",
     "zod": "catalog:"
   },
