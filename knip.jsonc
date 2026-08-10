@@ -44,6 +44,7 @@
     "chromium-bidi",
     "mammoth",
     "onnxruntime-common",
+    "electron-builder-squirrel-windows",
     "tree-sitter-bash",
     "xlsx",
     "turbo",

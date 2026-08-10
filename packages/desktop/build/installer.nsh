@@ -67,10 +67,9 @@ Function PathHasEntry
     Pop $R5
     Pop $R4
     Exch $R3
-    Exch 3
-    Pop $R2
+    Exch 2
     Pop $R1
-    Pop $R3
+    Pop $R2
 FunctionEnd
 !endif
 
@@ -112,9 +111,8 @@ Function un.RemovePathEntry
     Pop $R5
     Pop $R4
     Exch $R3
-    Exch 3
-    Pop $R2
+    Exch 2
     Pop $R1
-    Pop $R3
+    Pop $R2
 FunctionEnd
 !endif
