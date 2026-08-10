@@ -1729,6 +1729,20 @@ export namespace MessageV2 {
           },
           { cause: e },
         ).toObject()
+      case e instanceof Error && typeof (e as { isRetryable?: unknown }).isRetryable === "boolean":
+        const structured = e as Error & { statusCode?: unknown; isRetryable?: boolean; code?: unknown }
+        return new MessageV2.APIError(
+          {
+            message: structured.message,
+            statusCode: typeof structured.statusCode === "number" ? structured.statusCode : undefined,
+            isRetryable: structured.isRetryable ?? false,
+            metadata: {
+              ...(typeof structured.code === "string" ? { code: structured.code } : {}),
+              message: structured.message,
+            },
+          },
+          { cause: e },
+        ).toObject()
       case e instanceof Error:
         return new NamedError.Unknown({ message: e.toString() }, { cause: e }).toObject()
       default:

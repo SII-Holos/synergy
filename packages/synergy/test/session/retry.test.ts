@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
 import { SessionRetry } from "../../src/session/retry"
 import { MessageV2 } from "../../src/session/message-v2"
 import { APICallError } from "ai"
@@ -207,5 +208,34 @@ describe("session.message-v2.fromError", () => {
     expect(result).toMatchObject({
       data: { providerID: "test", modelID: "model-retained", reason: "rejected_by_provider" },
     })
+  })
+
+  test("converts protocol-rehydrated structured errors into retryable APIError", () => {
+    const restored = AgentTurnProtocol.deserializeError(
+      AgentTurnProtocol.serializeError({
+        type: "server_error",
+        code: "upstream_unavailable",
+        message: "The upstream service is temporarily unavailable",
+        statusCode: 503,
+        isRetryable: true,
+      }),
+    )
+
+    const result = MessageV2.fromError(restored, { providerID: "test" })
+
+    expect(MessageV2.APIError.isInstance(result)).toBe(true)
+    expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
+    expect((result as MessageV2.APIError).data.statusCode).toBe(503)
+    expect(SessionRetry.retryable(result)).toBe("The upstream service is temporarily unavailable")
+  })
+
+  test("keeps unknown errors unknown when no retry metadata survives", () => {
+    const restored = AgentTurnProtocol.deserializeError(
+      AgentTurnProtocol.serializeError({ type: "server_error", message: "boom" }),
+    )
+
+    const result = MessageV2.fromError(restored, { providerID: "test" })
+
+    expect(result.name).toBe("UnknownError")
   })
 })
