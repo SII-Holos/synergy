@@ -55,6 +55,28 @@ describe("SessionModePolicy Channel visibility", () => {
     ).toBeUndefined()
     expect(SessionModePolicy.visibility({ toolName: "read", session: {} })).toBeUndefined()
   })
+
+  test("exposes github_deliver_fix only to Channel sessions", () => {
+    const diagnostic = SessionModePolicy.visibility({ toolName: "github_deliver_fix", session: {} })
+    expect(diagnostic).toMatchObject({
+      code: "tool_unavailable",
+      toolName: "github_deliver_fix",
+      metadata: { requiredEndpoint: "channel" },
+    })
+    expect(diagnostic?.message).toContain("only available in GitHub Channel sessions")
+
+    expect(
+      SessionModePolicy.visibility({
+        toolName: "github_deliver_fix",
+        session: {
+          endpoint: {
+            kind: "channel",
+            channel: { type: "github", accountId: "account_test", chatId: "owner/repo#1" },
+          },
+        } as any,
+      }),
+    ).toBeUndefined()
+  })
 })
 
 describe("SessionModePolicy Plan bash calls", () => {

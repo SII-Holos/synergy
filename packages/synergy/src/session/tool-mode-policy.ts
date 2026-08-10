@@ -112,6 +112,15 @@ export namespace SessionModePolicy {
       }
     }
 
+    if (input.toolName === "github_deliver_fix" && input.session?.endpoint?.kind !== "channel") {
+      return {
+        code: "tool_unavailable",
+        toolName: input.toolName,
+        message: `The "${input.toolName}" tool is only available in GitHub Channel sessions.`,
+        metadata: { requiredEndpoint: "channel" },
+      }
+    }
+
     const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
     if (latticeDiagnostic) return latticeDiagnostic
     const bossDiagnostic = bossVisibility(input.toolName, input.session)

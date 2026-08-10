@@ -73,10 +73,13 @@ export const GithubDeliverFixTool = Tool.define(
     },
   },
   {
+    // The GitHub channel agent runs under a strict whitelist permission and
+    // has no expand_tools/search_tools activation path, so a search-mode
+    // exposure would leave the tool permanently invisible. Expose it as
+    // resident; the tool itself validates that the session is bound to a
+    // GitHub channel thread and errors otherwise.
     exposure: {
-      mode: "search",
-      title: "Deliver GitHub Fix as PR",
-      keywords: ["github", "fix", "pull request", "deliver", "push", "branch"],
+      mode: "resident",
     },
   },
 )
