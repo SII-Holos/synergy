@@ -17,7 +17,7 @@
       "type": "string"
     },
     "activityDisplay": {
-      "description": "How much activity detail to show in the interface: full = everything, balanced = recommended defaults, minimal = only essential activity (default: balanced)",
+      "description": "How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)",
       "type": "string",
       "enum": ["full", "balanced", "minimal"]
     },

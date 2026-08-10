@@ -571,15 +571,15 @@ describe("settings config patch locale", () => {
 })
 
 describe("settings config patch activity display", () => {
-  test("does not emit activityDisplay when the form is at the balanced default", () => {
+  test("does not emit activityDisplay when the form is at the full default", () => {
     const state = defaultSettingsState("enter")
     expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("activityDisplay")
   })
 
   test("emits activityDisplay when the form diverges from an absent server value", () => {
     const state = defaultSettingsState("enter")
-    state.general.activityDisplay = "full"
-    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).activityDisplay).toBe("full")
+    state.general.activityDisplay = "balanced"
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).activityDisplay).toBe("balanced")
   })
 
   test("emits activityDisplay when the form diverges from an explicit server value", () => {

@@ -166,11 +166,11 @@ The frontend may mirror the value locally to choose a catalog before the server 
 
 ```jsonc
 {
-  "activityDisplay": "balanced", // full | balanced | minimal
+  "activityDisplay": "full", // full | balanced | minimal
 }
 ```
 
-`balanced` is the default when the field is absent; any missing or unknown value resolves to `balanced`. Settings manages the preference globally in the installation config. If the key is declared manually in project config, ordinary project-over-global precedence still applies.
+`full` is the default when the field is absent. Settings manages the preference globally in the installation config. If the key is declared manually in project config, ordinary project-over-global precedence still applies.
 
 - `full` preserves the detailed turn timeline: every reasoning, text, tool, media, and attachment part stays in its original part order, matching pre-preference behavior. It never invokes the activity-summary nano model.
 - `balanced` replaces raw reasoning with one root-turn status row rather than model-generated reasoning text. After reasoning begins, the working turn shows one stable `Thinking…` row across all assistant messages. When the turn completes, that row disappears if the turn produced text, tool activity, or a receipt; an otherwise empty reasoning-only turn keeps one deterministic `Reasoning` fallback. Reasoning never invokes the `nano` model or writes derived activity metadata.

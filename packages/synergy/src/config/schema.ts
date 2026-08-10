@@ -1395,7 +1395,7 @@ export const Info = z
       .enum(["full", "balanced", "minimal"])
       .optional()
       .describe(
-        "How much activity detail to show in the interface: full = everything, balanced = recommended defaults, minimal = only essential activity (default: balanced)",
+        "How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)",
       ),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),

@@ -311,10 +311,11 @@ describe("balanced reasoning projection", () => {
 })
 
 describe("activity display preference", () => {
-  test("falls back missing and unknown values to balanced", () => {
-    expect(resolveActivityDisplay(undefined)).toBe("balanced")
-    expect(resolveActivityDisplay("unknown")).toBe("balanced")
+  test("falls back missing and unknown values to full", () => {
+    expect(resolveActivityDisplay(undefined)).toBe("full")
+    expect(resolveActivityDisplay("unknown")).toBe("full")
     expect(resolveActivityDisplay("full")).toBe("full")
+    expect(resolveActivityDisplay("balanced")).toBe("balanced")
     expect(resolveActivityDisplay("minimal")).toBe("minimal")
   })
 })

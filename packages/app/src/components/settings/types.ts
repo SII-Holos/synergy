@@ -39,7 +39,7 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 export const UI_DEFAULTS = {
   locale: "system" as LocalePreference,
   theme: "" as string,
-  activityDisplay: "balanced" as ActivityDisplay,
+  activityDisplay: "full" as ActivityDisplay,
   username: "" as string,
   snapshot: true,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object

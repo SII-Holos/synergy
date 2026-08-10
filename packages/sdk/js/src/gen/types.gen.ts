@@ -3512,7 +3512,7 @@ export type Config = {
    */
   theme?: string
   /**
-   * How much activity detail to show in the interface: full = everything, balanced = recommended defaults, minimal = only essential activity (default: balanced)
+   * How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)
    */
   activityDisplay?: "full" | "balanced" | "minimal"
   keybinds?: KeybindsConfig

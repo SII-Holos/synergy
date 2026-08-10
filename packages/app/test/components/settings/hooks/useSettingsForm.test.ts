@@ -203,8 +203,8 @@ describe("settings form locale hydration", () => {
 })
 
 describe("settings form activity display hydration", () => {
-  test("defaults to balanced when absent from config", () => {
-    expect(initializedActivityDisplay({})).toBe("balanced")
+  test("defaults to full when absent from config", () => {
+    expect(initializedActivityDisplay({})).toBe("full")
   })
 
   test("hydrates explicit full display from config", () => {
