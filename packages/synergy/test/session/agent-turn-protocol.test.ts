@@ -463,6 +463,100 @@ describe("AgentTurnProtocol", () => {
     expect(decoded.error).toMatchObject({ statusCode: 503, isRetryable: true })
   })
 
+  test("preserves plain object stream errors across the protocol boundary", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([
+        {
+          type: "error",
+          error: {
+            type: "server_error",
+            code: "upstream_unavailable",
+            message: "temporarily unavailable",
+          },
+        },
+      ]),
+    ) as Array<{ type: string; error: Error }>
+
+    expect(decoded.type).toBe("error")
+    expect(decoded.error).toBeInstanceOf(Error)
+    expect(decoded.error.message).toContain("temporarily unavailable")
+    expect(decoded.error.message).not.toContain("[object Object]")
+  })
+
+  test("preserves nested error payloads from plain object stream errors", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([
+        {
+          type: "error",
+          error: { error: { message: "upstream refused", code: "connection_refused" } },
+        },
+      ]),
+    ) as Array<{ type: string; error: Error & { code?: string; data?: unknown } }>
+
+    expect(decoded.error.message).toBe("upstream refused")
+    expect(decoded.error.code).toBe("connection_refused")
+  })
+
+  test("keeps retry metadata on plain object stream errors", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([
+        {
+          type: "error",
+          error: {
+            type: "server_error",
+            code: "overloaded",
+            message: "provider overloaded",
+            statusCode: 503,
+            isRetryable: true,
+          },
+        },
+      ]),
+    ) as Array<{ type: string; error: Error & { statusCode?: number; isRetryable?: boolean } }>
+
+    expect(decoded.error.statusCode).toBe(503)
+    expect(decoded.error.isRetryable).toBe(true)
+    expect(decoded.error.message).toBe("provider overloaded")
+  })
+
+  test("falls back to bounded JSON for plain object errors without a message", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([{ type: "error", error: { type: "server_error", code: "unavailable" } }]),
+    ) as Array<{ type: string; error: Error }>
+
+    expect(decoded.error.message).not.toContain("[object Object]")
+    expect(decoded.error.message).toContain("unavailable")
+  })
+
+  test("never fails serialization on circular plain object errors", () => {
+    const circular: Record<string, unknown> = { type: "server_error", message: "circular provider error" }
+    circular.self = circular
+
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([{ type: "error", error: circular }]),
+    ) as Array<{ type: string; error: Error }>
+
+    expect(decoded.error.message).toBe("circular provider error")
+    expect(decoded.error.message).not.toContain("[object Object]")
+  })
+
+  test("bounds oversized plain object error data without failing", () => {
+    const [decoded] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([
+        {
+          type: "error",
+          error: {
+            type: "server_error",
+            message: "oversized payload",
+            huge: "x".repeat(AgentTurnProtocol.ERROR_DATA_MAX_BYTES + 1024),
+          },
+        },
+      ]),
+    ) as Array<{ type: string; error: Error & { data?: unknown } }>
+
+    expect(decoded.error.message).toBe("oversized payload")
+    expect(decoded.error.data).toBeUndefined()
+  })
+
   test("rejects unknown protocol fields and invalid frame counters", () => {
     expect(() =>
       AgentTurnProtocol.parseHostToWorker({

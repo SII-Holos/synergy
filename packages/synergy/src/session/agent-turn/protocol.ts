@@ -389,9 +389,23 @@ export namespace AgentTurnProtocol {
 
   export function serializeError(error: unknown): SerializedError {
     if (!(error instanceof Error)) {
+      const object = isPlainRecord(error) ? error : undefined
+      const nested = isPlainRecord(object?.error) ? object.error : undefined
+      const message = firstString(
+        object?.message,
+        nested?.message,
+        isPlainRecord(nested?.error) ? nested.error.message : undefined,
+      )
+      const code = firstString(object?.code, nested?.code, object?.type, nested?.type)
+      const statusCode = firstInteger(object?.statusCode, nested?.statusCode)
+      const isRetryable = firstBoolean(object?.isRetryable, nested?.isRetryable)
       return {
-        name: "Error",
-        message: String(error).slice(0, ERROR_MESSAGE_MAX_CHARS),
+        name: firstString(object?.name, nested?.name) ?? "Error",
+        message: (message ?? safeStringify(error)).slice(0, ERROR_MESSAGE_MAX_CHARS),
+        code: code?.slice(0, ERROR_MESSAGE_MAX_CHARS),
+        statusCode,
+        isRetryable,
+        data: object === undefined ? undefined : boundedSerializable(object, ERROR_DATA_MAX_BYTES),
       }
     }
     const code =
@@ -622,6 +636,49 @@ export namespace AgentTurnProtocol {
         "syscall" in value && value.syscall !== undefined
           ? String(value.syscall).slice(0, ERROR_MESSAGE_MAX_CHARS)
           : undefined,
+    }
+  }
+
+  function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+  }
+
+  function firstString(...values: unknown[]): string | undefined {
+    for (const value of values) {
+      if (typeof value === "string" && value.length > 0) return value
+    }
+    return undefined
+  }
+
+  function firstInteger(...values: unknown[]): number | undefined {
+    for (const value of values) {
+      if (typeof value === "number" && Number.isInteger(value)) return value
+    }
+    return undefined
+  }
+
+  function firstBoolean(...values: unknown[]): boolean | undefined {
+    for (const value of values) {
+      if (typeof value === "boolean") return value
+    }
+    return undefined
+  }
+
+  function safeStringify(value: unknown): string {
+    if (typeof value === "string") return value
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+      return String(value)
+    }
+    if (value === null) return "null"
+    if (value === undefined) return "undefined"
+    try {
+      return JSON.stringify(value)
+    } catch {
+      const parts: string[] = []
+      for (const [key, entry] of Object.entries(value)) {
+        if (typeof entry === "string") parts.push(`${key}: ${entry}`)
+      }
+      return parts.length > 0 ? parts.join(", ") : String(value)
     }
   }
 }
