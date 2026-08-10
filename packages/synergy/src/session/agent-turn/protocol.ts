@@ -389,10 +389,35 @@ export namespace AgentTurnProtocol {
 
   export function serializeError(error: unknown): SerializedError {
     if (!(error instanceof Error)) {
-      return {
-        name: "Error",
-        message: String(error).slice(0, ERROR_MESSAGE_MAX_CHARS),
+      if (!error || typeof error !== "object") {
+        return {
+          name: "Error",
+          message: String(error).slice(0, ERROR_MESSAGE_MAX_CHARS),
+        }
       }
+      const source = error as Record<string, unknown>
+      const nested =
+        source.error && typeof source.error === "object" ? (source.error as Record<string, unknown>) : undefined
+      const field = (key: string) => source[key] ?? nested?.[key]
+      const rawName = field("name")
+      const rawMessage = field("message")
+      const rawStack = field("stack")
+      const normalized = Object.assign(
+        new Error(typeof rawMessage === "string" && rawMessage ? rawMessage : "Unknown structured error"),
+        {
+          name: typeof rawName === "string" && rawName ? rawName : "Error",
+          code: field("code"),
+          syscall: field("syscall"),
+          data: field("data"),
+          statusCode: field("statusCode"),
+          responseHeaders: field("responseHeaders"),
+          responseBody: field("responseBody"),
+          isRetryable: field("isRetryable"),
+          cause: field("cause"),
+        },
+      )
+      normalized.stack = typeof rawStack === "string" ? rawStack : undefined
+      return serializeError(normalized)
     }
     const code =
       "code" in error && error.code !== undefined ? String(error.code).slice(0, ERROR_MESSAGE_MAX_CHARS) : undefined

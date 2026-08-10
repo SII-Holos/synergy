@@ -463,6 +463,53 @@ describe("AgentTurnProtocol", () => {
     expect(decoded.error).toMatchObject({ statusCode: 503, isRetryable: true })
   })
 
+  test("preserves plain structured errors embedded in stream events", () => {
+    const [decoded, nested] = AgentTurnProtocol.decodeEvents(
+      AgentTurnProtocol.encodeEvents([
+        {
+          type: "error",
+          error: {
+            name: "ProviderResponseError",
+            message: "upstream request failed",
+            code: "upstream_unavailable",
+            statusCode: 503,
+            isRetryable: true,
+            data: { requestID: "request_1" },
+          },
+        },
+        {
+          type: "error",
+          error: {
+            statusCode: 429,
+            error: {
+              name: "RateLimitError",
+              message: "retry later",
+              code: "rate_limit",
+              isRetryable: true,
+            },
+          },
+        },
+      ]),
+    ) as Array<{ type: string; error: Error & Record<string, unknown> }>
+
+    expect(decoded.type).toBe("error")
+    expect(decoded.error).toMatchObject({
+      name: "ProviderResponseError",
+      message: "upstream request failed",
+      code: "upstream_unavailable",
+      statusCode: 503,
+      isRetryable: true,
+      data: { requestID: "request_1" },
+    })
+    expect(nested.error).toMatchObject({
+      name: "RateLimitError",
+      message: "retry later",
+      code: "rate_limit",
+      statusCode: 429,
+      isRetryable: true,
+    })
+  })
+
   test("rejects unknown protocol fields and invalid frame counters", () => {
     expect(() =>
       AgentTurnProtocol.parseHostToWorker({
