@@ -49,7 +49,7 @@ export type ActivityGroupItem = {
   state: ActivityGroupState
   steps: ActivityStepProjection[]
   receipt: boolean
-  summary?: ActivityTextSummary
+  topic?: ActivityTextSummary
 }
 
 export type ActivityTextSummary = {
@@ -274,14 +274,21 @@ export function projectAssistantActivityItems(input: {
   }
   let pendingGroup: ActivityGroupItem | undefined
   let pendingPersistedKey: string | undefined
+  let pendingReasoning: ActivityReasoningSummaryItem | undefined
+
+  const emitPendingReasoning = () => {
+    if (!pendingReasoning) return
+    result.push(pendingReasoning)
+    pendingReasoning = undefined
+  }
 
   const flush = () => {
     if (!pendingGroup) return
-    pendingGroup.state = groupState(pendingGroup.steps)
     const stored = metadata?.groups?.[pendingGroup.key]
     const validStored =
       stored && (!stored.signature || validPersistedGroupKeys.has(pendingGroup.key)) ? stored : undefined
-    if (validStored?.text) pendingGroup.summary = { state: validStored.state, text: validStored.text }
+    if (validStored?.text) pendingGroup.topic = { state: validStored.state, text: validStored.text }
+    pendingGroup.state = pendingGroup.topic?.state === "live" ? "running" : groupState(pendingGroup.steps)
     result.push(pendingGroup)
     pendingGroup = undefined
     pendingPersistedKey = undefined
@@ -291,28 +298,59 @@ export function projectAssistantActivityItems(input: {
     if (!isOrdinaryTool(source, isRenderBoundary)) {
       flush()
       const visible = visibleByIdentity.get(timelineItemIdentity(source))
-      if (!visible) continue
       if (source.kind === "reasoning") {
-        result.push(reasoningSummary(input.message, source.part.id, visible.kind === "part", metadata))
+        emitPendingReasoning()
+        if (!visible) continue
+        const summary = reasoningSummary(input.message, source.part.id, visible.kind === "part", metadata)
+        if (summary.text?.trim()) pendingReasoning = summary
+        else result.push(summary)
         continue
       }
+      emitPendingReasoning()
+      if (!visible) continue
       result.push({ kind: "passthrough", item: visible, message: input.message })
       continue
     }
 
     if (!isVisible(source, visibleIdentities)) {
       flush()
+      emitPendingReasoning()
       continue
     }
 
     const permission = permissionForStep(input.message.id, source.part, input.permissions)
     if (!hasStableInput(source.part) && !permission && source.part.state.status !== "error") {
       flush()
+      emitPendingReasoning()
       continue
     }
     const step = makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)
     const receipt = isActivityReceiptTool(source.part.tool, step.family)
-    const persistedKey = receipt ? undefined : persistedGroupByPartID.get(step.part.id)
+    const defaultKey = activityGroupKey(input.message.id, step.family, step.scopeKey, step.part.id)
+    const legacyStored = metadata?.groups?.[defaultKey]
+    const persistedKey = receipt
+      ? undefined
+      : (persistedGroupByPartID.get(step.part.id) ?? (legacyStored && !legacyStored.signature ? defaultKey : undefined))
+
+    if (pendingReasoning) {
+      if (receipt) {
+        emitPendingReasoning()
+      } else if (persistedKey && metadata?.groups?.[persistedKey]?.text) {
+        pendingReasoning = undefined
+      } else {
+        flush()
+        pendingGroup = makeGroup(input.message, step, false, persistedKey)
+        pendingGroup.topic = {
+          state: pendingReasoning.state,
+          text: pendingReasoning.text,
+          source: pendingReasoning.source,
+        }
+        pendingPersistedKey = persistedKey
+        pendingReasoning = undefined
+        continue
+      }
+    }
+
     const canMerge =
       !receipt &&
       pendingGroup &&
@@ -320,7 +358,9 @@ export function projectAssistantActivityItems(input: {
       pendingGroup.steps.length < MAX_ACTIVITY_GROUP_STEPS &&
       (persistedKey
         ? pendingPersistedKey === persistedKey
-        : !pendingPersistedKey && pendingGroup.family === step.family && pendingGroup.scopeKey === step.scopeKey)
+        : !pendingPersistedKey &&
+          (Boolean(pendingGroup.topic?.text) ||
+            (pendingGroup.family === step.family && pendingGroup.scopeKey === step.scopeKey)))
 
     if (canMerge && pendingGroup) {
       pendingGroup.steps.push(step)
@@ -334,6 +374,7 @@ export function projectAssistantActivityItems(input: {
   }
 
   flush()
+  emitPendingReasoning()
   return result
 }
 export function isActivityTimelineItem(value: ActivityTimelineItem | unknown): value is ActivityTimelineItem {
@@ -396,7 +437,7 @@ export function projectMinimalActivityItems<T>(
   let total = 0
   for (const group of groups) {
     total += group.steps.length
-    counts.set(group.family, (counts.get(group.family) ?? 0) + group.steps.length)
+    for (const step of group.steps) counts.set(step.family, (counts.get(step.family) ?? 0) + 1)
   }
   const facts = ACTIVITY_FAMILY_ORDER.flatMap((family) => {
     const count = counts.get(family) ?? 0

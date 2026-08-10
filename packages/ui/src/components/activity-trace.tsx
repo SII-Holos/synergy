@@ -119,6 +119,31 @@ function stateDescriptor(state: ActivityGroupState): MessageDescriptor {
   return ACTIVITY_TRACE_DESC.status[state]
 }
 
+function familyDescriptor(family: ActivityFamily): MessageDescriptor {
+  switch (family) {
+    case "inspect-local":
+      return ACTIVITY_TRACE_DESC.family["inspect-local"]
+    case "research-web":
+      return ACTIVITY_TRACE_DESC.family["research-web"]
+    case "modify-files":
+      return ACTIVITY_TRACE_DESC.family["modify-files"]
+    case "execute":
+      return ACTIVITY_TRACE_DESC.family.execute
+    case "browser":
+      return ACTIVITY_TRACE_DESC.family.browser
+    case "delegate":
+      return ACTIVITY_TRACE_DESC.family.delegate
+    case "produce":
+      return ACTIVITY_TRACE_DESC.family.produce
+    case "external-action":
+      return ACTIVITY_TRACE_DESC.family["external-action"]
+    case "coordination":
+      return ACTIVITY_TRACE_DESC.family.coordination
+    case "generic":
+      return ACTIVITY_TRACE_DESC.family.generic
+  }
+}
+
 function familyIcon(family: ActivityFamily) {
   switch (family) {
     case "inspect-local":
@@ -163,29 +188,41 @@ function ActivityState(props: { state: ActivityGroupState; label: string }) {
 
 function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }) {
   const { _ } = useLingui()
+  const [open, setOpen] = createSignal(false)
+  const familyLabel = createMemo(() => localize(familyDescriptor(props.step.family), _))
   const title = createMemo(() => localize(props.step.title, _))
   const stateLabel = createMemo(() => _(stateDescriptor(props.step.state)))
   return (
-    <li data-slot="activity-step" data-state={props.step.state}>
-      <div data-slot="activity-step-row">
-        <span data-slot="activity-step-icon" aria-hidden="true">
-          <Icon name={props.step.icon} size="small" />
-        </span>
-        <div data-slot="activity-step-copy">
-          <span data-slot="activity-step-title">{title()}</span>
-          <Show when={props.step.subtitle}>
-            {(subtitle) => <span data-slot="activity-step-subtitle">{subtitle()}</span>}
-          </Show>
-        </div>
-        <ActivityState state={props.step.state} label={stateLabel()} />
-      </div>
-      <ToolResultBody
-        part={props.step.part}
-        serverUrl={props.serverUrl}
-        sessionId={props.step.part.sessionID}
-        messageId={props.step.part.messageID}
-        resultOnly
-      />
+    <li data-slot="activity-step" data-family={props.step.family} data-state={props.step.state}>
+      <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
+        <Collapsible.Trigger data-slot="activity-step-trigger" type="button">
+          <span data-slot="activity-step-branch" aria-hidden="true" />
+          <span data-slot="activity-step-icon" aria-hidden="true">
+            <Icon name={props.step.icon} size="small" />
+          </span>
+          <div data-slot="activity-step-copy">
+            <span data-slot="activity-step-family">{familyLabel()}</span>
+            <span data-slot="activity-step-title">{title()}</span>
+            <Show when={props.step.subtitle}>
+              {(subtitle) => <span data-slot="activity-step-subtitle">{subtitle()}</span>}
+            </Show>
+          </div>
+          <ActivityState state={props.step.state} label={stateLabel()} />
+          <Icon
+            name={open() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand")}
+            size="small"
+          />
+        </Collapsible.Trigger>
+        <Collapsible.Content>
+          <ToolResultBody
+            part={props.step.part}
+            serverUrl={props.serverUrl}
+            sessionId={props.step.part.sessionID}
+            messageId={props.step.part.messageID}
+            resultOnly
+          />
+        </Collapsible.Content>
+      </Collapsible>
     </li>
   )
 }
@@ -240,48 +277,32 @@ function ActivityTraceMarker(props: { state: ActivityGroupState; label: string }
 
 export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: string }) {
   const { _ } = useLingui()
-  const [open, setOpen] = createSignal(false)
   const familyLabel = createMemo(() => _(ACTIVITY_TRACE_DESC.family[props.group.family]))
+  const topicTitle = createMemo(() => props.group.topic?.text?.trim() || familyLabel())
   const stepCount = createMemo(() =>
     _({ ...ACTIVITY_TRACE_DESC.stepCount, values: { count: props.group.steps.length } }),
   )
   const stateLabel = createMemo(() => _(stateDescriptor(props.group.state)))
+  const hasTopic = createMemo(() => Boolean(props.group.topic?.text?.trim()))
 
   return (
     <div data-component="activity-trace" data-family={props.group.family} data-state={props.group.state}>
       <span data-slot="activity-trace-connector" aria-hidden="true" />
-      <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
-        <Collapsible.Trigger data-slot="activity-trace-trigger" type="button">
-          <ActivityTraceMarker state={props.group.state} label={stateLabel()} />
-          <span data-slot="activity-trace-copy">
-            <span data-slot="activity-trace-heading">
-              <span data-slot="activity-trace-title">{familyLabel()}</span>
-              <Show when={props.group.scopeLabel}>
-                {(scope) => <span data-slot="activity-trace-scope">{scope()}</span>}
-              </Show>
-            </span>
-            <Show when={props.group.summary?.text}>
-              {(summary) => (
-                <span data-slot="activity-trace-summary" data-summary-state={props.group.summary?.state}>
-                  {summary()}
-                </span>
-              )}
+      <div data-slot="activity-trace-header">
+        <ActivityTraceMarker state={props.group.state} label={stateLabel()} />
+        <span data-slot="activity-trace-copy">
+          <span data-slot="activity-trace-heading">
+            <span data-slot="activity-trace-title">{topicTitle()}</span>
+            <Show when={!hasTopic() && props.group.scopeLabel}>
+              {(scope) => <span data-slot="activity-trace-scope">{scope()}</span>}
             </Show>
           </span>
-          <span data-slot="activity-trace-meta">
-            <span>{stepCount()}</span>
-            <Icon
-              name={open() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand")}
-              size="small"
-            />
-          </span>
-        </Collapsible.Trigger>
-        <Collapsible.Content>
-          <ol data-slot="activity-step-list">
-            <For each={props.group.steps}>{(step) => <ActivityStep step={step} serverUrl={props.serverUrl} />}</For>
-          </ol>
-        </Collapsible.Content>
-      </Collapsible>
+        </span>
+        <span data-slot="activity-trace-meta">{stepCount()}</span>
+      </div>
+      <ol data-slot="activity-step-list">
+        <For each={props.group.steps}>{(step) => <ActivityStep step={step} serverUrl={props.serverUrl} />}</For>
+      </ol>
     </div>
   )
 }

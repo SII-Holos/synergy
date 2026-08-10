@@ -106,16 +106,20 @@ beforeAll(async () => {
             state: "waiting-approval",
           },
           {
-            part: { id: "p2", tool: "revise_file", state: { status: "completed", input: {}, output: "saved", metadata: {} } },
-            family: "modify-files",
-            scopeKey: "scope-a",
-            icon: "file-pen",
-            title: "Add tests",
+            part: {
+              id: "p2",
+              tool: "websearch",
+              state: { status: "completed", input: { query: "activity topic grouping" }, output: "found", metadata: {} },
+            },
+            family: "research-web",
+            scopeKey: "activity-topic",
+            icon: "globe",
+            title: "Search activity topic grouping",
             state: "done",
           },
         ],
         receipt: false,
-        summary: { state: "stable", text: "Updated the activity presentation" },
+        topic: { state: "stable", text: "Updated the activity presentation" },
       }
       const railGroup = (state: "running" | "done", key: string) => ({
         ...group,
@@ -124,7 +128,7 @@ beforeAll(async () => {
         scopeKey: key,
         scopeLabel: key,
         steps: [{ ...group.steps[1], part: { ...group.steps[1].part, id: key }, scopeKey: key, state }],
-        summary: { state: state === "done" ? "stable" : "live", text: state === "done" ? "Finished rail work" : "Working through rail steps" },
+        topic: { state: state === "done" ? "stable" : "live", text: state === "done" ? "Finished rail work" : "Working through rail steps" },
       })
       const viewFileGroup = {
         ...group,
@@ -160,7 +164,7 @@ beforeAll(async () => {
             state: "done",
           },
         ],
-        summary: { state: "stable", text: "Read the Activity Trace source" },
+        topic: { state: "stable", text: "Read the Activity Trace source" },
       }
       function CodeFixture(props: { file: { contents: string } }) {
         return <pre data-component="code-fixture">{props.file.contents}</pre>
@@ -495,11 +499,9 @@ describe("Activity summary DOM behavior", () => {
     expect(reasoning("fallback").getAttribute("aria-live")).toBe("polite")
   })
 
-  test("renders group and minimal summaries in their stable slots", () => {
-    const groupSummary = document.querySelector('[data-slot="activity-trace-summary"]')
-    expect(groupSummary?.textContent).toBe("Updated the activity presentation")
-    expect(groupSummary?.getAttribute("data-summary-state")).toBe("stable")
-
+  test("renders nano topics and minimal summaries in their stable slots", () => {
+    const topic = document.querySelector('#activity-main-host [data-slot="activity-trace-title"]')
+    expect(topic?.textContent).toBe("Updated the activity presentation")
     const now = document.querySelector('[data-slot="minimal-activity-now"]')
     expect(now?.textContent).toBe("Verifying compressed activity")
     expect(now?.getAttribute("aria-hidden")).toBe("true")
@@ -507,50 +509,62 @@ describe("Activity summary DOM behavior", () => {
 })
 
 describe("ActivityTrace DOM behavior", () => {
-  function trigger(): HTMLButtonElement {
-    return document.querySelector('#activity-main-host [data-slot="activity-trace-trigger"]') as HTMLButtonElement
+  function stepTriggers(host = document): NodeListOf<HTMLButtonElement> {
+    return host.querySelectorAll('[data-slot="activity-step-trigger"]')
   }
 
-  test("trigger is a keyboard-accessible button that toggles the step list", async () => {
-    expect(trigger().tagName).toBe("BUTTON")
-    expect(trigger().getAttribute("type")).toBe("button")
-    expect(trigger().getAttribute("aria-expanded")).toBe("false")
-    expect(document.querySelector('[data-slot="activity-step-list"]')).toBeNull()
-    expect(document.querySelector('[data-slot="activity-trace-title"]')?.textContent).toBe("Changed")
+  test("renders one nano topic with indented heterogeneous child activity rows", () => {
+    const host = document.querySelector("#activity-main-host") as HTMLElement
+    const topic = host.querySelector('[data-slot="activity-trace-title"]')
+    const list = host.querySelector('[data-slot="activity-step-list"]')
+    const steps = list?.querySelectorAll('[data-slot="activity-step"]')
 
-    trigger().click()
-    await wait(0)
-    expect(trigger().getAttribute("aria-expanded")).toBe("true")
-    const list = document.querySelector('[data-slot="activity-step-list"]')
+    expect(topic?.textContent).toBe("Updated the activity presentation")
     expect(list).not.toBeNull()
-    expect(list?.querySelectorAll('[data-slot="activity-step"]')).toHaveLength(2)
-
-    trigger().click()
-    await wait(0)
-    expect(trigger().getAttribute("aria-expanded")).toBe("false")
-    expect(document.querySelector('[data-slot="activity-step-list"]')).toBeNull()
+    expect(steps).toHaveLength(2)
+    expect(Array.from(steps ?? []).map((step) => step.getAttribute("data-family"))).toEqual([
+      "modify-files",
+      "research-web",
+    ])
+    expect(
+      Array.from(list?.querySelectorAll('[data-slot="activity-step-family"]') ?? []).map((item) => item.textContent),
+    ).toEqual(["Changed", "Researched"])
+    expect(list?.querySelectorAll('[data-slot="activity-step-branch"]')).toHaveLength(2)
   })
 
-  test("renders the waiting approval state once within its step", async () => {
-    trigger().click()
-    await wait(0)
+  test("each child activity is a keyboard-accessible result toggle", async () => {
+    const triggers = stepTriggers()
+    expect(triggers).toHaveLength(5)
+    expect(triggers[0]?.tagName).toBe("BUTTON")
+    expect(triggers[0]?.getAttribute("type")).toBe("button")
+    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
 
+    triggers[0]?.click()
+    await wait(0)
+    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("true")
+
+    triggers[0]?.click()
+    await wait(0)
+    expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  test("renders the waiting approval state once within its child activity", () => {
     const waitingStep = document.querySelector('[data-slot="activity-step"][data-state="waiting-approval"]')
     expect(waitingStep?.querySelectorAll('[data-slot="activity-state"]')).toHaveLength(1)
     expect(waitingStep?.textContent?.match(/Waiting for approval/g)).toHaveLength(1)
-
-    trigger().click()
-    await wait(0)
   })
 
-  test("renders the file diff leaf component when a file step expands", async () => {
-    trigger().click()
+  test("renders the file diff leaf component when its child activity expands", async () => {
+    const firstTrigger = document.querySelector(
+      '#activity-main-host [data-slot="activity-step-trigger"]',
+    ) as HTMLButtonElement
+    firstTrigger.click()
     await wait(0)
 
-    const fileStep = document.querySelector('[data-slot="activity-step"]')
+    const fileStep = document.querySelector('#activity-main-host [data-slot="activity-step"]')
     expect(fileStep?.querySelector('[data-component="diff-preview"], [data-component="diff-patch"]')).not.toBeNull()
 
-    trigger().click()
+    firstTrigger.click()
     await wait(0)
   })
   test("renders the connected Plan A progress rail and transitions its marker to a completed check", async () => {
@@ -578,7 +592,7 @@ describe("ActivityTrace DOM behavior", () => {
 
   test("renders view_file through the Full-mode renderer body without a nested tool card", async () => {
     const viewHost = document.querySelector("#view-file-host") as HTMLElement
-    const viewTrigger = viewHost.querySelector('[data-slot="activity-trace-trigger"]') as HTMLButtonElement
+    const viewTrigger = viewHost.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
     viewTrigger.click()
     await wait(0)
 

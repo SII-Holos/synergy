@@ -357,7 +357,7 @@ describe("session turn activity projection", () => {
     expect(JSON.stringify(streaming)).not.toContain('"text":"Thinking"')
   })
 
-  test("projects live reasoning and group summaries from assistant metadata", () => {
+  test("lets a persisted nano topic replace its live reasoning precursor", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -385,20 +385,62 @@ describe("session turn activity projection", () => {
       working: true,
     })
 
-    expect(projected[0]).toMatchObject({
-      kind: "activity-reasoning-summary",
-      state: "live",
-      text: "Locating the activity rendering boundary",
-    })
+    expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
+    expect(activities(projected)).toHaveLength(1)
     expect(activities(projected)[0]).toMatchObject({
-      summary: {
+      state: "done",
+      topic: {
         state: "stable",
         text: "Checked the relevant UI entry points",
       },
     })
   })
 
-  test("uses persisted semantic membership across tool families", () => {
+  test("keeps the live nano topic when persisted semantic grouping falls back without text", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 2,
+        reasoning: {
+          planning: {
+            state: "live",
+            text: "Researching the ZERO project",
+            source: "nano",
+            updatedAt: 10,
+          },
+        },
+        groups: {
+          "activity:assistant-a:inspect-local::read-zero": {
+            state: "fallback",
+            signature: "read-zero:web-zero",
+            updatedAt: 11,
+          },
+        },
+      },
+    }
+    const projected = project({
+      message,
+      parts: [
+        reasoning("planning"),
+        tool({ id: "read-zero", tool: "read" }),
+        tool({ id: "web-zero", tool: "websearch" }),
+      ],
+      working: true,
+    })
+    const groups = activities(projected)
+
+    expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "research-web"])
+    expect(groups[0]?.topic).toEqual({
+      state: "live",
+      text: "Researching the ZERO project",
+      source: "nano",
+    })
+  })
+
+  test("projects persisted nano topics across heterogeneous tool families", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -427,10 +469,53 @@ describe("session turn activity projection", () => {
 
     expect(groups).toHaveLength(1)
     expect(groups[0]?.steps.map((step) => step.part.id)).toEqual(["read-flow", "edit-flow", "test-flow"])
+    expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "modify-files", "execute"])
     expect(groups[0]).toMatchObject({
       key: "activity:assistant-a:inspect-local:path:/workspace:read-flow",
-      family: "inspect-local",
-      summary: { state: "stable", text: "Implemented and verified the activity trace" },
+      topic: { state: "stable", text: "Implemented and verified the activity trace" },
+    })
+  })
+
+  test("uses the latest nano reasoning topic for one unsettled heterogeneous activity group", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 1,
+        reasoning: {
+          planning: {
+            state: "live",
+            text: "Planning the ZERO refactor",
+            source: "nano",
+            updatedAt: 10,
+          },
+        },
+        now: {
+          text: "Planning the ZERO refactor",
+          source: "reasoning",
+          updatedAt: 10,
+        },
+      },
+    }
+    const projected = project({
+      message,
+      parts: [
+        reasoning("planning"),
+        tool({ id: "read-zero", tool: "read", args: { filePath: "/workspace/ZERO/README.md" }, status: "running" }),
+        tool({ id: "web-zero", tool: "websearch", args: { query: "ZERO project" }, status: "running" }),
+      ],
+      working: true,
+    })
+    const groups = activities(projected)
+
+    expect(projected.filter((item) => item.kind === "activity-reasoning-summary")).toHaveLength(0)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.state).toBe("running")
+    expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "research-web"])
+    expect(groups[0]?.topic).toEqual({
+      state: "live",
+      text: "Planning the ZERO refactor",
+      source: "nano",
     })
   })
 
@@ -463,7 +548,7 @@ describe("session turn activity projection", () => {
     )
 
     expect(groups.map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-before"], ["read-after"]])
-    expect(groups.every((group) => group.summary === undefined)).toBe(true)
+    expect(groups.every((group) => group.topic === undefined)).toBe(true)
   })
 
   test("does not merge an unsettled streaming tail into a persisted semantic group", () => {
@@ -498,7 +583,7 @@ describe("session turn activity projection", () => {
       ["read-flow", "edit-flow", "test-flow"],
       ["read-tail"],
     ])
-    expect(groups[1]?.summary).toBeUndefined()
+    expect(groups[1]?.topic).toBeUndefined()
   })
 
   test("caps a group at 24 steps and gives continuation groups their own first-part key", () => {
@@ -699,6 +784,40 @@ describe("minimal activity projection", () => {
     expect(summary?.kind === "activity-summary" ? summary.facts : []).toEqual([
       { family: "inspect-local", count: 2 },
       { family: "modify-files", count: 1 },
+      { family: "execute", count: 1 },
+    ])
+  })
+
+  test("counts each nested topic step by its own family", () => {
+    const message = assistant()
+    message.metadata = {
+      activity: {
+        v: 1,
+        seq: 1,
+        groups: {
+          "activity:assistant-a:inspect-local::read-zero": {
+            state: "stable",
+            signature: "read-zero:web-zero:test-zero",
+            text: "Research the ZERO project",
+            updatedAt: 10,
+          },
+        },
+      },
+    }
+    const projected = project({
+      message,
+      parts: [
+        tool({ id: "read-zero", tool: "read" }),
+        tool({ id: "web-zero", tool: "websearch" }),
+        tool({ id: "test-zero", tool: "bash", args: { command: "bun test" } }),
+      ],
+    })
+    const minimal = projectMinimalActivityItems(projected, "root-user", true)
+    const summary = minimal.find((item) => item.kind === "activity-summary")
+
+    expect(summary?.kind === "activity-summary" ? summary.facts : []).toEqual([
+      { family: "inspect-local", count: 1 },
+      { family: "research-web", count: 1 },
       { family: "execute", count: 1 },
     ])
   })
