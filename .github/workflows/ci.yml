@@ -69,7 +69,7 @@ jobs:
   windows:
     name: Windows Checks
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -111,7 +111,10 @@ jobs:
           test/session/tool-resolver-bash-profile.test.ts
 
       - name: Run Desktop Windows-focused tests
-        run: bun test --cwd packages/desktop test/server-manager.test.ts
+        run: >-
+          bun test --cwd packages/desktop
+          test/server-manager.test.ts
+          test/windows-installer.test.ts
 
   test:
     name: Test

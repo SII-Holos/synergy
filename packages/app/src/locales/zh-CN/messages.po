@@ -16441,6 +16441,10 @@ msgid "settings.panel.action.saving"
 msgstr "正在保存…"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.back.label"
+msgstr "返回"
+
+#. js-lingui-explicit-id
 msgid "settings.panel.badge.developer"
 msgstr "开发"
 

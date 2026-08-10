@@ -394,6 +394,154 @@ describe("AgentWorkerPool", () => {
     }
   })
 
+  test("bounds default startup recovery to five minutes from the first failure", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    let now = 0
+    const pool = new AgentWorkerPool(options, fake.spawn, {
+      startupRetryWindowMs: 300_000,
+      now: () => now,
+      schedule() {
+        return () => {}
+      },
+      sleep(ms) {
+        delays.push(ms)
+        now += ms
+        return Promise.resolve()
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      for (let attempt = 0; attempt < 11; attempt++) {
+        fake.workers[attempt].exit(1)
+        await Bun.sleep(0)
+      }
+
+      expect(delays).toEqual([250, 500, 1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 64_000, 128_000, 44_250])
+      expect(delays.reduce((total, delay) => total + delay, 0)).toBe(300_000)
+      expect(await turn).toMatchObject({
+        message: "Agent worker failed to start after 11 consecutive attempts",
+      })
+    } finally {
+      await pool.stop()
+      await turn.catch(() => undefined)
+    }
+  })
+
+  test("opens the startup circuit at the deadline while a retry is still pending", async () => {
+    const fake = fakeWorkers()
+    let now = 0
+    let expire!: () => void
+    const pool = new AgentWorkerPool(options, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      startupRetryWindowMs: 1_000,
+      maxConsecutiveStartupFailures: Number.POSITIVE_INFINITY,
+      now: () => now,
+      schedule(ms, callback) {
+        expect(ms).toBe(1_000)
+        expire = callback
+        return () => {}
+      },
+      sleep() {
+        return new Promise<void>(() => {})
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      fake.workers[0].exit(1)
+      now = 1_000
+      expire()
+
+      expect(await turn).toMatchObject({
+        message: "Agent worker failed to start after 1 consecutive attempts",
+      })
+    } finally {
+      await pool.stop()
+      await turn.catch(() => undefined)
+    }
+  })
+
+  test("cancels the startup recovery deadline after a successful handshake", async () => {
+    const fake = fakeWorkers()
+    let cancelled = 0
+    const pool = new AgentWorkerPool({ ...options, size: 2, minIdle: 1 }, fake.spawn, {
+      startupRetryWindowMs: 1_000,
+      schedule() {
+        return () => {
+          cancelled++
+        }
+      },
+      sleep() {
+        return new Promise<void>(() => {})
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal)))
+
+    try {
+      fake.workers[1].exit(1)
+      expect(cancelled).toBe(0)
+
+      fake.workers[0].ready()
+      expect(cancelled).toBe(1)
+      const run = startTurn(fake.workers[0])
+      fake.workers[0].receive({
+        type: "error",
+        requestId: run.requestId,
+        error: { name: "Error", message: "stop" },
+      })
+      await expect(turn).rejects.toThrow("stop")
+    } finally {
+      await pool.stop()
+      await turn.catch(() => undefined)
+    }
+  })
+
+  test("does not extend the startup recovery deadline after concurrent failures", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    const retries: Array<() => void> = []
+    let now = 0
+    const pool = new AgentWorkerPool({ ...options, size: 3, minIdle: 2 }, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      startupBackoffMaxMs: 800,
+      startupRetryWindowMs: 1_000,
+      maxConsecutiveStartupFailures: Number.POSITIVE_INFINITY,
+      now: () => now,
+      schedule() {
+        return () => {}
+      },
+      sleep(ms) {
+        delays.push(ms)
+        return new Promise<void>((resolve) => retries.push(resolve))
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      fake.workers.slice(0, 3).forEach((worker) => worker.exit(1))
+      expect(delays).toEqual([100, 200, 400])
+
+      now = 400
+      retries[2]()
+      await Bun.sleep(0)
+      expect(fake.workers).toHaveLength(6)
+
+      fake.workers.slice(3, 6).forEach((worker) => worker.exit(1))
+      expect(delays).toEqual([100, 200, 400, 600, 600, 600])
+
+      now = 1_000
+      retries[5]()
+      await expect(turn).resolves.toMatchObject({
+        message: "Agent worker failed to start after 6 consecutive attempts",
+      })
+    } finally {
+      await pool.stop()
+      await turn.catch(() => undefined)
+    }
+  })
+
   test("reschedules startup backoff from the latest concurrent failure", async () => {
     const fake = fakeWorkers()
     const delays: number[] = []

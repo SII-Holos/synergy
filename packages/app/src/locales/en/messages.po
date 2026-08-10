@@ -16441,6 +16441,10 @@ msgid "settings.panel.action.saving"
 msgstr "Saving..."
 
 #. js-lingui-explicit-id
+msgid "settings.panel.back.label"
+msgstr "Back"
+
+#. js-lingui-explicit-id
 msgid "settings.panel.badge.developer"
 msgstr "Dev"
 
