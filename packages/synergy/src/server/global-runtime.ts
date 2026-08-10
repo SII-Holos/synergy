@@ -19,12 +19,15 @@ import { ActivitySummary } from "@/session/activity-summary"
 import { LatticeRuntime } from "@/lattice/runtime"
 import { Embedding } from "@/vector/embedding"
 import { AgentTurn } from "@/session/agent-turn"
-import { ToolScheduler } from "@/session/tool-scheduler"
-import { PolicyWorker } from "@/enforcement/policy-worker"
+import { DEFAULT_AGENT_WORKER_POOL_OPTIONS } from "@/session/agent-turn/worker-pool"
+import { DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS, ToolScheduler } from "@/session/tool-scheduler"
+import { PolicyWorker, DEFAULT_POLICY_WORKER_POOL_OPTIONS } from "@/enforcement/policy-worker"
+import { resolveRuntimeShutdownTimeoutMs } from "@ericsanchezok/synergy-util/runtime-shutdown"
 
 export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
   let started: Promise<void> | undefined
+  let configuredShutdownTimeoutMs = resolveRuntimeShutdownTimeoutMs(DEFAULT_AGENT_WORKER_POOL_OPTIONS.cancelGraceMs)
 
   export async function start() {
     if (!started) {
@@ -49,6 +52,13 @@ export namespace GlobalRuntime {
             })
             return Config.Info.parse({})
           })
+          configuredShutdownTimeoutMs = resolveRuntimeShutdownTimeoutMs(
+            Math.max(
+              config.execution?.agentCancelGraceMs ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.cancelGraceMs,
+              config.execution?.policyCancelGraceMs ?? DEFAULT_POLICY_WORKER_POOL_OPTIONS.cancelGraceMs,
+              config.execution?.toolCancelGraceMs ?? DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS.shutdownGraceMs ?? 0,
+            ),
+          )
           CortexConcurrency.configure(config.cortex?.maxConcurrentTasks)
           AgentTurn.configure({
             size: config.execution?.agentWorkers,
@@ -136,7 +146,18 @@ export namespace GlobalRuntime {
     return started
   }
 
+  export function shutdownTimeoutMs(): number {
+    return configuredShutdownTimeoutMs
+  }
+
+  export function closeAdmission(): void {
+    AgentTurn.closeAdmission()
+    PolicyWorker.closeAdmission()
+    ToolScheduler.closeAdmission()
+  }
+
   export async function stop() {
+    closeAdmission()
     const executionStop = Promise.all([AgentTurn.stop(), PolicyWorker.stop(), ToolScheduler.stop()])
     Agenda.stop()
     await executionStop

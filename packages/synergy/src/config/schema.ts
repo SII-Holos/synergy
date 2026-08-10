@@ -12,6 +12,7 @@ import {
   McpToolsConfig,
 } from "@ericsanchezok/synergy-plugin"
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
+import { MAX_EXECUTION_CANCEL_GRACE_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import { ModelsDev } from "../provider/models-schemas"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
@@ -1562,7 +1563,7 @@ export const Info = z
           .number()
           .int()
           .nonnegative()
-          .max(60_000)
+          .max(MAX_EXECUTION_CANCEL_GRACE_MS)
           .optional()
           .describe("Grace period before terminating an Agent worker that ignores cancellation (default: 5000)"),
         agentHeartbeatTimeoutMs: z
@@ -1660,7 +1661,7 @@ export const Info = z
           .number()
           .int()
           .nonnegative()
-          .max(60_000)
+          .max(MAX_EXECUTION_CANCEL_GRACE_MS)
           .optional()
           .describe("Grace period for active ToolTasks during runtime shutdown (default: 3000)"),
         toolExecutorConcurrency: z

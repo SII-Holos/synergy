@@ -17,6 +17,13 @@ export const ServiceUnavailableError = z
   })
   .meta({ ref: "ServiceUnavailableError" })
 
+export const RuntimeShuttingDownError = z
+  .object({
+    name: z.literal("RuntimeShuttingDown"),
+    data: z.object({ message: z.string() }),
+  })
+  .meta({ ref: "RuntimeShuttingDownError" })
+
 export const ForbiddenError = z
   .object({
     message: z.string(),
@@ -57,10 +64,10 @@ export const ERRORS = {
     },
   },
   503: {
-    description: "Service unavailable",
+    description: "Service unavailable or runtime shutting down",
     content: {
       "application/json": {
-        schema: resolver(ServiceUnavailableError),
+        schema: resolver(z.union([ServiceUnavailableError, RuntimeShuttingDownError])),
       },
     },
   },
