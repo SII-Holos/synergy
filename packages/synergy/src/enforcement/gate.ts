@@ -127,8 +127,6 @@ const DESTRUCTIVE_PATTERNS = [
   "lvremove ",
   "pvremove ",
   "vgremove ",
-  // Privilege escalation
-  "sudo ",
   // Git destructive operations (force/delete/hard-reset only — ordinary feature-branch push is shell_remote_publish)
   "git reset --hard",
   "git clean -f",
@@ -304,6 +302,7 @@ function imagePathArgs(args: Record<string, any>): { read: string[]; write: stri
 
 function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
+  if (ShellSafety.hasSudoInvocation(command)) return "sudo"
   for (const p of DESTRUCTIVE_PATTERNS) {
     if (lower.includes(p)) return p
   }
@@ -751,14 +750,18 @@ export namespace EnforcementGate {
         const pathSegments = compound.segments.length > 0 ? compound.segments : [command]
         const directoryChanges = ShellSafety.analyzeDirectoryChanges(command)
         const pipelinePathRisk = compound.operators.some((operator) => operator === "|" || operator === "|&")
-        const aggregatePathRisk = pipelinePathRisk || directoryChanges.opaque || directoryChanges.targets.length > 0
+        const shellStatePathRisk = ShellSafety.hasCompoundShellStateDependency(command)
+        const aggregatePathRisk =
+          pipelinePathRisk || shellStatePathRisk || directoryChanges.opaque || directoryChanges.targets.length > 0
         const aggregateWriteCapable = aggregatePathRisk && risk !== "shell_read"
-        if (aggregateWriteCapable && directoryChanges.opaque) {
+        if (aggregateWriteCapable && (shellStatePathRisk || directoryChanges.opaque)) {
           uniqueCapability(caps, {
             class: "file_external_write",
             nonBypassable: true,
             opaque: true,
-            reason: "write-capable shell command changes to a directory that cannot be resolved statically",
+            reason: shellStatePathRisk
+              ? "write-capable shell command reuses path-bearing state across compound segments"
+              : "write-capable shell command changes to a directory that cannot be resolved statically",
           })
         }
         for (const target of directoryChanges.targets) {

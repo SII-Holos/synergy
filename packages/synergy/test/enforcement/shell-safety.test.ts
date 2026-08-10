@@ -121,6 +121,42 @@ describe("ShellSafety directory changes", () => {
       targets: ["../.."],
       opaque: false,
     })
+    expect(ShellSafety.analyzeDirectoryChanges("sudo -D ../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("sudo --chdir=../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("command -p env -C ../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("sudo -r role -D ../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("sudo --type type --chdir ../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("sudo\t-t type -D ../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("sudo -U root -D ../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("sudo -a type -D ../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
+    expect(ShellSafety.analyzeDirectoryChanges("sudo -A -D ../.. touch changed.txt")).toEqual({
+      targets: ["../.."],
+      opaque: false,
+    })
   })
 
   test("recurses into shell payloads, control structures, substitutions, traps, and wrappers", () => {
@@ -257,6 +293,18 @@ describe("ShellSafety directory changes", () => {
     ]) {
       expect(ShellSafety.analyzeDirectoryChanges(command)).toEqual({ targets: [], opaque: false })
     }
+  })
+
+  test("command lookup prefixes do not create directory-change risk", () => {
+    for (const command of ["command -v cd", "command -V pushd", "command --path /bin -v env"]) {
+      expect(ShellSafety.analyzeDirectoryChanges(command)).toEqual({ targets: [], opaque: false })
+    }
+  })
+
+  test("returns a conservative result when directory analysis exceeds the shared input-size limit", () => {
+    const command = Array(250_000).fill("pwd").join(";")
+
+    expect(ShellSafety.analyzeDirectoryChanges(command).opaque).toBe(true)
   })
 })
 
@@ -1281,6 +1329,298 @@ describe("ShellSafety compound command recursion", () => {
     expect(ShellSafety.classifyCompoundRisk("pwd; rm -rf /tmp; git log")).toBe("shell")
   })
 
+  test("unquoted newlines separate independently classified commands", () => {
+    expect(ShellSafety.classifyBashRisk('file "/outside/payload"\nsh "/outside/payload"')).toBe("shell")
+  })
+
+  test("only last-argument reuse creates a compound shell-state dependency", () => {
+    expect(ShellSafety.hasCompoundShellStateDependency('file "/outside/payload"; python3 "$_"')).toBe(true)
+    expect(ShellSafety.hasCompoundShellStateDependency('file "/outside/payload"; python3 "${_}"')).toBe(true)
+    expect(ShellSafety.hasCompoundShellStateDependency('printf "$_"; touch local.txt')).toBe(false)
+    expect(ShellSafety.hasCompoundShellStateDependency('false; printf "%s" "$?"')).toBe(false)
+    expect(ShellSafety.hasCompoundShellStateDependency('echo hi; echo "$_"')).toBe(false)
+    expect(ShellSafety.hasCompoundShellStateDependency('git status; printf "%s" "$_"')).toBe(false)
+    for (const reference of [
+      "${_:0}",
+      "${_#prefix}",
+      "${_%suffix}",
+      "${_//a/b}",
+      "${_-fallback}",
+      "${_+alternate}",
+      "${_=default}",
+      "${_?error}",
+    ]) {
+      expect(ShellSafety.hasCompoundShellStateDependency(`file "/outside/payload"; sh "${reference}"`)).toBe(true)
+    }
+    expect(ShellSafety.hasCompoundShellStateDependency('file "/outside/payload"; sh "${_foo}"')).toBe(false)
+    expect(ShellSafety.hasCompoundShellStateDependency('file "/outside/payload"; sh "${_0}"')).toBe(false)
+  })
+
+  test("detects last-argument reuse across shell reparse boundaries", () => {
+    expect(ShellSafety.hasCompoundShellStateDependency('file "/outside/payload"; eval \'sh "$_"\'')).toBe(true)
+    expect(ShellSafety.hasCompoundShellStateDependency('file "/outside/payload"; trap \'python3 "$_"\' EXIT')).toBe(
+      true,
+    )
+    expect(ShellSafety.hasCompoundShellStateDependency('file "/outside/payload"; echo $(eval \'sh "$_"\')')).toBe(true)
+    expect(ShellSafety.hasCompoundShellStateDependency('file "/outside/payload"; eval \'sh "${_:0}"\'')).toBe(true)
+    expect(ShellSafety.hasCompoundShellStateDependency('trap \'python3 "$_"\' EXIT; file "/outside/payload"')).toBe(
+      true,
+    )
+    expect(ShellSafety.hasCompoundShellStateDependency('trap \'python3 "$_"\'; file "/outside/payload"')).toBe(false)
+    expect(ShellSafety.hasCompoundShellStateDependency("trap 'python3 \"$_\"' EXIT")).toBe(false)
+  })
+
+  test("detects syntactically composed sudo command names without matching arguments", () => {
+    for (const command of [
+      "sudo make install",
+      "s'u'do make install",
+      String.raw`s\udo make install`,
+      "s$()udo make install",
+      "env FOO=bar sudo make install",
+      "timeout 5 sudo make install",
+    ]) {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+    }
+    expect(ShellSafety.hasSudoInvocation("echo sudo make install")).toBe(false)
+    expect(ShellSafety.hasSudoInvocation("printf '%s' sudo")).toBe(false)
+    expect(ShellSafety.hasSudoInvocation("sudo_command=make make install")).toBe(false)
+  })
+  test.each([
+    "sh -c 'sudo make install'",
+    "eval 'sudo make install'",
+    "env -S 'sudo make install'",
+    "trap 'sudo make install' EXIT",
+    "echo $(sudo make install)",
+    "echo `sudo make install`",
+    "echo >(sudo make install)",
+    "diff <(sudo cat /etc/hosts) out.txt",
+    "su --command 'sudo make install'",
+    "sg wheel --command='sudo make install'",
+    "runuser --command 'sudo make install'",
+    "sh -c'sudo make install'",
+    `python3 -c 'import os; os.system("su" "do make install")'`,
+    `python3 -c 'import os; os.system("sudo make install")'`,
+    `eval "$(echo 'sudo make install')"`,
+    `sh -c "$(echo 'sudo make install')"`,
+    `env -S "$(echo 'sudo make install')"`,
+    `trap "$(echo 'sudo make install')" EXIT`,
+    String.raw`su\
+do make install`,
+    `python3 -c 'import subprocess; subprocess.check_output("sudo make install")'`,
+    `python3 -c 'import subprocess; subprocess.check_call("sudo make install")'`,
+    `python3 -c 'import subprocess; subprocess.getoutput("sudo make install")'`,
+    `python3 -c 'import os; os.system("echo hi && sudo make install")'`,
+    `python3 -c 'import os; os.system("sudo " + "make install")'`,
+    `python3 -c 'import os; os.system("su" + "do make install")'`,
+    "ssh host sudo make install",
+    "ssh user@host 'sudo make install'",
+    "mosh host sudo make install",
+  ])("detects sudo across shell reparse boundary: %s", (command) => {
+    expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+  })
+
+  test.each([
+    "sh <<'EOF'\nsudo make install\nEOF",
+    'sh <<"EOF"\nsudo make install\nEOF',
+    String.raw`sh <<\EOF
+sudo make install
+EOF`,
+    "sh <<-'EOF'\n\tsudo make install\n\tEOF",
+    "sh -s <<'EOF'\nsudo make install\nEOF",
+    "bash -s <<'EOF'\nsudo make install\nEOF",
+    `python3 - <<'EOF'\nimport os\nos.system("sudo make install")\nEOF`,
+    `node - <<'EOF'\nrequire("child_process").execSync("sudo make install")\nEOF`,
+    "sh <<< 'sudo make install'",
+    "source /dev/stdin <<'EOF'\nsudo make install\nEOF",
+    "sh << EOF\nsudo make install\nEOF",
+    "bash /dev/stdin <<'EOF'\nsudo make install\nEOF",
+    "python3 <<< 'import os; os.system(\"sudo make install\")'",
+    "sh 0<<'EOF'\nsudo make install\nEOF",
+    "sh 0<<<'sudo make install'",
+    "sh<<'EOF'\nsudo make install\nEOF",
+    "sh<<<'sudo make install'",
+    "timeout 5 sh <<'EOF'\nsudo make install\nEOF",
+    "env sh <<'EOF'\nsudo make install\nEOF",
+    "exec 3<<'EOF'\nsudo make install\nEOF\nsh <&3",
+    "sh <(cat <<'EOF'\nsudo make install\nEOF\n)",
+    `bash <(printf '%s' 'sudo make install')`,
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nsh .payload.sh",
+    "exec 3<<A 4<<B\necho safe\nA\nsudo make install\nB\nsh <&4",
+    "cat <<EOF >> .payload.sh\nsudo make install\nEOF\nsh .payload.sh",
+    "cat <<EOF 1> .payload.sh\nsudo make install\nEOF\nsh .payload.sh",
+    "exec 3<<EOF\nsudo make install\nEOF\nbusybox sh <&3",
+    "cat <<EOF > .payload.sh\nsudo make install\nEOF\nbusybox sh .payload.sh",
+    `bash < <(printf '%s\n' 'sudo make install')`,
+    `sh -s < <(printf '%s\n' 'sudo make install')`,
+    "bash < <(cat <<'EOF'\nsudo make install\nEOF\n)",
+    `source <(printf '%s\n' 'sudo make install')`,
+    `. <(printf '%s\n' 'sudo make install')`,
+    "exec 3<<'EOF'\nsudo make install\nEOF\nexec 4<&3\nsh <&4",
+    "tee .payload.sh <<'EOF'\nsudo make install\nEOF\nsh .payload.sh",
+    `cat <<'EOF' > .payload.py\nimport os; os.system("sudo make install")\nEOF\npython3 .payload.py`,
+    `cat <<'EOF' > .payload.js\nrequire("child_process").execSync("sudo make install")\nEOF\nnode .payload.js`,
+  ])("detects sudo in stdin-fed executable payloads: %s", (command) => {
+    expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+  })
+
+  test.each([
+    "script -q /dev/null -c 'sudo make install'",
+    "script -q /dev/null sudo make install",
+    "script --command 'sudo make install' /dev/null",
+    "script --command='sudo make install' /dev/null",
+    "setsid sudo make install",
+    "stdbuf -o0 sudo make install",
+    "watch -n1 sudo make install",
+    "doas make install",
+    "f() { sudo make install; }; f",
+    "function f { sudo make install; }; f",
+    `ruby -e 'system "sudo make install"'`,
+    `perl -e 'system "sudo make install"'`,
+    `perl -e 'exec "sudo make install"'`,
+    `php -r 'shell_exec("sudo make install");'`,
+    `php -r 'passthru("sudo make install");'`,
+  ])("detects sudo through executable wrappers and inline APIs: %s", (command) => {
+    expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+  })
+
+  test("detects sudo through indirect execution commands", () => {
+    for (const command of [
+      "su -c 'sudo make install'",
+      "runuser -u root -- sudo make install",
+      "pkexec sudo make install",
+      "sg wheel -c 'sudo make install'",
+      "docker exec c sudo make install",
+      "docker run image sudo make install",
+      "podman create image sudo make install",
+      "docker run --entrypoint sudo image make install",
+      "podman create --entrypoint=sudo image make install",
+      "command --path /bin -p sudo make install",
+      "command --path=/bin -p sudo make install",
+      "docker exec c -- sudo make install",
+      "docker run -m 512m image sudo make install",
+      "docker run --cpus 2 image sudo make install",
+      "docker run --entrypoint echo --entrypoint sudo image make install",
+      "podman create --entrypoint=echo --entrypoint=sudo image make install",
+      "docker exec --entrypoint sudo c make install",
+      "nsenter -t 1 -m sudo make install",
+      "sudoedit /etc/hosts",
+    ]) {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+    }
+  })
+
+  test("does not classify inert sudo text passed to indirect execution commands", () => {
+    for (const command of [
+      "su -c 'echo sudo'",
+      "runuser -u root -- echo sudo",
+      "pkexec echo sudo",
+      "sg wheel -c 'echo sudo'",
+      "docker exec c echo sudo",
+      "podman exec c echo sudo",
+      "docker run image echo sudo",
+      "podman create image echo sudo",
+      "f() { echo sudo; }; f",
+      "function f { printf '%s' sudo; }; f",
+      "echo done # note; function f { sudo make install; }; f",
+      "docker run --entrypoint echo image sudo",
+      "podman create --entrypoint=printf image sudo",
+      "docker run --entrypoint sudo --entrypoint echo image make install",
+      "podman create --entrypoint=sudo --entrypoint=printf image make install",
+      "docker run --entrypoint sudo --entrypoint '' image make install",
+      "nsenter -t 1 -m echo sudo",
+      "sh 0 <<'EOF'\nsudo make install\nEOF",
+      "exec 3<<'EOF'\nsudo make install\nEOF\ncat <&3",
+      `sh <(printf '%s' 'echo sudo')`,
+      "cat <<'EOF' > .payload.txt\nsudo make install\nEOF\ncat .payload.txt",
+      String.raw`echo su\
+do make install`,
+      "exec 3<<A 4<<B\nsudo make install\nA\necho safe\nB\nsh <&4",
+      "cat <<A <<B > .payload.sh\nsudo make install\nA\necho safe\nB\nsh .payload.sh",
+    ]) {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(false)
+    }
+  })
+
+  test("comments containing heredoc syntax do not hide later sudo", () => {
+    for (const command of [
+      "echo hi # << EOF\nsudo make install",
+      "# note << EOF\nsudo make install",
+      "echo hi # << EOF body\nsudoedit /etc/hosts",
+      "echo $(echo x # << EOF\nsudo make install)",
+    ]) {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+    }
+  })
+
+  test("distinguishes comments after commands from literal hashes after expansions", () => {
+    for (const command of ["((1))# << EOF\nsudo make install", "(printf x)# << EOF\nsudo make install"]) {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+    }
+
+    for (const command of [
+      "echo $((1))# <<EOF\nsudo make install\nEOF",
+      "echo $(printf x)# <<EOF\nsudo make install\nEOF",
+    ]) {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(false)
+    }
+  })
+
+  test("detects sudo after a real heredoc with a trailing comment", () => {
+    const command = "cat <<EOF # <<FAKE\nsudo make install\nEOF\nsudoedit /etc/hosts"
+    expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+  })
+
+  test("sudo text inside a heredoc body remains inert", () => {
+    expect(ShellSafety.hasSudoInvocation("cat <<EOF\n# << INNER\nsudo make install\nEOF")).toBe(false)
+  })
+
+  test("does not classify sudo lookup or inert interpreter text as invocation", () => {
+    expect(ShellSafety.hasSudoInvocation("command -v sudo")).toBe(false)
+    expect(ShellSafety.hasSudoInvocation("command -V sudo")).toBe(false)
+    expect(ShellSafety.hasSudoInvocation(`python3 -c 'print("sudo")'`)).toBe(false)
+    expect(ShellSafety.hasSudoInvocation(`python3 -c 'print("run(\\"sudo make install\\")")'`)).toBe(false)
+    expect(ShellSafety.hasSudoInvocation(`node -e 'console.log("spawn(\\"sudo\\")")'`)).toBe(false)
+    expect(ShellSafety.hasSudoInvocation(`python3 -c 'print("check_output(\\"sudo make install\\")")'`)).toBe(false)
+    expect(ShellSafety.hasSudoInvocation(`python3 -c 'import subprocess; subprocess.check_output("echo sudo")'`)).toBe(
+      false,
+    )
+  })
+
+  test("does not classify benign substitutions across shell reparse boundaries", () => {
+    for (const command of [
+      "sh -c 'echo $(pwd)'",
+      "eval 'echo $(date)'",
+      "env -S \"sh -c 'echo $(pwd)'\"",
+      "trap 'echo $(date)' EXIT",
+      "su -c 'echo $(date)'",
+      "sg wheel -c 'echo $(date)'",
+    ]) {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(false)
+    }
+  })
+
+  test("ignores substitutions and shell-state references inside comments", () => {
+    expect(ShellSafety.hasSudoInvocation("echo done # note $(sudo make install)")).toBe(false)
+    expect(ShellSafety.hasSudoInvocation("echo done # note `sudo make install`")).toBe(false)
+    expect(ShellSafety.hasCompoundShellStateDependency("file /x; # $_ note")).toBe(false)
+    expect(ShellSafety.classifyBashRisk("pwd\n# note\npwd")).toBe("shell_read")
+  })
+
+  test("arithmetic shifts and multiline quotes do not hide later sudo or shell-state reuse", () => {
+    for (const command of [
+      "echo $((a << b))\nsudo make install",
+      "echo $((\n1 << 2\n))\nsudo make install",
+      "((\n1 << 2\n))\nsudo make install",
+      "echo $[\n1 << 2\n]\nsudo make install",
+      "if :; then((a << b)); fi\nsudo make install",
+      "echo 'a\n<< b'\nsudo make install",
+      'echo "a\n<< b"\nsudo make install',
+    ]) {
+      expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
+    }
+    expect(ShellSafety.hasCompoundShellStateDependency('echo $((a << b))\nfile ../payload.sh; sh "$_"')).toBe(true)
+  })
+
   test("double ampersand with safe commands returns shell_read", () => {
     expect(ShellSafety.classifyCompoundRisk("ls && pwd && git status")).toBe("shell_read")
   })
@@ -1359,10 +1699,9 @@ describe("ShellSafety heredoc scanning", () => {
     )
   })
 
-  test("quoted heredoc delimiter is NOT scanned (<< 'EOF')", () => {
-    // Quoted heredocs disable shell expansion, so they are safe
+  test("quoted heredoc delimiters still feed executable interpreter input", () => {
     expect(ShellSafety.hasHeredocBody("python <<'EOF'\nimport os\nos.system('rm -rf /')\nEOF")).toEqual({
-      hasShellPayload: false,
+      hasShellPayload: true,
     })
   })
 
