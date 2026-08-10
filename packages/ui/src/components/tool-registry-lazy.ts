@@ -88,6 +88,18 @@ export function notifyExternalToolLoaded() {
  *
  * @param externalLoadNotify — accessor that forces re-evaluation on lazy-load completion
  */
+export function resolveExternalToolRenderer(
+  toolName: string,
+  externals: {
+    externalLookup?: (name: string) => ToolComponent | undefined
+    externalLoadNotify?: () => number
+  },
+): ToolComponent | undefined {
+  if (!externals.externalLookup) return undefined
+  externals.externalLoadNotify?.()
+  return externals.externalLookup(toolName)
+}
+
 export function resolveToolRenderer(
   toolName: string,
   registry: { render: (name: string) => ToolComponent | undefined },
@@ -98,9 +110,5 @@ export function resolveToolRenderer(
 ): ToolComponent | undefined {
   const builtin = registry.render(toolName)
   if (builtin) return builtin
-  if (externals.externalLookup) {
-    externals.externalLoadNotify?.() // subscribe to lazy-load completions
-    return externals.externalLookup(toolName)
-  }
-  return undefined
+  return resolveExternalToolRenderer(toolName, externals)
 }

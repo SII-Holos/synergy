@@ -177,12 +177,7 @@ async function writeRunningToolProgress(sessionID: string) {
 }
 
 async function waitUntilTerminal(taskID: string) {
-  for (let i = 0; i < 50; i++) {
-    const task = Cortex.get(taskID)
-    if (task?.status === "completed" || task?.status === "error" || task?.status === "cancelled") return task
-    await Bun.sleep(10)
-  }
-  return Cortex.get(taskID)
+  return Cortex.waitFor(taskID, 5)
 }
 
 describe.serial("Cortex", () => {

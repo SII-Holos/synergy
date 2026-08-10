@@ -37,6 +37,13 @@ describe("tool classifier localization", () => {
     expect(classified.subtitle).toBe("Choose a release path")
   })
 
+  test("preserves Boss tool categories from the shared classifier", () => {
+    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status"]) {
+      expect(classifyTool(tool).category).toBe("session")
+    }
+    expect(classifyTool("boss_cancel").category).toBe("session-control")
+  })
+
   test("classifies every Lattice tool with an explicit localized title", () => {
     const read = classifyTool("pathway_read")
     const write = classifyTool("pathway_write", { futureSteps: [{ title: "Build" }] })

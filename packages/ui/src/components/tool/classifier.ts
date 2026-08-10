@@ -1,3 +1,8 @@
+import {
+  classifySemanticCategory,
+  semanticCategoryForKnownTool,
+  type SemanticCategory,
+} from "@ericsanchezok/synergy-util/activity"
 import type { IconName } from "../icon"
 import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "../semantic-icon"
@@ -75,40 +80,10 @@ export function getLatticeToolPresentation(
 }
 
 /**
- * Semantic tool classification system.
- *
- * Self-contained flat mapping from tool name → SemanticCategory.
- *
- * The pipeline:
- *   1. Exact name lookup in TOOL_CATEGORIES
- *   2. Pattern fallback (regex on tool name)
- *   3. Input-shape heuristic (parameter names)
- *   4. Fallback to "generic"
+ * UI presentation for semantic tool categories classified by the shared activity utility.
+ * Exact mappings, pattern fallbacks, and input-shape heuristics live in
+ * `@ericsanchezok/synergy-util/activity` so runtime grouping and UI titles stay aligned.
  */
-
-export type SemanticCategory =
-  | "file-read"
-  | "file-write"
-  | "shell"
-  | "search"
-  | "browser"
-  | "web"
-  | "memory"
-  | "note"
-  | "blueprint"
-  | "task"
-  | "dag"
-  | "schedule"
-  | "session"
-  | "session-control"
-  | "community"
-  | "network"
-  | "analyze"
-  | "config"
-  | "communication"
-  | "skill"
-  | "research"
-  | "generic"
 
 export interface CategorySpec {
   icon: IconName
@@ -243,232 +218,6 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
   },
 }
 
-// ── Flat tool name → category map ────────────────────────────────────
-
-const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
-  // search
-  websearch: "web",
-  webfetch: "web",
-  browser_navigation: "browser",
-  browser_snapshot: "browser",
-  browser_action: "browser",
-  browser_wait: "browser",
-  browser_read: "browser",
-  browser_inspect: "browser",
-  browser_screenshot: "browser",
-  browser_eval: "browser",
-  browser_console: "browser",
-  browser_network: "browser",
-  browser_performance: "browser",
-  browser_audit: "browser",
-  browser_emulate: "browser",
-  browser_dialog: "browser",
-  browser_upload: "browser",
-  browser_downloads: "browser",
-  browser_clipboard: "browser",
-  browser_assets: "browser",
-  browser_annotate: "browser",
-  browser_view: "browser",
-  arxiv_search: "search",
-  arxiv_download: "search",
-  grep: "search",
-  file_search: "search",
-  scan_files: "search",
-  ast_grep: "search",
-  parse_code: "analyze",
-  glob: "search",
-  session_search: "session",
-  note_search: "note",
-  memory_search: "memory",
-  memory_get: "memory",
-
-  // code
-  read: "file-read",
-  view_file: "file-read",
-  list: "file-read",
-  look_at: "analyze",
-  view_image: "analyze",
-  scan_document: "analyze",
-  edit: "file-write",
-  revise_file: "file-write",
-  write: "file-write",
-  save_file: "file-write",
-  bash: "shell",
-  process: "shell",
-  lsp: "analyze",
-
-  // knowledge
-  memory_write: "memory",
-  memory_edit: "memory",
-  note_write: "note",
-  note_edit: "note",
-  note_list: "note",
-  note_read: "note",
-  note_archive: "note",
-  note_delete: "note",
-  blueprint_loop_stop: "blueprint",
-  blueprint_loop_approve: "blueprint",
-  blueprint_loop_reject: "blueprint",
-  skill: "skill",
-
-  // orchestration
-  task: "task",
-  task_list: "task",
-  task_output: "task",
-  task_cancel: "task",
-  loop_stop: "task",
-  light_loop_approve: "task",
-  light_loop_reject: "task",
-  dagwrite: "dag",
-  dagread: "dag",
-  dagpatch: "dag",
-  pathway_read: "dag",
-  pathway_write: "dag",
-  lattice_submit: "task",
-  todowrite: "dag",
-  todoread: "dag",
-  session_list: "session",
-  scope_list: "session",
-  session_read: "session",
-  session_send: "session",
-  session_control: "session-control",
-  boss_spawn: "session",
-  boss_assign: "session",
-  boss_report: "session",
-  boss_status: "session",
-  boss_cancel: "session-control",
-  agenda_schedule: "schedule",
-  agenda_watch: "schedule",
-  agenda_list: "schedule",
-  agenda_update: "schedule",
-  agenda_cancel: "schedule",
-  agenda_trigger: "schedule",
-  agenda_logs: "schedule",
-  research_init: "research",
-  research_state: "research",
-  research_idea: "research",
-  research_plan: "research",
-  research_experiment: "research",
-  research_claim: "research",
-  research_exhibit: "research",
-  research_paper: "research",
-  research_submission: "research",
-  research_wiki: "research",
-  research_timeline: "research",
-
-  // platform
-  search_tools: "search",
-  expand_tools: "config",
-  runtime_reload: "config",
-  profile_get: "config",
-  profile_update: "config",
-  worktree_enter: "config",
-  worktree_leave: "config",
-  worktree_list: "config",
-  connect: "network",
-  inspire_status: "config",
-  inspire_config: "config",
-  inspire_login: "config",
-  inspire_submit: "shell",
-  inspire_submit_hpc: "shell",
-  inspire_jobs: "analyze",
-  inspire_job_detail: "analyze",
-  inspire_logs: "analyze",
-  inspire_metrics: "analyze",
-  inspire_stop: "shell",
-  inspire_images: "analyze",
-  inspire_image_push: "shell",
-  inspire_notebook: "shell",
-  inspire_models: "analyze",
-  inspire_inference: "shell",
-
-  // communication
-  question: "communication",
-  email_send: "communication",
-  email_read: "communication",
-  clarus_submit_task_result: "communication",
-  clarus_extend_task: "communication",
-  github_deliver_fix: "communication",
-  openai_image_gen: "communication",
-  openai_image_edit: "communication",
-  diagram: "analyze",
-  render: "analyze",
-  attach: "communication",
-  response_card: "communication",
-
-  // qzcli / MCP tools
-  qzcli_qz_auth_login: "config",
-  qzcli_qz_set_cookie: "config",
-  qzcli_qz_list_workspaces: "config",
-  qzcli_qz_refresh_resources: "config",
-  qzcli_qz_get_availability: "analyze",
-  qzcli_qz_list_jobs: "shell",
-  qzcli_qz_get_job_detail: "analyze",
-  qzcli_qz_stop_job: "shell",
-  qzcli_qz_get_usage: "analyze",
-  qzcli_qz_inspect_status_catalog: "analyze",
-  qzcli_qz_track_job: "task",
-  qzcli_qz_list_tracked_jobs: "task",
-  qzcli_qz_create_job: "shell",
-  qzcli_qz_create_hpc_job: "shell",
-  qzcli_qz_get_hpc_usage: "analyze",
-  "context7_resolve-library-id": "search",
-  "context7_query-docs": "web",
-}
-
-// ── Pattern fallbacks ────────────────────────────────────────────────
-
-const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
-  { pattern: /^(web)?search/i, category: "web" },
-  { pattern: /^(web)?fetch/i, category: "web" },
-  { pattern: /^browser[-_]/i, category: "browser" },
-  { pattern: /^arxiv/i, category: "search" },
-  {
-    pattern: /^(grep|glob|find|ripgrep|rg|search[-_]?files?|codebase[-_]?search|file[-_]?search)/i,
-    category: "search",
-  },
-  { pattern: /^(read|get|load|fetch|cat|view|head|tail)[-_]?file/i, category: "file-read" },
-  { pattern: /^(list|ls|dir)[-_]?(dir|files?|folder)?$/i, category: "file-read" },
-  { pattern: /^(write|create|edit|update|patch|modify|replace|insert|append)[-_]?file/i, category: "file-write" },
-  { pattern: /^(apply[-_]?diff|save[-_]?file)/i, category: "file-write" },
-  { pattern: /^(run|exec|execute|shell|bash|sh|cmd|terminal|command)/i, category: "shell" },
-  { pattern: /[-_](command|exec|shell|terminal)$/i, category: "shell" },
-  { pattern: /^(look|analyze|vision|describe|inspect|examine)/i, category: "analyze" },
-  { pattern: /^(memory|library|remember|recall)/i, category: "memory" },
-  { pattern: /^note[-_]/i, category: "note" },
-  { pattern: /^skill/i, category: "skill" },
-  { pattern: /^blueprint[-_]/i, category: "blueprint" },
-  { pattern: /^(task|delegate|dispatch|spawn)/i, category: "task" },
-  { pattern: /^(dag|plan)/i, category: "dag" },
-  { pattern: /^todo/i, category: "dag" },
-  { pattern: /^session[-_]/i, category: "session" },
-  { pattern: /^scope[-_]/i, category: "session" },
-  { pattern: /^(agenda|schedule|cron|timer|remind)/i, category: "schedule" },
-  { pattern: /^research[-_]/i, category: "research" },
-  { pattern: /^(config|setting|profile|runtime)/i, category: "config" },
-  { pattern: /^inspire[-_]/i, category: "shell" },
-  { pattern: /^(email|mail)/i, category: "communication" },
-  { pattern: /^(send|notify|message)/i, category: "communication" },
-  { pattern: /^question/i, category: "communication" },
-  { pattern: /^(openai[-_])?image[-_](gen|edit)/i, category: "communication" },
-  { pattern: /^diagram/i, category: "analyze" },
-  { pattern: /^attach/i, category: "communication" },
-]
-
-// ── Input-shape heuristics ───────────────────────────────────────────
-
-const INPUT_HEURISTICS: { keys: string[]; writeHint?: string[]; category: SemanticCategory }[] = [
-  { keys: ["command", "cmd", "script"], category: "shell" },
-  {
-    keys: ["filePath", "file_path", "output_path", "outputPath"],
-    writeHint: ["content", "newString", "oldString", "diff", "prompt", "input_paths"],
-    category: "file-write",
-  },
-  { keys: ["filePath", "file_path", "path"], category: "file-read" },
-  { keys: ["query", "pattern", "regex", "search"], category: "search" },
-  { keys: ["url", "href", "endpoint"], category: "web" },
-]
-
 // ── Classifier ──────────────────────────────────────────────────────
 
 export interface ClassifiedTool {
@@ -490,37 +239,7 @@ export function classifyTool(
   input: Record<string, any> = {},
   metadata: Record<string, any> = {},
 ): ClassifiedTool {
-  // Layer 1: flat lookup
-  let category: SemanticCategory | undefined = TOOL_CATEGORIES[toolName]
-
-  // Layer 2: pattern fallback
-  if (!category) {
-    for (const rule of PATTERN_FALLBACKS) {
-      if (rule.pattern.test(toolName)) {
-        category = rule.category
-        break
-      }
-    }
-  }
-
-  // Layer 3: input heuristic
-  if (!category) {
-    for (const rule of INPUT_HEURISTICS) {
-      const hasKey = rule.keys.some((k) => input[k] !== undefined)
-      if (!hasKey) continue
-
-      if (rule.writeHint) {
-        const hasWriteHint = rule.writeHint.some((k) => input[k] !== undefined)
-        category = hasWriteHint ? rule.category : "file-read"
-      } else {
-        category = rule.category
-      }
-      break
-    }
-  }
-
-  // Fallback
-  if (!category) category = "generic"
+  const category = classifySemanticCategory(toolName, input)
 
   const spec = CATEGORIES[category]
 
@@ -547,7 +266,7 @@ function toolTitleDescriptor(name: string, spec: CategorySpec): MessageDescripto
     ? TOOL_TITLE_DESC[name]
     : undefined
   if (exactDescriptor) return exactDescriptor
-  return Object.hasOwn(TOOL_CATEGORIES, name) ? spec.descriptor : undefined
+  return semanticCategoryForKnownTool(name) ? spec.descriptor : undefined
 }
 
 function humanizeToolName(name: string): string {

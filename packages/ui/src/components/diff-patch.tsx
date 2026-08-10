@@ -57,10 +57,10 @@ export function DiffPatch(props: DiffPatchProps) {
     // Read reactive values synchronously so Solid tracks them; a diffStyle
     // change must re-run this effect and re-render with the new layout.
     const opts = options()
-    const pool = getWorkerPool(local.diffStyle)
     let alive = true
     void ensureSynergyHighlightTheme().then(() => {
       if (!alive) return
+      const pool = getWorkerPool(local.diffStyle)
       instance?.cleanUp()
       instance = new FileDiff(opts, pool)
       container.innerHTML = ""

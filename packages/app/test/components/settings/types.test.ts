@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { TOAST_DURATION_STOPS, defaultSettingsState, snapToastDuration } from "../../../src/components/settings/types"
+import {
+  UI_DEFAULTS,
+  TOAST_DURATION_STOPS,
+  defaultSettingsState,
+  snapToastDuration,
+} from "../../../src/components/settings/types"
 
 describe("settings types", () => {
   test("snaps toast durations to the discrete settings stops", () => {
@@ -12,5 +17,10 @@ describe("settings types", () => {
 
   test("defaults Cortex concurrency to the stable runtime limit", () => {
     expect(defaultSettingsState("enter").runtime.cortexConcurrency).toBe("8")
+  })
+
+  test("defaults activity display to full in the general store", () => {
+    expect(UI_DEFAULTS.activityDisplay).toBe("full")
+    expect(defaultSettingsState("enter").general.activityDisplay).toBe("full")
   })
 })
