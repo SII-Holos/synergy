@@ -150,8 +150,10 @@ export namespace PromptBudgeter {
     const output = Math.min(providerOutput, requestedOutput, ModelLimit.OUTPUT_TOKEN_MAX)
     const margin = outputMargin(context)
     const hasExplicitInput = typeof limits?.input === "number" && limits.input > 0
-    const reservesBoundedOutput = !hasExplicitInput && configuredOutput > 0 && configuredOutput < context
-    const inputEnvelope = reservesBoundedOutput ? Math.max(context - output - margin, 0) : usable
+    const boundedInputEnvelope = context - output - margin
+    const reservesBoundedOutput =
+      !hasExplicitInput && configuredOutput > 0 && configuredOutput < context && boundedInputEnvelope > 0
+    const inputEnvelope = reservesBoundedOutput ? boundedInputEnvelope : usable
     const threshold = options?.overflowThreshold ?? DEFAULT_OVERFLOW_THRESHOLD
     return {
       context,
@@ -177,7 +179,14 @@ export namespace PromptBudgeter {
     return Math.floor(resultBudget.context - inputTokens - resultBudget.margin)
   }
 
-  function safeMaxOutputTokens(inputTokens: number, resultBudget: Budget): number | undefined {
+  function safeMaxOutputTokens(
+    inputTokens: number,
+    resultBudget: Budget,
+    requestedMaxOutputTokens?: number,
+  ): number | undefined {
+    if (resultBudget.context <= 0) {
+      return requestedMaxOutputTokens && requestedMaxOutputTokens > 0 ? resultBudget.output : undefined
+    }
     const remaining = remainingOutputTokens(inputTokens, resultBudget)
     if (remaining === undefined || remaining <= 0) return undefined
     return Math.min(resultBudget.output, remaining)
@@ -302,7 +311,7 @@ export namespace PromptBudgeter {
         measure: { system: 0, messages: calibratedTotal, tools: 0, total: calibratedTotal },
         shouldCompact: resultBudget.usable > 0 && calibratedTotal >= resultBudget.soft,
         contextExceeded: contextExceeded(calibratedTotal, resultBudget),
-        maxOutputTokens: safeMaxOutputTokens(calibratedTotal, resultBudget),
+        maxOutputTokens: safeMaxOutputTokens(calibratedTotal, resultBudget, options?.maxOutputTokens),
       }
     }
 
@@ -312,7 +321,7 @@ export namespace PromptBudgeter {
       measure: resultMeasure,
       shouldCompact: resultBudget.usable > 0 && resultMeasure.total >= resultBudget.soft,
       contextExceeded: contextExceeded(resultMeasure.total, resultBudget),
-      maxOutputTokens: safeMaxOutputTokens(resultMeasure.total, resultBudget),
+      maxOutputTokens: safeMaxOutputTokens(resultMeasure.total, resultBudget, options?.maxOutputTokens),
     }
   }
 

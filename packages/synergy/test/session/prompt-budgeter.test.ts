@@ -52,6 +52,12 @@ describe("prompt-budgeter budget", () => {
     expect(result.soft).toBe(Math.floor(262_144 * 0.85))
   })
 
+  test("treats near-window output limits as shared instead of deriving a zero threshold", () => {
+    const result = PromptBudgeter.budget({ context: 131_072, output: 129_024 })
+    expect(result.inputEnvelope).toBe(131_072)
+    expect(result.soft).toBe(Math.floor(131_072 * 0.85))
+  })
+
   test("respects overflow threshold override", () => {
     const result = PromptBudgeter.budget({ context: 100_000, output: 8_192 }, { overflowThreshold: 0.95 })
     expect(result.soft).toBe(Math.floor((100_000 - 8_192 - 5_000) * 0.95))
@@ -150,6 +156,23 @@ describe("prompt-budgeter decision", () => {
 
     expect(result.contextExceeded).toBe(false)
     expect(result.maxOutputTokens).toBeUndefined()
+  })
+
+  test("preserves an explicit output limit when context metadata is unavailable", async () => {
+    const model = createModel(undefined)
+    const plan: PromptBudgeter.PromptPlan = {
+      system: ["You are helpful."],
+      messages: [{ role: "user", content: "continue" }],
+      toolDefinitions: [],
+    }
+
+    const result = await PromptBudgeter.decide(plan, model.limit, model.id, {
+      maxOutputTokens: 4_000,
+      calibration: { actualInput: 98_000, outputTokens: 0, deltaTokens: 0 },
+    })
+
+    expect(result.contextExceeded).toBe(false)
+    expect(result.maxOutputTokens).toBe(4_000)
   })
 
   test("larger assembled prompts produce larger measured totals", async () => {

@@ -315,28 +315,193 @@ async function runCompactionProcessCase(input: {
   }
 }
 
+async function expectPreflightCompaction(input: { shouldCompact: boolean; contextExceeded: boolean }) {
+  await using tmp = await tmpdir({ git: true })
+
+  const originalGetModel = Provider.getModel
+  const originalGetAgent = Agent.get
+  const originalConfigCurrent = Config.current
+  const originalDefinitions = ToolResolver.definitions
+  const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
+  const originalBuildPlan = PromptBudgeter.buildPlan
+  const originalDecide = PromptBudgeter.decide
+  const originalProcessorCreate = SessionProcessor.create
+  const originalUpdatePart = Session.updatePart
+  const originalCortexList = Cortex.list
+  const originalCortexGetRunningTasks = Cortex.getRunningTasks
+
+  const processCalled = mock(async () => "stop" as const)
+  const interceptedCompactionParts: Array<{ messageID: string; sessionID: string; auto: boolean }> = []
+  const hardOverflowBelowSoft = input.contextExceeded && !input.shouldCompact
+
+  try {
+    ;(Provider.getModel as any) = mock(async () =>
+      testModel(hardOverflowBelowSoft ? { context: 10_000, output: 10_000 } : undefined),
+    )
+    ;(Agent.get as any) = mock(async () => primaryAgent())
+    ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
+    ;(ToolResolver.definitions as any) = mock(async () => [])
+    ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+      definitions: [],
+      executionTools: {},
+      executorKinds: {},
+      activeToolIDs: [],
+    }))
+    ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
+      system: ["stub system"],
+      messages: [{ role: "user", content: "stub message" }],
+      toolDefinitions: [],
+    }))
+    ;(PromptBudgeter.decide as any) = mock(async () => ({
+      budget: hardOverflowBelowSoft
+        ? {
+            context: 10_000,
+            usable: 10_000,
+            output: 1,
+            margin: 2_048,
+            inputEnvelope: 10_000,
+            threshold: 0.85,
+            soft: 8_500,
+          }
+        : {
+            context: 100_000,
+            usable: 100_000,
+            output: 8_192,
+            margin: 5_000,
+            inputEnvelope: 86_808,
+            threshold: 0.99,
+            soft: 85_939,
+          },
+      measure: {
+        system: 10,
+        messages: 10,
+        tools: 0,
+        total: hardOverflowBelowSoft ? 8_200 : 95_000,
+      },
+      shouldCompact: input.shouldCompact,
+      contextExceeded: input.contextExceeded,
+    }))
+    ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
+      message: createInput.assistantMessage,
+      partFromToolCall: () => undefined,
+      trackExecution: () => {},
+      process: processCalled,
+    }))
+    ;(Session.updatePart as any) = mock(async (partInput: Parameters<typeof Session.updatePart>[0]) => {
+      if ("type" in partInput && partInput.type === "compaction") {
+        await originalUpdatePart(partInput as any)
+        interceptedCompactionParts.push({
+          messageID: partInput.messageID,
+          sessionID: partInput.sessionID,
+          auto: partInput.auto,
+        })
+        throw new CompactionIntercept()
+      }
+      return await originalUpdatePart(partInput as any)
+    })
+    ;(Cortex.list as any) = mock(() => [])
+    ;(Cortex.getRunningTasks as any) = mock(() => [])
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const sessionID = session.id
+
+        const user = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          role: "user",
+          sessionID,
+          agent: "synergy",
+          model: {
+            providerID: "test-provider",
+            modelID: "test-model",
+          },
+          time: {
+            created: Date.now(),
+          },
+        })
+
+        await originalUpdatePart({
+          id: Identifier.ascending("part"),
+          messageID: user.id,
+          sessionID,
+          type: "text",
+          text: "Please continue with next steps.",
+        })
+
+        let intercepted: unknown
+        try {
+          await SessionInvoke.loop.force(sessionID)
+        } catch (error) {
+          intercepted = error
+        }
+
+        expect(isCompactionIntercept(intercepted)).toBe(true)
+        expect(interceptedCompactionParts).toHaveLength(1)
+        const [compactionPart] = interceptedCompactionParts
+        expect(compactionPart.sessionID).toBe(sessionID)
+        expect(compactionPart.auto).toBe(true)
+        expect(compactionPart.messageID).toBe(user.id)
+
+        const root = await MessageV2.get({ sessionID, messageID: compactionPart.messageID })
+        expect(root.info?.role).toBe("user")
+        expect(root.parts).toEqual(
+          expect.arrayContaining([expect.objectContaining({ type: "compaction", auto: true, messageID: user.id })]),
+        )
+        expect(processCalled).not.toHaveBeenCalled()
+      },
+    })
+  } finally {
+    ;(Provider.getModel as any) = originalGetModel
+    ;(Agent.get as any) = originalGetAgent
+    ;(Config.current as any) = originalConfigCurrent
+    ;(ToolResolver.definitions as any) = originalDefinitions
+    ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
+    ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
+    ;(PromptBudgeter.decide as any) = originalDecide
+    ;(SessionProcessor.create as any) = originalProcessorCreate
+    ;(Session.updatePart as any) = originalUpdatePart
+    ;(Cortex.list as any) = originalCortexList
+    ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
+  }
+}
+
 describe.serial("SessionInvoke preflight compaction", () => {
-  test("injects a compaction part before main inference when prompt budget is exceeded", async () => {
+  test("injects a compaction part before main inference when the soft prompt budget is exceeded", async () => {
+    await expectPreflightCompaction({ shouldCompact: true, contextExceeded: false })
+  })
+
+  test("injects compaction for hard overflow even below the configured soft threshold", async () => {
+    await expectPreflightCompaction({ shouldCompact: false, contextExceeded: true })
+  })
+
+  test("stops after one hard-overflow compaction when the recovered prompt still cannot fit", async () => {
     await using tmp = await tmpdir({ git: true })
 
     const originalGetModel = Provider.getModel
     const originalGetAgent = Agent.get
+    const originalGetAvailableModel = Agent.getAvailableModel
     const originalConfigCurrent = Config.current
     const originalDefinitions = ToolResolver.definitions
     const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
     const originalBuildPlan = PromptBudgeter.buildPlan
     const originalDecide = PromptBudgeter.decide
     const originalProcessorCreate = SessionProcessor.create
-    const originalUpdatePart = Session.updatePart
+    const originalPluginTrigger = Plugin.trigger
     const originalCortexList = Cortex.list
     const originalCortexGetRunningTasks = Cortex.getRunningTasks
 
-    const processCalled = mock(async () => "stop" as const)
-    const interceptedCompactionParts: Array<{ messageID: string; sessionID: string; auto: boolean }> = []
+    let decideCount = 0
+    let mainProcessCount = 0
 
     try {
       ;(Provider.getModel as any) = mock(async () => testModel())
       ;(Agent.get as any) = mock(async () => primaryAgent())
+      ;(Agent.getAvailableModel as any) = mock(async () => ({
+        providerID: "test-provider",
+        modelID: "test-model",
+      }))
       ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
       ;(ToolResolver.definitions as any) = mock(async () => [])
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
@@ -350,29 +515,48 @@ describe.serial("SessionInvoke preflight compaction", () => {
         messages: [{ role: "user", content: "stub message" }],
         toolDefinitions: [],
       }))
-      ;(PromptBudgeter.decide as any) = mock(async () => ({
-        budget: { context: 100_000, usable: 100_000, threshold: 0.85, soft: 85_000 },
-        measure: { system: 10, messages: 10, tools: 0, total: 90_000 },
-        shouldCompact: true,
-      }))
-      ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
-        message: input.assistantMessage,
+      ;(PromptBudgeter.decide as any) = mock(async () => {
+        decideCount++
+        return {
+          budget: {
+            context: 100_000,
+            usable: 100_000,
+            output: 8_192,
+            margin: 5_000,
+            inputEnvelope: 86_808,
+            threshold: 0.99,
+            soft: 85_939,
+          },
+          measure: { system: 10, messages: 10, tools: 0, total: 95_000 },
+          shouldCompact: false,
+          contextExceeded: true,
+        }
+      })
+      ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
+        message: createInput.assistantMessage,
         partFromToolCall: () => undefined,
         trackExecution: () => {},
-        process: processCalled,
-      }))
-      ;(Session.updatePart as any) = mock(async (input: Parameters<typeof Session.updatePart>[0]) => {
-        if ("type" in input && input.type === "compaction") {
-          await originalUpdatePart(input as any)
-          interceptedCompactionParts.push({
-            messageID: input.messageID,
-            sessionID: input.sessionID,
-            auto: input.auto,
+        process: mock(async () => {
+          if (createInput.assistantMessage.mode !== "compaction") {
+            mainProcessCount++
+            return "stop" as const
+          }
+          const now = Date.now()
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: createInput.assistantMessage.id,
+            sessionID: createInput.sessionID,
+            type: "text",
+            text: "## Goal\n\nContinue after compaction.",
+            time: { start: now, end: now },
           })
-          throw new CompactionIntercept()
-        }
-        return await originalUpdatePart(input as any)
-      })
+          createInput.assistantMessage.finish = "stop"
+          createInput.assistantMessage.time.completed = now
+          await Session.updateMessage(createInput.assistantMessage)
+          return "stop" as const
+        }),
+      }))
+      ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
       ;(Cortex.list as any) = mock(() => [])
       ;(Cortex.getRunningTasks as any) = mock(() => [])
 
@@ -380,64 +564,57 @@ describe.serial("SessionInvoke preflight compaction", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const sessionID = session.id
-
           const user = await Session.updateMessage({
             id: Identifier.ascending("message"),
             role: "user",
-            sessionID,
+            sessionID: session.id,
             agent: "synergy",
-            model: {
-              providerID: "test-provider",
-              modelID: "test-model",
-            },
-            time: {
-              created: Date.now(),
-            },
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
           })
-
-          await originalUpdatePart({
+          await Session.updatePart({
             id: Identifier.ascending("part"),
             messageID: user.id,
-            sessionID,
+            sessionID: session.id,
             type: "text",
-            text: "Please continue with next steps.",
+            text: "Recover once, then stop if the prompt still cannot fit.",
           })
 
-          let intercepted: unknown
+          let thrown: unknown
           try {
-            await SessionInvoke.loop.force(sessionID)
+            await SessionInvoke.loop.force(session.id)
           } catch (error) {
-            intercepted = error
+            thrown = error
           }
 
-          expect(isCompactionIntercept(intercepted)).toBe(true)
-          expect(interceptedCompactionParts).toHaveLength(1)
-          const [compactionPart] = interceptedCompactionParts
-          expect(compactionPart.sessionID).toBe(sessionID)
-          expect(compactionPart.auto).toBe(true)
-          // The compaction part is attached to the task root R (= the user
-          // message here), not a separate synthetic boundary (issue #281 §7).
-          expect(compactionPart.messageID).toBe(user.id)
-
-          const root = await MessageV2.get({ sessionID, messageID: compactionPart.messageID })
-          expect(root.info?.role).toBe("user")
-          expect(root.parts).toEqual(
-            expect.arrayContaining([expect.objectContaining({ type: "compaction", auto: true, messageID: user.id })]),
+          const root = await MessageV2.get({ sessionID: session.id, messageID: user.id })
+          const messages = await Session.messages({ sessionID: session.id })
+          const terminal = messages.findLast(
+            (message): message is MessageV2.WithParts & { info: MessageV2.Assistant } =>
+              message.info.role === "assistant" && message.info.parentID === user.id && !!message.info.error,
           )
-          expect(processCalled).not.toHaveBeenCalled()
+          expect(root.parts.filter((part) => part.type === "compaction")).toHaveLength(1)
+          expect(messages.filter((message) => message.info.role === "assistant" && message.info.summary)).toHaveLength(
+            1,
+          )
+          expect(decideCount).toBe(2)
+          expect(mainProcessCount).toBe(0)
+          expect(terminal?.info.error?.name).toBe("UnknownError")
+          expect(JSON.stringify(terminal?.info.error)).toContain("leaves no room for a model response")
+          expect(thrown).toBeInstanceOf(MessageV2.SessionTerminalError)
         },
       })
     } finally {
       ;(Provider.getModel as any) = originalGetModel
       ;(Agent.get as any) = originalGetAgent
+      ;(Agent.getAvailableModel as any) = originalGetAvailableModel
       ;(Config.current as any) = originalConfigCurrent
       ;(ToolResolver.definitions as any) = originalDefinitions
       ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
       ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
       ;(PromptBudgeter.decide as any) = originalDecide
       ;(SessionProcessor.create as any) = originalProcessorCreate
-      ;(Session.updatePart as any) = originalUpdatePart
+      ;(Plugin.trigger as any) = originalPluginTrigger
       ;(Cortex.list as any) = originalCortexList
       ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
     }
