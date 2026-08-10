@@ -56,14 +56,31 @@ describe("SessionModePolicy Channel visibility", () => {
     expect(SessionModePolicy.visibility({ toolName: "read", session: {} })).toBeUndefined()
   })
 
-  test("exposes github_deliver_fix only to Channel sessions", () => {
+  test("exposes github_deliver_fix only to GitHub Channel sessions", () => {
     const diagnostic = SessionModePolicy.visibility({ toolName: "github_deliver_fix", session: {} })
     expect(diagnostic).toMatchObject({
       code: "tool_unavailable",
       toolName: "github_deliver_fix",
-      metadata: { requiredEndpoint: "channel" },
+      metadata: { requiredEndpoint: "github" },
     })
     expect(diagnostic?.message).toContain("only available in GitHub Channel sessions")
+
+    // A non-GitHub channel session (e.g. Feishu) must not see the tool.
+    expect(
+      SessionModePolicy.visibility({
+        toolName: "github_deliver_fix",
+        session: {
+          endpoint: {
+            kind: "channel",
+            channel: { type: "feishu", accountId: "account_test", chatId: "chat_test" },
+          },
+        } as any,
+      }),
+    ).toMatchObject({
+      code: "tool_unavailable",
+      toolName: "github_deliver_fix",
+      metadata: { requiredEndpoint: "github" },
+    })
 
     expect(
       SessionModePolicy.visibility({

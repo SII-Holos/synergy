@@ -1041,6 +1041,13 @@ export namespace EnforcementGate {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
+      // GitHub fix delivery — pushes a branch and opens a pull request through
+      // the provider's installation token (external platform write).
+      if (toolName === "github_deliver_fix") {
+        caps.push({ class: "platform_control", nonBypassable: true })
+        caps.push({ class: "network_request", nonBypassable: true })
+        return { capabilities: caps }
+      }
       // Default: unknown tool, no capabilities
       return { capabilities: caps }
     }

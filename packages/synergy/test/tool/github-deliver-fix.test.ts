@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { Channel } from "../../src/channel"
-import { GithubProvider } from "../../src/channel/provider/github"
+import { GithubProvider, assertNotBaseBranch } from "../../src/channel/provider/github"
 import { GithubDeliverFixTool } from "../../src/tool/github-deliver-fix"
 import { ToolRegistry } from "../../src/tool/registry"
 import type { Tool } from "../../src/tool/tool"
@@ -96,6 +96,43 @@ test("github_deliver_fix surfaces GITHUB_PROVIDER_UNAVAILABLE when the provider 
           ),
         ).rejects.toMatchObject({
           code: "GITHUB_PROVIDER_UNAVAILABLE",
+        })
+      } finally {
+        if (previous) Channel.registerProvider(previous as never)
+      }
+    },
+  })
+})
+
+test("assertNotBaseBranch rejects the resolved repository base branch", () => {
+  expect(() => assertNotBaseBranch("main", "main")).toThrow(/is the repository base branch/)
+  expect(() => assertNotBaseBranch("refs/heads/main", "main")).toThrow(/is the repository base branch/)
+  expect(() => assertNotBaseBranch("dev", "dev")).toThrow(/is the repository base branch/)
+  expect(() => assertNotBaseBranch("synergy/fix/1-slug", "main")).not.toThrow()
+})
+
+test("github_deliver_fix surfaces GITHUB_DELIVERY_BASE_BRANCH when the provider rejects a base-branch delivery", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      // A provider subclass that fails exactly like deliverFix does when the
+      // requested branch equals the repository base branch.
+      class BaseBranchRejectingProvider extends GithubProvider {
+        override async deliverFix(): Promise<never> {
+          throw new Error(
+            'Branch "main" is the repository base branch; create a dedicated fix branch before delivering',
+          )
+        }
+      }
+      const previous = Channel.getProvider("github")
+      Channel.registerProvider(new BaseBranchRejectingProvider() as never)
+      try {
+        const tool = await GithubDeliverFixTool.init()
+        await expect(
+          tool.execute({ branch: "main", title: "Fix", body: "Fixed" }, toolContext(`ses_${crypto.randomUUID()}`)),
+        ).rejects.toMatchObject({
+          code: "GITHUB_DELIVERY_BASE_BRANCH",
         })
       } finally {
         if (previous) Channel.registerProvider(previous as never)

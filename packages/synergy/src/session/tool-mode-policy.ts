@@ -112,12 +112,15 @@ export namespace SessionModePolicy {
       }
     }
 
-    if (input.toolName === "github_deliver_fix" && input.session?.endpoint?.kind !== "channel") {
+    if (
+      input.toolName === "github_deliver_fix" &&
+      (input.session?.endpoint?.kind !== "channel" || input.session?.endpoint?.channel?.type !== "github")
+    ) {
       return {
         code: "tool_unavailable",
         toolName: input.toolName,
         message: `The "${input.toolName}" tool is only available in GitHub Channel sessions.`,
-        metadata: { requiredEndpoint: "channel" },
+        metadata: { requiredEndpoint: "github" },
       }
     }
 

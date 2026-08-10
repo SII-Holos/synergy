@@ -62,6 +62,9 @@ export const GithubDeliverFixTool = Tool.define(
         if (message.includes("does not exist")) {
           throw toolError("GITHUB_DELIVERY_BRANCH_MISSING", message)
         }
+        if (message.includes("is the repository base branch")) {
+          throw toolError("GITHUB_DELIVERY_BASE_BRANCH", message)
+        }
         if (message.includes("no commits ahead")) {
           throw toolError("GITHUB_DELIVERY_BRANCH_EMPTY", message)
         }

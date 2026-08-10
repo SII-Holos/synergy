@@ -80,6 +80,21 @@ function splitRepository(repository: string): { owner: string; repo: string } {
   if (!owner || !repo || extra.length > 0) throw new Error(`Invalid GitHub repository name: ${repository}`)
   return { owner, repo }
 }
+/**
+ * Reject a fix-delivery branch that equals the resolved repository base
+ * branch: pushing it would update the default branch directly instead of
+ * opening a pull request.
+ */
+export function assertNotBaseBranch(branch: string, baseBranch: string): void {
+  // "refs/heads/main" pushes the same remote ref as "main"; normalize the
+  // ref prefix so both forms are rejected.
+  const normalized = branch.replace(/^refs\/heads\//, "")
+  if (normalized === baseBranch) {
+    throw new Error(
+      `Branch "${branch}" is the repository base branch; create a dedicated fix branch (e.g. synergy/fix/<issue>-<slug>) before delivering`,
+    )
+  }
+}
 
 function joinOutboundText(parts: ChannelTypes.OutboundPart[]): string {
   const chunks: string[] = []
@@ -341,6 +356,8 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     const facts = this.accounts.get(accountId)?.threadFacts.get(`${parsed.repository}#${parsed.issueNumber}`)
     const baseBranch = facts?.defaultBranch ?? (await this.resolveDefaultBranch(owner, repo, token)) ?? "main"
 
+    assertNotBaseBranch(input.branch, baseBranch)
+
     const credential = buildCredentialCommand({ token, args: [] })
 
     // Verify the local branch exists and is ahead of the base branch.
@@ -440,14 +457,19 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
     branch: string
     directory: string
   }): Promise<{ pullRequestURL: string; pullNumber: number; headBranch: string } | undefined> {
-    const isFork = input.headRepoFullName !== undefined && input.headRepoFullName !== input.repository
+    // Only push to the base repository when the head repository is positively
+    // known to be the same repository. An unknown head repo (e.g. the source
+    // fork disappeared) must fall back to a new PR rather than risk pushing a
+    // same-named branch — potentially the default branch — into the base.
+    if (input.headRepoFullName === undefined) return undefined
+    const isFork = input.headRepoFullName !== input.repository
     let pushURL: string
     let pushToken: string
     if (!isFork) {
       const { owner, repo } = splitRepository(input.repository)
       pushURL = `https://github.com/${input.repository}.git`
       pushToken = await this.resolveInstallationToken(owner, repo)
-    } else if (input.headRepoFullName) {
+    } else {
       const fork = splitRepository(input.headRepoFullName)
       try {
         pushURL = `https://github.com/${input.headRepoFullName}.git`
@@ -460,8 +482,6 @@ export class GithubProvider implements ChannelTypes.Provider<Config.ChannelGithu
         })
         return undefined
       }
-    } else {
-      return undefined
     }
 
     const credential = buildCredentialCommand({ token: pushToken, args: [] })
