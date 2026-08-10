@@ -401,12 +401,24 @@ export namespace AgentTurnProtocol {
       const field = (key: string) => source[key] ?? nested?.[key]
       const rawName = field("name")
       const rawMessage = field("message")
+      const rawCode = field("code")
+      const rawType = field("type")
       const rawStack = field("stack")
       const normalized = Object.assign(
-        new Error(typeof rawMessage === "string" && rawMessage ? rawMessage : "Unknown structured error"),
+        new Error(
+          (typeof rawMessage === "string" && rawMessage ? rawMessage : safeStringify(error)).slice(
+            0,
+            ERROR_MESSAGE_MAX_CHARS,
+          ),
+        ),
         {
           name: typeof rawName === "string" && rawName ? rawName : "Error",
-          code: field("code"),
+          code:
+            typeof rawCode === "string" && rawCode
+              ? rawCode
+              : typeof rawType === "string" && rawType
+                ? rawType
+                : undefined,
           syscall: field("syscall"),
           data: field("data"),
           statusCode: field("statusCode"),
@@ -647,6 +659,24 @@ export namespace AgentTurnProtocol {
         "syscall" in value && value.syscall !== undefined
           ? String(value.syscall).slice(0, ERROR_MESSAGE_MAX_CHARS)
           : undefined,
+    }
+  }
+
+  function safeStringify(value: unknown): string {
+    if (typeof value === "string") return value
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+      return String(value)
+    }
+    if (value === null) return "null"
+    if (value === undefined) return "undefined"
+    try {
+      return JSON.stringify(value)
+    } catch {
+      const parts: string[] = []
+      for (const [key, entry] of Object.entries(value)) {
+        if (typeof entry === "string") parts.push(`${key}: ${entry}`)
+      }
+      return parts.length > 0 ? parts.join(", ") : String(value)
     }
   }
 }
