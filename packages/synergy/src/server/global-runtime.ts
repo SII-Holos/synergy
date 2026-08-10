@@ -148,7 +148,14 @@ export namespace GlobalRuntime {
     return configuredShutdownTimeoutMs
   }
 
+  export function closeAdmission(): void {
+    AgentTurn.closeAdmission()
+    PolicyWorker.closeAdmission()
+    ToolScheduler.closeAdmission()
+  }
+
   export async function stop() {
+    closeAdmission()
     const executionStop = Promise.all([AgentTurn.stop(), PolicyWorker.stop(), ToolScheduler.stop()])
     Agenda.stop()
     await executionStop

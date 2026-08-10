@@ -414,6 +414,10 @@ export namespace ToolScheduler {
     }
   }
 
+  export function closeAdmission(): void {
+    accepting = false
+  }
+
   export function dispatch(input: ToolTaskInput): Promise<ToolTaskResult> {
     if (!accepting) return Promise.reject(new Error("Tool scheduler is stopping"))
     scheduler ??= new ToolTaskScheduler(options)
@@ -436,8 +440,8 @@ export namespace ToolScheduler {
   }
 
   export async function stop(): Promise<void> {
+    closeAdmission()
     if (stopPromise) return stopPromise
-    accepting = false
     const current = scheduler
     stopPromise = (async () => {
       try {

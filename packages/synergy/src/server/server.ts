@@ -35,7 +35,7 @@ import { MCP } from "../mcp"
 import { Storage } from "../storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { upgradeWebSocket, websocket } from "hono/bun"
-import { errors } from "./error"
+import { errors, RuntimeShuttingDownError } from "./error"
 import { QuestionRoute } from "./question"
 import { SessionExportRoute } from "./session-export"
 import { CortexRoute } from "./cortex"
@@ -414,16 +414,6 @@ export namespace Server {
           })
         })
         .use(async (c, next) => {
-          if (!_shuttingDown) return next()
-          return c.json(
-            {
-              name: "RuntimeShuttingDown",
-              data: { message: "Synergy runtime is shutting down" },
-            },
-            503,
-          )
-        })
-        .use(async (c, next) => {
           const reqPath = c.req.path
           const routePath = ObservabilityRedaction.routePath(reqPath)
           const skipLogging = reqPath === "/log" || reqPath === "/global/health" || reqPath.startsWith("/assets/")
@@ -560,6 +550,16 @@ export namespace Server {
             maxAge: 600,
           }),
         )
+        .use(async (c, next) => {
+          if (!_shuttingDown) return next()
+          return c.json(
+            {
+              name: "RuntimeShuttingDown",
+              data: { message: "Synergy runtime is shutting down" },
+            },
+            503,
+          )
+        })
         .use(provideRequestScope)
         .use(cspMiddleware())
         .get(
@@ -1603,6 +1603,31 @@ export namespace Server {
         openapi: "3.1.1",
       },
     })
+    const shutdown = await resolver(RuntimeShuttingDownError).toOpenAPISchema()
+    result.components = {
+      ...result.components,
+      schemas: {
+        ...result.components?.schemas,
+        ...shutdown.components?.schemas,
+      },
+    }
+    const methods = ["get", "put", "post", "delete", "patch"] as const
+    for (const item of Object.values(result.paths)) {
+      if (!item) continue
+      for (const method of methods) {
+        const operation = item[method]
+        if (!operation || operation.responses?.["503"]) continue
+        operation.responses ??= {}
+        operation.responses["503"] = {
+          description: "Runtime shutting down",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/RuntimeShuttingDownError" },
+            },
+          },
+        }
+      }
+    }
     return result
   }
 

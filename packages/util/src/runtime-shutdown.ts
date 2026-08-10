@@ -9,3 +9,5 @@ export function resolveRuntimeShutdownTimeoutMs(executionCancelGraceMs: number):
 
 export const DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS =
   resolveRuntimeShutdownTimeoutMs(MAX_EXECUTION_CANCEL_GRACE_MS) + DESKTOP_SUPERVISOR_SETTLE_MARGIN_MS
+
+export const SYSTEMD_SERVER_SHUTDOWN_TIMEOUT_SECONDS = DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS / 1_000

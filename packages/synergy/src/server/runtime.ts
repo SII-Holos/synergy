@@ -364,6 +364,7 @@ function registerShutdown(
 
     shuttingDown = true
     Server.beginShutdown()
+    GlobalRuntime.closeAdmission()
     stopWatchingParent()
     log.info("received signal, shutting down gracefully", { signal })
     await Observability.emit("shutdown.signal", {
