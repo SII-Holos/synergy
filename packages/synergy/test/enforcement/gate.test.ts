@@ -732,6 +732,39 @@ describe("EnforcementGate network classification", () => {
     expect(inspire).toContainEqual({ class: "network_request", nonBypassable: true })
   })
 
+  test("github_deliver_fix classifies as platform control plus network request", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const caps = gate.classify("github_deliver_fix", {
+      branch: "synergy/fix/1-x",
+      title: "Fix",
+      body: "Fixed",
+    }).capabilities
+    expect(caps).toContainEqual({ class: "platform_control", nonBypassable: true })
+    expect(caps).toContainEqual({ class: "network_request", nonBypassable: true })
+
+    // The external write must be visible to the gate: guarded asks before the
+    // platform write; autonomous allows it (platform_control is in
+    // AUTONOMOUS_HIGH_ALLOWED, so the unattended GitHub channel agent can
+    // still deliver fixes) while explicit policy denies still apply.
+    const guarded = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+    })
+    expect(guarded.evaluate("github_deliver_fix", {}).decision).toBe("ask")
+
+    const autonomous = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    expect(autonomous.evaluate("github_deliver_fix", {}).decision).toBe("allow")
+  })
+
   //  test("agora collaboration tools classify as external network and platform control", async () => {
   //    const { EnforcementGate } = require("../../src/enforcement/gate")
   //    const gate = await EnforcementGate.create({

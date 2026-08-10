@@ -36,12 +36,15 @@ export const GithubDeliverFixTool = Tool.define(
         throw toolError("GITHUB_PROVIDER_UNAVAILABLE", "The GitHub Channel provider is unavailable")
       }
       try {
-        const result = await provider.deliverFix({
-          sessionID: ctx.sessionID,
-          branch: params.branch,
-          title: params.title,
-          body: params.body,
-        })
+        const result = await provider.deliverFix(
+          {
+            sessionID: ctx.sessionID,
+            branch: params.branch,
+            title: params.title,
+            body: params.body,
+          },
+          ctx.abort,
+        )
         return {
           title: "GitHub fix delivered as pull request",
           output: `Pull request #${result.pullNumber} is ready: ${result.pullRequestURL}`,
@@ -62,6 +65,9 @@ export const GithubDeliverFixTool = Tool.define(
         if (message.includes("does not exist")) {
           throw toolError("GITHUB_DELIVERY_BRANCH_MISSING", message)
         }
+        if (message.includes("is the repository base branch")) {
+          throw toolError("GITHUB_DELIVERY_BASE_BRANCH", message)
+        }
         if (message.includes("no commits ahead")) {
           throw toolError("GITHUB_DELIVERY_BRANCH_EMPTY", message)
         }
@@ -73,10 +79,13 @@ export const GithubDeliverFixTool = Tool.define(
     },
   },
   {
+    // The GitHub channel agent runs under a strict whitelist permission and
+    // has no expand_tools/search_tools activation path, so a search-mode
+    // exposure would leave the tool permanently invisible. Expose it as
+    // resident; the tool itself validates that the session is bound to a
+    // GitHub channel thread and errors otherwise.
     exposure: {
-      mode: "search",
-      title: "Deliver GitHub Fix as PR",
-      keywords: ["github", "fix", "pull request", "deliver", "push", "branch"],
+      mode: "resident",
     },
   },
 )

@@ -179,6 +179,8 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
         write: "allow",
         todoread: "allow",
         todowrite: "allow",
+        // The fix-delivery tool must be callable from the whitelist.
+        github_deliver_fix: "allow",
         bash: {
           "*": "allow",
           "gh*": "deny",
